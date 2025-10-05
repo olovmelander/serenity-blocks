@@ -1445,6 +1445,44 @@ function createCandlelitMonasteryScene() {
                 dropdown.value = this.musicTrack;
             }
 
+            // Get song for theme (theme-linked mode)
+            getSongForTheme(themeName) {
+                // Normalize theme name: remove hyphens and convert to camelCase for matching
+                const normalizedTheme = themeName.split('-').map((word, index) =>
+                    index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) :
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                ).join('');
+
+                // Try exact match first
+                let song = this.songsData.find(s =>
+                    this.nameToKey(s.name).toLowerCase() === normalizedTheme.toLowerCase()
+                );
+
+                // If no exact match, try partial match
+                if (!song) {
+                    song = this.songsData.find(s =>
+                        this.nameToKey(s.name).toLowerCase().includes(themeName.replace(/-/g, '').toLowerCase()) ||
+                        themeName.replace(/-/g, '').toLowerCase().includes(this.nameToKey(s.name).toLowerCase())
+                    );
+                }
+
+                return song ? this.nameToKey(song.name) : null;
+            }
+
+            // Apply theme-linked music if enabled
+            applyThemeLinkedMusic(themeName) {
+                if (!settings.themeLinkedMode) return;
+
+                const linkedSong = this.getSongForTheme(themeName);
+                if (linkedSong) {
+                    console.log(`🎵 Theme-linked: ${themeName} → ${linkedSong}`);
+                    this.setTrack(linkedSong);
+                } else {
+                    // No match found, continue with current track or pick random
+                    console.log(`🎵 No theme match for ${themeName}, continuing current track`);
+                }
+            }
+
             playMove() { this.soundSets[this.soundSet].move(); }
             playRotate() { this.soundSets[this.soundSet].rotate(); }
             playDrop() { this.soundSets[this.soundSet].drop(); }
@@ -1834,13 +1872,17 @@ function createCandlelitMonasteryScene() {
                 // Create or reuse audio element
                 if (!this.audioElement) {
                     this.audioElement = new Audio();
-                    this.audioElement.loop = true;
+                    // Add event listener for automatic song progression
+                    this.audioElement.addEventListener('ended', () => {
+                        this.nextTrack();
+                    });
                 }
 
                 // Set the source and configure
                 this.audioElement.src = filename;
                 this.audioElement.volume = this.musicVolume;
                 this.audioElement.muted = this.isMuted;
+                this.audioElement.loop = false; // Disable loop to enable automatic progression
 
                 // Play the audio (handle autoplay restrictions)
                 const playPromise = this.audioElement.play();
@@ -1888,7 +1930,7 @@ function createCandlelitMonasteryScene() {
         let isProcessingPhysics = false, inputQueue = null, dasTimer = null, dasIntervalTimer = null, softDropTimer = null;
 let animationId = null, linesUntilNextLevel = 10, activeTheme = 'forest', randomThemeInterval = null, activeThemeAnimationId = null, webglRenderer = null, activeThemeData = null;
 
-        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
+        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', themeLinkedMode: false, controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
         const soundManager = new SoundManager();
         const highScoreManager = new HighScoreManager();
 let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, touchLastX = null, touchLastY = null;
@@ -4243,6 +4285,9 @@ let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, 
             if (webglRenderer) {
                 webglRenderer.loadTheme(themeName, activeThemeData);
             }
+
+            // Apply theme-linked music if enabled
+            soundManager.applyThemeLinkedMusic(themeName);
         }
 
 function createCrystalCaveScene() {
@@ -6994,6 +7039,10 @@ function isPartOfPiece(boardX, boardY, piece) {
             const st=document.getElementById('sfx-set');
             st.value=settings.soundSet;
             st.addEventListener('change',(e)=>{settings.soundSet=e.target.value;soundManager.setSoundSet(settings.soundSet);saveSettings();});
+
+            const tlm=document.getElementById('theme-linked-mode');
+            tlm.value=settings.themeLinkedMode.toString();
+            tlm.addEventListener('change',(e)=>{settings.themeLinkedMode=e.target.value==='true';saveSettings();});
 
             const bgModeSelect = document.getElementById('background-mode');
             const themeSetting = document.getElementById('theme-setting');
