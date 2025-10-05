@@ -133,5 +133,10 @@
     "name": "Waves",
     "file": "Waves.mp3",
     "path": "songs/Waves.mp3"
+  },
+  {
+    "name": "Wolfhour",
+    "file": "Wolfhour.mp3",
+    "path": "songs/Wolfhour.mp3"
   }
 ]

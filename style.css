@@ -4449,6 +4449,37 @@ body {
             0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
         }
 
+        .settings-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid rgba(139, 92, 246, 0.3);
+        }
+        .settings-tab {
+            background: transparent;
+            border: none;
+            color: rgba(224, 231, 255, 0.6);
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: 'Space Mono', monospace;
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+        .settings-tab:hover {
+            color: rgba(224, 231, 255, 0.8);
+        }
+        .settings-tab.active {
+            color: #00ffff;
+            border-bottom-color: #00ffff;
+        }
+        .settings-tab-content {
+            display: none;
+        }
+        .settings-tab-content.active {
+            display: block;
+        }
         .settings-grid { display: grid; grid-template-columns: auto 1fr; gap: 15px 20px; margin: 20px 0; text-align: left; align-items: center; }
         .setting { display: contents; }
         .setting label { justify-self: end; align-self: center; }

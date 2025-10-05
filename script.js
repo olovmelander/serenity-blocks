@@ -7038,6 +7038,17 @@ function isPartOfPiece(boardX, boardY, piece) {
                     startRandomThemeChanger();
                 }
             });
+
+            // Settings tabs
+            document.querySelectorAll('.settings-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetTab = tab.getAttribute('data-tab');
+                    document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById('settings-' + targetTab).classList.add('active');
+                });
+            });
             const ds=document.getElementById('das-delay'),dv=document.getElementById('das-delay-value'),is=document.getElementById('das-interval'),iv=document.getElementById('das-interval-value');
             ds.value=settings.dasDelay;dv.textContent=settings.dasDelay; is.value=settings.dasInterval;iv.textContent=settings.dasInterval;
             ds.addEventListener('input',(e)=>{settings.dasDelay=parseInt(e.target.value);dv.textContent=settings.dasDelay;saveSettings();});
