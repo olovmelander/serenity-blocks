@@ -6603,9 +6603,9 @@ function createWavesScene() {
 async function processPhysics() {
     isProcessingPhysics = true;
     let linesClearedThisTurn = 0;
-    let cascaded = false;
 
     while (true) {
+        // Phase 1: Line detection and clearing
         const boardData = generateBoard(lockedPieces);
         const fullLines = [];
         for (let y = boardData.length - 1; y >= 0; y--) {
@@ -6615,12 +6615,7 @@ async function processPhysics() {
         }
 
         if (fullLines.length === 0) {
-            if (cascaded) {
-                // If pieces fell, we need to re-check for lines in the new configuration.
-                cascaded = false; // Reset for the next potential cascade.
-                continue;
-            }
-            break; // No more lines to clear and no cascades, physics are stable.
+            break; // No more lines to clear, physics are stable
         }
 
         // --- Line Clear Animation and Scoring ---
@@ -6651,7 +6646,7 @@ async function processPhysics() {
         draw();
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // --- Piece Manipulation ---
+        // --- Remove cleared lines from pieces ---
         let newPieces = [];
         lockedPieces.forEach(p => {
             const newShape = [];
@@ -6664,50 +6659,68 @@ async function processPhysics() {
 
             if (newShape.length > 0) {
                 p.shape = newShape;
-                const linesClearedBelow = fullLines.filter(lineY => lineY > p.y).length;
-                p.y += linesClearedBelow;
                 newPieces.push(p);
             }
         });
         lockedPieces = newPieces;
 
-        // After removing lines, split any pieces that are no longer contiguous.
+        // Split pieces into individual blocks for independent gravity
         lockedPieces = findConnectedComponents(generateBoard(lockedPieces));
 
-        // --- Gravity Simulation ---
-        let fell;
-        do {
-            fell = false;
-            // Sort pieces from bottom to top to ensure correct fall order.
-            lockedPieces.sort((a, b) => (b.y + b.shape.length) - (a.y + a.shape.length));
+        // Phase 2: Apply gravity to individual blocks
+        // Blocks fall independently until stable
+        let blocksStillFalling = true;
+        while (blocksStillFalling) {
+            blocksStillFalling = false;
             const currentBoard = generateBoard(lockedPieces);
 
-            for (const p of lockedPieces) {
+            // Process blocks from bottom to top to prevent double-processing
+            // Sort pieces by their bottom edge (y + shape.length)
+            lockedPieces.sort((a, b) => (b.y + b.shape.length) - (a.y + a.shape.length));
+
+            for (const piece of lockedPieces) {
+                // Check if this entire block cluster can fall one row
                 let canFall = true;
-                p.shape.forEach((row, y) => {
-                    row.forEach((cell, x) => {
+
+                piece.shape.forEach((row, localY) => {
+                    row.forEach((cell, localX) => {
                         if (cell > 0) {
-                            const boardX = p.x + x;
-                            const boardY = p.y + y + 1; // Check cell below
-                            if (boardY >= currentBoard.length || (currentBoard[boardY][boardX] !== null && !isPartOfPiece(boardX, boardY, p))) {
+                            const boardX = piece.x + localX;
+                            const boardY = piece.y + localY + 1; // Check one row below
+
+                            // Check boundaries
+                            if (boardY >= currentBoard.length) {
                                 canFall = false;
+                                return;
+                            }
+
+                            // Check if there's a block below that's NOT part of this piece
+                            if (currentBoard[boardY][boardX] !== null &&
+                                !isPartOfPiece(boardX, boardY, piece)) {
+                                canFall = false;
+                                return;
                             }
                         }
                     });
                 });
 
                 if (canFall) {
-                    p.y++;
-                    fell = true;
-                    cascaded = true;
+                    piece.y++;
+                    blocksStillFalling = true;
                 }
             }
-            if (fell) {
+
+            // Visual feedback for falling blocks
+            if (blocksStillFalling) {
                 draw();
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
-        } while (fell);
+        }
+
+        // Phase 3: Recursive cascade - continue the loop to check for new lines
+        // The while(true) loop will automatically check for new complete lines
     }
+
     // --- Finalize ---
     isProcessingPhysics = false;
     updateStats();
