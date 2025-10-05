@@ -432,6 +432,7 @@
             </div>
             <button id="next-track-btn" class="action-btn">🎵</button>
             <button id="random-theme-btn" class="action-btn">🎨</button>
+            <button id="high-scores-btn" class="action-btn">🏆</button>
             <button id="fullscreen-toggle" class="action-btn">⛶</button>
             <button id="settings-btn" class="action-btn">⚙️</button>
         </div>
@@ -578,6 +579,16 @@
                 </div>
             </div>
             <button id="close-settings" class="action-btn">Close</button>
+        </div>
+    </div>
+    <div id="high-scores-modal" class="modal">
+        <div class="modal-content">
+            <h1>HIGH SCORES</h1>
+            <div class="settings-scroll-container">
+                <div id="high-scores-list" style="padding: 20px;"></div>
+                <div id="statistics-section" style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 20px;"></div>
+            </div>
+            <button id="close-high-scores" class="action-btn">Close</button>
         </div>
     </div>
     <script src="renderer.js"></script>

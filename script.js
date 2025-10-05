@@ -1063,6 +1063,262 @@ function createCandlelitMonasteryScene() {
 }
 
 // The Firefly class has been migrated to a particle behavior in WebGLRenderer.
+
+        // =================================================================================
+        // HIGH SCORE MANAGER - IndexedDB-based score tracking
+        // =================================================================================
+        class HighScoreManager {
+            constructor() {
+                this.db = null;
+                this.DB_NAME = 'SerenityBlocksDB';
+                this.DB_VERSION = 1;
+                this.STORES = {
+                    HIGH_SCORES: 'highScores',
+                    STATISTICS: 'statistics',
+                    GAME_HISTORY: 'gameHistory'
+                };
+            }
+
+            async init() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => {
+                        this.db = request.result;
+                        resolve();
+                    };
+
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+
+                        // High Scores Store - sorted by score descending
+                        if (!db.objectStoreNames.contains(this.STORES.HIGH_SCORES)) {
+                            const highScoreStore = db.createObjectStore(this.STORES.HIGH_SCORES, {
+                                keyPath: 'id',
+                                autoIncrement: true
+                            });
+                            highScoreStore.createIndex('score', 'score', { unique: false });
+                            highScoreStore.createIndex('timestamp', 'timestamp', { unique: false });
+                        }
+
+                        // Statistics Store - single record with aggregate stats
+                        if (!db.objectStoreNames.contains(this.STORES.STATISTICS)) {
+                            db.createObjectStore(this.STORES.STATISTICS, { keyPath: 'id' });
+                        }
+
+                        // Game History Store - recent games (keep last 50)
+                        if (!db.objectStoreNames.contains(this.STORES.GAME_HISTORY)) {
+                            const historyStore = db.createObjectStore(this.STORES.GAME_HISTORY, {
+                                keyPath: 'id',
+                                autoIncrement: true
+                            });
+                            historyStore.createIndex('timestamp', 'timestamp', { unique: false });
+                        }
+                    };
+                });
+            }
+
+            async saveScore(scoreData) {
+                if (!this.db) await this.init();
+
+                const gameRecord = {
+                    score: scoreData.score,
+                    lines: scoreData.lines,
+                    level: scoreData.level,
+                    speedMultiplier: scoreData.speedMultiplier,
+                    theme: scoreData.theme,
+                    musicTrack: scoreData.musicTrack,
+                    timestamp: Date.now()
+                };
+
+                // Save to high scores
+                await this._addToStore(this.STORES.HIGH_SCORES, gameRecord);
+
+                // Save to game history
+                await this._addToStore(this.STORES.GAME_HISTORY, gameRecord);
+
+                // Trim high scores to top 100
+                await this._trimHighScores(100);
+
+                // Trim game history to last 50 games
+                await this._trimGameHistory(50);
+
+                // Update statistics
+                await this._updateStatistics(gameRecord);
+
+                return gameRecord;
+            }
+
+            async getTopScores(limit = 10) {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
+                    const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                    const index = store.index('score');
+                    const request = index.openCursor(null, 'prev'); // Descending order
+
+                    const scores = [];
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor && scores.length < limit) {
+                            scores.push(cursor.value);
+                            cursor.continue();
+                        } else {
+                            resolve(scores);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async getStatistics() {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.STATISTICS], 'readonly');
+                    const store = transaction.objectStore(this.STORES.STATISTICS);
+                    const request = store.get('stats');
+
+                    request.onsuccess = () => {
+                        const stats = request.result || {
+                            id: 'stats',
+                            totalGames: 0,
+                            totalScore: 0,
+                            totalLines: 0,
+                            highestScore: 0,
+                            highestLevel: 0,
+                            bestScorePerLevel: {}
+                        };
+                        resolve(stats);
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async getGameHistory(limit = 20) {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.GAME_HISTORY], 'readonly');
+                    const store = transaction.objectStore(this.STORES.GAME_HISTORY);
+                    const index = store.index('timestamp');
+                    const request = index.openCursor(null, 'prev'); // Most recent first
+
+                    const history = [];
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor && history.length < limit) {
+                            history.push(cursor.value);
+                            cursor.continue();
+                        } else {
+                            resolve(history);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async getRank(score) {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
+                    const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                    const index = store.index('score');
+                    const request = index.openCursor(IDBKeyRange.lowerBound(score, true), 'prev');
+
+                    let rank = 1;
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            rank++;
+                            cursor.continue();
+                        } else {
+                            resolve(rank);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            // Private helper methods
+            async _addToStore(storeName, data) {
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([storeName], 'readwrite');
+                    const store = transaction.objectStore(storeName);
+                    const request = store.add(data);
+
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async _trimHighScores(limit) {
+                const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readwrite');
+                const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                const index = store.index('score');
+                const request = index.openCursor(null, 'prev');
+
+                let count = 0;
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        count++;
+                        if (count > limit) {
+                            cursor.delete();
+                        }
+                        cursor.continue();
+                    }
+                };
+            }
+
+            async _trimGameHistory(limit) {
+                const transaction = this.db.transaction([this.STORES.GAME_HISTORY], 'readwrite');
+                const store = transaction.objectStore(this.STORES.GAME_HISTORY);
+                const index = store.index('timestamp');
+                const request = index.openCursor(null, 'prev');
+
+                let count = 0;
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        count++;
+                        if (count > limit) {
+                            cursor.delete();
+                        }
+                        cursor.continue();
+                    }
+                };
+            }
+
+            async _updateStatistics(gameRecord) {
+                const stats = await this.getStatistics();
+
+                stats.totalGames++;
+                stats.totalScore += gameRecord.score;
+                stats.totalLines += gameRecord.lines;
+                stats.highestScore = Math.max(stats.highestScore, gameRecord.score);
+                stats.highestLevel = Math.max(stats.highestLevel, gameRecord.level);
+
+                // Track best score per level
+                if (!stats.bestScorePerLevel[gameRecord.level] ||
+                    gameRecord.score > stats.bestScorePerLevel[gameRecord.level]) {
+                    stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
+                }
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.STATISTICS], 'readwrite');
+                    const store = transaction.objectStore(this.STORES.STATISTICS);
+                    const request = store.put(stats);
+
+                    request.onsuccess = () => resolve(stats);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        }
+
         class SoundManager {
             constructor() {
                 this.audioContext = null; this.isMuted = false; this.musicInterval = null;
@@ -1569,6 +1825,7 @@ let animationId = null, linesUntilNextLevel = 10, activeTheme = 'forest', random
 
         let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
         const soundManager = new SoundManager();
+        const highScoreManager = new HighScoreManager();
 let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, touchLastX = null, touchLastY = null;
 
         function createCosmicChimesScene() {
@@ -6481,12 +6738,53 @@ function isPartOfPiece(boardX, boardY, piece) {
             }
             animationId = requestAnimationFrame(gameLoop);
         }
-        function gameOver() {
+        async function gameOver() {
             isGameOver = true;
             stopRandomThemeChanger();
             soundManager.playGameOver();
             const speedMultiplier=(LEVEL_SPEEDS[0]/dropInterval).toFixed(1);
-            document.getElementById('final-stats').innerHTML=`<div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div><div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div><div>Lines Cleared: ${lines}</div>`;
+
+            // Save score to IndexedDB
+            try {
+                const scoreData = {
+                    score: score,
+                    lines: lines,
+                    level: level,
+                    speedMultiplier: parseFloat(speedMultiplier),
+                    theme: activeTheme,
+                    musicTrack: soundManager.musicTrack
+                };
+
+                await highScoreManager.saveScore(scoreData);
+                const rank = await highScoreManager.getRank(score);
+                const stats = await highScoreManager.getStatistics();
+                const topScores = await highScoreManager.getTopScores(10);
+
+                let rankingHTML = '';
+                if (rank === 1) {
+                    rankingHTML = `<div style="font-size:20px;color:#10b981;margin:10px 0;font-weight:bold;">🏆 NEW HIGH SCORE! 🏆</div>`;
+                } else if (rank <= 10) {
+                    rankingHTML = `<div style="font-size:16px;color:#fbbf24;margin:10px 0;">Rank: #${rank} in your top 10!</div>`;
+                } else {
+                    rankingHTML = `<div style="font-size:14px;color:#9ca3af;margin:10px 0;">Personal Rank: #${rank}</div>`;
+                }
+
+                const personalBest = stats.highestScore > score ?
+                    `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>` : '';
+
+                document.getElementById('final-stats').innerHTML=`
+                    <div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div>
+                    ${rankingHTML}
+                    ${personalBest}
+                    <div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div>
+                    <div>Lines Cleared: ${lines}</div>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:10px;">Total Games: ${stats.totalGames}</div>
+                `;
+            } catch (error) {
+                console.error('Error saving score:', error);
+                document.getElementById('final-stats').innerHTML=`<div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div><div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div><div>Lines Cleared: ${lines}</div>`;
+            }
+
             document.getElementById('game-over-modal').classList.add('visible');
         }
 
@@ -6506,6 +6804,8 @@ function isPartOfPiece(boardX, boardY, piece) {
         function togglePause() {
             if (document.getElementById('settings-modal').classList.contains('visible')) {
                 resumeGame();
+            } else if (document.getElementById('high-scores-modal').classList.contains('visible')) {
+                closeHighScores();
             } else {
                 pauseGame();
             }
@@ -6520,9 +6820,82 @@ function isPartOfPiece(boardX, boardY, piece) {
                 if (document.exitFullscreen) document.exitFullscreen();
             }
         }
+        async function showHighScores() {
+            if (!isGameOver) {
+                isPaused = true;
+            }
+
+            try {
+                const topScores = await highScoreManager.getTopScores(10);
+                const stats = await highScoreManager.getStatistics();
+
+                // Build high scores table
+                let scoresHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Top 10 Scores</h2>';
+                if (topScores.length === 0) {
+                    scoresHTML += '<p style="color: #9ca3af;">No scores yet. Start playing!</p>';
+                } else {
+                    scoresHTML += '<table style="width: 100%; border-collapse: collapse;">';
+                    scoresHTML += '<thead><tr style="border-bottom: 2px solid rgba(255,255,255,0.3);"><th style="text-align: left; padding: 8px;">Rank</th><th style="text-align: right; padding: 8px;">Score</th><th style="text-align: center; padding: 8px;">Level</th><th style="text-align: center; padding: 8px;">Lines</th><th style="text-align: right; padding: 8px;">Date</th></tr></thead><tbody>';
+
+                    topScores.forEach((score, index) => {
+                        const date = new Date(score.timestamp);
+                        const dateStr = date.toLocaleDateString();
+                        const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                        const rowColor = index % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent';
+
+                        scoresHTML += `<tr style="background: ${rowColor};">
+                            <td style="padding: 8px; font-weight: bold;">${rankEmoji}</td>
+                            <td style="padding: 8px; text-align: right; color: #fbbf24; font-weight: bold;">${score.score.toLocaleString()}</td>
+                            <td style="padding: 8px; text-align: center;">${score.level}</td>
+                            <td style="padding: 8px; text-align: center;">${score.lines}</td>
+                            <td style="padding: 8px; text-align: right; color: #9ca3af; font-size: 12px;">${dateStr}</td>
+                        </tr>`;
+                    });
+
+                    scoresHTML += '</tbody></table>';
+                }
+
+                document.getElementById('high-scores-list').innerHTML = scoresHTML;
+
+                // Build statistics section
+                let statsHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Statistics</h2>';
+                statsHTML += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">';
+                statsHTML += `<div><strong>Total Games:</strong> ${stats.totalGames}</div>`;
+                statsHTML += `<div><strong>Highest Score:</strong> ${stats.highestScore.toLocaleString()}</div>`;
+                statsHTML += `<div><strong>Total Lines:</strong> ${stats.totalLines.toLocaleString()}</div>`;
+                statsHTML += `<div><strong>Highest Level:</strong> ${stats.highestLevel}</div>`;
+
+                if (stats.totalGames > 0) {
+                    const avgScore = Math.round(stats.totalScore / stats.totalGames);
+                    const avgLines = Math.round(stats.totalLines / stats.totalGames);
+                    statsHTML += `<div><strong>Avg Score:</strong> ${avgScore.toLocaleString()}</div>`;
+                    statsHTML += `<div><strong>Avg Lines:</strong> ${avgLines}</div>`;
+                }
+
+                statsHTML += '</div>';
+
+                document.getElementById('statistics-section').innerHTML = statsHTML;
+            } catch (error) {
+                console.error('Error loading high scores:', error);
+                document.getElementById('high-scores-list').innerHTML = '<p style="color: #ef4444;">Error loading scores</p>';
+            }
+
+            document.getElementById('high-scores-modal').classList.add('visible');
+        }
+
+        function closeHighScores() {
+            if (!isGameOver) {
+                isPaused = false;
+                lastTime = performance.now();
+            }
+            document.getElementById('high-scores-modal').classList.remove('visible');
+        }
+
         function setupUI(){
             document.getElementById('settings-btn').addEventListener('click', pauseGame);
             document.getElementById('close-settings').addEventListener('click', resumeGame);
+            document.getElementById('high-scores-btn').addEventListener('click', showHighScores);
+            document.getElementById('close-high-scores').addEventListener('click', closeHighScores);
             document.getElementById('fullscreen-toggle').addEventListener('click', toggleFullScreen);
             document.getElementById('next-track-btn').addEventListener('click', () => soundManager.nextTrack());
             document.getElementById('random-theme-btn').addEventListener('click', () => {
