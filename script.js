@@ -1063,6 +1063,283 @@ function createCandlelitMonasteryScene() {
 }
 
 // The Firefly class has been migrated to a particle behavior in WebGLRenderer.
+
+        // =================================================================================
+        // HIGH SCORE MANAGER - IndexedDB-based score tracking
+        // =================================================================================
+        class HighScoreManager {
+            constructor() {
+                this.db = null;
+                this.DB_NAME = 'SerenityBlocksDB';
+                this.DB_VERSION = 1;
+                this.STORES = {
+                    HIGH_SCORES: 'highScores',
+                    STATISTICS: 'statistics',
+                    GAME_HISTORY: 'gameHistory'
+                };
+            }
+
+            async init() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => {
+                        this.db = request.result;
+                        resolve();
+                    };
+
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+
+                        // High Scores Store - sorted by score descending
+                        if (!db.objectStoreNames.contains(this.STORES.HIGH_SCORES)) {
+                            const highScoreStore = db.createObjectStore(this.STORES.HIGH_SCORES, {
+                                keyPath: 'id',
+                                autoIncrement: true
+                            });
+                            highScoreStore.createIndex('score', 'score', { unique: false });
+                            highScoreStore.createIndex('timestamp', 'timestamp', { unique: false });
+                        }
+
+                        // Statistics Store - single record with aggregate stats
+                        if (!db.objectStoreNames.contains(this.STORES.STATISTICS)) {
+                            db.createObjectStore(this.STORES.STATISTICS, { keyPath: 'id' });
+                        }
+
+                        // Game History Store - recent games (keep last 50)
+                        if (!db.objectStoreNames.contains(this.STORES.GAME_HISTORY)) {
+                            const historyStore = db.createObjectStore(this.STORES.GAME_HISTORY, {
+                                keyPath: 'id',
+                                autoIncrement: true
+                            });
+                            historyStore.createIndex('timestamp', 'timestamp', { unique: false });
+                        }
+                    };
+                });
+            }
+
+            async saveScore(scoreData) {
+                if (!this.db) await this.init();
+
+                const gameRecord = {
+                    score: scoreData.score,
+                    lines: scoreData.lines,
+                    level: scoreData.level,
+                    speedMultiplier: scoreData.speedMultiplier,
+                    theme: scoreData.theme,
+                    musicTrack: scoreData.musicTrack,
+                    timestamp: Date.now()
+                };
+
+                // Save to high scores
+                await this._addToStore(this.STORES.HIGH_SCORES, gameRecord);
+
+                // Save to game history
+                await this._addToStore(this.STORES.GAME_HISTORY, gameRecord);
+
+                // Trim high scores to top 100
+                await this._trimHighScores(100);
+
+                // Trim game history to last 50 games
+                await this._trimGameHistory(50);
+
+                // Update statistics
+                await this._updateStatistics(gameRecord);
+
+                return gameRecord;
+            }
+
+            async getTopScores(limit = 10) {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
+                    const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                    const index = store.index('score');
+                    const request = index.openCursor(null, 'prev'); // Descending order
+
+                    const scores = [];
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor && scores.length < limit) {
+                            scores.push(cursor.value);
+                            cursor.continue();
+                        } else {
+                            resolve(scores);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async getStatistics() {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.STATISTICS], 'readonly');
+                    const store = transaction.objectStore(this.STORES.STATISTICS);
+                    const request = store.get('stats');
+
+                    request.onsuccess = () => {
+                        const stats = request.result || {
+                            id: 'stats',
+                            totalGames: 0,
+                            totalScore: 0,
+                            totalLines: 0,
+                            highestScore: 0,
+                            highestLevel: 0,
+                            bestScorePerLevel: {}
+                        };
+                        resolve(stats);
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async getGameHistory(limit = 20) {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.GAME_HISTORY], 'readonly');
+                    const store = transaction.objectStore(this.STORES.GAME_HISTORY);
+                    const index = store.index('timestamp');
+                    const request = index.openCursor(null, 'prev'); // Most recent first
+
+                    const history = [];
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor && history.length < limit) {
+                            history.push(cursor.value);
+                            cursor.continue();
+                        } else {
+                            resolve(history);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async getRank(score) {
+                if (!this.db) await this.init();
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
+                    const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                    const index = store.index('score');
+                    const request = index.openCursor(IDBKeyRange.lowerBound(score, true), 'prev');
+
+                    let rank = 1;
+                    request.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            rank++;
+                            cursor.continue();
+                        } else {
+                            resolve(rank);
+                        }
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            // Private helper methods
+            async _addToStore(storeName, data) {
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([storeName], 'readwrite');
+                    const store = transaction.objectStore(storeName);
+                    const request = store.add(data);
+
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async _trimHighScores(limit) {
+                const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readwrite');
+                const store = transaction.objectStore(this.STORES.HIGH_SCORES);
+                const index = store.index('score');
+                const request = index.openCursor(null, 'prev');
+
+                let count = 0;
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        count++;
+                        if (count > limit) {
+                            cursor.delete();
+                        }
+                        cursor.continue();
+                    }
+                };
+            }
+
+            async _trimGameHistory(limit) {
+                const transaction = this.db.transaction([this.STORES.GAME_HISTORY], 'readwrite');
+                const store = transaction.objectStore(this.STORES.GAME_HISTORY);
+                const index = store.index('timestamp');
+                const request = index.openCursor(null, 'prev');
+
+                let count = 0;
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        count++;
+                        if (count > limit) {
+                            cursor.delete();
+                        }
+                        cursor.continue();
+                    }
+                };
+            }
+
+            async _updateStatistics(gameRecord) {
+                const stats = await this.getStatistics();
+
+                stats.totalGames++;
+                stats.totalScore += gameRecord.score;
+                stats.totalLines += gameRecord.lines;
+                stats.highestScore = Math.max(stats.highestScore, gameRecord.score);
+                stats.highestLevel = Math.max(stats.highestLevel, gameRecord.level);
+
+                // Track best score per level
+                if (!stats.bestScorePerLevel[gameRecord.level] ||
+                    gameRecord.score > stats.bestScorePerLevel[gameRecord.level]) {
+                    stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
+                }
+
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction([this.STORES.STATISTICS], 'readwrite');
+                    const store = transaction.objectStore(this.STORES.STATISTICS);
+                    const request = store.put(stats);
+
+                    request.onsuccess = () => resolve(stats);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        }
+
+        // Global variable to store available songs
+        let availableSongs = [];
+
+        // Load songs from JSON file
+        async function loadSongs() {
+            try {
+                const response = await fetch('songs/songs.json');
+                const songs = await response.json();
+                availableSongs = songs;
+                console.log(`✅ Loaded ${songs.length} songs from songs.json`);
+                return songs;
+            } catch (error) {
+                console.error('❌ Failed to load songs.json:', error);
+                // Fallback to default songs
+                availableSongs = [
+                    { name: 'Echoes of the Soul', file: 'Echoes of the Soul.mp3', path: 'songs/Echoes of the Soul.mp3' }
+                ];
+                return availableSongs;
+            }
+        }
+
         class SoundManager {
             constructor() {
                 this.audioContext = null; this.isMuted = false; this.musicInterval = null;
@@ -1070,9 +1347,8 @@ function createCandlelitMonasteryScene() {
                 this.musicVolume = 1.0; this.sfxVolume = 1.0;
                 this.currentTrackId = null;
                 this.audioElement = null; // HTML5 Audio element for playing MP3 files
-                this.trackNames = [
-                    'EchoesOfTheSoul', 'EtherealEchoes', 'FallingPieces'
-                ];
+                this.trackNames = []; // Will be populated from songs.json
+                this.songsData = []; // Store full song data
                 this.soundSets = {
                     Retro: {
                         move: () => this.createTone(200, 0.05, 'square', 0.2),
@@ -1122,6 +1398,91 @@ function createCandlelitMonasteryScene() {
                 this.setTrack(this.trackNames[nextIndex]);
             }
             setSoundSet(setName) { this.soundSet = setName; }
+
+            // Initialize tracks from songs.json
+            async initializeTracks() {
+                const songs = await loadSongs();
+                this.songsData = songs;
+                // Convert song names to camelCase for compatibility
+                this.trackNames = songs.map(song => this.nameToKey(song.name));
+
+                // Set default track if current track doesn't exist
+                if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
+                    this.musicTrack = this.trackNames[0];
+                }
+
+                // Populate the dropdown
+                this.populateMusicDropdown();
+
+                return this;
+            }
+
+            // Convert display name to internal key (e.g., "Ocean Deep" -> "OceanDeep")
+            nameToKey(name) {
+                return name.replace(/\s+/g, '');
+            }
+
+            // Get song path from track name
+            getSongPath(trackName) {
+                const song = this.songsData.find(s => this.nameToKey(s.name) === trackName);
+                return song ? song.path : this.songsData[0]?.path || 'songs/Echoes of the Soul.mp3';
+            }
+
+            // Populate the music track dropdown
+            populateMusicDropdown() {
+                const dropdown = document.getElementById('music-track');
+                if (!dropdown) return;
+
+                dropdown.innerHTML = ''; // Clear existing options
+
+                this.songsData.forEach(song => {
+                    const option = document.createElement('option');
+                    option.value = this.nameToKey(song.name);
+                    option.textContent = song.name;
+                    dropdown.appendChild(option);
+                });
+
+                dropdown.value = this.musicTrack;
+            }
+
+            // Get song for theme (theme-linked mode)
+            getSongForTheme(themeName) {
+                // Normalize theme name: remove hyphens and convert to camelCase for matching
+                const normalizedTheme = themeName.split('-').map((word, index) =>
+                    index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) :
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                ).join('');
+
+                // Try exact match first
+                let song = this.songsData.find(s =>
+                    this.nameToKey(s.name).toLowerCase() === normalizedTheme.toLowerCase()
+                );
+
+                // If no exact match, try partial match
+                if (!song) {
+                    song = this.songsData.find(s =>
+                        this.nameToKey(s.name).toLowerCase().includes(themeName.replace(/-/g, '').toLowerCase()) ||
+                        themeName.replace(/-/g, '').toLowerCase().includes(this.nameToKey(s.name).toLowerCase())
+                    );
+                }
+
+                return song ? this.nameToKey(song.name) : null;
+            }
+
+            // Apply theme-linked music if enabled
+            applyThemeLinkedMusic(themeName) {
+                if (!settings.themeLinkedMode) return;
+
+                const linkedSong = this.getSongForTheme(themeName);
+                if (linkedSong) {
+                    console.log(`🎵 Theme-linked: ${themeName} → ${linkedSong}`);
+                    this.setTrack(linkedSong);
+                } else {
+                    // No match found, continue with current track or pick random
+                    console.log(`🎵 No theme match for ${themeName}, continuing current track`);
+                }
+            }
+
             playMove() { this.soundSets[this.soundSet].move(); }
             playRotate() { this.soundSets[this.soundSet].rotate(); }
             playDrop() { this.soundSets[this.soundSet].drop(); }
@@ -1133,12 +1494,10 @@ function createCandlelitMonasteryScene() {
                 this.stopBackgroundMusic();
                 this.currentTrackId = Symbol();
                 const trackId = this.currentTrackId;
-                const tracks = {
-                    EchoesOfTheSoul: () => this.playAudioFile('songs/Echoes of the Soul.mp3'),
-                    EtherealEchoes: () => this.playAudioFile('songs/Ethereal Echoes.mp3'),
-                    FallingPieces: () => this.playAudioFile('songs/Falling Pieces.mp3')
-                };
-                (tracks[this.musicTrack] || tracks.EchoesOfTheSoul)(trackId);
+
+                // Get the song path dynamically from songs.json
+                const songPath = this.getSongPath(this.musicTrack);
+                this.playAudioFile(songPath);
             }
             startGongBathMusic(trackId) {
                 const baseNotes = [41.20, 48.99, 55.00, 61.74]; // E1, G1, A1, B1
@@ -1513,13 +1872,17 @@ function createCandlelitMonasteryScene() {
                 // Create or reuse audio element
                 if (!this.audioElement) {
                     this.audioElement = new Audio();
-                    this.audioElement.loop = true;
+                    // Add event listener for automatic song progression
+                    this.audioElement.addEventListener('ended', () => {
+                        this.nextTrack();
+                    });
                 }
 
                 // Set the source and configure
                 this.audioElement.src = filename;
                 this.audioElement.volume = this.musicVolume;
                 this.audioElement.muted = this.isMuted;
+                this.audioElement.loop = false; // Disable loop to enable automatic progression
 
                 // Play the audio (handle autoplay restrictions)
                 const playPromise = this.audioElement.play();
@@ -1567,8 +1930,9 @@ function createCandlelitMonasteryScene() {
         let isProcessingPhysics = false, inputQueue = null, dasTimer = null, dasIntervalTimer = null, softDropTimer = null;
 let animationId = null, linesUntilNextLevel = 10, activeTheme = 'forest', randomThemeInterval = null, activeThemeAnimationId = null, webglRenderer = null, activeThemeData = null;
 
-        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
+        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', themeLinkedMode: false, controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
         const soundManager = new SoundManager();
+        const highScoreManager = new HighScoreManager();
 let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, touchLastX = null, touchLastY = null;
 
         function createCosmicChimesScene() {
@@ -2327,7 +2691,7 @@ let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, 
         let gridCache = null;  // Offscreen canvas for cached grid
         let gridCacheCtx = null;
 
-        function init() {
+        async function init() {
             canvas = document.getElementById('game-canvas'); ctx = canvas.getContext('2d');
             nextCanvases = Array.from({length: 5}, (_, i) => document.getElementById(`next-${i}`));
             const backgroundCanvas = document.getElementById('background-canvas');
@@ -2337,6 +2701,10 @@ let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, 
 
             resizeGame();
             window.addEventListener('resize', resizeGame);
+
+            // Initialize tracks asynchronously before continuing
+            await soundManager.initializeTracks();
+            console.log('🎵 Sound manager ready with', soundManager.trackNames.length, 'tracks');
 
             createParticles(); loadSettings(); setupUI();
             document.addEventListener('fullscreenchange', () => {
@@ -3917,6 +4285,9 @@ let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, 
             if (webglRenderer) {
                 webglRenderer.loadTheme(themeName, activeThemeData);
             }
+
+            // Apply theme-linked music if enabled
+            soundManager.applyThemeLinkedMusic(themeName);
         }
 
 function createCrystalCaveScene() {
@@ -6232,9 +6603,9 @@ function createWavesScene() {
 async function processPhysics() {
     isProcessingPhysics = true;
     let linesClearedThisTurn = 0;
-    let cascaded = false;
 
     while (true) {
+        // Phase 1: Line detection and clearing
         const boardData = generateBoard(lockedPieces);
         const fullLines = [];
         for (let y = boardData.length - 1; y >= 0; y--) {
@@ -6244,12 +6615,7 @@ async function processPhysics() {
         }
 
         if (fullLines.length === 0) {
-            if (cascaded) {
-                // If pieces fell, we need to re-check for lines in the new configuration.
-                cascaded = false; // Reset for the next potential cascade.
-                continue;
-            }
-            break; // No more lines to clear and no cascades, physics are stable.
+            break; // No more lines to clear, physics are stable
         }
 
         // --- Line Clear Animation and Scoring ---
@@ -6280,7 +6646,7 @@ async function processPhysics() {
         draw();
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // --- Piece Manipulation ---
+        // --- Remove cleared lines from pieces ---
         let newPieces = [];
         lockedPieces.forEach(p => {
             const newShape = [];
@@ -6293,50 +6659,68 @@ async function processPhysics() {
 
             if (newShape.length > 0) {
                 p.shape = newShape;
-                const linesClearedBelow = fullLines.filter(lineY => lineY > p.y).length;
-                p.y += linesClearedBelow;
                 newPieces.push(p);
             }
         });
         lockedPieces = newPieces;
 
-        // After removing lines, split any pieces that are no longer contiguous.
+        // Split pieces into individual blocks for independent gravity
         lockedPieces = findConnectedComponents(generateBoard(lockedPieces));
 
-        // --- Gravity Simulation ---
-        let fell;
-        do {
-            fell = false;
-            // Sort pieces from bottom to top to ensure correct fall order.
-            lockedPieces.sort((a, b) => (b.y + b.shape.length) - (a.y + a.shape.length));
+        // Phase 2: Apply gravity to individual blocks
+        // Blocks fall independently until stable
+        let blocksStillFalling = true;
+        while (blocksStillFalling) {
+            blocksStillFalling = false;
             const currentBoard = generateBoard(lockedPieces);
 
-            for (const p of lockedPieces) {
+            // Process blocks from bottom to top to prevent double-processing
+            // Sort pieces by their bottom edge (y + shape.length)
+            lockedPieces.sort((a, b) => (b.y + b.shape.length) - (a.y + a.shape.length));
+
+            for (const piece of lockedPieces) {
+                // Check if this entire block cluster can fall one row
                 let canFall = true;
-                p.shape.forEach((row, y) => {
-                    row.forEach((cell, x) => {
+
+                piece.shape.forEach((row, localY) => {
+                    row.forEach((cell, localX) => {
                         if (cell > 0) {
-                            const boardX = p.x + x;
-                            const boardY = p.y + y + 1; // Check cell below
-                            if (boardY >= currentBoard.length || (currentBoard[boardY][boardX] !== null && !isPartOfPiece(boardX, boardY, p))) {
+                            const boardX = piece.x + localX;
+                            const boardY = piece.y + localY + 1; // Check one row below
+
+                            // Check boundaries
+                            if (boardY >= currentBoard.length) {
                                 canFall = false;
+                                return;
+                            }
+
+                            // Check if there's a block below that's NOT part of this piece
+                            if (currentBoard[boardY][boardX] !== null &&
+                                !isPartOfPiece(boardX, boardY, piece)) {
+                                canFall = false;
+                                return;
                             }
                         }
                     });
                 });
 
                 if (canFall) {
-                    p.y++;
-                    fell = true;
-                    cascaded = true;
+                    piece.y++;
+                    blocksStillFalling = true;
                 }
             }
-            if (fell) {
+
+            // Visual feedback for falling blocks
+            if (blocksStillFalling) {
                 draw();
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
-        } while (fell);
+        }
+
+        // Phase 3: Recursive cascade - continue the loop to check for new lines
+        // The while(true) loop will automatically check for new complete lines
     }
+
     // --- Finalize ---
     isProcessingPhysics = false;
     updateStats();
@@ -6481,12 +6865,53 @@ function isPartOfPiece(boardX, boardY, piece) {
             }
             animationId = requestAnimationFrame(gameLoop);
         }
-        function gameOver() {
+        async function gameOver() {
             isGameOver = true;
             stopRandomThemeChanger();
             soundManager.playGameOver();
             const speedMultiplier=(LEVEL_SPEEDS[0]/dropInterval).toFixed(1);
-            document.getElementById('final-stats').innerHTML=`<div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div><div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div><div>Lines Cleared: ${lines}</div>`;
+
+            // Save score to IndexedDB
+            try {
+                const scoreData = {
+                    score: score,
+                    lines: lines,
+                    level: level,
+                    speedMultiplier: parseFloat(speedMultiplier),
+                    theme: activeTheme,
+                    musicTrack: soundManager.musicTrack
+                };
+
+                await highScoreManager.saveScore(scoreData);
+                const rank = await highScoreManager.getRank(score);
+                const stats = await highScoreManager.getStatistics();
+                const topScores = await highScoreManager.getTopScores(10);
+
+                let rankingHTML = '';
+                if (rank === 1) {
+                    rankingHTML = `<div style="font-size:20px;color:#10b981;margin:10px 0;font-weight:bold;">🏆 NEW HIGH SCORE! 🏆</div>`;
+                } else if (rank <= 10) {
+                    rankingHTML = `<div style="font-size:16px;color:#fbbf24;margin:10px 0;">Rank: #${rank} in your top 10!</div>`;
+                } else {
+                    rankingHTML = `<div style="font-size:14px;color:#9ca3af;margin:10px 0;">Personal Rank: #${rank}</div>`;
+                }
+
+                const personalBest = stats.highestScore > score ?
+                    `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>` : '';
+
+                document.getElementById('final-stats').innerHTML=`
+                    <div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div>
+                    ${rankingHTML}
+                    ${personalBest}
+                    <div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div>
+                    <div>Lines Cleared: ${lines}</div>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:10px;">Total Games: ${stats.totalGames}</div>
+                `;
+            } catch (error) {
+                console.error('Error saving score:', error);
+                document.getElementById('final-stats').innerHTML=`<div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div><div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div><div>Lines Cleared: ${lines}</div>`;
+            }
+
             document.getElementById('game-over-modal').classList.add('visible');
         }
 
@@ -6506,6 +6931,8 @@ function isPartOfPiece(boardX, boardY, piece) {
         function togglePause() {
             if (document.getElementById('settings-modal').classList.contains('visible')) {
                 resumeGame();
+            } else if (document.getElementById('high-scores-modal').classList.contains('visible')) {
+                closeHighScores();
             } else {
                 pauseGame();
             }
@@ -6520,9 +6947,82 @@ function isPartOfPiece(boardX, boardY, piece) {
                 if (document.exitFullscreen) document.exitFullscreen();
             }
         }
+        async function showHighScores() {
+            if (!isGameOver) {
+                isPaused = true;
+            }
+
+            try {
+                const topScores = await highScoreManager.getTopScores(10);
+                const stats = await highScoreManager.getStatistics();
+
+                // Build high scores table
+                let scoresHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Top 10 Scores</h2>';
+                if (topScores.length === 0) {
+                    scoresHTML += '<p style="color: #9ca3af;">No scores yet. Start playing!</p>';
+                } else {
+                    scoresHTML += '<table style="width: 100%; border-collapse: collapse;">';
+                    scoresHTML += '<thead><tr style="border-bottom: 2px solid rgba(255,255,255,0.3);"><th style="text-align: left; padding: 8px;">Rank</th><th style="text-align: right; padding: 8px;">Score</th><th style="text-align: center; padding: 8px;">Level</th><th style="text-align: center; padding: 8px;">Lines</th><th style="text-align: right; padding: 8px;">Date</th></tr></thead><tbody>';
+
+                    topScores.forEach((score, index) => {
+                        const date = new Date(score.timestamp);
+                        const dateStr = date.toLocaleDateString();
+                        const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                        const rowColor = index % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent';
+
+                        scoresHTML += `<tr style="background: ${rowColor};">
+                            <td style="padding: 8px; font-weight: bold;">${rankEmoji}</td>
+                            <td style="padding: 8px; text-align: right; color: #fbbf24; font-weight: bold;">${score.score.toLocaleString()}</td>
+                            <td style="padding: 8px; text-align: center;">${score.level}</td>
+                            <td style="padding: 8px; text-align: center;">${score.lines}</td>
+                            <td style="padding: 8px; text-align: right; color: #9ca3af; font-size: 12px;">${dateStr}</td>
+                        </tr>`;
+                    });
+
+                    scoresHTML += '</tbody></table>';
+                }
+
+                document.getElementById('high-scores-list').innerHTML = scoresHTML;
+
+                // Build statistics section
+                let statsHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Statistics</h2>';
+                statsHTML += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">';
+                statsHTML += `<div><strong>Total Games:</strong> ${stats.totalGames}</div>`;
+                statsHTML += `<div><strong>Highest Score:</strong> ${stats.highestScore.toLocaleString()}</div>`;
+                statsHTML += `<div><strong>Total Lines:</strong> ${stats.totalLines.toLocaleString()}</div>`;
+                statsHTML += `<div><strong>Highest Level:</strong> ${stats.highestLevel}</div>`;
+
+                if (stats.totalGames > 0) {
+                    const avgScore = Math.round(stats.totalScore / stats.totalGames);
+                    const avgLines = Math.round(stats.totalLines / stats.totalGames);
+                    statsHTML += `<div><strong>Avg Score:</strong> ${avgScore.toLocaleString()}</div>`;
+                    statsHTML += `<div><strong>Avg Lines:</strong> ${avgLines}</div>`;
+                }
+
+                statsHTML += '</div>';
+
+                document.getElementById('statistics-section').innerHTML = statsHTML;
+            } catch (error) {
+                console.error('Error loading high scores:', error);
+                document.getElementById('high-scores-list').innerHTML = '<p style="color: #ef4444;">Error loading scores</p>';
+            }
+
+            document.getElementById('high-scores-modal').classList.add('visible');
+        }
+
+        function closeHighScores() {
+            if (!isGameOver) {
+                isPaused = false;
+                lastTime = performance.now();
+            }
+            document.getElementById('high-scores-modal').classList.remove('visible');
+        }
+
         function setupUI(){
             document.getElementById('settings-btn').addEventListener('click', pauseGame);
             document.getElementById('close-settings').addEventListener('click', resumeGame);
+            document.getElementById('high-scores-btn').addEventListener('click', showHighScores);
+            document.getElementById('close-high-scores').addEventListener('click', closeHighScores);
             document.getElementById('fullscreen-toggle').addEventListener('click', toggleFullScreen);
             document.getElementById('next-track-btn').addEventListener('click', () => soundManager.nextTrack());
             document.getElementById('random-theme-btn').addEventListener('click', () => {
@@ -6538,6 +7038,17 @@ function isPartOfPiece(boardX, boardY, piece) {
                     startRandomThemeChanger();
                 }
             });
+
+            // Settings tabs
+            document.querySelectorAll('.settings-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetTab = tab.getAttribute('data-tab');
+                    document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById('settings-' + targetTab).classList.add('active');
+                });
+            });
             const ds=document.getElementById('das-delay'),dv=document.getElementById('das-delay-value'),is=document.getElementById('das-interval'),iv=document.getElementById('das-interval-value');
             ds.value=settings.dasDelay;dv.textContent=settings.dasDelay; is.value=settings.dasInterval;iv.textContent=settings.dasInterval;
             ds.addEventListener('input',(e)=>{settings.dasDelay=parseInt(e.target.value);dv.textContent=settings.dasDelay;saveSettings();});
@@ -6552,6 +7063,10 @@ function isPartOfPiece(boardX, boardY, piece) {
             const st=document.getElementById('sfx-set');
             st.value=settings.soundSet;
             st.addEventListener('change',(e)=>{settings.soundSet=e.target.value;soundManager.setSoundSet(settings.soundSet);saveSettings();});
+
+            const tlm=document.getElementById('theme-linked-mode');
+            tlm.value=settings.themeLinkedMode.toString();
+            tlm.addEventListener('change',(e)=>{settings.themeLinkedMode=e.target.value==='true';saveSettings();});
 
             const bgModeSelect = document.getElementById('background-mode');
             const themeSetting = document.getElementById('theme-setting');
