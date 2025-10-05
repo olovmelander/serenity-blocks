@@ -1319,6 +1319,27 @@ function createCandlelitMonasteryScene() {
             }
         }
 
+        // Global variable to store available songs
+        let availableSongs = [];
+
+        // Load songs from JSON file
+        async function loadSongs() {
+            try {
+                const response = await fetch('songs/songs.json');
+                const songs = await response.json();
+                availableSongs = songs;
+                console.log(`✅ Loaded ${songs.length} songs from songs.json`);
+                return songs;
+            } catch (error) {
+                console.error('❌ Failed to load songs.json:', error);
+                // Fallback to default songs
+                availableSongs = [
+                    { name: 'Echoes of the Soul', file: 'Echoes of the Soul.mp3', path: 'songs/Echoes of the Soul.mp3' }
+                ];
+                return availableSongs;
+            }
+        }
+
         class SoundManager {
             constructor() {
                 this.audioContext = null; this.isMuted = false; this.musicInterval = null;
@@ -1326,9 +1347,8 @@ function createCandlelitMonasteryScene() {
                 this.musicVolume = 1.0; this.sfxVolume = 1.0;
                 this.currentTrackId = null;
                 this.audioElement = null; // HTML5 Audio element for playing MP3 files
-                this.trackNames = [
-                    'EchoesOfTheSoul', 'EtherealEchoes', 'FallingPieces'
-                ];
+                this.trackNames = []; // Will be populated from songs.json
+                this.songsData = []; // Store full song data
                 this.soundSets = {
                     Retro: {
                         move: () => this.createTone(200, 0.05, 'square', 0.2),
@@ -1378,6 +1398,53 @@ function createCandlelitMonasteryScene() {
                 this.setTrack(this.trackNames[nextIndex]);
             }
             setSoundSet(setName) { this.soundSet = setName; }
+
+            // Initialize tracks from songs.json
+            async initializeTracks() {
+                const songs = await loadSongs();
+                this.songsData = songs;
+                // Convert song names to camelCase for compatibility
+                this.trackNames = songs.map(song => this.nameToKey(song.name));
+
+                // Set default track if current track doesn't exist
+                if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
+                    this.musicTrack = this.trackNames[0];
+                }
+
+                // Populate the dropdown
+                this.populateMusicDropdown();
+
+                return this;
+            }
+
+            // Convert display name to internal key (e.g., "Ocean Deep" -> "OceanDeep")
+            nameToKey(name) {
+                return name.replace(/\s+/g, '');
+            }
+
+            // Get song path from track name
+            getSongPath(trackName) {
+                const song = this.songsData.find(s => this.nameToKey(s.name) === trackName);
+                return song ? song.path : this.songsData[0]?.path || 'songs/Echoes of the Soul.mp3';
+            }
+
+            // Populate the music track dropdown
+            populateMusicDropdown() {
+                const dropdown = document.getElementById('music-track');
+                if (!dropdown) return;
+
+                dropdown.innerHTML = ''; // Clear existing options
+
+                this.songsData.forEach(song => {
+                    const option = document.createElement('option');
+                    option.value = this.nameToKey(song.name);
+                    option.textContent = song.name;
+                    dropdown.appendChild(option);
+                });
+
+                dropdown.value = this.musicTrack;
+            }
+
             playMove() { this.soundSets[this.soundSet].move(); }
             playRotate() { this.soundSets[this.soundSet].rotate(); }
             playDrop() { this.soundSets[this.soundSet].drop(); }
@@ -1389,12 +1456,10 @@ function createCandlelitMonasteryScene() {
                 this.stopBackgroundMusic();
                 this.currentTrackId = Symbol();
                 const trackId = this.currentTrackId;
-                const tracks = {
-                    EchoesOfTheSoul: () => this.playAudioFile('songs/Echoes of the Soul.mp3'),
-                    EtherealEchoes: () => this.playAudioFile('songs/Ethereal Echoes.mp3'),
-                    FallingPieces: () => this.playAudioFile('songs/Falling Pieces.mp3')
-                };
-                (tracks[this.musicTrack] || tracks.EchoesOfTheSoul)(trackId);
+
+                // Get the song path dynamically from songs.json
+                const songPath = this.getSongPath(this.musicTrack);
+                this.playAudioFile(songPath);
             }
             startGongBathMusic(trackId) {
                 const baseNotes = [41.20, 48.99, 55.00, 61.74]; // E1, G1, A1, B1
@@ -2584,7 +2649,7 @@ let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, 
         let gridCache = null;  // Offscreen canvas for cached grid
         let gridCacheCtx = null;
 
-        function init() {
+        async function init() {
             canvas = document.getElementById('game-canvas'); ctx = canvas.getContext('2d');
             nextCanvases = Array.from({length: 5}, (_, i) => document.getElementById(`next-${i}`));
             const backgroundCanvas = document.getElementById('background-canvas');
@@ -2594,6 +2659,10 @@ let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, 
 
             resizeGame();
             window.addEventListener('resize', resizeGame);
+
+            // Initialize tracks asynchronously before continuing
+            await soundManager.initializeTracks();
+            console.log('🎵 Sound manager ready with', soundManager.trackNames.length, 'tracks');
 
             createParticles(); loadSettings(); setupUI();
             document.addEventListener('fullscreenchange', () => {
