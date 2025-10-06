@@ -1390,6 +1390,8 @@ function createCandlelitMonasteryScene() {
                 document.getElementById('music-track').value = trackName;
                 this.stopBackgroundMusic();
                 if (!this.isMuted) this.startBackgroundMusic();
+                // Apply auto theme change if enabled
+                this.applyAutoThemeChange(trackName);
             }
 
             nextTrack() {
@@ -1480,6 +1482,51 @@ function createCandlelitMonasteryScene() {
                 } else {
                     // No match found, continue with current track or pick random
                     console.log(`🎵 No theme match for ${themeName}, continuing current track`);
+                }
+            }
+
+            // Get theme for song (reverse of getSongForTheme)
+            getThemeForSong(trackName) {
+                // Normalize the track name
+                const normalizedTrack = trackName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+
+                // Try exact match first
+                let theme = THEMES.find(t => {
+                    const normalizedTheme = t.split('-').map((word, index) =>
+                        index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) :
+                        word.charAt(0).toUpperCase() + word.slice(1)
+                    ).join('');
+                    return normalizedTheme.toLowerCase() === trackName.toLowerCase();
+                });
+
+                // If no exact match, try partial match
+                if (!theme) {
+                    theme = THEMES.find(t => {
+                        const normalizedTheme = t.replace(/-/g, '').toLowerCase();
+                        const normalizedTrack = trackName.toLowerCase();
+                        return normalizedTheme.includes(normalizedTrack) || normalizedTrack.includes(normalizedTheme);
+                    });
+                }
+
+                return theme || null;
+            }
+
+            // Apply auto theme change if enabled
+            applyAutoThemeChange(trackName) {
+                if (!settings.autoThemeChange || !settings.themeLinkedMode) return;
+
+                const linkedTheme = this.getThemeForSong(trackName);
+                if (linkedTheme) {
+                    console.log(`🎨 Auto theme change: ${trackName} → ${linkedTheme}`);
+                    setBackground(linkedTheme);
+                    // Update settings if in Specific mode
+                    if (settings.backgroundMode === 'Specific') {
+                        settings.backgroundTheme = linkedTheme;
+                        document.getElementById('background-theme').value = linkedTheme;
+                        saveSettings();
+                    }
+                } else {
+                    console.log(`🎨 No theme match for ${trackName}`);
                 }
             }
 
@@ -1930,7 +1977,7 @@ function createCandlelitMonasteryScene() {
         let isProcessingPhysics = false, inputQueue = null, dasTimer = null, dasIntervalTimer = null, softDropTimer = null;
 let animationId = null, linesUntilNextLevel = 10, activeTheme = 'forest', randomThemeInterval = null, activeThemeAnimationId = null, webglRenderer = null, activeThemeData = null;
 
-        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', themeLinkedMode: false, controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
+        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', themeLinkedMode: false, autoThemeChange: false, controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
         const soundManager = new SoundManager();
         const highScoreManager = new HighScoreManager();
 let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, touchLastX = null, touchLastY = null;
@@ -7067,6 +7114,10 @@ function isPartOfPiece(boardX, boardY, piece) {
             const tlm=document.getElementById('theme-linked-mode');
             tlm.value=settings.themeLinkedMode.toString();
             tlm.addEventListener('change',(e)=>{settings.themeLinkedMode=e.target.value==='true';saveSettings();});
+
+            const atc=document.getElementById('auto-theme-change');
+            atc.value=settings.autoThemeChange.toString();
+            atc.addEventListener('change',(e)=>{settings.autoThemeChange=e.target.value==='true';saveSettings();});
 
             const bgModeSelect = document.getElementById('background-mode');
             const themeSetting = document.getElementById('theme-setting');
