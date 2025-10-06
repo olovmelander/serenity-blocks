@@ -1977,7 +1977,7 @@ function createCandlelitMonasteryScene() {
         let isProcessingPhysics = false, inputQueue = null, dasTimer = null, dasIntervalTimer = null, softDropTimer = null;
 let animationId = null, linesUntilNextLevel = 10, activeTheme = 'forest', randomThemeInterval = null, activeThemeAnimationId = null, webglRenderer = null, activeThemeData = null;
 
-        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', themeLinkedMode: false, autoThemeChange: false, controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
+        let settings = { dasDelay: 120, dasInterval: 40, musicTrack: 'Ambient', soundSet: 'Zen', musicVolume: 1.0, sfxVolume: 1.0, backgroundMode: 'Level', backgroundTheme: 'forest', themeLinkedMode: false, autoThemeChange: false, randomThemeInterval: 60, controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard', keyBindings: { moveLeft: 'ArrowLeft', moveRight: 'ArrowRight', rotateRight: 'ArrowUp', rotateLeft: 'z', flip: 'a', softDrop: 'ArrowDown', hardDrop: 'Space' } };
         const soundManager = new SoundManager();
         const highScoreManager = new HighScoreManager();
 let touchStartX = null, touchStartY = null, touchStartTime = null, lastTap = 0, touchLastX = null, touchLastY = null;
@@ -6592,7 +6592,7 @@ function createWavesScene() {
                 let newTheme;
                 do { newTheme = THEMES[Math.floor(Math.random() * THEMES.length)]; } while (newTheme === activeTheme);
                 setBackground(newTheme);
-            }, 60000);
+            }, settings.randomThemeInterval * 1000);
         }
 
         function stopRandomThemeChanger() {
@@ -7122,28 +7122,42 @@ function isPartOfPiece(boardX, boardY, piece) {
             const bgModeSelect = document.getElementById('background-mode');
             const themeSetting = document.getElementById('theme-setting');
             const bgThemeSelect = document.getElementById('background-theme');
+            const randomThemeIntervalSetting = document.getElementById('random-theme-interval-setting');
+            const rtiSlider = document.getElementById('random-theme-interval');
+            const rtiValue = document.getElementById('random-theme-interval-value');
 
             function setThemeSelectorVisibility(visible) {
                 themeSetting.style.display = visible ? 'contents' : 'none';
             }
 
+            function setRandomIntervalVisibility(visible) {
+                randomThemeIntervalSetting.style.display = visible ? 'contents' : 'none';
+            }
+
             bgModeSelect.value = settings.backgroundMode;
             bgThemeSelect.value = settings.backgroundTheme;
+            rtiSlider.value = settings.randomThemeInterval;
+            rtiValue.textContent = settings.randomThemeInterval;
             setThemeSelectorVisibility(settings.backgroundMode === 'Specific');
+            setRandomIntervalVisibility(settings.backgroundMode === 'Random');
 
             bgModeSelect.addEventListener('change', (e) => {
                 settings.backgroundMode = e.target.value;
                 stopRandomThemeChanger();
                 if (settings.backgroundMode === 'Specific') {
                     setThemeSelectorVisibility(true);
+                    setRandomIntervalVisibility(false);
                     setBackground(settings.backgroundTheme);
-                } else {
+                } else if (settings.backgroundMode === 'Random') {
                     setThemeSelectorVisibility(false);
-                    if (settings.backgroundMode === 'Random' && !isGameOver) {
+                    setRandomIntervalVisibility(true);
+                    if (!isGameOver) {
                         startRandomThemeChanger();
-                    } else { // Level mode
-                        updateBackground(level);
                     }
+                } else { // Level mode
+                    setThemeSelectorVisibility(false);
+                    setRandomIntervalVisibility(false);
+                    updateBackground(level);
                 }
                 saveSettings();
             });
@@ -7154,6 +7168,16 @@ function isPartOfPiece(boardX, boardY, piece) {
                     setBackground(settings.backgroundTheme);
                 }
                 saveSettings();
+            });
+
+            rtiSlider.addEventListener('input', (e) => {
+                settings.randomThemeInterval = parseInt(e.target.value);
+                rtiValue.textContent = settings.randomThemeInterval;
+                saveSettings();
+                // Restart the interval with the new timing
+                if (settings.backgroundMode === 'Random' && !isGameOver) {
+                    startRandomThemeChanger();
+                }
             });
 
             const cs = document.getElementById('control-scheme');
