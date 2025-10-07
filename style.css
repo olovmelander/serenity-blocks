@@ -3712,147 +3712,178 @@ body {
 
 /* --- Meditation Temple Theme --- */
 #meditation-temple-theme {
-    background: linear-gradient(to bottom, #4a2c54 0%, #6b4268 50%, #8b6282 100%);
+    background: linear-gradient(to bottom, #E67E22 0%, #F39C12 100%);
     overflow: hidden;
 }
 
+/* Layer 1 - Sky with radial gradient (sun glow) */
 #meditation-temple-sky {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    background: linear-gradient(to top,
-        #d4a574 0%,
-        #c89d7c 10%,
-        #b88b88 20%,
-        #a67b9f 35%,
-        #8b6ba8 55%,
-        #6d5b9e 75%,
-        #4a4577 100%);
+    background: radial-gradient(ellipse at center,
+        #FEF5E7 0%,
+        #F9E79F 15%,
+        #F8B500 35%,
+        #F39C12 60%,
+        #E67E22 100%);
     z-index: 1;
+    animation: temple-sky-breathe 5s ease-in-out infinite alternate;
 }
 
-.meditation-temple-mountain-layer {
+@keyframes temple-sky-breathe {
+    from { opacity: 0.95; }
+    to { opacity: 1; }
+}
+
+/* Layer 2 - Large sun */
+#meditation-temple-sun {
     position: absolute;
-    bottom: 0; left: 0;
-    width: 200%; height: 100%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><path d="M 0 600 L 150 300 L 300 450 L 500 200 L 650 500 L 800 350 V 600 Z" fill="rgba(60,50,40,0.3)"/></svg>');
-    animation: slide linear infinite;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+        #FEF5E7 0%,
+        #F9E79F 40%,
+        #F8B500 70%,
+        rgba(248, 181, 0, 0) 100%);
+    z-index: 2;
+    animation: temple-sun-pulse 4s ease-in-out infinite alternate;
+    filter: blur(20px);
 }
 
-#meditation-temple-mountains-back { animation-duration: 250s; z-index: 2; filter: brightness(0.7); }
-#meditation-temple-mountains-mid { animation-duration: 180s; z-index: 3; filter: brightness(0.85); }
-#meditation-temple-mountains-front { animation-duration: 120s; z-index: 8; }
-
-#meditation-temple-main {
-    position: absolute;
-    bottom: 20%; left: 50%;
-    transform: translateX(-50%);
-    width: 450px; height: 320px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 320"><defs><linearGradient id="roofGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="%23654321"/><stop offset="1" stop-color="%23352010"/></linearGradient><linearGradient id="wallGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="%23e8d5c4"/><stop offset="1" stop-color="%23c4a995"/></linearGradient></defs><rect x="150" y="180" width="150" height="120" fill="url(%23wallGrad)"/><path d="M 120 180 L 225 140 L 330 180 Z" fill="url(%23roofGrad)"/><path d="M 100 185 L 225 135 L 350 185 L 340 190 L 225 145 L 110 190 Z" fill="%23352010"/><rect x="200" y="220" width="50" height="80" fill="%232a1a0a"/><rect x="205" y="225" width="40" height="75" fill="%23ffd89a" opacity="0.4"/><circle cx="215" cy="245" r="2" fill="%23ffcc66" opacity="0.8"/><circle cx="235" cy="245" r="2" fill="%23ffcc66" opacity="0.8"/></svg>');
-    z-index: 5;
-    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.4));
+@keyframes temple-sun-pulse {
+    from { transform: translate(-50%, -50%) scale(0.98); }
+    to { transform: translate(-50%, -50%) scale(1.02); }
 }
 
-#meditation-temple-trees {
-    position: absolute;
-    bottom: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 6;
-}
-
-#meditation-temple-prayer-flags {
+/* Layer 3 - Cloud layers (improved design) */
+#meditation-temple-clouds {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 7;
+    z-index: 3;
 }
 
-.prayer-flag-strand {
+.temple-cloud {
     position: absolute;
-    height: 30px;
-    transform-origin: top left;
+    animation: temple-cloud-drift linear infinite;
 }
 
-.prayer-flag {
+.temple-cloud::before,
+.temple-cloud::after {
+    content: '';
     position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+}
+
+.temple-cloud::before {
+    width: 100%;
+    height: 100%;
     top: 0;
-    width: 20px; height: 25px;
-    transform-origin: top center;
-    animation: flutter-flag 4s ease-in-out infinite;
+    left: 0;
+    box-shadow:
+        -40px 10px 0 -10px rgba(255, 255, 255, 0.9),
+        40px 10px 0 -10px rgba(255, 255, 255, 0.9),
+        -20px -10px 0 -5px rgba(255, 250, 240, 0.85),
+        20px -10px 0 -5px rgba(255, 250, 240, 0.85);
 }
 
-@keyframes flutter-flag {
-    from { transform: rotate(5deg) skewX(-10deg); }
-    to { transform: rotate(-5deg) skewX(10deg); }
+.temple-cloud::after {
+    width: 60%;
+    height: 60%;
+    top: -20%;
+    left: 20%;
+    background: rgba(255, 250, 240, 0.8);
 }
 
-#meditation-temple-incense {
+@keyframes temple-cloud-drift {
+    from { transform: translateX(-150px); }
+    to { transform: translateX(calc(100vw + 150px)); }
+}
+
+/* Layer 4 - Distant stupas */
+#meditation-temple-stupas-far {
     position: absolute;
     bottom: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 9;
-    mix-blend-mode: screen;
+    width: 200%; height: 100%;
+    z-index: 4;
+    animation: slide 200s linear infinite;
 }
 
-.temple-incense-wisp {
+.temple-stupa-far {
+    position: absolute;
+    fill: rgba(93, 78, 55, 0.4);
+    filter: blur(2px);
+}
+
+/* Layer 5 - Mid-distance stupas */
+#meditation-temple-stupas-mid {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 200%; height: 100%;
+    z-index: 5;
+    animation: slide 150s linear infinite;
+}
+
+.temple-stupa-mid {
+    position: absolute;
+    fill: rgba(62, 39, 35, 0.65);
+    filter: blur(1px);
+}
+
+/* Layer 6 - Near stupas (foreground) */
+#meditation-temple-stupas-near {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 200%; height: 100%;
+    z-index: 6;
+    animation: slide 100s linear infinite;
+}
+
+.temple-stupa-near {
+    position: absolute;
+    fill: rgba(26, 26, 26, 0.9);
+}
+
+/* Layer 8 - Atmospheric particles */
+#meditation-temple-particles {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 8;
+    pointer-events: none;
+}
+
+.temple-particle {
     position: absolute;
     width: 3px;
-    height: 80%;
-    background: linear-gradient(to top, rgba(220, 210, 200, 0.3), transparent);
-    animation: rise-and-sway-smoke ease-in-out infinite;
-}
-
-@keyframes rise-and-sway-smoke {
-    0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
-    20% { opacity: 1; }
-    100% { transform: translateY(-80vh) translateX(50px) scale(3); opacity: 0; }
-}
-
-.temple-bell-glint {
-    position: absolute;
-    width: 5px; height: 5px;
-    background-color: #fbc531;
+    height: 3px;
     border-radius: 50%;
-    box-shadow: 0 0 10px #fbc531, 0 0 15px #fbc531;
-    animation: glint-bell 10s ease-in-out infinite;
+    background: radial-gradient(circle, #FDE184 0%, rgba(253, 225, 132, 0) 70%);
+    animation: temple-particle-rise linear infinite;
+    box-shadow: 0 0 4px rgba(248, 181, 0, 0.6);
 }
 
-@keyframes glint-bell {
-    0%, 100% { opacity: 0; }
-    5% { opacity: 0.8; }
-    10% { opacity: 0; }
-}
-
-.prayer-wheel {
-    position: absolute;
-    width: 40px; height: 60px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 60"><rect x="0" y="5" width="40" height="50" fill="%23c0955d" stroke="%238b5e34" stroke-width="2"/><rect x="18" y="0" width="4" height="60" fill="%235a3d2b"/></svg>');
-    animation: spin-wheel 15s linear infinite;
-}
-
-@keyframes spin-wheel {
-    from { transform: rotateY(0deg); }
-    to { transform: rotateY(360deg); }
-}
-
-.temple-bell {
-    position: absolute;
-    width: 30px; height: 40px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 40"><path d="M 5 0 L 25 0 L 30 20 A 15 15 0 0 1 0 20 L 5 0 Z" fill="%23fbc531"/></svg>');
-    transform-origin: top center;
-    animation: sway-bell 8s ease-in-out infinite alternate;
-}
-
-@keyframes sway-bell {
-    from { transform: rotate(3deg); }
-    to { transform: rotate(-3deg); }
-}
-
-.monk-silhouette {
-    position: absolute;
-    width: 20px; height: 35px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35"><path d="M 10 0 A 5 5 0 0 0 10 10 L 12 25 L 8 25 L 10 10 M 5 25 L 15 25 L 12 35 L 8 35 Z" fill="rgba(20,10,5,0.7)"/></svg>');
-    opacity: 0.6;
+@keyframes temple-particle-rise {
+    0% {
+        transform: translateY(0) translateX(0);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateY(-100vh) translateX(var(--drift));
+        opacity: 0;
+    }
 }
 
 /* --- Moonlit Greenhouse Theme --- */

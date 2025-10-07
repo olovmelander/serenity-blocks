@@ -443,114 +443,128 @@ function createMoonlitGreenhouseScene() {
 }
 
 function createMeditationTempleScene() {
-    // 1. Prayer Flags
-    const flagContainer = document.getElementById('meditation-temple-prayer-flags');
-    if (flagContainer && flagContainer.children.length === 0) {
-        const flagColors = ['#00a8ff', '#9c88ff', '#fbc531', '#4cd137', '#e84118'];
-        for (let i = 0; i < 5; i++) { // 5 strands of flags
-            let strand = document.createElement('div');
-            strand.className = 'prayer-flag-strand';
-            strand.style.left = `${10 + i * 18}%`;
-            strand.style.top = `${10 + Math.random() * 15}%`;
-            strand.style.transform = `rotate(${Math.random() * 10 - 5}deg)`;
+    // Helper function to create stupa SVG
+    function createStupaSVG(width, height, opacity) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 100 150');
+        svg.style.width = width + 'px';
+        svg.style.height = height + 'px';
+        svg.style.position = 'absolute';
+        svg.style.opacity = opacity;
 
-            for (let j = 0; j < 7; j++) { // 7 flags per strand
-                let flag = document.createElement('div');
-                flag.className = 'prayer-flag';
-                flag.style.backgroundColor = flagColors[j % flagColors.length];
-                flag.style.left = `${j * 15}%`;
-                flag.style.animationDelay = `-${j * 0.1 + Math.random() * 0.5}s`;
-                strand.appendChild(flag);
+        // Stupa path with spire, dome, and base
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M 50 5 L 48 20 L 52 20 Z M 45 20 L 55 20 L 53 30 L 47 30 Z M 40 30 Q 40 50 50 55 Q 60 50 60 30 Z M 35 55 L 65 55 L 63 75 L 37 75 Z M 30 75 L 70 75 L 68 95 L 32 95 Z M 25 95 L 75 95 L 75 100 L 25 100 Z M 20 100 L 80 100 L 80 110 L 20 110 Z M 15 110 L 85 110 L 85 120 L 15 120 Z M 10 120 L 90 120 L 90 135 L 10 135 Z M 5 135 L 95 135 L 95 150 L 5 150 Z');
+        path.style.fill = 'currentColor';
+
+        svg.appendChild(path);
+        return svg;
+    }
+
+    // Layer 3 - Clouds (improved design, positioned higher)
+    const cloudsContainer = document.getElementById('meditation-temple-clouds');
+    if (cloudsContainer && cloudsContainer.children.length === 0) {
+        // Create beautiful layered clouds in the upper portion
+        const cloudConfigs = [
+            // Top layer - small wispy clouds
+            { count: 5, baseWidth: 80, baseHeight: 40, topRange: [5, 20], speed: [180, 240] },
+            // Mid-upper layer - medium fluffy clouds
+            { count: 6, baseWidth: 120, baseHeight: 60, topRange: [15, 35], speed: [140, 200] },
+            // Lower layer - larger clouds
+            { count: 4, baseWidth: 160, baseHeight: 80, topRange: [25, 45], speed: [100, 160] }
+        ];
+
+        cloudConfigs.forEach((config, layerIndex) => {
+            for (let i = 0; i < config.count; i++) {
+                const cloud = document.createElement('div');
+                cloud.className = 'temple-cloud';
+                const width = config.baseWidth + Math.random() * 80;
+                const height = config.baseHeight + Math.random() * 40;
+                cloud.style.width = `${width}px`;
+                cloud.style.height = `${height}px`;
+
+                // Position in upper part of screen
+                const [minTop, maxTop] = config.topRange;
+                cloud.style.top = `${minTop + Math.random() * (maxTop - minTop)}%`;
+
+                // Start off-screen
+                cloud.style.left = `-${width + 50}px`;
+
+                // Vary opacity for depth
+                cloud.style.opacity = (0.6 + Math.random() * 0.3).toString();
+
+                // Speed based on layer
+                const [minSpeed, maxSpeed] = config.speed;
+                const duration = minSpeed + Math.random() * (maxSpeed - minSpeed);
+                cloud.style.animationDuration = `${duration}s`;
+                cloud.style.animationDelay = `-${Math.random() * duration}s`;
+
+                cloudsContainer.appendChild(cloud);
             }
-            flagContainer.appendChild(strand);
+        });
+    }
+
+    // Layer 4 - Distant Stupas
+    const stupasFar = document.getElementById('meditation-temple-stupas-far');
+    if (stupasFar && stupasFar.children.length === 0) {
+        for (let i = 0; i < 12; i++) {
+            const stupa = createStupaSVG(60 + Math.random() * 40, 90 + Math.random() * 60, 0.4);
+            stupa.style.bottom = '35%';
+            stupa.style.left = `${i * 180 + Math.random() * 100}px`;
+            stupa.style.color = 'rgba(93, 78, 55, 0.4)';
+            stupa.style.filter = 'blur(2px)';
+            stupasFar.appendChild(stupa);
         }
     }
 
-    // 2. Incense Smoke from Braziers
-    const incenseContainer = document.getElementById('meditation-temple-incense');
-    if (incenseContainer && incenseContainer.children.length === 0) {
-        for (let i = 0; i < 5; i++) {
-            let wisp = document.createElement('div');
-            wisp.className = 'temple-incense-wisp';
-            wisp.style.left = `${20 + Math.random() * 60}%`;
-            wisp.style.bottom = '20%'; // Start from brazier height
-            const duration = Math.random() * 25 + 20;
-            wisp.style.animationDuration = `${duration}s`;
-            wisp.style.animationDelay = `-${Math.random() * duration}s`;
-            incenseContainer.appendChild(wisp);
+    // Layer 5 - Mid Stupas
+    const stupasMid = document.getElementById('meditation-temple-stupas-mid');
+    if (stupasMid && stupasMid.children.length === 0) {
+        for (let i = 0; i < 10; i++) {
+            const stupa = createStupaSVG(80 + Math.random() * 50, 120 + Math.random() * 80, 0.65);
+            stupa.style.bottom = '30%';
+            stupa.style.left = `${i * 220 + Math.random() * 120}px`;
+            stupa.style.color = 'rgba(62, 39, 35, 0.65)';
+            stupa.style.filter = 'blur(1px)';
+            stupasMid.appendChild(stupa);
         }
     }
 
-    // 3. Ancient Trees
-    const treeContainer = document.getElementById('meditation-temple-trees');
-    if (treeContainer && treeContainer.children.length === 0) {
-        const canvas = document.createElement('canvas');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        const ctx = canvas.getContext('2d');
-
-        // Draw a few gnarled trees
-        drawGnarledTree(ctx, canvas.width * 0.1, canvas.height, 120, -90, 12, 'rgba(40, 30, 20, 0.7)');
-        drawGnarledTree(ctx, canvas.width * 0.85, canvas.height, 150, -90, 15, 'rgba(30, 20, 10, 0.8)');
-
-        canvas.style.position = 'absolute';
-        canvas.style.bottom = '0';
-        canvas.style.left = '0';
-        treeContainer.appendChild(canvas);
-    }
-
-    function drawGnarledTree(ctx, x, y, len, angle, width, color) {
-        if (width < 0.5) return;
-        ctx.beginPath();
-        ctx.lineWidth = width;
-        ctx.strokeStyle = color;
-        ctx.moveTo(x, y);
-        const x2 = x + len * Math.cos(angle * Math.PI / 180);
-        const y2 = y + len * Math.sin(angle * Math.PI / 180);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-
-        const newLen = len * (0.6 + Math.random() * 0.1);
-        drawGnarledTree(ctx, x2, y2, newLen, angle + Math.random() * 30 + 10, width * 0.7, color);
-        drawGnarledTree(ctx, x2, y2, newLen, angle - (Math.random() * 30 + 10), width * 0.7, color);
-        if (Math.random() > 0.6) {
-            drawGnarledTree(ctx, x2, y2, newLen * 0.5, angle + Math.random() * 20 - 10, width * 0.5, color);
-        }
-    }
-
-    // 4. Bells, Prayer Wheels, and Monks
-    const templeContainer = document.getElementById('meditation-temple-main');
-    if (templeContainer && templeContainer.children.length === 0) {
-        // Add swaying bells
+    // Layer 6 - Near Stupas (foreground)
+    const stupasNear = document.getElementById('meditation-temple-stupas-near');
+    if (stupasNear && stupasNear.children.length === 0) {
+        // Left side stupas
         for (let i = 0; i < 3; i++) {
-            let bell = document.createElement('div');
-            bell.className = 'temple-bell';
-            bell.style.left = `${25 + i * 25}%`;
-            bell.style.top = '45%';
-            bell.style.animationDelay = `-${Math.random() * 8}s`;
-            templeContainer.appendChild(bell);
+            const stupa = createStupaSVG(120 + Math.random() * 80, 180 + Math.random() * 120, 0.9);
+            stupa.style.bottom = '20%';
+            stupa.style.left = `${i * 150 - 100}px`;
+            stupa.style.color = 'rgba(26, 26, 26, 0.9)';
+            stupasNear.appendChild(stupa);
         }
-        // Add spinning prayer wheels
-        for (let i = 0; i < 4; i++) {
-            let wheel = document.createElement('div');
-            wheel.className = 'prayer-wheel';
-            wheel.style.left = `${10 + i * 22}%`;
-            wheel.style.bottom = '-10%';
-            wheel.style.animationDelay = `-${Math.random() * 15}s`;
-            templeContainer.appendChild(wheel);
+        // Right side stupas
+        for (let i = 0; i < 3; i++) {
+            const stupa = createStupaSVG(120 + Math.random() * 80, 180 + Math.random() * 120, 0.9);
+            stupa.style.bottom = '20%';
+            stupa.style.left = `${i * 150 + 1400}px`;
+            stupa.style.color = 'rgba(26, 26, 26, 0.9)';
+            stupasNear.appendChild(stupa);
         }
     }
 
-    const midMountainContainer = document.getElementById('meditation-temple-mountains-mid');
-    if (midMountainContainer && midMountainContainer.children.length < 2) { // Check to avoid re-adding
-        // Add monk silhouettes
-        for (let i = 0; i < 2; i++) {
-            let monk = document.createElement('div');
-            monk.className = 'monk-silhouette';
-            monk.style.left = `${20 + i * 50 + Math.random() * 10}%`;
-            monk.style.bottom = `${35 + Math.random() * 5}%`;
-            monk.style.transform = `scaleX(${Math.random() > 0.5 ? 1 : -1})`;
-            midMountainContainer.appendChild(monk);
+    // Layer 7 - Golden Light Particles
+    const particlesContainer = document.getElementById('meditation-temple-particles');
+    if (particlesContainer && particlesContainer.children.length === 0) {
+        for (let i = 0; i < 30; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'temple-particle';
+            particle.style.left = `${Math.random() * 100}%`;
+            particle.style.bottom = `${Math.random() * 30}%`;
+            const duration = 15 + Math.random() * 20;
+            const drift = (Math.random() - 0.5) * 200;
+            particle.style.animationDuration = `${duration}s`;
+            particle.style.animationDelay = `-${Math.random() * duration}s`;
+            particle.style.setProperty('--drift', `${drift}px`);
+            particlesContainer.appendChild(particle);
         }
     }
 }
