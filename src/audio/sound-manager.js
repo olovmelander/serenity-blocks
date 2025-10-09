@@ -156,7 +156,7 @@ export class SoundManager {
 
     /**
      * Sets the active sound set
-     * @param {string} setName - Sound set name ('Retro' or 'Zen')
+     * @param {string} setName - Sound set name ('Retro', 'Zen', or 'Pulse')
      */
     setSoundSet(setName) {
         this.soundSet = setName;

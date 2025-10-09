@@ -1,12 +1,12 @@
 /**
  * @fileoverview Sound Effects Definitions for Serenity Blocks
- * Defines sound sets (Retro and Zen) with different sound profiles
+ * Defines sound sets (Retro, Zen, Pulse) with different sound profiles
  */
 
 /**
  * Creates sound sets for different game actions
  * @param {Function} createTone - Function to create audio tones
- * @returns {Object} Sound sets object with Retro and Zen profiles
+ * @returns {Object} Sound sets object with Retro, Zen, and Pulse profiles
  */
 export function createSoundSets(createTone) {
     return {
@@ -49,6 +49,26 @@ export function createSoundSets(createTone) {
                     setTimeout(() => createTone(f, 0.8, 'sine', 0.2), i * 200)
                 );
             }
+        },
+        Pulse: {
+            move: () => createTone(260, 0.06, 'sawtooth', 0.18),
+            rotate: () => createTone(420, 0.08, 'square', 0.22),
+            drop: () => createTone(180, 0.14, 'triangle', 0.28),
+            lineClear: () => {
+                [440, 554, 659, 880].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.18, i % 2 === 0 ? 'sawtooth' : 'square', 0.25), i * 45)
+                );
+            },
+            levelUp: () => {
+                [523, 659, 784, 988].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.22, 'square', 0.3), i * 70)
+                );
+            },
+            gameOver: () => {
+                [330, 294, 262, 220].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.4, 'triangle', 0.28), i * 160)
+                );
+            }
         }
     };
 }
@@ -64,7 +84,7 @@ export class SoundEffectPlayer {
 
     /**
      * Sets the active sound set
-     * @param {string} setName - Name of the sound set ('Retro' or 'Zen')
+     * @param {string} setName - Name of the sound set ('Retro', 'Zen', or 'Pulse')
      */
     setSoundSet(setName) {
         if (this.soundSets[setName]) {
