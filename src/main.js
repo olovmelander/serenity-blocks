@@ -371,7 +371,12 @@ class SerenityBlocks {
             },
             playLineClear: () => this.soundManager.sfxPlayer.playLineClear(),
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
-            triggerFlash: (clearedRows) => triggerLineClearFlash(clearedRows),
+            triggerFlash: (clearedRows) => {
+                const settings = this.settingsManager.get();
+                if (settings.lineClearEffects) {
+                    triggerLineClearFlash(clearedRows);
+                }
+            },
             triggerBackgroundPulse: (lineCount) => triggerBackgroundPulse(lineCount),
             triggerCombo: (comboCount) => {
                 const settings = this.settingsManager.get();

@@ -138,6 +138,7 @@ export const DEFAULT_SETTINGS = {
     randomThemeInterval: 60,  // seconds
     pieceLockRipple: true,
     comboPopupEffect: true,
+    lineClearEffects: true,
 
     // Control settings
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',

@@ -23,6 +23,7 @@ const DEFAULT_CONFIG = {
     randomThemeInterval: 60,
     pieceLockRipple: true,
     comboPopupEffect: true,
+    lineClearEffects: true,
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
     keyBindings: {
         moveLeft: 'ArrowLeft',
@@ -378,6 +379,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         comboPopupSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ comboPopupEffect: enabled });
+            settingsManager.save();
+        });
+    }
+
+    // Line clear effects toggle
+    const lineClearEffectsSelect = document.getElementById('line-clear-effects');
+    if (lineClearEffectsSelect) {
+        lineClearEffectsSelect.value = settings.lineClearEffects ? 'true' : 'false';
+
+        lineClearEffectsSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ lineClearEffects: enabled });
             settingsManager.save();
         });
     }
