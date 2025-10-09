@@ -165,6 +165,30 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 e.preventDefault();
                 hardDrop();
                 break;
+
+            case 'nextTrack':
+                if (gameActions.nextTrack) {
+                    gameActions.nextTrack();
+                }
+                break;
+
+            case 'randomTheme':
+                if (gameActions.randomTheme) {
+                    gameActions.randomTheme();
+                }
+                break;
+
+            case 'toggleFullscreen':
+                if (gameActions.toggleFullscreen) {
+                    gameActions.toggleFullscreen();
+                }
+                break;
+
+            case 'showHighScores':
+                if (gameActions.showHighScores) {
+                    gameActions.showHighScores();
+                }
+                break;
         }
     });
 

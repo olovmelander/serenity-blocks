@@ -149,6 +149,10 @@ export const DEFAULT_SETTINGS = {
         rotateLeft: 'z',
         flip: 'a',
         softDrop: 'ArrowDown',
-        hardDrop: 'Space'
+        hardDrop: 'Space',
+        nextTrack: 'm',
+        randomTheme: 'b',
+        toggleFullscreen: 'f',
+        showHighScores: 'h'
     }
 };

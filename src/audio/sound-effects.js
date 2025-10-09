@@ -1,12 +1,12 @@
 /**
  * @fileoverview Sound Effects Definitions for Serenity Blocks
- * Defines sound sets (Retro, Zen, Pulse) with different sound profiles
+ * Defines sound sets (Retro, Zen, Pulse, Nebula) with different sound profiles
  */
 
 /**
  * Creates sound sets for different game actions
  * @param {Function} createTone - Function to create audio tones
- * @returns {Object} Sound sets object with Retro, Zen, and Pulse profiles
+ * @returns {Object} Sound sets object with Retro, Zen, Pulse, and Nebula profiles
  */
 export function createSoundSets(createTone) {
     return {
@@ -69,6 +69,39 @@ export function createSoundSets(createTone) {
                     setTimeout(() => createTone(f, 0.4, 'triangle', 0.28), i * 160)
                 );
             }
+        },
+        Nebula: {
+            move: () => {
+                createTone(320, 0.18, 'sine', 0.12);
+                setTimeout(() => createTone(210, 0.24, 'triangle', 0.08), 70);
+            },
+            rotate: () => {
+                createTone(520, 0.2, 'triangle', 0.16);
+                setTimeout(() => createTone(780, 0.26, 'sine', 0.12), 60);
+            },
+            drop: () => {
+                [240, 180].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.28, 'sine', 0.2), i * 90)
+                );
+            },
+            lineClear: () => {
+                [392, 523, 659, 784].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.35, i % 2 === 0 ? 'sine' : 'triangle', 0.18), i * 110)
+                );
+                setTimeout(() => createTone(987, 0.4, 'sine', 0.15), 420);
+            },
+            levelUp: () => {
+                [330, 494, 660, 880].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.42, 'triangle', 0.22), i * 120)
+                );
+                setTimeout(() => createTone(1175, 0.48, 'sine', 0.18), 520);
+            },
+            gameOver: () => {
+                [523, 392, 261, 196].forEach((f, i) =>
+                    setTimeout(() => createTone(f, 0.5, 'sine', 0.17), i * 210)
+                );
+                setTimeout(() => createTone(130, 0.7, 'triangle', 0.22), 860);
+            }
         }
     };
 }
@@ -84,7 +117,7 @@ export class SoundEffectPlayer {
 
     /**
      * Sets the active sound set
-     * @param {string} setName - Name of the sound set ('Retro', 'Zen', or 'Pulse')
+     * @param {string} setName - Name of the sound set ('Retro', 'Zen', 'Pulse', or 'Nebula')
      */
     setSoundSet(setName) {
         if (this.soundSets[setName]) {

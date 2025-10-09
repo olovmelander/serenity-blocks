@@ -32,7 +32,11 @@ const DEFAULT_CONFIG = {
         rotateLeft: 'z',
         flip: 'a',
         softDrop: 'ArrowDown',
-        hardDrop: 'Space'
+        hardDrop: 'Space',
+        nextTrack: 'm',
+        randomTheme: 'b',
+        toggleFullscreen: 'f',
+        showHighScores: 'h'
     }
 };
 
@@ -115,13 +119,16 @@ export class SettingsManager {
             const saved = localStorage.getItem(this.STORAGE_KEY);
             if (saved) {
                 const loaded = JSON.parse(saved);
-                this.settings = { ...this.settings, ...loaded };
-                if (loaded.keyBindings) {
-                    this.settings.keyBindings = {
-                        ...this.settings.keyBindings,
-                        ...loaded.keyBindings
-                    };
-                }
+                const loadedKeyBindings = loaded.keyBindings || {};
+
+                this.settings = {
+                    ...DEFAULT_CONFIG,
+                    ...loaded,
+                    keyBindings: {
+                        ...DEFAULT_CONFIG.keyBindings,
+                        ...loadedKeyBindings
+                    }
+                };
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -166,7 +173,19 @@ export function updateControlsDisplay(settings) {
 
     list.innerHTML = '';
 
-    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop'];
+    const actions = [
+        'moveLeft',
+        'moveRight',
+        'rotateRight',
+        'rotateLeft',
+        'flip',
+        'softDrop',
+        'hardDrop',
+        'nextTrack',
+        'randomTheme',
+        'toggleFullscreen',
+        'showHighScores'
+    ];
 
     if (settings.controlScheme === 'Keyboard') {
         document.querySelectorAll('.key-input').forEach(el => {
@@ -466,6 +485,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Initialize key bindings listeners
     const keyInputs = document.querySelectorAll('.key-input');
     keyInputs.forEach(input => {
+        const action = input.id.substring(4);
+        if (settings.keyBindings[action]) {
+            input.textContent = settings.keyBindings[action];
+        }
+
         input.addEventListener('click', () => {
             input.classList.add('listening');
             input.textContent = 'Press a key...';

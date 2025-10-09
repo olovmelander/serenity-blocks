@@ -18,7 +18,7 @@ import { draw, updateStats, drawNextPieces, triggerLineClearFlash, createPieceLo
 import { WebGLRenderer } from './rendering/renderer.js';
 
 // UI imports
-import { ModalManager, setupModalUI, showSettingsModal, showHighScoresModal, toggleFullScreen } from './ui/modals.js';
+import { ModalManager, setupModalUI, showSettingsModal, showHighScoresModal, toggleFullScreen, closeHighScoresModal } from './ui/modals.js';
 import { SettingsManager, initializeSettingsUI } from './ui/settings.js';
 import { InputController, setupKeyboardControls, setupTouchControls } from './ui/controls.js';
 import { HighScoreManager } from './ui/high-scores.js';
@@ -459,6 +459,26 @@ class SerenityBlocks {
             // Sound is already initialized
         };
 
+        window.nextTrack = () => {
+            this.soundManager.nextTrack();
+        };
+
+        window.randomTheme = () => {
+            this.switchToRandomTheme();
+        };
+
+        window.toggleFullscreen = () => {
+            toggleFullScreen();
+        };
+
+        window.showHighScores = () => {
+            if (this.modalManager.isVisible('highScores')) {
+                closeHighScoresModal(this.modalManager);
+            } else {
+                showHighScoresModal(this.modalManager, this.highScoreManager);
+            }
+        };
+
         // Setup keyboard and touch controls with the exposed gameActions
         const gameActions = {
             move: window.move,
@@ -467,7 +487,11 @@ class SerenityBlocks {
             hardDrop: window.hardDrop,
             togglePause: window.togglePause,
             startGame: window.startGame,
-            initSound: window.initSound
+            initSound: window.initSound,
+            nextTrack: window.nextTrack,
+            randomTheme: window.randomTheme,
+            toggleFullscreen: window.toggleFullscreen,
+            showHighScores: window.showHighScores
         };
 
         setupKeyboardControls(this.inputController, this.settingsManager.get(), gameActions);
