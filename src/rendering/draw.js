@@ -18,6 +18,21 @@ import {
 let pieceTrails = [];
 const MAX_TRAILS = 3;
 
+const COMBO_COLOR_STEPS = [
+    { max: 2, color: '#22d3ee' },  // Cyan
+    { max: 3, color: '#8b5cf6' },  // Purple
+    { max: Infinity, color: '#d946ef' } // Magenta
+];
+
+function getComboColor(comboCount) {
+    for (const step of COMBO_COLOR_STEPS) {
+        if (comboCount <= step.max) {
+            return step.color;
+        }
+    }
+    return COMBO_COLOR_STEPS[COMBO_COLOR_STEPS.length - 1].color;
+}
+
 /**
  * Adds a piece trail (afterimage) for motion fluidity
  * Tetris Effect-inspired subtle motion trails
@@ -602,6 +617,33 @@ export function showScorePopup(points) {
     container.appendChild(el);
 
     setTimeout(() => container.removeChild(el), 1000);
+}
+
+/**
+ * Shows a floating combo notification for cascade clears
+ * @param {number} comboCount - Current combo count (2+)
+ */
+export function showComboPopup(comboCount) {
+    const container = document.getElementById('score-popups');
+    if (!container) return;
+
+    const popup = document.createElement('div');
+    popup.className = 'combo-popup';
+    popup.textContent = `${comboCount}x COMBO`;
+
+    const color = getComboColor(comboCount);
+    const scale = Math.min(1 + (comboCount - 2) * 0.18, 1.8);
+
+    popup.style.setProperty('--combo-color', color);
+    popup.style.setProperty('--combo-scale', scale);
+
+    container.appendChild(popup);
+
+    popup.addEventListener('animationend', () => {
+        if (popup.parentNode === container) {
+            container.removeChild(popup);
+        }
+    }, { once: true });
 }
 
 /**

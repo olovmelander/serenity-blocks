@@ -22,6 +22,7 @@ const DEFAULT_CONFIG = {
     autoThemeChange: false,
     randomThemeInterval: 60,
     pieceLockRipple: true,
+    comboPopupEffect: true,
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
     keyBindings: {
         moveLeft: 'ArrowLeft',
@@ -365,6 +366,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         pieceLockRippleSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ pieceLockRipple: enabled });
+            settingsManager.save();
+        });
+    }
+
+    // Combo popup effect toggle
+    const comboPopupSelect = document.getElementById('combo-popup-effect');
+    if (comboPopupSelect) {
+        comboPopupSelect.value = settings.comboPopupEffect ? 'true' : 'false';
+
+        comboPopupSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ comboPopupEffect: enabled });
             settingsManager.save();
         });
     }

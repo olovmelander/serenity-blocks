@@ -214,6 +214,7 @@ export function removeClearedLines(lockedPieces, fullLines) {
  *   - playLevelUp: Sound effect for level up
  *   - updateBackground: Function to update background theme (level)
  *   - spawnPiece: Function to spawn next piece
+ *   - triggerCombo: Function called when a cascade combo occurs (comboCount)
  * @returns {Promise<void>} Resolves when all physics processing is complete
  */
 export async function processPhysics(gameState, callbacks) {
@@ -230,6 +231,10 @@ export async function processPhysics(gameState, callbacks) {
         }
 
         cascadeCount++;
+
+        if (cascadeCount >= 2 && callbacks.triggerCombo) {
+            callbacks.triggerCombo(cascadeCount);
+        }
 
         // --- Line Clear Animation and Scoring ---
         linesClearedThisTurn += fullLines.length;
