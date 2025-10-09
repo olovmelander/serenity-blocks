@@ -14,6 +14,73 @@ import {
     getLastRenderedLevel
 } from './canvas-utils.js';
 
+// Piece trail system for motion fluidity
+let pieceTrails = [];
+const MAX_TRAILS = 3;
+
+/**
+ * Adds a piece trail (afterimage) for motion fluidity
+ * Tetris Effect-inspired subtle motion trails
+ * @param {Object} piece - Current piece to trail
+ */
+export function addPieceTrail(piece) {
+    if (!piece) return;
+
+    // Add new trail snapshot
+    pieceTrails.push({
+        piece: {
+            ...piece,
+            shape: piece.shape.map(row => [...row])
+        },
+        timestamp: Date.now(),
+        opacity: 0.15
+    });
+
+    // Limit trail count
+    if (pieceTrails.length > MAX_TRAILS) {
+        pieceTrails.shift();
+    }
+}
+
+/**
+ * Updates and draws piece trails with fade-out
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ */
+function drawPieceTrails(ctx) {
+    const now = Date.now();
+    const trailDuration = 150; // 150ms fade
+
+    // Filter out expired trails and draw remaining ones
+    pieceTrails = pieceTrails.filter(trail => {
+        const age = now - trail.timestamp;
+        if (age > trailDuration) return false;
+
+        // Calculate fade opacity
+        const fadeProgress = age / trailDuration;
+        const opacity = trail.opacity * (1 - fadeProgress);
+
+        // Draw trail piece
+        trail.piece.shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (cell > 0 && trail.piece.y + y >= HIDDEN_ROWS) {
+                    ctx.save();
+                    ctx.globalAlpha = opacity;
+                    ctx.fillStyle = trail.piece.color;
+                    ctx.fillRect(
+                        (trail.piece.x + x) * BLOCK_SIZE,
+                        (trail.piece.y + y - HIDDEN_ROWS) * BLOCK_SIZE,
+                        BLOCK_SIZE,
+                        BLOCK_SIZE
+                    );
+                    ctx.restore();
+                }
+            });
+        });
+
+        return true;
+    });
+}
+
 /**
  * Main draw function - renders the entire game state
  * @param {HTMLCanvasElement} canvas - The game canvas
@@ -39,6 +106,9 @@ export function draw(canvas, ctx, gameState) {
     if (gridCache) {
         ctx.drawImage(gridCache, 0, 0);
     }
+
+    // Draw piece trails first (behind everything)
+    drawPieceTrails(ctx);
 
     // Draw locked pieces
     const boardData = generateBoard(lockedPieces);
@@ -308,8 +378,9 @@ function createRadialBurst(container, clearedRows) {
  * Creates ripple effects when a piece locks
  * Tetris Effect-inspired tactile feedback
  * @param {Object} piece - The locked piece with x, y, shape
+ * @param {Array} lockedPieces - Already locked pieces to detect contact points
  */
-export function createPieceLockRipple(piece) {
+export function createPieceLockRipple(piece, lockedPieces = []) {
     const container = document.getElementById('line-clear-flash');
     if (!container) return;
 
@@ -338,6 +409,9 @@ export function createPieceLockRipple(piece) {
             }
         }, 400 + (index * 30));
     });
+
+    // Add block merge glows at contact points
+    createBlockMergeGlows(piece, lockedPieces);
 }
 
 /**
@@ -393,6 +467,85 @@ function isExposedCorner(corner, piece, localX, localY) {
     // Simple heuristic: corners at piece boundaries are exposed
     // This is a simplified version - could be enhanced
     return true;
+}
+
+/**
+ * Creates subtle white glows at contact points when blocks merge
+ * Micro-detail for satisfying connection feedback
+ * @param {Object} piece - The newly locked piece
+ * @param {Array} lockedPieces - Already locked pieces
+ */
+function createBlockMergeGlows(piece, lockedPieces) {
+    const container = document.getElementById('line-clear-flash');
+    if (!container || !lockedPieces.length) return;
+
+    // Generate board to check adjacencies
+    const board = generateBoard(lockedPieces);
+    const contactPoints = [];
+
+    // Check each block in the piece for adjacent blocks
+    piece.shape.forEach((row, localY) => {
+        row.forEach((cell, localX) => {
+            if (cell > 0) {
+                const x = piece.x + localX;
+                const y = piece.y + localY;
+
+                // Check all 4 adjacent positions
+                const adjacents = [
+                    { x: x - 1, y: y, side: 'left' },
+                    { x: x + 1, y: y, side: 'right' },
+                    { x: x, y: y - 1, side: 'top' },
+                    { x: x, y: y + 1, side: 'bottom' }
+                ];
+
+                adjacents.forEach(adj => {
+                    // Check if this position has a locked block
+                    if (adj.y >= 0 && adj.y < board.length &&
+                        adj.x >= 0 && adj.x < COLS &&
+                        board[adj.y][adj.x] !== null) {
+
+                        // Calculate glow position at the contact edge
+                        let glowX, glowY;
+
+                        if (adj.side === 'left') {
+                            glowX = x * BLOCK_SIZE;
+                            glowY = y * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                        } else if (adj.side === 'right') {
+                            glowX = (x + 1) * BLOCK_SIZE;
+                            glowY = y * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                        } else if (adj.side === 'top') {
+                            glowX = x * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                            glowY = y * BLOCK_SIZE;
+                        } else { // bottom
+                            glowX = x * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                            glowY = (y + 1) * BLOCK_SIZE;
+                        }
+
+                        contactPoints.push({ x: glowX, y: glowY - (HIDDEN_ROWS * BLOCK_SIZE), side: adj.side });
+                    }
+                });
+            }
+        });
+    });
+
+    // Create glow elements at each contact point
+    contactPoints.forEach((point, index) => {
+        const glow = document.createElement('div');
+        glow.className = 'merge-glow';
+        glow.classList.add(point.side);
+
+        glow.style.left = `${point.x}px`;
+        glow.style.top = `${point.y}px`;
+        glow.style.animationDelay = `${index * 15}ms`;
+
+        container.appendChild(glow);
+
+        setTimeout(() => {
+            if (glow.parentNode === container) {
+                container.removeChild(glow);
+            }
+        }, 120 + (index * 15));
+    });
 }
 
 /**

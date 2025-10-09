@@ -121,9 +121,10 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
  * @param {GameState} gameState - Current game state
  * @param {number} dir - Direction to move (-1 for left, 1 for right)
  * @param {Function} playSoundCallback - Callback to play move sound
+ * @param {Function} addTrailCallback - Callback to add piece trail
  * @returns {boolean} True if move was successful
  */
-export function move(gameState, dir, playSoundCallback) {
+export function move(gameState, dir, playSoundCallback, addTrailCallback) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
 
     if (isValidPosition(
@@ -132,6 +133,9 @@ export function move(gameState, dir, playSoundCallback) {
         gameState.currentPiece.y,
         gameState.lockedPieces
     )) {
+        // Add trail before moving
+        if (addTrailCallback) addTrailCallback(gameState.currentPiece);
+
         gameState.currentPiece.x += dir;
         if (playSoundCallback) playSoundCallback();
         return true;
@@ -144,10 +148,14 @@ export function move(gameState, dir, playSoundCallback) {
  * @param {GameState} gameState - Current game state
  * @param {string} dir - Rotation direction ('right', 'left', or 'flip')
  * @param {Function} playSoundCallback - Callback to play rotate sound
+ * @param {Function} addTrailCallback - Callback to add piece trail
  * @returns {boolean} True if rotation was successful
  */
-export function rotate(gameState, dir = 'right', playSoundCallback) {
+export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCallback) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
+
+    // Add trail before rotating
+    if (addTrailCallback) addTrailCallback(gameState.currentPiece);
 
     const originalShape = gameState.currentPiece.shape;
     let rotatedShape;
