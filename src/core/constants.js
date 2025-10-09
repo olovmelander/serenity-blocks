@@ -136,6 +136,7 @@ export const DEFAULT_SETTINGS = {
     themeLinkedMode: false,
     autoThemeChange: false,
     randomThemeInterval: 60,  // seconds
+    pieceLockRipple: true,
 
     // Control settings
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',

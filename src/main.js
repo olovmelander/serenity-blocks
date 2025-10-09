@@ -373,7 +373,12 @@ class SerenityBlocks {
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
             triggerFlash: (clearedRows) => triggerLineClearFlash(clearedRows),
             triggerBackgroundPulse: (lineCount) => triggerBackgroundPulse(lineCount),
-            onPieceLock: (piece) => createPieceLockRipple(piece, this.gameState.lockedPieces),
+            onPieceLock: (piece) => {
+                const settings = this.settingsManager.get();
+                if (settings.pieceLockRipple) {
+                    createPieceLockRipple(piece, this.gameState.lockedPieces);
+                }
+            },
             updateBackground: (level) => {
                 const settings = this.settingsManager.get();
                 if (settings.backgroundMode === 'Level') {

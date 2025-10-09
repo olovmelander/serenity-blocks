@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
     themeLinkedMode: false,
     autoThemeChange: false,
     randomThemeInterval: 60,
+    pieceLockRipple: true,
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
     keyBindings: {
         moveLeft: 'ArrowLeft',
@@ -353,6 +354,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
                 settingsManager.save();
             });
+        });
+    }
+
+    // Piece lock ripple toggle
+    const pieceLockRippleSelect = document.getElementById('piece-lock-ripple');
+    if (pieceLockRippleSelect) {
+        pieceLockRippleSelect.value = settings.pieceLockRipple ? 'true' : 'false';
+
+        pieceLockRippleSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ pieceLockRipple: enabled });
+            settingsManager.save();
         });
     }
 
