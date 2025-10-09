@@ -62,7 +62,10 @@ export function draw(canvas, ctx, gameState) {
                     y
                 );
             } else if (cell !== null && cell.color === 'C') {
-                // Cleared block (white flash)
+                // Cleared block with alpha transparency for smooth fade effect
+                const alpha = cell.alpha !== undefined ? cell.alpha : 1.0;
+                ctx.save();
+                ctx.globalAlpha = alpha;
                 drawBlock(
                     ctx,
                     x,
@@ -76,6 +79,7 @@ export function draw(canvas, ctx, gameState) {
                     x,
                     y
                 );
+                ctx.restore();
             }
         });
     });
@@ -174,6 +178,130 @@ export function drawNextPieces(nextCanvases, nextPieces) {
             });
         }
     });
+}
+
+/**
+ * Triggers the line clear flash effect on specific rows
+ * Tetris Effect-inspired: particles, prismatic waves, and energy bursts
+ * @param {Array<number>} clearedRows - Array of Y coordinates of cleared rows
+ */
+export function triggerLineClearFlash(clearedRows = []) {
+    const container = document.getElementById('line-clear-flash');
+    if (!container) return;
+
+    // Clear any existing flashes
+    container.innerHTML = '';
+
+    // Create a flash element for each cleared row
+    clearedRows.forEach((rowY, index) => {
+        const flashBar = document.createElement('div');
+        flashBar.className = 'line-flash-bar';
+
+        // Position the flash bar at the specific row
+        const rowHeight = BLOCK_SIZE;
+        const topPosition = (rowY - HIDDEN_ROWS) * rowHeight;
+
+        flashBar.style.top = `${topPosition}px`;
+        flashBar.style.height = `${rowHeight}px`;
+
+        // Stagger animation slightly for multiple lines (Tetris Effect technique)
+        const staggerDelay = index * 20;
+        flashBar.style.animationDelay = `${staggerDelay}ms`;
+
+        container.appendChild(flashBar);
+
+        // Add particle burst effect (Tetris Effect signature)
+        createParticleBurst(container, topPosition, rowHeight, staggerDelay);
+
+        // Trigger animation
+        setTimeout(() => {
+            flashBar.classList.add('active');
+        }, 10 + staggerDelay);
+
+        // Remove after animation completes
+        setTimeout(() => {
+            if (flashBar.parentNode === container) {
+                container.removeChild(flashBar);
+            }
+        }, 600 + staggerDelay);
+    });
+
+    // Add center radial burst for multi-line clears (Tetris Effect style)
+    if (clearedRows.length >= 2) {
+        createRadialBurst(container, clearedRows);
+    }
+}
+
+/**
+ * Creates a particle burst effect from a cleared line
+ * Inspired by Tetris Effect's explosive particle systems
+ */
+function createParticleBurst(container, topPosition, rowHeight, delay) {
+    const particleCount = 12;
+    const centerY = topPosition + rowHeight / 2;
+
+    for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'line-particle';
+
+        // Position at center of line
+        particle.style.top = `${centerY}px`;
+        particle.style.left = `${50}%`;
+
+        // Random angle for particle trajectory
+        const angle = (Math.PI / 3) + (i / particleCount) * (Math.PI / 1.5);
+        const distance = 50 + Math.random() * 50;
+        const endX = Math.cos(angle) * distance;
+        const endY = Math.sin(angle) * distance * (Math.random() > 0.5 ? 1 : -1);
+
+        particle.style.setProperty('--tx', `${endX}px`);
+        particle.style.setProperty('--ty', `${endY}px`);
+
+        // Color variation for prismatic effect
+        const hue = (i / particleCount) * 60 + 180; // Cyan to blue range
+        particle.style.setProperty('--particle-hue', hue);
+
+        particle.style.animationDelay = `${delay}ms`;
+
+        container.appendChild(particle);
+
+        setTimeout(() => {
+            if (particle.parentNode === container) {
+                container.removeChild(particle);
+            }
+        }, 500 + delay);
+    }
+}
+
+/**
+ * Creates a radial energy burst for multi-line clears
+ * Tetris Effect-style expanding ring effect
+ */
+function createRadialBurst(container, clearedRows) {
+    const canvas = document.getElementById('game-canvas');
+    if (!canvas) return;
+
+    // Calculate center point of cleared lines
+    const avgRow = clearedRows.reduce((a, b) => a + b, 0) / clearedRows.length;
+    const centerY = (avgRow - HIDDEN_ROWS) * BLOCK_SIZE + (BLOCK_SIZE / 2);
+
+    const burst = document.createElement('div');
+    burst.className = 'radial-burst';
+    burst.style.top = `${centerY}px`;
+    burst.style.left = '50%';
+
+    // More intense burst for 4-line clears
+    if (clearedRows.length >= 4) {
+        burst.classList.add('intense');
+    }
+
+    container.appendChild(burst);
+
+    setTimeout(() => {
+        if (burst.parentNode === container) {
+            container.removeChild(burst);
+        }
+    }, 600);
 }
 
 /**

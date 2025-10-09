@@ -4650,6 +4650,285 @@ body {
             box-shadow: 0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3), 0 0 90px rgba(139, 92, 246, 0.1);
         }
 
+        /* Line Clear Flash Effect - Container */
+        #line-clear-flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+
+        /* Individual line flash bars */
+        .line-flash-bar {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            pointer-events: none;
+            opacity: 0;
+            transform: scaleX(0.95);
+            transition: opacity 0.05s ease-out, transform 0.05s ease-out;
+        }
+
+        /* Multi-layered flash effect */
+        .line-flash-bar::before,
+        .line-flash-bar::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Main flash layer with gradient */
+        .line-flash-bar::before {
+            background: linear-gradient(
+                to right,
+                transparent 0%,
+                rgba(100, 200, 255, 0.15) 10%,
+                rgba(255, 255, 255, 0.5) 50%,
+                rgba(100, 200, 255, 0.15) 90%,
+                transparent 100%
+            );
+            box-shadow:
+                0 0 20px rgba(100, 200, 255, 0.8),
+                0 0 40px rgba(255, 255, 255, 0.4),
+                inset 0 0 15px rgba(255, 255, 255, 0.3);
+            filter: blur(0.5px);
+        }
+
+        /* Scanline sweep overlay */
+        .line-flash-bar::after {
+            background: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                rgba(255, 255, 255, 0.1) 2px,
+                rgba(255, 255, 255, 0.1) 4px
+            );
+            mix-blend-mode: overlay;
+        }
+
+        .line-flash-bar.active {
+            animation: lineFlashPulse 0.22s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+        }
+
+        .line-flash-bar.active::before {
+            animation: flashGlow 0.22s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+        }
+
+        .line-flash-bar.active::after {
+            animation: scanlineSweep 0.22s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+        }
+
+        @keyframes lineFlashPulse {
+            0% {
+                opacity: 0;
+                transform: scaleX(0.9) scaleY(0.8);
+            }
+            25% {
+                opacity: 1;
+                transform: scaleX(1.03) scaleY(1.2);
+            }
+            60% {
+                opacity: 0.7;
+                transform: scaleX(1.01) scaleY(1.05);
+            }
+            100% {
+                opacity: 0;
+                transform: scaleX(1) scaleY(1);
+            }
+        }
+
+        @keyframes flashGlow {
+            0% {
+                filter: blur(0.5px) brightness(1);
+                box-shadow:
+                    0 0 20px rgba(100, 200, 255, 0.8),
+                    0 0 40px rgba(255, 255, 255, 0.4),
+                    inset 0 0 15px rgba(255, 255, 255, 0.3);
+            }
+            20% {
+                filter: blur(1px) brightness(1.5);
+                box-shadow:
+                    0 0 30px rgba(100, 200, 255, 1),
+                    0 0 60px rgba(255, 255, 255, 0.6),
+                    inset 0 0 20px rgba(255, 255, 255, 0.5),
+                    0 2px 0 rgba(255, 255, 255, 0.8),
+                    0 -2px 0 rgba(100, 200, 255, 0.8);
+            }
+            100% {
+                filter: blur(2px) brightness(0.8);
+                box-shadow:
+                    0 0 10px rgba(100, 200, 255, 0.4),
+                    0 0 20px rgba(255, 255, 255, 0.2);
+            }
+        }
+
+        @keyframes scanlineSweep {
+            0% {
+                opacity: 0;
+                transform: translateX(-100%) skewX(-10deg);
+            }
+            30% {
+                opacity: 0.8;
+                transform: translateX(0%) skewX(-5deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(100%) skewX(0deg);
+            }
+        }
+
+        /* Tetris Effect-inspired Particle System */
+        .line-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            pointer-events: none;
+            background: radial-gradient(
+                circle,
+                hsla(var(--particle-hue), 100%, 80%, 1) 0%,
+                hsla(var(--particle-hue), 100%, 60%, 0.6) 50%,
+                transparent 100%
+            );
+            box-shadow:
+                0 0 6px hsla(var(--particle-hue), 100%, 70%, 0.8),
+                0 0 12px hsla(var(--particle-hue), 100%, 60%, 0.4);
+            animation: particleBurst 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            transform-origin: center;
+        }
+
+        @keyframes particleBurst {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(
+                    calc(-50% + var(--tx)),
+                    calc(-50% + var(--ty))
+                ) scale(0.3);
+            }
+        }
+
+        /* Radial Energy Burst */
+        .radial-burst {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .radial-burst::before,
+        .radial-burst::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Outer expanding ring */
+        .radial-burst::before {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(
+                circle,
+                transparent 30%,
+                rgba(100, 200, 255, 0.4) 40%,
+                rgba(255, 255, 255, 0.6) 50%,
+                rgba(100, 200, 255, 0.4) 60%,
+                transparent 70%
+            );
+            animation: burstExpand 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        /* Inner glow pulse */
+        .radial-burst::after {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(
+                circle,
+                rgba(255, 255, 255, 0.9) 0%,
+                rgba(100, 200, 255, 0.6) 30%,
+                transparent 60%
+            );
+            animation: burstPulse 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        /* Intense burst for Tetris (4-line clear) */
+        .radial-burst.intense::before {
+            background: radial-gradient(
+                circle,
+                transparent 20%,
+                rgba(255, 100, 255, 0.5) 30%,
+                rgba(100, 200, 255, 0.6) 40%,
+                rgba(255, 255, 255, 0.8) 50%,
+                rgba(100, 200, 255, 0.6) 60%,
+                rgba(255, 100, 255, 0.5) 70%,
+                transparent 80%
+            );
+            animation: burstExpandIntense 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        .radial-burst.intense::after {
+            background: radial-gradient(
+                circle,
+                rgba(255, 255, 255, 1) 0%,
+                rgba(255, 100, 255, 0.8) 20%,
+                rgba(100, 200, 255, 0.7) 40%,
+                transparent 70%
+            );
+        }
+
+        @keyframes burstExpand {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(15);
+            }
+        }
+
+        @keyframes burstExpandIntense {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.5) rotate(0deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(20) rotate(180deg);
+            }
+        }
+
+        @keyframes burstPulse {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            50% {
+                opacity: 0.8;
+                transform: translate(-50%, -50%) scale(3);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(6);
+            }
+        }
+
         .sidebar { display: flex; flex-direction: column; gap: 20px; }
         .panel {
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(10px); border: 2px solid #8b5cf6;
