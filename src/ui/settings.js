@@ -9,6 +9,141 @@ import { DEFAULT_SETTINGS } from '../core/constants.js';
  * Default settings configuration
  * @type {Object}
  */
+const DEFAULT_RIPPLE_COLOR = DEFAULT_SETTINGS.pieceLockRippleColor || '#64c8ff';
+function normalizeHexColor(value) {
+    if (!value) return null;
+
+    let hex = value.trim().toLowerCase();
+
+    if (!hex.startsWith('#')) {
+        hex = `#${hex}`;
+    }
+
+    if (hex.length === 4) {
+        hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+    }
+
+    if (!/^#[0-9a-f]{6}$/.test(hex)) {
+        return null;
+    }
+
+    return hex;
+}
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function hexToRgb(hex) {
+    const normalized = normalizeHexColor(hex);
+    if (!normalized) return null;
+
+    const r = parseInt(normalized.slice(1, 3), 16);
+    const g = parseInt(normalized.slice(3, 5), 16);
+    const b = parseInt(normalized.slice(5, 7), 16);
+
+    if ([r, g, b].some((component) => Number.isNaN(component))) {
+        return null;
+    }
+
+    return { r, g, b };
+}
+
+function rgbToHex(r, g, b) {
+    const toHex = (value) => {
+        const clamped = clamp(Math.round(value), 0, 255);
+        const hex = clamped.toString(16).padStart(2, '0');
+        return hex;
+    };
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function rgbToHsl(r, g, b) {
+    const rNorm = r / 255;
+    const gNorm = g / 255;
+    const bNorm = b / 255;
+
+    const max = Math.max(rNorm, gNorm, bNorm);
+    const min = Math.min(rNorm, gNorm, bNorm);
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+
+    if (max !== min) {
+        const delta = max - min;
+        s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+
+        switch (max) {
+        case rNorm:
+            h = ((gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0));
+            break;
+        case gNorm:
+            h = ((bNorm - rNorm) / delta + 2);
+            break;
+        case bNorm:
+            h = ((rNorm - gNorm) / delta + 4);
+            break;
+        default:
+            break;
+        }
+
+        h /= 6;
+    }
+
+    return {
+        h: Math.round(h * 360),
+        s: Math.round(s * 100),
+        l: Math.round(l * 100)
+    };
+}
+
+function hexToHsl(hex) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) {
+        return { h: 200, s: 70, l: 60 };
+    }
+    return rgbToHsl(rgb.r, rgb.g, rgb.b);
+}
+
+function hslToRgb(h, s, l) {
+    const hue = clamp(h, 0, 360) / 360;
+    const sat = clamp(s, 0, 100) / 100;
+    const light = clamp(l, 0, 100) / 100;
+
+    if (sat === 0) {
+        const value = Math.round(light * 255);
+        return { r: value, g: value, b: value };
+    }
+
+    const hueToRgb = (p, q, t) => {
+        let temp = t;
+        if (temp < 0) temp += 1;
+        if (temp > 1) temp -= 1;
+        if (temp < 1 / 6) return p + (q - p) * 6 * temp;
+        if (temp < 1 / 2) return q;
+        if (temp < 2 / 3) return p + (q - p) * (2 / 3 - temp) * 6;
+        return p;
+    };
+
+    const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+    const p = 2 * light - q;
+
+    const r = hueToRgb(p, q, hue + 1 / 3);
+    const g = hueToRgb(p, q, hue);
+    const b = hueToRgb(p, q, hue - 1 / 3);
+
+    return {
+        r: Math.round(r * 255),
+        g: Math.round(g * 255),
+        b: Math.round(b * 255)
+    };
+}
+
+function hslToHex(h, s, l) {
+    const { r, g, b } = hslToRgb(h, s, l);
+    return rgbToHex(r, g, b);
+}
+
 const DEFAULT_CONFIG = {
     dasDelay: 120,
     dasInterval: 40,
@@ -22,6 +157,7 @@ const DEFAULT_CONFIG = {
     autoThemeChange: false,
     randomThemeInterval: 60,
     pieceLockRipple: true,
+    pieceLockRippleColor: DEFAULT_RIPPLE_COLOR,
     comboPopupEffect: true,
     lineClearEffects: true,
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
@@ -378,17 +514,251 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-    // Piece lock ripple toggle
+    // Piece lock ripple toggle & custom color picker
     const pieceLockRippleSelect = document.getElementById('piece-lock-ripple');
+    const rippleColorInput = document.getElementById('piece-lock-ripple-color');
+    const rippleColorResetButton = document.getElementById('piece-lock-ripple-reset');
+    const rippleColorTrigger = document.getElementById('piece-lock-ripple-trigger');
+    const rippleColorPreview = document.getElementById('piece-lock-ripple-preview');
+    const ripplePickerWrapper = rippleColorTrigger?.closest('.color-picker-wrapper');
+    const ripplePanel = document.getElementById('piece-lock-ripple-panel');
+    const ripplePanelPreview = document.getElementById('piece-lock-ripple-panel-preview');
+    const ripplePanelHex = document.getElementById('piece-lock-ripple-hex');
+    const rippleHueSlider = document.getElementById('piece-lock-hue');
+    const rippleSaturationSlider = document.getElementById('piece-lock-saturation');
+    const rippleLightnessSlider = document.getElementById('piece-lock-lightness');
+    const ripplePanelClose = document.getElementById('piece-lock-ripple-close');
+    const ripplePanelDone = document.getElementById('piece-lock-ripple-done');
+
+    const rippleColorState = {
+        hex: normalizeHexColor(settings.pieceLockRippleColor) || DEFAULT_RIPPLE_COLOR,
+        h: 200,
+        s: 70,
+        l: 60
+    };
+
+    let isRipplePanelOpen = false;
+
+    const updateSliderBackgrounds = () => {
+        if (rippleHueSlider) {
+            rippleHueSlider.style.backgroundImage = 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)';
+        }
+        if (rippleSaturationSlider) {
+            const desaturated = hslToHex(rippleColorState.h, 0, rippleColorState.l);
+            const saturated = hslToHex(rippleColorState.h, 100, rippleColorState.l);
+            rippleSaturationSlider.style.backgroundImage = `linear-gradient(90deg, ${desaturated}, ${saturated})`;
+        }
+        if (rippleLightnessSlider) {
+            const dark = hslToHex(rippleColorState.h, rippleColorState.s, 0);
+            const mid = hslToHex(rippleColorState.h, rippleColorState.s, 50);
+            const light = hslToHex(rippleColorState.h, rippleColorState.s, 100);
+            rippleLightnessSlider.style.backgroundImage = `linear-gradient(90deg, ${dark}, ${mid}, ${light})`;
+        }
+    };
+
+    const updateRipplePreviewUI = () => {
+        if (rippleColorPreview) {
+            rippleColorPreview.style.setProperty('--preview-color', rippleColorState.hex);
+        }
+        if (ripplePanelPreview) {
+            ripplePanelPreview.style.setProperty('--panel-preview-color', rippleColorState.hex);
+        }
+        if (ripplePanelHex) {
+            ripplePanelHex.textContent = rippleColorState.hex.toUpperCase();
+        }
+        if (rippleColorTrigger) {
+            rippleColorTrigger.title = `Ripple color: ${rippleColorState.hex.toUpperCase()}`;
+        }
+        if (rippleColorInput) {
+            rippleColorInput.value = rippleColorState.hex;
+        }
+    };
+
+    const applyRippleColorState = ({ persist = true, save = false } = {}) => {
+        rippleColorState.hex = hslToHex(rippleColorState.h, rippleColorState.s, rippleColorState.l);
+        updateRipplePreviewUI();
+        updateSliderBackgrounds();
+
+        if (persist) {
+            settingsManager.update({ pieceLockRippleColor: rippleColorState.hex });
+            if (save) {
+                settingsManager.save();
+            }
+        }
+    };
+
+    const setRippleStateFromHex = (hex, { persist = false, updateSliders = true, save = persist } = {}) => {
+        const normalized = normalizeHexColor(hex) || DEFAULT_RIPPLE_COLOR;
+        const { h, s, l } = hexToHsl(normalized);
+        rippleColorState.hex = normalized;
+        rippleColorState.h = h;
+        rippleColorState.s = s;
+        rippleColorState.l = l;
+
+        if (updateSliders) {
+            if (rippleHueSlider) rippleHueSlider.value = h;
+            if (rippleSaturationSlider) rippleSaturationSlider.value = s;
+            if (rippleLightnessSlider) rippleLightnessSlider.value = l;
+        }
+
+        updateRipplePreviewUI();
+        updateSliderBackgrounds();
+
+        if (persist) {
+            settingsManager.update({ pieceLockRippleColor: normalized });
+            if (save) {
+                settingsManager.save();
+            }
+        }
+    };
+
+    const handleSliderInput = () => {
+        if (rippleHueSlider) {
+            rippleColorState.h = parseInt(rippleHueSlider.value, 10) || 0;
+        }
+        if (rippleSaturationSlider) {
+            rippleColorState.s = parseInt(rippleSaturationSlider.value, 10) || 0;
+        }
+        if (rippleLightnessSlider) {
+            rippleColorState.l = parseInt(rippleLightnessSlider.value, 10) || 0;
+        }
+        applyRippleColorState({ persist: true, save: false });
+    };
+
+    const handleSliderChange = () => {
+        applyRippleColorState({ persist: true, save: true });
+    };
+
+    const closeRipplePanel = () => {
+        if (!isRipplePanelOpen) return;
+        isRipplePanelOpen = false;
+        rippleColorTrigger?.setAttribute('aria-expanded', 'false');
+        if (ripplePanel) {
+            ripplePanel.hidden = true;
+        }
+        document.removeEventListener('mousedown', handleDocumentMouseDown);
+        document.removeEventListener('keydown', handleKeydown);
+        settingsManager.save();
+        ripplePickerWrapper?.classList.remove('panel-open');
+        if (rippleColorTrigger && !rippleColorTrigger.disabled) {
+            rippleColorTrigger.focus();
+        }
+    };
+
+    const openRipplePanel = () => {
+        if (!ripplePanel || !rippleColorTrigger || isRipplePanelOpen || rippleColorTrigger.disabled) {
+            return;
+        }
+        setRippleStateFromHex(rippleColorState.hex, { persist: false, updateSliders: true });
+        ripplePanel.hidden = false;
+        rippleColorTrigger.setAttribute('aria-expanded', 'true');
+        isRipplePanelOpen = true;
+        ripplePickerWrapper?.classList.add('panel-open');
+        ripplePanel.focus({ preventScroll: true });
+        document.addEventListener('mousedown', handleDocumentMouseDown);
+        document.addEventListener('keydown', handleKeydown);
+        rippleHueSlider?.focus();
+    };
+
+    const handleDocumentMouseDown = (event) => {
+        if (!isRipplePanelOpen) return;
+        if (!ripplePanel?.contains(event.target) && !rippleColorTrigger?.contains(event.target)) {
+            closeRipplePanel();
+        }
+    };
+
+    const handleKeydown = (event) => {
+        if (event.key === 'Escape') {
+            closeRipplePanel();
+        }
+    };
+
+    const setRippleControlsEnabled = (enabled) => {
+        if (rippleColorInput) {
+            rippleColorInput.disabled = !enabled;
+        }
+        if (rippleColorResetButton) {
+            rippleColorResetButton.disabled = !enabled;
+        }
+        if (rippleColorTrigger) {
+            rippleColorTrigger.disabled = !enabled;
+            rippleColorTrigger.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+            rippleColorTrigger.setAttribute('aria-expanded', 'false');
+        }
+        if (ripplePickerWrapper) {
+            ripplePickerWrapper.classList.toggle('disabled', !enabled);
+        }
+        if (!enabled) {
+            closeRipplePanel();
+        }
+    };
+
     if (pieceLockRippleSelect) {
         pieceLockRippleSelect.value = settings.pieceLockRipple ? 'true' : 'false';
+        setRippleControlsEnabled(settings.pieceLockRipple);
 
         pieceLockRippleSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ pieceLockRipple: enabled });
+            setRippleControlsEnabled(enabled);
             settingsManager.save();
         });
     }
+
+    if (rippleColorTrigger) {
+        rippleColorTrigger.addEventListener('click', () => {
+            if (isRipplePanelOpen) {
+                closeRipplePanel();
+            } else {
+                openRipplePanel();
+            }
+        });
+    }
+
+    if (ripplePanelClose) {
+        ripplePanelClose.addEventListener('click', () => {
+            closeRipplePanel();
+        });
+    }
+
+    if (ripplePanelDone) {
+        ripplePanelDone.addEventListener('click', () => {
+            closeRipplePanel();
+        });
+    }
+
+    if (rippleColorResetButton) {
+        rippleColorResetButton.addEventListener('click', () => {
+            setRippleStateFromHex(DEFAULT_RIPPLE_COLOR, { persist: true, updateSliders: true });
+        });
+    }
+
+    if (rippleColorInput) {
+        rippleColorInput.value = rippleColorState.hex;
+        rippleColorInput.addEventListener('input', (e) => {
+            setRippleStateFromHex(e.target.value, { persist: true, updateSliders: true });
+        });
+        rippleColorInput.addEventListener('change', (e) => {
+            setRippleStateFromHex(e.target.value, { persist: true, updateSliders: true });
+        });
+    }
+
+    if (rippleHueSlider) {
+        rippleHueSlider.addEventListener('input', handleSliderInput);
+        rippleHueSlider.addEventListener('change', handleSliderChange);
+    }
+
+    if (rippleSaturationSlider) {
+        rippleSaturationSlider.addEventListener('input', handleSliderInput);
+        rippleSaturationSlider.addEventListener('change', handleSliderChange);
+    }
+
+    if (rippleLightnessSlider) {
+        rippleLightnessSlider.addEventListener('input', handleSliderInput);
+        rippleLightnessSlider.addEventListener('change', handleSliderChange);
+    }
+
+    setRippleStateFromHex(rippleColorState.hex, { persist: false, updateSliders: true });
 
     // Combo popup effect toggle
     const comboPopupSelect = document.getElementById('combo-popup-effect');

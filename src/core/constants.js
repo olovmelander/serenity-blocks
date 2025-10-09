@@ -137,6 +137,7 @@ export const DEFAULT_SETTINGS = {
     autoThemeChange: false,
     randomThemeInterval: 60,  // seconds
     pieceLockRipple: true,
+    pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
     lineClearEffects: true,
 

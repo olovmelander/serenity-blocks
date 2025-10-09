@@ -8,7 +8,7 @@
  */
 
 // Core imports
-import { COLS, ROWS, BLOCK_SIZE, setBlockSize } from './core/constants.js';
+import { COLS, ROWS, BLOCK_SIZE, setBlockSize, DEFAULT_SETTINGS } from './core/constants.js';
 import { GameState, gameLoop as coreGameLoop, startGame as coreStartGame, spawnPiece, fillBag, move as coreMove, rotate as coreRotate, hardDrop as coreHardDrop, softDrop as coreSoftDrop } from './core/game.js';
 import { initPieceSystem } from './core/pieces.js';
 
@@ -31,6 +31,54 @@ import { ThemeManager } from './themes/theme-manager.js';
 
 // Utility imports
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
+
+const RIPPLE_BORDER_ALPHA = 0.8;
+const RIPPLE_SHADOW_ALPHA = 0.6;
+
+function hexToRgb(hex) {
+    if (!hex) {
+        return null;
+    }
+
+    let value = hex.trim();
+    if (value.startsWith('#')) {
+        value = value.slice(1);
+    }
+
+    if (value.length === 3) {
+        value = value.split('').map((char) => char + char).join('');
+    }
+
+    if (value.length !== 6) {
+        return null;
+    }
+
+    const r = parseInt(value.substring(0, 2), 16);
+    const g = parseInt(value.substring(2, 4), 16);
+    const b = parseInt(value.substring(4, 6), 16);
+
+    if ([r, g, b].some((component) => Number.isNaN(component))) {
+        return null;
+    }
+
+    return { r, g, b };
+}
+
+function setPieceLockRippleCss(colorHex) {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    const fallback = DEFAULT_SETTINGS.pieceLockRippleColor || '#64c8ff';
+    const rgb = hexToRgb(colorHex) || hexToRgb(fallback);
+    if (!rgb) {
+        return;
+    }
+
+    const root = document.documentElement;
+    root.style.setProperty('--lock-ripple-border-color', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_BORDER_ALPHA})`);
+    root.style.setProperty('--lock-ripple-shadow-color', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_SHADOW_ALPHA})`);
+}
 
 /**
  * Main application class that orchestrates all systems
@@ -165,6 +213,7 @@ class SerenityBlocks {
         // Settings
         this.settingsManager = new SettingsManager();
         this.settingsManager.load(); // Load from localStorage
+        setPieceLockRippleCss(this.settingsManager.get().pieceLockRippleColor);
 
         // Modal manager
         this.modalManager = new ModalManager(
@@ -551,6 +600,10 @@ class SerenityBlocks {
         }
         if (changes.soundSet) {
             this.soundManager.sfxPlayer.setSoundSet(settings.soundSet);
+        }
+
+        if (changes.pieceLockRippleColor) {
+            setPieceLockRippleCss(settings.pieceLockRippleColor);
         }
     }
 
