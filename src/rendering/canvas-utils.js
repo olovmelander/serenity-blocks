@@ -219,17 +219,43 @@ export function drawBlock(
  * @param {Object} piece - Current piece
  * @param {number} ghostY - Y position where ghost should be drawn
  */
+/**
+ * Calculates pulsing opacity for ghost piece (Tetris Effect-inspired)
+ * @returns {number} Opacity value between 0.2 and 0.35
+ */
+function getGhostPulseOpacity() {
+    // 2-second cycle for gentle breathing effect
+    const time = Date.now() / 1000;
+    const cycle = (Math.sin(time * Math.PI) + 1) / 2; // 0 to 1
+    return 0.2 + (cycle * 0.15); // 0.2 to 0.35
+}
+
 export function drawGhostPiece(ctx, piece, ghostY) {
+    const opacity = getGhostPulseOpacity();
+
     piece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
             if (cell > 0 && ghostY + y >= HIDDEN_ROWS) {
-                drawBlock(
-                    ctx,
-                    piece.x + x,
-                    ghostY + y - HIDDEN_ROWS,
-                    'rgba(255,255,255,0.2)',
-                    null,
-                    true
+                const blockX = piece.x + x;
+                const blockY = ghostY + y - HIDDEN_ROWS;
+
+                // Draw main ghost block with pulsing opacity
+                ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+                ctx.fillRect(
+                    blockX * BLOCK_SIZE,
+                    blockY * BLOCK_SIZE,
+                    BLOCK_SIZE,
+                    BLOCK_SIZE
+                );
+
+                // Add subtle cyan glow on edges for Tetris Effect feel
+                ctx.strokeStyle = `rgba(100, 200, 255, ${opacity * 0.6})`;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(
+                    blockX * BLOCK_SIZE,
+                    blockY * BLOCK_SIZE,
+                    BLOCK_SIZE,
+                    BLOCK_SIZE
                 );
             }
         });

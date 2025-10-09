@@ -14,7 +14,7 @@ import { initPieceSystem } from './core/pieces.js';
 
 // Rendering imports
 import { generateGridCache, drawBlock, drawGhostPiece } from './rendering/canvas-utils.js';
-import { draw, updateStats, drawNextPieces, triggerLineClearFlash } from './rendering/draw.js';
+import { draw, updateStats, drawNextPieces, triggerLineClearFlash, createPieceLockRipple, triggerBackgroundPulse } from './rendering/draw.js';
 import { WebGLRenderer } from './rendering/renderer.js';
 
 // UI imports
@@ -372,6 +372,8 @@ class SerenityBlocks {
             playLineClear: () => this.soundManager.sfxPlayer.playLineClear(),
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
             triggerFlash: (clearedRows) => triggerLineClearFlash(clearedRows),
+            triggerBackgroundPulse: (lineCount) => triggerBackgroundPulse(lineCount),
+            onPieceLock: (piece) => createPieceLockRipple(piece),
             updateBackground: (level) => {
                 const settings = this.settingsManager.get();
                 if (settings.backgroundMode === 'Level') {

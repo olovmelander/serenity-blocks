@@ -256,6 +256,7 @@ export async function processPhysics(gameState, callbacks) {
         if (callbacks.playLineClear) callbacks.playLineClear();
         if (callbacks.onScoreAdd) callbacks.onScoreAdd(points);
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
+        if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
 
         // --- Enhanced Visual Feedback with Smooth Fade Animation ---
         // Multi-stage flash effect for smoother, faster transition

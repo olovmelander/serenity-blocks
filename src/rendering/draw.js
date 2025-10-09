@@ -305,6 +305,136 @@ function createRadialBurst(container, clearedRows) {
 }
 
 /**
+ * Creates ripple effects when a piece locks
+ * Tetris Effect-inspired tactile feedback
+ * @param {Object} piece - The locked piece with x, y, shape
+ */
+export function createPieceLockRipple(piece) {
+    const container = document.getElementById('line-clear-flash');
+    if (!container) return;
+
+    // Find the corner positions of the piece
+    const corners = findPieceCorners(piece);
+
+    corners.forEach((corner, index) => {
+        const ripple = document.createElement('div');
+        ripple.className = 'lock-ripple';
+
+        // Position at corner
+        const x = (corner.x * BLOCK_SIZE) + (BLOCK_SIZE / 2);
+        const y = ((corner.y - HIDDEN_ROWS) * BLOCK_SIZE) + (BLOCK_SIZE / 2);
+
+        ripple.style.left = `${x}px`;
+        ripple.style.top = `${y}px`;
+
+        // Slight delay stagger for multiple corners
+        ripple.style.animationDelay = `${index * 30}ms`;
+
+        container.appendChild(ripple);
+
+        setTimeout(() => {
+            if (ripple.parentNode === container) {
+                container.removeChild(ripple);
+            }
+        }, 400 + (index * 30));
+    });
+}
+
+/**
+ * Finds corner positions of a piece for ripple effects
+ * @param {Object} piece - Piece with x, y, shape
+ * @returns {Array} Array of {x, y} corner positions
+ */
+function findPieceCorners(piece) {
+    const corners = [];
+    const visited = new Set();
+
+    piece.shape.forEach((row, localY) => {
+        row.forEach((cell, localX) => {
+            if (cell > 0) {
+                const x = piece.x + localX;
+                const y = piece.y + localY;
+
+                // Check all 4 corners of this block
+                const blockCorners = [
+                    { x: x, y: y },           // Top-left
+                    { x: x + 1, y: y },       // Top-right
+                    { x: x, y: y + 1 },       // Bottom-left
+                    { x: x + 1, y: y + 1 }    // Bottom-right
+                ];
+
+                blockCorners.forEach(corner => {
+                    const key = `${corner.x},${corner.y}`;
+                    if (!visited.has(key)) {
+                        // Check if this is an outer corner (exposed to empty space)
+                        const isOuterCorner = isExposedCorner(corner, piece, localX, localY);
+                        if (isOuterCorner) {
+                            corners.push(corner);
+                            visited.add(key);
+                        }
+                    }
+                });
+            }
+        });
+    });
+
+    return corners;
+}
+
+/**
+ * Checks if a corner is exposed to empty space
+ * @param {Object} corner - Corner position {x, y}
+ * @param {Object} piece - The piece
+ * @param {number} localX - Local X in piece
+ * @param {number} localY - Local Y in piece
+ * @returns {boolean} True if corner is exposed
+ */
+function isExposedCorner(corner, piece, localX, localY) {
+    // Simple heuristic: corners at piece boundaries are exposed
+    // This is a simplified version - could be enhanced
+    return true;
+}
+
+/**
+ * Triggers a subtle background pulse on line clear
+ * Tetris Effect-inspired ambient reaction
+ * @param {number} lineCount - Number of lines cleared (affects intensity)
+ */
+export function triggerBackgroundPulse(lineCount = 1) {
+    const backgroundCanvas = document.getElementById('background-canvas');
+    const themeContainers = document.querySelectorAll('.theme-container.active');
+
+    if (!backgroundCanvas && themeContainers.length === 0) return;
+
+    // Create pulse overlay
+    const pulse = document.createElement('div');
+    pulse.className = 'background-pulse';
+
+    // Adjust intensity based on line count
+    if (lineCount >= 4) {
+        pulse.classList.add('intense'); // Tetris
+    } else if (lineCount >= 3) {
+        pulse.classList.add('strong'); // Triple
+    } else if (lineCount >= 2) {
+        pulse.classList.add('medium'); // Double
+    }
+
+    document.body.appendChild(pulse);
+
+    // Trigger animation
+    setTimeout(() => {
+        pulse.classList.add('active');
+    }, 10);
+
+    // Remove after animation
+    setTimeout(() => {
+        if (pulse.parentNode === document.body) {
+            document.body.removeChild(pulse);
+        }
+    }, 800);
+}
+
+/**
  * Shows a score popup notification
  * @param {number} points - Points to display
  */

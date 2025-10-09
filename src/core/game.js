@@ -249,7 +249,15 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
 export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece) return;
 
+    // Store piece reference before nulling for ripple effect
+    const lockedPiece = gameState.currentPiece;
+
     if (playDropCallback) playDropCallback();
+
+    // Trigger lock ripple effect
+    if (physicsCallbacks && physicsCallbacks.onPieceLock) {
+        physicsCallbacks.onPieceLock(lockedPiece);
+    }
 
     // Add piece to locked pieces with unique ID
     gameState.lockedPieces.push({
