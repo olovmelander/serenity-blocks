@@ -46,62 +46,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         }
 
         createHud() {
-            const margin = 12;
-            const panelWidth = 140;
-            const panelHeight = 120;
-
-            const background = this.add.graphics();
-            background.fillStyle(0x000000, 0.35);
-            background.fillRoundedRect(margin, margin, panelWidth, panelHeight, 12);
-            background.lineStyle(2, 0x8b5cf6, 0.35);
-            background.strokeRoundedRect(margin, margin, panelWidth, panelHeight, 12);
-            background.setDepth(40);
-
-            const labelStyle = {
-                fontFamily: 'Orbitron',
-                fontSize: '12px',
-                color: '#a5b4fc',
-            };
-
-            const valueStyle = {
-                fontFamily: 'Space Mono',
-                fontSize: '20px',
-                color: '#ffffff',
-            };
-
-            const scoreLabel = this.add
-                .text(margin + 12, margin + 10, 'SCORE', labelStyle)
-                .setDepth(41);
-            const scoreValue = this.add
-                .text(margin + 12, scoreLabel.y + scoreLabel.height + 2, '0', valueStyle)
-                .setDepth(41);
-
-            const levelLabel = this.add
-                .text(margin + 12, scoreValue.y + scoreValue.height + 10, 'LEVEL', labelStyle)
-                .setDepth(41);
-            const levelValue = this.add
-                .text(margin + 12, levelLabel.y + levelLabel.height + 2, '1', valueStyle)
-                .setDepth(41);
-
-            const linesLabel = this.add
-                .text(margin + 12, levelValue.y + levelValue.height + 10, 'LINES', labelStyle)
-                .setDepth(41);
-            const linesValue = this.add
-                .text(margin + 12, linesLabel.y + linesLabel.height + 2, '0', valueStyle)
-                .setDepth(41);
-
-            this.hudElements = {
-                background,
-                scoreValue,
-                levelValue,
-                linesValue,
-            };
+            // This is now handled by the main HTML/CSS UI
+            this.hudElements = null;
         }
 
         createNextQueuePanel() {
             const margin = 12;
-            const panelWidth = this.blockSize * 4 + margin * 2;
-            const x = this.cols * this.blockSize - panelWidth;
+            const x = margin;
             const y = margin;
 
             this.nextQueuePanel = new NextQueuePanel(this, {
@@ -124,13 +75,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.configureCamera();
         }
 
-        updateHud(gameState) {
-            if (!this.hudElements || !gameState) return;
-
-            const { scoreValue, levelValue, linesValue } = this.hudElements;
-            scoreValue.setText(gameState.score.toLocaleString());
-            levelValue.setText(String(gameState.level));
-            linesValue.setText(String(gameState.lines));
+        updateHud() {
+            // This is now handled by the main HTML/CSS UI
         }
 
         updateStats(gameState) {
@@ -167,7 +113,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             this.applyDefaultViewport();
 
-            this.createHud();
             this.createNextQueuePanel();
 
             // Draw initial grid background
