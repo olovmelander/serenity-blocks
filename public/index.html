@@ -6,6 +6,7 @@
     <title>Serenity Blocks</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/next-queue.css">
 </head>
 <body>
     <svg width="0" height="0" style="position:absolute">
@@ -435,13 +436,7 @@
             <button id="settings-btn" class="action-btn">⚙️</button>
         </div>
         <div class="game-area">
-            <div class="next-pieces-container">
-                <div class="next-piece-box main"><span class="next-piece-label">Next</span><canvas id="next-0" width="60" height="50"></canvas></div>
-                <div class="next-piece-box"><canvas id="next-1" width="50" height="40"></canvas></div>
-                <div class="next-piece-box"><canvas id="next-2" width="50" height="40"></canvas></div>
-                <div class="next-piece-box"><canvas id="next-3" width="50" height="40"></canvas></div>
-                <div class="next-piece-box"><canvas id="next-4" width="50" height="40"></canvas></div>
-            </div>
+            <div id="next-queue-container" class="next-queue-container"></div>
             <div style="position: relative;">
                 <div id="phaser-game-container"></div>
                 <canvas id="game-canvas" style="display: none;"></canvas>

@@ -1,0 +1,33 @@
+.next-queue-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+}
+
+.next-queue-piece {
+    border-radius: 8px;
+    padding: 5px;
+}
+
+.next-queue-piece.highlight {
+    border: 2px solid #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
+
+.next-queue-piece canvas {
+    display: block;
+}
+
+.next-queue-label {
+    font-size: 14px;
+    color: #a78bfa;
+    text-transform: uppercase;
+    font-weight: bold;
+    margin-right: 10px;
+}

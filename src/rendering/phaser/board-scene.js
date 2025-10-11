@@ -7,7 +7,6 @@ import {
     COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
 } from '../../core/constants.js';
 import { ensureCircleTexture } from './utils/index.js';
-import { NextQueuePanel } from './ui/index.js';
 import { createBaseBoardScene } from './base-board-scene.js';
 
 const LINE_CLEAR_PARTICLE_KEY = 'line-clear-particle';
@@ -41,7 +40,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.activeParticleSystems = new Set();
             this.lineClearParticleKey = LINE_CLEAR_PARTICLE_KEY;
             this.lastImpactIntensity = 0;
-            this.nextQueuePanel = null;
             this.hudElements = null;
         }
 
@@ -50,29 +48,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.hudElements = null;
         }
 
-        createNextQueuePanel() {
-            const queueHeight = 80;
-            const gameWidth = this.scale.gameSize?.width ?? 0;
-            const x = (gameWidth - 300) / 2;
-            const y = 10;
-
-            this.nextQueuePanel = new NextQueuePanel(this, {
-                x,
-                y,
-                blockSize: 16,
-                maxVisible: 3,
-                layout: 'horizontal',
-                depth: 45,
-            });
-        }
-
         applyDefaultViewport() {
             const boardWidth = this.cols * this.blockSize;
             const boardHeight = this.rows * this.blockSize;
             const gameWidth = this.scale.gameSize?.width ?? boardWidth;
             const gameHeight = this.scale.gameSize?.height ?? boardHeight;
 
-            const topOffset = 80;
+            const topOffset = 100; // Adjust this value to make space for the next queue
             const availableHeight = gameHeight - topOffset;
             const scale = Math.min(
                 (gameWidth * 0.9) / boardWidth,
@@ -99,12 +81,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.updateHud(gameState);
         }
 
-        updateNextQueue(nextPieces) {
-            if (this.nextQueuePanel) {
-                this.nextQueuePanel.setPieces(nextPieces);
-            }
-        }
-
         /**
          * Phaser preload - load assets if needed
          */
@@ -128,8 +104,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             console.log('[BoardScene] Creating scene...');
 
             this.applyDefaultViewport();
-
-            this.createNextQueuePanel();
 
             // Draw initial grid background
             this.drawGrid();
@@ -320,9 +294,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             super.syncFromGameState(gameState);
             this.gameState = gameState;
             this.updateHud(gameState);
-            if (gameState?.nextPieces) {
-                this.updateNextQueue(gameState.nextPieces);
-            }
         }
 
         /**
@@ -344,8 +315,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.effectsGraphics?.destroy();
             this.activeParticleSystems?.forEach((system) => system.destroy());
             this.activeParticleSystems?.clear();
-            this.nextQueuePanel?.destroy();
-            this.nextQueuePanel = null;
             this.hudElements = null;
         }
     };

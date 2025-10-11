@@ -36,13 +36,13 @@ import { generateGridCache, drawBlock, drawGhostPiece } from './rendering/canvas
 import {
     draw,
     updateStats,
-    drawNextPieces,
     triggerLineClearFlash,
     createPieceLockRipple,
     triggerBackgroundPulse,
     addPieceTrail,
     showComboPopup,
 } from './rendering/draw.js';
+import { updateNextQueue } from './ui/next-queue-ui.js';
 import { WebGLRenderer } from './rendering/renderer.js';
 import { createBoardScene } from './rendering/phaser/board-scene.js';
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
@@ -392,9 +392,8 @@ class SerenityBlocks {
     refreshNextQueue() {
         if (this.boardScene && typeof this.boardScene.updateNextQueue === 'function') {
             this.boardScene.updateNextQueue(this.gameState.nextPieces);
-        } else {
-            drawNextPieces(this.nextCanvases, this.gameState.nextPieces);
         }
+        updateNextQueue(this.gameState.nextPieces);
     }
 
     applyEffectQuality(level) {
