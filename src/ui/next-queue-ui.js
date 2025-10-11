@@ -49,7 +49,7 @@ export function updateNextQueue(nextPieces) {
     nextLabel.textContent = 'NEXT';
     queueContainer.appendChild(nextLabel);
 
-    nextPieces.slice(0, 5).forEach((pieceKey, index) => {
+    nextPieces.slice(0, 3).forEach((pieceKey, index) => {
         const pieceContainer = document.createElement('div');
         pieceContainer.className = 'next-queue-piece';
         if (index === 0) {
