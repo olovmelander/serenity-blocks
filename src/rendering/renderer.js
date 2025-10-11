@@ -2,6 +2,8 @@
 // RENDERER.JS - WebGL Rendering Engine for Serenity Blocks
 // =================================================================================
 
+import { getQualityConfig, normalizeQuality } from '../utils/quality.js';
+
 const TEXTURE_VERTEX_SHADER = `
     attribute vec3 a_position;
     attribute vec2 a_texcoord;
@@ -69,6 +71,11 @@ class TexturedQuad {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        // Explicitly set pixel store parameters to avoid deprecation warnings
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
         return texture;
     }
@@ -616,6 +623,11 @@ export class WebGLRenderer {
         this.texturedQuads = [];
         this.particleSystems = [];
         this.render = this.render.bind(this);
+        this.renderFrameBound = this.renderFrame.bind(this);
+        this.useExternalRenderLoop = false;
+        this.effectQuality = 'High';
+        this.qualityConfig = getQualityConfig(this.effectQuality);
+        this._frameSkipCounter = 0;
     }
 
     resize() {
@@ -667,7 +679,12 @@ export class WebGLRenderer {
         if (this.animationFrameId) {
             this.stop();
         }
-        this.animationFrameId = requestAnimationFrame(this.render);
+        if (this.useExternalRenderLoop) {
+            console.log('[WebGLRenderer] External render loop enabled; skipping internal RAF start');
+            return;
+        }
+
+        this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
         console.log('[WebGLRenderer] Animation frame requested, ID:', this.animationFrameId);
     }
 
@@ -681,9 +698,15 @@ export class WebGLRenderer {
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
-
-    render() {
+    renderFrame() {
         const gl = this.gl;
+
+        if (this.qualityConfig?.renderFrameSkip > 0) {
+            this._frameSkipCounter = (this._frameSkipCounter + 1) % (this.qualityConfig.renderFrameSkip + 1);
+            if (this._frameSkipCounter !== 0) {
+                return;
+            }
+        }
 
         // Only log occasionally to avoid spam
         if (!this._renderCount) this._renderCount = 0;
@@ -712,15 +735,37 @@ export class WebGLRenderer {
         gl.useProgram(this.particleProgram);
         gl.uniform2f(this.particleProgram.uniforms.u_resolution, gl.canvas.width, gl.canvas.height);
 
-        this.particleSystems.forEach(ps => {
-            gl.uniform1f(this.particleProgram.uniforms.u_zIndex, ps.zIndex);
-            gl.uniform3fv(this.particleProgram.uniforms.u_color, ps.themeConfig.color || [1.0, 1.0, 1.0]);
-            ps.update();
-            ps.bindBuffers(this.particleProgram);
-            ps.draw();
-        });
+        if (this.qualityConfig?.particles !== false) {
+            this.particleSystems.forEach(ps => {
+                gl.uniform1f(this.particleProgram.uniforms.u_zIndex, ps.zIndex);
+                gl.uniform3fv(this.particleProgram.uniforms.u_color, ps.themeConfig.color || [1.0, 1.0, 1.0]);
+                ps.update();
+                ps.bindBuffers(this.particleProgram);
+                ps.draw();
+            });
+        }
 
-        this.animationFrameId = requestAnimationFrame(this.render);
+        if (!this.useExternalRenderLoop) {
+            this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
+        }
+    }
+
+    setEffectQuality(level) {
+        const normalized = normalizeQuality(level);
+        this.effectQuality = normalized;
+        this.qualityConfig = getQualityConfig(this.effectQuality);
+        this._frameSkipCounter = 0;
+    }
+
+    render() {
+        this.renderFrame();
+    }
+
+    enableExternalRenderLoop(flag = true) {
+        this.useExternalRenderLoop = flag;
+        if (flag) {
+            this.stop();
+        }
     }
 
     loadTheme(themeName, themeData = null) {

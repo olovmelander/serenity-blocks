@@ -7,12 +7,14 @@
 body {
     font-family: 'Space Mono', monospace;
     background-color: #0c0a1a;
-    min-height: 100dvh; /* Use dynamic viewport height */
+    height: 100vh; /* Use full viewport height */
     display: flex;
     justify-content: center;
     align-items: center;
-    overflow: hidden;
+    overflow: hidden; /* Prevent any scrollbars */
     position: relative;
+    margin: 0;
+    padding: 0;
 }
 
 :root {
@@ -50,7 +52,6 @@ body {
     opacity: 0;
     visibility: hidden;
     transition: opacity 2.5s ease-in-out, visibility 0s linear 2.5s; /* Fade out, then hide */
-    will-change: opacity, visibility; /* Optimization for browsers */
     z-index: 1; /* Ensure theme container is above background but below particles */
 }
 
@@ -2313,7 +2314,7 @@ body {
     background-repeat: no-repeat;
     /* animation: drift-crystal 120s ease-in-out infinite; */
     transform-style: preserve-3d;
-    will-change: transform, filter, left, top;
+    will-change: transform, filter;
 }
 
 /* Depth layers for parallax */
@@ -3127,7 +3128,7 @@ body {
     width: 12px;
     transform-origin: bottom center;
     animation: bamboo-sway ease-in-out infinite alternate;
-    will-transform: transform;
+    will-change: transform;
 }
 .bamboo-stalk-back {
     background: linear-gradient(to right, #6b8e5f 0%, #7d9e71 40%, #6b8e5f 100%);
@@ -4705,6 +4706,9 @@ body {
             animation: fadeIn 0.5s ease;
             position: relative;
             z-index: 1;
+            max-height: 100vh; /* Use full viewport height */
+            overflow: hidden; /* Hide any overflow - no scrollbar */
+            justify-content: center; /* Center content */
         }
 
         @keyframes fadeIn {
@@ -4729,6 +4733,42 @@ body {
             border-radius: 12px;
             background: rgba(26, 26, 46, 0.8);
             box-shadow: 0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3), 0 0 90px rgba(139, 92, 246, 0.1);
+        }
+
+        /* Phaser Game Container */
+        #phaser-game-container {
+            border: 4px solid #8b5cf6;
+            border-radius: 12px;
+            background: rgba(26, 26, 46, 0.5);
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3), 0 0 90px rgba(139, 92, 246, 0.1);
+            display: block;
+            position: relative;
+            overflow: hidden;
+            box-sizing: content-box;
+            padding: 4px;
+            width: min(720px, 100%);
+            aspect-ratio: 23 / 20;
+            max-height: calc(100vh - 150px);
+        }
+
+        body.phaser-hud-ready .next-pieces-container {
+            display: none;
+        }
+
+        body.phaser-multiplayer-active .player-game-area,
+        body.phaser-multiplayer-active .player-sidebar {
+            display: none;
+        }
+
+        #phaser-game-container canvas {
+            display: block !important;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            image-rendering: crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: pixelated;
+            position: relative;
         }
 
         /* Line Clear Flash Effect - Container */
@@ -5588,7 +5628,7 @@ body {
                 max-width: 100%;
                 padding: 8px;
                 gap: 8px;
-                min-height: auto;
+                min-height: 600px; /* Visible playing field: ROWS * BLOCK_SIZE = 20 * 30 = 600px */
                 border-width: 2px;
             }
 
@@ -8539,6 +8579,12 @@ body {
     gap: 10px;
 }
 
+.player-game-area .board-impact {
+    animation: board-impact-shake var(--impact-duration, 220ms) ease-out;
+    animation-iteration-count: var(--impact-iterations, 1);
+    transform-origin: center;
+}
+
 .player-game-area canvas {
     border: 4px solid #8b5cf6;
     border-radius: 12px;
@@ -8546,6 +8592,14 @@ body {
     box-shadow: 0 0 30px rgba(139, 92, 246, 0.5),
                 0 0 60px rgba(139, 92, 246, 0.3),
                 0 0 90px rgba(139, 92, 246, 0.1);
+}
+
+@keyframes board-impact-shake {
+    0% { transform: translate3d(0, 0, 0); }
+    20% { transform: translate3d(3px, -2px, 0); }
+    45% { transform: translate3d(-4px, 3px, 0); }
+    70% { transform: translate3d(2px, -3px, 0); }
+    100% { transform: translate3d(0, 0, 0); }
 }
 
 .player-game-area .player-next-pieces {

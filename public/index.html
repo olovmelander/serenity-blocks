@@ -443,7 +443,8 @@
                 <div class="next-piece-box"><canvas id="next-4" width="50" height="40"></canvas></div>
             </div>
             <div style="position: relative;">
-                <canvas id="game-canvas"></canvas>
+                <div id="phaser-game-container"></div>
+                <canvas id="game-canvas" style="display: none;"></canvas>
                 <div id="line-clear-flash"></div>
                 <div id="score-popups"></div>
             </div>
@@ -809,7 +810,8 @@
             <button id="close-high-scores" class="action-btn">Close</button>
         </div>
     </div>
-    <!-- Modular ES6 Architecture -->
+    <!-- Phaser 3 Framework -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
     <script type="module" src="../src/main.js"></script>
 
     <!-- Legacy scripts (for backward compatibility during migration) -->

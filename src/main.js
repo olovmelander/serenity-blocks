@@ -8,7 +8,7 @@
  */
 
 // Core imports
-import { COLS, ROWS, BLOCK_SIZE, setBlockSize, DEFAULT_SETTINGS, GAME_MODES } from './core/constants.js';
+import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, setBlockSize, DEFAULT_SETTINGS, GAME_MODES } from './core/constants.js';
 import { GameState, gameLoop as coreGameLoop, startGame as coreStartGame, spawnPiece, fillBag, move as coreMove, rotate as coreRotate, hardDrop as coreHardDrop, softDrop as coreSoftDrop } from './core/game.js';
 import { initPieceSystem } from './core/pieces.js';
 import { MultiplayerGameState } from './core/multiplayer.js';
@@ -17,6 +17,11 @@ import { MultiplayerGameState } from './core/multiplayer.js';
 import { generateGridCache, drawBlock, drawGhostPiece } from './rendering/canvas-utils.js';
 import { draw, updateStats, drawNextPieces, triggerLineClearFlash, createPieceLockRipple, triggerBackgroundPulse, addPieceTrail, showComboPopup } from './rendering/draw.js';
 import { WebGLRenderer } from './rendering/renderer.js';
+import { createBoardScene } from './rendering/phaser/board-scene.js';
+import { createBackgroundScene } from './rendering/phaser/background-scene.js';
+import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
+import { eventBus, EVENTS } from './events/event-bus.js';
+import { normalizeQuality } from './utils/quality.js';
 
 // UI imports
 import { ModalManager, setupModalUI, showSettingsModal, showHighScoresModal, toggleFullScreen, closeHighScoresModal } from './ui/modals.js';
@@ -103,7 +108,12 @@ class SerenityBlocks {
         this.soundManager = null;
         this.themeManager = null;
         this.webglRenderer = null;
+        this.phaserGame = null;
+        this.boardScene = null;
+        this.multiplayerBoardScenes = [];
         this.gameModeUI = null;
+        this.cleanupHandlers = [];
+        this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
 
         // Game loop
         this.lastTime = 0;
@@ -128,17 +138,20 @@ class SerenityBlocks {
             // 1. Initialize canvas
             this.initializeCanvas();
 
-            // 2. Initialize WebGL renderer
+            // 2. Initialize WebGL renderer for backgrounds (must be done before Phaser)
             const backgroundCanvas = document.getElementById('background-canvas');
             this.webglRenderer = new WebGLRenderer(backgroundCanvas);
 
-            // 3. Initialize caches
+            // 3. Initialize Phaser game instance
+            this.initializePhaserGame();
+
+            // 4. Initialize caches
             // Grid cache initialized when needed
 
-            // 4. Initialize piece system
+            // 5. Initialize piece system
             initPieceSystem();
 
-            // 5. Initialize managers
+            // 6. Initialize managers
             await this.initializeManagers();
 
             // 6. Initialize game state
@@ -156,8 +169,11 @@ class SerenityBlocks {
             // 10. Initialize canvas grid
             generateGridCache(this.canvas);
 
-            // 11. Expose game controls as globals for controls.js
+            // 12. Expose game controls as globals for controls.js
             this.exposeGlobalControls();
+
+            // 13. Start background scene now that everything is ready
+            this.startBackgroundScene();
 
             this.isInitialized = true;
             console.log('✅ Serenity Blocks initialized successfully!');
@@ -222,10 +238,244 @@ class SerenityBlocks {
      */
     calculateBlockSize() {
         const maxWidth = window.innerWidth * 0.4;
-        const maxHeight = window.innerHeight * 0.8;
+        // Reduce max height to account for UI elements (stats, controls, padding)
+        // Also account for container padding and borders (16px total)
+        const uiOverhead = 100; // Approximate height for margins, padding, etc.
+        const maxHeight = (window.innerHeight - uiOverhead) * 0.85;
         const blockSizeWidth = Math.floor(maxWidth / COLS);
         const blockSizeHeight = Math.floor(maxHeight / ROWS);
-        return Math.min(blockSizeWidth, blockSizeHeight, 40);
+        // Cap at 28px instead of 40px to ensure it fits in most viewports
+        return Math.min(blockSizeWidth, blockSizeHeight, 28);
+    }
+
+    /**
+     * Initialize Phaser game instance
+     */
+    initializePhaserGame() {
+        // Wait for Phaser to be available from CDN
+        if (typeof window.Phaser === 'undefined') {
+            console.warn('Phaser not loaded yet, waiting...');
+            return;
+        }
+
+        const PhaserRef = window.Phaser;
+
+        // Create scene classes once Phaser is loaded
+        const BackgroundScene = createBackgroundScene(PhaserRef);
+        const BoardScene = createBoardScene(PhaserRef);
+        const MultiplayerBoardScene = createMultiplayerBoardScene(PhaserRef);
+
+        const singleBoardWidth = COLS * BLOCK_SIZE;
+        const singleBoardHeight = ROWS * BLOCK_SIZE;
+
+        this.singleBoardWidth = singleBoardWidth;
+        this.phaserBaseWidth = singleBoardWidth;
+        this.phaserBaseHeight = singleBoardHeight;
+
+        const config = {
+            type: PhaserRef.WEBGL,
+            width: singleBoardWidth,
+            height: singleBoardHeight,
+            parent: 'phaser-game-container', // Parent container for Phaser canvas
+            transparent: true, // Transparent to show themes behind
+            audio: { noAudio: true },
+            scene: [BackgroundScene, BoardScene],
+            scale: {
+                mode: PhaserRef.Scale.FIT,
+                autoCenter: PhaserRef.Scale.CENTER_BOTH,
+                width: baseWidth,
+                height: baseHeight
+            },
+            resolution: window.devicePixelRatio || 1,
+            physics: {
+                default: false // We handle physics ourselves
+            },
+            render: {
+                antialias: true,
+                pixelArt: false
+            },
+            callbacks: {
+                postBoot: (game) => {
+                    // Phaser is ready
+                    this.backgroundScene = game.scene.getScene('BackgroundScene');
+                    this.boardScene = game.scene.getScene('BoardScene');
+                    game.scene.add('MultiplayerBoardScene1', MultiplayerBoardScene, false);
+                    game.scene.add('MultiplayerBoardScene2', MultiplayerBoardScene, false);
+                    console.log('✅ Phaser game initialized with BoardScene');
+                    console.log('Canvas dimensions:', game.canvas.width, 'x', game.canvas.height);
+                    console.log('Expected height:', ROWS * BLOCK_SIZE);
+                    console.log('ROWS:', ROWS, 'HIDDEN_ROWS:', HIDDEN_ROWS);
+                    console.log('Container:', document.getElementById('phaser-game-container').offsetHeight);
+                    document.body.classList.add('phaser-hud-ready');
+                    if (this.gameState) {
+                        this.updatePhaserStats();
+                        this.refreshNextQueue();
+                    }
+                    // this.startBackgroundScene(); // Moved to end of init
+                    this.applyEffectQuality(this.settingsManager?.get().effectQuality ?? this.currentEffectQuality);
+                }
+            }
+        };
+
+        console.log('Creating Phaser game with config:', { width: config.width, height: config.height, parent: config.parent });
+        this.phaserGame = new PhaserRef.Game(config);
+        console.log('Phaser game instance created:', this.phaserGame);
+    }
+
+    /**
+     * Update Phaser HUD (score, level, lines).
+     */
+    updatePhaserStats() {
+        if (this.boardScene && typeof this.boardScene.updateStats === 'function') {
+            this.boardScene.updateStats(this.gameState);
+        }
+    }
+
+    /**
+     * Update the next piece display via Phaser, falling back to canvas previews when necessary.
+     */
+    refreshNextQueue() {
+        if (this.boardScene && typeof this.boardScene.updateNextQueue === 'function') {
+            this.boardScene.updateNextQueue(this.gameState.nextPieces);
+        } else {
+            drawNextPieces(this.nextCanvases, this.gameState.nextPieces);
+        }
+    }
+
+    applyEffectQuality(level) {
+        const quality = normalizeQuality(level || this.currentEffectQuality);
+        this.currentEffectQuality = quality;
+
+        if (this.boardScene?.setEffectQuality) {
+            this.boardScene.setEffectQuality(quality);
+        }
+
+        if (this.multiplayerBoardScenes?.length) {
+            this.multiplayerBoardScenes.forEach(scene => scene?.setEffectQuality?.(quality));
+        }
+
+        if (this.webglRenderer?.setEffectQuality) {
+            this.webglRenderer.setEffectQuality(quality);
+        }
+
+        if (this.backgroundScene) {
+            this.backgroundScene.effectQuality = quality;
+        }
+    }
+
+    startBackgroundScene() {
+        if (!this.phaserGame || !this.backgroundScene || !this.webglRenderer) {
+            return;
+        }
+
+        if (!this.phaserGame.scene.isActive('BackgroundScene')) {
+            this.phaserGame.scene.start('BackgroundScene', {
+                webglRenderer: this.webglRenderer,
+                themeManager: this.themeManager,
+                effectQuality: this.currentEffectQuality
+            });
+        }
+    }
+
+    activatePhaserMultiplayerUI() {
+        if (typeof document !== 'undefined') {
+            document.body.classList.add('phaser-multiplayer-active');
+        }
+    }
+
+    deactivatePhaserMultiplayerUI() {
+        if (typeof document !== 'undefined') {
+            document.body.classList.remove('phaser-multiplayer-active');
+        }
+    }
+
+    resizePhaserGame(width, height) {
+        if (this.phaserGame) {
+            this.phaserGame.scale.resize(width, height);
+        }
+    }
+
+    pauseSinglePlayerScene() {
+        if (this.phaserGame && this.phaserGame.scene.isActive('BoardScene')) {
+            this.phaserGame.scene.pause('BoardScene');
+        }
+    }
+
+    resumeSinglePlayerScene() {
+        if (this.phaserGame && !this.phaserGame.scene.isActive('BoardScene')) {
+            this.phaserGame.scene.resume('BoardScene');
+        }
+    }
+
+    getMultiplayerViewports() {
+        const width = this.singleBoardWidth;
+        const height = this.phaserBaseHeight;
+        const gap = this.multiplayerBoardGap;
+        return [
+            { x: 0, y: 0, width, height },
+            { x: width + gap, y: 0, width, height }
+        ];
+    }
+
+    ensureMultiplayerBoardScenes() {
+        if (!this.phaserGame) return;
+
+        const sceneManager = this.phaserGame.scene;
+        const viewports = this.getMultiplayerViewports();
+
+        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach((key) => {
+            if (sceneManager.isActive(key)) {
+                sceneManager.stop(key);
+            }
+        });
+
+        sceneManager.launch('MultiplayerBoardScene1', {
+            playerId: 1,
+            viewport: viewports[0],
+            playerLabel: 'PLAYER 1',
+            getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(1).getTotalLines() ?? 0
+        });
+
+        sceneManager.launch('MultiplayerBoardScene2', {
+            playerId: 2,
+            viewport: viewports[1],
+            playerLabel: 'PLAYER 2',
+            getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(2).getTotalLines() ?? 0
+        });
+
+        this.multiplayerBoardScenes = [
+            sceneManager.getScene('MultiplayerBoardScene1'),
+            sceneManager.getScene('MultiplayerBoardScene2')
+        ];
+
+        this.multiplayerBoardScenes.forEach(sceneInstance => {
+            sceneInstance?.events?.once('create', () => this.syncMultiplayerBoardScenes());
+            sceneInstance?.setEffectQuality?.(this.currentEffectQuality);
+        });
+
+        this.syncMultiplayerBoardScenes();
+    }
+
+    teardownMultiplayerBoardScenes() {
+        if (!this.phaserGame) return;
+        const sceneManager = this.phaserGame.scene;
+        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach((key) => {
+            if (sceneManager.isActive(key)) {
+                sceneManager.stop(key);
+            }
+        });
+        this.multiplayerBoardScenes = [];
+    }
+
+    syncMultiplayerBoardScenes() {
+        if (!this.multiplayerBoardScenes || this.multiplayerBoardScenes.length === 0) return;
+        const [scene1, scene2] = this.multiplayerBoardScenes;
+        if (scene1 && this.multiplayerState?.player1) {
+            scene1.syncFromGameState(this.multiplayerState.player1);
+        }
+        if (scene2 && this.multiplayerState?.player2) {
+            scene2.syncFromGameState(this.multiplayerState.player2);
+        }
     }
 
     /**
@@ -249,9 +499,18 @@ class SerenityBlocks {
 
         // Audio
         this.soundManager = new SoundManager();
-        this.soundManager.init();
+        // this.soundManager.init(); // Deferred to user gesture
         await this.soundManager.initializeTracks();
         this.soundManager.startBackgroundMusic();
+
+        const resumeAudio = () => {
+            this.soundManager.resumeAudioContext();
+            document.removeEventListener('click', resumeAudio);
+            document.removeEventListener('keydown', resumeAudio);
+        };
+
+        document.addEventListener('click', resumeAudio);
+        document.addEventListener('keydown', resumeAudio);
 
         // Theme manager
         this.themeManager = new ThemeManager(this.webglRenderer);
@@ -259,6 +518,13 @@ class SerenityBlocks {
         // Set cross-references between managers
         this.soundManager.settingsManager = this.settingsManager;
         this.soundManager.themeManager = this.themeManager;
+
+        this.cleanupHandlers.push(eventBus.on(EVENTS.THEME_CHANGED, ({ themeName }) => {
+            const settings = this.settingsManager.get();
+            if (settings.themeLinkedMode) {
+                this.soundManager.applyThemeLinkedMusic(themeName);
+            }
+        }));
 
         // Input controller
         this.inputController = new InputController();
@@ -271,6 +537,9 @@ class SerenityBlocks {
         this.gameModeUI.setModeFromSettings(savedMode);
 
         console.log('✅ All managers initialized');
+
+        // this.startBackgroundScene(); // Moved to end of init
+        this.applyEffectQuality(this.settingsManager.get().effectQuality);
     }
 
     /**
@@ -302,23 +571,32 @@ class SerenityBlocks {
      */
     setupEventListeners() {
         // Window resize
-        window.addEventListener('resize', () => this.handleResize());
+        const resizeHandler = () => this.handleResize();
+        window.addEventListener('resize', resizeHandler);
 
-        // Theme change events
-        window.addEventListener('themeChanged', (e) => {
-            console.log(`Theme changed to: ${e.detail.themeName}`);
+        // Theme change events (from event bus)
+        const unsubscribeThemeChanged = eventBus.on(EVENTS.THEME_CHANGED, ({ themeName }) => {
+            console.log(`Theme changed to: ${themeName}`);
 
             // Update music if theme-linked mode is enabled
             const settings = this.settingsManager.get();
             if (settings.themeLinkedMode) {
-                this.soundManager.setThemeLinkedTrack(e.detail.themeName);
+                this.soundManager.setThemeLinkedTrack(themeName);
             }
         });
 
         // Settings change events
-        window.addEventListener('settingsChanged', (e) => {
+        const settingsHandler = (e) => {
             this.handleSettingsChange(e.detail);
-        });
+        };
+        window.addEventListener('settingsChanged', settingsHandler);
+
+        const gameModeHandler = (e) => {
+            console.log('[Main] Game mode changed from UI:', e.detail.mode);
+            this.settingsManager.update({ gameMode: e.detail.mode });
+            this.settingsManager.save();
+        };
+        window.addEventListener('gameModeChanged', gameModeHandler);
 
         // Global key press and tap to start game
         const handleStartInput = (e) => {
@@ -335,6 +613,16 @@ class SerenityBlocks {
         document.addEventListener('keydown', handleStartInput);
         document.addEventListener('touchstart', handleStartInput);
         document.addEventListener('click', handleStartInput);
+
+        this.cleanupHandlers.push(() => {
+            unsubscribeThemeChanged();
+            document.removeEventListener('keydown', handleStartInput);
+            document.removeEventListener('touchstart', handleStartInput);
+            document.removeEventListener('click', handleStartInput);
+            window.removeEventListener('resize', resizeHandler);
+            window.removeEventListener('settingsChanged', settingsHandler);
+            window.removeEventListener('gameModeChanged', gameModeHandler);
+        });
     }
 
     /**
@@ -460,18 +748,6 @@ class SerenityBlocks {
             this.soundManager.nextTrack();
         });
 
-        // Listen for theme changes to apply theme-linked music
-        window.addEventListener('themeChanged', (e) => {
-            console.log('[Main] Theme changed event:', e.detail.themeName);
-            this.soundManager.applyThemeLinkedMusic(e.detail.themeName);
-        });
-
-        // Listen for game mode changes from UI
-        window.addEventListener('gameModeChanged', (e) => {
-            console.log('[Main] Game mode changed from UI:', e.detail.mode);
-            this.settingsManager.update({ gameMode: e.detail.mode });
-            this.settingsManager.save();
-        });
     }
 
     /**
@@ -479,12 +755,18 @@ class SerenityBlocks {
      */
     getPhysicsCallbacks() {
         return {
-            draw: () => draw(this.canvas, this.ctx, this.gameState),
+            draw: () => {
+                if (!this.boardScene) {
+                    draw(this.canvas, this.ctx, this.gameState);
+                }
+            },
             onLevelUp: (level) => {
                 updateStats(this.gameState);
+                this.updatePhaserStats();
             },
             onScoreAdd: (points) => {
                 updateStats(this.gameState);
+                this.updatePhaserStats();
             },
             onLineClear: (count, holeColumns) => {
                 // Visual feedback handled in draw
@@ -498,20 +780,38 @@ class SerenityBlocks {
             triggerFlash: (clearedRows) => {
                 const settings = this.settingsManager.get();
                 if (settings.lineClearEffects) {
-                    triggerLineClearFlash(clearedRows);
+                    if (this.boardScene) {
+                        this.boardScene.triggerLineClearFlash(clearedRows);
+                    } else {
+                        triggerLineClearFlash(clearedRows);
+                    }
                 }
             },
             triggerBackgroundPulse: (lineCount) => triggerBackgroundPulse(lineCount),
+            onLineClearImpact: (lineCount) => {
+                const settings = this.settingsManager.get();
+                if (settings.lineClearEffects && this.boardScene && typeof this.boardScene.playLineClearImpact === 'function') {
+                    this.boardScene.playLineClearImpact(lineCount);
+                }
+            },
             triggerCombo: (comboCount) => {
                 const settings = this.settingsManager.get();
                 if (settings.comboPopupEffect) {
-                    showComboPopup(comboCount);
+                    if (this.boardScene) {
+                        this.boardScene.showComboPopup(comboCount);
+                    } else {
+                        showComboPopup(comboCount);
+                    }
                 }
             },
             onPieceLock: (piece) => {
                 const settings = this.settingsManager.get();
                 if (settings.pieceLockRipple) {
-                    createPieceLockRipple(piece, this.gameState.lockedPieces);
+                    if (this.boardScene) {
+                        this.boardScene.createPieceLockRipple(piece);
+                    } else {
+                        createPieceLockRipple(piece, this.gameState.lockedPieces);
+                    }
                 }
             },
             updateBackground: (level) => {
@@ -524,7 +824,7 @@ class SerenityBlocks {
             spawnPiece: () => {
                 spawnPiece(
                     this.gameState,
-                    () => drawNextPieces(this.nextCanvases, this.gameState.nextPieces),
+                    () => this.refreshNextQueue(),
                     () => this.endGame()
                 );
             }
@@ -772,6 +1072,10 @@ class SerenityBlocks {
             this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
         }
 
+        if (changes.effectQuality) {
+            this.applyEffectQuality(settings.effectQuality);
+        }
+
         // Handle audio changes
         if (changes.musicVolume !== undefined) {
             this.soundManager.setMusicVolume(settings.musicVolume);
@@ -840,6 +1144,11 @@ class SerenityBlocks {
      * Start single player game
      */
     startSinglePlayerGame() {
+        this.deactivatePhaserMultiplayerUI();
+        this.teardownMultiplayerBoardScenes();
+        this.resumeSinglePlayerScene();
+        this.applyEffectQuality(this.currentEffectQuality);
+
         // Reset game state
         this.gameState.reset();
 
@@ -852,7 +1161,7 @@ class SerenityBlocks {
             this.gameState,
             () => {
                 // Draw next pieces callback
-                drawNextPieces(this.nextCanvases, this.gameState.nextPieces);
+                this.refreshNextQueue();
             },
             () => {
                 // Game over callback
@@ -861,7 +1170,8 @@ class SerenityBlocks {
         );
 
         // Draw initial next pieces display
-        drawNextPieces(this.nextCanvases, this.gameState.nextPieces);
+        this.refreshNextQueue();
+        this.updatePhaserStats();
 
         // Start game loop
         this.gameLoop(this.gameState.lastTime);
@@ -873,14 +1183,25 @@ class SerenityBlocks {
      * Start multiplayer game
      */
     async startMultiplayerGame() {
+        const singleBoardWidth = COLS * BLOCK_SIZE;
+        const boardGap = Math.round(singleBoardWidth * 0.3);
+        const multiBoardWidth = singleBoardWidth * 2 + boardGap;
+        const multiBoardHeight = ROWS * BLOCK_SIZE;
+        this.resizePhaserGame(multiBoardWidth, multiBoardHeight);
+
         // Initialize multiplayer state if needed
         if (!this.multiplayerState) {
             this.multiplayerState = new MultiplayerGameState();
         }
 
+        this.pauseSinglePlayerScene();
+        this.activatePhaserMultiplayerUI();
+
         // Reset multiplayer state
         this.multiplayerState.reset();
         this.multiplayerState.isPaused = true;
+
+        this.ensureMultiplayerBoardScenes();
 
         // Ensure both players share the exact same random sequence for fairness
         const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
@@ -911,7 +1232,7 @@ class SerenityBlocks {
         spawnPiece(
             this.multiplayerState.player1,
             () => {
-                drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
+                this.syncMultiplayerBoardScenes();
             },
             () => {
                 this.endMultiplayerGame(1); // Player 1 lost
@@ -921,16 +1242,14 @@ class SerenityBlocks {
         spawnPiece(
             this.multiplayerState.player2,
             () => {
-                drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
+                this.syncMultiplayerBoardScenes();
             },
             () => {
                 this.endMultiplayerGame(2); // Player 2 lost
             }
         );
 
-        // Draw initial next pieces
-        drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-        drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
+        this.syncMultiplayerBoardScenes();
 
         // Start multiplayer game loop
         this.multiplayerState.isPaused = false;
@@ -1011,17 +1330,26 @@ class SerenityBlocks {
      * Main game loop
      */
     gameLoop(currentTime) {
+        // Sync game state to Phaser scene
+        if (this.boardScene) {
+            this.boardScene.syncFromGameState(this.gameState);
+        }
+
         // Use the core game loop
         coreGameLoop(
             currentTime,
             this.gameState,
             () => {
-                // Draw callback
-                draw(this.canvas, this.ctx, this.gameState);
+                // Draw callback - now handled by Phaser scene
+                // Keep fallback to canvas for compatibility
+                if (!this.boardScene) {
+                    draw(this.canvas, this.ctx, this.gameState);
+                }
             },
             () => {
                 // Update stats callback
                 updateStats(this.gameState);
+                this.updatePhaserStats();
 
                 // Check for level-based theme changes
                 const settings = this.settingsManager.get();
@@ -1069,12 +1397,7 @@ class SerenityBlocks {
             }
         });
 
-        // Draw both boards
-        draw(this.p1Canvas, this.p1Ctx, this.multiplayerState.player1);
-        draw(this.p2Canvas, this.p2Ctx, this.multiplayerState.player2);
-
-        // Update stats
-        this.updateMultiplayerStats();
+        this.syncMultiplayerBoardScenes();
 
         this.multiplayerState.animationId = requestAnimationFrame((t) =>
             this.multiplayerGameLoop(t)
@@ -1103,16 +1426,15 @@ class SerenityBlocks {
      */
     getMultiplayerPhysicsCallbacks(playerNum) {
         const playerState = playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
-        const canvas = playerNum === 1 ? this.p1Canvas : this.p2Canvas;
-        const ctx = playerNum === 1 ? this.p1Ctx : this.p2Ctx;
+        const sceneRef = () => this.multiplayerBoardScenes[playerNum - 1];
 
         const callbacks = {
-            draw: () => draw(canvas, ctx, playerState),
+            draw: () => this.syncMultiplayerBoardScenes(),
             onLevelUp: (level) => {
-                this.updateMultiplayerStats();
+                this.syncMultiplayerBoardScenes();
             },
             onScoreAdd: (points) => {
-                this.updateMultiplayerStats();
+                this.syncMultiplayerBoardScenes();
             },
             onLineClear: (count, holeColumns, rowMasks = []) => {
                 const holes = Array.isArray(holeColumns) ? holeColumns : [];
@@ -1136,26 +1458,36 @@ class SerenityBlocks {
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
             triggerFlash: (clearedRows) => {
                 const settings = this.settingsManager.get();
-                if (settings.lineClearEffects) {
-                    const flashId = playerNum === 1 ? 'p1-line-clear-flash' : 'p2-line-clear-flash';
-                    triggerLineClearFlash(clearedRows, document.getElementById(flashId));
+                const scene = sceneRef();
+                if (settings.lineClearEffects && scene?.triggerLineClearFlash) {
+                    scene.triggerLineClearFlash(clearedRows);
                 }
             },
             triggerBackgroundPulse: (lineCount) => {
                 // Optional: could add background pulse per player
             },
+            onLineClearImpact: (lineCount) => {
+                const settings = this.settingsManager.get();
+                if (!settings.lineClearEffects) return;
+                const scene = sceneRef();
+                if (scene?.playLineClearImpact) {
+                    scene.playLineClearImpact(lineCount);
+                }
+            },
             triggerCombo: (comboCount) => {
                 const settings = this.settingsManager.get();
                 if (settings.comboPopupEffect) {
-                    const popupsId = playerNum === 1 ? 'p1-score-popups' : 'p2-score-popups';
-                    showComboPopup(comboCount, document.getElementById(popupsId));
+                    const scene = sceneRef();
+                    if (scene?.showComboPopup) {
+                        scene.showComboPopup(comboCount);
+                    }
                 }
             },
             onPieceLock: (piece) => {
                 const settings = this.settingsManager.get();
-                if (settings.pieceLockRipple) {
-                    const flashId = playerNum === 1 ? 'p1-line-clear-flash' : 'p2-line-clear-flash';
-                    createPieceLockRipple(piece, playerState.lockedPieces, document.getElementById(flashId));
+                const scene = sceneRef();
+                if (settings.pieceLockRipple && scene?.createPieceLockRipple) {
+                    scene.createPieceLockRipple(piece);
                 }
             },
             updateBackground: (level) => {
@@ -1276,6 +1608,11 @@ class SerenityBlocks {
         this.modalManager.show('gameOver');
 
         console.log(`💀 Multiplayer game over! ${winnerName} wins!`);
+
+        this.deactivatePhaserMultiplayerUI();
+        this.teardownMultiplayerBoardScenes();
+        this.resumeSinglePlayerScene();
+        this.applyEffectQuality(this.currentEffectQuality);
     }
 
     /**
@@ -1326,6 +1663,13 @@ class SerenityBlocks {
         // Stop game loop
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
+        }
+
+        // Cleanup Phaser
+        if (this.phaserGame) {
+            this.phaserGame.destroy(true);
+            this.phaserGame = null;
+            this.boardScene = null;
         }
 
         // Cleanup managers

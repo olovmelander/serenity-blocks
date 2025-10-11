@@ -4,7 +4,7 @@
  * gravity application, and cascade checking.
  */
 
-import { COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS } from './constants.js';
+import { COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS } from './constants.js';
 import { generateBoard } from './board.js';
 
 /**
@@ -79,12 +79,13 @@ export function findConnectedComponents(boardData) {
                     shape[r - minR][c - minC] = 1;
                 });
 
+                const shapeKey = cellData.color;
                 pieces.push({
                     x: minC,
                     y: minR,
                     shape,
-                    shapeKey: cellData.color,
-                    color: cellData.color, // Will need COLORS mapping from constants
+                    shapeKey,
+                    color: COLORS[shapeKey] || shapeKey,
                     pieceId: cellData.id
                 });
             }
@@ -621,6 +622,7 @@ export async function processPhysics(gameState, callbacks) {
         if (callbacks.playLineClear) callbacks.playLineClear();
         if (callbacks.onScoreAdd) callbacks.onScoreAdd(points);
         if (callbacks.onLineClear) callbacks.onLineClear(fullLines.length, holeColumns, waveHoleMasks.map(mask => mask.slice()));
+        if (callbacks.onLineClearImpact) callbacks.onLineClearImpact(fullLines.length, cascadeCount);
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
         if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
 
@@ -637,30 +639,36 @@ export async function processPhysics(gameState, callbacks) {
         // Speed multiplier: first clear is normal, cascades get 30% faster
         const speedMultiplier = cascadeCount === 1 ? 1.0 : 0.7;
 
-        // Stage 1: Bright white flash - snappier feel
+        // Stage 1: Keep original colors, full opacity - snappier feel
         fullLines.forEach(y => {
             for (let x = 0; x < COLS; x++) {
-                markedBoard[y][x] = { color: 'C', id: 'cleared', alpha: 1.0 };
+                if (markedBoard[y][x]) {
+                    markedBoard[y][x].alpha = 1.0;
+                }
             }
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
         await new Promise(resolve => setTimeout(resolve, 80 * speedMultiplier));
 
-        // Stage 2: Slightly dimmed - reduced timing for smoother flow
+        // Stage 2: Keep original colors, slightly dimmed - reduced timing for smoother flow
         fullLines.forEach(y => {
             for (let x = 0; x < COLS; x++) {
-                markedBoard[y][x] = { color: 'C', id: 'cleared', alpha: 0.6 };
+                if (markedBoard[y][x]) {
+                    markedBoard[y][x].alpha = 0.6;
+                }
             }
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
         await new Promise(resolve => setTimeout(resolve, 40 * speedMultiplier));
 
-        // Stage 3: Fade to transparent - quick final fade
+        // Stage 3: Keep original colors, fade to transparent - quick final fade
         fullLines.forEach(y => {
             for (let x = 0; x < COLS; x++) {
-                markedBoard[y][x] = { color: 'C', id: 'cleared', alpha: 0.2 };
+                if (markedBoard[y][x]) {
+                    markedBoard[y][x].alpha = 0.2;
+                }
             }
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);

@@ -152,44 +152,38 @@ export function draw(canvas, ctx, gameState) {
                     if (piece.shapeKey && COLORS[piece.shapeKey]) {
                         blockColor = COLORS[piece.shapeKey];
                     }
+                    // Fallback to gray if color is undefined/null to prevent black rendering
+                    if (!blockColor) {
+                        blockColor = '#808080';
+                    }
 
                     // For animating pieces, use piece shape for borders instead of boardData
                     // This fixes border rendering when garbage is animating with offset
                     const useBoardData = !piece.isAnimating || yOffset === 0;
 
-                    // Draw with optional fade for cleared pieces
-                    if (piece.shapeKey === 'C') {
-                        const alpha = piece.alpha !== undefined ? piece.alpha : 1.0;
+                    // Draw with optional fade for cleared pieces (alpha property)
+                    const alpha = piece.alpha !== undefined ? piece.alpha : 1.0;
+                    if (alpha < 1.0) {
                         ctx.save();
                         ctx.globalAlpha = alpha;
-                        drawBlock(
-                            ctx,
-                            boardX,
-                            renderY - HIDDEN_ROWS,
-                            '#ffffff',
-                            useBoardData ? boardData : null,
-                            false,
-                            useBoardData ? null : piece.shape,
-                            useBoardData ? 0 : piece.x,
-                            useBoardData ? 0 : renderY - HIDDEN_ROWS,
-                            useBoardData ? boardX : localX,
-                            useBoardData ? renderY : localY
-                        );
+                    }
+
+                    drawBlock(
+                        ctx,
+                        boardX,
+                        renderY - HIDDEN_ROWS,
+                        blockColor,
+                        useBoardData ? boardData : null,
+                        false,
+                        useBoardData ? null : piece.shape,
+                        useBoardData ? 0 : piece.x,
+                        useBoardData ? 0 : renderY - HIDDEN_ROWS,
+                        useBoardData ? boardX : localX,
+                        useBoardData ? renderY : localY
+                    );
+
+                    if (alpha < 1.0) {
                         ctx.restore();
-                    } else {
-                        drawBlock(
-                            ctx,
-                            boardX,
-                            renderY - HIDDEN_ROWS,
-                            blockColor,
-                            useBoardData ? boardData : null,
-                            false,
-                            useBoardData ? null : piece.shape,
-                            useBoardData ? 0 : piece.x,
-                            useBoardData ? 0 : renderY - HIDDEN_ROWS,
-                            useBoardData ? boardX : localX,
-                            useBoardData ? renderY : localY
-                        );
                     }
                 }
             });

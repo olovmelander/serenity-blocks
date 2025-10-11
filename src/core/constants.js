@@ -2,6 +2,8 @@
 // GAME CONSTANTS - Configuration and constants for Serenity Blocks
 // =================================================================================
 
+import { getThemeIds } from '../themes/theme-registry.js';
+
 /**
  * Board dimensions
  */
@@ -108,15 +110,7 @@ export const LEVEL_SPEEDS = [
 /**
  * Available theme names
  */
-export const THEMES = [
-    'forest', 'ocean', 'sunset', 'mountain', 'zen', 'winter', 'fall', 'summer', 'spring',
-    'aurora', 'galaxy', 'rainy-window', 'koi-pond', 'meadow', 'cosmic-chimes', 'singing-bowl',
-    'starlight', 'swedish-forest', 'geode', 'bioluminescence', 'desert-oasis', 'bamboo-grove',
-    'misty-lake', 'waves', 'fluid-dreams', 'lantern-festival', 'crystal-cave',
-    'candlelit-monastery', 'cherry-blossom-garden', 'floating-islands', 'meditation-temple',
-    'moonlit-greenhouse', 'ice-temple', 'himalayan-peak', 'electric-dreams', 'moonlit-forest',
-    'wolfhour', 'lunara', 'pyrestorm', 'neon-dusk', 'stillwater'
-];
+export const THEMES = getThemeIds();
 
 /**
  * Game modes
@@ -163,6 +157,7 @@ export const DEFAULT_SETTINGS = {
     pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
     lineClearEffects: true,
+    effectQuality: 'High',
 
     // Control settings
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',

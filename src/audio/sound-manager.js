@@ -38,13 +38,18 @@ export class SoundManager {
      * Initializes the audio context and sound effects
      */
     init() {
+        // AudioContext will be created on user gesture
+    }
+
+    resumeAudioContext() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.soundSets = createSoundSets(this.createTone.bind(this));
+            this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
         }
-
-        // Initialize sound sets with bound createTone method
-        this.soundSets = createSoundSets(this.createTone.bind(this));
-        this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
     }
 
     /**

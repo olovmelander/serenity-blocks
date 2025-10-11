@@ -23,6 +23,83 @@ let gridCacheCtx = null;
  */
 let lastRenderedLevel = 0;
 
+const BLOCK_SHADOW_BASE_BLUR = 6;
+const BLOCK_SHADOW_VARIATION = 6;
+const PULSE_SPEED = 0.005; // Controls speed of pulsing shadow (radians per ms)
+const POSITION_PHASE_SHIFT = 0.45; // Phase offset between neighboring blocks
+
+function clampColorComponent(value) {
+    return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseColorToRgb(color) {
+    if (!color || typeof color !== 'string') {
+        return null;
+    }
+
+    let value = color.trim();
+
+    if (value.startsWith('#')) {
+        value = value.slice(1);
+        if (value.length === 3) {
+            value = value.split('').map(char => char + char).join('');
+        }
+        if (value.length !== 6) {
+            return null;
+        }
+
+        const r = parseInt(value.substring(0, 2), 16);
+        const g = parseInt(value.substring(2, 4), 16);
+        const b = parseInt(value.substring(4, 6), 16);
+
+        if ([r, g, b].some(component => Number.isNaN(component))) {
+            return null;
+        }
+
+        return { r, g, b };
+    }
+
+    const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (rgbMatch) {
+        return {
+            r: clampColorComponent(Number(rgbMatch[1])),
+            g: clampColorComponent(Number(rgbMatch[2])),
+            b: clampColorComponent(Number(rgbMatch[3]))
+        };
+    }
+
+    return null;
+}
+
+function colorToCss(rgb, alpha = 1) {
+    if (!rgb) {
+        return null;
+    }
+    return `rgba(${clampColorComponent(rgb.r)}, ${clampColorComponent(rgb.g)}, ${clampColorComponent(rgb.b)}, ${alpha})`;
+}
+
+function lightenRgb(rgb, amount) {
+    return {
+        r: clampColorComponent(rgb.r + (255 - rgb.r) * amount),
+        g: clampColorComponent(rgb.g + (255 - rgb.g) * amount),
+        b: clampColorComponent(rgb.b + (255 - rgb.b) * amount)
+    };
+}
+
+function darkenRgb(rgb, amount) {
+    return {
+        r: clampColorComponent(rgb.r * (1 - amount)),
+        g: clampColorComponent(rgb.g * (1 - amount)),
+        b: clampColorComponent(rgb.b * (1 - amount))
+    };
+}
+
+function getPulseIntensity(gridX, gridY) {
+    const timestamp = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const phase = timestamp * PULSE_SPEED + (gridX + gridY) * POSITION_PHASE_SHIFT;
+    return 0.5 + 0.5 * Math.sin(phase);
+}
+
 /**
  * Generates a cached grid image to avoid redrawing it every frame
  * @param {HTMLCanvasElement} canvas - The game canvas
@@ -132,85 +209,63 @@ export function drawBlock(
     blockX = 0,
     blockY = 0
 ) {
-    // Draw the block
-    ctx.fillStyle = color;
-    ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+    const size = BLOCK_SIZE;
+    const pixelX = x * size;
+    const pixelY = y * size;
+    const endX = pixelX + size;
+    const endY = pixelY + size;
+    const baseColor = color || '#808080';
 
-    // Draw borders (skip for ghost pieces)
-    if (!isGhost) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-        ctx.lineWidth = 2;
-
-        if (shape) {
-            // Shape-based border detection (for current piece)
-            // Top border
-            if (blockY === 0 || !shape[blockY - 1] || !shape[blockY - 1][blockX]) {
-                ctx.beginPath();
-                ctx.moveTo(x * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Bottom border
-            if (blockY === shape.length - 1 || !shape[blockY + 1] || !shape[blockY + 1][blockX]) {
-                ctx.beginPath();
-                ctx.moveTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.lineTo((x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Left border
-            if (blockX === 0 || !shape[blockY][blockX - 1]) {
-                ctx.beginPath();
-                ctx.moveTo(x * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Right border
-            if (blockX === shape[blockY].length - 1 || !shape[blockY][blockX + 1]) {
-                ctx.beginPath();
-                ctx.moveTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-        } else if (boardData) {
-            // Board-based border detection (for locked pieces)
-            const by = y + HIDDEN_ROWS;
-            const currentCell = boardData[by] ? boardData[by][blockX] : null;
-            const currentId = currentCell ? currentCell.id : null;
-
-            // Top border
-            if (by === 0 || !boardData[by - 1] || boardData[by - 1][blockX] === null ||
-                boardData[by - 1][blockX].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo(blockX * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((blockX + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Bottom border
-            if (by === boardData.length - 1 || !boardData[by + 1] ||
-                boardData[by + 1][blockX] === null || boardData[by + 1][blockX].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo(blockX * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.lineTo((blockX + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Left border
-            if (blockX === 0 || boardData[by][blockX - 1] === null ||
-                boardData[by][blockX - 1].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo(blockX * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo(blockX * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Right border
-            if (blockX === boardData[by].length - 1 || boardData[by][blockX + 1] === null ||
-                boardData[by][blockX + 1].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo((blockX + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((blockX + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-        }
+    if (isGhost) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pixelX, pixelY, size, size);
+        return;
     }
+
+    const rgb = parseColorToRgb(baseColor);
+    const pulse = getPulseIntensity(x, y);
+    const edgeThickness = Math.max(2, Math.round(size * 0.1));
+
+    ctx.save();
+    if (rgb) {
+        const shadowColor = darkenRgb(rgb, 0.6);
+        ctx.shadowColor = colorToCss(shadowColor, 0.35 + 0.25 * pulse);
+    } else {
+        ctx.shadowColor = `rgba(0, 0, 0, ${0.35 + 0.25 * pulse})`;
+    }
+    ctx.shadowBlur = BLOCK_SHADOW_BASE_BLUR + BLOCK_SHADOW_VARIATION * pulse;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(pixelX, pixelY, size, size);
+    ctx.restore();
+
+    if (rgb) {
+        const highlightColor = colorToCss(lightenRgb(rgb, 0.2), 0.5);
+        const shadowColor = colorToCss(darkenRgb(rgb, 0.2), 0.5);
+
+        ctx.fillStyle = highlightColor;
+        ctx.fillRect(pixelX, pixelY, size, edgeThickness);
+        ctx.fillRect(pixelX, pixelY, edgeThickness, size);
+
+        ctx.fillStyle = shadowColor;
+        ctx.fillRect(pixelX, endY - edgeThickness, size, edgeThickness);
+        ctx.fillRect(endX - edgeThickness, pixelY, edgeThickness, size);
+    } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fillRect(pixelX, pixelY, size, edgeThickness);
+        ctx.fillRect(pixelX, pixelY, edgeThickness, size);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(pixelX, endY - edgeThickness, size, edgeThickness);
+        ctx.fillRect(endX - edgeThickness, pixelY, edgeThickness, size);
+    }
+
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
 }
 
 /**
