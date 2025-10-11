@@ -4741,13 +4741,16 @@ body {
             border-radius: 12px;
             background: rgba(26, 26, 46, 0.5);
             box-shadow: 0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3), 0 0 90px rgba(139, 92, 246, 0.1);
-            display: block;
+            display: flex; /* Use flex to center the canvas */
+            justify-content: center;
+            align-items: center;
             position: relative;
             overflow: hidden;
-            box-sizing: content-box;
+            box-sizing: border-box; /* Changed from content-box */
             padding: 4px;
-            height: 90vh; /* Set a height based on viewport */
-            aspect-ratio: 10 / 20; /* Enforce aspect ratio */
+            /* The size is now determined by the Phaser canvas itself via Scale.FIT */
+            /* We just provide a bounding box */
+            max-height: 90vh;
         }
 
         body.phaser-hud-ready .next-pieces-container {
