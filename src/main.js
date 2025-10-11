@@ -325,7 +325,7 @@ class SerenityBlocks {
             parent: 'phaser-game-container', // Parent container for Phaser canvas
             transparent: true, // Transparent to show themes behind
             audio: { noAudio: true },
-            scene: [BackgroundScene, BoardScene],
+            scene: [BoardScene, BackgroundScene],
             scale: {
                 mode: PhaserRef.Scale.FIT,
                 autoCenter: PhaserRef.Scale.CENTER_BOTH,
