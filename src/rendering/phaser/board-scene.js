@@ -254,33 +254,41 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             const boardWidth = this.cols * this.blockSize;
 
             clearedRows.forEach((row) => {
-                const zoneTop = (row - this.hiddenRows) * this.blockSize;
-                const zone = new Phaser.Geom.Rectangle(0, zoneTop, boardWidth, this.blockSize);
+                const zoneY = (row - this.hiddenRows) * this.blockSize;
 
-                const particles = this.add.particles(this.lineClearParticleKey);
-                particles.setDepth(5);
-
-                const emitter = particles.createEmitter({
-                    emitZone: { type: 'random', source: zone },
+                // The emitZone source is relative to the emitter's coordinates.
+                // So, we create the emitter at the zone's top-left corner (0, zoneY)
+                // and define the zone source relative to that point.
+                const emitter = this.add.particles(0, zoneY, this.lineClearParticleKey, {
+                    emitZone: {
+                        type: 'random',
+                        source: new Phaser.Geom.Rectangle(0, 0, boardWidth, this.blockSize),
+                    },
                     speed: { min: 90, max: 220 * intensity },
                     angle: { min: -110, max: -70 },
                     lifespan: { min: 350, max: RIPPLE_PARTICLE_LIFESPAN },
-                    quantity: 0,
+                    quantity: 0, // Required for explode
                     alpha: { start: 0.9, end: 0 },
                     scale: { start: 0.85, end: 0 },
                     gravityY: 400,
                     blendMode: 'ADD',
-                    on: false,
+                    on: false, // Emitter is not started automatically
                 });
+
+                emitter.setDepth(5);
 
                 const burstAmount = Math.round(18 * intensity);
                 emitter.explode(burstAmount);
+
+                // The emitter is now the game object to be managed
                 this.time.delayedCall(RIPPLE_PARTICLE_LIFESPAN, () => {
-                    particles.destroy();
-                    this.activeParticleSystems.delete(particles);
+                    if (emitter) {
+                        emitter.destroy();
+                        this.activeParticleSystems.delete(emitter);
+                    }
                 });
 
-                this.activeParticleSystems.add(particles);
+                this.activeParticleSystems.add(emitter);
             });
 
             this.lastImpactIntensity = 0;
