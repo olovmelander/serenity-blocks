@@ -126,10 +126,13 @@ export function createBaseBoardScene(
          * @returns {{width:number, height:number}}
          */
         getBoardDimensions() {
-            const { cols, rows, blockSize } = this.boardConfig;
+            const {
+                cols, rows, hiddenRows, blockSize,
+            } = this.boardConfig;
             return {
                 width: cols * blockSize,
-                height: rows * blockSize,
+                // Return the full height of the board, including the hidden area for spawning
+                height: (rows + hiddenRows) * blockSize,
             };
         }
 
@@ -142,8 +145,15 @@ export function createBaseBoardScene(
 
             camera.setRoundPixels(false);
             const { width, height } = this.getBoardDimensions();
+            const { hiddenRows, blockSize } = this.boardConfig;
+
+            // Set the camera bounds to the entire logical canvas size
             camera.setBounds(0, 0, width, height);
-            camera.centerOn(width / 2, height / 2);
+
+            // Center the camera on the *visible* portion of the board, not the entire canvas.
+            // This is done by offsetting the center point by the height of the hidden rows.
+            const visibleHeight = height - hiddenRows * blockSize;
+            camera.centerOn(width / 2, visibleHeight / 2 + hiddenRows * blockSize);
         }
 
         /**

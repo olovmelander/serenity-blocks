@@ -3,9 +3,6 @@
  * This scene handles rendering the game board, pieces, and visual effects using Phaser
  */
 
-import {
-    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
-} from '../../core/constants.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { createBaseBoardScene } from './base-board-scene.js';
 
@@ -49,27 +46,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         }
 
         applyDefaultViewport() {
-            const boardWidth = this.cols * this.blockSize;
-            const boardHeight = this.rows * this.blockSize;
-            const gameWidth = this.scale.gameSize?.width ?? boardWidth;
-            const gameHeight = this.scale.gameSize?.height ?? boardHeight;
-
-            const topOffset = 100; // Adjust this value to make space for the next queue
-            const availableHeight = gameHeight - topOffset;
-            const scale = Math.min(
-                (gameWidth * 0.9) / boardWidth,
-                (availableHeight * 0.9) / boardHeight,
-            );
-
-            const newBoardWidth = boardWidth * scale;
-            const newBoardHeight = boardHeight * scale;
-
-            const viewportX = Math.max(0, (gameWidth - newBoardWidth) / 2);
-            const viewportY = topOffset + Math.max(0, (availableHeight - newBoardHeight) / 2);
-
-            const camera = this.cameras?.main;
-            camera.setViewport(viewportX, viewportY, newBoardWidth, newBoardHeight);
-            camera.setOrigin(0, 0);
+            // This logic is now handled by the Phaser Scale Manager (mode: FIT)
+            // and the camera configuration in the base scene.
+            // Keeping the method for now to avoid breaking calls, but it should be empty.
             this.configureCamera();
         }
 
@@ -103,7 +82,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             console.log('[BoardScene] Creating scene...');
 
-            this.applyDefaultViewport();
+            // The camera is now configured in the base scene, so no need to call this here.
+            // this.applyDefaultViewport();
 
             // Draw initial grid background
             this.drawGrid();
