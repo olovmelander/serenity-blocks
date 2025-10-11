@@ -283,15 +283,14 @@ class SerenityBlocks {
      * Calculate optimal block size based on viewport
      */
     calculateBlockSize() {
-        const maxWidth = window.innerWidth * 0.4;
-        // Reduce max height to account for UI elements (stats, controls, padding)
-        // Also account for container padding and borders (16px total)
-        const uiOverhead = 100; // Approximate height for margins, padding, etc.
-        const maxHeight = (window.innerHeight - uiOverhead) * 0.85;
-        const blockSizeWidth = Math.floor(maxWidth / COLS);
-        const blockSizeHeight = Math.floor(maxHeight / ROWS);
-        // Allow larger block sizes for higher resolution displays
-        return Math.min(blockSizeWidth, blockSizeHeight, 40);
+        const gameContainer = document.getElementById('phaser-game-container');
+        const containerWidth = gameContainer.clientWidth;
+        const containerHeight = gameContainer.clientHeight;
+
+        const blockSizeWidth = Math.floor(containerWidth / COLS);
+        const blockSizeHeight = Math.floor(containerHeight / (ROWS + HIDDEN_ROWS));
+
+        return Math.min(blockSizeWidth, blockSizeHeight);
     }
 
     /**

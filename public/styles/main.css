@@ -4706,8 +4706,8 @@ body {
             animation: fadeIn 0.5s ease;
             position: relative;
             z-index: 1;
-            max-height: 100vh; /* Use full viewport height */
-            overflow: hidden; /* Hide any overflow - no scrollbar */
+            height: 100%;
+            width: 100%;
             justify-content: center; /* Center content */
         }
 
@@ -4746,7 +4746,7 @@ body {
             overflow: hidden;
             box-sizing: content-box;
             padding: 4px;
-            aspect-ratio: 10 / 20;
+            height: 100%;
         }
 
         body.phaser-hud-ready .next-pieces-container {
