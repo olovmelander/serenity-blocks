@@ -39,7 +39,7 @@ export default class DesertOasisTheme extends BaseTheme {
                 shootingStar.addEventListener('animationend', () => shootingStar.remove());
                 this.shootingStarTimeout = setTimeout(
                     createShootingStar,
-                    Math.random() * 30000 + 30000,
+                    Math.random() * 30000 + 30000
                 );
             };
             this.shootingStarTimeout = setTimeout(createShootingStar, 15000);

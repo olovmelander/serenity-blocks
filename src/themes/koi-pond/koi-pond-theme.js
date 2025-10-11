@@ -66,21 +66,22 @@ export default class KoiPondTheme extends BaseTheme {
             }
             this.registerContainer(koiContainer);
 
-            const rippleLoop = (timestamp) => {
+            const rippleLoop = timestamp => {
                 if (!this.isActive) {
                     return;
                 }
                 // Generate ripple roughly every 500-1000ms
                 if (timestamp - this.lastRippleTime > Math.random() * 500 + 500) {
                     this.lastRippleTime = timestamp;
-                    const koi = this.koiInstances[Math.floor(Math.random() * this.koiInstances.length)];
+                    const koi =
+                        this.koiInstances[Math.floor(Math.random() * this.koiInstances.length)];
                     const rect = koi.getBoundingClientRect();
 
                     if (
-                        rect.top > 0
-                        && rect.left > 0
-                        && rect.bottom < window.innerHeight
-                        && rect.right < window.innerWidth
+                        rect.top > 0 &&
+                        rect.left > 0 &&
+                        rect.bottom < window.innerHeight &&
+                        rect.right < window.innerWidth
                     ) {
                         const ripple = document.createElement('div');
                         ripple.className = 'koi-ripple';

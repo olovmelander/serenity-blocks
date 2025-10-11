@@ -59,12 +59,10 @@ export class InputController {
  * @param {Object} gameActions - Game action functions
  */
 export function setupKeyboardControls(inputController, settings, gameActions) {
-    const {
-        move, rotate, softDrop, hardDrop, togglePause, startGame, initSound,
-    } = gameActions;
+    const { move, rotate, softDrop, hardDrop, togglePause, startGame, initSound } = gameActions;
 
     // Keydown handler
-    document.addEventListener('keydown', (e) => {
+    document.addEventListener('keydown', e => {
         // Escape always toggles pause
         if (e.key === 'Escape') {
             togglePause();
@@ -86,8 +84,8 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
         const startModal = document.getElementById('start-modal');
         const gameOverModal = document.getElementById('game-over-modal');
         if (
-            (startModal && startModal.classList.contains('visible'))
-            || (gameOverModal && gameOverModal.classList.contains('visible'))
+            (startModal && startModal.classList.contains('visible')) ||
+            (gameOverModal && gameOverModal.classList.contains('visible'))
         ) {
             startGame();
             return;
@@ -95,7 +93,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
         // Get action from key binding
         const key = e.key === ' ' ? 'Space' : e.key;
-        const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
+        const action = Object.keys(settings.keyBindings).find(k => settings.keyBindings[k] === key);
 
         if (!action || inputController.keyMap[action]) return;
         inputController.keyMap[action] = true;
@@ -103,11 +101,11 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
         // Handle input queue during physics processing
         if (gameActions.isProcessingPhysics && gameActions.inputQueue !== undefined) {
             if (
-                !gameActions.inputQueue
-                && (action === 'moveLeft'
-                    || action === 'moveRight'
-                    || action.startsWith('rotate')
-                    || action === 'flip')
+                !gameActions.inputQueue &&
+                (action === 'moveLeft' ||
+                    action === 'moveRight' ||
+                    action.startsWith('rotate') ||
+                    action === 'flip')
             ) {
                 gameActions.inputQueue = {
                     type: action.startsWith('rotate') || action === 'flip' ? 'rotate' : 'move',
@@ -115,12 +113,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                         action === 'moveLeft'
                             ? -1
                             : action === 'moveRight'
-                                ? 1
-                                : action === 'rotateLeft'
-                                    ? 'left'
-                                    : action === 'flip'
-                                        ? 'flip'
-                                        : 'right',
+                              ? 1
+                              : action === 'rotateLeft'
+                                ? 'left'
+                                : action === 'flip'
+                                  ? 'flip'
+                                  : 'right',
                 };
             }
             return;
@@ -128,78 +126,78 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
         // Execute actions
         switch (action) {
-        case 'moveLeft':
-            move(-1);
-            inputController.dasTimer = setTimeout(() => {
-                inputController.dasIntervalTimer = setInterval(
-                    () => move(-1),
-                    settings.dasInterval,
-                );
-            }, settings.dasDelay);
-            break;
+            case 'moveLeft':
+                move(-1);
+                inputController.dasTimer = setTimeout(() => {
+                    inputController.dasIntervalTimer = setInterval(
+                        () => move(-1),
+                        settings.dasInterval
+                    );
+                }, settings.dasDelay);
+                break;
 
-        case 'moveRight':
-            move(1);
-            inputController.dasTimer = setTimeout(() => {
-                inputController.dasIntervalTimer = setInterval(
-                    () => move(1),
-                    settings.dasInterval,
-                );
-            }, settings.dasDelay);
-            break;
+            case 'moveRight':
+                move(1);
+                inputController.dasTimer = setTimeout(() => {
+                    inputController.dasIntervalTimer = setInterval(
+                        () => move(1),
+                        settings.dasInterval
+                    );
+                }, settings.dasDelay);
+                break;
 
-        case 'softDrop':
-            softDrop();
-            inputController.softDropTimer = setInterval(() => softDrop(), 50);
-            break;
+            case 'softDrop':
+                softDrop();
+                inputController.softDropTimer = setInterval(() => softDrop(), 50);
+                break;
 
-        case 'rotateRight':
-            rotate('right');
-            break;
+            case 'rotateRight':
+                rotate('right');
+                break;
 
-        case 'rotateLeft':
-            rotate('left');
-            break;
+            case 'rotateLeft':
+                rotate('left');
+                break;
 
-        case 'flip':
-            rotate('flip');
-            break;
+            case 'flip':
+                rotate('flip');
+                break;
 
-        case 'hardDrop':
-            e.preventDefault();
-            hardDrop();
-            break;
+            case 'hardDrop':
+                e.preventDefault();
+                hardDrop();
+                break;
 
-        case 'nextTrack':
-            if (gameActions.nextTrack) {
-                gameActions.nextTrack();
-            }
-            break;
+            case 'nextTrack':
+                if (gameActions.nextTrack) {
+                    gameActions.nextTrack();
+                }
+                break;
 
-        case 'randomTheme':
-            if (gameActions.randomTheme) {
-                gameActions.randomTheme();
-            }
-            break;
+            case 'randomTheme':
+                if (gameActions.randomTheme) {
+                    gameActions.randomTheme();
+                }
+                break;
 
-        case 'toggleFullscreen':
-            if (gameActions.toggleFullscreen) {
-                gameActions.toggleFullscreen();
-            }
-            break;
+            case 'toggleFullscreen':
+                if (gameActions.toggleFullscreen) {
+                    gameActions.toggleFullscreen();
+                }
+                break;
 
-        case 'showHighScores':
-            if (gameActions.showHighScores) {
-                gameActions.showHighScores();
-            }
-            break;
+            case 'showHighScores':
+                if (gameActions.showHighScores) {
+                    gameActions.showHighScores();
+                }
+                break;
         }
     });
 
     // Keyup handler
-    document.addEventListener('keyup', (e) => {
+    document.addEventListener('keyup', e => {
         const key = e.key === ' ' ? 'Space' : e.key;
-        const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
+        const action = Object.keys(settings.keyBindings).find(k => settings.keyBindings[k] === key);
 
         if (action) {
             inputController.keyMap[action] = false;
@@ -229,20 +227,18 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
  * @param {HTMLCanvasElement} canvas - Game canvas element
  */
 export function setupTouchControls(inputController, settings, gameActions, canvas) {
-    const {
-        move, rotate, softDrop, hardDrop, startGame, initSound,
-    } = gameActions;
+    const { move, rotate, softDrop, hardDrop, startGame, initSound } = gameActions;
 
     // Touch start handler
-    document.addEventListener('touchstart', (e) => {
+    document.addEventListener('touchstart', e => {
         if (settings.controlScheme !== 'Touch') return;
 
         // Don't handle touch on UI elements
         if (
-            e.target.tagName === 'BUTTON'
-            || e.target.classList.contains('key-input')
-            || e.target.tagName === 'SELECT'
-            || e.target.tagName === 'INPUT'
+            e.target.tagName === 'BUTTON' ||
+            e.target.classList.contains('key-input') ||
+            e.target.tagName === 'SELECT' ||
+            e.target.tagName === 'INPUT'
         ) {
             return;
         }
@@ -258,7 +254,7 @@ export function setupTouchControls(inputController, settings, gameActions, canva
     });
 
     // Touch move handler
-    document.addEventListener('touchmove', (e) => {
+    document.addEventListener('touchmove', e => {
         if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
         e.preventDefault();
 
@@ -283,7 +279,7 @@ export function setupTouchControls(inputController, settings, gameActions, canva
     });
 
     // Touch end handler
-    document.addEventListener('touchend', (e) => {
+    document.addEventListener('touchend', e => {
         if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
         e.preventDefault();
 
@@ -297,8 +293,8 @@ export function setupTouchControls(inputController, settings, gameActions, canva
         const startModal = document.getElementById('start-modal');
         const gameOverModal = document.getElementById('game-over-modal');
         if (
-            (startModal && startModal.classList.contains('visible'))
-            || (gameOverModal && gameOverModal.classList.contains('visible'))
+            (startModal && startModal.classList.contains('visible')) ||
+            (gameOverModal && gameOverModal.classList.contains('visible'))
         ) {
             startGame();
             inputController.resetTouch();
@@ -316,9 +312,9 @@ export function setupTouchControls(inputController, settings, gameActions, canva
 
         // Tap detection (quick, small movement)
         if (
-            deltaTime < flickTime
-            && Math.abs(deltaX) < tapThreshold
-            && Math.abs(deltaY) < tapThreshold
+            deltaTime < flickTime &&
+            Math.abs(deltaX) < tapThreshold &&
+            Math.abs(deltaY) < tapThreshold
         ) {
             const canvasRect = canvas.getBoundingClientRect();
             const touchXonCanvas = touch.clientX - canvasRect.left;
@@ -349,7 +345,7 @@ export function setupTouchControls(inputController, settings, gameActions, canva
  * @param {Function} initSound - Initialize sound function
  */
 export function setupClickControls(inputController, startGame, initSound) {
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', e => {
         // Initialize sound on first interaction
         if (!inputController.soundInitialized) {
             inputController.soundInitialized = true;
@@ -358,10 +354,10 @@ export function setupClickControls(inputController, startGame, initSound) {
 
         // Don't handle clicks on UI elements
         if (
-            e.target.tagName === 'BUTTON'
-            || e.target.classList.contains('key-input')
-            || e.target.tagName === 'SELECT'
-            || e.target.tagName === 'INPUT'
+            e.target.tagName === 'BUTTON' ||
+            e.target.classList.contains('key-input') ||
+            e.target.tagName === 'SELECT' ||
+            e.target.tagName === 'INPUT'
         ) {
             return;
         }
@@ -370,8 +366,8 @@ export function setupClickControls(inputController, startGame, initSound) {
         const startModal = document.getElementById('start-modal');
         const gameOverModal = document.getElementById('game-over-modal');
         if (
-            (startModal && startModal.classList.contains('visible'))
-            || (gameOverModal && gameOverModal.classList.contains('visible'))
+            (startModal && startModal.classList.contains('visible')) ||
+            (gameOverModal && gameOverModal.classList.contains('visible'))
         ) {
             startGame();
         }

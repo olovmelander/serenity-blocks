@@ -73,7 +73,7 @@ export class SoundManager {
         type = 'sine',
         volume = 0.3,
         onended = null,
-        isMusic = false,
+        isMusic = false
     ) {
         if (!this.audioContext || this.isMuted) return;
 
@@ -106,7 +106,7 @@ export class SoundManager {
     async initializeTracks() {
         const songs = await loadSongs();
         this.songsData = songs;
-        this.trackNames = songs.map((song) => nameToKey(song.name));
+        this.trackNames = songs.map(song => nameToKey(song.name));
 
         // Set default track if current doesn't exist
         if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
@@ -128,7 +128,7 @@ export class SoundManager {
 
         dropdown.innerHTML = '';
 
-        this.songsData.forEach((song) => {
+        this.songsData.forEach(song => {
             const option = document.createElement('option');
             option.value = nameToKey(song.name);
             option.textContent = song.name;
@@ -300,7 +300,7 @@ export class SoundManager {
         // Play the audio (handle autoplay restrictions)
         const playPromise = this.audioElement.play();
         if (playPromise !== undefined) {
-            playPromise.catch((error) => {
+            playPromise.catch(error => {
                 console.log('Audio playback prevented:', error);
             });
         }
@@ -380,10 +380,10 @@ export class SoundManager {
                                 'sine',
                                 overtoneVolume,
                                 null,
-                                true,
+                                true
                             );
                         },
-                        random(100, 400),
+                        random(100, 400)
                     );
                 }
             }
@@ -412,7 +412,7 @@ export class SoundManager {
                     'sine',
                     0.1,
                     null,
-                    true,
+                    true
                 );
             }
             if (Math.random() > 0.9) {
@@ -442,7 +442,7 @@ export class SoundManager {
                     'sine',
                     0.1,
                     null,
-                    true,
+                    true
                 );
             }
         }, 4000);

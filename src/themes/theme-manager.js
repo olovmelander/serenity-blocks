@@ -151,7 +151,7 @@ export class ThemeManager {
      * @returns {string} Theme name
      */
     getRandomTheme() {
-        const availableThemes = THEMES.filter((name) => name !== this.activeThemeName);
+        const availableThemes = THEMES.filter(name => name !== this.activeThemeName);
         const randomIndex = Math.floor(Math.random() * availableThemes.length);
         return availableThemes[randomIndex];
     }

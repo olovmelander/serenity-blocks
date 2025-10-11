@@ -2,9 +2,7 @@
 // PIECES - Tetromino piece management for Serenity Blocks
 // =================================================================================
 
-import {
-    SHAPES, COLORS, PIECE_KEYS, COLS,
-} from './constants.js';
+import { SHAPES, COLORS, PIECE_KEYS, COLS } from './constants.js';
 
 /**
  * Piece queue and bag state
@@ -92,14 +90,14 @@ export function createPiece(shapeKey, x = 0, y = 0) {
 export function rotateShape(shape, direction = 'right') {
     if (direction === 'right') {
         // Rotate 90 degrees clockwise
-        return shape[0].map((_, i) => shape.map((row) => row[i]).reverse());
+        return shape[0].map((_, i) => shape.map(row => row[i]).reverse());
     }
     if (direction === 'left') {
         // Rotate 90 degrees counterclockwise
-        return shape[0].map((_, i) => shape.map((row) => row[i])).reverse();
+        return shape[0].map((_, i) => shape.map(row => row[i])).reverse();
     }
     // Flip 180 degrees
-    return shape.map((row) => row.slice().reverse()).reverse();
+    return shape.map(row => row.slice().reverse()).reverse();
 }
 
 /**

@@ -54,7 +54,7 @@ export class BaseTheme {
         console.log('[BaseTheme] WebGL Renderer:', this.webglRenderer);
         console.log(
             '[BaseTheme] Has loadTheme?',
-            this.webglRenderer && typeof this.webglRenderer.loadTheme,
+            this.webglRenderer && typeof this.webglRenderer.loadTheme
         );
 
         // Activate the DOM theme container
@@ -62,7 +62,7 @@ export class BaseTheme {
         if (themeContainer) {
             console.log('[BaseTheme] Activating theme container:', this.name);
             // Remove active class from all theme containers
-            document.querySelectorAll('.theme-container').forEach((container) => {
+            document.querySelectorAll('.theme-container').forEach(container => {
                 container.classList.remove('active');
             });
             // Add active class to this theme's container
@@ -115,7 +115,7 @@ export class BaseTheme {
         }
 
         // Cancel all animation frames
-        this.animationIds.forEach((id) => cancelAnimationFrame(id));
+        this.animationIds.forEach(id => cancelAnimationFrame(id));
         this.animationIds = [];
 
         // Clear WebGL layers
@@ -132,7 +132,7 @@ export class BaseTheme {
         this.stop();
 
         // Remove containers from DOM
-        this.containers.forEach((container) => {
+        this.containers.forEach(container => {
             if (container && container.parentNode) {
                 container.parentNode.removeChild(container);
             }

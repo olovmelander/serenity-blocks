@@ -90,7 +90,7 @@ function hexToRgb(hex) {
     if (value.length === 3) {
         value = value
             .split('')
-            .map((char) => char + char)
+            .map(char => char + char)
             .join('');
     }
 
@@ -102,7 +102,7 @@ function hexToRgb(hex) {
     const g = parseInt(value.substring(2, 4), 16);
     const b = parseInt(value.substring(4, 6), 16);
 
-    if ([r, g, b].some((component) => Number.isNaN(component))) {
+    if ([r, g, b].some(component => Number.isNaN(component))) {
         return null;
     }
 
@@ -123,11 +123,11 @@ function setPieceLockRippleCss(colorHex) {
     const root = document.documentElement;
     root.style.setProperty(
         '--lock-ripple-border-color',
-        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_BORDER_ALPHA})`,
+        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_BORDER_ALPHA})`
     );
     root.style.setProperty(
         '--lock-ripple-shadow-color',
-        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_SHADOW_ALPHA})`,
+        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_SHADOW_ALPHA})`
     );
 }
 
@@ -242,7 +242,9 @@ class SerenityBlocks {
         }
 
         // Initialize next piece preview canvases
-        this.nextCanvases = Array.from({ length: 5 }, (_, i) => document.getElementById(`next-${i}`));
+        this.nextCanvases = Array.from({ length: 5 }, (_, i) =>
+            document.getElementById(`next-${i}`)
+        );
 
         // Multiplayer canvases
         this.p1Canvas = document.getElementById('p1-canvas');
@@ -251,8 +253,12 @@ class SerenityBlocks {
         this.p2Ctx = this.p2Canvas ? this.p2Canvas.getContext('2d') : null;
 
         // Multiplayer next piece canvases
-        this.p1NextCanvases = Array.from({ length: 3 }, (_, i) => document.getElementById(`p1-next-${i}`));
-        this.p2NextCanvases = Array.from({ length: 3 }, (_, i) => document.getElementById(`p2-next-${i}`));
+        this.p1NextCanvases = Array.from({ length: 3 }, (_, i) =>
+            document.getElementById(`p1-next-${i}`)
+        );
+        this.p2NextCanvases = Array.from({ length: 3 }, (_, i) =>
+            document.getElementById(`p2-next-${i}`)
+        );
 
         // Calculate and set block size
         const calculatedBlockSize = this.calculateBlockSize();
@@ -270,12 +276,12 @@ class SerenityBlocks {
             this.p2Canvas.height = ROWS * BLOCK_SIZE;
 
             console.log(
-                `Multiplayer canvases: ${this.p1Canvas.width}x${this.p1Canvas.height}, block size: ${BLOCK_SIZE}px`,
+                `Multiplayer canvases: ${this.p1Canvas.width}x${this.p1Canvas.height}, block size: ${BLOCK_SIZE}px`
             );
         }
 
         console.log(
-            `Canvas initialized: ${this.canvas.width}x${this.canvas.height}, block size: ${BLOCK_SIZE}px`,
+            `Canvas initialized: ${this.canvas.width}x${this.canvas.height}, block size: ${BLOCK_SIZE}px`
         );
     }
 
@@ -288,7 +294,7 @@ class SerenityBlocks {
         const containerHeight = gameContainer.clientHeight;
 
         const blockSizeWidth = Math.floor(containerWidth / COLS);
-        const blockSizeHeight = Math.floor(containerHeight / (ROWS + HIDDEN_ROWS));
+        const blockSizeHeight = Math.floor(containerHeight / ROWS);
 
         return Math.min(blockSizeWidth, blockSizeHeight);
     }
@@ -341,7 +347,7 @@ class SerenityBlocks {
                 pixelArt: false,
             },
             callbacks: {
-                postBoot: (game) => {
+                postBoot: game => {
                     // Phaser is ready
                     this.backgroundScene = game.scene.getScene('BackgroundScene');
                     this.boardScene = game.scene.getScene('BoardScene');
@@ -353,7 +359,7 @@ class SerenityBlocks {
                     console.log('ROWS:', ROWS, 'HIDDEN_ROWS:', HIDDEN_ROWS);
                     console.log(
                         'Container:',
-                        document.getElementById('phaser-game-container').offsetHeight,
+                        document.getElementById('phaser-game-container').offsetHeight
                     );
                     document.body.classList.add('phaser-hud-ready');
                     if (this.gameState) {
@@ -362,7 +368,7 @@ class SerenityBlocks {
                     }
                     // this.startBackgroundScene(); // Moved to end of init
                     this.applyEffectQuality(
-                        this.settingsManager?.get().effectQuality ?? this.currentEffectQuality,
+                        this.settingsManager?.get().effectQuality ?? this.currentEffectQuality
                     );
                 },
             },
@@ -405,7 +411,7 @@ class SerenityBlocks {
         }
 
         if (this.multiplayerBoardScenes?.length) {
-            this.multiplayerBoardScenes.forEach((scene) => scene?.setEffectQuality?.(quality));
+            this.multiplayerBoardScenes.forEach(scene => scene?.setEffectQuality?.(quality));
         }
 
         if (this.webglRenderer?.setEffectQuality) {
@@ -487,7 +493,7 @@ class SerenityBlocks {
         const sceneManager = this.phaserGame.scene;
         const viewports = this.getMultiplayerViewports();
 
-        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach((key) => {
+        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach(key => {
             if (sceneManager.isActive(key)) {
                 sceneManager.stop(key);
             }
@@ -512,7 +518,7 @@ class SerenityBlocks {
             sceneManager.getScene('MultiplayerBoardScene2'),
         ];
 
-        this.multiplayerBoardScenes.forEach((sceneInstance) => {
+        this.multiplayerBoardScenes.forEach(sceneInstance => {
             sceneInstance?.events?.once('create', () => this.syncMultiplayerBoardScenes());
             sceneInstance?.setEffectQuality?.(this.currentEffectQuality);
         });
@@ -523,7 +529,7 @@ class SerenityBlocks {
     teardownMultiplayerBoardScenes() {
         if (!this.phaserGame) return;
         const sceneManager = this.phaserGame.scene;
-        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach((key) => {
+        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach(key => {
             if (sceneManager.isActive(key)) {
                 sceneManager.stop(key);
             }
@@ -586,7 +592,7 @@ class SerenityBlocks {
                 if (settings.themeLinkedMode) {
                     this.soundManager.applyThemeLinkedMusic(themeName);
                 }
-            }),
+            })
         );
 
         // Input controller
@@ -613,16 +619,16 @@ class SerenityBlocks {
         let initialTheme = 'forest'; // default
 
         switch (settings.backgroundMode) {
-        case 'Specific':
-            initialTheme = settings.backgroundTheme || 'forest';
-            break;
-        case 'Level':
-            initialTheme = this.themeManager.getThemeForLevel(1);
-            break;
-        case 'Random':
-            initialTheme = this.themeManager.getRandomTheme();
-            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-            break;
+            case 'Specific':
+                initialTheme = settings.backgroundTheme || 'forest';
+                break;
+            case 'Level':
+                initialTheme = this.themeManager.getThemeForLevel(1);
+                break;
+            case 'Random':
+                initialTheme = this.themeManager.getRandomTheme();
+                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+                break;
         }
 
         await this.themeManager.switchTheme(initialTheme);
@@ -649,12 +655,12 @@ class SerenityBlocks {
         });
 
         // Settings change events
-        const settingsHandler = (e) => {
+        const settingsHandler = e => {
             this.handleSettingsChange(e.detail);
         };
         window.addEventListener('settingsChanged', settingsHandler);
 
-        const gameModeHandler = (e) => {
+        const gameModeHandler = e => {
             console.log('[Main] Game mode changed from UI:', e.detail.mode);
             this.settingsManager.update({ gameMode: e.detail.mode });
             this.settingsManager.save();
@@ -662,7 +668,7 @@ class SerenityBlocks {
         window.addEventListener('gameModeChanged', gameModeHandler);
 
         // Global key press and tap to start game
-        const handleStartInput = (e) => {
+        const handleStartInput = e => {
             // Don't process input until fully initialized
             if (!this.isInitialized) {
                 return;
@@ -719,29 +725,29 @@ class SerenityBlocks {
 
         // Initialize settings UI (includes tab switching)
         initializeSettingsUI(this.settingsManager, {
-            onMusicVolumeChange: (volume) => {
+            onMusicVolumeChange: volume => {
                 this.soundManager.setMusicVolume(volume);
             },
-            onSfxVolumeChange: (volume) => {
+            onSfxVolumeChange: volume => {
                 this.soundManager.setSFXVolume(volume);
             },
-            onMusicTrackChange: (track) => {
+            onMusicTrackChange: track => {
                 console.log('[Main] Music track changed to:', track);
                 this.soundManager.setTrack(track);
             },
-            onSoundSetChange: (soundSet) => {
+            onSoundSetChange: soundSet => {
                 console.log('[Main] Sound set changed to:', soundSet);
                 this.soundManager.setSoundSet(soundSet);
             },
-            onThemeLinkedModeChange: (enabled) => {
+            onThemeLinkedModeChange: enabled => {
                 console.log('[Main] Theme-linked mode:', enabled);
                 // Theme-linked mode is handled automatically by sound manager
             },
-            onAutoThemeChangeToggle: (enabled) => {
+            onAutoThemeChangeToggle: enabled => {
                 console.log('[Main] Auto theme change:', enabled);
                 // Auto theme change is handled automatically by sound manager
             },
-            onBackgroundModeChange: (mode) => {
+            onBackgroundModeChange: mode => {
                 const settings = this.settingsManager.get();
                 if (mode === 'Specific') {
                     this.themeManager.switchTheme(settings.backgroundTheme);
@@ -749,27 +755,28 @@ class SerenityBlocks {
                 } else if (mode === 'Random') {
                     if (settings.autoThemeChange) {
                         this.themeManager.startRandomThemeInterval(
-                            settings.randomThemeInterval / 60,
+                            settings.randomThemeInterval / 60
                         );
                     }
                 } else if (mode === 'Level') {
                     const levelTheme = this.themeManager.getThemeForLevel(
-                        this.gameState?.level || 1,
+                        this.gameState?.level || 1
                     );
                     this.themeManager.switchTheme(levelTheme);
                     this.themeManager.stopRandomThemeInterval();
                 }
             },
-            onBackgroundThemeChange: (theme) => {
+            onBackgroundThemeChange: theme => {
                 console.log('[Main] Theme changed to:', theme);
                 this.themeManager.switchTheme(theme);
             },
-            onGameModeChange: (mode) => {
+            onGameModeChange: mode => {
                 console.log('[Main] Game mode changed to:', mode);
 
                 // Stop current game if running
-                const wasGameActive = (this.gameState && !this.gameState.isGameOver)
-                    || (this.multiplayerState && !this.multiplayerState.isGameOver);
+                const wasGameActive =
+                    (this.gameState && !this.gameState.isGameOver) ||
+                    (this.multiplayerState && !this.multiplayerState.isGameOver);
 
                 if (wasGameActive) {
                     // Stop the current game
@@ -826,11 +833,11 @@ class SerenityBlocks {
                     draw(this.canvas, this.ctx, this.gameState);
                 }
             },
-            onLevelUp: (level) => {
+            onLevelUp: level => {
                 updateStats(this.gameState);
                 this.updatePhaserStats();
             },
-            onScoreAdd: (points) => {
+            onScoreAdd: points => {
                 updateStats(this.gameState);
                 this.updatePhaserStats();
             },
@@ -838,12 +845,12 @@ class SerenityBlocks {
                 // Visual feedback handled in draw
                 // holeColumns parameter not used in single-player mode
             },
-            updateBoard: (boardData) => {
+            updateBoard: boardData => {
                 // Board updates handled in draw
             },
             playLineClear: () => this.soundManager.sfxPlayer.playLineClear(),
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
-            triggerFlash: (clearedRows) => {
+            triggerFlash: clearedRows => {
                 const settings = this.settingsManager.get();
                 if (settings.lineClearEffects) {
                     if (this.boardScene) {
@@ -853,18 +860,18 @@ class SerenityBlocks {
                     }
                 }
             },
-            triggerBackgroundPulse: (lineCount) => triggerBackgroundPulse(lineCount),
-            onLineClearImpact: (lineCount) => {
+            triggerBackgroundPulse: lineCount => triggerBackgroundPulse(lineCount),
+            onLineClearImpact: lineCount => {
                 const settings = this.settingsManager.get();
                 if (
-                    settings.lineClearEffects
-                    && this.boardScene
-                    && typeof this.boardScene.playLineClearImpact === 'function'
+                    settings.lineClearEffects &&
+                    this.boardScene &&
+                    typeof this.boardScene.playLineClearImpact === 'function'
                 ) {
                     this.boardScene.playLineClearImpact(lineCount);
                 }
             },
-            triggerCombo: (comboCount) => {
+            triggerCombo: comboCount => {
                 const settings = this.settingsManager.get();
                 if (settings.comboPopupEffect) {
                     if (this.boardScene) {
@@ -874,7 +881,7 @@ class SerenityBlocks {
                     }
                 }
             },
-            onPieceLock: (piece) => {
+            onPieceLock: piece => {
                 const settings = this.settingsManager.get();
                 if (settings.pieceLockRipple) {
                     if (this.boardScene) {
@@ -884,7 +891,7 @@ class SerenityBlocks {
                     }
                 }
             },
-            updateBackground: (level) => {
+            updateBackground: level => {
                 const settings = this.settingsManager.get();
                 if (settings.backgroundMode === 'Level') {
                     const levelTheme = this.themeManager.getThemeForLevel(level);
@@ -895,7 +902,7 @@ class SerenityBlocks {
                 spawnPiece(
                     this.gameState,
                     () => this.refreshNextQueue(),
-                    () => this.endGame(),
+                    () => this.endGame()
                 );
             },
         };
@@ -917,40 +924,40 @@ class SerenityBlocks {
         window.inputController = this.inputController;
 
         // Expose game control functions
-        window.move = (dir) => {
+        window.move = dir => {
             // In multiplayer mode, control player 1
             if (this.gameModeUI.getMode() === GAME_MODES.MULTIPLAYER && this.multiplayerState) {
                 coreMove(
                     this.multiplayerState.player1,
                     dir,
                     () => this.soundManager.sfxPlayer.playMove(),
-                    addPieceTrail,
+                    addPieceTrail
                 );
             } else {
                 coreMove(
                     this.gameState,
                     dir,
                     () => this.soundManager.sfxPlayer.playMove(),
-                    addPieceTrail,
+                    addPieceTrail
                 );
             }
         };
 
-        window.rotate = (dir) => {
+        window.rotate = dir => {
             // In multiplayer mode, control player 1
             if (this.gameModeUI.getMode() === GAME_MODES.MULTIPLAYER && this.multiplayerState) {
                 coreRotate(
                     this.multiplayerState.player1,
                     dir,
                     () => this.soundManager.sfxPlayer.playRotate(),
-                    addPieceTrail,
+                    addPieceTrail
                 );
             } else {
                 coreRotate(
                     this.gameState,
                     dir,
                     () => this.soundManager.sfxPlayer.playRotate(),
-                    addPieceTrail,
+                    addPieceTrail
                 );
             }
         };
@@ -961,13 +968,13 @@ class SerenityBlocks {
                 coreSoftDrop(
                     this.multiplayerState.player1,
                     () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getMultiplayerPhysicsCallbacks(1),
+                    this.getMultiplayerPhysicsCallbacks(1)
                 );
             } else {
                 coreSoftDrop(
                     this.gameState,
                     () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getPhysicsCallbacks(),
+                    this.getPhysicsCallbacks()
                 );
             }
         };
@@ -978,13 +985,13 @@ class SerenityBlocks {
                 coreHardDrop(
                     this.multiplayerState.player1,
                     () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getMultiplayerPhysicsCallbacks(1),
+                    this.getMultiplayerPhysicsCallbacks(1)
                 );
             } else {
                 coreHardDrop(
                     this.gameState,
                     () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getPhysicsCallbacks(),
+                    this.getPhysicsCallbacks()
                 );
             }
         };
@@ -1022,24 +1029,24 @@ class SerenityBlocks {
         };
 
         // Expose Player 2 controls for multiplayer
-        window.moveP2 = (dir) => {
+        window.moveP2 = dir => {
             if (this.multiplayerState && !this.multiplayerState.isGameOver) {
                 coreMove(
                     this.multiplayerState.player2,
                     dir,
                     () => this.soundManager.sfxPlayer.playMove(),
-                    addPieceTrail,
+                    addPieceTrail
                 );
             }
         };
 
-        window.rotateP2 = (dir) => {
+        window.rotateP2 = dir => {
             if (this.multiplayerState && !this.multiplayerState.isGameOver) {
                 coreRotate(
                     this.multiplayerState.player2,
                     dir,
                     () => this.soundManager.sfxPlayer.playRotate(),
-                    addPieceTrail,
+                    addPieceTrail
                 );
             }
         };
@@ -1049,7 +1056,7 @@ class SerenityBlocks {
                 coreSoftDrop(
                     this.multiplayerState.player2,
                     () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getMultiplayerPhysicsCallbacks(2),
+                    this.getMultiplayerPhysicsCallbacks(2)
                 );
             }
         };
@@ -1059,7 +1066,7 @@ class SerenityBlocks {
                 coreHardDrop(
                     this.multiplayerState.player2,
                     () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getMultiplayerPhysicsCallbacks(2),
+                    this.getMultiplayerPhysicsCallbacks(2)
                 );
             }
         };
@@ -1089,7 +1096,7 @@ class SerenityBlocks {
             this.inputController,
             this.settingsManager.get(),
             gameActions,
-            this.canvas,
+            this.canvas
         );
 
         // Setup Player 2 keyboard controls
@@ -1103,14 +1110,15 @@ class SerenityBlocks {
         const settings = this.settingsManager.get();
         const p2Keys = settings.player2KeyBindings;
 
-        document.addEventListener('keydown', (e) => {
+        document.addEventListener('keydown', e => {
             // Only process in multiplayer mode
             if (this.gameModeUI.getMode() !== GAME_MODES.MULTIPLAYER) return;
             if (
-                !this.multiplayerState
-                || this.multiplayerState.isGameOver
-                || this.multiplayerState.isPaused
-            ) return;
+                !this.multiplayerState ||
+                this.multiplayerState.isGameOver ||
+                this.multiplayerState.isPaused
+            )
+                return;
 
             const key = e.key === ' ' ? 'Space' : e.key;
 
@@ -1266,7 +1274,7 @@ class SerenityBlocks {
             this.gameState.nextPieces,
             typeof this.gameState.randomGenerator === 'function'
                 ? this.gameState.randomGenerator
-                : Math.random,
+                : Math.random
         );
 
         // Spawn first piece
@@ -1280,7 +1288,7 @@ class SerenityBlocks {
             () => {
                 // Game over callback
                 this.endGame();
-            },
+            }
         );
 
         // Draw initial next pieces display
@@ -1327,11 +1335,11 @@ class SerenityBlocks {
         // Fill piece bags for both players
         fillBag(
             this.multiplayerState.player1.nextPieces,
-            this.multiplayerState.player1.randomGenerator,
+            this.multiplayerState.player1.randomGenerator
         );
         fillBag(
             this.multiplayerState.player2.nextPieces,
-            this.multiplayerState.player2.randomGenerator,
+            this.multiplayerState.player2.randomGenerator
         );
 
         // Update stats display to reflect reset state
@@ -1350,7 +1358,7 @@ class SerenityBlocks {
             },
             () => {
                 this.endMultiplayerGame(1); // Player 1 lost
-            },
+            }
         );
 
         spawnPiece(
@@ -1360,7 +1368,7 @@ class SerenityBlocks {
             },
             () => {
                 this.endMultiplayerGame(2); // Player 2 lost
-            },
+            }
         );
 
         this.syncMultiplayerBoardScenes();
@@ -1396,7 +1404,9 @@ class SerenityBlocks {
             void element.offsetWidth;
             element.classList.add('countdown-pulse');
 
-            await new Promise((resolve) => setTimeout(resolve, i === sequence.length - 1 ? finalDuration : tickDuration));
+            await new Promise(resolve =>
+                setTimeout(resolve, i === sequence.length - 1 ? finalDuration : tickDuration)
+            );
         }
 
         element.classList.remove('countdown-pulse', 'active');
@@ -1473,7 +1483,7 @@ class SerenityBlocks {
                 }
             },
             () => this.soundManager.sfxPlayer.playDrop(),
-            this.getPhysicsCallbacks(),
+            this.getPhysicsCallbacks()
         );
     }
 
@@ -1484,7 +1494,9 @@ class SerenityBlocks {
         if (this.multiplayerState.isGameOver) return;
 
         if (this.multiplayerState.isPaused) {
-            this.multiplayerState.animationId = requestAnimationFrame((t) => this.multiplayerGameLoop(t));
+            this.multiplayerState.animationId = requestAnimationFrame(t =>
+                this.multiplayerGameLoop(t)
+            );
             return;
         }
 
@@ -1492,8 +1504,9 @@ class SerenityBlocks {
         this.multiplayerState.lastTime = currentTime;
 
         // Update both players
-        [1, 2].forEach((playerNum) => {
-            const playerState = playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
+        [1, 2].forEach(playerNum => {
+            const playerState =
+                playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
 
             if (!playerState.isProcessingPhysics && playerState.currentPiece) {
                 playerState.dropCounter += delta;
@@ -1501,7 +1514,7 @@ class SerenityBlocks {
                     coreSoftDrop(
                         playerState,
                         () => this.soundManager.sfxPlayer.playDrop(),
-                        this.getMultiplayerPhysicsCallbacks(playerNum),
+                        this.getMultiplayerPhysicsCallbacks(playerNum)
                     );
                 }
             }
@@ -1509,7 +1522,7 @@ class SerenityBlocks {
 
         this.syncMultiplayerBoardScenes();
 
-        this.multiplayerState.animationId = requestAnimationFrame((t) => this.multiplayerGameLoop(t));
+        this.multiplayerState.animationId = requestAnimationFrame(t => this.multiplayerGameLoop(t));
     }
 
     /**
@@ -1537,15 +1550,16 @@ class SerenityBlocks {
      * Get physics callbacks for multiplayer (with garbage system)
      */
     getMultiplayerPhysicsCallbacks(playerNum) {
-        const playerState = playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
+        const playerState =
+            playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
         const sceneRef = () => this.multiplayerBoardScenes[playerNum - 1];
 
         const callbacks = {
             draw: () => this.syncMultiplayerBoardScenes(),
-            onLevelUp: (level) => {
+            onLevelUp: level => {
                 this.syncMultiplayerBoardScenes();
             },
-            onScoreAdd: (points) => {
+            onScoreAdd: points => {
                 this.syncMultiplayerBoardScenes();
             },
             onLineClear: (count, holeColumns, rowMasks = []) => {
@@ -1554,10 +1568,10 @@ class SerenityBlocks {
                     .map((mask, index) => `#${index + 1}[${mask.join(', ')}]`)
                     .join(' ');
                 console.log(
-                    `[Multiplayer] Player ${playerNum} cascade wave cleared ${count} line(s) → holes [${holes.join(', ')}] ${maskSummary ? `masks ${maskSummary}` : ''}`,
+                    `[Multiplayer] Player ${playerNum} cascade wave cleared ${count} line(s) → holes [${holes.join(', ')}] ${maskSummary ? `masks ${maskSummary}` : ''}`
                 );
             },
-            onGarbageReady: (summary) => {
+            onGarbageReady: summary => {
                 this.multiplayerState.handleGarbageSummary(
                     playerNum,
                     summary,
@@ -1565,28 +1579,28 @@ class SerenityBlocks {
                         if (garbageAmount > 0) {
                             this.soundManager.sfxPlayer.playGarbageSend();
                             console.log(
-                                `[Garbage] Player ${player} CASCADE attack ready: ${garbageAmount} line(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`,
+                                `[Garbage] Player ${player} CASCADE attack ready: ${garbageAmount} line(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`
                             );
                         }
-                    },
+                    }
                 );
             },
-            updateBoard: (boardData) => {
+            updateBoard: boardData => {
                 // Board updates handled in draw
             },
             playLineClear: () => this.soundManager.sfxPlayer.playLineClear(),
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
-            triggerFlash: (clearedRows) => {
+            triggerFlash: clearedRows => {
                 const settings = this.settingsManager.get();
                 const scene = sceneRef();
                 if (settings.lineClearEffects && scene?.triggerLineClearFlash) {
                     scene.triggerLineClearFlash(clearedRows);
                 }
             },
-            triggerBackgroundPulse: (lineCount) => {
+            triggerBackgroundPulse: lineCount => {
                 // Optional: could add background pulse per player
             },
-            onLineClearImpact: (lineCount) => {
+            onLineClearImpact: lineCount => {
                 const settings = this.settingsManager.get();
                 if (!settings.lineClearEffects) return;
                 const scene = sceneRef();
@@ -1594,7 +1608,7 @@ class SerenityBlocks {
                     scene.playLineClearImpact(lineCount);
                 }
             },
-            triggerCombo: (comboCount) => {
+            triggerCombo: comboCount => {
                 const settings = this.settingsManager.get();
                 if (settings.comboPopupEffect) {
                     const scene = sceneRef();
@@ -1603,14 +1617,14 @@ class SerenityBlocks {
                     }
                 }
             },
-            onPieceLock: (piece) => {
+            onPieceLock: piece => {
                 const settings = this.settingsManager.get();
                 const scene = sceneRef();
                 if (settings.pieceLockRipple && scene?.createPieceLockRipple) {
                     scene.createPieceLockRipple(piece);
                 }
             },
-            updateBackground: (level) => {
+            updateBackground: level => {
                 // Background updates can be shared between players
             },
         };
@@ -1622,7 +1636,7 @@ class SerenityBlocks {
             if (!garbageQueue.isEmpty()) {
                 const garbageAmount = garbageQueue.getTotalLines();
                 console.log(
-                    `[Garbage] Inserting ${garbageAmount} garbage lines into Player ${playerNum}'s board`,
+                    `[Garbage] Inserting ${garbageAmount} garbage lines into Player ${playerNum}'s board`
                 );
 
                 const result = this.multiplayerState.insertPendingGarbage(playerNum, {
@@ -1642,13 +1656,13 @@ class SerenityBlocks {
 
                 if (result.linesAfterInsertion && result.linesAfterInsertion.length > 0) {
                     console.log(
-                        `[Garbage] Player ${playerNum} filled ${result.linesAfterInsertion.length} line(s) immediately after garbage insertion`,
+                        `[Garbage] Player ${playerNum} filled ${result.linesAfterInsertion.length} line(s) immediately after garbage insertion`
                     );
                     await this.multiplayerState.resolveGarbageCascade(playerNum, callbacks);
 
                     if (playerState.isGameOver) {
                         console.log(
-                            `[Garbage] Player ${playerNum} topped out during garbage cascade resolution`,
+                            `[Garbage] Player ${playerNum} topped out during garbage cascade resolution`
                         );
                         this.endMultiplayerGame(playerNum);
                         return;
@@ -1661,7 +1675,7 @@ class SerenityBlocks {
             spawnPiece(
                 playerState,
                 () => drawNextPieces(nextCanvases, playerState.nextPieces),
-                () => this.endMultiplayerGame(playerNum),
+                () => this.endMultiplayerGame(playerNum)
             );
         };
 
@@ -1762,7 +1776,7 @@ class SerenityBlocks {
             const easeOut = 1 - (1 - progress) ** 3;
 
             // Update offset for all garbage pieces
-            garbagePieces.forEach((piece) => {
+            garbagePieces.forEach(piece => {
                 if (piece.isAnimating) {
                     piece.animationOffset = initialOffset * (1 - easeOut);
 
@@ -1842,7 +1856,8 @@ async function bootstrap() {
 
         // Show error to user
         const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(239, 68, 68, 0.9); color: white; padding: 20px; border-radius: 8px; font-family: Arial, sans-serif; max-width: 500px; z-index: 10000;';
+        errorDiv.style.cssText =
+            'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(239, 68, 68, 0.9); color: white; padding: 20px; border-radius: 8px; font-family: Arial, sans-serif; max-width: 500px; z-index: 10000;';
         errorDiv.innerHTML = `
             <h2 style="margin: 0 0 10px 0;">Failed to Start Game</h2>
             <p style="margin: 0;">${error.message}</p>

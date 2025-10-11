@@ -23,7 +23,7 @@ const HUD_SECONDARY_STYLE = {
  * @param {typeof Phaser} phaserLib
  */
 export function createMultiplayerBoardScene(
-    phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
+    phaserLib = typeof window !== 'undefined' ? window.Phaser : null
 ) {
     const BaseBoardScene = createBaseBoardScene(phaserLib);
 
@@ -49,7 +49,7 @@ export function createMultiplayerBoardScene(
                     this.viewport.x,
                     this.viewport.y,
                     this.viewport.width,
-                    this.viewport.height,
+                    this.viewport.height
                 );
             }
             camera.setOrigin(0, 0);
@@ -69,7 +69,7 @@ export function createMultiplayerBoardScene(
                     margin,
                     this.scoreText.y + this.scoreText.height + 2,
                     'LINES 0',
-                    HUD_SECONDARY_STYLE,
+                    HUD_SECONDARY_STYLE
                 )
                 .setDepth(90);
             this.garbageText = this.add
@@ -77,7 +77,7 @@ export function createMultiplayerBoardScene(
                     margin,
                     this.linesText.y + this.linesText.height + 2,
                     'GARBAGE 0',
-                    HUD_SECONDARY_STYLE,
+                    HUD_SECONDARY_STYLE
                 )
                 .setDepth(90);
         }
@@ -110,7 +110,7 @@ export function createMultiplayerBoardScene(
             if (!clearedRows || clearedRows.length === 0) return;
 
             const flash = this.effectsGraphics;
-            clearedRows.forEach((row) => {
+            clearedRows.forEach(row => {
                 const y = (row - this.hiddenRows) * this.blockSize;
                 flash.fillStyle(0xffffff, 0.6);
                 flash.fillRect(0, y, this.cols * this.blockSize, this.blockSize);
@@ -139,8 +139,8 @@ export function createMultiplayerBoardScene(
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
-                        centerY
-                            += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        centerY +=
+                            (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });
@@ -183,7 +183,7 @@ export function createMultiplayerBoardScene(
                     color: '#fff',
                     stroke: '#000',
                     strokeThickness: 4,
-                },
+                }
             );
 
             text.setOrigin(0.5);

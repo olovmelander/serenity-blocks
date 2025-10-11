@@ -34,7 +34,7 @@ export default class SunsetTheme extends BaseTheme {
             },
         ];
 
-        cloudLayers.forEach((layer) => {
+        cloudLayers.forEach(layer => {
             if (layer.el && layer.el.children.length === 0) {
                 const canvas = document.createElement('canvas');
                 canvas.width = layer.count * layer.width;
@@ -85,10 +85,11 @@ export default class SunsetTheme extends BaseTheme {
                     const peakWidth = canvas.width / peaks;
                     const step = peakWidth / 20;
                     for (let i = 0; i < 20; i++) {
-                        const y = startY
-                            + Math.sin((x / peakWidth) * Math.PI * 2)
-                                * amplitude
-                                * Math.sin((x / canvas.width) * Math.PI);
+                        const y =
+                            startY +
+                            Math.sin((x / peakWidth) * Math.PI * 2) *
+                                amplitude *
+                                Math.sin((x / canvas.width) * Math.PI);
                         ctx.lineTo(x, y);
                         x += step;
                     }
@@ -205,7 +206,7 @@ export default class SunsetTheme extends BaseTheme {
                 }, // Sparkles
             ];
 
-            particleTypes.forEach((type) => {
+            particleTypes.forEach(type => {
                 for (let i = 0; i < type.count; i++) {
                     const particle = document.createElement('div');
                     particle.className = 'sunset-dust-particle';
@@ -272,7 +273,8 @@ export default class SunsetTheme extends BaseTheme {
                 bird.style.height = '8px';
                 bird.style.top = `${20 + Math.random() * 40}%`;
                 bird.style.left = '-5%';
-                bird.innerHTML = '<svg width="20" height="8" viewBox="0 0 20 8"><path d="M 0 4 Q 5 0, 10 4 Q 15 0, 20 4" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1"/></svg>';
+                bird.innerHTML =
+                    '<svg width="20" height="8" viewBox="0 0 20 8"><path d="M 0 4 Q 5 0, 10 4 Q 15 0, 20 4" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1"/></svg>';
 
                 const duration = this.random(25, 40);
                 bird.style.animation = `sunset-bird-fly ${duration}s linear infinite`;

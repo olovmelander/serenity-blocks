@@ -3,9 +3,7 @@
  * Handles game state, piece movement, rotation, dropping, and game flow
  */
 
-import {
-    COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS,
-} from './constants.js';
+import { COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS } from './constants.js';
 import { generateBoard, isValidPosition } from './board.js';
 import { processPhysics } from './physics.js';
 
@@ -157,7 +155,8 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
         color: COLORS[shapeKey],
     };
 
-    const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
+    const rng =
+        typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
     fillBag(gameState.nextPieces, rng);
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
@@ -178,7 +177,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
             gameState.currentPiece,
             gameState.currentPiece.x,
             gameState.currentPiece.y,
-            gameState.lockedPieces,
+            gameState.lockedPieces
         )
     ) {
         if (gameOverCallback) gameOverCallback();
@@ -201,7 +200,7 @@ export function move(gameState, dir, playSoundCallback, addTrailCallback) {
             gameState.currentPiece,
             gameState.currentPiece.x + dir,
             gameState.currentPiece.y,
-            gameState.lockedPieces,
+            gameState.lockedPieces
         )
     ) {
         // Add trail before moving
@@ -233,13 +232,13 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
 
     if (dir === 'right') {
         // Rotate clockwise
-        rotatedShape = originalShape[0].map((_, i) => originalShape.map((row) => row[i]).reverse());
+        rotatedShape = originalShape[0].map((_, i) => originalShape.map(row => row[i]).reverse());
     } else if (dir === 'left') {
         // Rotate counter-clockwise
-        rotatedShape = originalShape[0].map((_, i) => originalShape.map((row) => row[i])).reverse();
+        rotatedShape = originalShape[0].map((_, i) => originalShape.map(row => row[i])).reverse();
     } else {
         // Flip 180 degrees
-        rotatedShape = originalShape.map((row) => row.slice().reverse()).reverse();
+        rotatedShape = originalShape.map(row => row.slice().reverse()).reverse();
     }
 
     gameState.currentPiece.shape = rotatedShape;
@@ -251,7 +250,7 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
                 gameState.currentPiece,
                 gameState.currentPiece.x + kick,
                 gameState.currentPiece.y,
-                gameState.lockedPieces,
+                gameState.lockedPieces
             )
         ) {
             gameState.currentPiece.x += kick;
@@ -280,7 +279,7 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks) {
             gameState.currentPiece,
             gameState.currentPiece.x,
             gameState.currentPiece.y + 1,
-            gameState.lockedPieces,
+            gameState.lockedPieces
         )
     ) {
         gameState.currentPiece.y++;
@@ -307,7 +306,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
             gameState.currentPiece,
             gameState.currentPiece.x,
             gameState.currentPiece.y + 1,
-            gameState.lockedPieces,
+            gameState.lockedPieces
         )
     ) {
         gameState.currentPiece.y++;
@@ -404,19 +403,21 @@ export function gameLoop(
     drawCallback,
     updateStatsCallback,
     playDropCallback,
-    physicsCallbacks,
+    physicsCallbacks
 ) {
     if (gameState.isGameOver) return;
 
     if (gameState.isPaused) {
-        gameState.animationId = requestAnimationFrame((t) => gameLoop(
-            t,
-            gameState,
-            drawCallback,
-            updateStatsCallback,
-            playDropCallback,
-            physicsCallbacks,
-        ));
+        gameState.animationId = requestAnimationFrame(t =>
+            gameLoop(
+                t,
+                gameState,
+                drawCallback,
+                updateStatsCallback,
+                playDropCallback,
+                physicsCallbacks
+            )
+        );
         return;
     }
 
@@ -434,14 +435,16 @@ export function gameLoop(
     if (drawCallback) drawCallback();
     if (updateStatsCallback) updateStatsCallback();
 
-    gameState.animationId = requestAnimationFrame((t) => gameLoop(
-        t,
-        gameState,
-        drawCallback,
-        updateStatsCallback,
-        playDropCallback,
-        physicsCallbacks,
-    ));
+    gameState.animationId = requestAnimationFrame(t =>
+        gameLoop(
+            t,
+            gameState,
+            drawCallback,
+            updateStatsCallback,
+            playDropCallback,
+            physicsCallbacks
+        )
+    );
 }
 
 /**
@@ -466,7 +469,8 @@ export function startGame(gameState, callbacks, settings) {
     }
 
     // Initialize bag and spawn first piece
-    const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
+    const rng =
+        typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
     fillBag(gameState.nextPieces, rng);
     if (callbacks.updateStats) callbacks.updateStats();
     if (callbacks.spawnPiece) callbacks.spawnPiece();

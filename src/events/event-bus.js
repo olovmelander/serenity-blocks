@@ -32,7 +32,7 @@ class EventBus {
     emit(eventName, payload) {
         const handlers = this.listeners.get(eventName);
         if (handlers) {
-            handlers.forEach((handler) => handler(payload));
+            handlers.forEach(handler => handler(payload));
         }
     }
 }

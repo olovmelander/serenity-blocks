@@ -1,6 +1,4 @@
-import {
-    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
-} from '../../core/constants.js';
+import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE } from '../../core/constants.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 
@@ -16,13 +14,13 @@ let cachedPhaserRef = null;
  * @returns {typeof Phaser.Scene}
  */
 export function createBaseBoardScene(
-    phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
+    phaserLib = typeof window !== 'undefined' ? window.Phaser : null
 ) {
     const PhaserRef = phaserLib;
 
     if (!PhaserRef?.Scene) {
         throw new Error(
-            '[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.',
+            '[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.'
         );
     }
 
@@ -40,8 +38,9 @@ export function createBaseBoardScene(
          * @param {number} [boardConfig.blockSize]
          */
         constructor(key, boardConfig = {}) {
-            const resolvedKey = key
-                ?? `BaseBoardScene-${PhaserRef.Utils?.String?.UUID ? PhaserRef.Utils.String.UUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
+            const resolvedKey =
+                key ??
+                `BaseBoardScene-${PhaserRef.Utils?.String?.UUID ? PhaserRef.Utils.String.UUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
             super(resolvedKey);
 
             this.boardConfig = {
@@ -126,9 +125,7 @@ export function createBaseBoardScene(
          * @returns {{width:number, height:number}}
          */
         getBoardDimensions() {
-            const {
-                cols, rows, hiddenRows, blockSize,
-            } = this.boardConfig;
+            const { cols, rows, hiddenRows, blockSize } = this.boardConfig;
             return {
                 width: cols * blockSize,
                 // Return the full height of the board, including the hidden area for spawning
@@ -180,27 +177,7 @@ export function createBaseBoardScene(
          * Listen to Phaser scale events and adjust camera zoom/position.
          */
         registerResizeHandler() {
-            if (!this.scale) return;
-            this.scale.on('resize', this.handleResize, this);
-            this.handleResize(this.scale.gameSize, this.scale.baseSize, this.scale.displaySize);
-        }
-
-        /**
-         * Default resize handler. Scenes can override if they need custom logic.
-         * @param {{width:number, height:number}} gameSize
-         * @param {{width:number, height:number}} displaySize
-         */
-        handleResize(gameSize, baseSize, displaySize) {
-            const camera = this.cameras?.main;
-            if (!camera) return;
-
-            const { width, height } = this.getBoardDimensions();
-            const cssWidth = displaySize?.width ?? gameSize.width;
-            const cssHeight = displaySize?.height ?? gameSize.height;
-            const zoom = Math.min(cssWidth / width, cssHeight / height);
-
-            camera.setZoom(zoom);
-            camera.centerOn(width / 2, height / 2);
+            // No-op. The FIT scale mode handles this automatically.
         }
 
         renderGameState() {
@@ -242,7 +219,7 @@ export function createBaseBoardScene(
         drawLockedPieces() {
             if (!this.gameState?.lockedPieces) return;
 
-            this.gameState.lockedPieces.forEach((piece) => {
+            this.gameState.lockedPieces.forEach(piece => {
                 const pieceColor = piece.color || '#808080';
 
                 piece.shape.forEach((row, y) => {
@@ -385,7 +362,7 @@ export function createBaseBoardScene(
          */
         shutdown() {
             if (this.scale) {
-                this.scale.off('resize', this.handleResize, this);
+                this.scale.off('resize');
             }
         }
 

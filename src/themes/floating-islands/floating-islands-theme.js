@@ -86,7 +86,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
             x - trunkWidth / 2,
             y,
             x + trunkWidth / 2,
-            y,
+            y
         );
         trunkGradient.addColorStop(0, '#3E2F1F');
         trunkGradient.addColorStop(0.5, this.palette.tree.trunk);
@@ -110,7 +110,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
             y - height - canopyRadius / 5,
             canopyRadius * 0.9,
             0,
-            Math.PI * 2,
+            Math.PI * 2
         );
         ctx.fill();
         ctx.fillStyle = this.palette.tree.foliageBright;
@@ -120,7 +120,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
             y - height - canopyRadius / 4,
             canopyRadius * 0.75,
             0,
-            Math.PI * 2,
+            Math.PI * 2
         );
         ctx.fill();
     }
@@ -130,9 +130,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
      * @private
      */
     drawIsland(ctx, island) {
-        const {
-            x, y, width, height,
-        } = island;
+        const { x, y, width, height } = island;
         const topSurface = [];
         for (let i = 0; i <= width; i++) {
             const angle = (i / width) * Math.PI;
@@ -144,7 +142,8 @@ export default class FloatingIslandsTheme extends BaseTheme {
         const bottomSurface = [];
         for (let i = width; i >= 0; i--) {
             const angle = (i / width) * Math.PI;
-            const bump = Math.sin(angle) * (height * 0.8) + Math.sin(angle * 2) * 20 + Math.random() * 15;
+            const bump =
+                Math.sin(angle) * (height * 0.8) + Math.sin(angle * 2) * 20 + Math.random() * 15;
             bottomSurface.push({ x: x + i, y: y + bump });
         }
         const rockGradient = ctx.createLinearGradient(x, y, x, y + height);
@@ -154,9 +153,9 @@ export default class FloatingIslandsTheme extends BaseTheme {
         ctx.fillStyle = rockGradient;
         ctx.beginPath();
         ctx.moveTo(topSurface[0].x, topSurface[0].y);
-        topSurface.forEach((p) => ctx.lineTo(p.x, p.y));
+        topSurface.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.lineTo(bottomSurface[0].x, bottomSurface[0].y);
-        bottomSurface.forEach((p) => ctx.lineTo(p.x, p.y));
+        bottomSurface.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.closePath();
         ctx.fill();
         for (let i = 0; i < width / 8; i++) {
@@ -172,14 +171,14 @@ export default class FloatingIslandsTheme extends BaseTheme {
                 rootStartX + this.random(-10, 10),
                 rootStartY + 60,
                 rootStartX + this.random(-5, 5),
-                rootStartY + 90,
+                rootStartY + 90
             );
             ctx.stroke();
         }
         ctx.fillStyle = this.palette.grass.deep;
         ctx.beginPath();
         ctx.moveTo(topSurface[0].x, topSurface[0].y);
-        topSurface.forEach((p) => ctx.lineTo(p.x, p.y));
+        topSurface.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.lineTo(topSurface[topSurface.length - 1].x, topSurface[topSurface.length - 1].y + 20);
         ctx.lineTo(topSurface[0].x, topSurface[0].y + 20);
         ctx.closePath();
@@ -187,7 +186,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
         ctx.fillStyle = this.palette.grass.bright;
         ctx.beginPath();
         ctx.moveTo(topSurface[0].x, topSurface[0].y);
-        topSurface.forEach((p) => ctx.lineTo(p.x, p.y + 5));
+        topSurface.forEach(p => ctx.lineTo(p.x, p.y + 5));
         ctx.closePath();
         ctx.fill();
         if (island.tree) {
@@ -195,7 +194,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
                 ctx,
                 x + width / 2,
                 topSurface[Math.floor(width / 2)].y,
-                island.tree.height,
+                island.tree.height
             );
         }
         for (let i = 0; i < island.bushes; i++) {
@@ -217,7 +216,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
         const C_HEIGHT = window.innerHeight;
 
         // Set the width of the containers to match the parallax canvas
-        document.querySelectorAll('.fi-waterfall-container').forEach((wc) => {
+        document.querySelectorAll('.fi-waterfall-container').forEach(wc => {
             wc.style.width = `${C_WIDTH}px`;
         });
 
@@ -287,7 +286,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
             },
         ];
 
-        layers.forEach((layer) => {
+        layers.forEach(layer => {
             if (layer.el) {
                 this.registerContainer(layer.el);
                 if (layer.el.querySelector('canvas') === null) {
@@ -295,7 +294,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
                     canvas.width = C_WIDTH;
                     canvas.height = C_HEIGHT;
                     const ctx = canvas.getContext('2d');
-                    layer.islands.forEach((island) => this.drawIsland(ctx, island));
+                    layer.islands.forEach(island => this.drawIsland(ctx, island));
                     canvas.style.position = 'absolute';
                     canvas.style.left = '0';
                     canvas.style.bottom = '0';
@@ -307,10 +306,10 @@ export default class FloatingIslandsTheme extends BaseTheme {
 
             if (layer.wc) {
                 this.registerContainer(layer.wc);
-                layer.islands.forEach((island) => {
+                layer.islands.forEach(island => {
                     if (island.waterfall && island.topSurface) {
                         const edgeIndex = Math.floor(
-                            island.topSurface.length * island.waterfall.edge,
+                            island.topSurface.length * island.waterfall.edge
                         );
                         const edgePoint = island.topSurface[edgeIndex];
                         const fallHeight = C_HEIGHT - edgePoint.y;
@@ -356,7 +355,7 @@ export default class FloatingIslandsTheme extends BaseTheme {
         // Remove waterfall particles
         document
             .querySelectorAll('.waterfall-particle, .waterfall-mist-puff')
-            .forEach((el) => el.remove());
+            .forEach(el => el.remove());
 
         super.stop();
     }
