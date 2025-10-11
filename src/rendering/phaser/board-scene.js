@@ -51,15 +51,17 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         }
 
         createNextQueuePanel() {
-            const margin = 12;
-            const x = margin;
-            const y = margin;
+            const queueHeight = 80;
+            const gameWidth = this.scale.gameSize?.width ?? 0;
+            const x = (gameWidth - 300) / 2;
+            const y = 10;
 
             this.nextQueuePanel = new NextQueuePanel(this, {
                 x,
                 y,
-                blockSize: 12,
-                maxVisible: 5,
+                blockSize: 16,
+                maxVisible: 3,
+                layout: 'horizontal',
                 depth: 45,
             });
         }
@@ -68,9 +70,23 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             const boardWidth = this.cols * this.blockSize;
             const boardHeight = this.rows * this.blockSize;
             const gameWidth = this.scale.gameSize?.width ?? boardWidth;
-            const viewportX = Math.max(0, (gameWidth - boardWidth) / 2);
+            const gameHeight = this.scale.gameSize?.height ?? boardHeight;
+
+            const topOffset = 80;
+            const availableHeight = gameHeight - topOffset;
+            const scale = Math.min(
+                (gameWidth * 0.9) / boardWidth,
+                (availableHeight * 0.9) / boardHeight,
+            );
+
+            const newBoardWidth = boardWidth * scale;
+            const newBoardHeight = boardHeight * scale;
+
+            const viewportX = Math.max(0, (gameWidth - newBoardWidth) / 2);
+            const viewportY = topOffset + Math.max(0, (availableHeight - newBoardHeight) / 2);
+
             const camera = this.cameras?.main;
-            camera.setViewport(viewportX, 0, boardWidth, boardHeight);
+            camera.setViewport(viewportX, viewportY, newBoardWidth, newBoardHeight);
             camera.setOrigin(0, 0);
             this.configureCamera();
         }
