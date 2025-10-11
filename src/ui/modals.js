@@ -235,10 +235,19 @@ export function setupModalUI(modalManager, callbacks) {
         onRandomTheme
     } = callbacks;
 
-    // Settings button
+    // Settings button (single player)
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
         settingsBtn.addEventListener('click', () => {
+            showSettingsModal(modalManager);
+            if (onSettingsOpen) onSettingsOpen();
+        });
+    }
+
+    // Settings button (multiplayer)
+    const settingsBtnMp = document.getElementById('settings-btn-mp');
+    if (settingsBtnMp) {
+        settingsBtnMp.addEventListener('click', () => {
             showSettingsModal(modalManager);
             if (onSettingsOpen) onSettingsOpen();
         });

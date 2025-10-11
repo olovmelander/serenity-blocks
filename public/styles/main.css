@@ -8466,3 +8466,214 @@ body {
         transform: translateX(0.3%) scaleY(0.995) scaleX(1.003);
     }
 }
+
+/* =================================================================
+   MULTIPLAYER MODE STYLES
+   ================================================================= */
+
+/* Game mode selector buttons */
+.game-mode-selector {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.mode-btn {
+    padding: 12px 30px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.mode-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-2px);
+}
+
+.mode-btn.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: #667eea;
+    color: white;
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+}
+
+.mode-btn.active:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.7);
+}
+
+/* Multiplayer container layout */
+.multiplayer-container {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    width: 100%;
+    height: 100vh;
+    position: relative;
+}
+
+.player-sidebar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    min-width: 200px;
+}
+
+.player-game-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.player-game-area canvas {
+    border: 4px solid #8b5cf6;
+    border-radius: 12px;
+    background: rgba(26, 26, 46, 0.8);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.5),
+                0 0 60px rgba(139, 92, 246, 0.3),
+                0 0 90px rgba(139, 92, 246, 0.1);
+}
+
+.player-game-area .player-next-pieces {
+    display: flex;
+    gap: 8px;
+    flex-direction: row;
+}
+
+.player-header {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.player-header h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 24px;
+    color: #00ffff;
+    margin-bottom: 5px;
+}
+
+.player-controls-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    font-family: 'Space Mono', monospace;
+}
+
+.player-stats {
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px 20px;
+    min-width: 200px;
+}
+
+.player-stats .stat-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-family: 'Space Mono', monospace;
+}
+
+.player-stats .stat-label {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+}
+
+.player-stats .stat-value {
+    color: #00ffff;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.player-next-pieces {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.player-next-pieces .next-piece-box {
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 5px;
+}
+
+.multiplayer-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding-top: 60px;
+}
+
+.vs-indicator {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 32px;
+    font-weight: 900;
+    color: #ff00ff;
+    text-shadow: 0 0 20px rgba(255, 0, 255, 0.8);
+    animation: pulse 2s infinite;
+}
+
+.multiplayer-countdown {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(72px, 12vw, 160px);
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow:
+        0 0 20px rgba(0, 255, 255, 0.7),
+        0 0 40px rgba(255, 0, 255, 0.6),
+        0 0 60px rgba(111, 66, 193, 0.4);
+    pointer-events: none;
+    z-index: 15;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+}
+
+.multiplayer-countdown.active {
+    display: flex;
+}
+
+.multiplayer-countdown.countdown-pulse {
+    animation: multiplayer-countdown-pop 0.8s ease-out forwards;
+}
+
+@keyframes multiplayer-countdown-pop {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.1);
+    }
+    25% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    60% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+}

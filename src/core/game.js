@@ -7,6 +7,20 @@ import { COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS } fro
 import { generateBoard, isValidPosition } from './board.js';
 import { processPhysics } from './physics.js';
 
+function createComboState() {
+    return {
+        depth: 0,
+        complexity: 0,
+        sendForClean: false,
+        holeMask: [],
+        lockFootprint: [],
+        manualColumns: [],
+        sourceColor: null,
+        sourcePiece: null,
+        sequence: 0
+    };
+}
+
 /**
  * Game state object that holds all game data
  */
@@ -16,6 +30,7 @@ export class GameState {
         this.lockedPieces = [];
         this.currentPiece = null;
         this.nextPieces = [];
+        this.randomGenerator = Math.random;
 
         // Score and level
         this.score = 0;
@@ -43,6 +58,26 @@ export class GameState {
 
         // Board reference (for visual feedback during line clears)
         this.board = null;
+
+        // Quadra-style garbage: Track last placed piece columns for deterministic holes
+        this.lastPlacedPieceX = [];
+
+        // Quadra-style combo tracking state for deterministic garbage payloads
+        this.comboState = createComboState();
+
+        // Store ongoing blind timers for attacks that affect visibility
+        this.blindTimers = {
+            field: 0,
+            pending: 0
+        };
+
+        // Deterministic sequence counter for outbound garbage attacks
+        this.garbageAttackSequence = 0;
+
+        // Quadra-style handicap system (net_version 24)
+        this.handicap = 2; // 0=Beginner, 1=Apprentice, 2=Intermediate, 3=Master, 4=Grandmaster
+        this.handicaps = {}; // Stamps per opponent: { opponentId: stampCount }
+        this.handicapCrowd = 0; // Crowd handicap stamps (for 5+ players)
     }
 
     /**
@@ -52,6 +87,7 @@ export class GameState {
         this.lockedPieces = [];
         this.currentPiece = null;
         this.nextPieces = [];
+        this.randomGenerator = Math.random;
         this.score = 0;
         this.lines = 0;
         this.level = 1;
@@ -64,6 +100,16 @@ export class GameState {
         this.inputQueue = null;
         this.startTime = Date.now();
         this.board = null;
+        this.lastPlacedPieceX = [];
+        this.comboState = createComboState();
+        this.blindTimers = {
+            field: 0,
+            pending: 0
+        };
+        this.garbageAttackSequence = 0;
+        this.handicap = 2;
+        this.handicaps = {};
+        this.handicapCrowd = 0;
     }
 }
 
@@ -71,9 +117,22 @@ export class GameState {
  * Fills the next pieces bag using 7-bag randomizer
  * @param {Array<string>} nextPieces - Next pieces array to fill
  */
-export function fillBag(nextPieces) {
+function shuffleBag(rng) {
+    const bag = [...PIECE_KEYS];
+    for (let i = bag.length - 1; i > 0; i--) {
+        const randomValue = typeof rng === 'function' ? rng() : Math.random();
+        const j = Math.floor(randomValue * (i + 1));
+        const swapIndex = Math.max(0, Math.min(i, j));
+        const temp = bag[i];
+        bag[i] = bag[swapIndex];
+        bag[swapIndex] = temp;
+    }
+    return bag;
+}
+
+export function fillBag(nextPieces, rng = Math.random) {
     while (nextPieces.length < 10) {
-        const bag = [...PIECE_KEYS].sort(() => Math.random() - 0.5);
+        const bag = shuffleBag(rng);
         nextPieces.push(...bag);
     }
 }
@@ -96,7 +155,8 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
         color: COLORS[shapeKey]
     };
 
-    fillBag(gameState.nextPieces);
+    const rng = (typeof gameState.randomGenerator === 'function') ? gameState.randomGenerator : Math.random;
+    fillBag(gameState.nextPieces, rng);
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
 
@@ -267,6 +327,36 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
         physicsCallbacks.onPieceLock(lockedPiece);
     }
 
+    // Calculate and store the occupied columns of the piece (for Quadra-style garbage)
+    // We track ALL columns where the piece has blocks for accurate garbage holes
+    const occupiedColumns = new Set();
+    const lockFootprint = [];
+    gameState.currentPiece.shape.forEach((row, localY) => {
+        row.forEach((cell, localX) => {
+            if (cell > 0) {
+                const boardX = gameState.currentPiece.x + localX;
+                const boardY = gameState.currentPiece.y + localY;
+                if (boardX >= 0 && boardX < COLS) {
+                    occupiedColumns.add(boardX);
+                }
+                if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS &&
+                    boardX >= 0 && boardX < COLS) {
+                    lockFootprint.push({ x: boardX, y: boardY });
+                }
+            }
+        });
+    });
+    gameState.lastPlacedPieceX = Array.from(occupiedColumns).sort((a, b) => a - b);
+
+    // Reset combo tracking for the upcoming physics resolution
+    const comboState = createComboState();
+    comboState.lockFootprint = lockFootprint;
+    comboState.manualColumns = [...gameState.lastPlacedPieceX];
+    comboState.sourceColor = lockedPiece.color || COLORS[lockedPiece.shapeKey] || '#808080';
+    comboState.sourcePiece = lockedPiece.shapeKey;
+    comboState.sequence = gameState.garbageAttackSequence++;
+    gameState.comboState = comboState;
+
     // Add piece to locked pieces with unique ID
     gameState.lockedPieces.push({
         ...gameState.currentPiece,
@@ -349,8 +439,9 @@ export function startGame(gameState, callbacks, settings) {
         cancelAnimationFrame(gameState.animationId);
     }
 
-    // Initialize bags and spawn first piece
-    fillBag(gameState.nextPieces);
+    // Initialize bag and spawn first piece
+    const rng = (typeof gameState.randomGenerator === 'function') ? gameState.randomGenerator : Math.random;
+    fillBag(gameState.nextPieces, rng);
     if (callbacks.updateStats) callbacks.updateStats();
     if (callbacks.spawnPiece) callbacks.spawnPiece();
 

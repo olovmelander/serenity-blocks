@@ -145,6 +145,7 @@ function hslToHex(h, s, l) {
 }
 
 const DEFAULT_CONFIG = {
+    gameMode: 'single',
     dasDelay: 120,
     dasInterval: 40,
     musicTrack: 'Ambient',
@@ -173,6 +174,15 @@ const DEFAULT_CONFIG = {
         randomTheme: 'b',
         toggleFullscreen: 'f',
         showHighScores: 'h'
+    },
+    player2KeyBindings: {
+        moveLeft: 'a',
+        moveRight: 'd',
+        rotateRight: 'w',
+        rotateLeft: 'q',
+        flip: 'e',
+        softDrop: 's',
+        hardDrop: 'Shift'
     }
 };
 
@@ -256,6 +266,7 @@ export class SettingsManager {
             if (saved) {
                 const loaded = JSON.parse(saved);
                 const loadedKeyBindings = loaded.keyBindings || {};
+                const loadedP2KeyBindings = loaded.player2KeyBindings || {};
 
                 this.settings = {
                     ...DEFAULT_CONFIG,
@@ -263,6 +274,10 @@ export class SettingsManager {
                     keyBindings: {
                         ...DEFAULT_CONFIG.keyBindings,
                         ...loadedKeyBindings
+                    },
+                    player2KeyBindings: {
+                        ...DEFAULT_CONFIG.player2KeyBindings,
+                        ...loadedP2KeyBindings
                     }
                 };
             }
@@ -402,6 +417,23 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Setup tab switching
     setupSettingsTabs();
+
+    // Game mode selector
+    const gameModeSelect = document.getElementById('game-mode');
+    if (gameModeSelect) {
+        gameModeSelect.value = settings.gameMode || 'single';
+
+        gameModeSelect.addEventListener('change', (e) => {
+            const mode = e.target.value;
+            settingsManager.update({ gameMode: mode });
+
+            if (callbacks.onGameModeChange) {
+                callbacks.onGameModeChange(mode);
+            }
+
+            settingsManager.save();
+        });
+    }
 
     // Music volume slider
     const musicVolumeSlider = document.getElementById('music-volume');

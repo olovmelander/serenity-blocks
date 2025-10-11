@@ -32,7 +32,9 @@ export const COLORS = {
     S: '#00ffff',  // Cyan
     Z: '#ff0000',  // Red
     J: '#ffff00',  // Yellow
-    L: '#cc00cc'   // Purple
+    L: '#cc00cc',  // Purple
+    GARBAGE: '#808080',  // Gray (garbage blocks)
+    CLEAN_GARBAGE: '#a0a0a0'  // Light gray (clean garbage)
 };
 
 /**
@@ -117,9 +119,30 @@ export const THEMES = [
 ];
 
 /**
+ * Game modes
+ */
+export const GAME_MODES = {
+    SINGLE_PLAYER: 'single',
+    MULTIPLAYER: 'multiplayer'
+};
+
+/**
+ * Garbage calculation rules (1:1 pattern)
+ */
+export const GARBAGE_RULES = {
+    1: 1,  // Single - 1 line of garbage
+    2: 2,  // Double - 2 lines
+    3: 3,  // Triple - 3 lines
+    4: 4   // Tetris - 4 lines
+};
+
+/**
  * Default settings configuration
  */
 export const DEFAULT_SETTINGS = {
+    // Game mode
+    gameMode: GAME_MODES.SINGLE_PLAYER,
+
     // Input settings
     dasDelay: 120,
     dasInterval: 40,
@@ -155,5 +178,15 @@ export const DEFAULT_SETTINGS = {
         randomTheme: 'b',
         toggleFullscreen: 'f',
         showHighScores: 'h'
+    },
+    // Player 2 controls (for multiplayer)
+    player2KeyBindings: {
+        moveLeft: 'a',
+        moveRight: 'd',
+        rotateRight: 'w',
+        rotateLeft: 'q',
+        flip: 'e',
+        softDrop: 's',
+        hardDrop: 'Shift'
     }
 };

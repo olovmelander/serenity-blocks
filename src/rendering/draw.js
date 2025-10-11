@@ -125,47 +125,74 @@ export function draw(canvas, ctx, gameState) {
     // Draw piece trails first (behind everything)
     drawPieceTrails(ctx);
 
-    // Draw locked pieces
+    // Generate board data for border detection
     const boardData = generateBoard(lockedPieces);
-    boardData.forEach((row, y) => {
-        if (y < HIDDEN_ROWS) return; // Skip hidden rows
 
-        row.forEach((cell, x) => {
-            if (cell !== null && cell.color !== 'C') {
-                // Normal block
-                drawBlock(
-                    ctx,
-                    x,
-                    y - HIDDEN_ROWS,
-                    COLORS[cell.color],
-                    boardData,
-                    false,
-                    null,
-                    0,
-                    0,
-                    x,
-                    y
-                );
-            } else if (cell !== null && cell.color === 'C') {
-                // Cleared block with alpha transparency for smooth fade effect
-                const alpha = cell.alpha !== undefined ? cell.alpha : 1.0;
-                ctx.save();
-                ctx.globalAlpha = alpha;
-                drawBlock(
-                    ctx,
-                    x,
-                    y - HIDDEN_ROWS,
-                    '#ffffff',
-                    boardData,
-                    false,
-                    null,
-                    0,
-                    0,
-                    x,
-                    y
-                );
-                ctx.restore();
-            }
+    // Draw locked pieces (with animation support for garbage)
+    lockedPieces.forEach(piece => {
+        // Calculate Y offset for animating garbage
+        let yOffset = 0;
+        if (piece.isAnimating && piece.animationOffset !== undefined) {
+            yOffset = piece.animationOffset; // Will be reduced over time
+        }
+
+        piece.shape.forEach((row, localY) => {
+            row.forEach((cell, localX) => {
+                if (cell > 0) {
+                    const boardX = piece.x + localX;
+                    const boardY = piece.y + localY;
+                    const renderY = boardY + yOffset;
+
+                    // Skip if outside visible area
+                    if (renderY < HIDDEN_ROWS) return;
+                    if (renderY >= ROWS + HIDDEN_ROWS) return;
+
+                    // Determine color
+                    let blockColor = piece.color;
+                    if (piece.shapeKey && COLORS[piece.shapeKey]) {
+                        blockColor = COLORS[piece.shapeKey];
+                    }
+
+                    // For animating pieces, use piece shape for borders instead of boardData
+                    // This fixes border rendering when garbage is animating with offset
+                    const useBoardData = !piece.isAnimating || yOffset === 0;
+
+                    // Draw with optional fade for cleared pieces
+                    if (piece.shapeKey === 'C') {
+                        const alpha = piece.alpha !== undefined ? piece.alpha : 1.0;
+                        ctx.save();
+                        ctx.globalAlpha = alpha;
+                        drawBlock(
+                            ctx,
+                            boardX,
+                            renderY - HIDDEN_ROWS,
+                            '#ffffff',
+                            useBoardData ? boardData : null,
+                            false,
+                            useBoardData ? null : piece.shape,
+                            useBoardData ? 0 : piece.x,
+                            useBoardData ? 0 : renderY - HIDDEN_ROWS,
+                            useBoardData ? boardX : localX,
+                            useBoardData ? renderY : localY
+                        );
+                        ctx.restore();
+                    } else {
+                        drawBlock(
+                            ctx,
+                            boardX,
+                            renderY - HIDDEN_ROWS,
+                            blockColor,
+                            useBoardData ? boardData : null,
+                            false,
+                            useBoardData ? null : piece.shape,
+                            useBoardData ? 0 : piece.x,
+                            useBoardData ? 0 : renderY - HIDDEN_ROWS,
+                            useBoardData ? boardX : localX,
+                            useBoardData ? renderY : localY
+                        );
+                    }
+                }
+            });
         });
     });
 
@@ -269,9 +296,10 @@ export function drawNextPieces(nextCanvases, nextPieces) {
  * Triggers the line clear flash effect on specific rows
  * Tetris Effect-inspired: particles, prismatic waves, and energy bursts
  * @param {Array<number>} clearedRows - Array of Y coordinates of cleared rows
+ * @param {HTMLElement} customContainer - Optional custom container element (for multiplayer)
  */
-export function triggerLineClearFlash(clearedRows = []) {
-    const container = document.getElementById('line-clear-flash');
+export function triggerLineClearFlash(clearedRows = [], customContainer = null) {
+    const container = customContainer || document.getElementById('line-clear-flash');
     if (!container) return;
 
     // Clear any existing flashes
@@ -395,8 +423,8 @@ function createRadialBurst(container, clearedRows) {
  * @param {Object} piece - The locked piece with x, y, shape
  * @param {Array} lockedPieces - Already locked pieces to detect contact points
  */
-export function createPieceLockRipple(piece, lockedPieces = []) {
-    const container = document.getElementById('line-clear-flash');
+export function createPieceLockRipple(piece, lockedPieces = [], containerElement = null) {
+    const container = containerElement || document.getElementById('line-clear-flash');
     if (!container) return;
 
     // Find the corner positions of the piece
@@ -426,7 +454,7 @@ export function createPieceLockRipple(piece, lockedPieces = []) {
     });
 
     // Add block merge glows at contact points
-    createBlockMergeGlows(piece, lockedPieces);
+    createBlockMergeGlows(piece, lockedPieces, container);
 }
 
 /**
@@ -490,8 +518,8 @@ function isExposedCorner(corner, piece, localX, localY) {
  * @param {Object} piece - The newly locked piece
  * @param {Array} lockedPieces - Already locked pieces
  */
-function createBlockMergeGlows(piece, lockedPieces) {
-    const container = document.getElementById('line-clear-flash');
+function createBlockMergeGlows(piece, lockedPieces, containerElement = null) {
+    const container = containerElement || document.getElementById('line-clear-flash');
     if (!container || !lockedPieces.length) return;
 
     // Generate board to check adjacencies
@@ -622,9 +650,10 @@ export function showScorePopup(points) {
 /**
  * Shows a floating combo notification for cascade clears
  * @param {number} comboCount - Current combo count (2+)
+ * @param {HTMLElement} customContainer - Optional custom container element (for multiplayer)
  */
-export function showComboPopup(comboCount) {
-    const container = document.getElementById('score-popups');
+export function showComboPopup(comboCount, customContainer = null) {
+    const container = customContainer || document.getElementById('score-popups');
     if (!container) return;
 
     const popup = document.createElement('div');
