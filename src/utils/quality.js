@@ -3,20 +3,20 @@ const QUALITY_CONFIG = {
         id: 'High',
         renderFrameSkip: 0,
         shakeMultiplier: 1,
-        particles: true
+        particles: true,
     },
     Medium: {
         id: 'Medium',
         renderFrameSkip: 1,
         shakeMultiplier: 0.75,
-        particles: true
+        particles: true,
     },
     Low: {
         id: 'Low',
         renderFrameSkip: 2,
         shakeMultiplier: 0.5,
-        particles: false
-    }
+        particles: false,
+    },
 };
 
 export function normalizeQuality(level) {

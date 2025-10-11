@@ -14,7 +14,7 @@ export class HighScoreManager {
         this.STORES = {
             HIGH_SCORES: 'highScores',
             STATISTICS: 'statistics',
-            GAME_HISTORY: 'gameHistory'
+            GAME_HISTORY: 'gameHistory',
         };
     }
 
@@ -39,7 +39,7 @@ export class HighScoreManager {
                 if (!db.objectStoreNames.contains(this.STORES.HIGH_SCORES)) {
                     const highScoreStore = db.createObjectStore(this.STORES.HIGH_SCORES, {
                         keyPath: 'id',
-                        autoIncrement: true
+                        autoIncrement: true,
                     });
                     highScoreStore.createIndex('score', 'score', { unique: false });
                     highScoreStore.createIndex('timestamp', 'timestamp', { unique: false });
@@ -54,7 +54,7 @@ export class HighScoreManager {
                 if (!db.objectStoreNames.contains(this.STORES.GAME_HISTORY)) {
                     const historyStore = db.createObjectStore(this.STORES.GAME_HISTORY, {
                         keyPath: 'id',
-                        autoIncrement: true
+                        autoIncrement: true,
                     });
                     historyStore.createIndex('timestamp', 'timestamp', { unique: false });
                 }
@@ -83,7 +83,7 @@ export class HighScoreManager {
             speedMultiplier: scoreData.speedMultiplier,
             theme: scoreData.theme,
             musicTrack: scoreData.musicTrack,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
 
         // Save to high scores
@@ -152,7 +152,7 @@ export class HighScoreManager {
                     totalLines: 0,
                     highestScore: 0,
                     highestLevel: 0,
-                    bestScorePerLevel: {}
+                    bestScorePerLevel: {},
                 };
                 resolve(stats);
             };
@@ -293,8 +293,10 @@ export class HighScoreManager {
         stats.highestLevel = Math.max(stats.highestLevel, gameRecord.level);
 
         // Track best score per level
-        if (!stats.bestScorePerLevel[gameRecord.level] ||
-            gameRecord.score > stats.bestScorePerLevel[gameRecord.level]) {
+        if (
+            !stats.bestScorePerLevel[gameRecord.level]
+            || gameRecord.score > stats.bestScorePerLevel[gameRecord.level]
+        ) {
             stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
         }
 

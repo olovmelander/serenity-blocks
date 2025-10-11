@@ -10,7 +10,7 @@ export default class MeadowTheme extends BaseTheme {
         const grassContainer = document.querySelector('.meadow-grass');
         if (grassContainer && grassContainer.children.length === 0) {
             for (let i = 0; i < 150; i++) {
-                let blade = document.createElement('div');
+                const blade = document.createElement('div');
                 blade.className = 'grass-blade';
                 blade.style.left = `${Math.random() * 100}%`;
                 blade.style.height = `${Math.random() * 60 + 40}px`;
@@ -27,12 +27,21 @@ export default class MeadowTheme extends BaseTheme {
         const flowerContainer = document.getElementById('meadow-flowers');
         if (flowerContainer && flowerContainer.children.length === 0) {
             const flowerData = [
-                { color: '#e53935', svg: '<path d="M10 25 L5 15 A5 5 0 1 1 15 15 L10 25 Z" fill="{color}"/>' },
-                { color: '#fdd835', svg: '<circle cx="10" cy="10" r="5" fill="{color}"/><circle cx="10" cy="10" r="2" fill="#8d6e63"/>' },
-                { color: '#8e24aa', svg: '<path d="M10 25 L5 20 L0 10 L5 0 L15 0 L20 10 L15 20 Z" fill="{color}"/>' }
+                {
+                    color: '#e53935',
+                    svg: '<path d="M10 25 L5 15 A5 5 0 1 1 15 15 L10 25 Z" fill="{color}"/>',
+                },
+                {
+                    color: '#fdd835',
+                    svg: '<circle cx="10" cy="10" r="5" fill="{color}"/><circle cx="10" cy="10" r="2" fill="#8d6e63"/>',
+                },
+                {
+                    color: '#8e24aa',
+                    svg: '<path d="M10 25 L5 20 L0 10 L5 0 L15 0 L20 10 L15 20 Z" fill="{color}"/>',
+                },
             ];
             for (let i = 0; i < 25; i++) {
-                let flower = document.createElement('div');
+                const flower = document.createElement('div');
                 flower.className = 'meadow-flower';
                 const data = flowerData[Math.floor(Math.random() * flowerData.length)];
                 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 25">${data.svg.replace('{color}', data.color)}</svg>`;
@@ -51,10 +60,10 @@ export default class MeadowTheme extends BaseTheme {
             const wingColors = [
                 { stroke: 'gold', fill: 'rgba(255,215,0,0.7)' },
                 { stroke: '#a29bfe', fill: 'rgba(162,155,254,0.7)' },
-                { stroke: '#ff7675', fill: 'rgba(255,118,117,0.7)' }
+                { stroke: '#ff7675', fill: 'rgba(255,118,117,0.7)' },
             ];
             for (let i = 0; i < 10; i++) {
-                let butterfly = document.createElement('div');
+                const butterfly = document.createElement('div');
                 butterfly.className = 'butterfly';
                 const wingLeft = document.createElement('div');
                 wingLeft.className = 'butterfly-wing left';
@@ -69,7 +78,7 @@ export default class MeadowTheme extends BaseTheme {
                 butterfly.appendChild(wingLeft);
                 butterfly.appendChild(wingRight);
 
-                for(let j=1; j<=8; j++){
+                for (let j = 1; j <= 8; j++) {
                     butterfly.style.setProperty(`--x${j}`, `${Math.random() * 90}vw`);
                     butterfly.style.setProperty(`--y${j}`, `${Math.random() * 70}vh`);
                 }
@@ -89,12 +98,12 @@ export default class MeadowTheme extends BaseTheme {
         const pollenContainer = document.getElementById('meadow-pollen');
         if (pollenContainer && pollenContainer.children.length === 0) {
             for (let i = 0; i < 100; i++) {
-                let particle = document.createElement('div');
+                const particle = document.createElement('div');
                 particle.className = 'pollen-particle';
                 particle.style.setProperty('--x-start', `${Math.random() * 100}vw`);
                 particle.style.setProperty('--y-start', `${100 + Math.random() * 30}vh`);
                 particle.style.setProperty('--x-end', `${Math.random() * 100}vw`);
-                for(let j = 1; j <= 3; j++) {
+                for (let j = 1; j <= 3; j++) {
                     particle.style.setProperty(`--x-gust${j}`, `${Math.random() * 60 - 30}vw`);
                 }
                 particle.style.animationDelay = `-${Math.random() * 10}s`;

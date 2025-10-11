@@ -4746,9 +4746,7 @@ body {
             overflow: hidden;
             box-sizing: content-box;
             padding: 4px;
-            width: min(720px, 100%);
-            aspect-ratio: 23 / 20;
-            max-height: calc(100vh - 150px);
+            aspect-ratio: 10 / 20;
         }
 
         body.phaser-hud-ready .next-pieces-container {

@@ -19,7 +19,7 @@ export default class OceanTheme extends BaseTheme {
         const godRayContainer = document.querySelector('.ocean-god-rays');
         if (godRayContainer && godRayContainer.children.length === 0) {
             for (let i = 0; i < 15; i++) {
-                let ray = document.createElement('div');
+                const ray = document.createElement('div');
                 ray.className = 'ocean-god-ray';
                 ray.style.left = `${Math.random() * 120 - 10}%`;
                 ray.style.top = '0px';
@@ -37,7 +37,7 @@ export default class OceanTheme extends BaseTheme {
         if (sedimentContainer) {
             sedimentContainer.innerHTML = ''; // Clear old sediment
             for (let i = 0; i < 100; i++) {
-                let particle = document.createElement('div');
+                const particle = document.createElement('div');
                 particle.className = 'ocean-sediment';
                 const size = Math.random() * 3 + 1;
                 particle.style.width = `${size}px`;
@@ -60,7 +60,7 @@ export default class OceanTheme extends BaseTheme {
         if (bubblesContainer) {
             bubblesContainer.innerHTML = ''; // Clear old bubbles
             for (let i = 0; i < 150; i++) {
-                let el = document.createElement('div');
+                const el = document.createElement('div');
                 el.className = 'bubble';
                 const size = Math.random() * 12 + 3;
                 el.style.width = `${size}px`;
@@ -80,7 +80,7 @@ export default class OceanTheme extends BaseTheme {
         if (planktonContainer) {
             planktonContainer.innerHTML = ''; // Clear old plankton
             for (let i = 0; i < 200; i++) {
-                let particle = document.createElement('div');
+                const particle = document.createElement('div');
                 particle.className = 'ocean-plankton';
                 const size = Math.random() * 2 + 0.5;
                 particle.style.width = `${size}px`;
@@ -101,15 +101,15 @@ export default class OceanTheme extends BaseTheme {
         if (jellyfishContainer) {
             jellyfishContainer.innerHTML = ''; // Clear old jellyfish
             for (let i = 0; i < 12; i++) {
-                let fish = document.createElement('div');
+                const fish = document.createElement('div');
                 fish.className = 'jellyfish';
-                let body = document.createElement('div');
+                const body = document.createElement('div');
                 body.className = 'jelly-body';
-                let tentacles = document.createElement('div');
+                const tentacles = document.createElement('div');
                 tentacles.className = 'jelly-tentacles';
 
                 for (let j = 0; j < 5; j++) {
-                    let tentacle = document.createElement('div');
+                    const tentacle = document.createElement('div');
                     tentacle.className = 'tentacle';
                     tentacle.style.height = `${Math.random() * 40 + 30}px`;
                     tentacle.style.left = `${Math.random() * 40 - 20}px`;
@@ -135,18 +135,33 @@ export default class OceanTheme extends BaseTheme {
 
         // Ocean floor layers
         const layers = [
-            { el: document.getElementById('ocean-floor-bg'), count: 80, color: 'rgba(5, 30, 50, 0.6)', height: 120 },
-            { el: document.getElementById('ocean-floor-mid'), count: 50, color: 'rgba(10, 40, 65, 0.8)', height: 180 },
-            { el: document.getElementById('ocean-floor-fg'), count: 30, color: 'rgba(15, 50, 80, 1.0)', height: 250 }
+            {
+                el: document.getElementById('ocean-floor-bg'),
+                count: 80,
+                color: 'rgba(5, 30, 50, 0.6)',
+                height: 120,
+            },
+            {
+                el: document.getElementById('ocean-floor-mid'),
+                count: 50,
+                color: 'rgba(10, 40, 65, 0.8)',
+                height: 180,
+            },
+            {
+                el: document.getElementById('ocean-floor-fg'),
+                count: 30,
+                color: 'rgba(15, 50, 80, 1.0)',
+                height: 250,
+            },
         ];
 
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
             if (layer.el && layer.el.children.length === 0) {
                 const C_WIDTH = 250;
-                let canvas = document.createElement('canvas');
+                const canvas = document.createElement('canvas');
                 canvas.width = layer.count * C_WIDTH;
                 canvas.height = layer.height;
-                let ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: true });
+                const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: true });
 
                 // Clear canvas to transparent
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -180,22 +195,30 @@ export default class OceanTheme extends BaseTheme {
                     }
                     if (groundY === 0) continue;
 
-
-                    if (Math.random() > 0.3) { // Seaweed
-                        ctx.strokeStyle = `rgba(${parseInt(layer.color.slice(5,-1).split(',')[0]) + 10}, ${parseInt(layer.color.slice(5,-1).split(',')[1]) + 10}, ${parseInt(layer.color.slice(5,-1).split(',')[2]) + 10}, ${parseFloat(layer.color.slice(5,-1).split(',')[3]) * 1.2})`;
+                    if (Math.random() > 0.3) {
+                        // Seaweed
+                        ctx.strokeStyle = `rgba(${parseInt(layer.color.slice(5, -1).split(',')[0]) + 10}, ${parseInt(layer.color.slice(5, -1).split(',')[1]) + 10}, ${parseInt(layer.color.slice(5, -1).split(',')[2]) + 10}, ${parseFloat(layer.color.slice(5, -1).split(',')[3]) * 1.2})`;
                         const h = (Math.random() * 0.8 + 0.2) * layer.height;
                         ctx.beginPath();
                         ctx.moveTo(x, groundY);
-                        ctx.bezierCurveTo(x + (Math.random()-0.5)*50, groundY - h*0.3, x + (Math.random()-0.5)*50, groundY - h*0.7, x + (Math.random()-0.5)*30, groundY-h);
+                        ctx.bezierCurveTo(
+                            x + (Math.random() - 0.5) * 50,
+                            groundY - h * 0.3,
+                            x + (Math.random() - 0.5) * 50,
+                            groundY - h * 0.7,
+                            x + (Math.random() - 0.5) * 30,
+                            groundY - h,
+                        );
                         ctx.lineWidth = Math.random() * 3 + 1;
                         ctx.stroke();
-                    } else { // Coral Fan
-                        ctx.fillStyle = `rgba(${parseInt(layer.color.slice(5,-1).split(',')[0]) - 5}, ${parseInt(layer.color.slice(5,-1).split(',')[1]) + 5}, ${parseInt(layer.color.slice(5,-1).split(',')[2]) + 5}, ${parseFloat(layer.color.slice(5,-1).split(',')[3])})`;
+                    } else {
+                        // Coral Fan
+                        ctx.fillStyle = `rgba(${parseInt(layer.color.slice(5, -1).split(',')[0]) - 5}, ${parseInt(layer.color.slice(5, -1).split(',')[1]) + 5}, ${parseInt(layer.color.slice(5, -1).split(',')[2]) + 5}, ${parseFloat(layer.color.slice(5, -1).split(',')[3])})`;
                         const h = (Math.random() * 0.2 + 0.1) * layer.height;
-                        const w = (Math.random() * 0.4 + 0.2) * C_WIDTH / 4;
+                        const w = ((Math.random() * 0.4 + 0.2) * C_WIDTH) / 4;
                         ctx.beginPath();
                         ctx.moveTo(x, groundY);
-                        for (let j=0; j<5; j++) {
+                        for (let j = 0; j < 5; j++) {
                             ctx.lineTo(x + (Math.random() - 0.5) * w, groundY - Math.random() * h);
                         }
                         ctx.closePath();

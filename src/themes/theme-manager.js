@@ -128,7 +128,6 @@ export class ThemeManager {
             eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
 
             console.log('[ThemeManager] Theme switch complete:', themeName);
-
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
         } finally {
@@ -152,7 +151,7 @@ export class ThemeManager {
      * @returns {string} Theme name
      */
     getRandomTheme() {
-        const availableThemes = THEMES.filter(name => name !== this.activeThemeName);
+        const availableThemes = THEMES.filter((name) => name !== this.activeThemeName);
         const randomIndex = Math.floor(Math.random() * availableThemes.length);
         return availableThemes[randomIndex];
     }

@@ -3,7 +3,9 @@
  * This scene handles rendering the game board, pieces, and visual effects using Phaser
  */
 
-import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE } from '../../core/constants.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
+} from '../../core/constants.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { NextQueuePanel } from './ui/index.js';
 import { createBaseBoardScene } from './base-board-scene.js';
@@ -58,29 +60,41 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             const labelStyle = {
                 fontFamily: 'Orbitron',
                 fontSize: '12px',
-                color: '#a5b4fc'
+                color: '#a5b4fc',
             };
 
             const valueStyle = {
                 fontFamily: 'Space Mono',
                 fontSize: '20px',
-                color: '#ffffff'
+                color: '#ffffff',
             };
 
-            const scoreLabel = this.add.text(margin + 12, margin + 10, 'SCORE', labelStyle).setDepth(41);
-            const scoreValue = this.add.text(margin + 12, scoreLabel.y + scoreLabel.height + 2, '0', valueStyle).setDepth(41);
+            const scoreLabel = this.add
+                .text(margin + 12, margin + 10, 'SCORE', labelStyle)
+                .setDepth(41);
+            const scoreValue = this.add
+                .text(margin + 12, scoreLabel.y + scoreLabel.height + 2, '0', valueStyle)
+                .setDepth(41);
 
-            const levelLabel = this.add.text(margin + 12, scoreValue.y + scoreValue.height + 10, 'LEVEL', labelStyle).setDepth(41);
-            const levelValue = this.add.text(margin + 12, levelLabel.y + levelLabel.height + 2, '1', valueStyle).setDepth(41);
+            const levelLabel = this.add
+                .text(margin + 12, scoreValue.y + scoreValue.height + 10, 'LEVEL', labelStyle)
+                .setDepth(41);
+            const levelValue = this.add
+                .text(margin + 12, levelLabel.y + levelLabel.height + 2, '1', valueStyle)
+                .setDepth(41);
 
-            const linesLabel = this.add.text(margin + 12, levelValue.y + levelValue.height + 10, 'LINES', labelStyle).setDepth(41);
-            const linesValue = this.add.text(margin + 12, linesLabel.y + linesLabel.height + 2, '0', valueStyle).setDepth(41);
+            const linesLabel = this.add
+                .text(margin + 12, levelValue.y + levelValue.height + 10, 'LINES', labelStyle)
+                .setDepth(41);
+            const linesValue = this.add
+                .text(margin + 12, linesLabel.y + linesLabel.height + 2, '0', valueStyle)
+                .setDepth(41);
 
             this.hudElements = {
                 background,
                 scoreValue,
                 levelValue,
-                linesValue
+                linesValue,
             };
         }
 
@@ -95,7 +109,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 y,
                 blockSize: 12,
                 maxVisible: 5,
-                depth: 45
+                depth: 45,
             });
         }
 
@@ -170,7 +184,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             if (!clearedRows || clearedRows.length === 0) return;
 
             // Flash effect for cleared lines
-            clearedRows.forEach(row => {
+            clearedRows.forEach((row) => {
                 // Convert world row to canvas Y
                 const y = (row - this.hiddenRows) * this.blockSize;
 
@@ -196,14 +210,17 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             if (!piece) return;
 
             // Calculate center of piece
-            let centerX = 0, centerY = 0, blockCount = 0;
+            let centerX = 0;
+            let centerY = 0;
+            let blockCount = 0;
 
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
                         // Convert world Y to canvas Y
-                        centerY += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        centerY
+                            += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });
@@ -233,7 +250,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     },
                     onComplete: () => {
                         ripple.destroy();
-                    }
+                    },
                 });
             }
         }
@@ -253,8 +270,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     fontFamily: 'Orbitron',
                     color: '#fff',
                     stroke: '#000',
-                    strokeThickness: 4
-                }
+                    strokeThickness: 4,
+                },
             );
 
             text.setOrigin(0.5);
@@ -269,7 +286,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 ease: 'Cubic.easeOut',
                 onComplete: () => {
                     text.destroy();
-                }
+                },
             });
         }
 
@@ -318,7 +335,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     scale: { start: 0.85, end: 0 },
                     gravityY: 400,
                     blendMode: 'ADD',
-                    on: false
+                    on: false,
                 });
 
                 const burstAmount = Math.round(18 * intensity);

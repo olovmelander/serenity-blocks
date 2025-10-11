@@ -35,17 +35,12 @@ export class NextQueuePanel {
         this.background.setDepth(-1);
         this.container.add(this.background);
 
-        this.title = scene.add.text(
-            this.padding,
-            this.padding,
-            'NEXT',
-            {
-                fontFamily: 'Orbitron',
-                fontSize: `${Math.round(this.blockSize * 1.2)}px`,
-                color: TITLE_COLOR,
-                letterSpacing: 1
-            }
-        );
+        this.title = scene.add.text(this.padding, this.padding, 'NEXT', {
+            fontFamily: 'Orbitron',
+            fontSize: `${Math.round(this.blockSize * 1.2)}px`,
+            color: TITLE_COLOR,
+            letterSpacing: 1,
+        });
         this.title.setDepth(1);
         this.container.add(this.title);
 
@@ -110,7 +105,7 @@ export class NextQueuePanel {
     }
 
     clearItems() {
-        this.itemContainers.forEach(child => child.destroy());
+        this.itemContainers.forEach((child) => child.destroy());
         this.itemContainers.length = 0;
     }
 
@@ -118,7 +113,7 @@ export class NextQueuePanel {
         if (visibleCount === 0) {
             return Math.max(
                 this.padding * 2 + this.title.height + this.blockSize * 2,
-                this.panelHeight
+                this.panelHeight,
             );
         }
 
@@ -142,7 +137,13 @@ export class NextQueuePanel {
 
         const outline = this.scene.add.graphics();
         outline.lineStyle(1, 0xffffff, 0.08);
-        outline.strokeRoundedRect(-this.padding * 0.4, -this.padding * 0.4, this.entryWidth + this.padding * 0.8, this.entryHeight + this.padding * 0.8, 8);
+        outline.strokeRoundedRect(
+            -this.padding * 0.4,
+            -this.padding * 0.4,
+            this.entryWidth + this.padding * 0.8,
+            this.entryHeight + this.padding * 0.8,
+            8,
+        );
         entry.addAt(outline, 0);
 
         const colorInt = Phaser.Display.Color.HexStringToColor(colorHex).color;
@@ -178,8 +179,18 @@ export class NextQueuePanel {
         graphics.fillRect(x, y, Math.max(1, Math.round(size * 0.2)), size);
 
         graphics.fillStyle(0x000000, 0.25);
-        graphics.fillRect(x, y + size - Math.max(1, Math.round(size * 0.2)), size, Math.max(1, Math.round(size * 0.2)));
-        graphics.fillRect(x + size - Math.max(1, Math.round(size * 0.2)), y, Math.max(1, Math.round(size * 0.2)), size);
+        graphics.fillRect(
+            x,
+            y + size - Math.max(1, Math.round(size * 0.2)),
+            size,
+            Math.max(1, Math.round(size * 0.2)),
+        );
+        graphics.fillRect(
+            x + size - Math.max(1, Math.round(size * 0.2)),
+            y,
+            Math.max(1, Math.round(size * 0.2)),
+            size,
+        );
 
         graphics.lineStyle(1, 0x000000, 0.35);
         graphics.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);

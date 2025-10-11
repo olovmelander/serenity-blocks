@@ -10,7 +10,7 @@ export default class SpringTheme extends BaseTheme {
         const cloudContainer = document.getElementById('spring-clouds');
         if (cloudContainer && cloudContainer.children.length === 0) {
             for (let i = 0; i < 15; i++) {
-                let cloud = document.createElement('div');
+                const cloud = document.createElement('div');
                 cloud.className = 'spring-cloud';
                 const size = Math.random() * 150 + 100;
                 cloud.style.width = `${size}px`;
@@ -27,14 +27,35 @@ export default class SpringTheme extends BaseTheme {
 
         // Multi-layered Rain
         const rainLayers = [
-            { container: document.getElementById('rain-back'), count: 50, width: '0.8px', height: '40px', duration: 0.6, drift: -10 },
-            { container: document.getElementById('rain-mid'), count: 60, width: '1px', height: '60px', duration: 0.5, drift: -15 },
-            { container: document.getElementById('rain-front'), count: 30, width: '1.2px', height: '80px', duration: 0.4, drift: -20 }
+            {
+                container: document.getElementById('rain-back'),
+                count: 50,
+                width: '0.8px',
+                height: '40px',
+                duration: 0.6,
+                drift: -10,
+            },
+            {
+                container: document.getElementById('rain-mid'),
+                count: 60,
+                width: '1px',
+                height: '60px',
+                duration: 0.5,
+                drift: -15,
+            },
+            {
+                container: document.getElementById('rain-front'),
+                count: 30,
+                width: '1.2px',
+                height: '80px',
+                duration: 0.4,
+                drift: -20,
+            },
         ];
-        rainLayers.forEach(layer => {
+        rainLayers.forEach((layer) => {
             if (layer.container && layer.container.children.length === 0) {
                 for (let i = 0; i < layer.count; i++) {
-                    let drop = document.createElement('div');
+                    const drop = document.createElement('div');
                     drop.className = 'spring-raindrop';
                     drop.style.left = `${Math.random() * 105}%`;
                     drop.style.width = layer.width;
@@ -53,7 +74,7 @@ export default class SpringTheme extends BaseTheme {
         const sproutsContainer = document.getElementById('sprouts-container');
         if (sproutsContainer && sproutsContainer.children.length === 0) {
             for (let i = 0; i < 25; i++) {
-                let sprout = document.createElement('div');
+                const sprout = document.createElement('div');
                 sprout.className = 'sprout';
                 sprout.style.left = `${5 + Math.random() * 90}%`;
                 sprout.style.animationDelay = `-${Math.random() * 25}s`;

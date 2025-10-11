@@ -3,7 +3,13 @@
  * Manages audio playback, music tracks, and sound effects using Web Audio API
  */
 
-import { loadSongs, nameToKey, getSongPath, getSongForTheme, getThemeForSong } from './music-loader.js';
+import {
+    loadSongs,
+    nameToKey,
+    getSongPath,
+    getSongForTheme,
+    getThemeForSong,
+} from './music-loader.js';
 import { createSoundSets, SoundEffectPlayer } from './sound-effects.js';
 import { random } from '../utils/helpers.js';
 
@@ -61,7 +67,14 @@ export class SoundManager {
      * @param {Function} onended - Callback when tone ends
      * @param {boolean} isMusic - Whether this is music (affects volume multiplier)
      */
-    createTone(frequency, duration = 0.1, type = 'sine', volume = 0.3, onended = null, isMusic = false) {
+    createTone(
+        frequency,
+        duration = 0.1,
+        type = 'sine',
+        volume = 0.3,
+        onended = null,
+        isMusic = false,
+    ) {
         if (!this.audioContext || this.isMuted) return;
 
         const volumeMultiplier = isMusic ? this.musicVolume : this.sfxVolume;
@@ -93,7 +106,7 @@ export class SoundManager {
     async initializeTracks() {
         const songs = await loadSongs();
         this.songsData = songs;
-        this.trackNames = songs.map(song => nameToKey(song.name));
+        this.trackNames = songs.map((song) => nameToKey(song.name));
 
         // Set default track if current doesn't exist
         if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
@@ -115,7 +128,7 @@ export class SoundManager {
 
         dropdown.innerHTML = '';
 
-        this.songsData.forEach(song => {
+        this.songsData.forEach((song) => {
             const option = document.createElement('option');
             option.value = nameToKey(song.name);
             option.textContent = song.name;
@@ -223,12 +236,29 @@ export class SoundManager {
 
     // ==================== Sound Effect Wrappers ====================
 
-    playMove() { if (this.sfxPlayer) this.sfxPlayer.playMove(); }
-    playRotate() { if (this.sfxPlayer) this.sfxPlayer.playRotate(); }
-    playDrop() { if (this.sfxPlayer) this.sfxPlayer.playDrop(); }
-    playLineClear() { if (this.sfxPlayer) this.sfxPlayer.playLineClear(); }
-    playLevelUp() { if (this.sfxPlayer) this.sfxPlayer.playLevelUp(); }
-    playGameOver() { if (this.sfxPlayer) this.sfxPlayer.playGameOver(); }
+    playMove() {
+        if (this.sfxPlayer) this.sfxPlayer.playMove();
+    }
+
+    playRotate() {
+        if (this.sfxPlayer) this.sfxPlayer.playRotate();
+    }
+
+    playDrop() {
+        if (this.sfxPlayer) this.sfxPlayer.playDrop();
+    }
+
+    playLineClear() {
+        if (this.sfxPlayer) this.sfxPlayer.playLineClear();
+    }
+
+    playLevelUp() {
+        if (this.sfxPlayer) this.sfxPlayer.playLevelUp();
+    }
+
+    playGameOver() {
+        if (this.sfxPlayer) this.sfxPlayer.playGameOver();
+    }
 
     // ==================== Music Playback ====================
 
@@ -270,7 +300,7 @@ export class SoundManager {
         // Play the audio (handle autoplay restrictions)
         const playPromise = this.audioElement.play();
         if (playPromise !== undefined) {
-            playPromise.catch(error => {
+            playPromise.catch((error) => {
                 console.log('Audio playback prevented:', error);
             });
         }
@@ -324,7 +354,7 @@ export class SoundManager {
     // Most music now comes from MP3 files loaded via playAudioFile
 
     startGongBathMusic(trackId) {
-        const baseNotes = [41.20, 48.99, 55.00, 61.74]; // E1, G1, A1, B1
+        const baseNotes = [41.2, 48.99, 55.0, 61.74]; // E1, G1, A1, B1
 
         const playGong = () => {
             if (this.isMuted || trackId !== this.currentTrackId) return;
@@ -339,12 +369,22 @@ export class SoundManager {
             for (let i = 2; i < 9; i++) {
                 if (Math.random() > 0.65) {
                     const overtoneFreq = baseFreq * (i + random(-0.1, 0.1));
-                    const overtoneVolume = mainVolume / (i * 2) * (random(0.5, 1.0));
+                    const overtoneVolume = (mainVolume / (i * 2)) * random(0.5, 1.0);
                     const overtoneDuration = duration * random(0.7, 1.1);
-                    setTimeout(() => {
-                        if (this.isMuted || trackId !== this.currentTrackId) return;
-                        this.createTone(overtoneFreq, overtoneDuration, 'sine', overtoneVolume, null, true);
-                    }, random(100, 400));
+                    setTimeout(
+                        () => {
+                            if (this.isMuted || trackId !== this.currentTrackId) return;
+                            this.createTone(
+                                overtoneFreq,
+                                overtoneDuration,
+                                'sine',
+                                overtoneVolume,
+                                null,
+                                true,
+                            );
+                        },
+                        random(100, 400),
+                    );
                 }
             }
 
@@ -366,7 +406,14 @@ export class SoundManager {
             }
             this.createTone(scale[~~(Math.random() * scale.length)], 0.8, 'sine', 0.15, null, true);
             if (Math.random() > 0.7) {
-                this.createTone(scale[~~(Math.random() * scale.length)] / 2, 1.2, 'sine', 0.1, null, true);
+                this.createTone(
+                    scale[~~(Math.random() * scale.length)] / 2,
+                    1.2,
+                    'sine',
+                    0.1,
+                    null,
+                    true,
+                );
             }
             if (Math.random() > 0.9) {
                 this.createTone(drone, 2.5, 'sine', 0.08, null, true);
@@ -377,7 +424,7 @@ export class SoundManager {
     }
 
     startZenMusic(trackId) {
-        const scale = [261.63, 392.00, 440.00, 523.25];
+        const scale = [261.63, 392.0, 440.0, 523.25];
         const drone = 110;
 
         const interval = setInterval(() => {
@@ -389,7 +436,14 @@ export class SoundManager {
                 this.createTone(drone, 10, 'sine', 0.05, null, true);
             }
             if (Math.random() > 0.7) {
-                this.createTone(scale[~~(Math.random() * scale.length)], 3, 'sine', 0.1, null, true);
+                this.createTone(
+                    scale[~~(Math.random() * scale.length)],
+                    3,
+                    'sine',
+                    0.1,
+                    null,
+                    true,
+                );
             }
         }, 4000);
 

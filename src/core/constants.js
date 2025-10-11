@@ -28,15 +28,15 @@ export function setBlockSize(size) {
  * Tetromino colors
  */
 export const COLORS = {
-    I: '#00ff00',  // Green
-    O: '#ff9900',  // Orange
-    T: '#0000ff',  // Blue
-    S: '#00ffff',  // Cyan
-    Z: '#ff0000',  // Red
-    J: '#ffff00',  // Yellow
-    L: '#cc00cc',  // Purple
-    GARBAGE: '#808080',  // Gray (garbage blocks)
-    CLEAN_GARBAGE: '#a0a0a0'  // Light gray (clean garbage)
+    I: '#00ff00', // Green
+    O: '#ff9900', // Orange
+    T: '#0000ff', // Blue
+    S: '#00ffff', // Cyan
+    Z: '#ff0000', // Red
+    J: '#ffff00', // Yellow
+    L: '#cc00cc', // Purple
+    GARBAGE: '#808080', // Gray (garbage blocks)
+    CLEAN_GARBAGE: '#a0a0a0', // Light gray (clean garbage)
 };
 
 /**
@@ -48,37 +48,37 @@ export const SHAPES = {
         [0, 0, 0, 0],
         [1, 1, 1, 1],
         [0, 0, 0, 0],
-        [0, 0, 0, 0]
+        [0, 0, 0, 0],
     ],
     O: [
         [1, 1],
-        [1, 1]
+        [1, 1],
     ],
     T: [
         [0, 0, 0],
         [1, 1, 1],
-        [0, 1, 0]
+        [0, 1, 0],
     ],
     S: [
         [0, 1, 1],
         [1, 1, 0],
-        [0, 0, 0]
+        [0, 0, 0],
     ],
     Z: [
         [1, 1, 0],
         [0, 1, 1],
-        [0, 0, 0]
+        [0, 0, 0],
     ],
     J: [
         [0, 0, 0],
         [1, 1, 1],
-        [0, 0, 1]
+        [0, 0, 1],
     ],
     L: [
         [0, 0, 0],
         [1, 1, 1],
-        [1, 0, 0]
-    ]
+        [1, 0, 0],
+    ],
 };
 
 /**
@@ -90,10 +90,10 @@ export const PIECE_KEYS = 'IOTZSLJ';
  * Score values for line clears
  */
 export const SCORE_VALUES = {
-    1: 100,   // Single
-    2: 300,   // Double
-    3: 500,   // Triple
-    4: 800    // Tetris
+    1: 100, // Single
+    2: 300, // Double
+    3: 500, // Triple
+    4: 800, // Tetris
 };
 
 /**
@@ -101,10 +101,46 @@ export const SCORE_VALUES = {
  * Levels 1-40, speeds get progressively faster
  */
 export const LEVEL_SPEEDS = [
-    1000, 900, 800, 700, 600, 500, 450, 400, 360, 320,  // Levels 1-10
-    290, 260, 240, 220, 200, 185, 170, 155, 145, 135,   // Levels 11-20
-    125, 115, 105, 95, 90, 85, 80, 75, 70, 65,          // Levels 21-30
-    62, 59, 56, 53, 50, 48, 46, 44, 42, 40              // Levels 31-40
+    1000,
+    900,
+    800,
+    700,
+    600,
+    500,
+    450,
+    400,
+    360,
+    320, // Levels 1-10
+    290,
+    260,
+    240,
+    220,
+    200,
+    185,
+    170,
+    155,
+    145,
+    135, // Levels 11-20
+    125,
+    115,
+    105,
+    95,
+    90,
+    85,
+    80,
+    75,
+    70,
+    65, // Levels 21-30
+    62,
+    59,
+    56,
+    53,
+    50,
+    48,
+    46,
+    44,
+    42,
+    40, // Levels 31-40
 ];
 
 /**
@@ -117,17 +153,17 @@ export const THEMES = getThemeIds();
  */
 export const GAME_MODES = {
     SINGLE_PLAYER: 'single',
-    MULTIPLAYER: 'multiplayer'
+    MULTIPLAYER: 'multiplayer',
 };
 
 /**
  * Garbage calculation rules (1:1 pattern)
  */
 export const GARBAGE_RULES = {
-    1: 1,  // Single - 1 line of garbage
-    2: 2,  // Double - 2 lines
-    3: 3,  // Triple - 3 lines
-    4: 4   // Tetris - 4 lines
+    1: 1, // Single - 1 line of garbage
+    2: 2, // Double - 2 lines
+    3: 3, // Triple - 3 lines
+    4: 4, // Tetris - 4 lines
 };
 
 /**
@@ -148,11 +184,11 @@ export const DEFAULT_SETTINGS = {
     sfxVolume: 1.0,
 
     // Visual settings
-    backgroundMode: 'Level',  // 'Level', 'Random', or 'Specific'
+    backgroundMode: 'Level', // 'Level', 'Random', or 'Specific'
     backgroundTheme: 'forest',
     themeLinkedMode: false,
     autoThemeChange: false,
-    randomThemeInterval: 60,  // seconds
+    randomThemeInterval: 60, // seconds
     pieceLockRipple: true,
     pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
@@ -172,7 +208,7 @@ export const DEFAULT_SETTINGS = {
         nextTrack: 'm',
         randomTheme: 'b',
         toggleFullscreen: 'f',
-        showHighScores: 'h'
+        showHighScores: 'h',
     },
     // Player 2 controls (for multiplayer)
     player2KeyBindings: {
@@ -182,6 +218,6 @@ export const DEFAULT_SETTINGS = {
         rotateLeft: 'q',
         flip: 'e',
         softDrop: 's',
-        hardDrop: 'Shift'
-    }
+        hardDrop: 'Shift',
+    },
 };

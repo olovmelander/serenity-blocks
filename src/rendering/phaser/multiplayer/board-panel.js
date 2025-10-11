@@ -3,26 +3,28 @@ import { createBaseBoardScene } from '../base-board-scene.js';
 const HUD_LABEL_STYLE = {
     fontFamily: 'Orbitron',
     fontSize: '14px',
-    color: '#00ffff'
+    color: '#00ffff',
 };
 
 const HUD_VALUE_STYLE = {
     fontFamily: 'Space Mono',
     fontSize: '16px',
-    color: '#ffffff'
+    color: '#ffffff',
 };
 
 const HUD_SECONDARY_STYLE = {
     fontFamily: 'Space Mono',
     fontSize: '12px',
-    color: '#a5b4fc'
+    color: '#a5b4fc',
 };
 
 /**
  * Create the multiplayer board scene once Phaser is ready.
  * @param {typeof Phaser} phaserLib
  */
-export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undefined' ? window.Phaser : null) {
+export function createMultiplayerBoardScene(
+    phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
+) {
     const BaseBoardScene = createBaseBoardScene(phaserLib);
 
     return class MultiplayerBoardScene extends BaseBoardScene {
@@ -43,7 +45,12 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
         applyViewport() {
             const camera = this.cameras.main;
             if (this.viewport) {
-                camera.setViewport(this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
+                camera.setViewport(
+                    this.viewport.x,
+                    this.viewport.y,
+                    this.viewport.width,
+                    this.viewport.height,
+                );
             }
             camera.setOrigin(0, 0);
             this.configureCamera();
@@ -51,10 +58,28 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
 
         createHud() {
             const margin = 8;
-            this.labelText = this.add.text(margin, margin, this.label, HUD_LABEL_STYLE).setDepth(90);
-            this.scoreText = this.add.text(margin, this.labelText.y + this.labelText.height + 2, '0', HUD_VALUE_STYLE).setDepth(90);
-            this.linesText = this.add.text(margin, this.scoreText.y + this.scoreText.height + 2, 'LINES 0', HUD_SECONDARY_STYLE).setDepth(90);
-            this.garbageText = this.add.text(margin, this.linesText.y + this.linesText.height + 2, 'GARBAGE 0', HUD_SECONDARY_STYLE).setDepth(90);
+            this.labelText = this.add
+                .text(margin, margin, this.label, HUD_LABEL_STYLE)
+                .setDepth(90);
+            this.scoreText = this.add
+                .text(margin, this.labelText.y + this.labelText.height + 2, '0', HUD_VALUE_STYLE)
+                .setDepth(90);
+            this.linesText = this.add
+                .text(
+                    margin,
+                    this.scoreText.y + this.scoreText.height + 2,
+                    'LINES 0',
+                    HUD_SECONDARY_STYLE,
+                )
+                .setDepth(90);
+            this.garbageText = this.add
+                .text(
+                    margin,
+                    this.linesText.y + this.linesText.height + 2,
+                    'GARBAGE 0',
+                    HUD_SECONDARY_STYLE,
+                )
+                .setDepth(90);
         }
 
         updateHud(state) {
@@ -77,7 +102,7 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
             this.updateHud({
                 score: gameState?.score ?? 0,
                 lines: gameState?.lines ?? 0,
-                pendingGarbage: this.getPendingGarbage ? this.getPendingGarbage(gameState) : 0
+                pendingGarbage: this.getPendingGarbage ? this.getPendingGarbage(gameState) : 0,
             });
         }
 
@@ -85,7 +110,7 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
             if (!clearedRows || clearedRows.length === 0) return;
 
             const flash = this.effectsGraphics;
-            clearedRows.forEach(row => {
+            clearedRows.forEach((row) => {
                 const y = (row - this.hiddenRows) * this.blockSize;
                 flash.fillStyle(0xffffff, 0.6);
                 flash.fillRect(0, y, this.cols * this.blockSize, this.blockSize);
@@ -114,7 +139,8 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
-                        centerY += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        centerY
+                            += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });
@@ -142,7 +168,7 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
                 },
                 onComplete: () => {
                     ripple.destroy();
-                }
+                },
             });
         }
 
@@ -156,8 +182,8 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
                     fontFamily: 'Orbitron',
                     color: '#fff',
                     stroke: '#000',
-                    strokeThickness: 4
-                }
+                    strokeThickness: 4,
+                },
             );
 
             text.setOrigin(0.5);
@@ -169,7 +195,7 @@ export function createMultiplayerBoardScene(phaserLib = typeof window !== 'undef
                 scale: { from: 0.8, to: 1.1 },
                 duration: 700,
                 ease: 'Cubic.easeOut',
-                onComplete: () => text.destroy()
+                onComplete: () => text.destroy(),
             });
         }
 

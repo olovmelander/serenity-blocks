@@ -73,7 +73,7 @@ export function getSpeedMultiplier(level) {
     const baseSpeed = LEVEL_SPEEDS[0];
     const currentSpeed = getDropInterval(level);
     const multiplier = baseSpeed / currentSpeed;
-    return multiplier.toFixed(1) + 'x';
+    return `${multiplier.toFixed(1)}x`;
 }
 
 /**

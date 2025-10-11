@@ -25,16 +25,18 @@ export default class StillwaterTheme extends BaseTheme {
         }
 
         // Mist layers
-        ['stillwater-mist-back', 'stillwater-mist-mid', 'stillwater-mist-front'].forEach((id, index) => {
-            const mistContainer = document.getElementById(id);
-            if (mistContainer && mistContainer.children.length === 0) {
-                const mist = document.createElement('div');
-                mist.className = `stillwater-mist-layer-${index}`;
-                mist.style.animationDelay = `-${index * 15}s`;
-                mistContainer.appendChild(mist);
-                this.registerContainer(mistContainer);
-            }
-        });
+        ['stillwater-mist-back', 'stillwater-mist-mid', 'stillwater-mist-front'].forEach(
+            (id, index) => {
+                const mistContainer = document.getElementById(id);
+                if (mistContainer && mistContainer.children.length === 0) {
+                    const mist = document.createElement('div');
+                    mist.className = `stillwater-mist-layer-${index}`;
+                    mist.style.animationDelay = `-${index * 15}s`;
+                    mistContainer.appendChild(mist);
+                    this.registerContainer(mistContainer);
+                }
+            },
+        );
 
         // Layer 1 - Distant Trees (Deep forest background)
         const distantTreesContainer = document.getElementById('stillwater-distant-trees');
@@ -43,10 +45,10 @@ export default class StillwaterTheme extends BaseTheme {
                 { start: 0, end: 20, baseHeight: 140 },
                 { start: 25, end: 45, baseHeight: 120 },
                 { start: 50, end: 70, baseHeight: 135 },
-                { start: 75, end: 95, baseHeight: 125 }
+                { start: 75, end: 95, baseHeight: 125 },
             ];
 
-            clusters.forEach(cluster => {
+            clusters.forEach((cluster) => {
                 const tree = document.createElement('div');
                 tree.className = 'stillwater-distant-tree-cluster';
                 tree.style.left = `${cluster.start}%`;

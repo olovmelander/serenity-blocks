@@ -10,7 +10,7 @@ export default class GalaxyTheme extends BaseTheme {
         const starsContainer = document.getElementById('galaxy-stars-bg');
         if (starsContainer && starsContainer.children.length === 0) {
             for (let i = 0; i < 200; i++) {
-                let star = document.createElement('div');
+                const star = document.createElement('div');
                 star.className = 'galaxy-star-bg';
                 const size = Math.random() * 2 + 0.5;
                 star.style.width = `${size}px`;

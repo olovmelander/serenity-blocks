@@ -10,7 +10,7 @@ export default class SummerTheme extends BaseTheme {
         const godRayContainer = document.querySelector('.god-rays-summer');
         if (godRayContainer && godRayContainer.children.length === 0) {
             for (let i = 0; i < 20; i++) {
-                let ray = document.createElement('div');
+                const ray = document.createElement('div');
                 ray.className = 'summer-god-ray';
                 ray.style.left = `${Math.random() * 140 - 20}%`;
                 ray.style.top = '0px';
@@ -27,7 +27,7 @@ export default class SummerTheme extends BaseTheme {
         const seedContainer = document.getElementById('dandelion-seeds');
         if (seedContainer && seedContainer.children.length === 0) {
             for (let i = 0; i < 60; i++) {
-                let seed = document.createElement('div');
+                const seed = document.createElement('div');
                 seed.className = 'dandelion-seed';
                 const xStart = Math.random() * 100;
                 const yStart = 100 + Math.random() * 20;
@@ -50,7 +50,7 @@ export default class SummerTheme extends BaseTheme {
         const grassContainer = document.querySelector('.summer-grass');
         if (grassContainer && grassContainer.children.length === 0) {
             for (let i = 0; i < 120; i++) {
-                let blade = document.createElement('div');
+                const blade = document.createElement('div');
                 blade.className = 'summer-grass-blade';
                 blade.style.left = `${Math.random() * 100}%`;
                 blade.style.height = `${Math.random() * 40 + 20}px`;

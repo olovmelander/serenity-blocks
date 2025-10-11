@@ -38,25 +38,30 @@ class TexturedQuad {
         this.positionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
         const positions = [
-            -1, -1, zIndex,
-             1, -1, zIndex,
-            -1,  1, zIndex,
-            -1,  1, zIndex,
-             1, -1, zIndex,
-             1,  1, zIndex,
+            -1,
+            -1,
+            zIndex,
+            1,
+            -1,
+            zIndex,
+            -1,
+            1,
+            zIndex,
+            -1,
+            1,
+            zIndex,
+            1,
+            -1,
+            zIndex,
+            1,
+            1,
+            zIndex,
         ];
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
         this.texcoordBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
-        const texcoords = [
-            0, 1,
-            1, 1,
-            0, 0,
-            0, 0,
-            1, 1,
-            1, 0,
-        ];
+        const texcoords = [0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0];
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
 
         // Cache attribute locations (set during first bindBuffers call)
@@ -64,7 +69,7 @@ class TexturedQuad {
     }
 
     createTexture(source) {
-        const gl = this.gl;
+        const { gl } = this;
         const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -81,13 +86,13 @@ class TexturedQuad {
     }
 
     bindBuffers(program) {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Cache attribute locations on first call
         if (!this.attribLocations) {
             this.attribLocations = {
-                position: gl.getAttribLocation(program, "a_position"),
-                texcoord: gl.getAttribLocation(program, "a_texcoord")
+                position: gl.getAttribLocation(program, 'a_position'),
+                texcoord: gl.getAttribLocation(program, 'a_texcoord'),
             };
         }
 
@@ -101,12 +106,11 @@ class TexturedQuad {
     }
 
     draw() {
-        const gl = this.gl;
+        const { gl } = this;
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 }
-
 
 const PARTICLE_VERTEX_SHADER = `
     attribute vec2 a_position;
@@ -173,9 +177,9 @@ class ParticleSystem {
             this.clusterTargets = new Float32Array(numParticles * 2);
             this.clusterTimers = new Float32Array(numParticles);
             this.dartInfo = new Float32Array(numParticles * 2); // 0: isDarting, 1: dartTimer
-            this.clusterPoints = Array.from({length: 5}, () => ({
+            this.clusterPoints = Array.from({ length: 5 }, () => ({
                 x: Math.random() * this.gl.canvas.width,
-                y: Math.random() * this.gl.canvas.height * 0.6 + this.gl.canvas.height * 0.35 // Mid-to-lower section
+                y: Math.random() * this.gl.canvas.height * 0.6 + this.gl.canvas.height * 0.35, // Mid-to-lower section
             }));
         } else if (this.behavior === 'petal') {
             this.rotations = new Float32Array(numParticles);
@@ -262,7 +266,8 @@ class ParticleSystem {
             this.swayFactors[i * 2] = Math.random() * 2 + 1; // Sway frequency
             this.swayFactors[i * 2 + 1] = Math.random() * 0.5 + 0.5; // Sway amplitude
         } else if (this.behavior === 'upward-waterfall') {
-            let spawnX, spawnY;
+            let spawnX;
+            let spawnY;
             if (this.islandTargets && this.islandTargets.length > 0) {
                 const island = this.islandTargets[this.particleIslandMap[i]];
                 const rect = island.raw.getBoundingClientRect();
@@ -315,7 +320,7 @@ class ParticleSystem {
             this.velocities[i * 2] = 0;
             this.velocities[i * 2 + 1] = -(Math.random() * 0.3 + 0.2) * config.speed;
             this.spiralInfo[i * 3] = Math.random() * Math.PI * 2; // angle
-            this.spiralInfo[i * 3 + 1] = Math.random() * 10 + 5;  // initial radius
+            this.spiralInfo[i * 3 + 1] = Math.random() * 10 + 5; // initial radius
             this.spiralInfo[i * 3 + 2] = (Math.random() - 0.5) * 0.04; // spiral speed
             this.lifetimes[i] = config.lifetime;
             this.alphas[i] = 0;
@@ -329,7 +334,8 @@ class ParticleSystem {
             this.velocities[i * 2 + 1] = (Math.random() * 0.2 + 0.8) * config.speed; // Fast downwards
             this.alphas[i] = Math.random() * (config.maxAlpha - config.minAlpha) + config.minAlpha;
             this.lifetimes[i] = Math.random() * config.lifetime;
-        } else { // 'standard' or 'ambient'
+        } else {
+            // 'standard' or 'ambient'
             this.velocities[i * 2] = (Math.random() - 0.5) * config.speed;
             this.velocities[i * 2 + 1] = (Math.random() - 0.5) * config.speed;
             this.alphas[i] = Math.random() * (config.maxAlpha - config.minAlpha) + config.minAlpha;
@@ -386,10 +392,22 @@ class ParticleSystem {
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
 
                 // Screen boundary collision
-                if (this.positions[i * 2] < 0) { this.positions[i * 2] = 0; this.velocities[i * 2] *= -0.8; }
-                if (this.positions[i * 2] > width) { this.positions[i * 2] = width; this.velocities[i * 2] *= -0.8; }
-                if (this.positions[i * 2 + 1] < 0) { this.positions[i * 2 + 1] = 0; this.velocities[i * 2 + 1] *= -0.8; }
-                if (this.positions[i * 2 + 1] > height) { this.positions[i * 2 + 1] = height; this.velocities[i * 2 + 1] *= -0.8; }
+                if (this.positions[i * 2] < 0) {
+                    this.positions[i * 2] = 0;
+                    this.velocities[i * 2] *= -0.8;
+                }
+                if (this.positions[i * 2] > width) {
+                    this.positions[i * 2] = width;
+                    this.velocities[i * 2] *= -0.8;
+                }
+                if (this.positions[i * 2 + 1] < 0) {
+                    this.positions[i * 2 + 1] = 0;
+                    this.velocities[i * 2 + 1] *= -0.8;
+                }
+                if (this.positions[i * 2 + 1] > height) {
+                    this.positions[i * 2 + 1] = height;
+                    this.velocities[i * 2 + 1] *= -0.8;
+                }
 
                 // Blinking State Machine
                 const blinkOffset = i * 6;
@@ -411,18 +429,18 @@ class ParticleSystem {
                 this.blinkInfo[blinkOffset + 1] = timer;
 
                 switch (blinkState) {
-                    case 0: // FADE_IN
-                        this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
-                        break;
-                    case 1: // GLOW
-                        this.alphas[i] = maxAlpha;
-                        break;
-                    case 2: // FADE_OUT
-                        this.alphas[i] = maxAlpha * (timer / fadeOutTime);
-                        break;
-                    case 3: // DARK
-                        this.alphas[i] = 0;
-                        break;
+                case 0: // FADE_IN
+                    this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
+                    break;
+                case 1: // GLOW
+                    this.alphas[i] = maxAlpha;
+                    break;
+                case 2: // FADE_OUT
+                    this.alphas[i] = maxAlpha * (timer / fadeOutTime);
+                    break;
+                case 3: // DARK
+                    this.alphas[i] = 0;
+                    break;
                 }
             } else if (this.behavior === 'ambient') {
                 this.positions[i * 2] += this.velocities[i * 2];
@@ -430,13 +448,17 @@ class ParticleSystem {
 
                 if (this.positions[i * 2] < 0 || this.positions[i * 2] > width) this.velocities[i * 2] *= -1;
                 if (this.positions[i * 2 + 1] < 0 || this.positions[i * 2 + 1] > height) this.velocities[i * 2 + 1] *= -1;
-
             } else if (this.behavior === 'petal') {
                 // Wind Gust Logic
                 const now = Date.now();
                 if (now - this.lastWindGust > this.nextWindGustTime) {
                     this.wind.x = Math.random() * 0.5 + 0.5; // Stronger gust
-                    setTimeout(() => { this.wind.x = 0.1; }, Math.random() * 800 + 500); // Gust duration
+                    setTimeout(
+                        () => {
+                            this.wind.x = 0.1;
+                        },
+                        Math.random() * 800 + 500,
+                    ); // Gust duration
                     this.lastWindGust = now;
                     this.nextWindGustTime = Math.random() * 4000 + 8000;
                 }
@@ -449,17 +471,22 @@ class ParticleSystem {
                 // More complex sway using swayFactors
                 const swayFrequency = this.swayFactors[i * 2];
                 const swayAmplitude = this.swayFactors[i * 2 + 1];
-                this.positions[i * 2] += Math.sin(this.positions[i * 2 + 1] / (50 / swayFrequency)) * swayAmplitude;
-
+                this.positions[i * 2]
+                    += Math.sin(this.positions[i * 2 + 1] / (50 / swayFrequency)) * swayAmplitude;
 
                 // Reset when it goes off screen (bottom or sides)
-                if (this.positions[i * 2 + 1] > height + 20 || this.positions[i * 2] > width + 20 || this.positions[i * 2] < -20) {
+                if (
+                    this.positions[i * 2 + 1] > height + 20
+                    || this.positions[i * 2] > width + 20
+                    || this.positions[i * 2] < -20
+                ) {
                     this.spawnParticle(i);
                 }
             } else if (this.behavior === 'upward-waterfall') {
                 this.positions[i * 2] += this.velocities[i * 2];
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
-                if (this.positions[i * 2 + 1] < -20) { // Reset when it goes off top
+                if (this.positions[i * 2 + 1] < -20) {
+                    // Reset when it goes off top
                     this.spawnParticle(i);
                 }
             } else if (this.behavior === 'spiraling-debris') {
@@ -478,18 +505,20 @@ class ParticleSystem {
                 this.positions[i * 2 + 1] = centerY + Math.sin(this.angles[i]) * radiusY;
                 // Fade in and out
                 this.alphas[i] = Math.sin(this.angles[i] * 0.5) * 0.5 + 0.5;
-
             } else if (this.behavior === 'horizontal-drift') {
                 this.positions[i * 2] += this.velocities[i * 2];
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
-                this.positions[i * 2 + 1] += Math.sin(this.positions[i * 2] / 100) * this.driftFactors[i] * 0.2;
+                this.positions[i * 2 + 1]
+                    += Math.sin(this.positions[i * 2] / 100) * this.driftFactors[i] * 0.2;
 
-                if ((this.velocities[i * 2] > 0 && this.positions[i * 2] > width + 20) ||
-                    (this.velocities[i * 2] < 0 && this.positions[i * 2] < -20)) {
+                if (
+                    (this.velocities[i * 2] > 0 && this.positions[i * 2] > width + 20)
+                    || (this.velocities[i * 2] < 0 && this.positions[i * 2] < -20)
+                ) {
                     this.spawnParticle(i);
                 }
             } else if (this.behavior === 'crystal-growth') {
-                const lifetime = this.themeConfig.lifetime;
+                const { lifetime } = this.themeConfig;
                 const progress = (lifetime - this.lifetimes[i]) / lifetime;
 
                 // Grow then shrink
@@ -508,7 +537,7 @@ class ParticleSystem {
                     this.spawnParticle(i);
                 }
             } else if (this.behavior === 'incense-smoke') {
-                const lifetime = this.themeConfig.lifetime;
+                const { lifetime } = this.themeConfig;
                 const progress = (lifetime - this.lifetimes[i]) / lifetime;
 
                 // Update spiral
@@ -521,11 +550,12 @@ class ParticleSystem {
 
                 // Fade in and out
                 if (progress < 0.2) {
-                    this.alphas[i] = progress / 0.2 * this.themeConfig.maxAlpha;
+                    this.alphas[i] = (progress / 0.2) * this.themeConfig.maxAlpha;
                 } else {
                     this.alphas[i] = (1 - (progress - 0.2) / 0.8) * this.themeConfig.maxAlpha;
                 }
-                this.sizes[i] = this.themeConfig.minSize + progress * (this.themeConfig.maxSize - this.themeConfig.minSize);
+                this.sizes[i] = this.themeConfig.minSize
+                    + progress * (this.themeConfig.maxSize - this.themeConfig.minSize);
                 this.sizeBufferDirty = true; // Size is dynamically changing
 
                 if (this.lifetimes[i] <= 0) {
@@ -535,12 +565,17 @@ class ParticleSystem {
                 this.positions[i * 2] += this.velocities[i * 2];
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
                 // Lifetime check at the top handles respawning
-            } else { // standard behavior
+            } else {
+                // standard behavior
                 this.positions[i * 2] += this.velocities[i * 2];
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
 
-                if (this.positions[i * 2] < 0 || this.positions[i * 2] > width ||
-                    this.positions[i * 2 + 1] < 0 || this.positions[i * 2 + 1] > height) {
+                if (
+                    this.positions[i * 2] < 0
+                    || this.positions[i * 2] > width
+                    || this.positions[i * 2 + 1] < 0
+                    || this.positions[i * 2 + 1] > height
+                ) {
                     this.spawnParticle(i);
                 }
             }
@@ -548,14 +583,14 @@ class ParticleSystem {
     }
 
     bindBuffers(program) {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Cache attribute locations on first call
         if (!this.attribLocations) {
             this.attribLocations = {
-                position: gl.getAttribLocation(program, "a_position"),
-                size: gl.getAttribLocation(program, "a_size"),
-                alpha: gl.getAttribLocation(program, "a_alpha")
+                position: gl.getAttribLocation(program, 'a_position'),
+                size: gl.getAttribLocation(program, 'a_size'),
+                alpha: gl.getAttribLocation(program, 'a_alpha'),
             };
         }
 
@@ -592,10 +627,21 @@ export class WebGLRenderer {
     constructor(canvas) {
         console.log('[WebGLRenderer] Constructor - canvas element:', canvas);
         this.canvas = canvas;
-        this.gl = this.canvas.getContext('webgl', { alpha: true, depth: true, antialias: true, premultipliedAlpha: false }) || this.canvas.getContext('experimental-webgl', { alpha: true, depth: true, antialias: true, premultipliedAlpha: false });
+        this.gl = this.canvas.getContext('webgl', {
+            alpha: true,
+            depth: true,
+            antialias: true,
+            premultipliedAlpha: false,
+        })
+            || this.canvas.getContext('experimental-webgl', {
+                alpha: true,
+                depth: true,
+                antialias: true,
+                premultipliedAlpha: false,
+            });
 
         if (!this.gl) {
-            console.error("WebGL not supported!");
+            console.error('WebGL not supported!');
             return;
         }
 
@@ -607,14 +653,14 @@ export class WebGLRenderer {
 
         this.textureProgram = this.createProgram(TEXTURE_VERTEX_SHADER, TEXTURE_FRAGMENT_SHADER);
         this.textureProgram.uniforms = {
-            u_texture: this.gl.getUniformLocation(this.textureProgram, "u_texture"),
+            u_texture: this.gl.getUniformLocation(this.textureProgram, 'u_texture'),
         };
 
         this.particleProgram = this.createProgram(PARTICLE_VERTEX_SHADER, PARTICLE_FRAGMENT_SHADER);
         this.particleProgram.uniforms = {
-            u_resolution: this.gl.getUniformLocation(this.particleProgram, "u_resolution"),
-            u_zIndex: this.gl.getUniformLocation(this.particleProgram, "u_zIndex"),
-            u_color: this.gl.getUniformLocation(this.particleProgram, "u_color"),
+            u_resolution: this.gl.getUniformLocation(this.particleProgram, 'u_resolution'),
+            u_zIndex: this.gl.getUniformLocation(this.particleProgram, 'u_zIndex'),
+            u_color: this.gl.getUniformLocation(this.particleProgram, 'u_color'),
         };
 
         this.resize();
@@ -634,7 +680,12 @@ export class WebGLRenderer {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        console.log('[WebGLRenderer] Canvas resized to:', this.canvas.width, 'x', this.canvas.height);
+        console.log(
+            '[WebGLRenderer] Canvas resized to:',
+            this.canvas.width,
+            'x',
+            this.canvas.height,
+        );
     }
 
     addLayer(sourceCanvas, zIndex) {
@@ -644,7 +695,7 @@ export class WebGLRenderer {
     }
 
     createProgram(vertexShaderSource, fragmentShaderSource) {
-        const gl = this.gl;
+        const { gl } = this;
         const vertexShader = this.createShader(gl.VERTEX_SHADER, vertexShaderSource);
         const fragmentShader = this.createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
 
@@ -654,20 +705,24 @@ export class WebGLRenderer {
         gl.linkProgram(program);
 
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            console.error("Unable to initialize the shader program: " + gl.getProgramInfoLog(program));
+            console.error(
+                `Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`,
+            );
             return null;
         }
         return program;
     }
 
     createShader(type, source) {
-        const gl = this.gl;
+        const { gl } = this;
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
 
         if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            console.error("An error occurred compiling the shaders: " + gl.getShaderInfoLog(shader));
+            console.error(
+                `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`,
+            );
             gl.deleteShader(shader);
             return null;
         }
@@ -680,7 +735,9 @@ export class WebGLRenderer {
             this.stop();
         }
         if (this.useExternalRenderLoop) {
-            console.log('[WebGLRenderer] External render loop enabled; skipping internal RAF start');
+            console.log(
+                '[WebGLRenderer] External render loop enabled; skipping internal RAF start',
+            );
             return;
         }
 
@@ -699,7 +756,7 @@ export class WebGLRenderer {
     }
 
     renderFrame() {
-        const gl = this.gl;
+        const { gl } = this;
 
         if (this.qualityConfig?.renderFrameSkip > 0) {
             this._frameSkipCounter = (this._frameSkipCounter + 1) % (this.qualityConfig.renderFrameSkip + 1);
@@ -712,7 +769,10 @@ export class WebGLRenderer {
         if (!this._renderCount) this._renderCount = 0;
         this._renderCount++;
         if (this._renderCount === 1 || this._renderCount % 60 === 0) {
-            console.log(`[WebGLRenderer] render() called (frame ${this._renderCount}), particles:`, this.particleSystems.length);
+            console.log(
+                `[WebGLRenderer] render() called (frame ${this._renderCount}), particles:`,
+                this.particleSystems.length,
+            );
         }
 
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
@@ -725,7 +785,7 @@ export class WebGLRenderer {
         gl.useProgram(this.textureProgram);
         gl.uniform1i(this.textureProgram.uniforms.u_texture, 0);
 
-        this.texturedQuads.forEach(quad => {
+        this.texturedQuads.forEach((quad) => {
             gl.activeTexture(gl.TEXTURE0);
             quad.bindBuffers(this.textureProgram);
             quad.draw();
@@ -736,9 +796,12 @@ export class WebGLRenderer {
         gl.uniform2f(this.particleProgram.uniforms.u_resolution, gl.canvas.width, gl.canvas.height);
 
         if (this.qualityConfig?.particles !== false) {
-            this.particleSystems.forEach(ps => {
+            this.particleSystems.forEach((ps) => {
                 gl.uniform1f(this.particleProgram.uniforms.u_zIndex, ps.zIndex);
-                gl.uniform3fv(this.particleProgram.uniforms.u_color, ps.themeConfig.color || [1.0, 1.0, 1.0]);
+                gl.uniform3fv(
+                    this.particleProgram.uniforms.u_color,
+                    ps.themeConfig.color || [1.0, 1.0, 1.0],
+                );
                 ps.update();
                 ps.bindBuffers(this.particleProgram);
                 ps.draw();
@@ -787,31 +850,46 @@ export class WebGLRenderer {
                     lifetime: 400,
                     zIndex: -0.4,
                     color: [0.39, 0.71, 0.98], // #64b5f6
-                    islandData: islandData
+                    islandData,
                 };
                 this.particleSystems.push(new ParticleSystem(this.gl, 300, upwardWaterfallConfig));
 
                 const amethystConfig = {
                     behavior: 'spiraling-debris',
-                    minSize: 4.0, maxSize: 9.0, minAlpha: 0.8, maxAlpha: 1.0,
-                    lifetime: Infinity, zIndex: -0.2, color: [0.73, 0.41, 0.78], // #ba68c8
-                    islandData: islandData
+                    minSize: 4.0,
+                    maxSize: 9.0,
+                    minAlpha: 0.8,
+                    maxAlpha: 1.0,
+                    lifetime: Infinity,
+                    zIndex: -0.2,
+                    color: [0.73, 0.41, 0.78], // #ba68c8
+                    islandData,
                 };
                 this.particleSystems.push(new ParticleSystem(this.gl, 20, amethystConfig));
 
                 const roseQuartzConfig = {
                     behavior: 'spiraling-debris',
-                    minSize: 3.0, maxSize: 7.0, minAlpha: 0.8, maxAlpha: 1.0,
-                    lifetime: Infinity, zIndex: -0.2, color: [0.97, 0.73, 0.82], // #f8bbd0
-                    islandData: islandData
+                    minSize: 3.0,
+                    maxSize: 7.0,
+                    minAlpha: 0.8,
+                    maxAlpha: 1.0,
+                    lifetime: Infinity,
+                    zIndex: -0.2,
+                    color: [0.97, 0.73, 0.82], // #f8bbd0
+                    islandData,
                 };
                 this.particleSystems.push(new ParticleSystem(this.gl, 25, roseQuartzConfig));
 
                 const anomalyConfig = {
                     behavior: 'spiraling-debris',
-                    minSize: 1.5, maxSize: 3.0, minAlpha: 0.5, maxAlpha: 0.9,
-                    lifetime: Infinity, zIndex: -0.3, color: [1.0, 0.8, 0.5], // #ffcc80
-                    islandData: islandData
+                    minSize: 1.5,
+                    maxSize: 3.0,
+                    minAlpha: 0.5,
+                    maxAlpha: 0.9,
+                    lifetime: Infinity,
+                    zIndex: -0.3,
+                    color: [1.0, 0.8, 0.5], // #ffcc80
+                    islandData,
                 };
                 this.particleSystems.push(new ParticleSystem(this.gl, 40, anomalyConfig));
             }
@@ -843,7 +921,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: Infinity,
                 zIndex: -0.6,
-                color: [1.0, 1.0, 1.0]
+                color: [1.0, 1.0, 1.0],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 300, snowConfig));
 
@@ -857,7 +935,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.8,
                 lifetime: Infinity,
                 zIndex: -0.5,
-                color: [1.0, 0.95, 0.7] // Golden tint
+                color: [1.0, 0.95, 0.7], // Golden tint
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 100, sunlitConfig));
 
@@ -871,7 +949,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: 2000,
                 zIndex: -0.4,
-                color: [0.95, 0.97, 1.0]
+                color: [0.95, 0.97, 1.0],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, crystalConfig));
 
@@ -886,7 +964,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: 1600,
                 zIndex: -0.5,
-                color: [0.9, 0.95, 1.0]
+                color: [0.9, 0.95, 1.0],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 80, snowCrystalConfig));
 
@@ -899,7 +977,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.7,
                 lifetime: 500, // shorter life, they appear and disappear
                 zIndex: -0.3, // On top of most things
-                color: [0.8, 0.9, 1.0]
+                color: [0.8, 0.9, 1.0],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 100, iceGrowthConfig));
 
@@ -908,30 +986,36 @@ export class WebGLRenderer {
             // Background fireflies (dimmer, smaller) - Green tinted
             const fireflyBackConfig = {
                 behavior: 'firefly',
-                minSize: 3.0, maxSize: 5.0,
+                minSize: 3.0,
+                maxSize: 5.0,
                 maxAlpha: 0.8,
-                lifetime: Infinity, zIndex: -0.7,
-                color: [0.78, 0.91, 0.42] // #C8E86B - lime green
+                lifetime: Infinity,
+                zIndex: -0.7,
+                color: [0.78, 0.91, 0.42], // #C8E86B - lime green
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 20, fireflyBackConfig));
 
             // Mid-ground fireflies (primary layer) - Warm yellow
             const fireflyMidConfig = {
                 behavior: 'firefly',
-                minSize: 5.0, maxSize: 8.0,
+                minSize: 5.0,
+                maxSize: 8.0,
                 maxAlpha: 1.0,
-                lifetime: Infinity, zIndex: -0.5,
-                color: [0.99, 0.86, 0.45] // #FFE873 - warm yellow
+                lifetime: Infinity,
+                zIndex: -0.5,
+                color: [0.99, 0.86, 0.45], // #FFE873 - warm yellow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 25, fireflyMidConfig));
 
             // Foreground fireflies (larger, brighter) - Golden
             const fireflyFrontConfig = {
                 behavior: 'firefly',
-                minSize: 7.0, maxSize: 12.0,
+                minSize: 7.0,
+                maxSize: 12.0,
                 maxAlpha: 1.0,
-                lifetime: Infinity, zIndex: -0.1,
-                color: [0.98, 0.86, 0.36] // #F9DC5C - golden
+                lifetime: Infinity,
+                zIndex: -0.1,
+                color: [0.98, 0.86, 0.36], // #F9DC5C - golden
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 15, fireflyFrontConfig));
 
@@ -939,11 +1023,13 @@ export class WebGLRenderer {
             const dustConfig = {
                 behavior: 'ambient',
                 speed: 0.15,
-                minSize: 1.0, maxSize: 2.0,
-                minAlpha: 0.1, maxAlpha: 0.4,
+                minSize: 1.0,
+                maxSize: 2.0,
+                minAlpha: 0.1,
+                maxAlpha: 0.4,
                 lifetime: Infinity,
                 zIndex: -0.4,
-                color: [0.95, 0.92, 0.8] // Soft yellow-white
+                color: [0.95, 0.92, 0.8], // Soft yellow-white
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 70, dustConfig));
 
@@ -951,11 +1037,13 @@ export class WebGLRenderer {
             const sporeConfig = {
                 behavior: 'ambient',
                 speed: 0.1,
-                minSize: 1.5, maxSize: 3.0,
-                minAlpha: 0.2, maxAlpha: 0.5,
+                minSize: 1.5,
+                maxSize: 3.0,
+                minAlpha: 0.2,
+                maxAlpha: 0.5,
                 lifetime: Infinity,
                 zIndex: -0.6,
-                color: [0.7, 0.85, 0.6] // Soft green
+                color: [0.7, 0.85, 0.6], // Soft green
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 40, sporeConfig));
 
@@ -971,7 +1059,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.2,
                 lifetime: 1200,
                 zIndex: -0.1,
-                color: [0.85, 0.8, 0.9] // Slight purple tint
+                color: [0.85, 0.8, 0.9], // Slight purple tint
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 25, smokeConfig));
 
@@ -985,7 +1073,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: Infinity,
                 zIndex: -0.3,
-                color: [1.0, 0.95, 0.6] // Warm golden glow
+                color: [1.0, 0.95, 0.6], // Warm golden glow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 40, fireflyConfig));
 
@@ -999,7 +1087,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.9,
                 lifetime: 2500,
                 zIndex: -0.2,
-                color: [1.0, 0.85, 0.9] // Soft pink
+                color: [1.0, 0.85, 0.9], // Soft pink
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 50, petalConfig));
 
@@ -1013,7 +1101,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.7,
                 lifetime: Infinity,
                 zIndex: -0.4,
-                color: [0.7, 0.6, 1.0] // Soft purple/blue
+                color: [0.7, 0.6, 1.0], // Soft purple/blue
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 20, orbConfig));
 
@@ -1064,7 +1152,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.6,
                 lifetime: Infinity,
                 zIndex: -0.5,
-                color: [0.7, 0.95, 0.7] // Soft green
+                color: [0.7, 0.95, 0.7], // Soft green
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 40, sporeConfig));
 
@@ -1078,7 +1166,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.35,
                 lifetime: Infinity,
                 zIndex: -0.3,
-                color: [0.8, 0.87, 1.0] // Bluish white
+                color: [0.8, 0.87, 1.0], // Bluish white
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, ambientConfig));
 
@@ -1091,7 +1179,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.8,
                 lifetime: Infinity,
                 zIndex: -0.4,
-                color: [0.6, 1.0, 0.7] // Green glow
+                color: [0.6, 1.0, 0.7], // Green glow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 15, greenFireflyConfig));
 
@@ -1104,7 +1192,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: Infinity,
                 zIndex: -0.2,
-                color: [1.0, 0.95, 0.6] // Warm yellow
+                color: [1.0, 0.95, 0.6], // Warm yellow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 20, fireflyConfig));
 
@@ -1117,7 +1205,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: Infinity,
                 zIndex: -0.1,
-                color: [1.0, 0.9, 0.5] // Bright yellow
+                color: [1.0, 0.9, 0.5], // Bright yellow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 12, brightFireflyConfig));
 
@@ -1131,7 +1219,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.5,
                 lifetime: Infinity,
                 zIndex: -0.15,
-                color: [0.5, 0.9, 1.0] // Cyan/magical
+                color: [0.5, 0.9, 1.0], // Cyan/magical
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 25, wispConfig));
 
@@ -1139,24 +1227,48 @@ export class WebGLRenderer {
         } else if (themeName === 'cherry-blossom-garden') {
             // Create 3 layers of petals for depth
             const petalLayers = [
-                { // Far layer
-                    behavior: 'petal', speed: 0.6, minSize: 4.0, maxSize: 8.0,
-                    minAlpha: 0.6, maxAlpha: 0.8, lifetime: 1800, // ~30 seconds
-                    zIndex: -0.5, color: [1.0, 0.8, 0.85], count: 60
+                {
+                    // Far layer
+                    behavior: 'petal',
+                    speed: 0.6,
+                    minSize: 4.0,
+                    maxSize: 8.0,
+                    minAlpha: 0.6,
+                    maxAlpha: 0.8,
+                    lifetime: 1800, // ~30 seconds
+                    zIndex: -0.5,
+                    color: [1.0, 0.8, 0.85],
+                    count: 60,
                 },
-                { // Mid layer
-                    behavior: 'petal', speed: 0.8, minSize: 6.0, maxSize: 12.0,
-                    minAlpha: 0.8, maxAlpha: 1.0, lifetime: 1500, // ~25 seconds
-                    zIndex: -0.3, color: [1.0, 0.85, 0.9], count: 80
+                {
+                    // Mid layer
+                    behavior: 'petal',
+                    speed: 0.8,
+                    minSize: 6.0,
+                    maxSize: 12.0,
+                    minAlpha: 0.8,
+                    maxAlpha: 1.0,
+                    lifetime: 1500, // ~25 seconds
+                    zIndex: -0.3,
+                    color: [1.0, 0.85, 0.9],
+                    count: 80,
                 },
-                { // Near layer
-                    behavior: 'petal', speed: 1.0, minSize: 8.0, maxSize: 15.0,
-                    minAlpha: 0.9, maxAlpha: 1.0, lifetime: 1200, // ~20 seconds
-                    zIndex: -0.1, color: [1.0, 0.9, 0.95], count: 60
-                }
+                {
+                    // Near layer
+                    behavior: 'petal',
+                    speed: 1.0,
+                    minSize: 8.0,
+                    maxSize: 15.0,
+                    minAlpha: 0.9,
+                    maxAlpha: 1.0,
+                    lifetime: 1200, // ~20 seconds
+                    zIndex: -0.1,
+                    color: [1.0, 0.9, 0.95],
+                    count: 60,
+                },
             ];
 
-            petalLayers.forEach(config => {
+            petalLayers.forEach((config) => {
                 this.particleSystems.push(new ParticleSystem(this.gl, config.count, config));
             });
 
@@ -1172,7 +1284,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.25,
                 lifetime: Infinity,
                 zIndex: -0.6,
-                color: [0.7, 0.7, 0.7]
+                color: [0.7, 0.7, 0.7],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 120, cosmicDustBackConfig));
 
@@ -1186,7 +1298,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.35,
                 lifetime: Infinity,
                 zIndex: -0.4,
-                color: [0.8, 0.8, 0.8]
+                color: [0.8, 0.8, 0.8],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 100, cosmicDustMidConfig));
 
@@ -1200,7 +1312,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.45,
                 lifetime: Infinity,
                 zIndex: -0.2,
-                color: [0.9, 0.9, 0.9]
+                color: [0.9, 0.9, 0.9],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 80, cosmicDustForeConfig));
 
@@ -1214,7 +1326,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.4,
                 lifetime: Infinity,
                 zIndex: -0.35,
-                color: [0.85, 0.85, 0.85]
+                color: [0.85, 0.85, 0.85],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 40, orbConfig));
 
@@ -1228,7 +1340,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.55,
                 lifetime: Infinity,
                 zIndex: -0.3,
-                color: [0.95, 0.95, 0.95]
+                color: [0.95, 0.95, 0.95],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 50, emberConfig));
 
@@ -1242,7 +1354,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.3,
                 lifetime: Infinity,
                 zIndex: -0.5,
-                color: [0.75, 0.75, 0.75]
+                color: [0.75, 0.75, 0.75],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, wispConfig));
 
@@ -1258,7 +1370,7 @@ export class WebGLRenderer {
                 maxAlpha: 1.0,
                 lifetime: 2000,
                 zIndex: -0.5,
-                color: [0.95, 0.95, 1.0] // Soft white with purple tint
+                color: [0.95, 0.95, 1.0], // Soft white with purple tint
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 120, snowConfig));
 
@@ -1272,7 +1384,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.3,
                 lifetime: Infinity,
                 zIndex: -0.3,
-                color: [0.8, 0.7, 1.0] // Purple-tinted mist
+                color: [0.8, 0.7, 1.0], // Purple-tinted mist
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 80, mistConfig));
 
@@ -1286,7 +1398,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.5,
                 lifetime: Infinity,
                 zIndex: -0.6,
-                color: [0.9, 0.75, 0.95] // Light purple-pink
+                color: [0.9, 0.75, 0.95], // Light purple-pink
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 150, cosmicDustConfig));
 
@@ -1298,7 +1410,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.7,
                 lifetime: Infinity,
                 zIndex: -0.4,
-                color: [0.85, 0.65, 1.0] // Purple glow
+                color: [0.85, 0.65, 1.0], // Purple glow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 30, orbConfig));
 
@@ -1312,7 +1424,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.8,
                 lifetime: Infinity,
                 zIndex: -0.2,
-                color: [1.0, 0.9, 1.0] // Bright white-pink
+                color: [1.0, 0.9, 1.0], // Bright white-pink
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, sparkleConfig));
 
@@ -1328,7 +1440,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.1,
                 lifetime: Infinity,
                 zIndex: -0.6,
-                color: [0.65, 0.7, 0.65] // Deep greenish-grey
+                color: [0.65, 0.7, 0.65], // Deep greenish-grey
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 40, deepMistConfig));
 
@@ -1342,7 +1454,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.15,
                 lifetime: Infinity,
                 zIndex: -0.4,
-                color: [0.7, 0.75, 0.7] // Muted greenish-grey
+                color: [0.7, 0.75, 0.7], // Muted greenish-grey
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 50, mistConfig));
 
@@ -1356,7 +1468,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.35,
                 lifetime: Infinity,
                 zIndex: -0.5,
-                color: [0.55, 0.6, 0.5] // Darker earthy tones
+                color: [0.55, 0.6, 0.5], // Darker earthy tones
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 60, sporeBackConfig));
 
@@ -1370,7 +1482,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.5,
                 lifetime: Infinity,
                 zIndex: -0.2,
-                color: [0.65, 0.7, 0.6] // Lighter earthy tones
+                color: [0.65, 0.7, 0.6], // Lighter earthy tones
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 70, sporeFrontConfig));
 
@@ -1382,7 +1494,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.6,
                 lifetime: Infinity,
                 zIndex: -0.45,
-                color: [0.75, 0.8, 0.65] // Muted green-yellow
+                color: [0.75, 0.8, 0.65], // Muted green-yellow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 12, fireflyBackConfig));
 
@@ -1394,7 +1506,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.8,
                 lifetime: Infinity,
                 zIndex: -0.15,
-                color: [0.85, 0.88, 0.75] // Brighter pale green-yellow
+                color: [0.85, 0.88, 0.75], // Brighter pale green-yellow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 18, fireflyFrontConfig));
 
@@ -1408,7 +1520,7 @@ export class WebGLRenderer {
                 maxAlpha: 0.3,
                 lifetime: Infinity,
                 zIndex: -0.35,
-                color: [0.7, 0.75, 0.68] // Soft mystical glow
+                color: [0.7, 0.75, 0.68], // Soft mystical glow
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 25, wispConfig));
 

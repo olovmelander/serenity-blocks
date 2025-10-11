@@ -1,4 +1,6 @@
-import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE } from '../../core/constants.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
+} from '../../core/constants.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 
@@ -13,11 +15,15 @@ let cachedPhaserRef = null;
  * @param {typeof Phaser} phaserLib
  * @returns {typeof Phaser.Scene}
  */
-export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ? window.Phaser : null) {
+export function createBaseBoardScene(
+    phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
+) {
     const PhaserRef = phaserLib;
 
     if (!PhaserRef?.Scene) {
-        throw new Error('[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.');
+        throw new Error(
+            '[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.',
+        );
     }
 
     if (cachedBaseClass && cachedPhaserRef === PhaserRef) {
@@ -34,14 +40,15 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
          * @param {number} [boardConfig.blockSize]
          */
         constructor(key, boardConfig = {}) {
-            const resolvedKey = key ?? `BaseBoardScene-${PhaserRef.Utils?.String?.UUID ? PhaserRef.Utils.String.UUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
+            const resolvedKey = key
+                ?? `BaseBoardScene-${PhaserRef.Utils?.String?.UUID ? PhaserRef.Utils.String.UUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
             super(resolvedKey);
 
             this.boardConfig = {
                 cols: boardConfig.cols ?? COLS,
                 rows: boardConfig.rows ?? ROWS,
                 hiddenRows: boardConfig.hiddenRows ?? HIDDEN_ROWS,
-                blockSize: boardConfig.blockSize ?? BLOCK_SIZE
+                blockSize: boardConfig.blockSize ?? BLOCK_SIZE,
             };
 
             this.sceneKey = resolvedKey;
@@ -55,7 +62,7 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
             this.graphicsLayers = {
                 board: null,
                 piece: null,
-                fx: null
+                fx: null,
             };
 
             this.commonParticleKey = DEFAULT_PARTICLE_KEY;
@@ -75,7 +82,8 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
             this.registerResizeHandler();
         }
 
-        update(time, delta) { // eslint-disable-line no-unused-vars
+        update(time, delta) {
+            // eslint-disable-line no-unused-vars
             if (!this.gameState) return;
             this.pieceGraphics?.clear();
             this.effectsGraphics?.clear();
@@ -121,7 +129,7 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
             const { cols, rows, blockSize } = this.boardConfig;
             return {
                 width: cols * blockSize,
-                height: rows * blockSize
+                height: rows * blockSize,
             };
         }
 
@@ -224,20 +232,15 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
         drawLockedPieces() {
             if (!this.gameState?.lockedPieces) return;
 
-            this.gameState.lockedPieces.forEach(piece => {
-                let pieceColor = piece.color || '#808080';
+            this.gameState.lockedPieces.forEach((piece) => {
+                const pieceColor = piece.color || '#808080';
 
                 piece.shape.forEach((row, y) => {
                     row.forEach((cell, x) => {
                         if (cell > 0) {
                             const worldY = piece.y + y;
                             if (worldY >= this.hiddenRows) {
-                                this.drawBlock(
-                                    piece.x + x,
-                                    worldY,
-                                    pieceColor,
-                                    1.0
-                                );
+                                this.drawBlock(piece.x + x, worldY, pieceColor, 1.0);
                             }
                         }
                     });
@@ -259,13 +262,7 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
                     if (cell > 0) {
                         const worldY = ghostY + y;
                         if (worldY >= this.hiddenRows) {
-                            this.drawBlock(
-                                piece.x + x,
-                                worldY,
-                                piece.color,
-                                0.2,
-                                true
-                            );
+                            this.drawBlock(piece.x + x, worldY, piece.color, 0.2, true);
                         }
                     }
                 });
@@ -281,12 +278,7 @@ export function createBaseBoardScene(phaserLib = typeof window !== 'undefined' ?
                     if (cell > 0) {
                         const worldY = piece.y + y;
                         if (worldY >= this.hiddenRows) {
-                            this.drawBlock(
-                                piece.x + x,
-                                worldY,
-                                piece.color,
-                                1.0
-                            );
+                            this.drawBlock(piece.x + x, worldY, piece.color, 1.0);
                         }
                     }
                 });

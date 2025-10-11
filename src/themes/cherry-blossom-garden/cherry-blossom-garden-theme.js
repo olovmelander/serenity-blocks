@@ -32,8 +32,8 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
         ctx.lineWidth = width;
         ctx.strokeStyle = colors.color;
         ctx.moveTo(x1, y1);
-        const x2 = x1 + len * Math.cos(angle * Math.PI / 180);
-        const y2 = y1 + len * Math.sin(angle * Math.PI / 180);
+        const x2 = x1 + len * Math.cos((angle * Math.PI) / 180);
+        const y2 = y1 + len * Math.sin((angle * Math.PI) / 180);
         ctx.lineTo(x2, y2);
         ctx.stroke();
 
@@ -58,8 +58,26 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
         }
 
         const newLen = len * (0.75 + Math.random() * 0.1);
-        this.drawBranch(ctx, x2, y2, newLen, angle + (Math.random() * 20 + 10), width * 0.75, colors, depth + 1);
-        this.drawBranch(ctx, x2, y2, newLen, angle - (Math.random() * 20 + 10), width * 0.75, colors, depth + 1);
+        this.drawBranch(
+            ctx,
+            x2,
+            y2,
+            newLen,
+            angle + (Math.random() * 20 + 10),
+            width * 0.75,
+            colors,
+            depth + 1,
+        );
+        this.drawBranch(
+            ctx,
+            x2,
+            y2,
+            newLen,
+            angle - (Math.random() * 20 + 10),
+            width * 0.75,
+            colors,
+            depth + 1,
+        );
     }
 
     async createScene() {
@@ -94,16 +112,29 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
             ctx.lineJoin = 'round';
 
             const treeLayers = [
-                { count: 3, color: '#2c1e1e', bloomColors: ['#ff8fab', '#ff7f9e', '#e7738c'], baseWidth: 28 },
-                { count: 5, color: '#3b2a2a', bloomColors: ['#ff8fab', '#ff7f9e', '#e7738c'], baseWidth: 22 }
+                {
+                    count: 3,
+                    color: '#2c1e1e',
+                    bloomColors: ['#ff8fab', '#ff7f9e', '#e7738c'],
+                    baseWidth: 28,
+                },
+                {
+                    count: 5,
+                    color: '#3b2a2a',
+                    bloomColors: ['#ff8fab', '#ff7f9e', '#e7738c'],
+                    baseWidth: 22,
+                },
             ];
 
-            treeLayers.forEach(layer => {
+            treeLayers.forEach((layer) => {
                 for (let i = 0; i < layer.count; i++) {
                     const x = Math.random() * C_WIDTH;
                     const y = C_HEIGHT;
                     const length = Math.random() * 50 + 100;
-                    this.drawBranch(ctx, x, y, length, -90, layer.baseWidth, { color: layer.color, bloomColors: layer.bloomColors });
+                    this.drawBranch(ctx, x, y, length, -90, layer.baseWidth, {
+                        color: layer.color,
+                        bloomColors: layer.bloomColors,
+                    });
                 }
             });
 
