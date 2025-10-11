@@ -53,9 +53,11 @@ export class GameModeUI {
         this.updateContainerVisibility();
 
         // Dispatch event
-        window.dispatchEvent(new CustomEvent('gameModeChanged', {
-            detail: { mode }
-        }));
+        window.dispatchEvent(
+            new CustomEvent('gameModeChanged', {
+                detail: { mode },
+            }),
+        );
     }
 
     /**

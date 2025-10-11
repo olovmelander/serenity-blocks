@@ -3,15 +3,16 @@
  * Handles rendering of the game board, pieces, and next pieces
  */
 
-import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS } from '../core/constants.js';
-import { generateBoard } from '../core/board.js';
-import { isValidPosition } from '../core/board.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
+} from '../core/constants.js';
+import { generateBoard, isValidPosition } from '../core/board.js';
 import {
     getGridCache,
     drawBlock,
     drawGhostPiece,
     updateCanvasStyle,
-    getLastRenderedLevel
+    getLastRenderedLevel,
 } from './canvas-utils.js';
 
 // Piece trail system for motion fluidity
@@ -19,9 +20,9 @@ let pieceTrails = [];
 const MAX_TRAILS = 3;
 
 const COMBO_COLOR_STEPS = [
-    { max: 2, color: '#22d3ee' },  // Cyan
-    { max: 3, color: '#8b5cf6' },  // Purple
-    { max: Infinity, color: '#d946ef' } // Magenta
+    { max: 2, color: '#22d3ee' }, // Cyan
+    { max: 3, color: '#8b5cf6' }, // Purple
+    { max: Infinity, color: '#d946ef' }, // Magenta
 ];
 
 function getComboColor(comboCount) {
@@ -45,10 +46,10 @@ export function addPieceTrail(piece) {
     pieceTrails.push({
         piece: {
             ...piece,
-            shape: piece.shape.map(row => [...row])
+            shape: piece.shape.map((row) => [...row]),
         },
         timestamp: Date.now(),
-        opacity: 0.15
+        opacity: 0.15,
     });
 
     // Limit trail count
@@ -66,7 +67,7 @@ function drawPieceTrails(ctx) {
     const trailDuration = 150; // 150ms fade
 
     // Filter out expired trails and draw remaining ones
-    pieceTrails = pieceTrails.filter(trail => {
+    pieceTrails = pieceTrails.filter((trail) => {
         const age = now - trail.timestamp;
         if (age > trailDuration) return false;
 
@@ -85,7 +86,7 @@ function drawPieceTrails(ctx) {
                         (trail.piece.x + x) * BLOCK_SIZE,
                         (trail.piece.y + y - HIDDEN_ROWS) * BLOCK_SIZE,
                         BLOCK_SIZE,
-                        BLOCK_SIZE
+                        BLOCK_SIZE,
                     );
                     ctx.restore();
                 }
@@ -129,7 +130,7 @@ export function draw(canvas, ctx, gameState) {
     const boardData = generateBoard(lockedPieces);
 
     // Draw locked pieces (with animation support for garbage)
-    lockedPieces.forEach(piece => {
+    lockedPieces.forEach((piece) => {
         // Calculate Y offset for animating garbage
         let yOffset = 0;
         if (piece.isAnimating && piece.animationOffset !== undefined) {
@@ -179,7 +180,7 @@ export function draw(canvas, ctx, gameState) {
                         useBoardData ? 0 : piece.x,
                         useBoardData ? 0 : renderY - HIDDEN_ROWS,
                         useBoardData ? boardX : localX,
-                        useBoardData ? renderY : localY
+                        useBoardData ? renderY : localY,
                     );
 
                     if (alpha < 1.0) {
@@ -216,7 +217,7 @@ export function draw(canvas, ctx, gameState) {
                         currentPiece.x,
                         currentPiece.y - HIDDEN_ROWS,
                         x,
-                        y
+                        y,
                     );
                 }
             });
@@ -254,7 +255,7 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                             offsetX + x * blockSize,
                             offsetY + y * blockSize,
                             blockSize,
-                            blockSize
+                            blockSize,
                         );
 
                         // Add highlight for first piece (most prominent)
@@ -266,7 +267,7 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                                 offsetX + x * blockSize + highlightOffset,
                                 offsetY + y * blockSize + highlightOffset,
                                 highlightSize,
-                                highlightSize
+                                highlightSize,
                             );
                         }
 
@@ -277,7 +278,7 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                             offsetX + x * blockSize,
                             offsetY + y * blockSize,
                             blockSize,
-                            blockSize
+                            blockSize,
                         );
                     }
                 });
@@ -356,7 +357,7 @@ function createParticleBurst(container, topPosition, rowHeight, delay) {
         particle.style.left = `${50}%`;
 
         // Random angle for particle trajectory
-        const angle = (Math.PI / 3) + (i / particleCount) * (Math.PI / 1.5);
+        const angle = Math.PI / 3 + (i / particleCount) * (Math.PI / 1.5);
         const distance = 50 + Math.random() * 50;
         const endX = Math.cos(angle) * distance;
         const endY = Math.sin(angle) * distance * (Math.random() > 0.5 ? 1 : -1);
@@ -390,7 +391,7 @@ function createRadialBurst(container, clearedRows) {
 
     // Calculate center point of cleared lines
     const avgRow = clearedRows.reduce((a, b) => a + b, 0) / clearedRows.length;
-    const centerY = (avgRow - HIDDEN_ROWS) * BLOCK_SIZE + (BLOCK_SIZE / 2);
+    const centerY = (avgRow - HIDDEN_ROWS) * BLOCK_SIZE + BLOCK_SIZE / 2;
 
     const burst = document.createElement('div');
     burst.className = 'radial-burst';
@@ -429,8 +430,8 @@ export function createPieceLockRipple(piece, lockedPieces = [], containerElement
         ripple.className = 'lock-ripple';
 
         // Position at corner
-        const x = (corner.x * BLOCK_SIZE) + (BLOCK_SIZE / 2);
-        const y = ((corner.y - HIDDEN_ROWS) * BLOCK_SIZE) + (BLOCK_SIZE / 2);
+        const x = corner.x * BLOCK_SIZE + BLOCK_SIZE / 2;
+        const y = (corner.y - HIDDEN_ROWS) * BLOCK_SIZE + BLOCK_SIZE / 2;
 
         ripple.style.left = `${x}px`;
         ripple.style.top = `${y}px`;
@@ -440,11 +441,14 @@ export function createPieceLockRipple(piece, lockedPieces = [], containerElement
 
         container.appendChild(ripple);
 
-        setTimeout(() => {
-            if (ripple.parentNode === container) {
-                container.removeChild(ripple);
-            }
-        }, 400 + (index * 30));
+        setTimeout(
+            () => {
+                if (ripple.parentNode === container) {
+                    container.removeChild(ripple);
+                }
+            },
+            400 + index * 30,
+        );
     });
 
     // Add block merge glows at contact points
@@ -468,13 +472,13 @@ function findPieceCorners(piece) {
 
                 // Check all 4 corners of this block
                 const blockCorners = [
-                    { x: x, y: y },           // Top-left
-                    { x: x + 1, y: y },       // Top-right
-                    { x: x, y: y + 1 },       // Bottom-left
-                    { x: x + 1, y: y + 1 }    // Bottom-right
+                    { x, y }, // Top-left
+                    { x: x + 1, y }, // Top-right
+                    { x, y: y + 1 }, // Bottom-left
+                    { x: x + 1, y: y + 1 }, // Bottom-right
                 ];
 
-                blockCorners.forEach(corner => {
+                blockCorners.forEach((corner) => {
                     const key = `${corner.x},${corner.y}`;
                     if (!visited.has(key)) {
                         // Check if this is an outer corner (exposed to empty space)
@@ -529,36 +533,45 @@ function createBlockMergeGlows(piece, lockedPieces, containerElement = null) {
 
                 // Check all 4 adjacent positions
                 const adjacents = [
-                    { x: x - 1, y: y, side: 'left' },
-                    { x: x + 1, y: y, side: 'right' },
-                    { x: x, y: y - 1, side: 'top' },
-                    { x: x, y: y + 1, side: 'bottom' }
+                    { x: x - 1, y, side: 'left' },
+                    { x: x + 1, y, side: 'right' },
+                    { x, y: y - 1, side: 'top' },
+                    { x, y: y + 1, side: 'bottom' },
                 ];
 
-                adjacents.forEach(adj => {
+                adjacents.forEach((adj) => {
                     // Check if this position has a locked block
-                    if (adj.y >= 0 && adj.y < board.length &&
-                        adj.x >= 0 && adj.x < COLS &&
-                        board[adj.y][adj.x] !== null) {
-
+                    if (
+                        adj.y >= 0
+                        && adj.y < board.length
+                        && adj.x >= 0
+                        && adj.x < COLS
+                        && board[adj.y][adj.x] !== null
+                    ) {
                         // Calculate glow position at the contact edge
-                        let glowX, glowY;
+                        let glowX;
+                        let glowY;
 
                         if (adj.side === 'left') {
                             glowX = x * BLOCK_SIZE;
-                            glowY = y * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                            glowY = y * BLOCK_SIZE + BLOCK_SIZE / 2;
                         } else if (adj.side === 'right') {
                             glowX = (x + 1) * BLOCK_SIZE;
-                            glowY = y * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                            glowY = y * BLOCK_SIZE + BLOCK_SIZE / 2;
                         } else if (adj.side === 'top') {
-                            glowX = x * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                            glowX = x * BLOCK_SIZE + BLOCK_SIZE / 2;
                             glowY = y * BLOCK_SIZE;
-                        } else { // bottom
-                            glowX = x * BLOCK_SIZE + (BLOCK_SIZE / 2);
+                        } else {
+                            // bottom
+                            glowX = x * BLOCK_SIZE + BLOCK_SIZE / 2;
                             glowY = (y + 1) * BLOCK_SIZE;
                         }
 
-                        contactPoints.push({ x: glowX, y: glowY - (HIDDEN_ROWS * BLOCK_SIZE), side: adj.side });
+                        contactPoints.push({
+                            x: glowX,
+                            y: glowY - HIDDEN_ROWS * BLOCK_SIZE,
+                            side: adj.side,
+                        });
                     }
                 });
             }
@@ -577,11 +590,14 @@ function createBlockMergeGlows(piece, lockedPieces, containerElement = null) {
 
         container.appendChild(glow);
 
-        setTimeout(() => {
-            if (glow.parentNode === container) {
-                container.removeChild(glow);
-            }
-        }, 120 + (index * 15));
+        setTimeout(
+            () => {
+                if (glow.parentNode === container) {
+                    container.removeChild(glow);
+                }
+            },
+            120 + index * 15,
+        );
     });
 }
 
@@ -662,11 +678,15 @@ export function showComboPopup(comboCount, customContainer = null) {
 
     container.appendChild(popup);
 
-    popup.addEventListener('animationend', () => {
-        if (popup.parentNode === container) {
-            container.removeChild(popup);
-        }
-    }, { once: true });
+    popup.addEventListener(
+        'animationend',
+        () => {
+            if (popup.parentNode === container) {
+                container.removeChild(popup);
+            }
+        },
+        { once: true },
+    );
 }
 
 /**
@@ -730,7 +750,9 @@ export function showLevelUpNotification(level) {
  *   - piecesPlaced: Total pieces placed
  */
 export function updateStats(stats) {
-    const { score, lines, level, linesUntilNextLevel, startTime, piecesPlaced } = stats;
+    const {
+        score, lines, level, linesUntilNextLevel, startTime, piecesPlaced,
+    } = stats;
 
     document.getElementById('score').textContent = score;
     document.getElementById('lines').textContent = lines;
@@ -744,7 +766,10 @@ export function updateStats(stats) {
     document.getElementById('next-level').textContent = linesUntilNextLevel;
 
     // Speed multiplier
-    const LEVEL_SPEEDS = [1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60, 50];
+    const LEVEL_SPEEDS = [
+        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
+        50,
+    ];
     const baseSpeed = LEVEL_SPEEDS[0];
     const currentSpeed = LEVEL_SPEEDS[Math.min(level - 1, LEVEL_SPEEDS.length - 1)];
     const speedMultiplier = (baseSpeed / currentSpeed).toFixed(1);
@@ -757,6 +782,6 @@ export function updateStats(stats) {
 
     // BPM (Blocks Per Minute)
     const elapsedMinutes = (Date.now() - startTime) / 60000;
-    const bpm = elapsedMinutes > 0 ? Math.floor(piecesPlaced * 4 / elapsedMinutes) : 0;
+    const bpm = elapsedMinutes > 0 ? Math.floor((piecesPlaced * 4) / elapsedMinutes) : 0;
     document.getElementById('bpm').textContent = bpm;
 }

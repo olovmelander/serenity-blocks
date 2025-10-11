@@ -32,7 +32,7 @@ class EventBus {
     emit(eventName, payload) {
         const handlers = this.listeners.get(eventName);
         if (handlers) {
-            handlers.forEach(handler => handler(payload));
+            handlers.forEach((handler) => handler(payload));
         }
     }
 }
@@ -42,5 +42,5 @@ export const eventBus = new EventBus();
 export const EVENTS = {
     THEME_CHANGED: 'themeChanged',
     THEME_LOADING: 'themeLoading',
-    BACKGROUND_READY: 'backgroundReady'
+    BACKGROUND_READY: 'backgroundReady',
 };

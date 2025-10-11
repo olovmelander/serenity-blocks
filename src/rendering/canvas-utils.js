@@ -3,7 +3,9 @@
  * Handles grid cache generation, block drawing, and canvas styling
  */
 
-import { COLS, ROWS, BLOCK_SIZE, HIDDEN_ROWS } from '../core/constants.js';
+import {
+    COLS, ROWS, BLOCK_SIZE, HIDDEN_ROWS,
+} from '../core/constants.js';
 
 /**
  * Offscreen canvas for cached grid (performance optimization)
@@ -42,7 +44,10 @@ function parseColorToRgb(color) {
     if (value.startsWith('#')) {
         value = value.slice(1);
         if (value.length === 3) {
-            value = value.split('').map(char => char + char).join('');
+            value = value
+                .split('')
+                .map((char) => char + char)
+                .join('');
         }
         if (value.length !== 6) {
             return null;
@@ -52,7 +57,7 @@ function parseColorToRgb(color) {
         const g = parseInt(value.substring(2, 4), 16);
         const b = parseInt(value.substring(4, 6), 16);
 
-        if ([r, g, b].some(component => Number.isNaN(component))) {
+        if ([r, g, b].some((component) => Number.isNaN(component))) {
             return null;
         }
 
@@ -64,7 +69,7 @@ function parseColorToRgb(color) {
         return {
             r: clampColorComponent(Number(rgbMatch[1])),
             g: clampColorComponent(Number(rgbMatch[2])),
-            b: clampColorComponent(Number(rgbMatch[3]))
+            b: clampColorComponent(Number(rgbMatch[3])),
         };
     }
 
@@ -82,7 +87,7 @@ function lightenRgb(rgb, amount) {
     return {
         r: clampColorComponent(rgb.r + (255 - rgb.r) * amount),
         g: clampColorComponent(rgb.g + (255 - rgb.g) * amount),
-        b: clampColorComponent(rgb.b + (255 - rgb.b) * amount)
+        b: clampColorComponent(rgb.b + (255 - rgb.b) * amount),
     };
 }
 
@@ -90,12 +95,12 @@ function darkenRgb(rgb, amount) {
     return {
         r: clampColorComponent(rgb.r * (1 - amount)),
         g: clampColorComponent(rgb.g * (1 - amount)),
-        b: clampColorComponent(rgb.b * (1 - amount))
+        b: clampColorComponent(rgb.b * (1 - amount)),
     };
 }
 
 function getPulseIntensity(gridX, gridY) {
-    const timestamp = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const timestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const phase = timestamp * PULSE_SPEED + (gridX + gridY) * POSITION_PHASE_SHIFT;
     return 0.5 + 0.5 * Math.sin(phase);
 }
@@ -207,7 +212,7 @@ export function drawBlock(
     pieceX = 0,
     pieceY = 0,
     blockX = 0,
-    blockY = 0
+    blockY = 0,
 ) {
     const size = BLOCK_SIZE;
     const pixelX = x * size;
@@ -282,7 +287,7 @@ function getGhostPulseOpacity() {
     // 2-second cycle for gentle breathing effect
     const time = Date.now() / 1000;
     const cycle = (Math.sin(time * Math.PI) + 1) / 2; // 0 to 1
-    return 0.2 + (cycle * 0.15); // 0.2 to 0.35
+    return 0.2 + cycle * 0.15; // 0.2 to 0.35
 }
 
 export function drawGhostPiece(ctx, piece, ghostY) {
@@ -296,22 +301,12 @@ export function drawGhostPiece(ctx, piece, ghostY) {
 
                 // Draw main ghost block with pulsing opacity
                 ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-                ctx.fillRect(
-                    blockX * BLOCK_SIZE,
-                    blockY * BLOCK_SIZE,
-                    BLOCK_SIZE,
-                    BLOCK_SIZE
-                );
+                ctx.fillRect(blockX * BLOCK_SIZE, blockY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
 
                 // Add subtle cyan glow on edges for Tetris Effect feel
                 ctx.strokeStyle = `rgba(100, 200, 255, ${opacity * 0.6})`;
                 ctx.lineWidth = 1;
-                ctx.strokeRect(
-                    blockX * BLOCK_SIZE,
-                    blockY * BLOCK_SIZE,
-                    BLOCK_SIZE,
-                    BLOCK_SIZE
-                );
+                ctx.strokeRect(blockX * BLOCK_SIZE, blockY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             }
         });
     });

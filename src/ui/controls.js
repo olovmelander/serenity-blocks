@@ -60,13 +60,7 @@ export class InputController {
  */
 export function setupKeyboardControls(inputController, settings, gameActions) {
     const {
-        move,
-        rotate,
-        softDrop,
-        hardDrop,
-        togglePause,
-        startGame,
-        initSound
+        move, rotate, softDrop, hardDrop, togglePause, startGame, initSound,
     } = gameActions;
 
     // Keydown handler
@@ -91,32 +85,42 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
         // Start game if on start/game-over modal
         const startModal = document.getElementById('start-modal');
         const gameOverModal = document.getElementById('game-over-modal');
-        if ((startModal && startModal.classList.contains('visible')) ||
-            (gameOverModal && gameOverModal.classList.contains('visible'))) {
+        if (
+            (startModal && startModal.classList.contains('visible'))
+            || (gameOverModal && gameOverModal.classList.contains('visible'))
+        ) {
             startGame();
             return;
         }
 
         // Get action from key binding
         const key = e.key === ' ' ? 'Space' : e.key;
-        const action = Object.keys(settings.keyBindings).find(
-            k => settings.keyBindings[k] === key
-        );
+        const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
 
         if (!action || inputController.keyMap[action]) return;
         inputController.keyMap[action] = true;
 
         // Handle input queue during physics processing
         if (gameActions.isProcessingPhysics && gameActions.inputQueue !== undefined) {
-            if (!gameActions.inputQueue &&
-                (action === 'moveLeft' || action === 'moveRight' ||
-                 action.startsWith('rotate') || action === 'flip')) {
+            if (
+                !gameActions.inputQueue
+                && (action === 'moveLeft'
+                    || action === 'moveRight'
+                    || action.startsWith('rotate')
+                    || action === 'flip')
+            ) {
                 gameActions.inputQueue = {
                     type: action.startsWith('rotate') || action === 'flip' ? 'rotate' : 'move',
-                    dir: action === 'moveLeft' ? -1 :
-                         action === 'moveRight' ? 1 :
-                         action === 'rotateLeft' ? 'left' :
-                         action === 'flip' ? 'flip' : 'right'
+                    dir:
+                        action === 'moveLeft'
+                            ? -1
+                            : action === 'moveRight'
+                                ? 1
+                                : action === 'rotateLeft'
+                                    ? 'left'
+                                    : action === 'flip'
+                                        ? 'flip'
+                                        : 'right',
                 };
             }
             return;
@@ -124,80 +128,78 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
         // Execute actions
         switch (action) {
-            case 'moveLeft':
-                move(-1);
-                inputController.dasTimer = setTimeout(() => {
-                    inputController.dasIntervalTimer = setInterval(
-                        () => move(-1),
-                        settings.dasInterval
-                    );
-                }, settings.dasDelay);
-                break;
+        case 'moveLeft':
+            move(-1);
+            inputController.dasTimer = setTimeout(() => {
+                inputController.dasIntervalTimer = setInterval(
+                    () => move(-1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+            break;
 
-            case 'moveRight':
-                move(1);
-                inputController.dasTimer = setTimeout(() => {
-                    inputController.dasIntervalTimer = setInterval(
-                        () => move(1),
-                        settings.dasInterval
-                    );
-                }, settings.dasDelay);
-                break;
+        case 'moveRight':
+            move(1);
+            inputController.dasTimer = setTimeout(() => {
+                inputController.dasIntervalTimer = setInterval(
+                    () => move(1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+            break;
 
-            case 'softDrop':
-                softDrop();
-                inputController.softDropTimer = setInterval(() => softDrop(), 50);
-                break;
+        case 'softDrop':
+            softDrop();
+            inputController.softDropTimer = setInterval(() => softDrop(), 50);
+            break;
 
-            case 'rotateRight':
-                rotate('right');
-                break;
+        case 'rotateRight':
+            rotate('right');
+            break;
 
-            case 'rotateLeft':
-                rotate('left');
-                break;
+        case 'rotateLeft':
+            rotate('left');
+            break;
 
-            case 'flip':
-                rotate('flip');
-                break;
+        case 'flip':
+            rotate('flip');
+            break;
 
-            case 'hardDrop':
-                e.preventDefault();
-                hardDrop();
-                break;
+        case 'hardDrop':
+            e.preventDefault();
+            hardDrop();
+            break;
 
-            case 'nextTrack':
-                if (gameActions.nextTrack) {
-                    gameActions.nextTrack();
-                }
-                break;
+        case 'nextTrack':
+            if (gameActions.nextTrack) {
+                gameActions.nextTrack();
+            }
+            break;
 
-            case 'randomTheme':
-                if (gameActions.randomTheme) {
-                    gameActions.randomTheme();
-                }
-                break;
+        case 'randomTheme':
+            if (gameActions.randomTheme) {
+                gameActions.randomTheme();
+            }
+            break;
 
-            case 'toggleFullscreen':
-                if (gameActions.toggleFullscreen) {
-                    gameActions.toggleFullscreen();
-                }
-                break;
+        case 'toggleFullscreen':
+            if (gameActions.toggleFullscreen) {
+                gameActions.toggleFullscreen();
+            }
+            break;
 
-            case 'showHighScores':
-                if (gameActions.showHighScores) {
-                    gameActions.showHighScores();
-                }
-                break;
+        case 'showHighScores':
+            if (gameActions.showHighScores) {
+                gameActions.showHighScores();
+            }
+            break;
         }
     });
 
     // Keyup handler
     document.addEventListener('keyup', (e) => {
         const key = e.key === ' ' ? 'Space' : e.key;
-        const action = Object.keys(settings.keyBindings).find(
-            k => settings.keyBindings[k] === key
-        );
+        const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
 
         if (action) {
             inputController.keyMap[action] = false;
@@ -228,12 +230,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
  */
 export function setupTouchControls(inputController, settings, gameActions, canvas) {
     const {
-        move,
-        rotate,
-        softDrop,
-        hardDrop,
-        startGame,
-        initSound
+        move, rotate, softDrop, hardDrop, startGame, initSound,
     } = gameActions;
 
     // Touch start handler
@@ -241,10 +238,12 @@ export function setupTouchControls(inputController, settings, gameActions, canva
         if (settings.controlScheme !== 'Touch') return;
 
         // Don't handle touch on UI elements
-        if (e.target.tagName === 'BUTTON' ||
-            e.target.classList.contains('key-input') ||
-            e.target.tagName === 'SELECT' ||
-            e.target.tagName === 'INPUT') {
+        if (
+            e.target.tagName === 'BUTTON'
+            || e.target.classList.contains('key-input')
+            || e.target.tagName === 'SELECT'
+            || e.target.tagName === 'INPUT'
+        ) {
             return;
         }
 
@@ -297,8 +296,10 @@ export function setupTouchControls(inputController, settings, gameActions, canva
         // Start game if on start/game-over modal
         const startModal = document.getElementById('start-modal');
         const gameOverModal = document.getElementById('game-over-modal');
-        if ((startModal && startModal.classList.contains('visible')) ||
-            (gameOverModal && gameOverModal.classList.contains('visible'))) {
+        if (
+            (startModal && startModal.classList.contains('visible'))
+            || (gameOverModal && gameOverModal.classList.contains('visible'))
+        ) {
             startGame();
             inputController.resetTouch();
             return;
@@ -314,9 +315,11 @@ export function setupTouchControls(inputController, settings, gameActions, canva
         const flickDistY = 60;
 
         // Tap detection (quick, small movement)
-        if (deltaTime < flickTime &&
-            Math.abs(deltaX) < tapThreshold &&
-            Math.abs(deltaY) < tapThreshold) {
+        if (
+            deltaTime < flickTime
+            && Math.abs(deltaX) < tapThreshold
+            && Math.abs(deltaY) < tapThreshold
+        ) {
             const canvasRect = canvas.getBoundingClientRect();
             const touchXonCanvas = touch.clientX - canvasRect.left;
 
@@ -354,18 +357,22 @@ export function setupClickControls(inputController, startGame, initSound) {
         }
 
         // Don't handle clicks on UI elements
-        if (e.target.tagName === 'BUTTON' ||
-            e.target.classList.contains('key-input') ||
-            e.target.tagName === 'SELECT' ||
-            e.target.tagName === 'INPUT') {
+        if (
+            e.target.tagName === 'BUTTON'
+            || e.target.classList.contains('key-input')
+            || e.target.tagName === 'SELECT'
+            || e.target.tagName === 'INPUT'
+        ) {
             return;
         }
 
         // Start game if on start/game-over modal
         const startModal = document.getElementById('start-modal');
         const gameOverModal = document.getElementById('game-over-modal');
-        if ((startModal && startModal.classList.contains('visible')) ||
-            (gameOverModal && gameOverModal.classList.contains('visible'))) {
+        if (
+            (startModal && startModal.classList.contains('visible'))
+            || (gameOverModal && gameOverModal.classList.contains('visible'))
+        ) {
             startGame();
         }
     });

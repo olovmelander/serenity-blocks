@@ -27,14 +27,17 @@ export default class MeditationTempleTheme extends BaseTheme {
     createStupaSVG(width, height, opacity) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 100 150');
-        svg.style.width = width + 'px';
-        svg.style.height = height + 'px';
+        svg.style.width = `${width}px`;
+        svg.style.height = `${height}px`;
         svg.style.position = 'absolute';
         svg.style.opacity = opacity;
 
         // Stupa path with spire, dome, and base
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M 50 5 L 48 20 L 52 20 Z M 45 20 L 55 20 L 53 30 L 47 30 Z M 40 30 Q 40 50 50 55 Q 60 50 60 30 Z M 35 55 L 65 55 L 63 75 L 37 75 Z M 30 75 L 70 75 L 68 95 L 32 95 Z M 25 95 L 75 95 L 75 100 L 25 100 Z M 20 100 L 80 100 L 80 110 L 20 110 Z M 15 110 L 85 110 L 85 120 L 15 120 Z M 10 120 L 90 120 L 90 135 L 10 135 Z M 5 135 L 95 135 L 95 150 L 5 150 Z');
+        path.setAttribute(
+            'd',
+            'M 50 5 L 48 20 L 52 20 Z M 45 20 L 55 20 L 53 30 L 47 30 Z M 40 30 Q 40 50 50 55 Q 60 50 60 30 Z M 35 55 L 65 55 L 63 75 L 37 75 Z M 30 75 L 70 75 L 68 95 L 32 95 Z M 25 95 L 75 95 L 75 100 L 25 100 Z M 20 100 L 80 100 L 80 110 L 20 110 Z M 15 110 L 85 110 L 85 120 L 15 120 Z M 10 120 L 90 120 L 90 135 L 10 135 Z M 5 135 L 95 135 L 95 150 L 5 150 Z',
+        );
         path.style.fill = 'currentColor';
 
         svg.appendChild(path);
@@ -48,11 +51,29 @@ export default class MeditationTempleTheme extends BaseTheme {
             // Create beautiful layered clouds in the upper portion
             const cloudConfigs = [
                 // Top layer - small wispy clouds
-                { count: 5, baseWidth: 80, baseHeight: 40, topRange: [5, 20], speed: [180, 240] },
+                {
+                    count: 5,
+                    baseWidth: 80,
+                    baseHeight: 40,
+                    topRange: [5, 20],
+                    speed: [180, 240],
+                },
                 // Mid-upper layer - medium fluffy clouds
-                { count: 6, baseWidth: 120, baseHeight: 60, topRange: [15, 35], speed: [140, 200] },
+                {
+                    count: 6,
+                    baseWidth: 120,
+                    baseHeight: 60,
+                    topRange: [15, 35],
+                    speed: [140, 200],
+                },
                 // Lower layer - larger clouds
-                { count: 4, baseWidth: 160, baseHeight: 80, topRange: [25, 45], speed: [100, 160] }
+                {
+                    count: 4,
+                    baseWidth: 160,
+                    baseHeight: 80,
+                    topRange: [25, 45],
+                    speed: [100, 160],
+                },
             ];
 
             cloudConfigs.forEach((config, layerIndex) => {
@@ -89,7 +110,11 @@ export default class MeditationTempleTheme extends BaseTheme {
         const stupasFar = this.getContainer('meditation-temple-stupas-far');
         if (stupasFar && stupasFar.children.length === 0) {
             for (let i = 0; i < 12; i++) {
-                const stupa = this.createStupaSVG(60 + Math.random() * 40, 90 + Math.random() * 60, 0.4);
+                const stupa = this.createStupaSVG(
+                    60 + Math.random() * 40,
+                    90 + Math.random() * 60,
+                    0.4,
+                );
                 stupa.style.bottom = '35%';
                 stupa.style.left = `${i * 180 + Math.random() * 100}px`;
                 stupa.style.color = 'rgba(93, 78, 55, 0.4)';
@@ -102,7 +127,11 @@ export default class MeditationTempleTheme extends BaseTheme {
         const stupasMid = this.getContainer('meditation-temple-stupas-mid');
         if (stupasMid && stupasMid.children.length === 0) {
             for (let i = 0; i < 10; i++) {
-                const stupa = this.createStupaSVG(80 + Math.random() * 50, 120 + Math.random() * 80, 0.65);
+                const stupa = this.createStupaSVG(
+                    80 + Math.random() * 50,
+                    120 + Math.random() * 80,
+                    0.65,
+                );
                 stupa.style.bottom = '30%';
                 stupa.style.left = `${i * 220 + Math.random() * 120}px`;
                 stupa.style.color = 'rgba(62, 39, 35, 0.65)';
@@ -116,7 +145,11 @@ export default class MeditationTempleTheme extends BaseTheme {
         if (stupasNear && stupasNear.children.length === 0) {
             // Left side stupas
             for (let i = 0; i < 3; i++) {
-                const stupa = this.createStupaSVG(120 + Math.random() * 80, 180 + Math.random() * 120, 0.9);
+                const stupa = this.createStupaSVG(
+                    120 + Math.random() * 80,
+                    180 + Math.random() * 120,
+                    0.9,
+                );
                 stupa.style.bottom = '20%';
                 stupa.style.left = `${i * 150 - 100}px`;
                 stupa.style.color = 'rgba(26, 26, 26, 0.9)';
@@ -124,7 +157,11 @@ export default class MeditationTempleTheme extends BaseTheme {
             }
             // Right side stupas
             for (let i = 0; i < 3; i++) {
-                const stupa = this.createStupaSVG(120 + Math.random() * 80, 180 + Math.random() * 120, 0.9);
+                const stupa = this.createStupaSVG(
+                    120 + Math.random() * 80,
+                    180 + Math.random() * 120,
+                    0.9,
+                );
                 stupa.style.bottom = '20%';
                 stupa.style.left = `${i * 150 + 1400}px`;
                 stupa.style.color = 'rgba(26, 26, 26, 0.9)';

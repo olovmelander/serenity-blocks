@@ -4,7 +4,9 @@
  * gravity application, and cascade checking.
  */
 
-import { COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS } from './constants.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS,
+} from './constants.js';
 import { generateBoard } from './board.js';
 
 /**
@@ -17,8 +19,12 @@ import { generateBoard } from './board.js';
 export function isPartOfPiece(boardX, boardY, piece) {
     const localX = boardX - piece.x;
     const localY = boardY - piece.y;
-    if (localY >= 0 && localY < piece.shape.length &&
-        localX >= 0 && localX < piece.shape[0].length) {
+    if (
+        localY >= 0
+        && localY < piece.shape.length
+        && localX >= 0
+        && localX < piece.shape[0].length
+    ) {
         return piece.shape[localY][localX] > 0;
     }
     return false;
@@ -32,9 +38,7 @@ export function isPartOfPiece(boardX, boardY, piece) {
  */
 export function findConnectedComponents(boardData) {
     const pieces = [];
-    const visited = Array.from({ length: boardData.length }, () =>
-        Array(boardData[0].length).fill(false)
-    );
+    const visited = Array.from({ length: boardData.length }, () => Array(boardData[0].length).fill(false));
 
     for (let r = 0; r < boardData.length; r++) {
         for (let c = 0; c < boardData[0].length; c++) {
@@ -44,7 +48,10 @@ export function findConnectedComponents(boardData) {
                 const queue = [[r, c]];
                 visited[r][c] = true;
 
-                let minR = r, maxR = r, minC = c, maxC = c;
+                let minR = r;
+                let maxR = r;
+                let minC = c;
+                let maxC = c;
 
                 // Flood fill to find all connected blocks
                 while (queue.length > 0) {
@@ -57,14 +64,23 @@ export function findConnectedComponents(boardData) {
                     maxC = Math.max(maxC, col);
 
                     // Check 4 adjacent cells (up, down, left, right)
-                    [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+                    [
+                        [-1, 0],
+                        [1, 0],
+                        [0, -1],
+                        [0, 1],
+                    ].forEach(([dr, dc]) => {
                         const nr = row + dr;
                         const nc = col + dc;
-                        if (nr >= 0 && nr < boardData.length &&
-                            nc >= 0 && nc < boardData[0].length &&
-                            !visited[nr][nc] &&
-                            boardData[nr][nc] !== null &&
-                            boardData[nr][nc].id === cellData.id) {
+                        if (
+                            nr >= 0
+                            && nr < boardData.length
+                            && nc >= 0
+                            && nc < boardData[0].length
+                            && !visited[nr][nc]
+                            && boardData[nr][nc] !== null
+                            && boardData[nr][nc].id === cellData.id
+                        ) {
                             visited[nr][nc] = true;
                             queue.push([nr, nc]);
                         }
@@ -72,9 +88,7 @@ export function findConnectedComponents(boardData) {
                 }
 
                 // Create shape array for this component
-                const shape = Array.from({ length: maxR - minR + 1 }, () =>
-                    Array(maxC - minC + 1).fill(0)
-                );
+                const shape = Array.from({ length: maxR - minR + 1 }, () => Array(maxC - minC + 1).fill(0));
                 component.forEach(({ r, c }) => {
                     shape[r - minR][c - minC] = 1;
                 });
@@ -86,7 +100,7 @@ export function findConnectedComponents(boardData) {
                     shape,
                     shapeKey,
                     color: COLORS[shapeKey] || shapeKey,
-                    pieceId: cellData.id
+                    pieceId: cellData.id,
                 });
             }
         }
@@ -111,7 +125,7 @@ export async function applyGravity(lockedPieces, drawCallback, movedArray = null
         const currentBoard = generateBoard(lockedPieces);
 
         // Process blocks from bottom to top to prevent double-processing
-        lockedPieces.sort((a, b) => (b.y + b.shape.length) - (a.y + a.shape.length));
+        lockedPieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
 
         for (const piece of lockedPieces) {
             let canFall = true;
@@ -130,10 +144,11 @@ export async function applyGravity(lockedPieces, drawCallback, movedArray = null
                         }
 
                         // Check if there's a block below that's NOT part of this piece
-                        if (currentBoard[boardY][boardX] !== null &&
-                            !isPartOfPiece(boardX, boardY, piece)) {
+                        if (
+                            currentBoard[boardY][boardX] !== null
+                            && !isPartOfPiece(boardX, boardY, piece)
+                        ) {
                             canFall = false;
-                            return;
                         }
                     }
                 });
@@ -163,7 +178,7 @@ export async function applyGravity(lockedPieces, drawCallback, movedArray = null
         // Smoother visual feedback for falling blocks with faster animation
         if (blocksStillFalling && drawCallback) {
             drawCallback();
-            await new Promise(resolve => setTimeout(resolve, 25)); // Reduced from 50ms for smoother motion
+            await new Promise((resolve) => setTimeout(resolve, 25)); // Reduced from 50ms for smoother motion
         }
     }
 }
@@ -176,9 +191,9 @@ export async function applyGravity(lockedPieces, drawCallback, movedArray = null
 export function detectFullLines(boardData) {
     const fullLines = [];
     for (let y = boardData.length - 1; y >= 0; y--) {
-        const isFull = boardData[y].every(cell => cell !== null);
+        const isFull = boardData[y].every((cell) => cell !== null);
         if (isFull) {
-            const hasGarbage = boardData[y].some(cell => cell && cell.color === 'GARBAGE');
+            const hasGarbage = boardData[y].some((cell) => cell && cell.color === 'GARBAGE');
             if (hasGarbage) {
                 console.log(`[detectFullLines] Line ${y} is full and contains GARBAGE blocks`);
             }
@@ -211,14 +226,16 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     const highestClearedLine = Math.min(...fullLines);
     const lowestClearedLine = Math.max(...fullLines);
 
-    console.log(`[calculateCascadeHoleColumns] ========================================`);
-    console.log(`[calculateCascadeHoleColumns] QUADRA METHOD: Analyzing cleared lines [${fullLines.join(', ')}]`);
+    console.log('[calculateCascadeHoleColumns] ========================================');
+    console.log(
+        `[calculateCascadeHoleColumns] QUADRA METHOD: Analyzing cleared lines [${fullLines.join(', ')}]`,
+    );
 
     // Scan the moved array to find which columns had blocks that moved
     // We'll aggregate across all cleared lines to get the hole pattern
     const movedColumns = new Set();
 
-    fullLines.forEach(y => {
+    fullLines.forEach((y) => {
         if (movedArray[y]) {
             for (let x = 0; x < COLS; x++) {
                 if (movedArray[y][x]) {
@@ -229,11 +246,15 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     });
 
     // Visualize the moved array for debugging
-    console.log(`[calculateCascadeHoleColumns] Moved array visualization (. = not moved, X = moved):`);
-    console.log(`  Columns:     ${Array.from({length: COLS}, (_, i) => i).join('')}`);
-    fullLines.slice(0, 4).forEach(y => {
+    console.log(
+        '[calculateCascadeHoleColumns] Moved array visualization (. = not moved, X = moved):',
+    );
+    console.log(`  Columns:     ${Array.from({ length: COLS }, (_, i) => i).join('')}`);
+    fullLines.slice(0, 4).forEach((y) => {
         if (movedArray[y]) {
-            const viz = Array.from({length: COLS}, (_, x) => movedArray[y][x] ? 'X' : '.').join('');
+            const viz = Array.from({ length: COLS }, (_, x) => (movedArray[y][x] ? 'X' : '.')).join(
+                '',
+            );
             console.log(`  Row Y=${String(y).padStart(2)}: ${viz}`);
         }
     });
@@ -243,12 +264,14 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     if (holeColumns.length === 0) {
         // Fallback if no movement tracked (shouldn't happen)
         const mid = Math.floor(COLS / 2);
-        console.log(`[calculateCascadeHoleColumns] WARNING: No moved columns found, using fallback [${mid}]`);
+        console.log(
+            `[calculateCascadeHoleColumns] WARNING: No moved columns found, using fallback [${mid}]`,
+        );
         return [mid];
     }
 
     console.log(`[calculateCascadeHoleColumns] Moved columns (holes): [${holeColumns.join(', ')}]`);
-    console.log(`[calculateCascadeHoleColumns] ========================================`);
+    console.log('[calculateCascadeHoleColumns] ========================================');
     return holeColumns;
 }
 
@@ -266,7 +289,7 @@ function calculateHoleColumnsFromBoardDelta(preGravityBoard, currentBoard, fullL
 
     const holeColumns = new Set();
 
-    fullLines.forEach(y => {
+    fullLines.forEach((y) => {
         const prevRow = preGravityBoard[y];
         const currRow = currentBoard[y];
         if (!currRow) {
@@ -299,20 +322,19 @@ function calculateHoleColumnsFromBoardDelta(preGravityBoard, currentBoard, fullL
  * @param {Array<number>} options.manualHoleColumns - Fallback manual hole columns
  * @returns {{rowMasks: Array<Array<number>>, mergedColumns: Array<number>}}
  */
-function buildHoleMaskRows(fullLines, {
-    cascadeCount,
-    movedArray,
-    preGravityBoard,
-    currentBoard,
-    manualHoleColumns
-}) {
-    const fallback = (manualHoleColumns && manualHoleColumns.length > 0)
+function buildHoleMaskRows(
+    fullLines,
+    {
+        cascadeCount, movedArray, preGravityBoard, currentBoard, manualHoleColumns,
+    },
+) {
+    const fallback = manualHoleColumns && manualHoleColumns.length > 0
         ? manualHoleColumns
         : [Math.floor(COLS / 2)];
 
     const rowMasks = [];
 
-    fullLines.forEach(y => {
+    fullLines.forEach((y) => {
         let columns = [];
 
         if (cascadeCount === 1) {
@@ -352,17 +374,17 @@ function buildHoleMaskRows(fullLines, {
     });
 
     const mergedSet = new Set();
-    rowMasks.forEach(mask => {
-        mask.forEach(col => mergedSet.add(col));
+    rowMasks.forEach((mask) => {
+        mask.forEach((col) => mergedSet.add(col));
     });
 
     if (mergedSet.size === 0) {
-        fallback.forEach(col => mergedSet.add(col));
+        fallback.forEach((col) => mergedSet.add(col));
     }
 
     return {
         rowMasks,
-        mergedColumns: Array.from(mergedSet).sort((a, b) => a - b)
+        mergedColumns: Array.from(mergedSet).sort((a, b) => a - b),
     };
 }
 
@@ -428,7 +450,7 @@ function getContiguousSpan(columns) {
 export function removeClearedLines(lockedPieces, fullLines) {
     const newPieces = [];
 
-    lockedPieces.forEach(p => {
+    lockedPieces.forEach((p) => {
         const newShape = [];
         p.shape.forEach((row, localY) => {
             const globalY = p.y + localY;
@@ -471,13 +493,13 @@ export async function processPhysics(gameState, callbacks) {
 
     const comboState = gameState.comboState || {
         manualColumns: gameState.lastPlacedPieceX || [],
-        lockFootprint: []
+        lockFootprint: [],
     };
-    const manualHoleColumns = (comboState.manualColumns && comboState.manualColumns.length > 0)
+    const manualHoleColumns = comboState.manualColumns && comboState.manualColumns.length > 0
         ? comboState.manualColumns
-        : (gameState.lastPlacedPieceX && gameState.lastPlacedPieceX.length > 0
+        : gameState.lastPlacedPieceX && gameState.lastPlacedPieceX.length > 0
             ? gameState.lastPlacedPieceX
-            : [Math.floor(COLS / 2)]);
+            : [Math.floor(COLS / 2)];
 
     let depth = comboState.depth || 0;
     let complexity = comboState.complexity || 0;
@@ -486,9 +508,7 @@ export async function processPhysics(gameState, callbacks) {
 
     // QUADRA CRITICAL: moved[row][col] tracks piece placement positions
     // Initial state: mark where the piece was just placed
-    const movedArray = Array.from({ length: ROWS + HIDDEN_ROWS }, () =>
-        Array(COLS).fill(false)
-    );
+    const movedArray = Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(false));
 
     // Step 1: Mark initial piece placement (from lockFootprint)
     if (comboState.lockFootprint && comboState.lockFootprint.length > 0) {
@@ -497,7 +517,9 @@ export async function processPhysics(gameState, callbacks) {
                 movedArray[y][x] = true;
             }
         });
-        console.log(`[Physics] Initial moved[][] tracking: ${comboState.lockFootprint.length} cells marked from placed piece`);
+        console.log(
+            `[Physics] Initial moved[][] tracking: ${comboState.lockFootprint.length} cells marked from placed piece`,
+        );
     }
 
     let preGravityBoard = null;
@@ -523,16 +545,20 @@ export async function processPhysics(gameState, callbacks) {
         const waveHoleMasks = [];
         const waveHoleColumns = new Set();
 
-        console.log(`[Physics] ===== Cascade ${cascadeCount}: Processing ${fullLines.length} cleared lines =====`);
-        console.log(`[Physics] Moved[][] array state before line clear:`);
-        fullLines.slice(0, Math.min(4, fullLines.length)).forEach(y => {
+        console.log(
+            `[Physics] ===== Cascade ${cascadeCount}: Processing ${fullLines.length} cleared lines =====`,
+        );
+        console.log('[Physics] Moved[][] array state before line clear:');
+        fullLines.slice(0, Math.min(4, fullLines.length)).forEach((y) => {
             const movedCols = [];
             for (let x = 0; x < COLS; x++) {
                 if (movedArray[y] && movedArray[y][x]) {
                     movedCols.push(x);
                 }
             }
-            console.log(`[Physics]   Row ${y}: moved columns = [${movedCols.join(', ')}]${movedCols.length === 0 ? ' (NONE - will use fallback)' : ''}`);
+            console.log(
+                `[Physics]   Row ${y}: moved columns = [${movedCols.join(', ')}]${movedCols.length === 0 ? ' (NONE - will use fallback)' : ''}`,
+            );
         });
 
         fullLines.forEach((y, localIndex) => {
@@ -542,27 +568,31 @@ export async function processPhysics(gameState, callbacks) {
             if (movedArray[y]) {
                 for (let x = 0; x < COLS; x++) {
                     if (movedArray[y][x]) {
-                        mask[x] = true;  // TRUE = hole in garbage
+                        mask[x] = true; // TRUE = hole in garbage
                     }
                 }
             }
 
             // Fallback if no moved cells found (shouldn't happen in correct implementation)
-            if (!mask.some(value => value)) {
+            if (!mask.some((value) => value)) {
                 console.log(`[Physics]   WARNING: Row ${y} has no moved[] markers, using fallback`);
                 let fallbackColumns = [];
 
                 if (cascadeCount === 1 && manualHoleColumns.length > 0) {
                     fallbackColumns = manualHoleColumns;
                 } else {
-                    fallbackColumns = calculateHoleColumnsFromBoardDelta(preGravityBoard, boardData, [y]);
+                    fallbackColumns = calculateHoleColumnsFromBoardDelta(
+                        preGravityBoard,
+                        boardData,
+                        [y],
+                    );
                 }
 
                 if (fallbackColumns.length === 0) {
                     fallbackColumns = calculateCascadeHoleColumns(movedArray, [y]);
                 }
 
-                fallbackColumns.forEach(col => {
+                fallbackColumns.forEach((col) => {
                     if (col >= 0 && col < COLS) {
                         mask[col] = true;
                     }
@@ -585,7 +615,7 @@ export async function processPhysics(gameState, callbacks) {
         const holeColumns = Array.from(waveHoleColumns).sort((a, b) => a - b);
 
         console.log(`[Physics] Cascade ${cascadeCount} result: ${fullLines.length} lines cleared`);
-        console.log(`[Physics] Hole masks (TRUE = hole in garbage):`);
+        console.log('[Physics] Hole masks (TRUE = hole in garbage):');
         waveHoleMasks.forEach((mask, index) => {
             const holeCols = [];
             const solidCols = [];
@@ -593,7 +623,9 @@ export async function processPhysics(gameState, callbacks) {
                 if (flag) holeCols.push(x);
                 else solidCols.push(x);
             });
-            console.log(`[Physics]   Line ${index + 1}/${waveHoleMasks.length}: holes=[${holeCols.join(', ')}], solid=[${solidCols.join(', ')}]`);
+            console.log(
+                `[Physics]   Line ${index + 1}/${waveHoleMasks.length}: holes=[${holeCols.join(', ')}], solid=[${solidCols.join(', ')}]`,
+            );
         });
         console.log(`[Physics] Merged hole columns: [${holeColumns.join(', ')}]`);
 
@@ -621,14 +653,20 @@ export async function processPhysics(gameState, callbacks) {
 
         if (callbacks.playLineClear) callbacks.playLineClear();
         if (callbacks.onScoreAdd) callbacks.onScoreAdd(points);
-        if (callbacks.onLineClear) callbacks.onLineClear(fullLines.length, holeColumns, waveHoleMasks.map(mask => mask.slice()));
+        if (callbacks.onLineClear) {
+            callbacks.onLineClear(
+                fullLines.length,
+                holeColumns,
+                waveHoleMasks.map((mask) => mask.slice()),
+            );
+        }
         if (callbacks.onLineClearImpact) callbacks.onLineClearImpact(fullLines.length, cascadeCount);
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
         if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);
 
         // QUADRA CRITICAL: Clear moved[][] AFTER reading hole positions
         // This prepares it to track which cells fall during gravity
-        console.log(`[Physics] Clearing moved[][] array for gravity tracking`);
+        console.log('[Physics] Clearing moved[][] array for gravity tracking');
         resetMovedArray(movedArray);
 
         // --- Enhanced Visual Feedback with Smooth Fade Animation ---
@@ -640,7 +678,7 @@ export async function processPhysics(gameState, callbacks) {
         const speedMultiplier = cascadeCount === 1 ? 1.0 : 0.7;
 
         // Stage 1: Keep original colors, full opacity - snappier feel
-        fullLines.forEach(y => {
+        fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
                     markedBoard[y][x].alpha = 1.0;
@@ -649,10 +687,10 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise(resolve => setTimeout(resolve, 80 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 80 * speedMultiplier));
 
         // Stage 2: Keep original colors, slightly dimmed - reduced timing for smoother flow
-        fullLines.forEach(y => {
+        fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
                     markedBoard[y][x].alpha = 0.6;
@@ -661,10 +699,10 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise(resolve => setTimeout(resolve, 40 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 40 * speedMultiplier));
 
         // Stage 3: Keep original colors, fade to transparent - quick final fade
-        fullLines.forEach(y => {
+        fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
                     markedBoard[y][x].alpha = 0.2;
@@ -673,7 +711,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise(resolve => setTimeout(resolve, 30 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 30 * speedMultiplier));
 
         // --- Remove cleared lines from pieces ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
@@ -682,9 +720,7 @@ export async function processPhysics(gameState, callbacks) {
         gameState.lockedPieces = findConnectedComponents(generateBoard(gameState.lockedPieces));
 
         // Snapshot board state before gravity so the next cascade can compare deltas
-        preGravityBoard = generateBoard(gameState.lockedPieces).map(row =>
-            row.map(cell => cell !== null)
-        );
+        preGravityBoard = generateBoard(gameState.lockedPieces).map((row) => row.map((cell) => cell !== null));
 
         // Phase 2: Apply gravity to individual blocks and track movement
         await applyGravity(gameState.lockedPieces, callbacks.draw, movedArray);
@@ -708,13 +744,15 @@ export async function processPhysics(gameState, callbacks) {
             depth,
             comboStages: complexity,
             complexity,
-            holeMask: holeMaskMatrix.map(mask => mask.slice()),
+            holeMask: holeMaskMatrix.map((mask) => mask.slice()),
             manualColumns: [...manualHoleColumns],
             sendForClean,
-            lockFootprint: comboState.lockFootprint ? comboState.lockFootprint.map(cell => ({ ...cell })) : [],
+            lockFootprint: comboState.lockFootprint
+                ? comboState.lockFootprint.map((cell) => ({ ...cell }))
+                : [],
             sourceColor: comboState.sourceColor,
             sourcePiece: comboState.sourcePiece,
-            sequence: comboState.sequence
+            sequence: comboState.sequence,
         };
         callbacks.onGarbageReady(summary);
     }
@@ -722,7 +760,7 @@ export async function processPhysics(gameState, callbacks) {
     if (gameState.comboState) {
         gameState.comboState.depth = depth;
         gameState.comboState.complexity = complexity;
-        gameState.comboState.holeMask = holeMaskMatrix.map(mask => mask.slice());
+        gameState.comboState.holeMask = holeMaskMatrix.map((mask) => mask.slice());
         gameState.comboState.sendForClean = sendForClean;
         gameState.comboState.manualColumns = [...manualHoleColumns];
         gameState.comboState.lockFootprint = [];

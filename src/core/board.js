@@ -10,10 +10,7 @@ import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
  * @returns {Array} 2D array representing the board state
  */
 export function generateBoard(pieces) {
-    const board = Array.from(
-        { length: ROWS + HIDDEN_ROWS },
-        () => Array(COLS).fill(null)
-    );
+    const board = Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(null));
 
     for (const piece of pieces) {
         piece.shape.forEach((row, y) => {
@@ -25,7 +22,7 @@ export function generateBoard(pieces) {
                     if (boardY >= 0 && boardY < board.length && boardX >= 0 && boardX < COLS) {
                         board[boardY][boardX] = {
                             color: piece.shapeKey,
-                            id: piece.pieceId || piece.shapeKey
+                            id: piece.pieceId || piece.shapeKey,
                         };
                     }
                 }
@@ -96,7 +93,7 @@ export function findCompleteLines(boardData) {
     const completeLines = [];
 
     for (let y = 0; y < boardData.length; y++) {
-        if (boardData[y].every(cell => cell !== null)) {
+        if (boardData[y].every((cell) => cell !== null)) {
             completeLines.push(y);
         }
     }
@@ -142,7 +139,7 @@ export function findConnectedComponents(boardData) {
                 if (cells.length > 0) {
                     components.push({
                         cells,
-                        pieceId: boardData[y][x].id
+                        pieceId: boardData[y][x].id,
                     });
                 }
             }
@@ -157,10 +154,7 @@ export function findConnectedComponents(boardData) {
  * @returns {Array} Empty 2D board array
  */
 export function createEmptyBoard() {
-    return Array.from(
-        { length: ROWS + HIDDEN_ROWS },
-        () => Array(COLS).fill(null)
-    );
+    return Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(null));
 }
 
 /**

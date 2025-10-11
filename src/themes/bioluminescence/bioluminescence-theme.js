@@ -34,8 +34,8 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
         const sporeContainer = document.getElementById('bio-spores');
         if (sporeContainer && sporeContainer.children.length === 0) {
-             for (let i = 0; i < 50; i++) {
-                let spore = document.createElement('div');
+            for (let i = 0; i < 50; i++) {
+                const spore = document.createElement('div');
                 spore.className = 'bio-spore';
                 spore.style.left = `${Math.random() * 100}%`;
                 spore.style.bottom = `${Math.random() * 100}%`;

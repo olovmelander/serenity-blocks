@@ -3,7 +3,9 @@
  * Handles game state, piece movement, rotation, dropping, and game flow
  */
 
-import { COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS } from './constants.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS,
+} from './constants.js';
 import { generateBoard, isValidPosition } from './board.js';
 import { processPhysics } from './physics.js';
 
@@ -17,7 +19,7 @@ function createComboState() {
         manualColumns: [],
         sourceColor: null,
         sourcePiece: null,
-        sequence: 0
+        sequence: 0,
     };
 }
 
@@ -68,7 +70,7 @@ export class GameState {
         // Store ongoing blind timers for attacks that affect visibility
         this.blindTimers = {
             field: 0,
-            pending: 0
+            pending: 0,
         };
 
         // Deterministic sequence counter for outbound garbage attacks
@@ -104,7 +106,7 @@ export class GameState {
         this.comboState = createComboState();
         this.blindTimers = {
             field: 0,
-            pending: 0
+            pending: 0,
         };
         this.garbageAttackSequence = 0;
         this.handicap = 2;
@@ -149,13 +151,13 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
 
     gameState.currentPiece = {
         shapeKey,
-        shape: shape,
+        shape,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
         y: 0,
-        color: COLORS[shapeKey]
+        color: COLORS[shapeKey],
     };
 
-    const rng = (typeof gameState.randomGenerator === 'function') ? gameState.randomGenerator : Math.random;
+    const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
     fillBag(gameState.nextPieces, rng);
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
@@ -171,7 +173,14 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     }
 
     // Check if piece can spawn (game over condition)
-    if (!isValidPosition(gameState.currentPiece, gameState.currentPiece.x, gameState.currentPiece.y, gameState.lockedPieces)) {
+    if (
+        !isValidPosition(
+            gameState.currentPiece,
+            gameState.currentPiece.x,
+            gameState.currentPiece.y,
+            gameState.lockedPieces,
+        )
+    ) {
         if (gameOverCallback) gameOverCallback();
     }
 }
@@ -187,12 +196,14 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
 export function move(gameState, dir, playSoundCallback, addTrailCallback) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
 
-    if (isValidPosition(
-        gameState.currentPiece,
-        gameState.currentPiece.x + dir,
-        gameState.currentPiece.y,
-        gameState.lockedPieces
-    )) {
+    if (
+        isValidPosition(
+            gameState.currentPiece,
+            gameState.currentPiece.x + dir,
+            gameState.currentPiece.y,
+            gameState.lockedPieces,
+        )
+    ) {
         // Add trail before moving
         if (addTrailCallback) addTrailCallback(gameState.currentPiece);
 
@@ -222,31 +233,27 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
 
     if (dir === 'right') {
         // Rotate clockwise
-        rotatedShape = originalShape[0].map((_, i) =>
-            originalShape.map(row => row[i]).reverse()
-        );
+        rotatedShape = originalShape[0].map((_, i) => originalShape.map((row) => row[i]).reverse());
     } else if (dir === 'left') {
         // Rotate counter-clockwise
-        rotatedShape = originalShape[0].map((_, i) =>
-            originalShape.map(row => row[i])
-        ).reverse();
+        rotatedShape = originalShape[0].map((_, i) => originalShape.map((row) => row[i])).reverse();
     } else {
         // Flip 180 degrees
-        rotatedShape = originalShape.map(row =>
-            row.slice().reverse()
-        ).reverse();
+        rotatedShape = originalShape.map((row) => row.slice().reverse()).reverse();
     }
 
     gameState.currentPiece.shape = rotatedShape;
 
     // Wall kick: try offsets 0, 1, -1, 2, -2
     for (const kick of [0, 1, -1, 2, -2]) {
-        if (isValidPosition(
-            gameState.currentPiece,
-            gameState.currentPiece.x + kick,
-            gameState.currentPiece.y,
-            gameState.lockedPieces
-        )) {
+        if (
+            isValidPosition(
+                gameState.currentPiece,
+                gameState.currentPiece.x + kick,
+                gameState.currentPiece.y,
+                gameState.lockedPieces,
+            )
+        ) {
             gameState.currentPiece.x += kick;
             if (playSoundCallback) playSoundCallback();
             return true;
@@ -268,20 +275,21 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
 export function softDrop(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
 
-    if (isValidPosition(
-        gameState.currentPiece,
-        gameState.currentPiece.x,
-        gameState.currentPiece.y + 1,
-        gameState.lockedPieces
-    )) {
+    if (
+        isValidPosition(
+            gameState.currentPiece,
+            gameState.currentPiece.x,
+            gameState.currentPiece.y + 1,
+            gameState.lockedPieces,
+        )
+    ) {
         gameState.currentPiece.y++;
         gameState.score += gameState.level;
         gameState.dropCounter = 0;
         return true;
-    } else {
-        lockPiece(gameState, playDropCallback, physicsCallbacks);
-        return false;
     }
+    lockPiece(gameState, playDropCallback, physicsCallbacks);
+    return false;
 }
 
 /**
@@ -294,12 +302,14 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return;
 
     let distance = 0;
-    while (isValidPosition(
-        gameState.currentPiece,
-        gameState.currentPiece.x,
-        gameState.currentPiece.y + 1,
-        gameState.lockedPieces
-    )) {
+    while (
+        isValidPosition(
+            gameState.currentPiece,
+            gameState.currentPiece.x,
+            gameState.currentPiece.y + 1,
+            gameState.lockedPieces,
+        )
+    ) {
         gameState.currentPiece.y++;
         distance++;
     }
@@ -339,8 +349,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
                 if (boardX >= 0 && boardX < COLS) {
                     occupiedColumns.add(boardX);
                 }
-                if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS &&
-                    boardX >= 0 && boardX < COLS) {
+                if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
                     lockFootprint.push({ x: boardX, y: boardY });
                 }
             }
@@ -361,7 +370,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     gameState.lockedPieces.push({
         ...gameState.currentPiece,
         shape: [...gameState.currentPiece.shape],
-        pieceId: Date.now() + Math.random()
+        pieceId: Date.now() + Math.random(),
     });
 
     gameState.currentPiece = null;
@@ -389,13 +398,25 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
  */
-export function gameLoop(time, gameState, drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks) {
+export function gameLoop(
+    time,
+    gameState,
+    drawCallback,
+    updateStatsCallback,
+    playDropCallback,
+    physicsCallbacks,
+) {
     if (gameState.isGameOver) return;
 
     if (gameState.isPaused) {
-        gameState.animationId = requestAnimationFrame((t) =>
-            gameLoop(t, gameState, drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks)
-        );
+        gameState.animationId = requestAnimationFrame((t) => gameLoop(
+            t,
+            gameState,
+            drawCallback,
+            updateStatsCallback,
+            playDropCallback,
+            physicsCallbacks,
+        ));
         return;
     }
 
@@ -413,9 +434,14 @@ export function gameLoop(time, gameState, drawCallback, updateStatsCallback, pla
     if (drawCallback) drawCallback();
     if (updateStatsCallback) updateStatsCallback();
 
-    gameState.animationId = requestAnimationFrame((t) =>
-        gameLoop(t, gameState, drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks)
-    );
+    gameState.animationId = requestAnimationFrame((t) => gameLoop(
+        t,
+        gameState,
+        drawCallback,
+        updateStatsCallback,
+        playDropCallback,
+        physicsCallbacks,
+    ));
 }
 
 /**
@@ -440,7 +466,7 @@ export function startGame(gameState, callbacks, settings) {
     }
 
     // Initialize bag and spawn first piece
-    const rng = (typeof gameState.randomGenerator === 'function') ? gameState.randomGenerator : Math.random;
+    const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
     fillBag(gameState.nextPieces, rng);
     if (callbacks.updateStats) callbacks.updateStats();
     if (callbacks.spawnPiece) callbacks.spawnPiece();
@@ -448,9 +474,7 @@ export function startGame(gameState, callbacks, settings) {
     // Set background
     if (settings && settings.backgroundMode === 'Specific' && settings.backgroundTheme) {
         if (callbacks.setBackground) callbacks.setBackground(settings.backgroundTheme);
-    } else {
-        if (callbacks.setBackground) callbacks.setBackground('forest');
-    }
+    } else if (callbacks.setBackground) callbacks.setBackground('forest');
 
     // Start random theme changer if enabled
     if (settings && settings.backgroundMode === 'Random' && callbacks.startRandomThemeChanger) {

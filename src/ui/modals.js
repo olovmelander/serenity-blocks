@@ -12,7 +12,7 @@ export class ModalManager {
             start: document.getElementById('start-modal'),
             gameOver: document.getElementById('game-over-modal'),
             settings: document.getElementById('settings-modal'),
-            highScores: document.getElementById('high-scores-modal')
+            highScores: document.getElementById('high-scores-modal'),
         };
     }
 
@@ -52,7 +52,7 @@ export class ModalManager {
      * Hides all modals
      */
     hideAll() {
-        Object.keys(this.modals).forEach(name => this.hide(name));
+        Object.keys(this.modals).forEach((name) => this.hide(name));
     }
 }
 
@@ -71,10 +71,15 @@ export function showStartModal(modalManager) {
  * @param {Object} highScoreManager - High score manager instance
  */
 export async function showGameOverModal(modalManager, gameState, highScoreManager) {
-    const { score, lines, level, dropInterval } = gameState;
+    const {
+        score, lines, level, dropInterval,
+    } = gameState;
 
     // Calculate speed multiplier
-    const LEVEL_SPEEDS = [1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60, 50];
+    const LEVEL_SPEEDS = [
+        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
+        50,
+    ];
     const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
 
     try {
@@ -93,8 +98,9 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         }
 
         // Personal best
-        const personalBest = stats.highestScore > score ?
-            `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>` : '';
+        const personalBest = stats.highestScore > score
+            ? `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>`
+            : '';
 
         // Update final stats display
         document.getElementById('final-stats').innerHTML = `
@@ -232,7 +238,7 @@ export function setupModalUI(modalManager, callbacks) {
         onHighScoresClose,
         onFullscreenToggle,
         onNextTrack,
-        onRandomTheme
+        onRandomTheme,
     } = callbacks;
 
     // Settings button (single player)
@@ -303,12 +309,10 @@ export function setupModalUI(modalManager, callbacks) {
  */
 export function toggleFullScreen() {
     if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
+        document.documentElement.requestFullscreen().catch((err) => {
             console.error('Error attempting to enable fullscreen:', err);
         });
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        }
+    } else if (document.exitFullscreen) {
+        document.exitFullscreen();
     }
 }

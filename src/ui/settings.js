@@ -75,13 +75,13 @@ function rgbToHsl(r, g, b) {
 
         switch (max) {
         case rNorm:
-            h = ((gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0));
+            h = (gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0);
             break;
         case gNorm:
-            h = ((bNorm - rNorm) / delta + 2);
+            h = (bNorm - rNorm) / delta + 2;
             break;
         case bNorm:
-            h = ((rNorm - gNorm) / delta + 4);
+            h = (rNorm - gNorm) / delta + 4;
             break;
         default:
             break;
@@ -93,7 +93,7 @@ function rgbToHsl(r, g, b) {
     return {
         h: Math.round(h * 360),
         s: Math.round(s * 100),
-        l: Math.round(l * 100)
+        l: Math.round(l * 100),
     };
 }
 
@@ -135,7 +135,7 @@ function hslToRgb(h, s, l) {
     return {
         r: Math.round(r * 255),
         g: Math.round(g * 255),
-        b: Math.round(b * 255)
+        b: Math.round(b * 255),
     };
 }
 
@@ -173,7 +173,7 @@ const DEFAULT_CONFIG = {
         nextTrack: 'm',
         randomTheme: 'b',
         toggleFullscreen: 'f',
-        showHighScores: 'h'
+        showHighScores: 'h',
     },
     player2KeyBindings: {
         moveLeft: 'a',
@@ -182,8 +182,8 @@ const DEFAULT_CONFIG = {
         rotateLeft: 'q',
         flip: 'e',
         softDrop: 's',
-        hardDrop: 'Shift'
-    }
+        hardDrop: 'Shift',
+    },
 };
 
 /**
@@ -214,7 +214,7 @@ export class SettingsManager {
         if (newSettings.keyBindings) {
             this.settings.keyBindings = {
                 ...this.settings.keyBindings,
-                ...newSettings.keyBindings
+                ...newSettings.keyBindings,
             };
         }
 
@@ -222,9 +222,11 @@ export class SettingsManager {
         if (emit && typeof window !== 'undefined') {
             const changes = this.getChanges(oldSettings, this.settings);
             if (Object.keys(changes).length > 0) {
-                window.dispatchEvent(new CustomEvent('settingsChanged', {
-                    detail: changes
-                }));
+                window.dispatchEvent(
+                    new CustomEvent('settingsChanged', {
+                        detail: changes,
+                    }),
+                );
             }
         }
     }
@@ -273,12 +275,12 @@ export class SettingsManager {
                     ...loaded,
                     keyBindings: {
                         ...DEFAULT_CONFIG.keyBindings,
-                        ...loadedKeyBindings
+                        ...loadedKeyBindings,
                     },
                     player2KeyBindings: {
                         ...DEFAULT_CONFIG.player2KeyBindings,
-                        ...loadedP2KeyBindings
-                    }
+                        ...loadedP2KeyBindings,
+                    },
                 };
             }
         } catch (error) {
@@ -335,22 +337,22 @@ export function updateControlsDisplay(settings) {
         'nextTrack',
         'randomTheme',
         'toggleFullscreen',
-        'showHighScores'
+        'showHighScores',
     ];
 
     if (settings.controlScheme === 'Keyboard') {
-        document.querySelectorAll('.key-input').forEach(el => {
+        document.querySelectorAll('.key-input').forEach((el) => {
             if (el.parentElement) el.parentElement.style.display = 'contents';
         });
 
-        actions.forEach(action => {
+        actions.forEach((action) => {
             if (settings.keyBindings[action]) {
-                const title = action.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+                const title = action.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
                 list.innerHTML += `<div>${title}: ${settings.keyBindings[action]}</div>`;
             }
         });
     } else {
-        document.querySelectorAll('.key-input').forEach(el => {
+        document.querySelectorAll('.key-input').forEach((el) => {
             if (el.parentElement) el.parentElement.style.display = 'none';
         });
         list.innerHTML = '<div>Swipe to move</div><div>Tap to rotate</div><div>Flick down to drop</div>';
@@ -372,8 +374,7 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
     const settings = settingsManager.get();
 
     // Check if key is already used for another action
-    if (Object.values(settings.keyBindings).includes(key) &&
-        settings.keyBindings[action] !== key) {
+    if (Object.values(settings.keyBindings).includes(key) && settings.keyBindings[action] !== key) {
         // Revert to original key
         element.textContent = settings.keyBindings[action];
         element.classList.remove('listening');
@@ -383,7 +384,7 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
     // Set new key binding
     settingsManager.setValue('keyBindings', {
         ...settings.keyBindings,
-        [action]: key
+        [action]: key,
     });
     element.textContent = key;
     element.classList.remove('listening');
@@ -396,13 +397,15 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
  * Sets up settings tab switching
  */
 export function setupSettingsTabs() {
-    document.querySelectorAll('.settings-tab').forEach(tab => {
+    document.querySelectorAll('.settings-tab').forEach((tab) => {
         tab.addEventListener('click', () => {
             const targetTab = tab.getAttribute('data-tab');
-            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
+            document
+                .querySelectorAll('.settings-tab-content')
+                .forEach((c) => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById('settings-' + targetTab).classList.add('active');
+            document.getElementById(`settings-${targetTab}`).classList.add('active');
         });
     });
 }
@@ -498,7 +501,8 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             } else if (mode === 'Random') {
                 setThemeSelectorVisibility(false);
                 setRandomIntervalVisibility(true);
-            } else { // 'Level'
+            } else {
+                // 'Level'
                 setThemeSelectorVisibility(false);
                 setRandomIntervalVisibility(false);
             }
@@ -525,8 +529,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         // Import themes list
         import('../core/constants.js').then(({ THEMES }) => {
             // Populate dropdown with available themes
-            bgThemeSelect.innerHTML = THEMES.map(theme =>
-                `<option value="${theme}">${theme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>`
+            bgThemeSelect.innerHTML = THEMES.map(
+                (theme) => `<option value="${theme}">${theme
+                    .split('-')
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(' ')}</option>`,
             ).join('');
 
             // Set current value
@@ -566,7 +573,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         hex: normalizeHexColor(settings.pieceLockRippleColor) || DEFAULT_RIPPLE_COLOR,
         h: 200,
         s: 70,
-        l: 60
+        l: 60,
     };
 
     let isRipplePanelOpen = false;
@@ -619,7 +626,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         }
     };
 
-    const setRippleStateFromHex = (hex, { persist = false, updateSliders = true, save = persist } = {}) => {
+    const setRippleStateFromHex = (
+        hex,
+        { persist = false, updateSliders = true, save = persist } = {},
+    ) => {
         const normalized = normalizeHexColor(hex) || DEFAULT_RIPPLE_COLOR;
         const { h, s, l } = hexToHsl(normalized);
         rippleColorState.hex = normalized;
@@ -678,7 +688,12 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     };
 
     const openRipplePanel = () => {
-        if (!ripplePanel || !rippleColorTrigger || isRipplePanelOpen || rippleColorTrigger.disabled) {
+        if (
+            !ripplePanel
+            || !rippleColorTrigger
+            || isRipplePanelOpen
+            || rippleColorTrigger.disabled
+        ) {
             return;
         }
         setRippleStateFromHex(rippleColorState.hex, { persist: false, updateSliders: true });
@@ -840,7 +855,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
         sfxSetSelect.addEventListener('change', (e) => {
             const soundSet = e.target.value;
-            settingsManager.update({ soundSet: soundSet });
+            settingsManager.update({ soundSet });
 
             if (callbacks.onSoundSetChange) {
                 callbacks.onSoundSetChange(soundSet);
@@ -886,7 +901,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Initialize key bindings listeners
     const keyInputs = document.querySelectorAll('.key-input');
-    keyInputs.forEach(input => {
+    keyInputs.forEach((input) => {
         const action = input.id.substring(4);
         if (settings.keyBindings[action]) {
             input.textContent = settings.keyBindings[action];

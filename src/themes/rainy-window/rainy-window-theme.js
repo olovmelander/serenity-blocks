@@ -19,7 +19,7 @@ export default class RainyWindowTheme extends BaseTheme {
         this.resizeCanvas();
 
         this.drops = [];
-        for(let i=0; i<150; i++){
+        for (let i = 0; i < 150; i++) {
             this.drops.push(this.createDrop(true));
         }
 
@@ -38,7 +38,7 @@ export default class RainyWindowTheme extends BaseTheme {
             y: isInitial ? Math.random() * this.canvas.height : -50,
             r: Math.random() * 1.5 + 1,
             vy: Math.random() * 3 + 2,
-            isStreaking: false
+            isStreaking: false,
         };
     }
 
@@ -51,10 +51,10 @@ export default class RainyWindowTheme extends BaseTheme {
         const dropStyle = 'rgba(220, 230, 255, 0.6)';
 
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        if(Math.random() > 0.8) this.drops.push(this.createDrop(false));
+        if (Math.random() > 0.8) this.drops.push(this.createDrop(false));
 
         for (let i = this.drops.length - 1; i >= 0; i--) {
-            let drop = this.drops[i];
+            const drop = this.drops[i];
             if (drop.r > 3.5) drop.isStreaking = true;
             drop.y += drop.vy;
             if (drop.isStreaking) {
@@ -72,12 +72,12 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Optimized collision detection
             for (let j = i - 1; j >= 0; j--) {
-                let other = this.drops[j];
-                let dx = drop.x - other.x;
-                let dy = drop.y - other.y;
-                let distanceSq = dx * dx + dy * dy;
-                let combinedRadius = drop.r + other.r;
-                let combinedRadiusSq = combinedRadius * combinedRadius;
+                const other = this.drops[j];
+                const dx = drop.x - other.x;
+                const dy = drop.y - other.y;
+                const distanceSq = dx * dx + dy * dy;
+                const combinedRadius = drop.r + other.r;
+                const combinedRadiusSq = combinedRadius * combinedRadius;
 
                 if (distanceSq < combinedRadiusSq) {
                     drop.r = Math.min(Math.sqrt(drop.r * drop.r + other.r * other.r), 15);

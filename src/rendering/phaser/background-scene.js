@@ -7,11 +7,15 @@ let cachedPhaserRef = null;
  * Create the background scene once Phaser is available.
  * @param {typeof Phaser} phaserLib
  */
-export function createBackgroundScene(phaserLib = typeof window !== 'undefined' ? window.Phaser : null) {
+export function createBackgroundScene(
+    phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
+) {
     const PhaserRef = phaserLib;
 
     if (!PhaserRef?.Scene) {
-        throw new Error('[BackgroundScene] Phaser is not available. Load Phaser before creating scenes.');
+        throw new Error(
+            '[BackgroundScene] Phaser is not available. Load Phaser before creating scenes.',
+        );
     }
 
     if (cachedBackgroundScene && cachedPhaserRef === PhaserRef) {
@@ -34,7 +38,9 @@ export function createBackgroundScene(phaserLib = typeof window !== 'undefined' 
 
         create() {
             if (!this.webglRenderer) {
-                console.warn('[BackgroundScene] No WebGL renderer provided. Scene will remain idle.');
+                console.warn(
+                    '[BackgroundScene] No WebGL renderer provided. Scene will remain idle.',
+                );
                 return;
             }
 

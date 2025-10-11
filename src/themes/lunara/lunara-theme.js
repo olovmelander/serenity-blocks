@@ -76,14 +76,28 @@ export default class LunaraTheme extends BaseTheme {
                 const planet1Radius = Math.min(canvas.width, canvas.height) * 0.2;
 
                 // Draw glow
-                const glow1 = ctx.createRadialGradient(planet1X, planet1Y, planet1Radius * 0.8, planet1X, planet1Y, planet1Radius * 1.5);
+                const glow1 = ctx.createRadialGradient(
+                    planet1X,
+                    planet1Y,
+                    planet1Radius * 0.8,
+                    planet1X,
+                    planet1Y,
+                    planet1Radius * 1.5,
+                );
                 glow1.addColorStop(0, 'rgba(200, 150, 255, 0.3)');
                 glow1.addColorStop(1, 'rgba(200, 150, 255, 0)');
                 ctx.fillStyle = glow1;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 // Draw planet
-                const planet1Grad = ctx.createRadialGradient(planet1X - planet1Radius * 0.3, planet1Y - planet1Radius * 0.3, planet1Radius * 0.2, planet1X, planet1Y, planet1Radius);
+                const planet1Grad = ctx.createRadialGradient(
+                    planet1X - planet1Radius * 0.3,
+                    planet1Y - planet1Radius * 0.3,
+                    planet1Radius * 0.2,
+                    planet1X,
+                    planet1Y,
+                    planet1Radius,
+                );
                 planet1Grad.addColorStop(0, '#d8b5ff');
                 planet1Grad.addColorStop(0.5, '#a855f7');
                 planet1Grad.addColorStop(1, '#6b21a8');
@@ -98,14 +112,28 @@ export default class LunaraTheme extends BaseTheme {
                 const planet2Radius = Math.min(canvas.width, canvas.height) * 0.12;
 
                 // Draw glow
-                const glow2 = ctx.createRadialGradient(planet2X, planet2Y, planet2Radius * 0.8, planet2X, planet2Y, planet2Radius * 1.5);
+                const glow2 = ctx.createRadialGradient(
+                    planet2X,
+                    planet2Y,
+                    planet2Radius * 0.8,
+                    planet2X,
+                    planet2Y,
+                    planet2Radius * 1.5,
+                );
                 glow2.addColorStop(0, 'rgba(255, 200, 240, 0.3)');
                 glow2.addColorStop(1, 'rgba(255, 200, 240, 0)');
                 ctx.fillStyle = glow2;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 // Draw planet
-                const planet2Grad = ctx.createRadialGradient(planet2X - planet2Radius * 0.3, planet2Y - planet2Radius * 0.3, planet2Radius * 0.2, planet2X, planet2Y, planet2Radius);
+                const planet2Grad = ctx.createRadialGradient(
+                    planet2X - planet2Radius * 0.3,
+                    planet2Y - planet2Radius * 0.3,
+                    planet2Radius * 0.2,
+                    planet2X,
+                    planet2Y,
+                    planet2Radius,
+                );
                 planet2Grad.addColorStop(0, '#ffd4f0');
                 planet2Grad.addColorStop(0.5, '#f472b6');
                 planet2Grad.addColorStop(1, '#be185d');

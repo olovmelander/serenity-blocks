@@ -29,14 +29,44 @@ export default class CrystalCaveTheme extends BaseTheme {
         if (this.webglRenderer) {
             const crystalLayers = [
                 // Background layer - deep cave colors
-                { zIndex: -0.9, count: 12, colors: ['rgba(30, 20, 60, 0.6)', 'rgba(20, 30, 70, 0.6)', 'rgba(40, 20, 80, 0.6)'], height: 0.6, seed: 78901 },
+                {
+                    zIndex: -0.9,
+                    count: 12,
+                    colors: [
+                        'rgba(30, 20, 60, 0.6)',
+                        'rgba(20, 30, 70, 0.6)',
+                        'rgba(40, 20, 80, 0.6)',
+                    ],
+                    height: 0.6,
+                    seed: 78901,
+                },
                 // Mid layer - richer colors
-                { zIndex: -0.8, count: 10, colors: ['rgba(60, 40, 100, 0.7)', 'rgba(30, 60, 90, 0.7)', 'rgba(50, 80, 100, 0.7)'], height: 0.75, seed: 89012 },
+                {
+                    zIndex: -0.8,
+                    count: 10,
+                    colors: [
+                        'rgba(60, 40, 100, 0.7)',
+                        'rgba(30, 60, 90, 0.7)',
+                        'rgba(50, 80, 100, 0.7)',
+                    ],
+                    height: 0.75,
+                    seed: 89012,
+                },
                 // Front layer - prominent crystals
-                { zIndex: -0.7, count: 8, colors: ['rgba(80, 60, 130, 0.8)', 'rgba(50, 90, 130, 0.8)', 'rgba(70, 100, 150, 0.8)'], height: 0.85, seed: 90123 }
+                {
+                    zIndex: -0.7,
+                    count: 8,
+                    colors: [
+                        'rgba(80, 60, 130, 0.8)',
+                        'rgba(50, 90, 130, 0.8)',
+                        'rgba(70, 100, 150, 0.8)',
+                    ],
+                    height: 0.85,
+                    seed: 90123,
+                },
             ];
 
-            crystalLayers.forEach(layer => {
+            crystalLayers.forEach((layer) => {
                 const C_WIDTH = 2048;
                 const C_HEIGHT = window.innerHeight;
 
@@ -68,7 +98,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                     const baseHeight = (rng() * 0.4 + 0.4) * canvas.height * layer.height;
 
                     ctx.fillStyle = color;
-                    ctx.strokeStyle = `rgba(180, 200, 255, 0.15)`;
+                    ctx.strokeStyle = 'rgba(180, 200, 255, 0.15)';
                     ctx.lineWidth = 2;
 
                     // Draw from ceiling
@@ -111,7 +141,12 @@ export default class CrystalCaveTheme extends BaseTheme {
                         ctx.stroke();
 
                         // Add inner glow
-                        const floorGradient = ctx.createLinearGradient(floorX, canvas.height, floorX, canvas.height - floorHeight);
+                        const floorGradient = ctx.createLinearGradient(
+                            floorX,
+                            canvas.height,
+                            floorX,
+                            canvas.height - floorHeight,
+                        );
                         floorGradient.addColorStop(0, 'rgba(200, 220, 255, 0.05)');
                         floorGradient.addColorStop(0.5, 'rgba(180, 200, 255, 0.1)');
                         floorGradient.addColorStop(1, 'rgba(150, 180, 255, 0.02)');
@@ -135,11 +170,11 @@ export default class CrystalCaveTheme extends BaseTheme {
                 '#10ac84', // Emerald
                 '#1dd1a1', // Light Emerald
                 '#3742fa', // Sapphire
-                '#5f27cd'  // Deep Sapphire
+                '#5f27cd', // Deep Sapphire
             ];
 
             for (let i = 0; i < 20; i++) {
-                let cluster = document.createElement('div');
+                const cluster = document.createElement('div');
                 cluster.className = 'crystal-cluster';
                 const color = clusterColors[Math.floor(Math.random() * clusterColors.length)];
                 cluster.style.setProperty('--glow-color', color);
@@ -160,18 +195,22 @@ export default class CrystalCaveTheme extends BaseTheme {
         const mossContainer = this.getContainer('crystal-cave-moss');
         if (mossContainer && mossContainer.children.length === 0) {
             for (let i = 0; i < 15; i++) {
-                let patch = document.createElement('div');
+                const patch = document.createElement('div');
                 patch.className = 'moss-patch';
 
                 // Position on cave walls (edges and corners)
                 const position = Math.random();
                 if (position < 0.4) {
                     // Left or right walls
-                    patch.style.left = Math.random() > 0.5 ? `${Math.random() * 15}%` : `${85 + Math.random() * 15}%`;
+                    patch.style.left = Math.random() > 0.5
+                        ? `${Math.random() * 15}%`
+                        : `${85 + Math.random() * 15}%`;
                     patch.style.top = `${Math.random() * 100}%`;
                 } else {
                     // Top or bottom
-                    patch.style.top = Math.random() > 0.5 ? `${Math.random() * 20}%` : `${80 + Math.random() * 20}%`;
+                    patch.style.top = Math.random() > 0.5
+                        ? `${Math.random() * 20}%`
+                        : `${80 + Math.random() * 20}%`;
                     patch.style.left = `${Math.random() * 100}%`;
                 }
 
@@ -187,7 +226,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         const refractionContainer = this.getContainer('crystal-cave-refractions');
         if (refractionContainer && refractionContainer.children.length === 0) {
             for (let i = 0; i < 8; i++) {
-                let ray = document.createElement('div');
+                const ray = document.createElement('div');
                 ray.className = 'refraction-ray';
                 ray.style.left = `${Math.random() * 100}%`;
                 ray.style.top = `${Math.random() * 100}%`;

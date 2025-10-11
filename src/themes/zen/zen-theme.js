@@ -27,7 +27,7 @@ export default class ZenTheme extends BaseTheme {
                 for (let i = 1; i <= numSegments; i++) {
                     const segment = document.createElement('div');
                     segment.className = 'bamboo-segment';
-                    segment.style.top = `${(i * 60)}px`;
+                    segment.style.top = `${i * 60}px`;
                     bamboo.appendChild(segment);
                 }
 
@@ -54,10 +54,10 @@ export default class ZenTheme extends BaseTheme {
             const stoneGroups = [
                 { x: 25, y: 60, count: 3 },
                 { x: 45, y: 40, count: 5 },
-                { x: 70, y: 55, count: 2 }
+                { x: 70, y: 55, count: 2 },
             ];
 
-            stoneGroups.forEach(group => {
+            stoneGroups.forEach((group) => {
                 for (let i = 0; i < group.count; i++) {
                     const stone = document.createElement('div');
                     stone.className = 'zen-stone';
@@ -144,9 +144,9 @@ export default class ZenTheme extends BaseTheme {
             const smokePositions = [
                 { x: 27, y: 65 },
                 { x: 48, y: 45 },
-                { x: 72, y: 58 }
+                { x: 72, y: 58 },
             ];
-            smokePositions.forEach(pos => {
+            smokePositions.forEach((pos) => {
                 const createSmoke = () => {
                     if (!this.isActive) return;
                     const smoke = document.createElement('div');
@@ -154,9 +154,13 @@ export default class ZenTheme extends BaseTheme {
                     smoke.style.left = `${pos.x}%`;
                     smoke.style.top = `${pos.y}%`;
                     smoke.style.animationDuration = `${this.random(8, 12)}s`;
-                    smoke.addEventListener('animationend', () => {
-                        smoke.remove();
-                    }, { once: true });
+                    smoke.addEventListener(
+                        'animationend',
+                        () => {
+                            smoke.remove();
+                        },
+                        { once: true },
+                    );
                     petalsContainer.appendChild(smoke);
                     const timeout = setTimeout(createSmoke, this.random(3000, 6000));
                     this.smokeTimeouts.push(timeout);
@@ -171,16 +175,20 @@ export default class ZenTheme extends BaseTheme {
         if (rippleContainer) {
             const createRipple = () => {
                 if (!this.isActive) return;
-                let ripple = document.createElement('div');
+                const ripple = document.createElement('div');
                 ripple.className = 'zen-ripple';
                 ripple.style.animationDelay = `${Math.random() * 2}s`;
-                ripple.addEventListener('animationend', () => {
-                    ripple.remove();
-                }, { once: true });
+                ripple.addEventListener(
+                    'animationend',
+                    () => {
+                        ripple.remove();
+                    },
+                    { once: true },
+                );
                 rippleContainer.appendChild(ripple);
                 const timeout = setTimeout(createRipple, Math.random() * 8000 + 5000);
                 this.rippleTimeouts.push(timeout);
-            }
+            };
             createRipple();
             this.registerContainer(rippleContainer);
         }
@@ -188,8 +196,8 @@ export default class ZenTheme extends BaseTheme {
 
     stop() {
         // Clear timeouts
-        this.rippleTimeouts.forEach(timeout => clearTimeout(timeout));
-        this.smokeTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.rippleTimeouts.forEach((timeout) => clearTimeout(timeout));
+        this.smokeTimeouts.forEach((timeout) => clearTimeout(timeout));
         this.rippleTimeouts = [];
         this.smokeTimeouts = [];
         super.stop();

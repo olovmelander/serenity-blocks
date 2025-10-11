@@ -26,14 +26,33 @@ export default class MoonlitForestTheme extends BaseTheme {
     async createScene() {
         // Define tree colors for different layers
         const treeLayers = [
-            { el: document.getElementById('moonlit-forest-back'),  color: '#7A9B7E', foliageColor: '#5A8067', count: 40, height: window.innerHeight * 0.7 },
-            { el: document.getElementById('moonlit-forest-mid'),   color: '#3D5F4A', foliageColor: '#4A6B56', count: 30, height: window.innerHeight * 0.85 },
-            { el: document.getElementById('moonlit-forest-front'), color: '#1A2820', foliageColor: '#2F4A3A', count: 20, height: window.innerHeight }
+            {
+                el: document.getElementById('moonlit-forest-back'),
+                color: '#7A9B7E',
+                foliageColor: '#5A8067',
+                count: 40,
+                height: window.innerHeight * 0.7,
+            },
+            {
+                el: document.getElementById('moonlit-forest-mid'),
+                color: '#3D5F4A',
+                foliageColor: '#4A6B56',
+                count: 30,
+                height: window.innerHeight * 0.85,
+            },
+            {
+                el: document.getElementById('moonlit-forest-front'),
+                color: '#1A2820',
+                foliageColor: '#2F4A3A',
+                count: 20,
+                height: window.innerHeight,
+            },
         ];
 
         // Helper function to draw a more realistic tree
         const drawTree = (ctx, x, y, len, angle, width, foliageColor) => {
-            if (width < 1 && len < 20) { // Stop recursion for tiny branches
+            if (width < 1 && len < 20) {
+                // Stop recursion for tiny branches
                 // Draw a leaf cluster at the end of small branches
                 ctx.beginPath();
                 ctx.arc(x, y, this.random(5, 15), 0, Math.PI * 2);
@@ -48,8 +67,8 @@ export default class MoonlitForestTheme extends BaseTheme {
             ctx.beginPath();
             ctx.lineWidth = width;
             ctx.moveTo(x, y);
-            const x2 = x + len * Math.cos(angle * Math.PI / 180);
-            const y2 = y + len * Math.sin(angle * Math.PI / 180);
+            const x2 = x + len * Math.cos((angle * Math.PI) / 180);
+            const y2 = y + len * Math.sin((angle * Math.PI) / 180);
             ctx.lineTo(x2, y2);
             ctx.stroke();
 
@@ -59,14 +78,30 @@ export default class MoonlitForestTheme extends BaseTheme {
             drawTree(ctx, x2, y2, newLen, angle + this.random(-15, 15), newWidth, foliageColor);
             // Side branch forks off
             if (width > 1) {
-                drawTree(ctx, x2, y2, newLen * 0.8, angle + this.random(20, 50), newWidth * 0.8, foliageColor);
-                drawTree(ctx, x2, y2, newLen * 0.8, angle - this.random(20, 50), newWidth * 0.8, foliageColor);
+                drawTree(
+                    ctx,
+                    x2,
+                    y2,
+                    newLen * 0.8,
+                    angle + this.random(20, 50),
+                    newWidth * 0.8,
+                    foliageColor,
+                );
+                drawTree(
+                    ctx,
+                    x2,
+                    y2,
+                    newLen * 0.8,
+                    angle - this.random(20, 50),
+                    newWidth * 0.8,
+                    foliageColor,
+                );
             }
         };
 
         // 1. Procedurally generate trees for parallax layers (with caching)
         treeLayers.forEach((layer, layerIndex) => {
-            if(layer.el) {
+            if (layer.el) {
                 this.registerContainer(layer.el);
                 // Create a cache key based on layer properties and window dimensions
                 // v2: Added gradient fade at top for smooth sky blending
@@ -81,10 +116,10 @@ export default class MoonlitForestTheme extends BaseTheme {
                     // Generate the tree background
                     const C_WIDTH = 4096; // Wider canvas for more variety in parallax
                     const C_HEIGHT = layer.height;
-                    let canvas = document.createElement('canvas');
+                    const canvas = document.createElement('canvas');
                     canvas.width = C_WIDTH;
                     canvas.height = C_HEIGHT;
-                    let ctx = canvas.getContext('2d');
+                    const ctx = canvas.getContext('2d');
                     ctx.strokeStyle = layer.color;
 
                     // Draw ground/undergrowth silhouette
@@ -101,7 +136,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                     ctx.fill();
 
                     // Draw trees
-                    for(let i = 0; i < layer.count; i++) {
+                    for (let i = 0; i < layer.count; i++) {
                         const x = Math.random() * C_WIDTH;
                         const y = C_HEIGHT * (0.95 + Math.random() * 0.05);
                         const len = C_HEIGHT * (0.2 + Math.random() * 0.3);
@@ -139,7 +174,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         const mushroomContainer = this.getContainer('glowing-mushrooms');
         if (mushroomContainer && mushroomContainer.children.length === 0) {
             for (let i = 0; i < 30; i++) {
-                let mushroom = document.createElement('div');
+                const mushroom = document.createElement('div');
                 mushroom.className = 'glowing-mushroom';
                 mushroom.style.left = `${Math.random() * 98}%`;
                 mushroom.style.bottom = `${Math.random() * 90}%`; // Spread them out more vertically
@@ -155,7 +190,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             this.registerContainer(moonbeamContainer);
             if (moonbeamContainer.children.length === 0) {
                 for (let i = 0; i < 10; i++) {
-                    let beam = document.createElement('div');
+                    const beam = document.createElement('div');
                     beam.className = 'moonbeam';
                     const angle = Math.random() * 20 - 10;
                     beam.style.left = `${Math.random() * 100}%`;
@@ -173,7 +208,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (wildlifeContainer && wildlifeContainer.children.length === 0) {
             // Glowing Eyes
             for (let i = 0; i < 7; i++) {
-                let eyes = document.createElement('div');
+                const eyes = document.createElement('div');
                 eyes.className = 'glowing-eyes';
                 eyes.style.left = `${Math.random() * 95}%`;
                 eyes.style.bottom = `${Math.random() * 40}%`; // Keep them in the undergrowth
@@ -181,7 +216,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                 wildlifeContainer.appendChild(eyes);
             }
             // Flying Owl
-            let owl = document.createElement('div');
+            const owl = document.createElement('div');
             owl.className = 'flying-owl';
             owl.style.animationDelay = `-${Math.random() * 45}s`;
             wildlifeContainer.appendChild(owl);
@@ -190,10 +225,11 @@ export default class MoonlitForestTheme extends BaseTheme {
         const themeContainer = this.getContainer('moonlit-forest-theme');
         if (themeContainer) {
             // Clear old leaves before adding new ones
-            themeContainer.querySelectorAll('.moonlit-leaf').forEach(e => e.remove());
+            themeContainer.querySelectorAll('.moonlit-leaf').forEach((e) => e.remove());
             // Falling Leaves
-            for (let i = 0; i < 10; i++) { // Fewer, more subtle leaves
-                let leaf = document.createElement('div');
+            for (let i = 0; i < 10; i++) {
+                // Fewer, more subtle leaves
+                const leaf = document.createElement('div');
                 leaf.className = 'moonlit-leaf';
                 const xStart = Math.random() * 100;
                 leaf.style.setProperty('--x-start', `${xStart}vw`);

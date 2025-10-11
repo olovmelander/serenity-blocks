@@ -26,7 +26,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         if (blobContainer && blobContainer.children.length === 0) {
             const numBlobs = 8;
             for (let i = 0; i < numBlobs; i++) {
-                let blob = document.createElement('div');
+                const blob = document.createElement('div');
                 blob.className = 'morph-blob';
                 const size = Math.random() * 150 + 100; // 100px to 250px
                 blob.style.width = `${size}px`;
@@ -50,7 +50,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         if (bubbleContainer && bubbleContainer.children.length === 0) {
             const numBubbles = 20;
             for (let i = 0; i < numBubbles; i++) {
-                let bubble = document.createElement('div');
+                const bubble = document.createElement('div');
                 bubble.className = 'iridescent-bubble';
                 const size = Math.random() * 80 + 20; // 20px to 100px
                 bubble.style.width = `${size}px`;
@@ -74,7 +74,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         if (ribbonContainer && ribbonContainer.children.length === 0) {
             const numRibbons = 5;
             for (let i = 0; i < numRibbons; i++) {
-                let ribbon = document.createElement('div');
+                const ribbon = document.createElement('div');
                 ribbon.className = 'ribbon-stream';
 
                 ribbon.style.setProperty('--x-start', `${Math.random() * 120 - 10}vw`);
