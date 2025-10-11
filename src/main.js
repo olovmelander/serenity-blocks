@@ -290,8 +290,8 @@ class SerenityBlocks {
         const maxHeight = (window.innerHeight - uiOverhead) * 0.85;
         const blockSizeWidth = Math.floor(maxWidth / COLS);
         const blockSizeHeight = Math.floor(maxHeight / ROWS);
-        // Cap at 28px instead of 40px to ensure it fits in most viewports
-        return Math.min(blockSizeWidth, blockSizeHeight, 28);
+        // Allow larger block sizes for higher resolution displays
+        return Math.min(blockSizeWidth, blockSizeHeight, 40);
     }
 
     /**
@@ -312,7 +312,8 @@ class SerenityBlocks {
         const MultiplayerBoardScene = createMultiplayerBoardScene(PhaserRef);
 
         const singleBoardWidth = COLS * BLOCK_SIZE;
-        const singleBoardHeight = ROWS * BLOCK_SIZE;
+        // The canvas needs to be tall enough to include the hidden rows where pieces spawn
+        const singleBoardHeight = (ROWS + HIDDEN_ROWS) * BLOCK_SIZE;
 
         this.singleBoardWidth = singleBoardWidth;
         this.phaserBaseWidth = singleBoardWidth;
