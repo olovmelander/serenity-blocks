@@ -82,7 +82,7 @@ export default class LunaraTheme extends BaseTheme {
                     planet1Radius * 0.8,
                     planet1X,
                     planet1Y,
-                    planet1Radius * 1.5,
+                    planet1Radius * 1.5
                 );
                 glow1.addColorStop(0, 'rgba(200, 150, 255, 0.3)');
                 glow1.addColorStop(1, 'rgba(200, 150, 255, 0)');
@@ -96,7 +96,7 @@ export default class LunaraTheme extends BaseTheme {
                     planet1Radius * 0.2,
                     planet1X,
                     planet1Y,
-                    planet1Radius,
+                    planet1Radius
                 );
                 planet1Grad.addColorStop(0, '#d8b5ff');
                 planet1Grad.addColorStop(0.5, '#a855f7');
@@ -118,7 +118,7 @@ export default class LunaraTheme extends BaseTheme {
                     planet2Radius * 0.8,
                     planet2X,
                     planet2Y,
-                    planet2Radius * 1.5,
+                    planet2Radius * 1.5
                 );
                 glow2.addColorStop(0, 'rgba(255, 200, 240, 0.3)');
                 glow2.addColorStop(1, 'rgba(255, 200, 240, 0)');
@@ -132,7 +132,7 @@ export default class LunaraTheme extends BaseTheme {
                     planet2Radius * 0.2,
                     planet2X,
                     planet2Y,
-                    planet2Radius,
+                    planet2Radius
                 );
                 planet2Grad.addColorStop(0, '#ffd4f0');
                 planet2Grad.addColorStop(0.5, '#f472b6');

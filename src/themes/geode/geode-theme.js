@@ -88,7 +88,7 @@ export default class GeodeTheme extends BaseTheme {
             },
         ];
 
-        layers.forEach((layer) => {
+        layers.forEach(layer => {
             for (let i = 0; i < layer.count; i++) {
                 const crystal = document.createElement('div');
                 crystal.className = `crystal ${layer.depthClass}`;
@@ -96,8 +96,9 @@ export default class GeodeTheme extends BaseTheme {
                 const palette = crystalPalettes[Math.floor(Math.random() * crystalPalettes.length)];
                 const shape = crystalShapes[Math.floor(Math.random() * crystalShapes.length)];
 
-                const size = Math.random() * (layer.scaleRange[1] - layer.scaleRange[0])
-                    + layer.scaleRange[0];
+                const size =
+                    Math.random() * (layer.scaleRange[1] - layer.scaleRange[0]) +
+                    layer.scaleRange[0];
                 const aspectRatio = Math.random() * 0.6 + 0.7; // 0.7 to 1.3
 
                 // Starting position
@@ -202,14 +203,15 @@ export default class GeodeTheme extends BaseTheme {
 
         const dustColors = ['#a29bfe', '#74b9ff', '#81ecec', '#ffeaa7', '#dfe6e9', '#b2bec3'];
 
-        dustLayers.forEach((layer) => {
+        dustLayers.forEach(layer => {
             if (!layer.container || layer.container.children.length > 0) return;
 
             for (let i = 0; i < layer.count; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'geode-dust-particle';
 
-                const size = Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]) + layer.sizeRange[0];
+                const size =
+                    Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]) + layer.sizeRange[0];
                 const color = dustColors[Math.floor(Math.random() * dustColors.length)];
 
                 particle.style.width = `${size}px`;
@@ -227,18 +229,19 @@ export default class GeodeTheme extends BaseTheme {
                 particle.style.setProperty('--y-start', `${startY}vh`);
                 particle.style.setProperty(
                     '--x-mid',
-                    `${(startX + endX) / 2 + (Math.random() * 30 - 15)}vw`,
+                    `${(startX + endX) / 2 + (Math.random() * 30 - 15)}vw`
                 );
                 particle.style.setProperty(
                     '--y-mid',
-                    `${(startY + endY) / 2 + (Math.random() * 30 - 15)}vh`,
+                    `${(startY + endY) / 2 + (Math.random() * 30 - 15)}vh`
                 );
                 particle.style.setProperty('--x-end', `${endX}vw`);
                 particle.style.setProperty('--y-end', `${endY}vh`);
                 particle.style.setProperty('--opacity', layer.opacity);
 
-                const duration = Math.random() * (layer.durationRange[1] - layer.durationRange[0])
-                    + layer.durationRange[0];
+                const duration =
+                    Math.random() * (layer.durationRange[1] - layer.durationRange[0]) +
+                    layer.durationRange[0];
                 particle.style.animationDuration = `${duration}s`;
                 particle.style.animationDelay = `-${Math.random() * duration}s`;
 
@@ -337,7 +340,7 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     animateCrystals() {
-        this.crystals.forEach((crystal) => {
+        this.crystals.forEach(crystal => {
             crystal.x += crystal.vx;
             crystal.y += crystal.vy;
             crystal.rotation += crystal.rotationSpeed;

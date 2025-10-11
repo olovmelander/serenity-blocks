@@ -99,7 +99,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             if (!clearedRows || clearedRows.length === 0) return;
 
             // Flash effect for cleared lines
-            clearedRows.forEach((row) => {
+            clearedRows.forEach(row => {
                 // Convert world row to canvas Y
                 const y = (row - this.hiddenRows) * this.blockSize;
 
@@ -134,8 +134,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
                         // Convert world Y to canvas Y
-                        centerY
-                            += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        centerY +=
+                            (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });
@@ -186,7 +186,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     color: '#fff',
                     stroke: '#000',
                     strokeThickness: 4,
-                },
+                }
             );
 
             text.setOrigin(0.5);
@@ -233,7 +233,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             const intensity = Math.max(1, this.lastImpactIntensity || clearedRows.length);
             const boardWidth = this.cols * this.blockSize;
 
-            clearedRows.forEach((row) => {
+            clearedRows.forEach(row => {
                 const zoneY = (row - this.hiddenRows) * this.blockSize;
 
                 // The emitZone source is relative to the emitter's coordinates.
@@ -301,7 +301,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.boardGraphics?.destroy();
             this.pieceGraphics?.destroy();
             this.effectsGraphics?.destroy();
-            this.activeParticleSystems?.forEach((system) => system.destroy());
+            this.activeParticleSystems?.forEach(system => system.destroy());
             this.activeParticleSystems?.clear();
             this.hudElements = null;
         }

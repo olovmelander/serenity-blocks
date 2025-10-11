@@ -34,7 +34,7 @@ export default class WinterTheme extends BaseTheme {
             },
         ];
 
-        snowflakeLayers.forEach((layer) => {
+        snowflakeLayers.forEach(layer => {
             if (layer.container && layer.container.children.length === 0) {
                 for (let i = 0; i < layer.count; i++) {
                     const flake = document.createElement('div');
@@ -47,10 +47,11 @@ export default class WinterTheme extends BaseTheme {
                     flake.style.setProperty('--x-start', `${xStart}vw`);
                     flake.style.setProperty(
                         '--x-end',
-                        `${xStart + windEffect + (Math.random() * 20 - 10)}vw`,
+                        `${xStart + windEffect + (Math.random() * 20 - 10)}vw`
                     );
                     flake.style.setProperty('--r-end', `${Math.random() * 720 - 360}deg`);
-                    const duration = Math.random() * (layer.maxDuration - layer.minDuration) + layer.minDuration;
+                    const duration =
+                        Math.random() * (layer.maxDuration - layer.minDuration) + layer.minDuration;
                     flake.style.animationDuration = `${duration}s`;
                     flake.style.animationDelay = `-${Math.random() * duration}s`;
                     layer.container.appendChild(flake);
@@ -68,7 +69,8 @@ export default class WinterTheme extends BaseTheme {
 
                 // Position near corners
                 const corner = Math.floor(Math.random() * 4);
-                const xPos = corner % 2 === 0 ? `${Math.random() * 20}%` : `${80 + Math.random() * 20}%`;
+                const xPos =
+                    corner % 2 === 0 ? `${Math.random() * 20}%` : `${80 + Math.random() * 20}%`;
                 const yPos = corner < 2 ? `${Math.random() * 20}%` : `${80 + Math.random() * 20}%`;
                 crystal.style.left = xPos;
                 crystal.style.top = yPos;

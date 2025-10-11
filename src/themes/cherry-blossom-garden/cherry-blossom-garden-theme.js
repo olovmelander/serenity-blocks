@@ -50,7 +50,8 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
 
                 ctx.beginPath();
                 ctx.arc(bloomX, bloomY, bloomRadius, 0, Math.PI * 2);
-                ctx.fillStyle = colors.bloomColors[Math.floor(Math.random() * colors.bloomColors.length)];
+                ctx.fillStyle =
+                    colors.bloomColors[Math.floor(Math.random() * colors.bloomColors.length)];
                 ctx.globalAlpha = Math.random() * 0.4 + 0.6;
                 ctx.fill();
             }
@@ -66,7 +67,7 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
             angle + (Math.random() * 20 + 10),
             width * 0.75,
             colors,
-            depth + 1,
+            depth + 1
         );
         this.drawBranch(
             ctx,
@@ -76,7 +77,7 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
             angle - (Math.random() * 20 + 10),
             width * 0.75,
             colors,
-            depth + 1,
+            depth + 1
         );
     }
 
@@ -126,7 +127,7 @@ export default class CherryBlossomGardenTheme extends BaseTheme {
                 },
             ];
 
-            treeLayers.forEach((layer) => {
+            treeLayers.forEach(layer => {
                 for (let i = 0; i < layer.count; i++) {
                     const x = Math.random() * C_WIDTH;
                     const y = C_HEIGHT;

@@ -34,13 +34,13 @@ export default class LanternFestivalTheme extends BaseTheme {
             ];
 
             let lanternIndex = 0;
-            lanternLayers.forEach((layer) => {
+            lanternLayers.forEach(layer => {
                 if (layer.container) {
                     // Reattach pooled lanterns to this layer
                     for (let i = 0; i < layer.count; i++) {
                         if (lanternFestivalElementPool.lanterns[lanternIndex]) {
                             layer.container.appendChild(
-                                lanternFestivalElementPool.lanterns[lanternIndex],
+                                lanternFestivalElementPool.lanterns[lanternIndex]
                             );
                             lanternIndex++;
                         }
@@ -51,7 +51,7 @@ export default class LanternFestivalTheme extends BaseTheme {
             // Reattach reflections
             const waterContainer = this.getContainer('lantern-water');
             if (waterContainer) {
-                lanternFestivalElementPool.reflections.forEach((reflection) => {
+                lanternFestivalElementPool.reflections.forEach(reflection => {
                     waterContainer.appendChild(reflection);
                 });
             }
@@ -59,7 +59,7 @@ export default class LanternFestivalTheme extends BaseTheme {
             // Reattach petals
             const petalContainer = this.getContainer('lantern-petals');
             if (petalContainer) {
-                lanternFestivalElementPool.petals.forEach((petal) => {
+                lanternFestivalElementPool.petals.forEach(petal => {
                     petalContainer.appendChild(petal);
                 });
             }
@@ -67,7 +67,7 @@ export default class LanternFestivalTheme extends BaseTheme {
             // Reattach embers
             const emberContainer = this.getContainer('lantern-embers');
             if (emberContainer) {
-                lanternFestivalElementPool.embers.forEach((ember) => {
+                lanternFestivalElementPool.embers.forEach(ember => {
                     emberContainer.appendChild(ember);
                 });
             }
@@ -118,7 +118,7 @@ export default class LanternFestivalTheme extends BaseTheme {
 
         const waterContainer = this.getContainer('lantern-water');
 
-        lanternLayers.forEach((layer) => {
+        lanternLayers.forEach(layer => {
             if (layer.container && layer.container.children.length === 0) {
                 for (let i = 0; i < layer.count; i++) {
                     const lantern = document.createElement('div');
@@ -135,7 +135,8 @@ export default class LanternFestivalTheme extends BaseTheme {
                     const xPos = rng() * 100;
                     lantern.style.left = `${xPos}%`;
 
-                    const duration = rng() * (layer.maxDuration - layer.minDuration) + layer.minDuration;
+                    const duration =
+                        rng() * (layer.maxDuration - layer.minDuration) + layer.minDuration;
                     lantern.style.animationDuration = `${duration}s`;
                     lantern.style.animationDelay = `-${rng() * duration}s`;
 

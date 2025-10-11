@@ -4,9 +4,7 @@
  */
 
 import { GameState } from './game.js';
-import {
-    GarbageQueue, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
-} from './garbage.js';
+import { GarbageQueue, calculateGarbage, insertGarbageEntries, ATTACK_TYPES } from './garbage.js';
 import { processPhysics } from './physics.js';
 
 /**
@@ -66,24 +64,25 @@ export class MultiplayerGameState {
         const opponentState = this.getOpponentState(player);
         const opponentQueue = player === 1 ? this.player2GarbageQueue : this.player1GarbageQueue;
 
-        const sequence = typeof summary.sequence === 'number'
-            ? summary.sequence
-            : this.attackSequences[player]++;
+        const sequence =
+            typeof summary.sequence === 'number'
+                ? summary.sequence
+                : this.attackSequences[player]++;
         const attackId = `P${player}-A${sequence}`;
         attack.withId(attackId);
 
         const totalLines = attack.getTotalLines();
         console.log(
-            `[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}, clean=${attack.sendForClean}`,
+            `[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}, clean=${attack.sendForClean}`
         );
         console.log(
-            `[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanBonus})`,
+            `[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanBonus})`
         );
 
         if (
-            totalLines <= 0
-            && attack.attackType !== ATTACK_TYPES.BLIND
-            && attack.attackType !== ATTACK_TYPES.FULL_BLIND
+            totalLines <= 0 &&
+            attack.attackType !== ATTACK_TYPES.BLIND &&
+            attack.attackType !== ATTACK_TYPES.FULL_BLIND
         ) {
             return;
         }
@@ -96,7 +95,7 @@ export class MultiplayerGameState {
         const entries = attack.expandEntries(context);
         const queueableEntries = [];
 
-        entries.forEach((entry) => {
+        entries.forEach(entry => {
             if (entry.type === 'full_blind') {
                 this.applyFullBlindEffect(opponentState, entry.duration, attack);
             } else {
@@ -111,7 +110,7 @@ export class MultiplayerGameState {
         const totalQueued = opponentQueue.getTotalLines();
         const opponentNum = player === 1 ? 2 : 1;
         console.log(
-            `[MultiplayerState] Player ${opponentNum} now has ${totalQueued} total garbage queued`,
+            `[MultiplayerState] Player ${opponentNum} now has ${totalQueued} total garbage queued`
         );
 
         if (onGarbageSend) {
@@ -131,7 +130,7 @@ export class MultiplayerGameState {
         const gameState = player === 1 ? this.player1 : this.player2;
 
         const blindEntries = queue.takePendingBlindEntries();
-        blindEntries.forEach((entry) => this.applyBlindEffect(gameState, entry.duration));
+        blindEntries.forEach(entry => this.applyBlindEffect(gameState, entry.duration));
 
         const burst = queue.dequeueLineBurst();
         if (burst.length === 0) {
@@ -164,7 +163,7 @@ export class MultiplayerGameState {
         }
 
         console.log(
-            `[MultiplayerState] Resolving cascades after garbage insertion for Player ${player}`,
+            `[MultiplayerState] Resolving cascades after garbage insertion for Player ${player}`
         );
 
         gameState.isProcessingPhysics = true;
@@ -236,7 +235,7 @@ export class MultiplayerGameState {
         if (!gameState || duration <= 0) return;
         console.log(`[MultiplayerState] Applying blind effect for duration=${duration}`);
         gameState.blindTimers.pending = Math.max(gameState.blindTimers.pending || 0, duration);
-        gameState.lockedPieces.forEach((piece) => {
+        gameState.lockedPieces.forEach(piece => {
             piece.blindTime = Math.max(piece.blindTime || 0, duration);
         });
     }
@@ -244,7 +243,7 @@ export class MultiplayerGameState {
     applyFullBlindEffect(gameState, duration, attack) {
         if (!gameState || duration <= 0) return;
         console.log(
-            `[MultiplayerState] Applying FULL blind effect for duration=${duration} (attack ${attack?.id || 'unknown'})`,
+            `[MultiplayerState] Applying FULL blind effect for duration=${duration} (attack ${attack?.id || 'unknown'})`
         );
         gameState.blindTimers.field = Math.max(gameState.blindTimers.field || 0, duration);
         this.applyBlindEffect(gameState, duration);

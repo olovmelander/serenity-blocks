@@ -26,7 +26,7 @@ export default class StarlightTheme extends BaseTheme {
                 maxSize: 2.5,
             },
         ];
-        layers.forEach((layer) => {
+        layers.forEach(layer => {
             if (layer.container && layer.container.children.length === 0) {
                 for (let i = 0; i < layer.count; i++) {
                     const star = document.createElement('div');

@@ -33,7 +33,7 @@ export default class CandlelitMonasteryTheme extends BaseTheme {
                 { zIndex: -0.7, brightness: 0.8, detail: 'high' },
             ];
 
-            archwayLayers.forEach((layer) => {
+            archwayLayers.forEach(layer => {
                 const canvas = document.createElement('canvas');
                 const C_WIDTH = window.innerWidth * 2;
                 const C_HEIGHT = window.innerHeight;
@@ -59,7 +59,7 @@ export default class CandlelitMonasteryTheme extends BaseTheme {
 
                     // Draw archways
                     const path = new Path2D(
-                        'M 100 600 C 100 300, 300 300, 300 600 Z M 500 600 C 500 300, 700 300, 700 600 Z',
+                        'M 100 600 C 100 300, 300 300, 300 600 Z M 500 600 C 500 300, 700 300, 700 600 Z'
                     );
                     ctx.fill(path);
 
@@ -94,13 +94,14 @@ export default class CandlelitMonasteryTheme extends BaseTheme {
                 { count: 12, bottom: 25, heightRange: [60, 120] }, // Back row - shortest
             ];
 
-            candleRows.forEach((row) => {
+            candleRows.forEach(row => {
                 for (let i = 0; i < row.count; i++) {
                     const candle = document.createElement('div');
                     candle.className = 'monastery-candle';
 
-                    const height = Math.random() * (row.heightRange[1] - row.heightRange[0])
-                        + row.heightRange[0];
+                    const height =
+                        Math.random() * (row.heightRange[1] - row.heightRange[0]) +
+                        row.heightRange[0];
                     candle.style.height = `${height}px`;
                     candle.style.left = `${(i / row.count) * 95 + Math.random() * 5}%`;
                     candle.style.bottom = `${row.bottom + Math.random() * 5}%`;
@@ -134,7 +135,8 @@ export default class CandlelitMonasteryTheme extends BaseTheme {
             for (let i = 0; i < 3; i++) {
                 const lightBeam = document.createElement('div');
                 lightBeam.className = 'stained-glass-beam';
-                const color = stainedGlassColors[Math.floor(Math.random() * stainedGlassColors.length)];
+                const color =
+                    stainedGlassColors[Math.floor(Math.random() * stainedGlassColors.length)];
                 lightBeam.style.background = `linear-gradient(180deg, ${color} 0%, transparent 100%)`;
                 lightBeam.style.left = `${15 + i * 35}%`;
                 lightBeam.style.width = `${150 + Math.random() * 100}px`;
@@ -193,7 +195,7 @@ export default class CandlelitMonasteryTheme extends BaseTheme {
                 },
             ];
 
-            artifacts.forEach((artifact) => {
+            artifacts.forEach(artifact => {
                 const elem = document.createElement('div');
                 elem.className = `artifact artifact-${artifact.type}`;
                 elem.style.left = `${artifact.left}%`;

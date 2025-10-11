@@ -42,7 +42,7 @@ export default class FallTheme extends BaseTheme {
             },
         ];
 
-        leafLayers.forEach((layer) => {
+        leafLayers.forEach(layer => {
             if (layer.container && layer.container.children.length === 0) {
                 for (let i = 0; i < layer.count; i++) {
                     const leaf = document.createElement('div');
@@ -62,7 +62,8 @@ export default class FallTheme extends BaseTheme {
                         leaf.style.setProperty(`--x-gust${j}`, `${Math.random() * 20 - 10}vw`);
                     }
 
-                    const duration = Math.random() * (layer.maxDuration - layer.minDuration) + layer.minDuration;
+                    const duration =
+                        Math.random() * (layer.maxDuration - layer.minDuration) + layer.minDuration;
                     leaf.style.animationDuration = `${duration}s`;
                     leaf.style.animationDelay = `-${Math.random() * duration}s`;
                     layer.container.appendChild(leaf);
