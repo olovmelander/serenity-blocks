@@ -260,8 +260,9 @@ class SerenityBlocks {
             document.getElementById(`p2-next-${i}`)
         );
 
-        // Calculate and set block size
-        const calculatedBlockSize = this.calculateBlockSize();
+        // Block size is now fixed, and scaling is handled by Phaser's Scale.FIT mode.
+        // The previous `calculateBlockSize` was unreliable.
+        const calculatedBlockSize = 30;
         setBlockSize(calculatedBlockSize);
 
         // Set canvas dimensions
@@ -288,16 +289,6 @@ class SerenityBlocks {
     /**
      * Calculate optimal block size based on viewport
      */
-    calculateBlockSize() {
-        const gameContainer = document.getElementById('phaser-game-container');
-        const containerWidth = gameContainer.clientWidth;
-        const containerHeight = gameContainer.clientHeight;
-
-        const blockSizeWidth = Math.floor(containerWidth / COLS);
-        const blockSizeHeight = Math.floor(containerHeight / ROWS);
-
-        return Math.min(blockSizeWidth, blockSizeHeight);
-    }
 
     /**
      * Initialize Phaser game instance
