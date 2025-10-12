@@ -42,7 +42,7 @@ import {
     addPieceTrail,
     showComboPopup,
 } from './rendering/draw.js';
-import { updateNextQueue } from './ui/next-queue-ui.js';
+import { updateNextQueue, drawPiece as drawNextPiece } from './ui/next-queue-ui.js';
 import { WebGLRenderer } from './rendering/renderer.js';
 import { createBoardScene } from './rendering/phaser/board-scene.js';
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
@@ -129,6 +129,26 @@ function setPieceLockRippleCss(colorHex) {
         '--lock-ripple-shadow-color',
         `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_SHADOW_ALPHA})`,
     );
+}
+
+/**
+ * Draws the upcoming pieces for a player's "next" queue.
+ * @param {HTMLCanvasElement[]} canvases - The array of canvas elements to draw on.
+ * @param {string[]} nextPieces - The array of piece keys to draw.
+ */
+function drawNextPieces(canvases, nextPieces) {
+    canvases.forEach((canvas, i) => {
+        if (canvas) {
+            const pieceKey = nextPieces[i];
+            if (pieceKey) {
+                drawNextPiece(canvas, pieceKey);
+            } else {
+                // Clear canvas if no piece
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+    });
 }
 
 /**
