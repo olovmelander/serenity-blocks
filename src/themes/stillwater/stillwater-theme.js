@@ -35,7 +35,7 @@ export default class StillwaterTheme extends BaseTheme {
                     mistContainer.appendChild(mist);
                     this.registerContainer(mistContainer);
                 }
-            }
+            },
         );
 
         // Layer 1 - Distant Trees (Deep forest background)
@@ -48,7 +48,7 @@ export default class StillwaterTheme extends BaseTheme {
                 { start: 75, end: 95, baseHeight: 125 },
             ];
 
-            clusters.forEach(cluster => {
+            clusters.forEach((cluster) => {
                 const tree = document.createElement('div');
                 tree.className = 'stillwater-distant-tree-cluster';
                 tree.style.left = `${cluster.start}%`;

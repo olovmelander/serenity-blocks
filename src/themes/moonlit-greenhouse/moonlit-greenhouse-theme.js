@@ -46,7 +46,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             'M 50 100 L 50 0 M 50 20 L 80 10 M 50 40 L 20 30 M 50 60 L 80 50', // Branchy
         ];
 
-        plantLayers.forEach(layer => {
+        plantLayers.forEach((layer) => {
             if (layer.el) {
                 this.registerContainer(layer.el);
                 if (layer.el.children.length === 0) {

@@ -3,7 +3,9 @@
  * Handles rendering of the game board, pieces, and next pieces
  */
 
-import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS } from '../core/constants.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
+} from '../core/constants.js';
 import { generateBoard, isValidPosition } from '../core/board.js';
 import {
     getGridCache,
@@ -44,7 +46,7 @@ export function addPieceTrail(piece) {
     pieceTrails.push({
         piece: {
             ...piece,
-            shape: piece.shape.map(row => [...row]),
+            shape: piece.shape.map((row) => [...row]),
         },
         timestamp: Date.now(),
         opacity: 0.15,
@@ -65,7 +67,7 @@ function drawPieceTrails(ctx) {
     const trailDuration = 150; // 150ms fade
 
     // Filter out expired trails and draw remaining ones
-    pieceTrails = pieceTrails.filter(trail => {
+    pieceTrails = pieceTrails.filter((trail) => {
         const age = now - trail.timestamp;
         if (age > trailDuration) return false;
 
@@ -84,7 +86,7 @@ function drawPieceTrails(ctx) {
                         (trail.piece.x + x) * BLOCK_SIZE,
                         (trail.piece.y + y - HIDDEN_ROWS) * BLOCK_SIZE,
                         BLOCK_SIZE,
-                        BLOCK_SIZE
+                        BLOCK_SIZE,
                     );
                     ctx.restore();
                 }
@@ -128,7 +130,7 @@ export function draw(canvas, ctx, gameState) {
     const boardData = generateBoard(lockedPieces);
 
     // Draw locked pieces (with animation support for garbage)
-    lockedPieces.forEach(piece => {
+    lockedPieces.forEach((piece) => {
         // Calculate Y offset for animating garbage
         let yOffset = 0;
         if (piece.isAnimating && piece.animationOffset !== undefined) {
@@ -178,7 +180,7 @@ export function draw(canvas, ctx, gameState) {
                         useBoardData ? 0 : piece.x,
                         useBoardData ? 0 : renderY - HIDDEN_ROWS,
                         useBoardData ? boardX : localX,
-                        useBoardData ? renderY : localY
+                        useBoardData ? renderY : localY,
                     );
 
                     if (alpha < 1.0) {
@@ -215,7 +217,7 @@ export function draw(canvas, ctx, gameState) {
                         currentPiece.x,
                         currentPiece.y - HIDDEN_ROWS,
                         x,
-                        y
+                        y,
                     );
                 }
             });
@@ -253,7 +255,7 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                             offsetX + x * blockSize,
                             offsetY + y * blockSize,
                             blockSize,
-                            blockSize
+                            blockSize,
                         );
 
                         // Add highlight for first piece (most prominent)
@@ -265,7 +267,7 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                                 offsetX + x * blockSize + highlightOffset,
                                 offsetY + y * blockSize + highlightOffset,
                                 highlightSize,
-                                highlightSize
+                                highlightSize,
                             );
                         }
 
@@ -276,7 +278,7 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                             offsetX + x * blockSize,
                             offsetY + y * blockSize,
                             blockSize,
-                            blockSize
+                            blockSize,
                         );
                     }
                 });
@@ -445,7 +447,7 @@ export function createPieceLockRipple(piece, lockedPieces = [], containerElement
                     container.removeChild(ripple);
                 }
             },
-            400 + index * 30
+            400 + index * 30,
         );
     });
 
@@ -476,7 +478,7 @@ function findPieceCorners(piece) {
                     { x: x + 1, y: y + 1 }, // Bottom-right
                 ];
 
-                blockCorners.forEach(corner => {
+                blockCorners.forEach((corner) => {
                     const key = `${corner.x},${corner.y}`;
                     if (!visited.has(key)) {
                         // Check if this is an outer corner (exposed to empty space)
@@ -537,14 +539,14 @@ function createBlockMergeGlows(piece, lockedPieces, containerElement = null) {
                     { x, y: y + 1, side: 'bottom' },
                 ];
 
-                adjacents.forEach(adj => {
+                adjacents.forEach((adj) => {
                     // Check if this position has a locked block
                     if (
-                        adj.y >= 0 &&
-                        adj.y < board.length &&
-                        adj.x >= 0 &&
-                        adj.x < COLS &&
-                        board[adj.y][adj.x] !== null
+                        adj.y >= 0
+                        && adj.y < board.length
+                        && adj.x >= 0
+                        && adj.x < COLS
+                        && board[adj.y][adj.x] !== null
                     ) {
                         // Calculate glow position at the contact edge
                         let glowX;
@@ -594,7 +596,7 @@ function createBlockMergeGlows(piece, lockedPieces, containerElement = null) {
                     container.removeChild(glow);
                 }
             },
-            120 + index * 15
+            120 + index * 15,
         );
     });
 }
@@ -683,7 +685,7 @@ export function showComboPopup(comboCount, customContainer = null) {
                 container.removeChild(popup);
             }
         },
-        { once: true }
+        { once: true },
     );
 }
 
@@ -748,7 +750,9 @@ export function showLevelUpNotification(level) {
  *   - piecesPlaced: Total pieces placed
  */
 export function updateStats(stats) {
-    const { score, lines, level, linesUntilNextLevel, startTime, piecesPlaced } = stats;
+    const {
+        score, lines, level, linesUntilNextLevel, startTime, piecesPlaced,
+    } = stats;
 
     document.getElementById('score').textContent = score;
     document.getElementById('lines').textContent = lines;

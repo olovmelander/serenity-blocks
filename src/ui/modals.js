@@ -52,7 +52,7 @@ export class ModalManager {
      * Hides all modals
      */
     hideAll() {
-        Object.keys(this.modals).forEach(name => this.hide(name));
+        Object.keys(this.modals).forEach((name) => this.hide(name));
     }
 }
 
@@ -71,7 +71,9 @@ export function showStartModal(modalManager) {
  * @param {Object} highScoreManager - High score manager instance
  */
 export async function showGameOverModal(modalManager, gameState, highScoreManager) {
-    const { score, lines, level, dropInterval } = gameState;
+    const {
+        score, lines, level, dropInterval,
+    } = gameState;
 
     // Calculate speed multiplier
     const LEVEL_SPEEDS = [
@@ -88,8 +90,7 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         // Build ranking HTML
         let rankingHTML = '';
         if (rank === 1) {
-            rankingHTML =
-                '<div style="font-size:20px;color:#10b981;margin:10px 0;font-weight:bold;">🏆 NEW HIGH SCORE! 🏆</div>';
+            rankingHTML = '<div style="font-size:20px;color:#10b981;margin:10px 0;font-weight:bold;">🏆 NEW HIGH SCORE! 🏆</div>';
         } else if (rank <= 10) {
             rankingHTML = `<div style="font-size:16px;color:#fbbf24;margin:10px 0;">Rank: #${rank} in your top 10!</div>`;
         } else {
@@ -97,10 +98,9 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         }
 
         // Personal best
-        const personalBest =
-            stats.highestScore > score
-                ? `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>`
-                : '';
+        const personalBest = stats.highestScore > score
+            ? `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>`
+            : '';
 
         // Update final stats display
         document.getElementById('final-stats').innerHTML = `
@@ -164,8 +164,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
             topScores.forEach((score, index) => {
                 const date = new Date(score.timestamp);
                 const dateStr = date.toLocaleDateString();
-                const rankEmoji =
-                    index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
                 const rowColor = index % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent';
 
                 scoresHTML += `
@@ -204,8 +203,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
         document.getElementById('statistics-section').innerHTML = statsHTML;
     } catch (error) {
         console.error('Error loading high scores:', error);
-        document.getElementById('high-scores-list').innerHTML =
-            '<p style="color: #ef4444;">Error loading scores</p>';
+        document.getElementById('high-scores-list').innerHTML = '<p style="color: #ef4444;">Error loading scores</p>';
     }
 
     modalManager.show('highScores');
@@ -311,7 +309,7 @@ export function setupModalUI(modalManager, callbacks) {
  */
 export function toggleFullScreen() {
     if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
+        document.documentElement.requestFullscreen().catch((err) => {
             console.error('Error attempting to enable fullscreen:', err);
         });
     } else if (document.exitFullscreen) {

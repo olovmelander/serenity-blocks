@@ -52,7 +52,7 @@ export default class SpringTheme extends BaseTheme {
                 drift: -20,
             },
         ];
-        rainLayers.forEach(layer => {
+        rainLayers.forEach((layer) => {
             if (layer.container && layer.container.children.length === 0) {
                 for (let i = 0; i < layer.count; i++) {
                     const drop = document.createElement('div');

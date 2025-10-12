@@ -58,7 +58,7 @@ export function nameToKey(name) {
  * @returns {string} Path to the song file
  */
 export function getSongPath(trackName, songsData) {
-    const song = songsData.find(s => nameToKey(s.name) === trackName);
+    const song = songsData.find((s) => nameToKey(s.name) === trackName);
     return song ? song.path : songsData[0]?.path || '/assets/music/Echoes of the Soul.mp3';
 }
 
@@ -72,23 +72,21 @@ export function getSongForTheme(themeName, songsData) {
     // Normalize theme name: remove hyphens and convert to camelCase for matching
     const normalizedTheme = themeName
         .split('-')
-        .map((word, index) =>
-            index === 0
-                ? word.charAt(0).toUpperCase() + word.slice(1)
-                : word.charAt(0).toUpperCase() + word.slice(1)
-        )
+        .map((word, index) => (index === 0
+            ? word.charAt(0).toUpperCase() + word.slice(1)
+            : word.charAt(0).toUpperCase() + word.slice(1)))
         .join('');
 
     // Try exact match first
     let song = songsData.find(
-        s => nameToKey(s.name).toLowerCase() === normalizedTheme.toLowerCase()
+        (s) => nameToKey(s.name).toLowerCase() === normalizedTheme.toLowerCase(),
     );
 
     // If no exact match, try partial match BUT exclude shorter substrings
     // This prevents "forest" from matching "moonlit-forest"
     if (!song) {
         const themeKey = themeName.replace(/-/g, '').toLowerCase();
-        song = songsData.find(s => {
+        song = songsData.find((s) => {
             const songKey = nameToKey(s.name).toLowerCase();
             // Only match if the song name contains the theme AND they're close in length
             // OR if the theme contains the song name
@@ -117,14 +115,12 @@ export function getThemeForSong(trackName, themes) {
         .replace(/^-/, '');
 
     // Try exact match first
-    let theme = themes.find(t => {
+    let theme = themes.find((t) => {
         const normalizedTheme = t
             .split('-')
-            .map((word, index) =>
-                index === 0
-                    ? word.charAt(0).toUpperCase() + word.slice(1)
-                    : word.charAt(0).toUpperCase() + word.slice(1)
-            )
+            .map((word, index) => (index === 0
+                ? word.charAt(0).toUpperCase() + word.slice(1)
+                : word.charAt(0).toUpperCase() + word.slice(1)))
             .join('');
         return normalizedTheme.toLowerCase() === trackName.toLowerCase();
     });
@@ -133,7 +129,7 @@ export function getThemeForSong(trackName, themes) {
     // This prevents "Forest" song from matching "moonlit-forest" theme
     if (!theme) {
         const trackKey = trackName.toLowerCase();
-        theme = themes.find(t => {
+        theme = themes.find((t) => {
             const themeKey = t.replace(/-/g, '').toLowerCase();
             // Only match if similar length OR one fully contains the other
             const themeContainsTrack = themeKey.includes(trackKey);

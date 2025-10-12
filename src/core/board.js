@@ -93,7 +93,7 @@ export function findCompleteLines(boardData) {
     const completeLines = [];
 
     for (let y = 0; y < boardData.length; y++) {
-        if (boardData[y].every(cell => cell !== null)) {
+        if (boardData[y].every((cell) => cell !== null)) {
             completeLines.push(y);
         }
     }

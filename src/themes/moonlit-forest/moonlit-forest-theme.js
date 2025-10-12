@@ -85,7 +85,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                     newLen * 0.8,
                     angle + this.random(20, 50),
                     newWidth * 0.8,
-                    foliageColor
+                    foliageColor,
                 );
                 drawTree(
                     ctx,
@@ -94,7 +94,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                     newLen * 0.8,
                     angle - this.random(20, 50),
                     newWidth * 0.8,
-                    foliageColor
+                    foliageColor,
                 );
             }
         };
@@ -225,7 +225,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         const themeContainer = this.getContainer('moonlit-forest-theme');
         if (themeContainer) {
             // Clear old leaves before adding new ones
-            themeContainer.querySelectorAll('.moonlit-leaf').forEach(e => e.remove());
+            themeContainer.querySelectorAll('.moonlit-leaf').forEach((e) => e.remove());
             // Falling Leaves
             for (let i = 0; i < 10; i++) {
                 // Fewer, more subtle leaves

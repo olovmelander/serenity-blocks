@@ -67,7 +67,7 @@ export default class AuroraTheme extends BaseTheme {
             const insetLeft = (-15 + leftOffset).toFixed(2);
             veil.style.setProperty(
                 '--aurora-inset',
-                `${insetTop}% ${insetLeft}% auto ${insetLeft}%`
+                `${insetTop}% ${insetLeft}% auto ${insetLeft}%`,
             );
             veil.style.zIndex = `${2 + i}`;
             veil.style.animationDelay = `${this.random(0, 4).toFixed(2)}s`;

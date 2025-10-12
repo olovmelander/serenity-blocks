@@ -80,7 +80,7 @@ function bitsToColumns(bits) {
 function columnsToMask(columns) {
     const mask = Array(COLS).fill(false);
     if (Array.isArray(columns)) {
-        columns.forEach(col => {
+        columns.forEach((col) => {
             if (col >= 0 && col < COLS) {
                 mask[col] = true;
             }
@@ -100,9 +100,9 @@ function normalizeMaskRow(row, manualColumns) {
 
     if (Array.isArray(row)) {
         const mask = columnsToMask(row);
-        if (!mask.some(flag => flag)) {
+        if (!mask.some((flag) => flag)) {
             const fallback = manualColumns.length ? manualColumns : [Math.floor(COLS / 2)];
-            fallback.forEach(col => {
+            fallback.forEach((col) => {
                 if (col >= 0 && col < COLS) {
                     mask[col] = true;
                 }
@@ -212,8 +212,8 @@ export class GarbageAttack {
             ordinal++;
         };
 
-        (this.cleanMasks || []).forEach(maskBits => pushLineEntry(maskBits, 'clean'));
-        (this.holeMasks || []).forEach(maskBits => pushLineEntry(maskBits, 'normal'));
+        (this.cleanMasks || []).forEach((maskBits) => pushLineEntry(maskBits, 'clean'));
+        (this.holeMasks || []).forEach((maskBits) => pushLineEntry(maskBits, 'normal'));
 
         if (this.attackType === ATTACK_TYPES.FULL_BLIND && this.param > 0) {
             entries.push({
@@ -395,7 +395,7 @@ export function calculateGarbage(summary, rules = {}) {
     const complexity = summary.complexity ?? summary.comboStages ?? 0;
     const rawMask = summary.holeMask ?? summary.holeMaskBuffer ?? [];
     const manualColumns = summary.manualColumns || [];
-    const maskMatrix = rawMask.map(row => normalizeMaskRow(row, manualColumns));
+    const maskMatrix = rawMask.map((row) => normalizeMaskRow(row, manualColumns));
 
     // QUADRA FORMULA: base attack = depth - 1
     const rowsToSend = Math.max(0, depth - 1);
@@ -436,7 +436,7 @@ export function calculateGarbage(summary, rules = {}) {
 
 function getHighestOccupiedRow(board) {
     for (let y = 0; y < board.length; y++) {
-        if (board[y].some(cell => cell !== null)) {
+        if (board[y].some((cell) => cell !== null)) {
             return y;
         }
     }
@@ -463,7 +463,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
         blocksStillFalling = false;
         const board = generateBoard(lockedPieces);
         const piecesToCheck = lockedPieces
-            .filter(piece => piece && Array.isArray(piece.shape) && piece.shape.length > 0)
+            .filter((piece) => piece && Array.isArray(piece.shape) && piece.shape.length > 0)
             .sort((a, b) => {
                 const aHeight = Array.isArray(a.shape) ? a.shape.length : 0;
                 const bHeight = Array.isArray(b.shape) ? b.shape.length : 0;
@@ -530,7 +530,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
  * @returns {Object} Result with success, topOut flags, and animation data
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
-    const lineEntries = entries.filter(entry => entry.type === 'line');
+    const lineEntries = entries.filter((entry) => entry.type === 'line');
     if (lineEntries.length === 0) {
         return {
             success: true,
@@ -549,7 +549,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     const newHighestRow = highestOccupiedRow - lineEntries.length;
 
     console.log(
-        `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}`
+        `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}`,
     );
 
     if (newHighestRow < HIDDEN_ROWS) {
@@ -564,7 +564,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     }
 
     // Shift existing pieces up
-    lockedPieces.forEach(piece => {
+    lockedPieces.forEach((piece) => {
         piece.y -= lineEntries.length;
     });
 
@@ -589,7 +589,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
 
         console.log(`[insertGarbageEntries] Row ${index + 1}/${lineEntries.length}:`);
         console.log(
-            `[insertGarbageEntries]   holeMask bits: ${entry.holeMask.toString(2).padStart(COLS, '0')} (${entry.holeMask})`
+            `[insertGarbageEntries]   holeMask bits: ${entry.holeMask.toString(2).padStart(COLS, '0')} (${entry.holeMask})`,
         );
         console.log(`[insertGarbageEntries]   holes at columns: [${holeColumns.join(', ')}]`);
         console.log(`[insertGarbageEntries]   solid at columns: [${solidCols.join(', ')}]`);
@@ -625,13 +625,13 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         settledSteps = settleFloatingBlocksAfterGarbage(lockedPieces);
         if (settledSteps > 0) {
             console.log(
-                `[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`
+                `[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`,
             );
         }
     }
 
     const postBoard = generateBoard(lockedPieces);
-    const linesAfterInsertion = findCompleteLines(postBoard).filter(y => y >= HIDDEN_ROWS);
+    const linesAfterInsertion = findCompleteLines(postBoard).filter((y) => y >= HIDDEN_ROWS);
 
     console.log('[insertGarbageEntries] ========================================');
     return {
@@ -651,7 +651,7 @@ export class GarbageQueue {
     enqueue(entries) {
         if (!entries) return;
         if (Array.isArray(entries)) {
-            entries.forEach(entry => this.entries.push(cloneEntry(entry)));
+            entries.forEach((entry) => this.entries.push(cloneEntry(entry)));
             return;
         }
         this.entries.push(cloneEntry(entries));
@@ -703,13 +703,13 @@ export class GarbageQueue {
     }
 
     serialize() {
-        return this.entries.map(entry => cloneEntry(entry));
+        return this.entries.map((entry) => cloneEntry(entry));
     }
 
     static fromSerialized(payload) {
         const queue = new GarbageQueue();
         if (Array.isArray(payload)) {
-            payload.forEach(entry => queue.enqueue(entry));
+            payload.forEach((entry) => queue.enqueue(entry));
         }
         return queue;
     }

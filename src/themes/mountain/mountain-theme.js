@@ -50,7 +50,7 @@ export default class MountainTheme extends BaseTheme {
                 jaggedness: 0.8,
             },
         ];
-        mountainLayers.forEach(layer => {
+        mountainLayers.forEach((layer) => {
             if (layer.el && layer.el.children.length === 0) {
                 const canvas = document.createElement('canvas');
                 const C_WIDTH = 2048;
@@ -68,8 +68,7 @@ export default class MountainTheme extends BaseTheme {
                     const step = peakWidth / 20;
                     for (let i = 0; i < 20; i++) {
                         const sineX = (x / peakWidth) * Math.PI;
-                        const sineY =
-                            Math.sin(sineX) * (peakWidth / 3) * (0.5 + Math.sin(x * 0.01) * 0.5);
+                        const sineY = Math.sin(sineX) * (peakWidth / 3) * (0.5 + Math.sin(x * 0.01) * 0.5);
                         const noise = (Math.random() - 0.5) * layer.jaggedness * step;
                         ctx.lineTo(x, y - sineY + noise);
                         x += step;
@@ -108,8 +107,7 @@ export default class MountainTheme extends BaseTheme {
                 for (let j = 0; j < puffCount; j++) {
                     const progress = j / puffCount;
                     const puffX = startX + progress * cloudLength + (Math.random() - 0.5) * 50;
-                    const puffY =
-                        startY + Math.sin(progress * Math.PI) * 40 + (Math.random() - 0.5) * 30;
+                    const puffY = startY + Math.sin(progress * Math.PI) * 40 + (Math.random() - 0.5) * 30;
                     const maxRadius = Math.sin(progress * Math.PI) * 60 + 20;
                     const puffR = Math.random() * maxRadius;
 

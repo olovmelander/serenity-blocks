@@ -80,7 +80,6 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             super.create();
             this.attachGraphicsLayerAliases();
 
-
             console.log('[BoardScene] Creating scene...');
             this.drawGrid();
             console.log('[BoardScene] Scene created successfully');
@@ -94,7 +93,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             if (!clearedRows || clearedRows.length === 0) return;
 
             // Flash effect for cleared lines
-            clearedRows.forEach(row => {
+            clearedRows.forEach((row) => {
                 // Use (row - HIDDEN_ROWS) * BLOCK_SIZE for visible playfield
                 const y = (row - this.hiddenRows) * this.blockSize;
                 if (row >= this.hiddenRows) {
@@ -180,7 +179,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     color: '#fff',
                     stroke: '#000',
                     strokeThickness: 4,
-                }
+                },
             );
 
             text.setOrigin(0.5);
@@ -227,7 +226,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             const intensity = Math.max(1, this.lastImpactIntensity || clearedRows.length);
             const boardWidth = this.cols * this.blockSize;
 
-            clearedRows.forEach(row => {
+            clearedRows.forEach((row) => {
                 const zoneY = (row - this.hiddenRows) * this.blockSize;
 
                 // The emitZone source is relative to the emitter's coordinates.
@@ -295,7 +294,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.boardGraphics?.destroy();
             this.pieceGraphics?.destroy();
             this.effectsGraphics?.destroy();
-            this.activeParticleSystems?.forEach(system => system.destroy());
+            this.activeParticleSystems?.forEach((system) => system.destroy());
             this.activeParticleSystems?.clear();
             this.hudElements = null;
         }

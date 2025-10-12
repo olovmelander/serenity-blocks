@@ -56,7 +56,7 @@ export class GameModeUI {
         window.dispatchEvent(
             new CustomEvent('gameModeChanged', {
                 detail: { mode },
-            })
+            }),
         );
     }
 
