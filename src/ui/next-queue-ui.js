@@ -17,7 +17,8 @@ function drawMiniBlock(ctx, x, y, color) {
     ctx.fillRect(x + BLOCK_SIZE - 1, y, 1, BLOCK_SIZE);
 }
 
-function drawPiece(canvas, pieceKey) {
+export function drawPiece(canvas, pieceKey) {
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const shape = SHAPES[pieceKey];
     const color = COLORS[pieceKey];
