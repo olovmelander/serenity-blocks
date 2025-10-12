@@ -499,14 +499,14 @@ class SerenityBlocks {
             }
         });
 
-        sceneManager.launch('MultiplayerBoardScene1', {
+        sceneManager.run('MultiplayerBoardScene1', {
             playerId: 1,
             viewport: viewports[0],
             playerLabel: 'PLAYER 1',
             getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(1).getTotalLines() ?? 0,
         });
 
-        sceneManager.launch('MultiplayerBoardScene2', {
+        sceneManager.run('MultiplayerBoardScene2', {
             playerId: 2,
             viewport: viewports[1],
             playerLabel: 'PLAYER 2',
