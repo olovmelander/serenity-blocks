@@ -265,16 +265,25 @@ class SerenityBlocks {
         const calculatedBlockSize = 30;
         setBlockSize(calculatedBlockSize);
 
-        // Set canvas dimensions
-        this.canvas.width = COLS * BLOCK_SIZE;
-        this.canvas.height = ROWS * BLOCK_SIZE;
+        // Set canvas dimensions to match visible playfield
+        const boardWidth = COLS * BLOCK_SIZE;
+        const boardHeight = ROWS * BLOCK_SIZE;
+        this.canvas.width = boardWidth;
+        this.canvas.height = boardHeight;
+
+        // Ensure parent container matches canvas size for tight fit
+        const phaserContainer = document.getElementById('phaser-game-container');
+        if (phaserContainer) {
+            phaserContainer.style.width = boardWidth + 'px';
+            phaserContainer.style.height = boardHeight + 'px';
+        }
 
         // Set multiplayer canvas dimensions (same size as single player)
         if (this.p1Canvas && this.p2Canvas) {
-            this.p1Canvas.width = COLS * BLOCK_SIZE;
-            this.p1Canvas.height = ROWS * BLOCK_SIZE;
-            this.p2Canvas.width = COLS * BLOCK_SIZE;
-            this.p2Canvas.height = ROWS * BLOCK_SIZE;
+            this.p1Canvas.width = boardWidth;
+            this.p1Canvas.height = boardHeight;
+            this.p2Canvas.width = boardWidth;
+            this.p2Canvas.height = boardHeight;
 
             console.log(
                 `Multiplayer canvases: ${this.p1Canvas.width}x${this.p1Canvas.height}, block size: ${BLOCK_SIZE}px`
@@ -308,8 +317,8 @@ class SerenityBlocks {
         const MultiplayerBoardScene = createMultiplayerBoardScene(PhaserRef);
 
         const singleBoardWidth = COLS * BLOCK_SIZE;
-        // The canvas needs to be tall enough to include the hidden rows where pieces spawn
-        const singleBoardHeight = (ROWS + HIDDEN_ROWS) * BLOCK_SIZE;
+    // Use only visible playfield for Phaser world
+    const singleBoardHeight = ROWS * BLOCK_SIZE;
 
         this.singleBoardWidth = singleBoardWidth;
         this.phaserBaseWidth = singleBoardWidth;
@@ -344,7 +353,7 @@ class SerenityBlocks {
                     this.boardScene = game.scene.getScene('BoardScene');
                     game.scene.add('MultiplayerBoardScene1', MultiplayerBoardScene, false);
                     game.scene.add('MultiplayerBoardScene2', MultiplayerBoardScene, false);
-                    console.log('✅ Phaser game initialized with BoardScene');
+                    console.log('\u2705 Phaser game initialized with BoardScene');
                     console.log('Canvas dimensions:', game.canvas.width, 'x', game.canvas.height);
                     console.log('Expected height:', ROWS * BLOCK_SIZE);
                     console.log('ROWS:', ROWS, 'HIDDEN_ROWS:', HIDDEN_ROWS);
@@ -1143,8 +1152,8 @@ class SerenityBlocks {
      * Handle window resize
      */
     handleResize() {
-        const newBlockSize = this.calculateBlockSize();
-        setBlockSize(newBlockSize);
+    // Use fixed block size (30) as elsewhere
+    setBlockSize(30);
 
         this.canvas.width = COLS * BLOCK_SIZE;
         this.canvas.height = ROWS * BLOCK_SIZE;

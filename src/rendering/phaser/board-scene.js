@@ -80,14 +80,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             super.create();
             this.attachGraphicsLayerAliases();
 
+
             console.log('[BoardScene] Creating scene...');
-
-            // The camera is now configured in the base scene, so no need to call this here.
-            // this.applyDefaultViewport();
-
-            // Draw initial grid background
             this.drawGrid();
-
             console.log('[BoardScene] Scene created successfully');
         }
 
@@ -100,13 +95,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Flash effect for cleared lines
             clearedRows.forEach(row => {
-                // Convert world row to canvas Y
+                // Use (row - HIDDEN_ROWS) * BLOCK_SIZE for visible playfield
                 const y = (row - this.hiddenRows) * this.blockSize;
-
-                // Create a flashing rectangle
-                const flash = this.effectsGraphics;
-                flash.fillStyle(0xffffff, 0.6);
-                flash.fillRect(0, y, this.cols * this.blockSize, this.blockSize);
+                if (row >= this.hiddenRows) {
+                    const flash = this.effectsGraphics;
+                    flash.fillStyle(0xffffff, 0.6);
+                    flash.fillRect(0, y, this.cols * this.blockSize, this.blockSize);
+                }
             });
 
             this.spawnLineClearParticles(clearedRows);
@@ -133,9 +128,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
-                        // Convert world Y to canvas Y
-                        centerY +=
-                            (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        // Use (row - HIDDEN_ROWS) * BLOCK_SIZE for visible playfield
+                        centerY += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });

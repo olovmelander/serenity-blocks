@@ -193,27 +193,7 @@ export function createBaseBoardScene(
         drawGrid() {
             if (!this.boardGraphics) return;
             this.boardGraphics.clear();
-
-            const lineColor = 0x1a1a2e;
-            const lineAlpha = 0.3;
-            const lineWidth = 1;
-            this.boardGraphics.lineStyle(lineWidth, lineColor, lineAlpha);
-
-            const height = this.rows * this.blockSize;
-
-            for (let x = 0; x <= this.cols; x++) {
-                this.boardGraphics.beginPath();
-                this.boardGraphics.moveTo(x * this.blockSize, 0);
-                this.boardGraphics.lineTo(x * this.blockSize, height);
-                this.boardGraphics.strokePath();
-            }
-
-            for (let y = 0; y <= this.rows; y++) {
-                this.boardGraphics.beginPath();
-                this.boardGraphics.moveTo(0, y * this.blockSize);
-                this.boardGraphics.lineTo(this.cols * this.blockSize, y * this.blockSize);
-                this.boardGraphics.strokePath();
-            }
+            // No background fill, fully transparent
         }
 
         drawLockedPieces() {
@@ -247,9 +227,22 @@ export function createBaseBoardScene(
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
                     if (cell > 0) {
+                        const worldX = piece.x + x;
                         const worldY = ghostY + y;
+
                         if (worldY >= this.hiddenRows) {
-                            this.drawBlock(piece.x + x, worldY, piece.color, 0.2, true);
+                            // Define the min and max brightness for the pulse
+                            const minAlpha = 0.1;  // How dim the pulse gets
+                            const maxAlpha = 0.35; // How bright the pulse gets
+
+                            // Get the current pulse value (0 to 1) for this block's position
+                            const pulse = this._getPulseIntensity(worldX, worldY);
+
+                            // Map the pulse value to your desired alpha range
+                            const pulsatingAlpha = minAlpha + (maxAlpha - minAlpha) * pulse;
+
+                            // Draw the block with the new pulsating alpha
+                            this.drawBlock(worldX, worldY, '#FFFFFF', pulsatingAlpha, true);
                         }
                     }
                 });
@@ -274,7 +267,10 @@ export function createBaseBoardScene(
 
         drawBlock(x, y, color, alpha = 1.0, isGhost = false) {
             const px = x * this.blockSize;
-            const py = (y - this.hiddenRows) * this.blockSize;
+    
+            // Use (y - this.hiddenRows) * BLOCK_SIZE for visible playfield
+            const py = (y) * this.blockSize;
+
             const size = this.blockSize;
 
             let colorInt = 0x808080;
@@ -285,32 +281,31 @@ export function createBaseBoardScene(
                 }
             }
 
+            // --- Start of Ghost Piece Changes ---
             if (isGhost) {
-                this.pieceGraphics.lineStyle(2, colorInt, alpha);
-                this.pieceGraphics.beginPath();
-                this.pieceGraphics.strokeRect(px + 1, py + 1, size - 2, size - 2);
-                this.pieceGraphics.closePath();
+                // Change from an outline to a semi-transparent fill
+                this.pieceGraphics.fillStyle(colorInt, alpha);
+                this.pieceGraphics.fillRect(px, py, size, size);
                 return;
             }
-
+            
+            // 1. Draw the solid color fill for the block
             this.pieceGraphics.fillStyle(colorInt, alpha);
             this.pieceGraphics.fillRect(px, py, size, size);
 
-            const highlightColor = this.lightenColor(colorInt, 0.2);
-            const shadowColor = this.darkenColor(colorInt, 0.2);
-
-            this.pieceGraphics.fillStyle(highlightColor, alpha * 0.5);
-            this.pieceGraphics.fillRect(px, py, size, 2);
-            this.pieceGraphics.fillRect(px, py, 2, size);
-
-            this.pieceGraphics.fillStyle(shadowColor, alpha * 0.5);
-            this.pieceGraphics.fillRect(px, py + size - 2, size, 2);
-            this.pieceGraphics.fillRect(px + size - 2, py, 2, size);
-
-            this.pieceGraphics.lineStyle(1, 0x000000, alpha * 0.3);
+            // 2. Draw a thin, dark border around the block
+            this.pieceGraphics.lineStyle(1, 0x000000, 0.5); // 1px black border at 50% opacity
             this.pieceGraphics.beginPath();
             this.pieceGraphics.strokeRect(px, py, size, size);
             this.pieceGraphics.closePath();
+        }
+
+        _getPulseIntensity(gridX, gridY) {
+            const timestamp = this.scene.systems.time.now;
+            const PULSE_SPEED = 0.005; // You can make this faster or slower
+            const POSITION_PHASE_SHIFT = 0.45;
+            const phase = timestamp * PULSE_SPEED + (gridX + gridY) * POSITION_PHASE_SHIFT;
+            return 0.5 + 0.5 * Math.sin(phase); // Result is a value between 0.0 and 1.0
         }
 
         isValidPosition(checkX, checkY, shape) {
