@@ -155,7 +155,7 @@ export default class OceanTheme extends BaseTheme {
             },
         ];
 
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
             if (layer.el && layer.el.children.length === 0) {
                 const C_WIDTH = 250;
                 const canvas = document.createElement('canvas');
@@ -207,7 +207,7 @@ export default class OceanTheme extends BaseTheme {
                             x + (Math.random() - 0.5) * 50,
                             groundY - h * 0.7,
                             x + (Math.random() - 0.5) * 30,
-                            groundY - h
+                            groundY - h,
                         );
                         ctx.lineWidth = Math.random() * 3 + 1;
                         ctx.stroke();

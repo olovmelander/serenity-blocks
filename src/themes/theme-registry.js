@@ -247,10 +247,10 @@ export const THEME_REGISTRY = [
     },
 ];
 
-const themeMap = new Map(THEME_REGISTRY.map(entry => [entry.id, entry]));
+const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
 
 export function getThemeIds() {
-    return THEME_REGISTRY.map(entry => entry.id);
+    return THEME_REGISTRY.map((entry) => entry.id);
 }
 
 export function getThemeMeta(id) {

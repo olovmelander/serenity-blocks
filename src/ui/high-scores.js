@@ -32,7 +32,7 @@ export class HighScoreManager {
                 resolve();
             };
 
-            request.onupgradeneeded = event => {
+            request.onupgradeneeded = (event) => {
                 const db = event.target.result;
 
                 // High Scores Store - sorted by score descending
@@ -119,7 +119,7 @@ export class HighScoreManager {
             const request = index.openCursor(null, 'prev'); // Descending order
 
             const scores = [];
-            request.onsuccess = event => {
+            request.onsuccess = (event) => {
                 const cursor = event.target.result;
                 if (cursor && scores.length < limit) {
                     scores.push(cursor.value);
@@ -175,7 +175,7 @@ export class HighScoreManager {
             const request = index.openCursor(null, 'prev'); // Most recent first
 
             const history = [];
-            request.onsuccess = event => {
+            request.onsuccess = (event) => {
                 const cursor = event.target.result;
                 if (cursor && history.length < limit) {
                     history.push(cursor.value);
@@ -203,7 +203,7 @@ export class HighScoreManager {
             const request = index.openCursor(IDBKeyRange.lowerBound(score, true), 'prev');
 
             let rank = 1;
-            request.onsuccess = event => {
+            request.onsuccess = (event) => {
                 const cursor = event.target.result;
                 if (cursor) {
                     rank++;
@@ -244,7 +244,7 @@ export class HighScoreManager {
         const request = index.openCursor(null, 'prev');
 
         let count = 0;
-        request.onsuccess = event => {
+        request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (cursor) {
                 count++;
@@ -267,7 +267,7 @@ export class HighScoreManager {
         const request = index.openCursor(null, 'prev');
 
         let count = 0;
-        request.onsuccess = event => {
+        request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (cursor) {
                 count++;
@@ -294,8 +294,8 @@ export class HighScoreManager {
 
         // Track best score per level
         if (
-            !stats.bestScorePerLevel[gameRecord.level] ||
-            gameRecord.score > stats.bestScorePerLevel[gameRecord.level]
+            !stats.bestScorePerLevel[gameRecord.level]
+            || gameRecord.score > stats.bestScorePerLevel[gameRecord.level]
         ) {
             stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
         }

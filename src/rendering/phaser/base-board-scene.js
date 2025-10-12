@@ -1,4 +1,6 @@
-import { COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE } from '../../core/constants.js';
+import {
+    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
+} from '../../core/constants.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 
@@ -14,13 +16,13 @@ let cachedPhaserRef = null;
  * @returns {typeof Phaser.Scene}
  */
 export function createBaseBoardScene(
-    phaserLib = typeof window !== 'undefined' ? window.Phaser : null
+    phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
 ) {
     const PhaserRef = phaserLib;
 
     if (!PhaserRef?.Scene) {
         throw new Error(
-            '[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.'
+            '[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.',
         );
     }
 
@@ -38,9 +40,8 @@ export function createBaseBoardScene(
          * @param {number} [boardConfig.blockSize]
          */
         constructor(key, boardConfig = {}) {
-            const resolvedKey =
-                key ??
-                `BaseBoardScene-${PhaserRef.Utils?.String?.UUID ? PhaserRef.Utils.String.UUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
+            const resolvedKey = key
+                ?? `BaseBoardScene-${PhaserRef.Utils?.String?.UUID ? PhaserRef.Utils.String.UUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
             super(resolvedKey);
 
             this.boardConfig = {
@@ -125,7 +126,9 @@ export function createBaseBoardScene(
          * @returns {{width:number, height:number}}
          */
         getBoardDimensions() {
-            const { cols, rows, hiddenRows, blockSize } = this.boardConfig;
+            const {
+                cols, rows, hiddenRows, blockSize,
+            } = this.boardConfig;
             return {
                 width: cols * blockSize,
                 // Return the full height of the board, including the hidden area for spawning
@@ -199,7 +202,7 @@ export function createBaseBoardScene(
         drawLockedPieces() {
             if (!this.gameState?.lockedPieces) return;
 
-            this.gameState.lockedPieces.forEach(piece => {
+            this.gameState.lockedPieces.forEach((piece) => {
                 const pieceColor = piece.color || '#808080';
 
                 piece.shape.forEach((row, y) => {
@@ -232,7 +235,7 @@ export function createBaseBoardScene(
 
                         if (worldY >= this.hiddenRows) {
                             // Define the min and max brightness for the pulse
-                            const minAlpha = 0.1;  // How dim the pulse gets
+                            const minAlpha = 0.1; // How dim the pulse gets
                             const maxAlpha = 0.35; // How bright the pulse gets
 
                             // Get the current pulse value (0 to 1) for this block's position
@@ -267,7 +270,7 @@ export function createBaseBoardScene(
 
         drawBlock(x, y, color, alpha = 1.0, isGhost = false) {
             const px = x * this.blockSize;
-    
+
             // Use (y - this.hiddenRows) * BLOCK_SIZE for visible playfield
             const py = (y) * this.blockSize;
 
@@ -288,7 +291,7 @@ export function createBaseBoardScene(
                 this.pieceGraphics.fillRect(px, py, size, size);
                 return;
             }
-            
+
             // 1. Draw the solid color fill for the block
             this.pieceGraphics.fillStyle(colorInt, alpha);
             this.pieceGraphics.fillRect(px, py, size, size);

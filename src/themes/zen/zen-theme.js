@@ -57,7 +57,7 @@ export default class ZenTheme extends BaseTheme {
                 { x: 70, y: 55, count: 2 },
             ];
 
-            stoneGroups.forEach(group => {
+            stoneGroups.forEach((group) => {
                 for (let i = 0; i < group.count; i++) {
                     const stone = document.createElement('div');
                     stone.className = 'zen-stone';
@@ -146,7 +146,7 @@ export default class ZenTheme extends BaseTheme {
                 { x: 48, y: 45 },
                 { x: 72, y: 58 },
             ];
-            smokePositions.forEach(pos => {
+            smokePositions.forEach((pos) => {
                 const createSmoke = () => {
                     if (!this.isActive) return;
                     const smoke = document.createElement('div');
@@ -159,7 +159,7 @@ export default class ZenTheme extends BaseTheme {
                         () => {
                             smoke.remove();
                         },
-                        { once: true }
+                        { once: true },
                     );
                     petalsContainer.appendChild(smoke);
                     const timeout = setTimeout(createSmoke, this.random(3000, 6000));
@@ -183,7 +183,7 @@ export default class ZenTheme extends BaseTheme {
                     () => {
                         ripple.remove();
                     },
-                    { once: true }
+                    { once: true },
                 );
                 rippleContainer.appendChild(ripple);
                 const timeout = setTimeout(createRipple, Math.random() * 8000 + 5000);
@@ -196,8 +196,8 @@ export default class ZenTheme extends BaseTheme {
 
     stop() {
         // Clear timeouts
-        this.rippleTimeouts.forEach(timeout => clearTimeout(timeout));
-        this.smokeTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.rippleTimeouts.forEach((timeout) => clearTimeout(timeout));
+        this.smokeTimeouts.forEach((timeout) => clearTimeout(timeout));
         this.rippleTimeouts = [];
         this.smokeTimeouts = [];
         super.stop();

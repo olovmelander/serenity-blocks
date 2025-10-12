@@ -28,7 +28,7 @@ export default class SwedishForestTheme extends BaseTheme {
             },
         ];
 
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
             if (layer.el && layer.el.children.length === 0) {
                 const T_WIDTH = 100;
                 const canvas = document.createElement('canvas');
@@ -53,8 +53,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
                     for (let j = 0; j < numLayers; j++) {
                         const cY = y - j * layerHeight;
-                        const cW =
-                            w * ((numLayers - j) / numLayers) * (1 + (Math.random() - 0.5) * 0.2);
+                        const cW = w * ((numLayers - j) / numLayers) * (1 + (Math.random() - 0.5) * 0.2);
                         const sway = (Math.random() - 0.5) * 10;
 
                         ctx.beginPath();

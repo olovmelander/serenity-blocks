@@ -66,7 +66,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 },
             ];
 
-            crystalLayers.forEach(layer => {
+            crystalLayers.forEach((layer) => {
                 const C_WIDTH = 2048;
                 const C_HEIGHT = window.innerHeight;
 
@@ -145,7 +145,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                             floorX,
                             canvas.height,
                             floorX,
-                            canvas.height - floorHeight
+                            canvas.height - floorHeight,
                         );
                         floorGradient.addColorStop(0, 'rgba(200, 220, 255, 0.05)');
                         floorGradient.addColorStop(0.5, 'rgba(180, 200, 255, 0.1)');
@@ -202,17 +202,15 @@ export default class CrystalCaveTheme extends BaseTheme {
                 const position = Math.random();
                 if (position < 0.4) {
                     // Left or right walls
-                    patch.style.left =
-                        Math.random() > 0.5
-                            ? `${Math.random() * 15}%`
-                            : `${85 + Math.random() * 15}%`;
+                    patch.style.left = Math.random() > 0.5
+                        ? `${Math.random() * 15}%`
+                        : `${85 + Math.random() * 15}%`;
                     patch.style.top = `${Math.random() * 100}%`;
                 } else {
                     // Top or bottom
-                    patch.style.top =
-                        Math.random() > 0.5
-                            ? `${Math.random() * 20}%`
-                            : `${80 + Math.random() * 20}%`;
+                    patch.style.top = Math.random() > 0.5
+                        ? `${Math.random() * 20}%`
+                        : `${80 + Math.random() * 20}%`;
                     patch.style.left = `${Math.random() * 100}%`;
                 }
 

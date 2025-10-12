@@ -42,7 +42,7 @@ function hexToRgb(hex) {
     const g = parseInt(normalized.slice(3, 5), 16);
     const b = parseInt(normalized.slice(5, 7), 16);
 
-    if ([r, g, b].some(component => Number.isNaN(component))) {
+    if ([r, g, b].some((component) => Number.isNaN(component))) {
         return null;
     }
 
@@ -50,7 +50,7 @@ function hexToRgb(hex) {
 }
 
 function rgbToHex(r, g, b) {
-    const toHex = value => {
+    const toHex = (value) => {
         const clamped = clamp(Math.round(value), 0, 255);
         const hex = clamped.toString(16).padStart(2, '0');
         return hex;
@@ -74,17 +74,17 @@ function rgbToHsl(r, g, b) {
         s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
 
         switch (max) {
-            case rNorm:
-                h = (gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0);
-                break;
-            case gNorm:
-                h = (bNorm - rNorm) / delta + 2;
-                break;
-            case bNorm:
-                h = (rNorm - gNorm) / delta + 4;
-                break;
-            default:
-                break;
+        case rNorm:
+            h = (gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0);
+            break;
+        case gNorm:
+            h = (bNorm - rNorm) / delta + 2;
+            break;
+        case bNorm:
+            h = (rNorm - gNorm) / delta + 4;
+            break;
+        default:
+            break;
         }
 
         h /= 6;
@@ -225,7 +225,7 @@ export class SettingsManager {
                 window.dispatchEvent(
                     new CustomEvent('settingsChanged', {
                         detail: changes,
-                    })
+                    }),
                 );
             }
         }
@@ -341,22 +341,21 @@ export function updateControlsDisplay(settings) {
     ];
 
     if (settings.controlScheme === 'Keyboard') {
-        document.querySelectorAll('.key-input').forEach(el => {
+        document.querySelectorAll('.key-input').forEach((el) => {
             if (el.parentElement) el.parentElement.style.display = 'contents';
         });
 
-        actions.forEach(action => {
+        actions.forEach((action) => {
             if (settings.keyBindings[action]) {
-                const title = action.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+                const title = action.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
                 list.innerHTML += `<div>${title}: ${settings.keyBindings[action]}</div>`;
             }
         });
     } else {
-        document.querySelectorAll('.key-input').forEach(el => {
+        document.querySelectorAll('.key-input').forEach((el) => {
             if (el.parentElement) el.parentElement.style.display = 'none';
         });
-        list.innerHTML =
-            '<div>Swipe to move</div><div>Tap to rotate</div><div>Flick down to drop</div>';
+        list.innerHTML = '<div>Swipe to move</div><div>Tap to rotate</div><div>Flick down to drop</div>';
     }
 }
 
@@ -398,13 +397,13 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
  * Sets up settings tab switching
  */
 export function setupSettingsTabs() {
-    document.querySelectorAll('.settings-tab').forEach(tab => {
+    document.querySelectorAll('.settings-tab').forEach((tab) => {
         tab.addEventListener('click', () => {
             const targetTab = tab.getAttribute('data-tab');
-            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
             document
                 .querySelectorAll('.settings-tab-content')
-                .forEach(c => c.classList.remove('active'));
+                .forEach((c) => c.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById(`settings-${targetTab}`).classList.add('active');
         });
@@ -427,7 +426,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (gameModeSelect) {
         gameModeSelect.value = settings.gameMode || 'single';
 
-        gameModeSelect.addEventListener('change', e => {
+        gameModeSelect.addEventListener('change', (e) => {
             const mode = e.target.value;
             settingsManager.update({ gameMode: mode });
 
@@ -446,7 +445,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         musicVolumeSlider.value = settings.musicVolume * 100;
         musicVolumeValue.textContent = Math.round(settings.musicVolume * 100);
 
-        musicVolumeSlider.addEventListener('input', e => {
+        musicVolumeSlider.addEventListener('input', (e) => {
             const volume = parseInt(e.target.value) / 100;
             settingsManager.update({ musicVolume: volume });
             if (callbacks.onMusicVolumeChange) {
@@ -464,7 +463,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         sfxVolumeSlider.value = settings.sfxVolume * 100;
         sfxVolumeValue.textContent = Math.round(settings.sfxVolume * 100);
 
-        sfxVolumeSlider.addEventListener('input', e => {
+        sfxVolumeSlider.addEventListener('input', (e) => {
             const volume = parseInt(e.target.value) / 100;
             settingsManager.update({ sfxVolume: volume });
             if (callbacks.onSfxVolumeChange) {
@@ -482,7 +481,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         randomThemeIntervalSlider.value = settings.randomThemeInterval;
         randomThemeIntervalValue.textContent = settings.randomThemeInterval;
 
-        randomThemeIntervalSlider.addEventListener('input', e => {
+        randomThemeIntervalSlider.addEventListener('input', (e) => {
             const interval = parseInt(e.target.value);
             settingsManager.update({ randomThemeInterval: interval });
             randomThemeIntervalValue.textContent = e.target.value;
@@ -495,7 +494,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (bgModeSelect) {
         bgModeSelect.value = settings.backgroundMode;
 
-        const handleModeChange = mode => {
+        const handleModeChange = (mode) => {
             if (mode === 'Specific') {
                 setThemeSelectorVisibility(true);
                 setRandomIntervalVisibility(false);
@@ -511,7 +510,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
         handleModeChange(settings.backgroundMode);
 
-        bgModeSelect.addEventListener('change', e => {
+        bgModeSelect.addEventListener('change', (e) => {
             const mode = e.target.value;
             settingsManager.update({ backgroundMode: mode });
 
@@ -531,18 +530,17 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         import('../core/constants.js').then(({ THEMES }) => {
             // Populate dropdown with available themes
             bgThemeSelect.innerHTML = THEMES.map(
-                theme =>
-                    `<option value="${theme}">${theme
-                        .split('-')
-                        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-                        .join(' ')}</option>`
+                (theme) => `<option value="${theme}">${theme
+                    .split('-')
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(' ')}</option>`,
             ).join('');
 
             // Set current value
             bgThemeSelect.value = settings.backgroundTheme || 'forest';
 
             // Handle theme changes
-            bgThemeSelect.addEventListener('change', e => {
+            bgThemeSelect.addEventListener('change', (e) => {
                 const theme = e.target.value;
                 settingsManager.update({ backgroundTheme: theme });
 
@@ -582,8 +580,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     const updateSliderBackgrounds = () => {
         if (rippleHueSlider) {
-            rippleHueSlider.style.backgroundImage =
-                'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)';
+            rippleHueSlider.style.backgroundImage = 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)';
         }
         if (rippleSaturationSlider) {
             const desaturated = hslToHex(rippleColorState.h, 0, rippleColorState.l);
@@ -631,7 +628,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     const setRippleStateFromHex = (
         hex,
-        { persist = false, updateSliders = true, save = persist } = {}
+        { persist = false, updateSliders = true, save = persist } = {},
     ) => {
         const normalized = normalizeHexColor(hex) || DEFAULT_RIPPLE_COLOR;
         const { h, s, l } = hexToHsl(normalized);
@@ -692,10 +689,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     const openRipplePanel = () => {
         if (
-            !ripplePanel ||
-            !rippleColorTrigger ||
-            isRipplePanelOpen ||
-            rippleColorTrigger.disabled
+            !ripplePanel
+            || !rippleColorTrigger
+            || isRipplePanelOpen
+            || rippleColorTrigger.disabled
         ) {
             return;
         }
@@ -710,20 +707,20 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         rippleHueSlider?.focus();
     };
 
-    const handleDocumentMouseDown = event => {
+    const handleDocumentMouseDown = (event) => {
         if (!isRipplePanelOpen) return;
         if (!ripplePanel?.contains(event.target) && !rippleColorTrigger?.contains(event.target)) {
             closeRipplePanel();
         }
     };
 
-    const handleKeydown = event => {
+    const handleKeydown = (event) => {
         if (event.key === 'Escape') {
             closeRipplePanel();
         }
     };
 
-    const setRippleControlsEnabled = enabled => {
+    const setRippleControlsEnabled = (enabled) => {
         if (rippleColorInput) {
             rippleColorInput.disabled = !enabled;
         }
@@ -747,7 +744,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         pieceLockRippleSelect.value = settings.pieceLockRipple ? 'true' : 'false';
         setRippleControlsEnabled(settings.pieceLockRipple);
 
-        pieceLockRippleSelect.addEventListener('change', e => {
+        pieceLockRippleSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ pieceLockRipple: enabled });
             setRippleControlsEnabled(enabled);
@@ -785,10 +782,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     if (rippleColorInput) {
         rippleColorInput.value = rippleColorState.hex;
-        rippleColorInput.addEventListener('input', e => {
+        rippleColorInput.addEventListener('input', (e) => {
             setRippleStateFromHex(e.target.value, { persist: true, updateSliders: true });
         });
-        rippleColorInput.addEventListener('change', e => {
+        rippleColorInput.addEventListener('change', (e) => {
             setRippleStateFromHex(e.target.value, { persist: true, updateSliders: true });
         });
     }
@@ -815,7 +812,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (comboPopupSelect) {
         comboPopupSelect.value = settings.comboPopupEffect ? 'true' : 'false';
 
-        comboPopupSelect.addEventListener('change', e => {
+        comboPopupSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ comboPopupEffect: enabled });
             settingsManager.save();
@@ -827,7 +824,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (lineClearEffectsSelect) {
         lineClearEffectsSelect.value = settings.lineClearEffects ? 'true' : 'false';
 
-        lineClearEffectsSelect.addEventListener('change', e => {
+        lineClearEffectsSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ lineClearEffects: enabled });
             settingsManager.save();
@@ -839,7 +836,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (musicTrackSelect) {
         musicTrackSelect.value = settings.musicTrack || 'Ambient';
 
-        musicTrackSelect.addEventListener('change', e => {
+        musicTrackSelect.addEventListener('change', (e) => {
             const track = e.target.value;
             settingsManager.update({ musicTrack: track });
 
@@ -856,7 +853,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (sfxSetSelect) {
         sfxSetSelect.value = settings.soundSet || 'Zen';
 
-        sfxSetSelect.addEventListener('change', e => {
+        sfxSetSelect.addEventListener('change', (e) => {
             const soundSet = e.target.value;
             settingsManager.update({ soundSet });
 
@@ -873,7 +870,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (themeLinkedSelect) {
         themeLinkedSelect.value = settings.themeLinkedMode ? 'true' : 'false';
 
-        themeLinkedSelect.addEventListener('change', e => {
+        themeLinkedSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ themeLinkedMode: enabled });
 
@@ -890,7 +887,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     if (autoThemeChangeSelect) {
         autoThemeChangeSelect.value = settings.autoThemeChange ? 'true' : 'false';
 
-        autoThemeChangeSelect.addEventListener('change', e => {
+        autoThemeChangeSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ autoThemeChange: enabled });
 
@@ -904,7 +901,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Initialize key bindings listeners
     const keyInputs = document.querySelectorAll('.key-input');
-    keyInputs.forEach(input => {
+    keyInputs.forEach((input) => {
         const action = input.id.substring(4);
         if (settings.keyBindings[action]) {
             input.textContent = settings.keyBindings[action];
@@ -915,7 +912,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             input.textContent = 'Press a key...';
 
             // Add temporary keydown listener
-            const keydownHandler = event => {
+            const keydownHandler = (event) => {
                 if (input.classList.contains('listening')) {
                     handleKeybinding(event, input, settingsManager, () => {
                         updateControlsDisplay(settingsManager.get());

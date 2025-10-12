@@ -230,8 +230,7 @@ class ParticleSystem {
         this.positions[i * 2 + 1] = Math.random() * height;
 
         this.sizes[i] = Math.random() * (config.maxSize - config.minSize) + config.minSize;
-        this.lifetimes[i] =
-            config.lifetime === Infinity ? Infinity : Math.random() * config.lifetime;
+        this.lifetimes[i] = config.lifetime === Infinity ? Infinity : Math.random() * config.lifetime;
 
         // Mark size buffer dirty since we modified a particle's size
         this.sizeBufferDirty = true;
@@ -249,8 +248,7 @@ class ParticleSystem {
             this.blinkInfo[blinkOffset + 3] = Math.random() * 500 + 500; // Glow: 0.5-1.0s
             this.blinkInfo[blinkOffset + 4] = Math.random() * 300 + 500; // Fade-out: 0.5-0.8s
             this.blinkInfo[blinkOffset + 5] = Math.random() * 2000 + 1000; // Dark: 1-3s
-            this.blinkInfo[blinkOffset + 1] =
-                this.blinkInfo[blinkOffset + 2 + this.blinkInfo[blinkOffset]]; // Set initial timer
+            this.blinkInfo[blinkOffset + 1] = this.blinkInfo[blinkOffset + 2 + this.blinkInfo[blinkOffset]]; // Set initial timer
             this.alphas[i] = 0; // Start dark
 
             this.fireflyStates[i] = 0; // Start in wandering state
@@ -304,8 +302,7 @@ class ParticleSystem {
             const fromLeft = Math.random() > 0.5;
             this.positions[i * 2] = fromLeft ? -Math.random() * 50 : width + Math.random() * 50;
             this.positions[i * 2 + 1] = Math.random() * height;
-            this.velocities[i * 2] =
-                (fromLeft ? 1 : -1) * (Math.random() * 0.5 + 0.5) * config.speed;
+            this.velocities[i * 2] = (fromLeft ? 1 : -1) * (Math.random() * 0.5 + 0.5) * config.speed;
             this.velocities[i * 2 + 1] = (Math.random() - 0.5) * 0.1; // Slow vertical drift
             this.alphas[i] = Math.random() * (config.maxAlpha - config.minAlpha) + config.minAlpha;
             this.driftFactors[i] = Math.random() * 2 - 1; // -1 to 1
@@ -432,27 +429,25 @@ class ParticleSystem {
                 this.blinkInfo[blinkOffset + 1] = timer;
 
                 switch (blinkState) {
-                    case 0: // FADE_IN
-                        this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
-                        break;
-                    case 1: // GLOW
-                        this.alphas[i] = maxAlpha;
-                        break;
-                    case 2: // FADE_OUT
-                        this.alphas[i] = maxAlpha * (timer / fadeOutTime);
-                        break;
-                    case 3: // DARK
-                        this.alphas[i] = 0;
-                        break;
+                case 0: // FADE_IN
+                    this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
+                    break;
+                case 1: // GLOW
+                    this.alphas[i] = maxAlpha;
+                    break;
+                case 2: // FADE_OUT
+                    this.alphas[i] = maxAlpha * (timer / fadeOutTime);
+                    break;
+                case 3: // DARK
+                    this.alphas[i] = 0;
+                    break;
                 }
             } else if (this.behavior === 'ambient') {
                 this.positions[i * 2] += this.velocities[i * 2];
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
 
-                if (this.positions[i * 2] < 0 || this.positions[i * 2] > width)
-                    this.velocities[i * 2] *= -1;
-                if (this.positions[i * 2 + 1] < 0 || this.positions[i * 2 + 1] > height)
-                    this.velocities[i * 2 + 1] *= -1;
+                if (this.positions[i * 2] < 0 || this.positions[i * 2] > width) this.velocities[i * 2] *= -1;
+                if (this.positions[i * 2 + 1] < 0 || this.positions[i * 2 + 1] > height) this.velocities[i * 2 + 1] *= -1;
             } else if (this.behavior === 'petal') {
                 // Wind Gust Logic
                 const now = Date.now();
@@ -462,7 +457,7 @@ class ParticleSystem {
                         () => {
                             this.wind.x = 0.1;
                         },
-                        Math.random() * 800 + 500
+                        Math.random() * 800 + 500,
                     ); // Gust duration
                     this.lastWindGust = now;
                     this.nextWindGustTime = Math.random() * 4000 + 8000;
@@ -476,14 +471,14 @@ class ParticleSystem {
                 // More complex sway using swayFactors
                 const swayFrequency = this.swayFactors[i * 2];
                 const swayAmplitude = this.swayFactors[i * 2 + 1];
-                this.positions[i * 2] +=
-                    Math.sin(this.positions[i * 2 + 1] / (50 / swayFrequency)) * swayAmplitude;
+                this.positions[i * 2]
+                    += Math.sin(this.positions[i * 2 + 1] / (50 / swayFrequency)) * swayAmplitude;
 
                 // Reset when it goes off screen (bottom or sides)
                 if (
-                    this.positions[i * 2 + 1] > height + 20 ||
-                    this.positions[i * 2] > width + 20 ||
-                    this.positions[i * 2] < -20
+                    this.positions[i * 2 + 1] > height + 20
+                    || this.positions[i * 2] > width + 20
+                    || this.positions[i * 2] < -20
                 ) {
                     this.spawnParticle(i);
                 }
@@ -513,12 +508,12 @@ class ParticleSystem {
             } else if (this.behavior === 'horizontal-drift') {
                 this.positions[i * 2] += this.velocities[i * 2];
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
-                this.positions[i * 2 + 1] +=
-                    Math.sin(this.positions[i * 2] / 100) * this.driftFactors[i] * 0.2;
+                this.positions[i * 2 + 1]
+                    += Math.sin(this.positions[i * 2] / 100) * this.driftFactors[i] * 0.2;
 
                 if (
-                    (this.velocities[i * 2] > 0 && this.positions[i * 2] > width + 20) ||
-                    (this.velocities[i * 2] < 0 && this.positions[i * 2] < -20)
+                    (this.velocities[i * 2] > 0 && this.positions[i * 2] > width + 20)
+                    || (this.velocities[i * 2] < 0 && this.positions[i * 2] < -20)
                 ) {
                     this.spawnParticle(i);
                 }
@@ -559,9 +554,8 @@ class ParticleSystem {
                 } else {
                     this.alphas[i] = (1 - (progress - 0.2) / 0.8) * this.themeConfig.maxAlpha;
                 }
-                this.sizes[i] =
-                    this.themeConfig.minSize +
-                    progress * (this.themeConfig.maxSize - this.themeConfig.minSize);
+                this.sizes[i] = this.themeConfig.minSize
+                    + progress * (this.themeConfig.maxSize - this.themeConfig.minSize);
                 this.sizeBufferDirty = true; // Size is dynamically changing
 
                 if (this.lifetimes[i] <= 0) {
@@ -577,10 +571,10 @@ class ParticleSystem {
                 this.positions[i * 2 + 1] += this.velocities[i * 2 + 1];
 
                 if (
-                    this.positions[i * 2] < 0 ||
-                    this.positions[i * 2] > width ||
-                    this.positions[i * 2 + 1] < 0 ||
-                    this.positions[i * 2 + 1] > height
+                    this.positions[i * 2] < 0
+                    || this.positions[i * 2] > width
+                    || this.positions[i * 2 + 1] < 0
+                    || this.positions[i * 2 + 1] > height
                 ) {
                     this.spawnParticle(i);
                 }
@@ -633,14 +627,13 @@ export class WebGLRenderer {
     constructor(canvas) {
         console.log('[WebGLRenderer] Constructor - canvas element:', canvas);
         this.canvas = canvas;
-        this.gl =
-            this.canvas.getContext('webgl', {
-                alpha: true,
-                depth: true,
-                antialias: true,
-                premultipliedAlpha: false,
-            }) ||
-            this.canvas.getContext('experimental-webgl', {
+        this.gl = this.canvas.getContext('webgl', {
+            alpha: true,
+            depth: true,
+            antialias: true,
+            premultipliedAlpha: false,
+        })
+            || this.canvas.getContext('experimental-webgl', {
                 alpha: true,
                 depth: true,
                 antialias: true,
@@ -691,7 +684,7 @@ export class WebGLRenderer {
             '[WebGLRenderer] Canvas resized to:',
             this.canvas.width,
             'x',
-            this.canvas.height
+            this.canvas.height,
         );
     }
 
@@ -713,7 +706,7 @@ export class WebGLRenderer {
 
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
             console.error(
-                `Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`
+                `Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`,
             );
             return null;
         }
@@ -728,7 +721,7 @@ export class WebGLRenderer {
 
         if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
             console.error(
-                `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`
+                `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`,
             );
             gl.deleteShader(shader);
             return null;
@@ -743,7 +736,7 @@ export class WebGLRenderer {
         }
         if (this.useExternalRenderLoop) {
             console.log(
-                '[WebGLRenderer] External render loop enabled; skipping internal RAF start'
+                '[WebGLRenderer] External render loop enabled; skipping internal RAF start',
             );
             return;
         }
@@ -766,8 +759,7 @@ export class WebGLRenderer {
         const { gl } = this;
 
         if (this.qualityConfig?.renderFrameSkip > 0) {
-            this._frameSkipCounter =
-                (this._frameSkipCounter + 1) % (this.qualityConfig.renderFrameSkip + 1);
+            this._frameSkipCounter = (this._frameSkipCounter + 1) % (this.qualityConfig.renderFrameSkip + 1);
             if (this._frameSkipCounter !== 0) {
                 return;
             }
@@ -779,7 +771,7 @@ export class WebGLRenderer {
         if (this._renderCount === 1 || this._renderCount % 60 === 0) {
             console.log(
                 `[WebGLRenderer] render() called (frame ${this._renderCount}), particles:`,
-                this.particleSystems.length
+                this.particleSystems.length,
             );
         }
 
@@ -793,7 +785,7 @@ export class WebGLRenderer {
         gl.useProgram(this.textureProgram);
         gl.uniform1i(this.textureProgram.uniforms.u_texture, 0);
 
-        this.texturedQuads.forEach(quad => {
+        this.texturedQuads.forEach((quad) => {
             gl.activeTexture(gl.TEXTURE0);
             quad.bindBuffers(this.textureProgram);
             quad.draw();
@@ -804,11 +796,11 @@ export class WebGLRenderer {
         gl.uniform2f(this.particleProgram.uniforms.u_resolution, gl.canvas.width, gl.canvas.height);
 
         if (this.qualityConfig?.particles !== false) {
-            this.particleSystems.forEach(ps => {
+            this.particleSystems.forEach((ps) => {
                 gl.uniform1f(this.particleProgram.uniforms.u_zIndex, ps.zIndex);
                 gl.uniform3fv(
                     this.particleProgram.uniforms.u_color,
-                    ps.themeConfig.color || [1.0, 1.0, 1.0]
+                    ps.themeConfig.color || [1.0, 1.0, 1.0],
                 );
                 ps.update();
                 ps.bindBuffers(this.particleProgram);
@@ -846,7 +838,7 @@ export class WebGLRenderer {
         this.particleSystems = [];
         this.stop();
 
-        const setupParticles = islandData => {
+        const setupParticles = (islandData) => {
             if (themeName === 'floating-islands') {
                 const upwardWaterfallConfig = {
                     behavior: 'upward-waterfall',
@@ -1276,7 +1268,7 @@ export class WebGLRenderer {
                 },
             ];
 
-            petalLayers.forEach(config => {
+            petalLayers.forEach((config) => {
                 this.particleSystems.push(new ParticleSystem(this.gl, config.count, config));
             });
 

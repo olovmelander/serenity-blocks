@@ -51,7 +51,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 },
             ];
 
-            peakLayers.forEach(layer => {
+            peakLayers.forEach((layer) => {
                 const C_WIDTH = 2048;
                 const C_HEIGHT = window.innerHeight > 1080 ? 1080 : window.innerHeight; // Cap height for performance
 

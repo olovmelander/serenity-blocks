@@ -3,7 +3,9 @@
  * Handles grid cache generation, block drawing, and canvas styling
  */
 
-import { COLS, ROWS, BLOCK_SIZE, HIDDEN_ROWS } from '../core/constants.js';
+import {
+    COLS, ROWS, BLOCK_SIZE, HIDDEN_ROWS,
+} from '../core/constants.js';
 
 /**
  * Offscreen canvas for cached grid (performance optimization)
@@ -44,7 +46,7 @@ function parseColorToRgb(color) {
         if (value.length === 3) {
             value = value
                 .split('')
-                .map(char => char + char)
+                .map((char) => char + char)
                 .join('');
         }
         if (value.length !== 6) {
@@ -55,7 +57,7 @@ function parseColorToRgb(color) {
         const g = parseInt(value.substring(2, 4), 16);
         const b = parseInt(value.substring(4, 6), 16);
 
-        if ([r, g, b].some(component => Number.isNaN(component))) {
+        if ([r, g, b].some((component) => Number.isNaN(component))) {
             return null;
         }
 
@@ -169,12 +171,10 @@ export function updateCanvasStyle(canvas, level) {
         canvas.style.boxShadow = '0 0 30px rgba(239, 68, 68, 0.6), 0 0 60px rgba(239, 68, 68, 0.4)';
     } else if (level >= 5) {
         canvas.style.borderColor = '#fbbf24';
-        canvas.style.boxShadow =
-            '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.4)';
+        canvas.style.boxShadow = '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.4)';
     } else {
         canvas.style.borderColor = '#8b5cf6';
-        canvas.style.boxShadow =
-            '0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3)';
+        canvas.style.boxShadow = '0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3)';
     }
     lastRenderedLevel = level;
 }
@@ -212,7 +212,7 @@ export function drawBlock(
     pieceX = 0,
     pieceY = 0,
     blockX = 0,
-    blockY = 0
+    blockY = 0,
 ) {
     const size = BLOCK_SIZE;
     const pixelX = x * size;
