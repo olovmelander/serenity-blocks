@@ -259,7 +259,8 @@ export default class OceanTheme extends BaseTheme {
         // Listen for line clear events
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             console.log('[Ocean] LINE_CLEAR event received:', data, 'isActive:', this.isActive);
-            if (this.isActive) {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onLineClear(data.lineCount);
             }
         });
@@ -267,7 +268,8 @@ export default class OceanTheme extends BaseTheme {
         // Listen for combo events
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             console.log('[Ocean] COMBO event received:', data, 'isActive:', this.isActive);
-            if (this.isActive) {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onCombo(data.comboCount);
             }
         });
@@ -275,7 +277,8 @@ export default class OceanTheme extends BaseTheme {
         // Listen for piece lock events
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
             console.log('[Ocean] PIECE_LOCK event received, isActive:', this.isActive);
-            if (this.isActive) {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onPieceLock(data.piece);
             }
         });

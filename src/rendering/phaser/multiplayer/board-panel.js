@@ -224,8 +224,8 @@ export function createMultiplayerBoardScene(
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
-                        centerY
-                            += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        // Use world coordinates (same as blocks are drawn)
+                        centerY += (piece.y + y) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });

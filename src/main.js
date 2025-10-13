@@ -489,25 +489,27 @@ class SerenityBlocks {
         const width = this.singleBoardWidth;
         const height = this.phaserBaseHeight;
         const gap = this.multiplayerBoardGap;
+        const borderWidth = 4; // Border width from CSS
         
         // Viewports define where on the canvas each scene renders
-        // Keep them at full size - the SVG clip-path handles the border inset
+        // The borders are overlays on top of the content, so we need to position
+        // the viewports to account for the border width to prevent clipping
         const viewports = [
             {
-                x: 0,
+                x: borderWidth, // Start after left border
                 y: 0,
-                width,
+                width: width - (borderWidth * 2), // Account for both left and right borders
                 height,
             },
             {
-                x: width + gap,
+                x: width + gap + borderWidth, // Start after left border for second player
                 y: 0,
-                width,
+                width: width - (borderWidth * 2), // Account for both left and right borders
                 height,
             },
         ];
         console.log('[Multiplayer] Calculated viewports:', viewports);
-        console.log('[Multiplayer] Board width:', width, 'height:', height, 'gap:', gap);
+        console.log('[Multiplayer] Board width:', width, 'height:', height, 'gap:', gap, 'border width:', borderWidth);
         return viewports;
     }
 
@@ -1275,6 +1277,9 @@ class SerenityBlocks {
      */
     handleSettingsChange(changes) {
         const settings = this.settingsManager.get();
+        
+        // Update global settings reference
+        window.settings = settings;
 
         // Handle theme mode changes
         if (changes.backgroundMode || changes.backgroundTheme) {

@@ -678,49 +678,6 @@
                             </select>
                         </div>
                         <div class="setting">
-                            <label for="piece-lock-ripple-color">Ripple Color:</label>
-                            <div class="color-control">
-                                <div class="color-picker-wrapper">
-                                    <button type="button" id="piece-lock-ripple-trigger" class="color-picker-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="piece-lock-ripple-panel">
-                                        <span class="color-preview" id="piece-lock-ripple-preview"></span>
-                                        <span class="color-picker-text">Choose</span>
-                                    </button>
-                                    <input type="color" id="piece-lock-ripple-color" aria-label="Custom ripple color picker" tabindex="-1">
-                                    <div id="piece-lock-ripple-panel" class="color-picker-panel" role="dialog" aria-modal="true" aria-labelledby="ripple-color-title" tabindex="-1" hidden>
-                                        <div class="color-panel-header">
-                                            <span id="ripple-color-title">Ripple Color</span>
-                                            <button type="button" class="color-panel-close" id="piece-lock-ripple-close" aria-label="Close color picker">&times;</button>
-                                        </div>
-                                        <div class="color-panel-preview">
-                                            <div class="color-preview-circle" id="piece-lock-ripple-panel-preview"></div>
-                                            <div class="color-preview-meta">
-                                                <span class="preview-label">HEX</span>
-                                                <span class="preview-value" id="piece-lock-ripple-hex"></span>
-                                            </div>
-                                        </div>
-                                        <div class="color-panel-controls">
-                                            <label class="slider-group">
-                                                <span>Hue</span>
-                                                <input type="range" id="piece-lock-hue" min="0" max="360" value="200">
-                                            </label>
-                                            <label class="slider-group">
-                                                <span>Saturation</span>
-                                                <input type="range" id="piece-lock-saturation" min="0" max="100" value="70">
-                                            </label>
-                                            <label class="slider-group">
-                                                <span>Lightness</span>
-                                                <input type="range" id="piece-lock-lightness" min="0" max="100" value="60">
-                                            </label>
-                                        </div>
-                                        <div class="color-panel-actions">
-                                            <button type="button" class="settings-button" id="piece-lock-ripple-done">Done</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <button type="button" id="piece-lock-ripple-reset" class="settings-button">Default</button>
-                            </div>
-                        </div>
-                        <div class="setting">
                             <label for="combo-popup-effect">Combo Popup Effect:</label>
                             <select id="combo-popup-effect" class="setting-select">
                                 <option value="true">On</option>
@@ -730,6 +687,13 @@
                         <div class="setting">
                             <label for="line-clear-effects">Line Clear Effects:</label>
                             <select id="line-clear-effects" class="setting-select">
+                                <option value="true">On</option>
+                                <option value="false">Off</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="background-combo-effects">Background Combo Effects:</label>
+                            <select id="background-combo-effects" class="setting-select">
                                 <option value="true">On</option>
                                 <option value="false">Off</option>
                             </select>

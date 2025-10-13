@@ -128,8 +128,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         centerX += (piece.x + x) * this.blockSize + this.blockSize / 2;
-                        // Use (row - HIDDEN_ROWS) * BLOCK_SIZE for visible playfield
-                        centerY += (piece.y + y - this.hiddenRows) * this.blockSize + this.blockSize / 2;
+                        // Use world coordinates (same as blocks are drawn)
+                        centerY += (piece.y + y) * this.blockSize + this.blockSize / 2;
                         blockCount++;
                     }
                 });

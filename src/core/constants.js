@@ -193,6 +193,7 @@ export const DEFAULT_SETTINGS = {
     pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
     lineClearEffects: true,
+    backgroundComboEffects: true,
     effectQuality: 'High',
 
     // Control settings

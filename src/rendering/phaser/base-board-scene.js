@@ -324,7 +324,7 @@ export function createBaseBoardScene(
             }
             
             // Draw crisp, thin black borders only on the outer edges of the piece
-            this.pieceGraphics.lineStyle(1, 0x000000, 1.0);
+            this.pieceGraphics.lineStyle(0.25, 0x000000, 1.0);
             
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
