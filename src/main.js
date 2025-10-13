@@ -41,6 +41,7 @@ import {
     triggerBackgroundPulse,
     addPieceTrail,
     showComboPopup,
+    drawNextPieces,
 } from './rendering/draw.js';
 import { updateNextQueue, drawPiece as drawNextPiece } from './ui/next-queue-ui.js';
 import { WebGLRenderer } from './rendering/renderer.js';
@@ -129,26 +130,6 @@ function setPieceLockRippleCss(colorHex) {
         '--lock-ripple-shadow-color',
         `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${RIPPLE_SHADOW_ALPHA})`,
     );
-}
-
-/**
- * Draws the upcoming pieces for a player's "next" queue.
- * @param {HTMLCanvasElement[]} canvases - The array of canvas elements to draw on.
- * @param {string[]} nextPieces - The array of piece keys to draw.
- */
-function drawNextPieces(canvases, nextPieces) {
-    canvases.forEach((canvas, i) => {
-        if (canvas) {
-            const pieceKey = nextPieces[i];
-            if (pieceKey) {
-                drawNextPiece(canvas, pieceKey);
-            } else {
-                // Clear canvas if no piece
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-            }
-        }
-    });
 }
 
 /**
@@ -365,8 +346,10 @@ class SerenityBlocks {
                     // Phaser is ready
                     this.backgroundScene = game.scene.getScene('BackgroundScene');
                     this.boardScene = game.scene.getScene('BoardScene');
-                    game.scene.add('MultiplayerBoardScene1', MultiplayerBoardScene, false);
-                    game.scene.add('MultiplayerBoardScene2', MultiplayerBoardScene, false);
+                    
+                    // Store the multiplayer scene class for later use
+                    this.MultiplayerBoardSceneClass = MultiplayerBoardScene;
+                    
                     console.log('\u2705 Phaser game initialized with BoardScene');
                     console.log('Canvas dimensions:', game.canvas.width, 'x', game.canvas.height);
                     console.log('Expected height:', ROWS * BLOCK_SIZE);
@@ -463,9 +446,30 @@ class SerenityBlocks {
         }
     }
 
-    resizePhaserGame(width, height) {
+    resizePhaserGame(width, height, disableAutoCenter = false) {
         if (this.phaserGame) {
+            const PhaserRef = window.Phaser;
+            
+            // Disable auto-centering for multiplayer mode to allow proper viewport positioning
+            if (disableAutoCenter && PhaserRef) {
+                this.phaserGame.scale.autoCenter = PhaserRef.Scale.NO_CENTER;
+            } else if (PhaserRef) {
+                // Re-enable auto-centering for single-player mode
+                this.phaserGame.scale.autoCenter = PhaserRef.Scale.CENTER_BOTH;
+            }
+            
             this.phaserGame.scale.resize(width, height);
+        }
+    }
+
+    movePhaserGameToContainer(containerId) {
+        if (!this.phaserGame || !this.phaserGame.canvas) return;
+        
+        const targetContainer = document.getElementById(containerId);
+        if (targetContainer && this.phaserGame.canvas.parentElement) {
+            // Move the Phaser canvas to the new container
+            targetContainer.appendChild(this.phaserGame.canvas);
+            console.log(`[Phaser] Moved game canvas to ${containerId}`);
         }
     }
 
@@ -485,7 +489,10 @@ class SerenityBlocks {
         const width = this.singleBoardWidth;
         const height = this.phaserBaseHeight;
         const gap = this.multiplayerBoardGap;
-        return [
+        
+        // Viewports define where on the canvas each scene renders
+        // Keep them at full size - the SVG clip-path handles the border inset
+        const viewports = [
             {
                 x: 0,
                 y: 0,
@@ -499,45 +506,116 @@ class SerenityBlocks {
                 height,
             },
         ];
+        console.log('[Multiplayer] Calculated viewports:', viewports);
+        console.log('[Multiplayer] Board width:', width, 'height:', height, 'gap:', gap);
+        return viewports;
     }
 
     ensureMultiplayerBoardScenes() {
-        if (!this.phaserGame) return;
-
-        const sceneManager = this.phaserGame.scene;
-        const viewports = this.getMultiplayerViewports();
-
-        ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach((key) => {
-            if (sceneManager.isActive(key)) {
-                sceneManager.stop(key);
+        return new Promise((resolve, reject) => {
+            if (!this.phaserGame || !this.MultiplayerBoardSceneClass) {
+                console.error('[Multiplayer] Phaser game or MultiplayerBoardScene class not available');
+                reject(new Error('Phaser game or scene class not available'));
+                return;
             }
+
+            const sceneManager = this.phaserGame.scene;
+            const viewports = this.getMultiplayerViewports();
+
+            // Stop and remove existing scenes if they exist
+            ['MultiplayerBoardScene1', 'MultiplayerBoardScene2'].forEach((key) => {
+                const existingScene = sceneManager.getScene(key);
+                if (existingScene) {
+                    if (sceneManager.isActive(key)) {
+                        sceneManager.stop(key);
+                    }
+                    sceneManager.remove(key);
+                }
+            });
+
+            console.log('[Multiplayer] Creating multiplayer board scene instances...');
+
+            // Create scene instances manually with unique keys
+            const scene1 = new this.MultiplayerBoardSceneClass('MultiplayerBoardScene1');
+            const scene2 = new this.MultiplayerBoardSceneClass('MultiplayerBoardScene2');
+
+            console.log('[Multiplayer] Scene instances created:', scene1, scene2);
+            console.log('[Multiplayer] Scene keys:', scene1.scene?.key, scene2.scene?.key);
+
+            // Add the scene instances to Phaser
+            const addResult1 = sceneManager.add('MultiplayerBoardScene1', scene1, false);
+            const addResult2 = sceneManager.add('MultiplayerBoardScene2', scene2, false);
+            
+            console.log('[Multiplayer] Add results:', addResult1, addResult2);
+
+            // Store scene references
+            this.multiplayerBoardScenes = [scene1, scene2];
+
+            // Configuration data for init()
+            const scene1Config = {
+                playerId: 1,
+                viewport: viewports[0],
+                playerLabel: 'PLAYER 1',
+                getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(1).getTotalLines() ?? 0,
+            };
+
+            const scene2Config = {
+                playerId: 2,
+                viewport: viewports[1],
+                playerLabel: 'PLAYER 2',
+                getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(2).getTotalLines() ?? 0,
+            };
+
+            console.log('[Multiplayer] About to start scenes...');
+            console.log('[Multiplayer] Scene manager keys:', sceneManager.keys);
+
+            // Start the scenes with their configuration
+            sceneManager.start('MultiplayerBoardScene1', scene1Config);
+            sceneManager.start('MultiplayerBoardScene2', scene2Config);
+
+            console.log('[Multiplayer] Scenes started');
+            console.log('[Multiplayer] Active scenes:', 
+                sceneManager.isActive('MultiplayerBoardScene1'),
+                sceneManager.isActive('MultiplayerBoardScene2')
+            );
+
+            // Scenes are created synchronously, so they're already ready!
+            // Just do the setup immediately
+            console.log('[Multiplayer] Both scenes created successfully');
+            
+            // Debug: Check canvas state
+            if (this.phaserGame.canvas) {
+                const canvas = this.phaserGame.canvas;
+                const computedStyle = window.getComputedStyle(canvas);
+                const rect = canvas.getBoundingClientRect();
+                
+                console.log('[Multiplayer] Canvas dimensions:', canvas.width, 'x', canvas.height);
+                console.log('[Multiplayer] Canvas style:', canvas.style.width, 'x', canvas.style.height);
+                console.log('[Multiplayer] Canvas parent:', canvas.parentElement?.id);
+                console.log('[Multiplayer] Canvas display:', computedStyle.display);
+                console.log('[Multiplayer] Canvas visibility:', computedStyle.visibility);
+                console.log('[Multiplayer] Canvas opacity:', computedStyle.opacity);
+                console.log('[Multiplayer] Canvas position on screen:', rect);
+                console.log('[Multiplayer] Canvas z-index:', computedStyle.zIndex);
+                
+                // Check viewport settings
+                console.log('[Multiplayer] Scene 1 viewport:', scene1.cameras?.main?.x, scene1.cameras?.main?.y, 
+                    scene1.cameras?.main?.width, scene1.cameras?.main?.height);
+                console.log('[Multiplayer] Scene 2 viewport:', scene2.cameras?.main?.x, scene2.cameras?.main?.y,
+                    scene2.cameras?.main?.width, scene2.cameras?.main?.height);
+            }
+            
+            // Set effect quality
+            this.multiplayerBoardScenes.forEach((sceneInstance) => {
+                sceneInstance?.setEffectQuality?.(this.currentEffectQuality);
+            });
+
+            // Initial sync
+            this.syncMultiplayerBoardScenes();
+            
+            // Resolve immediately
+            resolve();
         });
-
-        sceneManager.run('MultiplayerBoardScene1', {
-            playerId: 1,
-            viewport: viewports[0],
-            playerLabel: 'PLAYER 1',
-            getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(1).getTotalLines() ?? 0,
-        });
-
-        sceneManager.run('MultiplayerBoardScene2', {
-            playerId: 2,
-            viewport: viewports[1],
-            playerLabel: 'PLAYER 2',
-            getPendingGarbage: () => this.multiplayerState?.getGarbageQueue(2).getTotalLines() ?? 0,
-        });
-
-        this.multiplayerBoardScenes = [
-            sceneManager.getScene('MultiplayerBoardScene1'),
-            sceneManager.getScene('MultiplayerBoardScene2'),
-        ];
-
-        this.multiplayerBoardScenes.forEach((sceneInstance) => {
-            sceneInstance?.events?.once('create', () => this.syncMultiplayerBoardScenes());
-            sceneInstance?.setEffectQuality?.(this.currentEffectQuality);
-        });
-
-        this.syncMultiplayerBoardScenes();
     }
 
     teardownMultiplayerBoardScenes() {
@@ -857,6 +935,10 @@ class SerenityBlocks {
             onLineClear: (count, holeColumns) => {
                 // Visual feedback handled in draw
                 // holeColumns parameter not used in single-player mode
+                
+                // Emit event for theme reactions
+                console.log('[Main] Emitting LINE_CLEAR event, count:', count);
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count });
             },
             updateBoard: (boardData) => {
                 // Board updates handled in draw
@@ -893,6 +975,10 @@ class SerenityBlocks {
                         showComboPopup(comboCount);
                     }
                 }
+                
+                // Emit event for theme reactions
+                console.log('[Main] Emitting COMBO event, comboCount:', comboCount);
+                eventBus.emit(EVENTS.COMBO, { comboCount });
             },
             onPieceLock: (piece) => {
                 const settings = this.settingsManager.get();
@@ -903,6 +989,9 @@ class SerenityBlocks {
                         createPieceLockRipple(piece, this.gameState.lockedPieces);
                     }
                 }
+                
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
             },
             updateBackground: (level) => {
                 const settings = this.settingsManager.get();
@@ -1275,6 +1364,15 @@ class SerenityBlocks {
     startSinglePlayerGame() {
         this.deactivatePhaserMultiplayerUI();
         this.teardownMultiplayerBoardScenes();
+        
+        // Ensure Phaser canvas is in single-player container
+        this.movePhaserGameToContainer('phaser-game-container');
+        
+        // Ensure single-player dimensions
+        const singleBoardWidth = COLS * BLOCK_SIZE;
+        const singleBoardHeight = ROWS * BLOCK_SIZE;
+        this.resizePhaserGame(singleBoardWidth, singleBoardHeight);
+        
         this.resumeSinglePlayerScene();
         this.applyEffectQuality(this.currentEffectQuality);
 
@@ -1323,7 +1421,11 @@ class SerenityBlocks {
         this.multiplayerBoardGap = boardGap;
         const multiBoardWidth = singleBoardWidth * 2 + boardGap;
         const multiBoardHeight = ROWS * BLOCK_SIZE;
-        this.resizePhaserGame(multiBoardWidth, multiBoardHeight);
+        
+        // Move Phaser canvas to multiplayer container
+        this.movePhaserGameToContainer('phaser-multiplayer-container');
+        
+        this.resizePhaserGame(multiBoardWidth, multiBoardHeight, true); // Disable auto-center for multiplayer
         console.log('[Multiplayer] Resizing Phaser game to:', multiBoardWidth, multiBoardHeight);
 
 
@@ -1340,9 +1442,15 @@ class SerenityBlocks {
         this.multiplayerState.reset();
         this.multiplayerState.isPaused = true;
 
-        this.ensureMultiplayerBoardScenes();
+        // Wait for multiplayer board scenes to be fully created
         console.log('[Multiplayer] Ensuring multiplayer board scenes...');
-        console.log('[Multiplayer] Board scenes created:', this.multiplayerBoardScenes);
+        try {
+            await this.ensureMultiplayerBoardScenes();
+            console.log('[Multiplayer] Board scenes ready:', this.multiplayerBoardScenes);
+        } catch (error) {
+            console.error('[Multiplayer] Failed to create board scenes:', error);
+            return;
+        }
 
 
         // Ensure both players share the exact same random sequence for fairness
@@ -1362,6 +1470,10 @@ class SerenityBlocks {
             this.multiplayerState.player2.randomGenerator,
         );
 
+        // Draw initial next pieces preview (before countdown)
+        drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
+        drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
+
         // Update stats display to reflect reset state
         this.updateMultiplayerStats();
 
@@ -1374,6 +1486,7 @@ class SerenityBlocks {
         spawnPiece(
             this.multiplayerState.player1,
             () => {
+                drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
                 this.syncMultiplayerBoardScenes();
             },
             () => {
@@ -1384,6 +1497,7 @@ class SerenityBlocks {
         spawnPiece(
             this.multiplayerState.player2,
             () => {
+                drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
                 this.syncMultiplayerBoardScenes();
             },
             () => {
@@ -1584,6 +1698,9 @@ class SerenityBlocks {
                 console.log(
                     `[Multiplayer] Player ${playerNum} cascade wave cleared ${count} line(s) → holes [${holes.join(', ')}] ${maskSummary ? `masks ${maskSummary}` : ''}`,
                 );
+                
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, player: playerNum });
             },
             onGarbageReady: (summary) => {
                 this.multiplayerState.handleGarbageSummary(
@@ -1607,6 +1724,7 @@ class SerenityBlocks {
             triggerFlash: (clearedRows) => {
                 const settings = this.settingsManager.get();
                 const scene = sceneRef();
+                console.log(`[Multiplayer] Player ${playerNum} triggerFlash called for rows:`, clearedRows, 'scene:', !!scene);
                 if (settings.lineClearEffects && scene?.triggerLineClearFlash) {
                     scene.triggerLineClearFlash(clearedRows);
                 }
@@ -1616,6 +1734,7 @@ class SerenityBlocks {
             },
             onLineClearImpact: (lineCount) => {
                 const settings = this.settingsManager.get();
+                console.log(`[Multiplayer] Player ${playerNum} onLineClearImpact called for ${lineCount} lines, effects enabled:`, settings.lineClearEffects);
                 if (!settings.lineClearEffects) return;
                 const scene = sceneRef();
                 if (scene?.playLineClearImpact) {
@@ -1630,6 +1749,9 @@ class SerenityBlocks {
                         scene.showComboPopup(comboCount);
                     }
                 }
+                
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.COMBO, { comboCount, player: playerNum });
             },
             onPieceLock: (piece) => {
                 const settings = this.settingsManager.get();
@@ -1637,6 +1759,9 @@ class SerenityBlocks {
                 if (settings.pieceLockRipple && scene?.createPieceLockRipple) {
                     scene.createPieceLockRipple(piece);
                 }
+                
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.PIECE_LOCK, { piece, player: playerNum });
             },
             updateBackground: (level) => {
                 // Background updates can be shared between players
@@ -1767,6 +1892,15 @@ class SerenityBlocks {
 
         this.deactivatePhaserMultiplayerUI();
         this.teardownMultiplayerBoardScenes();
+        
+        // Move Phaser canvas back to single-player container
+        this.movePhaserGameToContainer('phaser-game-container');
+        
+        // Resize back to single-player dimensions
+        const singleBoardWidth = COLS * BLOCK_SIZE;
+        const singleBoardHeight = ROWS * BLOCK_SIZE;
+        this.resizePhaserGame(singleBoardWidth, singleBoardHeight);
+        
         this.resumeSinglePlayerScene();
         this.applyEffectQuality(this.currentEffectQuality);
     }

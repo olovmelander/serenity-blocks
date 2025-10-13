@@ -204,17 +204,21 @@ export function createBaseBoardScene(
 
             this.gameState.lockedPieces.forEach((piece) => {
                 const pieceColor = piece.color || '#808080';
-
+                
+                // Draw all blocks of the piece as solid fill first
                 piece.shape.forEach((row, y) => {
                     row.forEach((cell, x) => {
                         if (cell > 0) {
                             const worldY = piece.y + y;
                             if (worldY >= this.hiddenRows) {
-                                this.drawBlock(piece.x + x, worldY, pieceColor, 1.0);
+                                this.drawBlock(piece.x + x, worldY, pieceColor, 1.0, false, piece.shape, x, y);
                             }
                         }
                     });
                 });
+                
+                // Draw outline around the entire piece
+                this.drawPieceOutline(piece);
             });
         }
 
@@ -256,24 +260,31 @@ export function createBaseBoardScene(
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
 
+            // Draw all blocks of the piece as solid fill first
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         const worldY = piece.y + y;
                         if (worldY >= this.hiddenRows) {
-                            this.drawBlock(piece.x + x, worldY, piece.color, 1.0);
+                            this.drawBlock(piece.x + x, worldY, piece.color, 1.0, false, piece.shape, x, y);
                         }
                     }
                 });
             });
+            
+            // Draw outline around the entire piece
+            const tempPiece = {
+                ...piece,
+                y: piece.y, // Already in world coordinates
+                x: piece.x
+            };
+            this.drawPieceOutline(tempPiece);
         }
 
-        drawBlock(x, y, color, alpha = 1.0, isGhost = false) {
-            const px = x * this.blockSize;
-
-            // Use (y - this.hiddenRows) * BLOCK_SIZE for visible playfield
-            const py = (y) * this.blockSize;
-
+        drawBlock(x, y, color, alpha = 1.0, isGhost = false, shape = null, localX = 0, localY = 0) {
+            // Use Math.round for pixel-perfect integer coordinates
+            const px = Math.round(x * this.blockSize);
+            const py = Math.round(y * this.blockSize);
             const size = this.blockSize;
 
             let colorInt = 0x808080;
@@ -292,15 +303,81 @@ export function createBaseBoardScene(
                 return;
             }
 
-            // 1. Draw the solid color fill for the block
+            // Draw the solid color fill for the block (no individual borders)
             this.pieceGraphics.fillStyle(colorInt, alpha);
             this.pieceGraphics.fillRect(px, py, size, size);
-
-            // 2. Draw a thin, dark border around the block
-            this.pieceGraphics.lineStyle(1, 0x000000, 0.5); // 1px black border at 50% opacity
-            this.pieceGraphics.beginPath();
-            this.pieceGraphics.strokeRect(px, py, size, size);
-            this.pieceGraphics.closePath();
+        }
+        
+        /**
+         * Draw outline around an entire tetromino piece
+         * @param {Object} piece - The piece to outline
+         */
+        drawPieceOutline(piece) {
+            if (!piece || !piece.shape) return;
+            
+            let colorInt = 0x000000;
+            if (piece.color && typeof piece.color === 'string') {
+                const parsed = parseInt(piece.color.replace('#', ''), 16);
+                if (!Number.isNaN(parsed)) {
+                    colorInt = parsed;
+                }
+            }
+            
+            // Draw crisp, thin black borders only on the outer edges of the piece
+            this.pieceGraphics.lineStyle(1, 0x000000, 1.0);
+            
+            piece.shape.forEach((row, y) => {
+                row.forEach((cell, x) => {
+                    if (cell > 0) {
+                        const worldX = piece.x + x;
+                        const worldY = piece.y + y;
+                        
+                        if (worldY < this.hiddenRows) return;
+                        
+                        // Use Math.round for pixel-perfect integer coordinates
+                        const px = Math.round(worldX * this.blockSize);
+                        const py = Math.round(worldY * this.blockSize);
+                        const size = this.blockSize;
+                        
+                        // Check each edge - only draw if it's an outer edge
+                        // Top edge
+                        if (y === 0 || !piece.shape[y - 1] || !piece.shape[y - 1][x]) {
+                            this.pieceGraphics.beginPath();
+                            this.pieceGraphics.moveTo(px, py);
+                            this.pieceGraphics.lineTo(px + size, py);
+                            this.pieceGraphics.strokePath();
+                            this.pieceGraphics.closePath();
+                        }
+                        
+                        // Bottom edge
+                        if (y === piece.shape.length - 1 || !piece.shape[y + 1] || !piece.shape[y + 1][x]) {
+                            this.pieceGraphics.beginPath();
+                            this.pieceGraphics.moveTo(px, py + size);
+                            this.pieceGraphics.lineTo(px + size, py + size);
+                            this.pieceGraphics.strokePath();
+                            this.pieceGraphics.closePath();
+                        }
+                        
+                        // Left edge
+                        if (x === 0 || !piece.shape[y][x - 1]) {
+                            this.pieceGraphics.beginPath();
+                            this.pieceGraphics.moveTo(px, py);
+                            this.pieceGraphics.lineTo(px, py + size);
+                            this.pieceGraphics.strokePath();
+                            this.pieceGraphics.closePath();
+                        }
+                        
+                        // Right edge
+                        if (x === row.length - 1 || !piece.shape[y][x + 1]) {
+                            this.pieceGraphics.beginPath();
+                            this.pieceGraphics.moveTo(px + size, py);
+                            this.pieceGraphics.lineTo(px + size, py + size);
+                            this.pieceGraphics.strokePath();
+                            this.pieceGraphics.closePath();
+                        }
+                    }
+                });
+            });
         }
 
         _getPulseIntensity(gridX, gridY) {

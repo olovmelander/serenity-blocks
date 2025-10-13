@@ -215,8 +215,9 @@ export function drawBlock(
     blockY = 0,
 ) {
     const size = BLOCK_SIZE;
-    const pixelX = x * size;
-    const pixelY = y * size;
+    // Use Math.round to ensure pixel-perfect integer coordinates
+    const pixelX = Math.round(x * size);
+    const pixelY = Math.round(y * size);
     const endX = pixelX + size;
     const endY = pixelY + size;
     const baseColor = color || '#808080';
@@ -224,53 +225,24 @@ export function drawBlock(
     if (isGhost) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(pixelX, pixelY, size, size);
+        ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
         return;
     }
 
-    const rgb = parseColorToRgb(baseColor);
-    const pulse = getPulseIntensity(x, y);
-    const edgeThickness = Math.max(2, Math.round(size * 0.1));
+    // Disable image smoothing for crisp pixel-perfect rendering
+    ctx.imageSmoothingEnabled = false;
 
-    ctx.save();
-    if (rgb) {
-        const shadowColor = darkenRgb(rgb, 0.6);
-        ctx.shadowColor = colorToCss(shadowColor, 0.35 + 0.25 * pulse);
-    } else {
-        ctx.shadowColor = `rgba(0, 0, 0, ${0.35 + 0.25 * pulse})`;
-    }
-    ctx.shadowBlur = BLOCK_SHADOW_BASE_BLUR + BLOCK_SHADOW_VARIATION * pulse;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-
+    // Draw solid block fill
     ctx.fillStyle = baseColor;
     ctx.fillRect(pixelX, pixelY, size, size);
-    ctx.restore();
 
-    if (rgb) {
-        const highlightColor = colorToCss(lightenRgb(rgb, 0.2), 0.5);
-        const shadowColor = colorToCss(darkenRgb(rgb, 0.2), 0.5);
-
-        ctx.fillStyle = highlightColor;
-        ctx.fillRect(pixelX, pixelY, size, edgeThickness);
-        ctx.fillRect(pixelX, pixelY, edgeThickness, size);
-
-        ctx.fillStyle = shadowColor;
-        ctx.fillRect(pixelX, endY - edgeThickness, size, edgeThickness);
-        ctx.fillRect(endX - edgeThickness, pixelY, edgeThickness, size);
-    } else {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.fillRect(pixelX, pixelY, size, edgeThickness);
-        ctx.fillRect(pixelX, pixelY, edgeThickness, size);
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(pixelX, endY - edgeThickness, size, edgeThickness);
-        ctx.fillRect(endX - edgeThickness, pixelY, edgeThickness, size);
-    }
-
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    // Draw crisp black border with 0.5 pixel offset for perfect 1px line alignment
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 1;
     ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
+    
+    // Re-enable image smoothing for other rendering operations
+    ctx.imageSmoothingEnabled = true;
 }
 
 /**

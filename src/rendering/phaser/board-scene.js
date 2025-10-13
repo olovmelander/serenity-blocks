@@ -37,6 +37,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.activeParticleSystems = new Set();
             this.lineClearParticleKey = LINE_CLEAR_PARTICLE_KEY;
             this.lastImpactIntensity = 0;
+            this.currentComboCount = 0; // Track current combo for enhanced effects
             this.hudElements = null;
         }
 
@@ -168,6 +169,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {number} comboCount - Combo count
          */
         showComboPopup(comboCount) {
+            // Store combo count for enhanced particle effects
+            this.currentComboCount = comboCount;
+            
             // Create text popup (center of visible canvas)
             const text = this.add.text(
                 (this.cols * this.blockSize) / 2,
@@ -196,6 +200,11 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     text.destroy();
                 },
             });
+            
+            // Trigger background explosion particles for combos
+            if (comboCount >= 2) {
+                this.spawnComboExplosionParticles(comboCount);
+            }
         }
 
         /**
@@ -224,9 +233,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             if (!this.getQualityConfig()?.particles) return;
 
             const intensity = Math.max(1, this.lastImpactIntensity || clearedRows.length);
+            // Apply combo multiplier to make effects more dramatic
+            const comboMultiplier = this.currentComboCount > 0 ? (1 + (this.currentComboCount * 0.5)) : 1;
+            const totalIntensity = intensity * comboMultiplier;
+            
             const boardWidth = this.cols * this.blockSize;
 
-            clearedRows.forEach((row) => {
+            clearedRows.forEach((row, index) => {
                 const zoneY = (row - this.hiddenRows) * this.blockSize;
 
                 // The emitZone source is relative to the emitter's coordinates.
@@ -237,20 +250,22 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                         type: 'random',
                         source: new Phaser.Geom.Rectangle(0, 0, boardWidth, this.blockSize),
                     },
-                    speed: { min: 90, max: 220 * intensity },
+                    speed: { min: 90 * comboMultiplier, max: 220 * totalIntensity },
                     angle: { min: -110, max: -70 },
-                    lifespan: { min: 350, max: RIPPLE_PARTICLE_LIFESPAN },
+                    lifespan: { min: 350, max: RIPPLE_PARTICLE_LIFESPAN * Math.min(comboMultiplier, 2) },
                     quantity: 0, // Required for explode
                     alpha: { start: 0.9, end: 0 },
-                    scale: { start: 0.85, end: 0 },
+                    scale: { start: 0.85 * Math.min(comboMultiplier, 1.5), end: 0 },
                     gravityY: 400,
                     blendMode: 'ADD',
                     on: false, // Emitter is not started automatically
+                    tint: this.getComboTint(this.currentComboCount, index),
                 });
 
                 emitter.setDepth(5);
 
-                const burstAmount = Math.round(18 * intensity);
+                // More particles for bigger combos
+                const burstAmount = Math.round(18 * totalIntensity);
                 emitter.explode(burstAmount);
 
                 // The emitter is now the game object to be managed
@@ -265,6 +280,148 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             });
 
             this.lastImpactIntensity = 0;
+        }
+
+        /**
+         * Get particle tint color based on combo count
+         * @param {number} comboCount - Current combo count
+         * @param {number} index - Row index for variation
+         * @returns {number} Hex color value
+         */
+        getComboTint(comboCount, index = 0) {
+            if (comboCount === 0) {
+                return 0x00ffff; // Default cyan
+            } else if (comboCount === 2) {
+                return 0x00ff88; // Green-cyan
+            } else if (comboCount === 3) {
+                return 0xffaa00; // Orange
+            } else if (comboCount === 4) {
+                return 0xff00ff; // Magenta
+            } else if (comboCount >= 5) {
+                // Rainbow effect for high combos
+                const colors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x00ffff, 0x0088ff, 0xff00ff];
+                return colors[index % colors.length];
+            }
+            return 0x00ffff;
+        }
+
+        /**
+         * Spawn background explosion particles for combo effects
+         * @param {number} comboCount - Current combo count
+         */
+        spawnComboExplosionParticles(comboCount) {
+            if (!this.textures.exists(this.lineClearParticleKey)) return;
+            if (!this.getQualityConfig()?.particles) return;
+
+            const boardWidth = this.cols * this.blockSize;
+            const boardHeight = this.rows * this.blockSize;
+            const centerX = boardWidth / 2;
+            const centerY = boardHeight / 2;
+
+            // Scale effect intensity with combo count
+            const explosionIntensity = Math.min(comboCount, 8);
+            const particleCount = Math.round(40 * explosionIntensity);
+            const explosionSpeed = 150 + (comboCount * 30);
+
+            // Create multiple explosion bursts for higher combos
+            const burstCount = Math.min(Math.floor(comboCount / 2), 5);
+            
+            for (let burst = 0; burst < burstCount; burst++) {
+                // Delay each burst slightly for cascade effect
+                this.time.delayedCall(burst * 100, () => {
+                    // Random position near center for variety
+                    const offsetX = (Math.random() - 0.5) * boardWidth * 0.3;
+                    const offsetY = (Math.random() - 0.5) * boardHeight * 0.3;
+                    
+                    const emitter = this.add.particles(
+                        centerX + offsetX,
+                        centerY + offsetY,
+                        this.lineClearParticleKey,
+                        {
+                            speed: { min: explosionSpeed * 0.5, max: explosionSpeed },
+                            angle: { min: 0, max: 360 }, // Full 360-degree explosion
+                            lifespan: { min: 600, max: 1000 },
+                            quantity: 0,
+                            alpha: { start: 0.95, end: 0 },
+                            scale: { start: 1.2 * Math.min(explosionIntensity / 4, 2), end: 0.1 },
+                            gravityY: 200,
+                            blendMode: 'ADD',
+                            on: false,
+                            tint: this.getComboTint(comboCount, burst),
+                        }
+                    );
+
+                    emitter.setDepth(4); // Behind line clear particles but above board
+
+                    // Explode with scaled particle count
+                    emitter.explode(Math.round(particleCount / burstCount));
+
+                    this.time.delayedCall(1200, () => {
+                        if (emitter) {
+                            emitter.destroy();
+                            this.activeParticleSystems.delete(emitter);
+                        }
+                    });
+
+                    this.activeParticleSystems.add(emitter);
+                });
+            }
+
+            // Add extra radial burst for very high combos (5+)
+            if (comboCount >= 5) {
+                this.time.delayedCall(150, () => {
+                    this.spawnRadialWave(comboCount);
+                });
+            }
+        }
+
+        /**
+         * Spawn a radial wave effect for extreme combos
+         * @param {number} comboCount - Current combo count
+         */
+        spawnRadialWave(comboCount) {
+            if (!this.textures.exists(this.lineClearParticleKey)) return;
+            if (!this.getQualityConfig()?.particles) return;
+
+            const boardWidth = this.cols * this.blockSize;
+            const boardHeight = this.rows * this.blockSize;
+            const centerX = boardWidth / 2;
+            const centerY = boardHeight / 2;
+
+            const ringParticleCount = Math.round(60 + (comboCount * 10));
+            const waveSpeed = 200 + (comboCount * 20);
+
+            // Create expanding ring of particles
+            for (let i = 0; i < ringParticleCount; i++) {
+                const angle = (i / ringParticleCount) * Math.PI * 2;
+                const dirX = Math.cos(angle);
+                const dirY = Math.sin(angle);
+
+                const emitter = this.add.particles(centerX, centerY, this.lineClearParticleKey, {
+                    speedX: dirX * waveSpeed,
+                    speedY: dirY * waveSpeed,
+                    lifespan: { min: 500, max: 800 },
+                    quantity: 1,
+                    alpha: { start: 1, end: 0 },
+                    scale: { start: 1.5, end: 0.3 },
+                    gravityY: 0, // No gravity for clean ring expansion
+                    blendMode: 'ADD',
+                    on: false,
+                    tint: this.getComboTint(comboCount, i),
+                });
+
+                emitter.setDepth(3);
+                emitter.explode(1);
+
+                this.time.delayedCall(900, () => {
+                    if (emitter) {
+                        emitter.destroy();
+                        this.activeParticleSystems.delete(emitter);
+                    }
+                });
+
+                this.activeParticleSystems.add(emitter);
+            }
         }
 
         /**

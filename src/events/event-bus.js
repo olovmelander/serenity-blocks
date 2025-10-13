@@ -43,4 +43,7 @@ export const EVENTS = {
     THEME_CHANGED: 'themeChanged',
     THEME_LOADING: 'themeLoading',
     BACKGROUND_READY: 'backgroundReady',
+    LINE_CLEAR: 'lineClear',
+    COMBO: 'combo',
+    PIECE_LOCK: 'pieceLock',
 };

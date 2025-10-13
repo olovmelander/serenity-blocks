@@ -246,10 +246,11 @@ export function drawNextPieces(nextCanvases, nextPieces) {
             const offsetX = (canv.width - shape[0].length * blockSize) / 2;
             const offsetY = (canv.height - shape.length * blockSize) / 2;
 
+            // Draw all blocks as solid fill first
             shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
                     if (cell > 0) {
-                        // Draw block
+                        // Draw solid block
                         ctx.fillStyle = color;
                         ctx.fillRect(
                             offsetX + x * blockSize,
@@ -257,29 +258,52 @@ export function drawNextPieces(nextCanvases, nextPieces) {
                             blockSize,
                             blockSize,
                         );
-
-                        // Add highlight for first piece (most prominent)
-                        if (idx === 0) {
-                            const highlightSize = Math.max(1, blockSize / 4);
-                            const highlightOffset = Math.max(1, blockSize / 12);
-                            ctx.fillStyle = 'rgba(255,255,255,0.3)';
-                            ctx.fillRect(
-                                offsetX + x * blockSize + highlightOffset,
-                                offsetY + y * blockSize + highlightOffset,
-                                highlightSize,
-                                highlightSize,
-                            );
+                    }
+                });
+            });
+            
+            // Draw thin black outline around the entire piece
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = 1;
+            
+            shape.forEach((row, y) => {
+                row.forEach((cell, x) => {
+                    if (cell > 0) {
+                        const px = offsetX + x * blockSize;
+                        const py = offsetY + y * blockSize;
+                        
+                        // Draw borders only on outer edges
+                        // Top edge
+                        if (y === 0 || !shape[y - 1][x]) {
+                            ctx.beginPath();
+                            ctx.moveTo(px, py);
+                            ctx.lineTo(px + blockSize, py);
+                            ctx.stroke();
                         }
-
-                        // Draw border
-                        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-                        ctx.lineWidth = Math.max(0.5, blockSize / 15);
-                        ctx.strokeRect(
-                            offsetX + x * blockSize,
-                            offsetY + y * blockSize,
-                            blockSize,
-                            blockSize,
-                        );
+                        
+                        // Bottom edge
+                        if (y === shape.length - 1 || !shape[y + 1][x]) {
+                            ctx.beginPath();
+                            ctx.moveTo(px, py + blockSize);
+                            ctx.lineTo(px + blockSize, py + blockSize);
+                            ctx.stroke();
+                        }
+                        
+                        // Left edge
+                        if (x === 0 || !shape[y][x - 1]) {
+                            ctx.beginPath();
+                            ctx.moveTo(px, py);
+                            ctx.lineTo(px, py + blockSize);
+                            ctx.stroke();
+                        }
+                        
+                        // Right edge
+                        if (x === row.length - 1 || !shape[y][x + 1]) {
+                            ctx.beginPath();
+                            ctx.moveTo(px + blockSize, py);
+                            ctx.lineTo(px + blockSize, py + blockSize);
+                            ctx.stroke();
+                        }
                     }
                 });
             });

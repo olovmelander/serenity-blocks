@@ -492,6 +492,168 @@ body {
     }
 }
 
+/* Ocean Reactive Effects */
+.burst-bubble {
+    position: absolute;
+    background: radial-gradient(circle, rgba(173, 216, 230, 0.6), rgba(100, 200, 255, 0.3));
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    animation: burst-bubble-rise 1.5s ease-out forwards;
+    pointer-events: none;
+    z-index: 12;
+}
+
+@keyframes burst-bubble-rise {
+    0% {
+        transform: translateY(0) scale(0.5);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-30vh) scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateY(-60vh) scale(0.8);
+        opacity: 0;
+    }
+}
+
+.small-bubble-pop {
+    position: absolute;
+    background: radial-gradient(circle, rgba(200, 230, 255, 0.5), rgba(150, 200, 255, 0.2));
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    animation: small-pop 0.8s ease-out forwards;
+    pointer-events: none;
+    z-index: 12;
+}
+
+@keyframes small-pop {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2) translateY(-20px);
+        opacity: 0;
+    }
+}
+
+.swimming-fish {
+    position: absolute;
+    width: 30px;
+    height: 15px;
+    background: linear-gradient(90deg, 
+        rgba(0, 150, 255, 0.6) 0%,
+        rgba(0, 100, 200, 0.8) 50%,
+        rgba(0, 50, 150, 0.6) 100%
+    );
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    animation: swim-across 4s linear forwards;
+    pointer-events: none;
+    z-index: 9;
+    box-shadow: 0 0 10px rgba(0, 150, 255, 0.3);
+}
+
+.swimming-fish::before {
+    content: '';
+    position: absolute;
+    right: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 8px solid rgba(0, 100, 200, 0.7);
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+}
+
+@keyframes swim-across {
+    0% {
+        transform: translateX(0) scaleX(var(--fish-direction, 1));
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(calc(var(--fish-direction, 1) * 110vw)) scaleX(var(--fish-direction, 1));
+        opacity: 0;
+    }
+}
+
+.ocean-shockwave {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    border: 3px solid rgba(100, 200, 255, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: shockwave-expand 2s ease-out forwards;
+    pointer-events: none;
+    z-index: 15;
+    box-shadow: 
+        0 0 20px rgba(100, 200, 255, 0.5),
+        inset 0 0 20px rgba(100, 200, 255, 0.3);
+}
+
+@keyframes shockwave-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(0.1);
+        opacity: 1;
+        border-width: 5px;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(var(--shockwave-scale, 3));
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+.bioluminescent-glow {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: radial-gradient(circle,
+        rgba(0, 255, 200, 0.8) 0%,
+        rgba(0, 200, 255, 0.6) 30%,
+        rgba(0, 150, 255, 0.3) 60%,
+        transparent 100%
+    );
+    border-radius: 50%;
+    animation: bio-pulse 1.5s ease-in-out forwards;
+    pointer-events: none;
+    z-index: 13;
+    filter: blur(3px);
+}
+
+@keyframes bio-pulse {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    30% {
+        transform: scale(1.5);
+        opacity: 1;
+    }
+    70% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+}
+
 /* --- Sunset Theme --- */
 #sunset-theme {
     overflow: hidden;
@@ -1825,6 +1987,99 @@ body {
     0% { opacity: 0.25; transform: translateY(0); }
     50% { opacity: 0.4; transform: translateY(-1.5%); }
     100% { opacity: 0.28; transform: translateY(0); }
+}
+
+/* Aurora Reactive Effects */
+.aurora-wave {
+    position: absolute;
+    bottom: 20%;
+    left: 50%;
+    width: 80%;
+    height: 100px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center,
+        hsla(var(--wave-hue, 140), 85%, 65%, 0.6) 0%,
+        hsla(var(--wave-hue, 140), 85%, 60%, 0.4) 30%,
+        hsla(var(--wave-hue, 140), 85%, 55%, 0.2) 60%,
+        transparent 100%
+    );
+    filter: blur(25px);
+    mix-blend-mode: screen;
+    animation: aurora-wave-expand 2s ease-out forwards;
+    pointer-events: none;
+    z-index: 10;
+}
+
+@keyframes aurora-wave-expand {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scaleX(0.3) scaleY(0.5);
+    }
+    40% {
+        opacity: 1;
+        transform: translateX(-50%) scaleX(1) scaleY(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) scaleX(1.8) scaleY(1.5);
+    }
+}
+
+.shooting-star {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 
+        0 0 4px 2px rgba(255, 255, 255, 0.8),
+        0 0 8px 4px rgba(150, 200, 255, 0.6);
+    animation: shooting-star-trail 1s ease-out forwards;
+    pointer-events: none;
+    z-index: 15;
+}
+
+.shooting-star::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        var(--shooting-angle, -45deg),
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.6) 40%,
+        rgba(255, 255, 255, 0.9) 100%
+    );
+    transform-origin: left center;
+    animation: shooting-star-trail-length 1s ease-out forwards;
+}
+
+@keyframes shooting-star-trail {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) rotate(var(--shooting-angle, -45deg));
+    }
+    10% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate(200px, 200px) rotate(var(--shooting-angle, -45deg));
+    }
+}
+
+@keyframes shooting-star-trail-length {
+    0% {
+        width: 0;
+    }
+    30% {
+        width: 100px;
+    }
+    100% {
+        width: 0;
+    }
 }
 
 /* --- Galaxy Theme --- */
@@ -3725,6 +3980,124 @@ body {
     }
 }
 
+/* --- Reactive Water Ripples --- */
+.water-ripple {
+    position: absolute;
+    width: var(--ripple-size, 100px);
+    height: var(--ripple-size, 100px);
+    border: 2px solid rgba(200, 220, 240, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 15;
+    animation: ripple-expand 2s ease-out forwards;
+}
+
+.water-ripple.small {
+    animation-duration: 1.5s;
+    border-width: 1px;
+}
+
+@keyframes ripple-expand {
+    0% {
+        width: 20px;
+        height: 20px;
+        opacity: 0.8;
+        border-color: rgba(200, 220, 240, 0.8);
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        width: var(--ripple-size, 100px);
+        height: var(--ripple-size, 100px);
+        opacity: 0;
+        border-color: rgba(200, 220, 240, 0);
+    }
+}
+
+/* --- Reactive Birds --- */
+.misty-bird {
+    position: absolute;
+    left: -5%;
+    width: 30px;
+    height: 20px;
+    z-index: 12;
+    animation: bird-fly linear forwards;
+    pointer-events: none;
+}
+
+.misty-bird::before,
+.misty-bird::after {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 3px;
+    background: rgba(50, 60, 80, 0.6);
+    border-radius: 2px;
+    top: 50%;
+    animation: wing-flap 0.3s ease-in-out infinite alternate;
+}
+
+.misty-bird::before {
+    left: 0;
+    transform: translateY(-50%) rotate(-20deg);
+    transform-origin: right center;
+}
+
+.misty-bird::after {
+    right: 0;
+    transform: translateY(-50%) rotate(20deg);
+    transform-origin: left center;
+}
+
+@keyframes bird-fly {
+    0% {
+        left: -5%;
+        transform: translateY(0) scale(0.8);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-20px) scale(1);
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        left: 105%;
+        transform: translateY(10px) scale(0.9);
+        opacity: 0;
+    }
+}
+
+@keyframes wing-flap {
+    0% {
+        transform: translateY(-50%) rotate(var(--wing-angle-start, -20deg)) scaleY(1);
+    }
+    100% {
+        transform: translateY(-50%) rotate(var(--wing-angle-end, -35deg)) scaleY(1.2);
+    }
+}
+
+.misty-bird::before {
+    --wing-angle-start: -20deg;
+    --wing-angle-end: -35deg;
+}
+
+.misty-bird::after {
+    --wing-angle-start: 20deg;
+    --wing-angle-end: 35deg;
+}
+
+/* Enhanced mist burst effect */
+.mist-column.burst {
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    filter: blur(30px);
+}
+
 /* --- Simplified Waves Theme --- */
 #waves-theme {
     background: linear-gradient(to top, #3a6073, #16222a);
@@ -4760,8 +5133,9 @@ body {
             display: none;
         }
 
-        body.phaser-multiplayer-active .player-game-area,
-        body.phaser-multiplayer-active .player-sidebar {
+        /* Hide old DOM canvases when using Phaser for multiplayer */
+        body.phaser-multiplayer-active #p1-canvas,
+        body.phaser-multiplayer-active #p2-canvas {
             display: none;
         }
 
@@ -8569,12 +8943,84 @@ body {
     position: relative;
 }
 
+/* Wrapper for multiplayer boards */
+.multiplayer-game-area {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+}
+
+/* Wrapper for canvas and border overlays */
+#phaser-multiplayer-wrapper {
+    position: relative;
+    width: 690px;
+    height: 600px;
+}
+
+/* Container for the Phaser multiplayer canvas */
+#phaser-multiplayer-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 690px;
+    height: 600px;
+    /* Clip to two rounded rectangles */
+    clip-path: url(#multiplayer-clip-path);
+    -webkit-clip-path: url(#multiplayer-clip-path);
+}
+
+#phaser-multiplayer-container canvas {
+    display: block !important;
+    width: 690px !important;
+    height: 600px !important;
+    image-rendering: crisp-edges;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: pixelated;
+}
+
+/* Border overlays for each board */
+.board-border-overlay {
+    position: absolute;
+    width: 300px;
+    height: 600px;
+    border: 4px solid #8b5cf6;
+    border-radius: 12px;
+    box-shadow: 
+        0 0 30px rgba(139, 92, 246, 0.5), 
+        0 0 60px rgba(139, 92, 246, 0.3), 
+        0 0 90px rgba(139, 92, 246, 0.1);
+    pointer-events: none;
+    z-index: 2;
+}
+
+#p1-border {
+    left: 0;
+    top: 0;
+}
+
+#p2-border {
+    left: 390px;
+    top: 0;
+}
+
 .player-sidebar {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 15px;
     min-width: 200px;
+    position: relative;
+    z-index: 10;
+}
+
+.player-sidebar .player-next-pieces {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
 }
 
 .player-game-area {
@@ -8675,8 +9121,8 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
-    padding-top: 60px;
+    gap: 10px;
+    margin-top: 10px;
 }
 
 .vs-indicator {
