@@ -11,24 +11,31 @@ let cachedBaseClass = null;
 let cachedPhaserRef = null;
 
 /**
- * Create the BaseBoardScene class once Phaser is available.
- * @param {typeof Phaser} phaserLib
- * @returns {typeof Phaser.Scene}
+ * Create the BaseBoardScene class for Phaser 4.
+ * Factory function that generates a Scene class once Phaser is available.
+ * 
+ * @param {typeof Phaser} phaserLib - Phaser 4 library reference
+ * @returns {typeof Phaser.Scene} - BaseBoardScene class
  */
 export function createBaseBoardScene(
     phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
 ) {
     const PhaserRef = phaserLib;
 
+    // Validate Phaser 4 availability
     if (!PhaserRef?.Scene) {
         throw new Error(
-            '[BaseBoardScene] Phaser is not available. Load Phaser before creating scenes.',
+            '[BaseBoardScene] Phaser 4 is not available. Ensure Phaser is imported before creating scenes.',
         );
     }
 
+    // Return cached class if already created (performance optimization)
     if (cachedBaseClass && cachedPhaserRef === PhaserRef) {
+        console.log('[BaseBoardScene] Returning cached class');
         return cachedBaseClass;
     }
+
+    console.log('[BaseBoardScene] Creating new Phaser 4 scene class');
 
     class BaseBoardScene extends PhaserRef.Scene {
         /**
@@ -72,22 +79,51 @@ export function createBaseBoardScene(
             this.qualityConfig = getQualityConfig(this.effectQuality);
         }
 
+        /**
+         * Phaser 4 lifecycle: preload assets
+         * Called before create(), used for loading assets
+         */
         preload() {
-            ensureCircleTexture(this, this.commonParticleKey, 4);
+            try {
+                ensureCircleTexture(this, this.commonParticleKey, 4);
+            } catch (error) {
+                console.error('[BaseBoardScene] Failed to create particle texture:', error);
+            }
         }
 
+        /**
+         * Phaser 4 lifecycle: create scene objects
+         * Called after preload(), used for initializing game objects
+         */
         create() {
-            this.createGraphicsLayers();
-            this.configureCamera();
-            this.registerResizeHandler();
+            try {
+                this.createGraphicsLayers();
+                this.configureCamera();
+                this.registerResizeHandler();
+                console.log(`[BaseBoardScene] Scene created: ${this.sceneKey}`);
+            } catch (error) {
+                console.error('[BaseBoardScene] Failed to create scene:', error);
+            }
         }
 
+        /**
+         * Phaser 4 lifecycle: update loop
+         * Called every frame (60 times per second)
+         * @param {number} time - Total elapsed time since game start (ms)
+         * @param {number} delta - Time elapsed since last frame (ms)
+         */
         update(time, delta) {
             // eslint-disable-line no-unused-vars
             if (!this.gameState) return;
-            this.pieceGraphics?.clear();
-            this.effectsGraphics?.clear();
-            this.renderGameState();
+            
+            // Clear graphics from previous frame
+            try {
+                this.pieceGraphics?.clear();
+                this.effectsGraphics?.clear();
+                this.renderGameState();
+            } catch (error) {
+                console.error('[BaseBoardScene] Error in update loop:', error);
+            }
         }
 
         setEffectQuality(level) {
@@ -104,12 +140,24 @@ export function createBaseBoardScene(
         }
 
         /**
-         * Create default graphics layers.
+         * Create default graphics layers for rendering.
+         * Phaser 4: Validates graphics API availability
          */
         createGraphicsLayers() {
-            this.graphicsLayers.board = this.add.graphics();
-            this.graphicsLayers.piece = this.add.graphics();
-            this.graphicsLayers.fx = this.add.graphics();
+            if (!this.add || !this.add.graphics) {
+                console.error('[BaseBoardScene] Graphics API not available');
+                return;
+            }
+
+            try {
+                this.graphicsLayers.board = this.add.graphics();
+                this.graphicsLayers.piece = this.add.graphics();
+                this.graphicsLayers.fx = this.add.graphics();
+                console.log('[BaseBoardScene] Graphics layers created successfully');
+            } catch (error) {
+                console.error('[BaseBoardScene] Failed to create graphics layers:', error);
+                throw error;
+            }
         }
 
         /**

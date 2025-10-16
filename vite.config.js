@@ -17,7 +17,7 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: true,
-    // Optimize chunk size for Phaser
+    // Optimize chunk size for Phaser 4
     rollupOptions: {
       output: {
         manualChunks: {
@@ -25,6 +25,11 @@ export default defineConfig({
         },
       },
     },
+  },
+
+  // Optimize dependencies for faster dev server startup
+  optimizeDeps: {
+    include: ['phaser'],
   },
 
   // Resolve configuration
@@ -44,8 +49,9 @@ export default defineConfig({
   assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg', '**/*.mp3', '**/*.wav', '**/*.ogg'],
 
   // Define global constants
+  // Phaser 4 is WebGL-only (no Canvas renderer)
   define: {
-    'typeof CANVAS_RENDERER': JSON.stringify(true),
+    'typeof CANVAS_RENDERER': JSON.stringify(false),
     'typeof WEBGL_RENDERER': JSON.stringify(true),
   },
 });

@@ -1,7 +1,7 @@
 {
   "name": "serenity-blocks",
   "version": "1.0.0",
-  "description": "A modern Tetris-inspired puzzle game built with Phaser 3",
+  "description": "A modern Tetris-inspired puzzle game built with Phaser 4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,12 +17,12 @@
     "puzzle",
     "game",
     "phaser",
-    "phaser3"
+    "phaser4"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "phaser": "^3.80.1"
+    "phaser": "4.0.0-rc.5"
   },
   "devDependencies": {
     "eslint": "^8.57.0",

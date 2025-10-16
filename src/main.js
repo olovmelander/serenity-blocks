@@ -7,6 +7,9 @@
  * Integrates: Game Core, UI, Audio, Themes, Settings, Controls, High Scores
  */
 
+// Phaser 4 Framework (imported from npm)
+import Phaser from 'phaser';
+
 // Core imports
 import {
     COLS,
@@ -295,75 +298,134 @@ class SerenityBlocks {
      */
 
     /**
-     * Initialize Phaser game instance
+     * Initialize Phaser 4 game instance with WebGL rendering
      */
     initializePhaserGame() {
-        // Wait for Phaser to be available from CDN
-        if (typeof window.Phaser === 'undefined') {
-            console.warn('Phaser not loaded yet, waiting...');
+        // Phaser 4 is now imported as ES module
+        if (!Phaser) {
+            console.error('[Phaser 4 Init] Phaser module not loaded');
             return;
         }
 
-        const PhaserRef = window.Phaser;
+        // Validate required Phaser APIs for Phaser 4 compatibility
+        if (!Phaser.Game || !Phaser.Scene) {
+            console.error('[Phaser 4 Init] Phaser core classes not available');
+            return;
+        }
 
-        // Create scene classes once Phaser is loaded
-        const BackgroundScene = createBackgroundScene(PhaserRef);
-        const BoardScene = createBoardScene(PhaserRef);
-        const MultiplayerBoardScene = createMultiplayerBoardScene(PhaserRef);
+        const PhaserRef = Phaser;
+        console.log('[Phaser 4 Init] Starting initialization...', {
+            version: PhaserRef.VERSION || 'Unknown',
+            webglSupport: typeof PhaserRef.WEBGL !== 'undefined',
+        });
+
+        // Create scene classes with Phaser 4 reference
+        let BackgroundScene, BoardScene, MultiplayerBoardScene;
+        try {
+            BackgroundScene = createBackgroundScene(PhaserRef);
+            BoardScene = createBoardScene(PhaserRef);
+            MultiplayerBoardScene = createMultiplayerBoardScene(PhaserRef);
+        } catch (error) {
+            console.error('[Phaser 4 Init] Failed to create scene classes:', error);
+            return;
+        }
 
         const singleBoardWidth = COLS * BLOCK_SIZE;
-        // Use only visible playfield for Phaser world
+        // Use only visible playfield for Phaser world (excludes hidden rows)
         const singleBoardHeight = ROWS * BLOCK_SIZE;
 
         this.singleBoardWidth = singleBoardWidth;
         this.phaserBaseWidth = singleBoardWidth;
         this.phaserBaseHeight = singleBoardHeight;
 
+        // Phaser 4 Game Configuration
         const config = {
+            // Renderer: Phaser 4 is WebGL-only (no Canvas renderer)
             type: PhaserRef.WEBGL,
+            
+            // Canvas dimensions: 10 blocks × 20 blocks (300×600 px)
             width: singleBoardWidth,
             height: singleBoardHeight,
-            parent: 'phaser-game-container', // Parent container for Phaser canvas
-            transparent: true, // Transparent to show themes behind
+            
+            // Parent DOM container for Phaser canvas
+            parent: 'phaser-game-container',
+            
+            // Transparent canvas to show WebGL theme backgrounds
+            transparent: true,
+            
+            // Disable Phaser audio system (using custom SoundManager)
             audio: { noAudio: true },
+            
+            // Register initial scenes (multiplayer scenes added dynamically)
             scene: [BoardScene, BackgroundScene],
+            
+            // Scale Manager: responsive FIT mode with centering
             scale: {
-                mode: PhaserRef.Scale.FIT,
-                autoCenter: PhaserRef.Scale.CENTER_BOTH,
+                mode: PhaserRef.Scale?.FIT ?? 1, // FIT = 1 (fallback for API changes)
+                autoCenter: PhaserRef.Scale?.CENTER_BOTH ?? 1, // CENTER_BOTH = 1
                 width: singleBoardWidth,
                 height: singleBoardHeight,
             },
+            
+            // High DPI support for crisp rendering on Retina displays
             resolution: window.devicePixelRatio || 1,
+            
+            // Disable Phaser physics (using custom physics system)
             physics: {
-                default: false, // We handle physics ourselves
+                default: false,
             },
+            
+            // WebGL render settings
             render: {
-                antialias: true,
-                pixelArt: false,
+                antialias: true,    // Smooth edges for blocks
+                pixelArt: false,    // Not pixel art style
             },
+            
+            // Post-boot callback for scene initialization
             callbacks: {
                 postBoot: (game) => {
-                    // Phaser is ready
+                    console.log('[Phaser 4 Init] Post-boot callback started');
+                    
+                    // Validate scene manager
+                    if (!game.scene) {
+                        console.error('[Phaser 4 Init] Scene manager not available');
+                        return;
+                    }
+                    
+                    // Get scene references
                     this.backgroundScene = game.scene.getScene('BackgroundScene');
                     this.boardScene = game.scene.getScene('BoardScene');
                     
-                    // Store the multiplayer scene class for later use
+                    // Validate scenes loaded correctly
+                    if (!this.boardScene || !this.backgroundScene) {
+                        console.error('[Phaser 4 Init] Scenes not found:', {
+                            boardScene: !!this.boardScene,
+                            backgroundScene: !!this.backgroundScene,
+                        });
+                        return;
+                    }
+                    
+                    // Store multiplayer scene class for dynamic instantiation
                     this.MultiplayerBoardSceneClass = MultiplayerBoardScene;
                     
-                    console.log('\u2705 Phaser game initialized with BoardScene');
-                    console.log('Canvas dimensions:', game.canvas.width, 'x', game.canvas.height);
-                    console.log('Expected height:', ROWS * BLOCK_SIZE);
-                    console.log('ROWS:', ROWS, 'HIDDEN_ROWS:', HIDDEN_ROWS);
-                    console.log(
-                        'Container:',
-                        document.getElementById('phaser-game-container').offsetHeight,
-                    );
+                    // Log successful initialization
+                    console.log('✅ Phaser 4 game initialized successfully');
+                    console.log('  ├─ Canvas dimensions:', game.canvas.width, 'x', game.canvas.height);
+                    console.log('  ├─ Logical size:', singleBoardWidth, 'x', singleBoardHeight);
+                    console.log('  ├─ Device pixel ratio:', window.devicePixelRatio || 1);
+                    console.log('  ├─ Board config: ROWS:', ROWS, 'HIDDEN_ROWS:', HIDDEN_ROWS);
+                    console.log('  └─ Scenes loaded: BoardScene, BackgroundScene');
+                    
+                    // Add CSS class for HUD styling
                     document.body.classList.add('phaser-hud-ready');
+                    
+                    // Initialize HUD if game already started
                     if (this.gameState) {
                         this.updatePhaserStats();
                         this.refreshNextQueue();
                     }
-                    // this.startBackgroundScene(); // Moved to end of init
+                    
+                    // Apply quality settings to all scenes
                     this.applyEffectQuality(
                         this.settingsManager?.get().effectQuality ?? this.currentEffectQuality,
                     );
@@ -371,13 +433,22 @@ class SerenityBlocks {
             },
         };
 
-        console.log('Creating Phaser game with config:', {
+        console.log('[Phaser 4 Init] Creating game with config:', {
             width: config.width,
             height: config.height,
             parent: config.parent,
+            type: 'WEBGL',
+            transparent: config.transparent,
         });
-        this.phaserGame = new PhaserRef.Game(config);
-        console.log('Phaser game instance created:', this.phaserGame);
+        
+        try {
+            this.phaserGame = new PhaserRef.Game(config);
+            console.log('[Phaser 4 Init] Game instance created successfully');
+        } catch (error) {
+            console.error('[Phaser 4 Init] Failed to create game instance:', error);
+            // Fallback to canvas rendering if Phaser fails
+            console.warn('[Phaser 4 Init] Falling back to canvas rendering');
+        }
     }
 
     /**
@@ -448,7 +519,7 @@ class SerenityBlocks {
 
     resizePhaserGame(width, height, disableAutoCenter = false) {
         if (this.phaserGame) {
-            const PhaserRef = window.Phaser;
+            const PhaserRef = Phaser;
             
             // Disable auto-centering for multiplayer mode to allow proper viewport positioning
             if (disableAutoCenter && PhaserRef) {

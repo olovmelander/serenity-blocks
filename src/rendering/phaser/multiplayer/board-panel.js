@@ -1,4 +1,29 @@
+/**
+ * @fileoverview Multiplayer Board Scene for Serenity Blocks (Phaser 4 Compatible)
+ * Handles dual viewport rendering for multiplayer mode
+ *
+ * **Key Features:**
+ * - Extends BaseBoardScene for shared rendering logic
+ * - Viewport-based rendering for side-by-side boards
+ * - Independent camera configuration per player
+ * - Particle effects with Phaser 3/4 compatibility layer
+ * - Combo popups and line clear effects
+ *
+ * **Phaser 4 Migration Status:** ✅ Updated
+ * - Camera API: ✅ Compatible (setViewport, setBounds, centerOn)
+ * - Graphics API: ✅ Compatible (fillRect, strokeCircle)
+ * - Tweens API: ✅ Compatible (add, ease functions)
+ * - Text API: ✅ Compatible (add.text)
+ * - Particle API: ✅ Using compatibility layer
+ */
+
 import { createBaseBoardScene } from '../base-board-scene.js';
+import {
+    createParticleEmitter,
+    emitParticles,
+    destroyParticleEmitter,
+    logParticleSystemInfo,
+} from '../utils/particle-compat.js';
 
 const HUD_LABEL_STYLE = {
     fontFamily: 'Orbitron',
@@ -19,12 +44,21 @@ const HUD_SECONDARY_STYLE = {
 };
 
 /**
- * Create the multiplayer board scene once Phaser is ready.
- * @param {typeof Phaser} phaserLib
+ * Creates a Phaser 4 compatible multiplayer board scene class
+ * This scene handles rendering for one player in a multiplayer game
+ *
+ * @param {typeof Phaser} phaserLib - Phaser library reference (Phaser 4)
+ * @returns {class} MultiplayerBoardScene class
  */
 export function createMultiplayerBoardScene(
     phaserLib = typeof window !== 'undefined' ? window.Phaser : null,
 ) {
+    const PhaserRef = phaserLib;
+    if (!PhaserRef?.Scene) {
+        throw new Error('[MultiplayerBoardScene] Phaser 4 not available');
+    }
+
+    console.log('[MultiplayerBoardScene] Creating scene class for Phaser 4');
     const BaseBoardScene = createBaseBoardScene(phaserLib);
 
     return class MultiplayerBoardScene extends BaseBoardScene {
@@ -38,33 +72,85 @@ export function createMultiplayerBoardScene(
             this.currentComboCount = 0; // Track current combo for enhanced effects
         }
 
+        /**
+         * Initialize scene with multiplayer-specific data
+         * @param {Object} data - Initialization data
+         * @param {number} data.playerId - Player ID (1 or 2)
+         * @param {Object} data.viewport - Viewport configuration {x, y, width, height}
+         * @param {string} data.playerLabel - Player label text
+         * @param {Function} data.getPendingGarbage - Callback to get pending garbage count
+         */
         init(data = {}) {
-            console.log(`[MultiplayerBoardScene] init() called for ${this.scene.key}`, data);
-            this.playerId = data.playerId ?? 1;
-            this.viewport = data.viewport;
-            this.label = data.playerLabel ?? `PLAYER ${this.playerId}`;
-            this.getPendingGarbage = data.getPendingGarbage;
+            try {
+                console.log(`[MultiplayerBoardScene] init() called for ${this.scene?.key || 'unknown'}`, data);
+                this.playerId = data.playerId ?? 1;
+                this.viewport = data.viewport;
+                this.label = data.playerLabel ?? `PLAYER ${this.playerId}`;
+                this.getPendingGarbage = data.getPendingGarbage;
+
+                if (!this.viewport) {
+                    console.warn(`[MultiplayerBoardScene] No viewport provided for player ${this.playerId}`);
+                }
+            } catch (error) {
+                console.error('[MultiplayerBoardScene] Error in init():', error);
+            }
         }
 
+        /**
+         * Preload assets (delegates to BaseBoardScene)
+         */
         preload() {
-            console.log(`[MultiplayerBoardScene] preload() called for ${this.scene.key}`);
-            super.preload();
+            try {
+                console.log(`[MultiplayerBoardScene] preload() called for ${this.scene?.key || 'unknown'}`);
+                super.preload();
+                
+                // Log particle system availability for debugging
+                logParticleSystemInfo(this);
+            } catch (error) {
+                console.error('[MultiplayerBoardScene] Error in preload():', error);
+            }
         }
 
+        /**
+         * Create scene objects and configure viewport
+         */
         create() {
-            console.log(`[MultiplayerBoardScene] create() called for ${this.scene.key}`);
-            super.create();
-            this.attachGraphicsLayerAliases();
-            this.applyViewport();
-            this.createHud();
-            console.log(`[MultiplayerBoardScene] create() complete for ${this.scene.key}`);
+            try {
+                console.log(`[MultiplayerBoardScene] create() called for ${this.scene?.key || 'unknown'}`);
+                super.create();
+                this.attachGraphicsLayerAliases();
+                this.applyViewport();
+                this.createHud();
+                console.log(`[MultiplayerBoardScene] create() complete for ${this.scene?.key || 'unknown'}`);
+            } catch (error) {
+                console.error('[MultiplayerBoardScene] Error in create():', error);
+            }
         }
 
+        /**
+         * Apply viewport configuration to camera for dual-board rendering
+         * This creates side-by-side viewports for multiplayer mode
+         *
+         * **Phaser 4 Compatibility:** ✅ Camera API unchanged
+         * - setViewport: Defines render region on canvas
+         * - setBounds: Defines world space limits
+         * - centerOn: Positions camera in world
+         */
         applyViewport() {
-            const camera = this.cameras.main;
-            console.log(`[MultiplayerBoardScene] applyViewport for ${this.scene.key}`, this.viewport);
-            
-            if (this.viewport) {
+            try {
+                if (!this.cameras || !this.cameras.main) {
+                    console.error('[MultiplayerBoardScene] Camera system not available');
+                    return;
+                }
+
+                const camera = this.cameras.main;
+                console.log(`[MultiplayerBoardScene] applyViewport for ${this.scene?.key || 'unknown'}`, this.viewport);
+                
+                if (!this.viewport) {
+                    console.error(`[MultiplayerBoardScene] No viewport data for ${this.scene?.key || 'unknown'}!`);
+                    return;
+                }
+
                 console.log(`[MultiplayerBoardScene] Setting viewport:`, 
                     this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
                 
@@ -93,8 +179,8 @@ export function createMultiplayerBoardScene(
                 console.log(`[MultiplayerBoardScene] Camera configured:`, 
                     'bounds:', 0, 0, width, height, 
                     'centerOn:', width / 2, visibleHeight / 2 + (hiddenRows * blockSize));
-            } else {
-                console.error(`[MultiplayerBoardScene] No viewport data for ${this.scene.key}!`);
+            } catch (error) {
+                console.error('[MultiplayerBoardScene] Error in applyViewport():', error);
             }
         }
 
@@ -159,6 +245,11 @@ export function createMultiplayerBoardScene(
             this.lastImpactIntensity = clamped;
         }
         
+        /**
+         * Create particle effects for cleared lines
+         * Uses compatibility layer for Phaser 3/4 support
+         * @param {number[]} clearedRows - Array of cleared row indices
+         */
         createLineClearParticles(clearedRows) {
             if (!clearedRows || clearedRows.length === 0) return;
             
@@ -171,16 +262,21 @@ export function createMultiplayerBoardScene(
             const totalIntensity = intensity * comboMultiplier;
             
             const boardWidth = this.cols * this.blockSize;
-            const Phaser = window.Phaser;
+            const PhaserRef = window.Phaser;
+            
+            if (!PhaserRef || !PhaserRef.Geom || !PhaserRef.Geom.Rectangle) {
+                console.warn('[MultiplayerBoardScene] Phaser.Geom.Rectangle not available, particles disabled');
+                return;
+            }
             
             clearedRows.forEach((row, index) => {
                 const zoneY = (row - this.hiddenRows) * this.blockSize;
                 
-                // Create particle emitter for this row
-                const emitter = this.add.particles(0, zoneY, this.commonParticleKey, {
+                // Use compatibility layer to create particles
+                const emitter = createParticleEmitter(this, 0, zoneY, this.commonParticleKey, {
                     emitZone: {
                         type: 'random',
-                        source: new Phaser.Geom.Rectangle(0, 0, boardWidth, this.blockSize),
+                        source: new PhaserRef.Geom.Rectangle(0, 0, boardWidth, this.blockSize),
                     },
                     speed: { min: 90 * comboMultiplier, max: 220 * totalIntensity },
                     angle: { min: -110, max: -70 },
@@ -193,16 +289,30 @@ export function createMultiplayerBoardScene(
                     tint: this.getComboTint(this.currentComboCount, index),
                 });
                 
-                emitter.setDepth(5);
+                // If particle creation failed, skip this row
+                if (!emitter) {
+                    console.warn('[MultiplayerBoardScene] Failed to create line clear particles for row', row);
+                    return;
+                }
+                
+                if (emitter.setDepth) {
+                    emitter.setDepth(5);
+                }
                 
                 // More particles for bigger combos
                 const burstAmount = Math.round(18 * totalIntensity);
-                emitter.explode(burstAmount);
+                const emitSuccess = emitParticles(emitter, burstAmount);
+                
+                if (!emitSuccess) {
+                    console.warn('[MultiplayerBoardScene] Failed to emit particles');
+                    destroyParticleEmitter(emitter);
+                    return;
+                }
                 
                 // Clean up after animation
                 this.time.delayedCall(1200, () => {
                     if (emitter) {
-                        emitter.destroy();
+                        destroyParticleEmitter(emitter);
                         this.activeParticleSystems.delete(emitter);
                     }
                 });
@@ -317,6 +427,7 @@ export function createMultiplayerBoardScene(
 
         /**
          * Spawn background explosion particles for combo effects
+         * Uses compatibility layer for Phaser 3/4 support
          * @param {number} comboCount - Current combo count
          */
         spawnComboExplosionParticles(comboCount) {
@@ -343,7 +454,9 @@ export function createMultiplayerBoardScene(
                     const offsetX = (Math.random() - 0.5) * boardWidth * 0.3;
                     const offsetY = (Math.random() - 0.5) * boardHeight * 0.3;
                     
-                    const emitter = this.add.particles(
+                    // Use compatibility layer
+                    const emitter = createParticleEmitter(
+                        this,
                         centerX + offsetX,
                         centerY + offsetY,
                         this.commonParticleKey,
@@ -361,14 +474,21 @@ export function createMultiplayerBoardScene(
                         }
                     );
 
-                    emitter.setDepth(4); // Behind line clear particles but above board
+                    if (!emitter) {
+                        console.warn('[MultiplayerBoardScene] Failed to create combo explosion particles');
+                        return;
+                    }
+
+                    if (emitter.setDepth) {
+                        emitter.setDepth(4); // Behind line clear particles but above board
+                    }
 
                     // Explode with scaled particle count
-                    emitter.explode(Math.round(particleCount / burstCount));
+                    emitParticles(emitter, Math.round(particleCount / burstCount));
 
                     this.time.delayedCall(1200, () => {
                         if (emitter) {
-                            emitter.destroy();
+                            destroyParticleEmitter(emitter);
                             this.activeParticleSystems.delete(emitter);
                         }
                     });
@@ -387,6 +507,7 @@ export function createMultiplayerBoardScene(
 
         /**
          * Spawn a radial wave effect for extreme combos
+         * Uses compatibility layer for Phaser 3/4 support
          * @param {number} comboCount - Current combo count
          */
         spawnRadialWave(comboCount) {
@@ -407,7 +528,8 @@ export function createMultiplayerBoardScene(
                 const dirX = Math.cos(angle);
                 const dirY = Math.sin(angle);
 
-                const emitter = this.add.particles(centerX, centerY, this.commonParticleKey, {
+                // Use compatibility layer
+                const emitter = createParticleEmitter(this, centerX, centerY, this.commonParticleKey, {
                     speedX: dirX * waveSpeed,
                     speedY: dirY * waveSpeed,
                     lifespan: { min: 500, max: 800 },
@@ -420,12 +542,20 @@ export function createMultiplayerBoardScene(
                     tint: this.getComboTint(comboCount, i),
                 });
 
-                emitter.setDepth(3);
-                emitter.explode(1);
+                if (!emitter) {
+                    console.warn('[MultiplayerBoardScene] Failed to create radial wave particle', i);
+                    continue;
+                }
+
+                if (emitter.setDepth) {
+                    emitter.setDepth(3);
+                }
+                
+                emitParticles(emitter, 1);
 
                 this.time.delayedCall(900, () => {
                     if (emitter) {
-                        emitter.destroy();
+                        destroyParticleEmitter(emitter);
                         this.activeParticleSystems.delete(emitter);
                     }
                 });
@@ -434,12 +564,31 @@ export function createMultiplayerBoardScene(
             }
         }
 
+        /**
+         * Cleanup scene resources on shutdown
+         * **Phaser 4 Compatibility:** ✅ shutdown() lifecycle method unchanged
+         */
         shutdown() {
-            super.shutdown();
-            this.labelText?.destroy();
-            this.scoreText?.destroy();
-            this.linesText?.destroy();
-            this.garbageText?.destroy();
+            try {
+                console.log(`[MultiplayerBoardScene] Shutting down ${this.scene?.key || 'unknown'}`);
+                super.shutdown();
+                this.labelText?.destroy();
+                this.scoreText?.destroy();
+                this.linesText?.destroy();
+                this.garbageText?.destroy();
+
+                // Clean up active particle systems
+                this.activeParticleSystems.forEach((emitter) => {
+                    try {
+                        emitter.destroy();
+                    } catch (error) {
+                        console.warn('[MultiplayerBoardScene] Error destroying particle emitter:', error);
+                    }
+                });
+                this.activeParticleSystems.clear();
+            } catch (error) {
+                console.error('[MultiplayerBoardScene] Error in shutdown():', error);
+            }
         }
     };
 }

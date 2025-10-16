@@ -1,10 +1,21 @@
 /**
- * @fileoverview Phaser 3 Board Scene for Serenity Blocks
- * This scene handles rendering the game board, pieces, and visual effects using Phaser
+ * @fileoverview Phaser 4 Board Scene for Serenity Blocks
+ * Migrated from Phaser 3 - handles rendering game board, pieces, and visual effects
+ * 
+ * Key Phaser 4 Changes:
+ * - Particle system API completely rewritten
+ * - Graphics API modernized
+ * - WebGL-only rendering
  */
 
 import { ensureCircleTexture } from './utils/index.js';
 import { createBaseBoardScene } from './base-board-scene.js';
+import {
+    createParticleEmitter,
+    emitParticles,
+    destroyParticleEmitter,
+    logParticleSystemInfo,
+} from './utils/particle-compat.js';
 
 const LINE_CLEAR_PARTICLE_KEY = 'line-clear-particle';
 const RIPPLE_PARTICLE_LIFESPAN = 650;
@@ -12,10 +23,22 @@ const CAMERA_SHAKE_BASE_INTENSITY = 0.0025;
 const CAMERA_SHAKE_BASE_DURATION = 120;
 
 /**
- * Create and return the BoardScene class.
- * @param {typeof Phaser} phaserLib
+ * Create and return the BoardScene class for Phaser 4.
+ * Factory function that generates scene class with Phaser reference
+ * 
+ * @param {typeof Phaser} phaserLib - Phaser 4 library reference
+ * @returns {typeof Phaser.Scene} BoardScene class
  */
 export function createBoardScene(phaserLib = typeof window !== 'undefined' ? window.Phaser : null) {
+    const PhaserRef = phaserLib;
+    
+    // Validate Phaser 4 availability
+    if (!PhaserRef?.Scene) {
+        throw new Error('[BoardScene] Phaser 4 not available');
+    }
+    
+    console.log('[BoardScene] Creating scene class for Phaser 4');
+    
     const BaseBoardScene = createBaseBoardScene(phaserLib);
 
     return class BoardScene extends BaseBoardScene {
@@ -72,6 +95,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Generate a small circular texture for particle bursts (only once)
             ensureCircleTexture(this, this.lineClearParticleKey, 4, 0xffffff, 1);
+
+            // Log particle system availability for debugging
+            logParticleSystemInfo(this);
         }
 
         /**
@@ -225,6 +251,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
         /**
          * Create transient particle bursts across cleared rows
+         * Uses compatibility layer for Phaser 3/4 support
          * @param {Array<number>} clearedRows - World row indices that were cleared
          */
         spawnLineClearParticles(clearedRows) {
@@ -238,17 +265,21 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             const totalIntensity = intensity * comboMultiplier;
             
             const boardWidth = this.cols * this.blockSize;
+            const PhaserRef = window.Phaser;
+
+            if (!PhaserRef || !PhaserRef.Geom || !PhaserRef.Geom.Rectangle) {
+                console.warn('[BoardScene] Phaser.Geom.Rectangle not available, particles disabled');
+                return;
+            }
 
             clearedRows.forEach((row, index) => {
                 const zoneY = (row - this.hiddenRows) * this.blockSize;
 
-                // The emitZone source is relative to the emitter's coordinates.
-                // So, we create the emitter at the zone's top-left corner (0, zoneY)
-                // and define the zone source relative to that point.
-                const emitter = this.add.particles(0, zoneY, this.lineClearParticleKey, {
+                // Use compatibility layer to create particles
+                const emitter = createParticleEmitter(this, 0, zoneY, this.lineClearParticleKey, {
                     emitZone: {
                         type: 'random',
-                        source: new Phaser.Geom.Rectangle(0, 0, boardWidth, this.blockSize),
+                        source: new PhaserRef.Geom.Rectangle(0, 0, boardWidth, this.blockSize),
                     },
                     speed: { min: 90 * comboMultiplier, max: 220 * totalIntensity },
                     angle: { min: -110, max: -70 },
@@ -262,16 +293,30 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     tint: this.getComboTint(this.currentComboCount, index),
                 });
 
-                emitter.setDepth(5);
+                // If particle creation failed, skip this row
+                if (!emitter) {
+                    console.warn('[BoardScene] Failed to create line clear particles for row', row);
+                    return;
+                }
+
+                if (emitter.setDepth) {
+                    emitter.setDepth(5);
+                }
 
                 // More particles for bigger combos
                 const burstAmount = Math.round(18 * totalIntensity);
-                emitter.explode(burstAmount);
+                const emitSuccess = emitParticles(emitter, burstAmount);
+
+                if (!emitSuccess) {
+                    console.warn('[BoardScene] Failed to emit particles');
+                    destroyParticleEmitter(emitter);
+                    return;
+                }
 
                 // The emitter is now the game object to be managed
                 this.time.delayedCall(RIPPLE_PARTICLE_LIFESPAN, () => {
                     if (emitter) {
-                        emitter.destroy();
+                        destroyParticleEmitter(emitter);
                         this.activeParticleSystems.delete(emitter);
                     }
                 });
@@ -307,6 +352,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
         /**
          * Spawn background explosion particles for combo effects
+         * Uses compatibility layer for Phaser 3/4 support
          * @param {number} comboCount - Current combo count
          */
         spawnComboExplosionParticles(comboCount) {
@@ -333,7 +379,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     const offsetX = (Math.random() - 0.5) * boardWidth * 0.3;
                     const offsetY = (Math.random() - 0.5) * boardHeight * 0.3;
                     
-                    const emitter = this.add.particles(
+                    // Use compatibility layer
+                    const emitter = createParticleEmitter(
+                        this,
                         centerX + offsetX,
                         centerY + offsetY,
                         this.lineClearParticleKey,
@@ -351,14 +399,21 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                         }
                     );
 
-                    emitter.setDepth(4); // Behind line clear particles but above board
+                    if (!emitter) {
+                        console.warn('[BoardScene] Failed to create combo explosion particles');
+                        return;
+                    }
+
+                    if (emitter.setDepth) {
+                        emitter.setDepth(4); // Behind line clear particles but above board
+                    }
 
                     // Explode with scaled particle count
-                    emitter.explode(Math.round(particleCount / burstCount));
+                    emitParticles(emitter, Math.round(particleCount / burstCount));
 
                     this.time.delayedCall(1200, () => {
                         if (emitter) {
-                            emitter.destroy();
+                            destroyParticleEmitter(emitter);
                             this.activeParticleSystems.delete(emitter);
                         }
                     });
@@ -377,6 +432,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
         /**
          * Spawn a radial wave effect for extreme combos
+         * Uses compatibility layer for Phaser 3/4 support
          * @param {number} comboCount - Current combo count
          */
         spawnRadialWave(comboCount) {
@@ -397,7 +453,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 const dirX = Math.cos(angle);
                 const dirY = Math.sin(angle);
 
-                const emitter = this.add.particles(centerX, centerY, this.lineClearParticleKey, {
+                // Use compatibility layer
+                const emitter = createParticleEmitter(this, centerX, centerY, this.lineClearParticleKey, {
                     speedX: dirX * waveSpeed,
                     speedY: dirY * waveSpeed,
                     lifespan: { min: 500, max: 800 },
@@ -410,12 +467,20 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                     tint: this.getComboTint(comboCount, i),
                 });
 
-                emitter.setDepth(3);
-                emitter.explode(1);
+                if (!emitter) {
+                    console.warn('[BoardScene] Failed to create radial wave particle', i);
+                    continue;
+                }
+
+                if (emitter.setDepth) {
+                    emitter.setDepth(3);
+                }
+                
+                emitParticles(emitter, 1);
 
                 this.time.delayedCall(900, () => {
                     if (emitter) {
-                        emitter.destroy();
+                        destroyParticleEmitter(emitter);
                         this.activeParticleSystems.delete(emitter);
                     }
                 });
