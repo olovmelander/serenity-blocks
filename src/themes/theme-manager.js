@@ -15,7 +15,7 @@ export class ThemeManager {
         this.activeTheme = null;
         this.activeThemeName = 'forest';
         this.themeInstances = new Map(); // Cache loaded theme instances
-        this.themeRegistry = new Map(); // Map theme names to import paths
+        this.themeRegistry = new Map(); // Map theme names to lazy importers
         this.randomThemeInterval = null;
         this.isTransitioning = false;
 
@@ -28,8 +28,15 @@ export class ThemeManager {
      * This enables lazy loading of themes
      */
     initializeRegistry() {
+        const moduleImports = import.meta.glob('./**/*-theme.js');
+
         THEME_REGISTRY.forEach(({ id, module }) => {
-            this.themeRegistry.set(id, module);
+            const importer = moduleImports[module];
+            if (!importer) {
+                console.warn(`[ThemeManager] Module not found for theme "${id}": ${module}`);
+                return;
+            }
+            this.themeRegistry.set(id, importer);
         });
     }
 
@@ -45,8 +52,8 @@ export class ThemeManager {
         }
 
         // Get module path
-        const modulePath = this.themeRegistry.get(themeName);
-        if (!modulePath) {
+        const importer = this.themeRegistry.get(themeName);
+        if (!importer) {
             console.error(`Theme "${themeName}" not found in registry`);
             // Fallback to forest theme
             return this.loadTheme('forest');
@@ -54,7 +61,7 @@ export class ThemeManager {
 
         try {
             // Dynamically import the theme module
-            const module = await import(modulePath);
+            const module = await importer();
             const ThemeClass = module.default;
 
             // Instantiate the theme
