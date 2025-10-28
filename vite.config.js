@@ -1,9 +1,20 @@
 import { defineConfig } from 'vite';
+import replace from '@rollup/plugin-replace';
 import path from 'path';
 
 export default defineConfig({
   // Base public path for assets
   base: './',
+  // Ensure Phaser renderer flags are set correctly during dev and build
+  plugins: [
+    replace({
+      preventAssignment: true,
+      values: {
+        'typeof CANVAS_RENDERER': 'false',
+        'typeof WEBGL_RENDERER': 'true',
+      },
+    }),
+  ],
 
   // Server configuration
   server: {
@@ -50,11 +61,4 @@ export default defineConfig({
 
   // Asset handling
   assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg', '**/*.mp3', '**/*.wav', '**/*.ogg'],
-
-  // Define global constants
-  // Phaser 4 is WebGL-only (no Canvas renderer)
-  define: {
-    'typeof CANVAS_RENDERER': JSON.stringify(false),
-    'typeof WEBGL_RENDERER': JSON.stringify(true),
-  },
 });
