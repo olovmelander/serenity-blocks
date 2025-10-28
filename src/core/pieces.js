@@ -3,7 +3,7 @@
 // =================================================================================
 
 import {
-    SHAPES, COLORS, PIECE_KEYS, COLS,
+    SHAPES, COLORS, PIECE_KEYS, COLS, HIDDEN_ROWS,
 } from './constants.js';
 
 /**
@@ -47,11 +47,13 @@ export function spawnPiece(isValidPositionFn) {
     const shapeKey = nextPieces.shift();
     const shape = SHAPES[shapeKey];
 
+    const spawnY = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
+
     const piece = {
         shapeKey,
         shape,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
-        y: 0,
+        y: spawnY,
         color: COLORS[shapeKey],
     };
 

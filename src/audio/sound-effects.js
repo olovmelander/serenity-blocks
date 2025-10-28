@@ -170,4 +170,40 @@ export class SoundEffectPlayer {
     playGarbageSend() {
         this.soundSets[this.soundSet].garbageSend();
     }
+    
+    /**
+     * PHASE 3.4: Plays the garbage received sound effect (for multiplayer)
+     */
+    playGarbageReceived() {
+        if (this.soundSets[this.soundSet].garbageReceived) {
+            this.soundSets[this.soundSet].garbageReceived();
+        } else {
+            // Fallback to a lower-pitched version of garbage send
+            this.soundSets[this.soundSet].garbageSend();
+        }
+    }
+    
+    /**
+     * PHASE 3.4: Plays the garbage countered sound effect (for multiplayer)
+     */
+    playGarbageCountered() {
+        if (this.soundSets[this.soundSet].garbageCountered) {
+            this.soundSets[this.soundSet].garbageCountered();
+        } else {
+            // Fallback to line clear sound (defensive action)
+            this.soundSets[this.soundSet].lineClear();
+        }
+    }
+    
+    /**
+     * PHASE 3.4: Plays the player death sound effect (for multiplayer)
+     */
+    playPlayerDeath() {
+        if (this.soundSets[this.soundSet].playerDeath) {
+            this.soundSets[this.soundSet].playerDeath();
+        } else {
+            // Fallback to game over sound
+            this.soundSets[this.soundSet].gameOver();
+        }
+    }
 }

@@ -65,7 +65,7 @@ function maskArrayToBits(mask) {
  * @param {number} bits - 10-bit hole position bitfield
  * @returns {Array<number>} Array of column indices with holes
  */
-function bitsToColumns(bits) {
+export function bitsToColumns(bits) {
     const columns = [];
     // Decode MSB-first: test bit 9 first (column 0), then bit 8 (column 1), etc.
     for (let x = 0; x < COLS; x++) {
@@ -77,7 +77,7 @@ function bitsToColumns(bits) {
     return columns;
 }
 
-function columnsToMask(columns) {
+export function columnsToMask(columns) {
     const mask = Array(COLS).fill(false);
     if (Array.isArray(columns)) {
         columns.forEach((col) => {
@@ -180,6 +180,7 @@ export class GarbageAttack {
         const attackId = this.id || 'attack';
         const color = context.color || '#808080';
         const team = context.team || null;
+        const attackerId = context.attackerId || null; // Track attacker for frag attribution
 
         if (this.attackType === ATTACK_TYPES.BLIND && this.param > 0) {
             entries.push({
@@ -188,6 +189,7 @@ export class GarbageAttack {
                 duration: this.param,
                 combo: this.complexity,
                 depth: this.depth,
+                attackerId,
             });
         }
 
@@ -202,6 +204,7 @@ export class GarbageAttack {
                 holeMask: maskBits,
                 color,
                 team,
+                attackerId, // Store who sent this garbage line
                 blindTime: 0,
                 connectAbove: ordinal > 0,
                 connectBelow: ordinal < totalLines - 1,
@@ -219,6 +222,7 @@ export class GarbageAttack {
             entries.push({
                 type: 'full_blind',
                 attackId,
+                attackerId,
                 duration: this.param,
                 combo: this.complexity,
                 depth: this.depth,

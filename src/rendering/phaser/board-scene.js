@@ -500,6 +500,24 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         }
 
         /**
+         * Clear all graphics layers
+         * Call this when starting a new game to ensure clean slate
+         */
+        clearBoard() {
+            this.boardGraphics?.clear();
+            this.pieceGraphics?.clear();
+            this.effectsGraphics?.clear();
+
+            // Clear any active particle systems
+            this.activeParticleSystems?.forEach((system) => {
+                destroyParticleEmitter(system);
+            });
+            this.activeParticleSystems?.clear();
+
+            console.log('[BoardScene] Board cleared');
+        }
+
+        /**
          * Resize handler
          */
         resize(width, height) {

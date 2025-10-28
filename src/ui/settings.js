@@ -25,6 +25,8 @@ const DEFAULT_CONFIG = {
     lineClearEffects: true,
     backgroundComboEffects: true,
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
+    gamepadEnabled: true,
+    gamepadDeadzone: 0.25,
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -46,6 +48,26 @@ const DEFAULT_CONFIG = {
         flip: 'e',
         softDrop: 's',
         hardDrop: 'Shift',
+    },
+    gamepadBindings: {
+        moveLeft: 14,      // D-pad Left
+        moveRight: 15,     // D-pad Right
+        rotateRight: 0,    // A Button
+        rotateLeft: 3,     // Y Button
+        flip: 2,           // X Button
+        softDrop: 13,      // D-pad Down
+        hardDrop: 1,       // B Button
+        pause: 9,          // Start Button
+    },
+    player2GamepadBindings: {
+        moveLeft: 14,      // D-pad Left
+        moveRight: 15,     // D-pad Right
+        rotateRight: 0,    // A Button
+        rotateLeft: 3,     // Y Button
+        flip: 2,           // X Button
+        softDrop: 13,      // D-pad Down
+        hardDrop: 1,       // B Button
+        pause: 9,          // Start Button
     },
 };
 
@@ -232,28 +254,156 @@ export function updateControlsDisplay(settings) {
 export function handleKeybinding(event, element, settingsManager, updateCallback) {
     event.preventDefault();
 
-    const action = element.id.substring(4); // Remove 'key-' prefix
+    const elementId = element.id;
     const key = event.key === ' ' ? 'Space' : event.key;
     const settings = settingsManager.get();
 
-    // Check if key is already used for another action
-    if (Object.values(settings.keyBindings).includes(key) && settings.keyBindings[action] !== key) {
+    // Determine if this is player 2 binding
+    const isPlayer2 = elementId.startsWith('key-p2-');
+    const action = isPlayer2
+        ? elementId.substring(7) // Remove 'key-p2-' prefix
+        : elementId.substring(4); // Remove 'key-' prefix
+
+    const bindingsKey = isPlayer2 ? 'player2KeyBindings' : 'keyBindings';
+    const currentBindings = isPlayer2 ? settings.player2KeyBindings : settings.keyBindings;
+
+    // Check if key is already used for another action in the same player's bindings
+    if (Object.values(currentBindings).includes(key) && currentBindings[action] !== key) {
         // Revert to original key
-        element.textContent = settings.keyBindings[action];
+        element.textContent = currentBindings[action];
         element.classList.remove('listening');
         return;
     }
 
     // Set new key binding
-    settingsManager.setValue('keyBindings', {
-        ...settings.keyBindings,
+    const newBindings = {
+        ...currentBindings,
         [action]: key,
-    });
+    };
+
+    settingsManager.update({ [bindingsKey]: newBindings });
     element.textContent = key;
     element.classList.remove('listening');
 
     settingsManager.save();
     if (updateCallback) updateCallback();
+}
+
+/**
+ * Button names for gamepad display
+ */
+const GAMEPAD_BUTTON_NAMES = {
+    0: 'A (Cross)',
+    1: 'B (Circle)',
+    2: 'X (Square)',
+    3: 'Y (Triangle)',
+    4: 'LB (L1)',
+    5: 'RB (R1)',
+    6: 'LT (L2)',
+    7: 'RT (R2)',
+    8: 'Select (Share)',
+    9: 'Start (Options)',
+    10: 'L3',
+    11: 'R3',
+    12: 'D-Up',
+    13: 'D-Down',
+    14: 'D-Left',
+    15: 'D-Right',
+    16: 'Home',
+};
+
+/**
+ * Handles gamepad binding input
+ * @param {HTMLElement} element - Input element
+ * @param {SettingsManager} settingsManager - Settings manager instance
+ * @param {Function} updateCallback - Callback to update controls display
+ */
+export function handleGamepadBinding(element, settingsManager, updateCallback) {
+    const elementId = element.id;
+    const settings = settingsManager.get();
+    
+    // Determine if this is player 2 binding
+    const isPlayer2 = elementId.startsWith('gamepad-p2-');
+    const action = isPlayer2
+        ? elementId.substring(11) // Remove 'gamepad-p2-' prefix
+        : elementId.substring(8); // Remove 'gamepad-' prefix
+
+    const bindingsKey = isPlayer2 ? 'player2GamepadBindings' : 'gamepadBindings';
+    const currentBindings = isPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+
+    // Listen for gamepad button press
+    let pollInterval = setInterval(() => {
+        const gamepads = navigator.getGamepads();
+        for (let i = 0; i < gamepads.length; i++) {
+            const gamepad = gamepads[i];
+            if (!gamepad) continue;
+
+            // Check all buttons
+            for (let btnIndex = 0; btnIndex < gamepad.buttons.length; btnIndex++) {
+                if (gamepad.buttons[btnIndex].pressed) {
+                    // Check if button is already used for another action
+                    if (Object.values(currentBindings).includes(btnIndex) && currentBindings[action] !== btnIndex) {
+                        // Revert to original button
+                        const originalButton = currentBindings[action];
+                        element.textContent = GAMEPAD_BUTTON_NAMES[originalButton] || `Button ${originalButton}`;
+                        element.classList.remove('listening');
+                        clearInterval(pollInterval);
+                        return;
+                    }
+
+                    // Set new button binding
+                    const newBindings = {
+                        ...currentBindings,
+                        [action]: btnIndex,
+                    };
+
+                    settingsManager.update({ [bindingsKey]: newBindings });
+                    element.textContent = GAMEPAD_BUTTON_NAMES[btnIndex] || `Button ${btnIndex}`;
+                    element.classList.remove('listening');
+                    clearInterval(pollInterval);
+                    
+                    settingsManager.save();
+                    if (updateCallback) updateCallback();
+                    return;
+                }
+            }
+        }
+    }, 50); // Poll at 20 FPS
+
+    // Timeout after 10 seconds
+    setTimeout(() => {
+        if (element.classList.contains('listening')) {
+            element.textContent = GAMEPAD_BUTTON_NAMES[currentBindings[action]] || `Button ${currentBindings[action]}`;
+            element.classList.remove('listening');
+            clearInterval(pollInterval);
+        }
+    }, 10000);
+}
+
+/**
+ * Updates gamepad controls display
+ * @param {Object} settings - Current settings
+ */
+export function updateGamepadControlsDisplay(settings) {
+    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'pause'];
+    
+    // Update Player 1 gamepad bindings
+    actions.forEach((action) => {
+        const element = document.getElementById(`gamepad-${action}`);
+        if (element && settings.gamepadBindings && settings.gamepadBindings[action] !== undefined) {
+            const buttonIndex = settings.gamepadBindings[action];
+            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
+    });
+
+    // Update Player 2 gamepad bindings
+    actions.forEach((action) => {
+        const element = document.getElementById(`gamepad-p2-${action}`);
+        if (element && settings.player2GamepadBindings && settings.player2GamepadBindings[action] !== undefined) {
+            const buttonIndex = settings.player2GamepadBindings[action];
+            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
+    });
 }
 
 /**
@@ -274,6 +424,23 @@ export function setupSettingsTabs() {
 }
 
 /**
+ * Sets up controls sub-tab switching
+ */
+export function setupControlsSubTabs() {
+    document.querySelectorAll('.controls-subtab').forEach((subtab) => {
+        subtab.addEventListener('click', () => {
+            const targetSubtab = subtab.getAttribute('data-subtab');
+            document.querySelectorAll('.controls-subtab').forEach((t) => t.classList.remove('active'));
+            document
+                .querySelectorAll('.controls-subtab-content')
+                .forEach((c) => c.classList.remove('active'));
+            subtab.classList.add('active');
+            document.getElementById(`controls-${targetSubtab}`).classList.add('active');
+        });
+    });
+}
+
+/**
  * Initializes settings UI elements
  * @param {SettingsManager} settingsManager - Settings manager instance
  * @param {Object} callbacks - Callback functions
@@ -284,17 +451,28 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Setup tab switching
     setupSettingsTabs();
 
+    // Setup controls sub-tab switching
+    setupControlsSubTabs();
+
     // Game mode selector
     const gameModeSelect = document.getElementById('game-mode');
     if (gameModeSelect) {
         gameModeSelect.value = settings.gameMode || 'single';
 
-        gameModeSelect.addEventListener('change', (e) => {
+        gameModeSelect.addEventListener('change', async (e) => {
             const mode = e.target.value;
+            console.log('[Settings] Game mode changed to:', mode);
             settingsManager.update({ gameMode: mode });
 
-            if (callbacks.onGameModeChange) {
-                callbacks.onGameModeChange(mode);
+            if (callbacks && callbacks.onGameModeChange) {
+                console.log('[Settings] Calling onGameModeChange callback');
+                try {
+                    await callbacks.onGameModeChange(mode);
+                } catch (error) {
+                    console.error('[Settings] Error in onGameModeChange callback:', error);
+                }
+            } else {
+                console.warn('[Settings] No onGameModeChange callback registered');
             }
 
             settingsManager.save();
@@ -533,12 +711,56 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
+    // Gamepad enabled toggle
+    const gamepadEnabledSelect = document.getElementById('gamepad-enabled');
+    if (gamepadEnabledSelect) {
+        gamepadEnabledSelect.value = settings.gamepadEnabled ? 'true' : 'false';
+
+        gamepadEnabledSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ gamepadEnabled: enabled });
+
+            if (callbacks.onGamepadEnabledChange) {
+                callbacks.onGamepadEnabledChange(enabled);
+            }
+
+            settingsManager.save();
+        });
+    }
+
+    // Gamepad deadzone slider
+    const gamepadDeadzoneSlider = document.getElementById('gamepad-deadzone');
+    const gamepadDeadzoneValue = document.getElementById('gamepad-deadzone-value');
+    if (gamepadDeadzoneSlider && gamepadDeadzoneValue) {
+        gamepadDeadzoneSlider.value = Math.round(settings.gamepadDeadzone * 100);
+        gamepadDeadzoneValue.textContent = Math.round(settings.gamepadDeadzone * 100);
+
+        gamepadDeadzoneSlider.addEventListener('input', (e) => {
+            const deadzone = parseInt(e.target.value) / 100;
+            settingsManager.update({ gamepadDeadzone: deadzone });
+
+            if (callbacks.onGamepadDeadzoneChange) {
+                callbacks.onGamepadDeadzoneChange(deadzone);
+            }
+
+            gamepadDeadzoneValue.textContent = e.target.value;
+            settingsManager.save();
+        });
+    }
+
     // Initialize key bindings listeners
     const keyInputs = document.querySelectorAll('.key-input');
     keyInputs.forEach((input) => {
-        const action = input.id.substring(4);
-        if (settings.keyBindings[action]) {
-            input.textContent = settings.keyBindings[action];
+        const elementId = input.id;
+        const isPlayer2 = elementId.startsWith('key-p2-');
+        const action = isPlayer2
+            ? elementId.substring(7) // Remove 'key-p2-' prefix
+            : elementId.substring(4); // Remove 'key-' prefix
+
+        const currentBindings = isPlayer2 ? settings.player2KeyBindings : settings.keyBindings;
+
+        if (currentBindings && currentBindings[action]) {
+            input.textContent = currentBindings[action];
         }
 
         input.addEventListener('click', () => {
@@ -559,8 +781,46 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     });
 
+    // Initialize gamepad bindings listeners
+    const gamepadInputs = document.querySelectorAll('.gamepad-input');
+    gamepadInputs.forEach((input) => {
+        const elementId = input.id;
+        const isPlayer2 = elementId.startsWith('gamepad-p2-');
+        const action = isPlayer2
+            ? elementId.substring(11) // Remove 'gamepad-p2-' prefix
+            : elementId.substring(8); // Remove 'gamepad-' prefix
+
+        const currentBindings = isPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+
+        if (currentBindings && currentBindings[action] !== undefined) {
+            const buttonIndex = currentBindings[action];
+            input.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
+
+        input.addEventListener('click', () => {
+            // Clear other listening inputs
+            document.querySelectorAll('.gamepad-input.listening').forEach((el) => {
+                const elId = el.id;
+                const elIsPlayer2 = elId.startsWith('gamepad-p2-');
+                const elAction = elIsPlayer2 ? elId.substring(11) : elId.substring(8);
+                const elBindings = elIsPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+                const elButtonIndex = elBindings[elAction];
+                el.textContent = GAMEPAD_BUTTON_NAMES[elButtonIndex] || `Button ${elButtonIndex}`;
+                el.classList.remove('listening');
+            });
+
+            input.classList.add('listening');
+            input.textContent = 'Press a button...';
+
+            handleGamepadBinding(input, settingsManager, () => {
+                updateGamepadControlsDisplay(settingsManager.get());
+            });
+        });
+    });
+
     // Update controls display
     updateControlsDisplay(settings);
+    updateGamepadControlsDisplay(settings);
 }
 
 /**

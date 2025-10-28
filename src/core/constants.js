@@ -40,6 +40,21 @@ export const COLORS = {
 };
 
 /**
+ * Player colors for multiplayer (8 distinct colors for up to 8 players)
+ * These are different from tetromino colors for clarity
+ */
+export const PLAYER_COLORS = [
+    '#ff1744', // Red
+    '#2979ff', // Blue
+    '#00e676', // Green
+    '#ffea00', // Yellow
+    '#e040fb', // Purple
+    '#00e5ff', // Cyan
+    '#ff9100', // Orange
+    '#f50057', // Pink
+];
+
+/**
  * Tetromino shapes (rotation state 0)
  * Each shape is a 2D array representing the piece structure
  */
@@ -153,7 +168,9 @@ export const THEMES = getThemeIds();
  */
 export const GAME_MODES = {
     SINGLE_PLAYER: 'single',
-    MULTIPLAYER: 'multiplayer',
+    LOCAL_MULTIPLAYER: 'local-multiplayer',
+    ONLINE_MULTIPLAYER: 'online-multiplayer',
+    SERENITY: 'serenity',
 };
 
 /**
@@ -196,6 +213,11 @@ export const DEFAULT_SETTINGS = {
     backgroundComboEffects: true,
     effectQuality: 'High',
 
+    // Serenity Mode settings
+    breathingGuideEnabled: false,
+    breathingTechnique: 'deep-relaxation', // Breathing technique
+    breathingText: true, // Show text prompts
+
     // Control settings
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
     keyBindings: {
@@ -221,4 +243,29 @@ export const DEFAULT_SETTINGS = {
         softDrop: 's',
         hardDrop: 'Shift',
     },
+    // Gamepad bindings (Player 1)
+    gamepadBindings: {
+        moveLeft: 14,      // D-pad Left
+        moveRight: 15,     // D-pad Right
+        rotateRight: 0,    // A Button
+        rotateLeft: 3,     // Y Button
+        flip: 2,           // X Button
+        softDrop: 13,      // D-pad Down
+        hardDrop: 1,       // B Button
+        pause: 9,          // Start Button
+    },
+    // Player 2 gamepad bindings (for multiplayer)
+    player2GamepadBindings: {
+        moveLeft: 14,      // D-pad Left
+        moveRight: 15,     // D-pad Right
+        rotateRight: 0,    // A Button
+        rotateLeft: 3,     // Y Button
+        flip: 2,           // X Button
+        softDrop: 13,      // D-pad Down
+        hardDrop: 1,       // B Button
+        pause: 9,          // Start Button
+    },
+    // Gamepad settings
+    gamepadEnabled: true,
+    gamepadDeadzone: 0.25,
 };

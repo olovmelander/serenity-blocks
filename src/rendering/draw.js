@@ -6,7 +6,9 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
 } from '../core/constants.js';
-import { generateBoard, isValidPosition } from '../core/board.js';
+import { generateBoard } from '../core/board.js';
+import { canPlacePiece } from '../core/game.js';
+import { calculateGhostY as calculateGhostLanding } from '../core/pieces.js';
 import {
     getGridCache,
     drawBlock,
@@ -194,22 +196,28 @@ export function draw(canvas, ctx, gameState) {
     // Draw current piece with ghost
     if (currentPiece) {
         // Calculate ghost position
-        let ghostY = currentPiece.y;
-        while (isValidPosition(currentPiece, currentPiece.x, ghostY + 1, lockedPieces)) {
-            ghostY++;
-        }
+        const ghostY = calculateGhostLanding(
+            currentPiece,
+            (piece, x, y) => canPlacePiece(gameState, piece, x, y),
+        );
 
         // Draw ghost piece first (so it appears behind the actual piece)
         drawGhostPiece(ctx, currentPiece, ghostY);
 
-        // Draw current piece
+        // Draw current piece (including blocks in hidden rows for smooth spawn animation)
         currentPiece.shape.forEach((row, y) => {
             row.forEach((cell, x) => {
-                if (cell > 0 && currentPiece.y + y >= HIDDEN_ROWS) {
+                const worldY = currentPiece.y + y;
+
+                // Draw all blocks, even those in hidden rows, for smooth drop-in animation
+                // Canvas Y coordinate still needs HIDDEN_ROWS subtracted to map world space to canvas space
+                if (cell > 0) {
+                    console.log(`[CANVAS RENDER DEBUG] Drawing block at worldY=${worldY}, canvasY=${worldY - HIDDEN_ROWS}, HIDDEN_ROWS=${HIDDEN_ROWS}`);
+
                     drawBlock(
                         ctx,
                         currentPiece.x + x,
-                        currentPiece.y + y - HIDDEN_ROWS,
+                        worldY - HIDDEN_ROWS,  // Canvas space: subtract hidden rows to get 0-based canvas Y
                         currentPiece.color,
                         null,
                         false,
@@ -410,8 +418,7 @@ function createParticleBurst(container, topPosition, rowHeight, delay) {
  * Tetris Effect-style expanding ring effect
  */
 function createRadialBurst(container, clearedRows) {
-    const canvas = document.getElementById('game-canvas');
-    if (!canvas) return;
+    if (!container) return;
 
     // Calculate center point of cleared lines
     const avgRow = clearedRows.reduce((a, b) => a + b, 0) / clearedRows.length;

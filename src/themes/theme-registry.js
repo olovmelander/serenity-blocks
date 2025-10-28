@@ -222,6 +222,12 @@ export const THEME_REGISTRY = [
         group: 'abstract',
     },
     {
+        id: 'nebula-flow',
+        displayName: 'Nebula Flow',
+        module: './nebula-flow/nebula-flow-theme.js',
+        group: 'abstract',
+    },
+    {
         id: 'lunara',
         displayName: 'Lunara',
         module: './lunara/lunara-theme.js',

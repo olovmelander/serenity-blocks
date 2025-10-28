@@ -6,8 +6,9 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS,
 } from './constants.js';
-import { generateBoard, isValidPosition } from './board.js';
+import { generateBoard } from './board.js';
 import { processPhysics } from './physics.js';
+import { piecePool } from '../utils/object-pool.js';
 
 function createComboState() {
     return {
@@ -21,6 +22,65 @@ function createComboState() {
         sourcePiece: null,
         sequence: 0,
     };
+}
+
+function ensureBoardCache(gameState) {
+    if (!gameState) return null;
+
+    if (!gameState.boardCache || gameState.boardCacheDirty) {
+        gameState.boardCache = generateBoard(gameState.lockedPieces);
+        gameState.boardCacheDirty = false;
+    }
+
+    return gameState.boardCache;
+}
+
+function isValidPositionCached(gameState, piece, checkX, checkY) {
+    if (!piece) return false;
+
+    const boardData = ensureBoardCache(gameState);
+
+    for (let y = 0; y < piece.shape.length; y++) {
+        for (let x = 0; x < piece.shape[y].length; x++) {
+            if (piece.shape[y][x] > 0) {
+                const boardX = checkX + x;
+                const boardY = checkY + y;
+
+                if (boardX < 0 || boardX >= COLS || boardY >= boardData.length) {
+                    return false;
+                }
+
+                if (boardY >= 0 && boardData[boardY] && boardData[boardY][boardX] !== null) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+export function markBoardDirty(gameState) {
+    if (gameState) {
+        gameState.boardCacheDirty = true;
+    }
+}
+
+export function canPlacePiece(gameState, piece, checkX, checkY) {
+    return isValidPositionCached(gameState, piece, checkX, checkY);
+}
+
+export function getGhostLandingY(gameState) {
+    if (!gameState || !gameState.currentPiece) return 0;
+
+    const piece = gameState.currentPiece;
+    let ghostY = piece.y;
+
+    while (canPlacePiece(gameState, piece, piece.x, ghostY + 1)) {
+        ghostY++;
+    }
+
+    return ghostY;
 }
 
 /**
@@ -60,6 +120,8 @@ export class GameState {
 
         // Board reference (for visual feedback during line clears)
         this.board = null;
+        this.boardCache = null;
+        this.boardCacheDirty = true;
 
         // Quadra-style garbage: Track last placed piece columns for deterministic holes
         this.lastPlacedPieceX = [];
@@ -87,6 +149,9 @@ export class GameState {
      */
     reset() {
         this.lockedPieces = [];
+        if (this.currentPiece) {
+            piecePool.release(this.currentPiece);
+        }
         this.currentPiece = null;
         this.nextPieces = [];
         this.randomGenerator = Math.random;
@@ -102,6 +167,8 @@ export class GameState {
         this.inputQueue = null;
         this.startTime = Date.now();
         this.board = null;
+        this.boardCache = null;
+        this.boardCacheDirty = true;
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
         this.blindTimers = {
@@ -149,13 +216,23 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     const shapeKey = gameState.nextPieces.shift();
     const shape = SHAPES[shapeKey];
 
-    gameState.currentPiece = {
-        shapeKey,
-        shape,
-        x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
-        y: 0,
-        color: COLORS[shapeKey],
-    };
+    if (!shapeKey || !shape) {
+        return;
+    }
+
+    if (gameState.currentPiece) {
+        piecePool.release(gameState.currentPiece);
+    }
+
+    const piece = piecePool.acquire();
+    piece.shapeKey = shapeKey;
+    piece.type = shapeKey;
+    piece.shape = shape;
+    piece.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
+    piece.y = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
+    piece.color = COLORS[shapeKey];
+
+    gameState.currentPiece = piece;
 
     const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
     fillBag(gameState.nextPieces, rng);
@@ -173,14 +250,12 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     }
 
     // Check if piece can spawn (game over condition)
-    if (
-        !isValidPosition(
-            gameState.currentPiece,
-            gameState.currentPiece.x,
-            gameState.currentPiece.y,
-            gameState.lockedPieces,
-        )
-    ) {
+    if (!canPlacePiece(
+        gameState,
+        gameState.currentPiece,
+        gameState.currentPiece.x,
+        gameState.currentPiece.y,
+    )) {
         if (gameOverCallback) gameOverCallback();
     }
 }
@@ -196,14 +271,12 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
 export function move(gameState, dir, playSoundCallback, addTrailCallback) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
 
-    if (
-        isValidPosition(
-            gameState.currentPiece,
-            gameState.currentPiece.x + dir,
-            gameState.currentPiece.y,
-            gameState.lockedPieces,
-        )
-    ) {
+    if (canPlacePiece(
+        gameState,
+        gameState.currentPiece,
+        gameState.currentPiece.x + dir,
+        gameState.currentPiece.y,
+    )) {
         // Add trail before moving
         if (addTrailCallback) addTrailCallback(gameState.currentPiece);
 
@@ -246,14 +319,12 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
 
     // Wall kick: try offsets 0, 1, -1, 2, -2
     for (const kick of [0, 1, -1, 2, -2]) {
-        if (
-            isValidPosition(
-                gameState.currentPiece,
-                gameState.currentPiece.x + kick,
-                gameState.currentPiece.y,
-                gameState.lockedPieces,
-            )
-        ) {
+        if (canPlacePiece(
+            gameState,
+            gameState.currentPiece,
+            gameState.currentPiece.x + kick,
+            gameState.currentPiece.y,
+        )) {
             gameState.currentPiece.x += kick;
             if (playSoundCallback) playSoundCallback();
             return true;
@@ -275,14 +346,12 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
 export function softDrop(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
 
-    if (
-        isValidPosition(
-            gameState.currentPiece,
-            gameState.currentPiece.x,
-            gameState.currentPiece.y + 1,
-            gameState.lockedPieces,
-        )
-    ) {
+    if (canPlacePiece(
+        gameState,
+        gameState.currentPiece,
+        gameState.currentPiece.x,
+        gameState.currentPiece.y + 1,
+    )) {
         gameState.currentPiece.y++;
         gameState.score += gameState.level;
         gameState.dropCounter = 0;
@@ -302,14 +371,12 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return;
 
     let distance = 0;
-    while (
-        isValidPosition(
-            gameState.currentPiece,
-            gameState.currentPiece.x,
-            gameState.currentPiece.y + 1,
-            gameState.lockedPieces,
-        )
-    ) {
+    while (canPlacePiece(
+        gameState,
+        gameState.currentPiece,
+        gameState.currentPiece.x,
+        gameState.currentPiece.y + 1,
+    )) {
         gameState.currentPiece.y++;
         distance++;
     }
@@ -333,8 +400,14 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     if (playDropCallback) playDropCallback();
 
     // Trigger lock ripple effect
+    const lockedPieceSnapshot = {
+        ...lockedPiece,
+        shape: lockedPiece.shape.map((row) => row.slice()),
+        pieceId: Date.now() + Math.random(),
+    };
+
     if (physicsCallbacks && physicsCallbacks.onPieceLock) {
-        physicsCallbacks.onPieceLock(lockedPiece);
+        physicsCallbacks.onPieceLock(lockedPieceSnapshot);
     }
 
     // Calculate and store the occupied columns of the piece (for Quadra-style garbage)
@@ -361,18 +434,15 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     const comboState = createComboState();
     comboState.lockFootprint = lockFootprint;
     comboState.manualColumns = [...gameState.lastPlacedPieceX];
-    comboState.sourceColor = lockedPiece.color || COLORS[lockedPiece.shapeKey] || '#808080';
-    comboState.sourcePiece = lockedPiece.shapeKey;
+    comboState.sourceColor = lockedPieceSnapshot.color || COLORS[lockedPieceSnapshot.shapeKey] || '#808080';
+    comboState.sourcePiece = lockedPieceSnapshot.shapeKey;
     comboState.sequence = gameState.garbageAttackSequence++;
     gameState.comboState = comboState;
 
     // Add piece to locked pieces with unique ID
-    gameState.lockedPieces.push({
-        ...gameState.currentPiece,
-        shape: [...gameState.currentPiece.shape],
-        pieceId: Date.now() + Math.random(),
-    });
-
+    gameState.lockedPieces.push(lockedPieceSnapshot);
+    markBoardDirty(gameState);
+    piecePool.release(lockedPiece);
     gameState.currentPiece = null;
     gameState.dropCounter = 0;
 

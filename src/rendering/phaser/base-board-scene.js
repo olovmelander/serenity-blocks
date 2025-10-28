@@ -233,6 +233,7 @@ export function createBaseBoardScene(
 
         renderGameState() {
             if (!this.gameState) return;
+            
             this.drawGrid();
             this.drawLockedPieces();
             if (this.gameState.currentPiece) {

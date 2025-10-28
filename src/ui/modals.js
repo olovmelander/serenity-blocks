@@ -7,13 +7,21 @@
  * Modal manager class
  */
 export class ModalManager {
-    constructor() {
+    constructor(gamepadController = null) {
         this.modals = {
             start: document.getElementById('start-modal'),
             gameOver: document.getElementById('game-over-modal'),
             settings: document.getElementById('settings-modal'),
             highScores: document.getElementById('high-scores-modal'),
         };
+        this.gamepadController = gamepadController;
+    }
+
+    /**
+     * Set gamepad controller reference
+     */
+    setGamepadController(gamepadController) {
+        this.gamepadController = gamepadController;
     }
 
     /**
@@ -24,6 +32,11 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.add('visible');
+            
+            // Enable menu navigation when modal opens
+            if (this.gamepadController && modalName !== 'gameOver') {
+                this.gamepadController.enableMenuNavigation();
+            }
         }
     }
 
@@ -35,6 +48,11 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.remove('visible');
+            
+            // Disable menu navigation when modal closes
+            if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
+                this.gamepadController.disableMenuNavigation();
+            }
         }
     }
 
@@ -62,6 +80,7 @@ export class ModalManager {
  */
 export function showStartModal(modalManager) {
     modalManager.show('start');
+    // Menu navigation is enabled in show() method
 }
 
 /**
@@ -130,6 +149,7 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
  */
 export function showSettingsModal(modalManager) {
     modalManager.show('settings');
+    // Menu navigation is enabled in show() method
 }
 
 /**
@@ -207,6 +227,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
     }
 
     modalManager.show('highScores');
+    // Menu navigation is enabled in show() method
 }
 
 /**
@@ -215,6 +236,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
  */
 export function closeHighScoresModal(modalManager) {
     modalManager.hide('highScores');
+    // Menu navigation is disabled in hide() method
 }
 
 /**
@@ -223,6 +245,7 @@ export function closeHighScoresModal(modalManager) {
  */
 export function closeSettingsModal(modalManager) {
     modalManager.hide('settings');
+    // Menu navigation is disabled in hide() method
 }
 
 /**
@@ -267,6 +290,17 @@ export function setupModalUI(modalManager, callbacks) {
             if (onSettingsClose) onSettingsClose();
         });
     }
+
+    // Close settings modal with Escape key
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modalManager.isVisible('settings')) {
+            event.preventDefault();
+            event.stopImmediatePropagation(); // Stop other handlers on same element
+            console.log('[Modals] Escape pressed, closing settings modal');
+            closeSettingsModal(modalManager);
+            if (onSettingsClose) onSettingsClose();
+        }
+    });
 
     // High scores button
     const highScoresBtn = document.getElementById('high-scores-btn');

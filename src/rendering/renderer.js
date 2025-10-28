@@ -31,8 +31,11 @@ const TEXTURE_FRAGMENT_SHADER = `
 class TexturedQuad {
     constructor(gl, sourceCanvas, zIndex) {
         this.gl = gl;
+        this.source = sourceCanvas;
         this.texture = this.createTexture(sourceCanvas);
         this.zIndex = zIndex;
+        this.sourceWidth = sourceCanvas.width;
+        this.sourceHeight = sourceCanvas.height;
 
         // Create a buffer for the quad's positions.
         this.positionBuffer = gl.createBuffer();
@@ -107,8 +110,42 @@ class TexturedQuad {
 
     draw() {
         const { gl } = this;
+        this.updateTexture();
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    updateTexture() {
+        const { gl } = this;
+        if (!this.source) {
+            return;
+        }
+
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+
+        // If the source canvas resized, reallocate the texture; otherwise just upload new pixels
+        if (this.sourceWidth !== this.source.width || this.sourceHeight !== this.source.height) {
+            this.sourceWidth = this.source.width;
+            this.sourceHeight = this.source.height;
+            gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                gl.RGBA,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                this.source,
+            );
+        } else {
+            gl.texSubImage2D(
+                gl.TEXTURE_2D,
+                0,
+                0,
+                0,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                this.source,
+            );
+        }
     }
 }
 
@@ -765,15 +802,7 @@ export class WebGLRenderer {
             }
         }
 
-        // Only log occasionally to avoid spam
-        if (!this._renderCount) this._renderCount = 0;
-        this._renderCount++;
-        if (this._renderCount === 1 || this._renderCount % 60 === 0) {
-            console.log(
-                `[WebGLRenderer] render() called (frame ${this._renderCount}), particles:`,
-                this.particleSystems.length,
-            );
-        }
+        // Removed debug logging to reduce console spam
 
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

@@ -42,7 +42,14 @@ export function createParticleEmitter(scene, x, y, textureKey, config) {
             return null;
         }
 
-        console.log('[ParticleCompat] Particle emitter created successfully');
+        console.log('[ParticleCompat] Particle emitter created successfully at position:', {x, y});
+        console.log('[ParticleCompat] Emitter actual position:', {x: emitter.x, y: emitter.y});
+        console.log('[ParticleCompat] Emitter config:', {
+            hasEmitZone: !!config.emitZone,
+            emitZoneType: config.emitZone?.type,
+            depth: emitter.depth,
+            visible: emitter.visible
+        });
         return emitter;
 
     } catch (error) {
@@ -59,21 +66,40 @@ export function createParticleEmitter(scene, x, y, textureKey, config) {
  * @returns {boolean} Success status
  */
 export function emitParticles(emitter, count) {
-    if (!emitter) return false;
+    if (!emitter) {
+        console.warn('[ParticleCompat] No emitter provided to emitParticles');
+        return false;
+    }
 
     try {
+        console.log('[ParticleCompat] Attempting to emit', count, 'particles');
+        console.log('[ParticleCompat] Emitter methods:', {
+            hasExplode: typeof emitter.explode === 'function',
+            hasEmit: typeof emitter.emit === 'function',
+            hasStart: typeof emitter.start === 'function',
+            visible: emitter.visible,
+            active: emitter.active,
+            depth: emitter.depth
+        });
+
         if (typeof emitter.explode === 'function') {
-            emitter.explode(count);
+            console.log('[ParticleCompat] Calling explode(' + count + ')');
+            const result = emitter.explode(count);
+            console.log('[ParticleCompat] Explode result:', result);
             return true;
         } else if (typeof emitter.emit === 'function') {
-            emitter.emit(count);
+            console.log('[ParticleCompat] Calling emit(' + count + ')');
+            const result = emitter.emit(count);
+            console.log('[ParticleCompat] Emit result:', result);
             return true;
         } else {
             console.warn('[ParticleCompat] Emitter has no explode() or emit() method');
+            console.warn('[ParticleCompat] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(emitter)));
             return false;
         }
     } catch (error) {
         console.error('[ParticleCompat] Failed to emit particles:', error);
+        console.error('[ParticleCompat] Error stack:', error.stack);
         return false;
     }
 }

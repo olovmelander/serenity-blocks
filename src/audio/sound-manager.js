@@ -259,6 +259,34 @@ export class SoundManager {
     playGameOver() {
         if (this.sfxPlayer) this.sfxPlayer.playGameOver();
     }
+    
+    /**
+     * PHASE 3.4: Play garbage received sound
+     */
+    playGarbageReceived() {
+        if (this.sfxPlayer) this.sfxPlayer.playGarbageReceived();
+    }
+    
+    /**
+     * PHASE 3.4: Play garbage countered sound
+     */
+    playGarbageCountered() {
+        if (this.sfxPlayer) this.sfxPlayer.playGarbageCountered();
+    }
+    
+    /**
+     * PHASE 3.4: Play player death sound
+     */
+    playPlayerDeath() {
+        if (this.sfxPlayer) this.sfxPlayer.playPlayerDeath();
+    }
+    
+    /**
+     * Play garbage send sound (already exists in sound sets)
+     */
+    playGarbageSend() {
+        if (this.sfxPlayer) this.sfxPlayer.playGarbageSend();
+    }
 
     // ==================== Music Playback ====================
 

@@ -236,11 +236,50 @@ export function drawBlock(
     ctx.fillStyle = baseColor;
     ctx.fillRect(pixelX, pixelY, size, size);
 
-    // Draw crisp black border with 0.5 pixel offset for perfect 1px line alignment
+    // Draw borders - use edge detection if shape data is provided
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 1;
-    ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
-    
+
+    if (shape) {
+        // Edge-only borders: only draw borders on outer edges of the piece
+        const hasBlockAbove = blockY > 0 && shape[blockY - 1] && shape[blockY - 1][blockX] > 0;
+        const hasBlockBelow = blockY < shape.length - 1 && shape[blockY + 1] && shape[blockY + 1][blockX] > 0;
+        const hasBlockLeft = blockX > 0 && shape[blockY][blockX - 1] > 0;
+        const hasBlockRight = blockX < shape[blockY].length - 1 && shape[blockY][blockX + 1] > 0;
+
+        // Draw individual edge lines only where there's no adjacent block
+        ctx.beginPath();
+
+        // Top edge
+        if (!hasBlockAbove) {
+            ctx.moveTo(pixelX, pixelY + 0.5);
+            ctx.lineTo(pixelX + size, pixelY + 0.5);
+        }
+
+        // Bottom edge
+        if (!hasBlockBelow) {
+            ctx.moveTo(pixelX, pixelY + size - 0.5);
+            ctx.lineTo(pixelX + size, pixelY + size - 0.5);
+        }
+
+        // Left edge
+        if (!hasBlockLeft) {
+            ctx.moveTo(pixelX + 0.5, pixelY);
+            ctx.lineTo(pixelX + 0.5, pixelY + size);
+        }
+
+        // Right edge
+        if (!hasBlockRight) {
+            ctx.moveTo(pixelX + size - 0.5, pixelY);
+            ctx.lineTo(pixelX + size - 0.5, pixelY + size);
+        }
+
+        ctx.stroke();
+    } else {
+        // Full border around individual block (fallback or for board-based rendering)
+        ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
+    }
+
     // Re-enable image smoothing for other rendering operations
     ctx.imageSmoothingEnabled = true;
 }

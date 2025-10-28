@@ -7,8 +7,9 @@ export default defineConfig({
 
   // Server configuration
   server: {
-    port: 3000,
-    open: true,
+    port: 5173,  // Standard Vite port (changed from 3000 for Electron compatibility)
+    strictPort: true,  // Don't try another port if 5173 is in use
+    open: false,  // Don't auto-open browser (we're using Electron)
     host: true,
   },
 
@@ -30,6 +31,8 @@ export default defineConfig({
   // Optimize dependencies for faster dev server startup
   optimizeDeps: {
     include: ['phaser'],
+    // Exclude Electron/Node.js modules from browser bundling
+    exclude: ['greenworks', 'electron'],
   },
 
   // Resolve configuration

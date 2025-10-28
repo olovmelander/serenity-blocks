@@ -16,6 +16,7 @@
  */
 
 import { BLOCK_SIZE } from '../core/constants.js';
+import { performanceMonitor } from '../utils/performance-monitor.js';
 
 /**
  * Input controller state management
@@ -82,6 +83,70 @@ export class InputController {
 }
 
 /**
+ * Handles player 2 actions for local multiplayer
+ * @private
+ */
+function handlePlayer2Action(action, gameActions, inputController, settings) {
+    const {
+        moveP2, rotateP2, softDropP2, hardDropP2,
+    } = gameActions;
+
+    performanceMonitor.recordInputAction();
+
+    switch (action) {
+    case 'moveLeft':
+        if (moveP2) {
+            moveP2(-1);
+            inputController.dasTimerP2 = setTimeout(() => {
+                inputController.dasIntervalTimerP2 = setInterval(
+                    () => moveP2(-1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+        }
+        break;
+
+    case 'moveRight':
+        if (moveP2) {
+            moveP2(1);
+            inputController.dasTimerP2 = setTimeout(() => {
+                inputController.dasIntervalTimerP2 = setInterval(
+                    () => moveP2(1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+        }
+        break;
+
+    case 'softDrop':
+        if (softDropP2) {
+            softDropP2();
+            inputController.softDropTimerP2 = setInterval(() => softDropP2(), 50);
+        }
+        break;
+
+    case 'rotateRight':
+        if (rotateP2) rotateP2('right');
+        break;
+
+    case 'rotateLeft':
+        if (rotateP2) rotateP2('left');
+        break;
+
+    case 'flip':
+        if (rotateP2) rotateP2('flip');
+        break;
+
+    case 'hardDrop':
+        if (hardDropP2) hardDropP2();
+        break;
+
+    default:
+        break;
+    }
+}
+
+/**
  * Sets up keyboard input handling with DAS (Delayed Auto Shift) support
  * Uses native DOM events - compatible with Phaser 3, Phaser 4, and any framework
  *
@@ -113,9 +178,29 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     // Keydown handler
     document.addEventListener('keydown', (e) => {
         try {
-            // Escape always toggles pause
+            // Performance monitoring: Record input timestamp
+            performanceMonitor.recordInput();
+
+            // Check if settings modal is open - block ALL input if it is
+            const settingsModal = document.getElementById('settings-modal');
+            const settingsModalVisible = settingsModal?.classList.contains('visible');
+            
+            // Escape key behavior depends on context
             if (e.key === 'Escape') {
+                if (settingsModalVisible) {
+                    // Settings modal is open - do nothing here, let modal handler close it
+                    console.log('[Controls] Settings modal open, Escape will close modal');
+                    return;
+                }
+                // Otherwise, toggle pause
+                console.log('[Controls] Toggling pause with Escape');
                 if (togglePause) togglePause();
+                return;
+            }
+
+            // Block all other input if settings modal is open
+            if (settingsModalVisible) {
+                console.log('[Controls] Settings modal open, ignoring input');
                 return;
             }
 
@@ -130,21 +215,42 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 return;
             }
 
-            // Start game if on start/game-over modal
-            const startModal = document.getElementById('start-modal');
-            const gameOverModal = document.getElementById('game-over-modal');
-            if (
-                (startModal && startModal.classList.contains('visible'))
-                || (gameOverModal && gameOverModal.classList.contains('visible'))
-            ) {
-                if (startGame) startGame();
-                return;
-            }
-
-            // Get action from key binding
+            // Get action from key binding (check this before auto-starting game)
             const key = e.key === ' ' ? 'Space' : e.key;
             const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
 
+            // Also check player 2 bindings (for local multiplayer)
+            let actionP2 = null;
+            if (settings.player2KeyBindings) {
+                actionP2 = Object.keys(settings.player2KeyBindings).find((k) => settings.player2KeyBindings[k] === key);
+            }
+
+            // Allow global actions (fullscreen, high scores) to work even on start modal
+            const globalActions = ['toggleFullscreen', 'showHighScores'];
+            const isGlobalAction = globalActions.includes(action);
+
+            // Start game if on start/game-over modal (but only for non-global actions)
+            const startModal = document.getElementById('start-modal');
+            const gameOverModal = document.getElementById('game-over-modal');
+            if (
+                !isGlobalAction &&
+                ((startModal && startModal.classList.contains('visible'))
+                || (gameOverModal && gameOverModal.classList.contains('visible')))
+            ) {
+                // Only start game on Space or Enter
+                if (e.key === ' ' || e.key === 'Enter') {
+                    if (startGame) startGame();
+                }
+                return;
+            }
+
+            // Handle player 2 input first (if applicable)
+            if (actionP2 && !inputController.keyMap['p2-' + actionP2]) {
+                inputController.keyMap['p2-' + actionP2] = true;
+                handlePlayer2Action(actionP2, gameActions, inputController, settings);
+            }
+
+            // Then handle player 1 input
             if (!action || inputController.keyMap[action]) return;
             inputController.keyMap[action] = true;
 
@@ -184,6 +290,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             case 'moveLeft':
                 if (move) {
                     move(-1);
+                    performanceMonitor.recordInputAction();
                     inputController.dasTimer = setTimeout(() => {
                         inputController.dasIntervalTimer = setInterval(
                             () => move(-1),
@@ -196,6 +303,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             case 'moveRight':
                 if (move) {
                     move(1);
+                    performanceMonitor.recordInputAction();
                     inputController.dasTimer = setTimeout(() => {
                         inputController.dasIntervalTimer = setInterval(
                             () => move(1),
@@ -208,25 +316,38 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             case 'softDrop':
                 if (softDrop) {
                     softDrop();
+                    performanceMonitor.recordInputAction();
                     inputController.softDropTimer = setInterval(() => softDrop(), 50);
                 }
                 break;
 
             case 'rotateRight':
-                if (rotate) rotate('right');
+                if (rotate) {
+                    rotate('right');
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'rotateLeft':
-                if (rotate) rotate('left');
+                if (rotate) {
+                    rotate('left');
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'flip':
-                if (rotate) rotate('flip');
+                if (rotate) {
+                    rotate('flip');
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'hardDrop':
                 e.preventDefault();
-                if (hardDrop) hardDrop();
+                if (hardDrop) {
+                    hardDrop();
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'nextTrack':
@@ -265,14 +386,30 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     // Keyup handler
     document.addEventListener('keyup', (e) => {
         try {
+            // Block all input if settings modal is open
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal?.classList.contains('visible')) {
+                return;
+            }
+
             const key = e.key === ' ' ? 'Space' : e.key;
             const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
+
+            // Also check player 2 bindings (for local multiplayer)
+            let actionP2 = null;
+            if (settings.player2KeyBindings) {
+                actionP2 = Object.keys(settings.player2KeyBindings).find((k) => settings.player2KeyBindings[k] === key);
+            }
 
             if (action) {
                 inputController.keyMap[action] = false;
             }
 
-            // Clear DAS timers for movement
+            if (actionP2) {
+                inputController.keyMap['p2-' + actionP2] = false;
+            }
+
+            // Clear DAS timers for movement (Player 1)
             if (action === 'moveLeft' || action === 'moveRight') {
                 clearTimeout(inputController.dasTimer);
                 clearInterval(inputController.dasIntervalTimer);
@@ -280,10 +417,24 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 inputController.dasIntervalTimer = null;
             }
 
-            // Clear soft drop timer
+            // Clear DAS timers for movement (Player 2)
+            if (actionP2 === 'moveLeft' || actionP2 === 'moveRight') {
+                clearTimeout(inputController.dasTimerP2);
+                clearInterval(inputController.dasIntervalTimerP2);
+                inputController.dasTimerP2 = null;
+                inputController.dasIntervalTimerP2 = null;
+            }
+
+            // Clear soft drop timer (Player 1)
             if (action === 'softDrop') {
                 clearInterval(inputController.softDropTimer);
                 inputController.softDropTimer = null;
+            }
+
+            // Clear soft drop timer (Player 2)
+            if (actionP2 === 'softDrop') {
+                clearInterval(inputController.softDropTimerP2);
+                inputController.softDropTimerP2 = null;
             }
         } catch (error) {
             console.error('[Keyboard] Error in keyup handler:', error);

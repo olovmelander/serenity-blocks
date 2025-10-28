@@ -3,7 +3,7 @@
  * Manages two independent game states with garbage interaction
  */
 
-import { GameState } from './game.js';
+import { GameState, markBoardDirty } from './game.js';
 import {
     GarbageQueue, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
 } from './garbage.js';
@@ -145,6 +145,7 @@ export class MultiplayerGameState {
         }
 
         const result = insertGarbageEntries(gameState.lockedPieces, burst, options);
+        markBoardDirty(gameState);
         return result;
     }
 
