@@ -2,52 +2,957 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=public/index.html">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redirecting to Serenity Blocks...</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            font-family: 'Arial', sans-serif;
-            color: #ffffff;
-        }
-        .redirect-message {
-            text-align: center;
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            backdrop-filter: blur(10px);
-        }
-        .redirect-message h1 {
-            margin-bottom: 20px;
-            font-size: 2em;
-        }
-        .redirect-message p {
-            margin-bottom: 20px;
-            opacity: 0.8;
-        }
-        .redirect-message a {
-            color: #4CAF50;
-            text-decoration: none;
-            font-weight: bold;
-        }
-    </style>
+    <title>Serenity Blocks</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles/main.css">
+    <link rel="stylesheet" href="/styles/next-queue.css">
+    <link rel="stylesheet" href="/styles/multiplayer-ui.css">
+    <link rel="stylesheet" href="/styles/lobby-styles.css">
+    <link rel="stylesheet" href="/styles/match-config-styles.css">
 </head>
 <body>
-    <div class="redirect-message">
-        <h1>Serenity Blocks</h1>
-        <p>Redirecting to the game...</p>
-        <p>If you are not redirected automatically, <a href="public/index.html">click here</a>.</p>
+    <svg width="0" height="0" style="position:absolute">
+        <defs>
+            <filter id="gooey-blobs">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
+                <feBlend in="SourceGraphic" in2="goo" />
+            </filter>
+            <!-- Clip path for multiplayer boards with rounded corners -->
+            <clipPath id="multiplayer-clip-path" clipPathUnits="userSpaceOnUse">
+                <!-- Player 1 board: full 300x600 area with 12px rounded corners -->
+                <rect x="0" y="0" width="300" height="600" rx="12" ry="12"/>
+                <!-- Player 2 board: full 300x600 area at x=390 with 12px rounded corners -->
+                <rect x="390" y="0" width="300" height="600" rx="12" ry="12"/>
+            </clipPath>
+        </defs>
+    </svg>
+    <div class="background-container">
+        <canvas id="background-canvas"></canvas>
+        <div id="stars"></div>
+        
+        <div id="forest-theme" class="theme-container">
+            <div class="forest-moon"></div>
+            <div id="enchanted-forest-back" class="enchanted-forest-layer"></div>
+        <div class="forest-mist" id="forest-mist-back"></div>
+            <div id="enchanted-forest-mid" class="enchanted-forest-layer"></div>
+        <div class="forest-mist" id="forest-mist-front"></div>
+            <div id="enchanted-forest-front" class="enchanted-forest-layer"></div>
+        </div>
+        <div id="ocean-theme" class="theme-container">
+            <div class="ocean-water-bg"></div>
+            <div id="ocean-floor-bg" class="ocean-parallax"></div>
+            <div id="ocean-floor-mid" class="ocean-parallax"></div>
+            <div id="ocean-floor-fg" class="ocean-parallax"></div>
+            <div id="ocean-sediment-layer"></div>
+            <div id="ocean-plankton-layer"></div>
+            <div class="ocean-god-rays"></div>
+            <div id="jellyfish-layer"></div>
+            <div id="bubbles"></div>
+            <div class="caustics-container"></div>
+        </div>
+        <div id="sunset-theme" class="theme-container">
+            <div class="sun-and-sky">
+                <div class="sun">
+                    <div id="sunset-sunflares" class="sunset-sunflares"></div>
+                </div>
+                <div class="lens-flare"></div>
+                <div class="sunset-god-rays"></div>
+            </div>
+            <div id="sunset-clouds-back" class="sunset-clouds"></div>
+            <div id="sunset-clouds-mid" class="sunset-clouds"></div>
+            <div id="dust-motes"></div>
+            <div id="sunset-stars" class="sunset-stars"></div>
+            <div class="mountain-silhouette"></div>
+            <div id="sunset-clouds-front" class="sunset-clouds"></div>
+            <div class="sunset-heat-haze"></div>
+        </div>
+        <div id="mountain-theme" class="theme-container">
+            <div class="mountain-sky"></div>
+            <div id="mountain-stars"></div>
+            <div id="mountain-range-back" class="mountain-range"></div>
+            <div class="mountain-clouds"></div>
+            <div id="mountain-range-mid" class="mountain-range"></div>
+            <div class="mountain-fog"></div>
+            <div id="mountain-range-front" class="mountain-range"></div>
+        </div>
+        <div id="zen-theme" class="theme-container">
+            <div class="zen-gradient-bg"></div>
+            <div class="zen-mist-layer" id="zen-mist-back"></div>
+            <div class="zen-light-rays"></div>
+            <div id="zen-bamboo-container"></div>
+            <div class="raked-sand"></div>
+            <div id="zen-stones-container"></div>
+            <div class="zen-mist-layer" id="zen-mist-mid"></div>
+            <div class="water-feature">
+                <div class="zen-ripple"></div>
+            </div>
+            <div id="zen-lanterns-container"></div>
+            <div class="zen-mist-layer" id="zen-mist-front"></div>
+            <div id="petals"></div>
+        </div>
+        <div id="winter-theme" class="theme-container">
+            <div class="wind-overlay"></div>
+            <div id="snowflakes-back" class="snowflakes-layer"></div>
+            <div id="snowflakes-mid" class="snowflakes-layer"></div>
+            <div id="snowflakes-front" class="snowflakes-layer"></div>
+            <div class="window-pane">
+                <div class="frost-overlay"></div>
+                <div class="ice-crystals"></div>
+            </div>
+        </div>
+        <div id="fall-theme" class="theme-container">
+            <div class="fall-bg"></div>
+            <div id="fall-wind-particles"></div>
+            <div id="fall-leaves-back" class="fall-leaves-layer"></div>
+            <div id="fall-leaves-mid" class="fall-leaves-layer"></div>
+            <div id="fall-leaves-front" class="fall-leaves-layer"></div>
+            <div class="ground-leaves"></div>
+        </div>
+        <div id="summer-theme" class="theme-container">
+            <div class="summer-sky"></div>
+            <div class="god-rays-summer"></div>
+            <div id="dandelion-seeds"></div>
+            <div class="heat-haze"></div>
+            <div class="summer-grass"></div>
+        </div>
+        <div id="spring-theme" class="theme-container">
+            <div id="spring-clouds"></div>
+            <div id="rainbow-container"></div>
+            <div id="spring-rain">
+                <div id="rain-back" class="rain-layer"></div>
+                <div id="rain-mid" class="rain-layer"></div>
+                <div id="rain-front" class="rain-layer"></div>
+            </div>
+            <div class="spring-ground"></div>
+            <div id="sprouts-container"></div>
+        </div>
+        <div id="aurora-theme" class="theme-container">
+            <div id="aurora-stars"></div>
+            <div id="aurora-horizon-glow"></div>
+            <div id="aurora-veil-container"></div>
+            <div id="aurora-shimmers"></div>
+        </div>
+        <div id="galaxy-theme" class="theme-container">
+            <div id="galaxy-stars-bg"></div>
+            <div class="nebula-container">
+                <div class="nebula" id="nebula-layer-1"></div>
+                <div class="nebula" id="nebula-layer-2"></div>
+                <div class="nebula" id="nebula-layer-3"></div>
+            </div>
+        </div>
+        <div id="rainy-window-theme" class="theme-container">
+            <div class="rainy-bg"></div>
+            <canvas id="rain-canvas"></canvas>
+            <div class="lightning-flash"></div>
+        </div>
+        <div id="koi-pond-theme" class="theme-container">
+            <div class="water-depth-overlay"></div>
+            <div class="water-surface"></div>
+            <div id="lily-pads"></div>
+            <div id="koi-fish"></div>
+            <div id="koi-ripples"></div>
+        </div>
+        <div id="meadow-theme" class="theme-container">
+            <div class="meadow-sky"></div>
+            <div id="meadow-pollen"></div>
+            <div id="meadow-butterflies"></div>
+            <div class="meadow-grass"></div>
+            <div id="meadow-flowers"></div>
+        </div>
+        <div id="cosmic-chimes-theme" class="theme-container">
+            <div class="chime-nebula"></div>
+            <div id="space-dust"></div>
+            <div id="chimes"></div>
+        </div>
+        <div id="singing-bowl-theme" class="theme-container">
+            <div id="singing-bowl-glow"></div>
+            <div class="singing-bowl-silhouette"></div>
+            <div id="bowl-ripples"></div>
+            <div id="bowl-motes"></div>
+        </div>
+        <div id="starlight-theme" class="theme-container">
+            <div id="starlight-nebula"></div>
+            <div id="starlights-back" class="starlight-layer"></div>
+            <div id="starlights-mid" class="starlight-layer"></div>
+            <div id="starlights-front" class="starlight-layer"></div>
+            <div id="starlight-shooting-stars"></div>
+        </div>
+        <div id="geode-theme" class="theme-container">
+            <div id="geode-dust-back"></div>
+            <div id="geode-crystals"></div>
+            <div id="geode-dust-mid"></div>
+            <div id="geode-dust-front"></div>
+        </div>
+        <div id="bioluminescence-theme" class="theme-container">
+            <div id="bio-mushrooms"></div>
+            <div id="bio-spores"></div>
+        </div>
+        <div id="swedish-forest-theme" class="theme-container">
+            <div id="sf-layer-1" class="sf-parallax"></div>
+            <div class="god-ray-container"></div>
+            <div id="sf-layer-2" class="sf-parallax"></div>
+            <div class="mist"></div>
+            <div id="sf-layer-3" class="sf-parallax"></div>
+            <div id="forest-spirits"></div>
+        </div>
+        <div id="desert-oasis-theme" class="theme-container">
+            <div class="desert-sky"></div>
+            <div id="desert-stars"></div>
+            <div id="desert-dunes-back" class="desert-dunes"></div>
+            <div id="desert-dunes-mid" class="desert-dunes"></div>
+            <div id="desert-rocks"></div>
+            <div class="desert-mirage"></div>
+            <div id="desert-sand-particles"></div>
+            <div id="desert-fauna"></div>
+            <div id="desert-dunes-front" class="desert-dunes"></div>
+            <div id="desert-flora"></div>
+        </div>
+        <div id="bamboo-grove-theme" class="theme-container">
+            <div class="bamboo-sky"></div>
+            <div id="bamboo-grove-back" class="bamboo-grove"></div>
+            <div id="bamboo-sun-dapples"></div>
+            <div id="bamboo-grove-mid" class="bamboo-grove"></div>
+            <div id="bamboo-leaves"></div>
+            <div id="bamboo-fauna"></div>
+            <div id="bamboo-grove-front" class="bamboo-grove"></div>
+            <div id="bamboo-path"></div>
+            <div id="bamboo-lantern"></div>
+            <div class="bamboo-mist"></div>
+        </div>
+        <div id="misty-lake-theme" class="theme-container">
+            <div class="misty-sky"></div>
+            <div id="misty-clouds"></div>
+            <div id="misty-birds"></div>
+            <div id="misty-mountains-back" class="misty-mountains"></div>
+            <div id="misty-mountains-mid" class="misty-mountains"></div>
+            <div id="misty-mountains-front" class="misty-mountains"></div>
+            <div class="misty-lake"></div>
+            <div id="misty-reflections"></div>
+            <div id="misty-lake-ripples"></div>
+            <div id="misty-water-lilies"></div>
+            <div id="misty-fish"></div>
+            <div id="misty-mist"></div>
+        </div>
+        <div id="waves-theme" class="theme-container">
+            <div class="waves-bg"></div>
+            <div id="waves-particles"></div>
+            <div id="waves-layer-back" class="wave-layer"></div>
+            <div id="waves-layer-mid" class="wave-layer"></div>
+            <div id="waves-layer-front" class="wave-layer"></div>
+        </div>
+        <div id="fluid-dreams-theme" class="theme-container">
+            <div id="liquid-mercury"></div>
+            <div id="morphing-blobs"></div>
+            <div id="iridescent-bubbles"></div>
+            <div id="ribbon-streams"></div>
+            <div class="dimensional-warp"></div>
+        </div>
+        <div id="lantern-festival-theme" class="theme-container">
+            <div class="lantern-sky"></div>
+            <div id="lantern-mountains"></div>
+            <div id="lantern-silhouettes"></div>
+            <div id="lanterns-back" class="lantern-layer"></div>
+            <div id="lanterns-mid" class="lantern-layer"></div>
+            <div id="lanterns-front" class="lantern-layer"></div>
+            <div id="lantern-petals"></div>
+            <div id="lantern-embers"></div>
+            <div id="lantern-water"></div>
+        </div>
+        <div id="crystal-cave-theme" class="theme-container">
+            <div id="crystal-cave-refractions"></div>
+            <div id="crystal-cave-pools"></div>
+            <div id="crystal-cave-moss"></div>
+            <div id="crystal-cave-glow-clusters"></div>
+        </div>
+        <div id="candlelit-monastery-theme" class="theme-container">
+            <div id="monastery-shadows"></div>
+            <div id="monastery-stained-glass-light"></div>
+            <div id="monastery-candles"></div>
+            <div id="monastery-benches"></div>
+        </div>
+        <div id="cherry-blossom-garden-theme" class="theme-container">
+            <div id="cherry-blossom-sky"></div>
+            <div id="cherry-blossom-sun"></div>
+            <div id="cherry-blossom-clouds"></div>
+            <div id="cherry-blossom-hills"></div>
+            <div id="cherry-blossom-haze"></div>
+            <div id="cherry-blossom-branches"></div>
+            <div id="cherry-blossom-leaves"></div>
+            <div id="cherry-blossom-ground"></div>
+        </div>
+        <div id="floating-islands-theme" class="theme-container">
+            <div class="sun-glow"></div>
+            <div id="fi-sky"></div>
+            <div id="fi-mountains-back"></div>
+            <div id="fi-clouds-back" class="fi-clouds"></div>
+            <div id="fi-layer-back" class="fi-parallax">
+                <div id="fi-waterfall-back" class="fi-waterfall-container"></div>
+            </div>
+            <div id="fi-haze"></div>
+            <div id="fi-layer-mid" class="fi-parallax">
+                <div id="fi-waterfall-mid" class="fi-waterfall-container"></div>
+            </div>
+            <div id="fi-mist"></div>
+            <div id="fi-layer-front" class="fi-parallax">
+                <div id="fi-waterfall-front" class="fi-waterfall-container"></div>
+            </div>
+            <div id="fi-god-rays"></div>
+            <div id="fi-clouds-front" class="fi-clouds"></div>
+            <div id="fi-particles"></div>
+        </div>
+        <div id="meditation-temple-theme" class="theme-container">
+            <div id="meditation-temple-sky"></div>
+            <div id="meditation-temple-sun"></div>
+            <div id="meditation-temple-clouds"></div>
+            <div id="meditation-temple-stupas-far"></div>
+            <div id="meditation-temple-stupas-mid"></div>
+            <div id="meditation-temple-stupas-near"></div>
+            <div id="meditation-temple-particles"></div>
+        </div>
+        <div id="moonlit-greenhouse-theme" class="theme-container">
+            <div id="greenhouse-sky"></div>
+            <div id="greenhouse-moon"></div>
+            <div id="greenhouse-mist"></div>
+            <div id="greenhouse-plants-back" class="greenhouse-plant-layer"></div>
+            <div id="greenhouse-framework"></div>
+            <div id="greenhouse-plants-mid" class="greenhouse-plant-layer"></div>
+            <div id="greenhouse-dewdrops"></div>
+            <div id="greenhouse-plants-front" class="greenhouse-plant-layer"></div>
+            <div id="greenhouse-moths"></div>
+        </div>
+        <div id="ice-temple-theme" class="theme-container">
+            <div id="ice-temple-sky"></div>
+            <div id="ice-temple-stars"></div>
+            <div id="ice-temple-aurora"></div>
+            <div id="ice-temple-mountains-distant"></div>
+            <div id="ice-temple-mist"></div>
+            <div id="ice-temple-snow"></div>
+            <div id="ice-temple-refractions"></div>
+        </div>
+        <div id="himalayan-peak-theme" class="theme-container">
+            <div id="himalayan-sky"></div>
+            <div id="himalayan-sun"></div>
+            <div id="himalayan-sun-rays"></div>
+            <div id="himalayan-clouds"></div>
+            <div id="himalayan-flags"></div>
+            <div id="himalayan-particles"></div>
+        </div>
+        <div id="electric-dreams-theme" class="theme-container">
+            <div id="electric-veins"></div>
+            <div id="electric-particles"></div>
+        </div>
+        <div id="nebula-flow-theme" class="theme-container">
+            <!-- Canvas will be dynamically added by NebulaFlowTheme -->
+        </div>
+        <div id="moonlit-forest-theme" class="theme-container">
+            <div class="moonlit-forest-bg"></div>
+            <div class="moonlit-forest-moon"></div>
+            <div id="moonlit-forest-back" class="moonlit-forest-layer"></div>
+            <div class="moonlit-forest-mist" id="moonlit-forest-mist-back"></div>
+            <div id="moonlit-forest-mid" class="moonlit-forest-layer"></div>
+            <div class="moonlit-forest-mist" id="moonlit-forest-mist-front"></div>
+            <div id="moonlit-forest-front" class="moonlit-forest-layer"></div>
+            <div id="glowing-mushrooms"></div>
+            <div class="moonbeam-container"></div>
+            <div id="moonlit-wildlife"></div>
+        </div>
+        <div id="wolfhour-theme" class="theme-container">
+            <div id="wolfhour-sky"></div>
+            <div id="wolfhour-stars"></div>
+            <div id="wolfhour-light-rays"></div>
+            <div id="wolfhour-nebula-back"></div>
+            <div id="wolfhour-nebula-mid"></div>
+            <div id="wolfhour-cosmic-rifts"></div>
+            <div id="wolfhour-mountains-distant"></div>
+            <div id="wolfhour-mountains-fore"></div>
+            <div id="wolfhour-spirits"></div>
+            <div id="wolfhour-fog"></div>
+            <div id="wolfhour-grain"></div>
+        </div>
+        <div id="lunara-theme" class="theme-container">
+            <div id="lunara-sky"></div>
+            <div id="lunara-stars"></div>
+            <div id="lunara-aurora"></div>
+            <div id="lunara-planets"></div>
+            <div id="lunara-mountains-distant"></div>
+            <div id="lunara-mountains-mid"></div>
+            <div id="lunara-forest-left"></div>
+            <div id="lunara-forest-right"></div>
+            <div id="lunara-snowfield"></div>
+            <div id="lunara-fog"></div>
+            <div id="lunara-grain"></div>
+        </div>
+        <div id="pyrestorm-theme" class="theme-container">
+            <div id="pyrestorm-sky"></div>
+            <div id="pyrestorm-volcano-peaks"></div>
+            <div id="pyrestorm-lava-rivers"></div>
+            <div id="pyrestorm-foreground-rocks"></div>
+            <div id="pyrestorm-embers"></div>
+            <div id="pyrestorm-smoke"></div>
+            <div id="pyrestorm-heat-distortion"></div>
+        </div>
+        <div id="neon-dusk-theme" class="theme-container">
+            <div id="neon-dusk-sky"></div>
+            <div id="neon-dusk-sun"></div>
+            <div id="neon-dusk-scanlines-sun"></div>
+            <div id="neon-dusk-stars"></div>
+            <div id="neon-dusk-clouds"></div>
+            <div id="neon-dusk-meteors"></div>
+            <div id="neon-dusk-mountains-back"></div>
+            <div id="neon-dusk-mountains-mid"></div>
+            <div id="neon-dusk-mountains-front"></div>
+            <div id="neon-dusk-grid"></div>
+            <div id="neon-dusk-grid-overlay"></div>
+            <div id="neon-dusk-particles"></div>
+            <div id="neon-dusk-scanlines"></div>
+            <div id="neon-dusk-chromatic"></div>
+            <div id="neon-dusk-horizon-glow"></div>
+        </div>
+        <div id="stillwater-theme" class="theme-container">
+            <div id="stillwater-sky"></div>
+            <div id="stillwater-sky-glow"></div>
+            <div id="stillwater-distant-trees"></div>
+            <div id="stillwater-mid-trees"></div>
+            <div id="stillwater-close-trees"></div>
+            <div id="stillwater-foreground-trees"></div>
+            <div id="stillwater-waterline"></div>
+            <div id="stillwater-rocks"></div>
+            <div id="stillwater-water"></div>
+            <div id="stillwater-figure"></div>
+            <div id="stillwater-reflection"></div>
+            <div id="stillwater-water-ripples"></div>
+            <div id="stillwater-mist-back"></div>
+            <div id="stillwater-mist-mid"></div>
+            <div id="stillwater-mist-front"></div>
+            <div id="stillwater-particles"></div>
+            <div id="stillwater-glow"></div>
+        </div>
     </div>
-    <script>
-        // Immediate redirect for browsers that don't support meta refresh
-        window.location.href = 'public/index.html';
-    </script>
+
+    <div class="game-container" id="single-player-container">
+        <div class="sidebar">
+            <div class="panel">
+                <h2>STATS</h2>
+                <div class="stat-row"><span class="stat-label">SCORE</span><span id="score" class="stat-value">0</span></div>
+                <div class="stat-row"><span class="stat-label">LINES</span><span id="lines" class="stat-value">0</span></div>
+                <div class="stat-row"><span class="stat-label">LEVEL</span><span id="level" class="stat-value">1</span></div>
+                <div class="stat-row"><span class="stat-label">NEXT LVL</span><span id="next-level" class="stat-value">10</span></div>
+                <div class="stat-row"><span class="stat-label">SPEED</span><span id="speed" class="stat-value">1.0x</span></div>
+                <div class="stat-row"><span class="stat-label">BPM</span><span id="bpm" class="stat-value">0</span></div>
+            </div>
+            <div class="panel">
+                <h2>CONTROLS</h2>
+                <div class="controls-info"><div id="controls-list"></div></div>
+            </div>
+            <button id="settings-btn" class="action-btn">⚙️</button>
+        </div>
+        <div class="game-area">
+            <div id="next-queue-container" class="next-queue-container"></div>
+            <div style="position: relative;">
+                <div id="phaser-game-container-outer">
+                    <div id="phaser-game-container"></div>
+                </div>
+                <div id="line-clear-flash"></div>
+                <div id="score-popups"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-container multiplayer-container" id="multiplayer-container" style="display: none;">
+        <!-- Player 1 Stats (Left Side) -->
+        <div class="player-sidebar">
+            <div class="player-header">
+                <h2>PLAYER 1</h2>
+                <div class="player-controls-hint">Arrow Keys</div>
+            </div>
+            <div class="player-stats">
+                <div class="stat-row"><span class="stat-label">FRAGS</span><span id="p1-frags" class="stat-value" style="color: #10b981; font-weight: bold; font-size: 1.2em;">0</span></div>
+                <div class="stat-row"><span class="stat-label">SCORE</span><span id="p1-score" class="stat-value">0</span></div>
+                <div class="stat-row"><span class="stat-label">LINES</span><span id="p1-lines" class="stat-value">0</span></div>
+                <div class="stat-row"><span class="stat-label">LEVEL</span><span id="p1-level" class="stat-value">1</span></div>
+                <div class="stat-row"><span class="stat-label">GARBAGE</span><span id="p1-garbage" class="stat-value">0</span></div>
+            </div>
+            <div class="player-next-pieces">
+                <div class="next-piece-box main"><span class="next-piece-label">Next</span><canvas id="p1-next-0" width="60" height="50"></canvas></div>
+                <div class="next-piece-box"><canvas id="p1-next-1" width="50" height="40"></canvas></div>
+                <div class="next-piece-box"><canvas id="p1-next-2" width="50" height="40"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Multiplayer Game Boards -->
+        <div class="multiplayer-game-area">
+            <div id="phaser-multiplayer-wrapper">
+                <!-- Player 1 Board -->
+                <div class="multiplayer-board-wrapper">
+                    <div id="p1-phaser-container" class="phaser-board-container"></div>
+                    <div class="board-border-overlay" id="p1-border"></div>
+                </div>
+                <!-- Player 2 Board -->
+                <div class="multiplayer-board-wrapper">
+                    <div id="p2-phaser-container" class="phaser-board-container"></div>
+                    <div class="board-border-overlay" id="p2-border"></div>
+                </div>
+            </div>
+            
+            <!-- Center Controls -->
+            <div class="multiplayer-center">
+                <button id="settings-btn-mp" class="action-btn">⚙️</button>
+            </div>
+        </div>
+
+        <!-- Player 2 Stats (Right Side) -->
+        <div class="player-sidebar">
+            <div class="player-header">
+                <h2>PLAYER 2</h2>
+                <div class="player-controls-hint">WASD Keys</div>
+            </div>
+            <div class="player-stats">
+                <div class="stat-row"><span class="stat-label">FRAGS</span><span id="p2-frags" class="stat-value" style="color: #10b981; font-weight: bold; font-size: 1.2em;">0</span></div>
+                <div class="stat-row"><span class="stat-label">SCORE</span><span id="p2-score" class="stat-value">0</span></div>
+                <div class="stat-row"><span class="stat-label">LINES</span><span id="p2-lines" class="stat-value">0</span></div>
+                <div class="stat-row"><span class="stat-label">LEVEL</span><span id="p2-level" class="stat-value">1</span></div>
+                <div class="stat-row"><span class="stat-label">GARBAGE</span><span id="p2-garbage" class="stat-value">0</span></div>
+            </div>
+            <div class="player-next-pieces">
+                <div class="next-piece-box main"><span class="next-piece-label">Next</span><canvas id="p2-next-0" width="60" height="50"></canvas></div>
+                <div class="next-piece-box"><canvas id="p2-next-1" width="50" height="40"></canvas></div>
+                <div class="next-piece-box"><canvas id="p2-next-2" width="50" height="40"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="start-modal" class="modal visible">
+        <div class="modal-content">
+            <h1>SERENITY BLOCKS</h1>
+            <div class="game-mode-selector" style="margin: 20px 0;">
+                <button id="single-player-btn" class="mode-btn active" data-mode="single">Single Player</button>
+                <button id="local-multiplayer-btn" class="mode-btn" data-mode="local-multiplayer">Local 2P</button>
+                <button id="online-multiplayer-btn" class="mode-btn" data-mode="online-multiplayer">Online MP</button>
+                <button id="serenity-btn" class="mode-btn" data-mode="serenity">Serenity</button>
+            </div>
+
+            <!-- Mode-specific descriptions -->
+            <div id="mode-description" class="mode-description">
+                <p id="single-player-desc" class="mode-desc active">Classic Tetris experience with progressive difficulty</p>
+                <p id="local-multiplayer-desc" class="mode-desc">Compete head-to-head with a friend on the same device</p>
+                <p id="online-multiplayer-desc" class="mode-desc">Free-for-all online battles with lobby system and matchmaking</p>
+                <p id="serenity-desc" class="mode-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing guide</p>
+            </div>
+
+            <!-- Explicit start button (replaces "press any key") -->
+            <button id="start-game-btn" class="start-game-btn">START GAME</button>
+        </div>
+    </div>
+    <div id="game-over-modal" class="modal">
+        <div class="modal-content">
+            <h1>The cycle ends.</h1>
+            <div id="final-stats"></div>
+            <p>Press any key or tap to restart</p>
+        </div>
+    </div>
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="settings-header">
+                <h1>SETTINGS</h1>
+                <button class="modal-close-btn" id="close-settings">✕</button>
+            </div>
+            <div class="settings-tabs">
+                <button class="settings-tab active" data-tab="general">General</button>
+                <button class="settings-tab" data-tab="audio">Audio</button>
+                <button class="settings-tab" data-tab="visual">Visual</button>
+                <button class="settings-tab" data-tab="controls">Controls</button>
+            </div>
+            <div class="settings-scroll-container">
+                <div class="settings-tab-content active" id="settings-general">
+                    <div class="settings-grid">
+                        <div class="setting">
+                            <label for="game-mode">Game Mode:</label>
+                            <select id="game-mode" class="setting-select">
+                                <option value="single">Single Player</option>
+                                <option value="local-multiplayer">Local Multiplayer (2P)</option>
+                                <option value="online-multiplayer">Online Multiplayer (FFA)</option>
+                                <option value="serenity">Serenity Mode</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="das-delay">DAS Delay (ms):</label>
+                            <div class="slider-container">
+                                <input type="range" id="das-delay" min="50" max="300" step="10"><span id="das-delay-value">150</span>
+                            </div>
+                        </div>
+                        <div class="setting">
+                            <label for="das-interval">DAS Interval (ms):</label>
+                            <div class="slider-container">
+                                <input type="range" id="das-interval" min="10" max="100" step="5"><span id="das-interval-value">50</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab-content" id="settings-audio">
+                    <div class="settings-grid">
+                        <div class="setting">
+                            <label for="music-volume">Music Volume:</label>
+                            <div class="slider-container">
+                                <input type="range" id="music-volume" min="0" max="100" step="1"><span id="music-volume-value">100</span>
+                            </div>
+                        </div>
+                        <div class="setting">
+                            <label for="sfx-volume">SFX Volume:</label>
+                            <div class="slider-container">
+                                <input type="range" id="sfx-volume" min="0" max="100" step="1"><span id="sfx-volume-value">100</span>
+                            </div>
+                        </div>
+                        <div class="setting">
+                            <label for="music-track">Music Track:</label>
+                            <select id="music-track" class="setting-select">
+                                <!-- Options will be populated dynamically from songs.json -->
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="sfx-set">Sound Effects:</label>
+                            <select id="sfx-set" class="setting-select">
+                                <option value="Zen">Zen</option>
+                                <option value="Retro">Retro</option>
+                                <option value="Pulse">Pulse</option>
+                                <option value="Nebula">Nebula</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="theme-linked-mode">Theme-Linked Music:</label>
+                            <select id="theme-linked-mode" class="setting-select">
+                                <option value="false">Off</option>
+                                <option value="true">On</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="auto-theme-change">Auto Theme on Music Change:</label>
+                            <select id="auto-theme-change" class="setting-select">
+                                <option value="false">Off</option>
+                                <option value="true">On</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab-content" id="settings-visual">
+                    <div class="settings-grid">
+                        <div class="setting">
+                            <label for="background-mode">Background:</label>
+                            <select id="background-mode" class="setting-select">
+                                <option value="Level">Level Transition</option>
+                                <option value="Random">Random Transition</option>
+                                <option value="Specific">Set Specific</option>
+                            </select>
+                        </div>
+                        <div class="setting" id="random-theme-interval-setting">
+                            <label for="random-theme-interval">Random Theme Interval (seconds):</label>
+                            <div class="slider-container">
+                                <input type="range" id="random-theme-interval" min="10" max="300" step="10"><span id="random-theme-interval-value">60</span>
+                            </div>
+                        </div>
+                        <div class="setting" id="theme-setting">
+                            <label for="background-theme">Theme:</label>
+                            <select id="background-theme" class="setting-select">
+                                <option value="forest">Forest</option>
+                                <option value="ocean">Ocean</option>
+                                <option value="sunset">Sunset</option>
+                                <option value="mountain">Mountain</option>
+                                <option value="zen">Zen</option>
+                                <option value="winter">Winter</option>
+                                <option value="fall">Fall</option>
+                                <option value="summer">Summer</option>
+                                <option value="spring">Spring</option>
+                                <option value="aurora">Aurora</option>
+                                <option value="galaxy">Galaxy</option>
+                                <option value="rainy-window">Rainy Window</option>
+                                <option value="koi-pond">Koi Pond</option>
+                                <option value="meadow">Meadow</option>
+                                <option value="cosmic-chimes">Cosmic Chimes</option>
+                                <option value="singing-bowl">Singing Bowl</option>
+                                <option value="starlight">Starlight</option>
+                                <option value="swedish-forest">Swedish Forest</option>
+                                <option value="geode">Geode</option>
+                                <option value="bioluminescence">Bioluminescence</option>
+                                <option value="desert-oasis">Desert Oasis</option>
+                                <option value="bamboo-grove">Bamboo Grove</option>
+                                <option value="misty-lake">Misty Mountain Lake</option>
+                                <option value="waves">Waves</option>
+                                <option value="fluid-dreams">Fluid Dreams</option>
+                                <option value="lantern-festival">Lantern Festival</option>
+                                <option value="crystal-cave">Crystal Cave</option>
+                                <option value="candlelit-monastery">Candlelit Monastery</option>
+                                <option value="cherry-blossom-garden">Cherry Blossom Garden</option>
+                                <option value="floating-islands">Floating Islands</option>
+                                <option value="meditation-temple">Meditation Temple</option>
+                                <option value="moonlit-greenhouse">Moonlit Greenhouse</option>
+                                <option value="ice-temple">Ice Temple</option>
+                                <option value="himalayan-peak">Himalayan Peak</option>
+                                <option value="electric-dreams">Electric Dreams</option>
+                                <option value="nebula-flow">Nebula Flow</option>
+                                <option value="moonlit-forest">Moonlit Forest</option>
+                                <option value="wolfhour">Wolfhour</option>
+                                <option value="lunara">Lunara</option>
+                                <option value="pyrestorm">Pyrestorm</option>
+                                <option value="neon-dusk">Neon Dusk</option>
+                                <option value="stillwater">Stillwater</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="piece-lock-ripple">Piece Lock Ripple Effect:</label>
+                            <select id="piece-lock-ripple" class="setting-select">
+                                <option value="true">On</option>
+                                <option value="false">Off</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="combo-popup-effect">Combo Popup Effect:</label>
+                            <select id="combo-popup-effect" class="setting-select">
+                                <option value="true">On</option>
+                                <option value="false">Off</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="line-clear-effects">Line Clear Effects:</label>
+                            <select id="line-clear-effects" class="setting-select">
+                                <option value="true">On</option>
+                                <option value="false">Off</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="background-combo-effects">Background Combo Effects:</label>
+                            <select id="background-combo-effects" class="setting-select">
+                                <option value="true">On</option>
+                                <option value="false">Off</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab-content" id="settings-controls">
+                    <div class="controls-subtabs">
+                        <button class="controls-subtab active" data-subtab="general">General</button>
+                        <button class="controls-subtab" data-subtab="player1">Player 1 Keys</button>
+                        <button class="controls-subtab" data-subtab="player2">Player 2 Keys</button>
+                        <button class="controls-subtab" data-subtab="gamepad1">Player 1 Gamepad</button>
+                        <button class="controls-subtab" data-subtab="gamepad2">Player 2 Gamepad</button>
+                    </div>
+
+                    <!-- General Controls Sub-tab -->
+                    <div class="controls-subtab-content active" id="controls-general">
+                        <div class="settings-grid">
+                            <div class="setting">
+                                <label for="control-scheme">Control Scheme:</label>
+                                <select id="control-scheme" class="setting-select">
+                                    <option value="Keyboard">Keyboard</option>
+                                    <option value="Touch">Touch</option>
+                                </select>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-enabled">Gamepad Support:</label>
+                                <select id="gamepad-enabled" class="setting-select">
+                                    <option value="true">Enabled</option>
+                                    <option value="false">Disabled</option>
+                                </select>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-deadzone">Gamepad Deadzone:</label>
+                                <div class="slider-container">
+                                    <input type="range" id="gamepad-deadzone" min="0" max="50" step="5">
+                                    <span id="gamepad-deadzone-value">25</span>
+                                </div>
+                            </div>
+                            <div class="setting" id="gamepad-status-display">
+                                <label>Connected Controllers:</label>
+                                <div id="gamepad-status" style="color: rgba(224, 231, 255, 0.7); font-size: 14px;">
+                                    <div id="controller-1-status">Controller 1: Not connected</div>
+                                    <div id="controller-2-status">Controller 2: Not connected</div>
+                                </div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-nextTrack">Next Track:</label>
+                                <div id="key-nextTrack" class="key-input" tabindex="0">m</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-randomTheme">Random Theme:</label>
+                                <div id="key-randomTheme" class="key-input" tabindex="0">b</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-toggleFullscreen">Toggle Fullscreen:</label>
+                                <div id="key-toggleFullscreen" class="key-input" tabindex="0">f</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-showHighScores">Show High Scores:</label>
+                                <div id="key-showHighScores" class="key-input" tabindex="0">h</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player 1 Controls Sub-tab -->
+                    <div class="controls-subtab-content" id="controls-player1">
+                        <div class="settings-grid">
+                            <div class="setting">
+                                <label for="key-moveLeft">Move Left:</label>
+                                <div id="key-moveLeft" class="key-input" tabindex="0">ArrowLeft</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-moveRight">Move Right:</label>
+                                <div id="key-moveRight" class="key-input" tabindex="0">ArrowRight</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-rotateRight">Rotate Right:</label>
+                                <div id="key-rotateRight" class="key-input" tabindex="0">ArrowUp</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-rotateLeft">Rotate Left:</label>
+                                <div id="key-rotateLeft" class="key-input" tabindex="0">z</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-flip">Flip (180°):</label>
+                                <div id="key-flip" class="key-input" tabindex="0">a</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-softDrop">Soft Drop:</label>
+                                <div id="key-softDrop" class="key-input" tabindex="0">ArrowDown</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-hardDrop">Hard Drop:</label>
+                                <div id="key-hardDrop" class="key-input" tabindex="0">Space</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player 2 Controls Sub-tab -->
+                    <div class="controls-subtab-content" id="controls-player2">
+                        <div class="settings-grid">
+                            <div class="setting">
+                                <label for="key-p2-moveLeft">Move Left:</label>
+                                <div id="key-p2-moveLeft" class="key-input" tabindex="0">a</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-p2-moveRight">Move Right:</label>
+                                <div id="key-p2-moveRight" class="key-input" tabindex="0">d</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-p2-rotateRight">Rotate Right:</label>
+                                <div id="key-p2-rotateRight" class="key-input" tabindex="0">w</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-p2-rotateLeft">Rotate Left:</label>
+                                <div id="key-p2-rotateLeft" class="key-input" tabindex="0">q</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-p2-flip">Flip (180°):</label>
+                                <div id="key-p2-flip" class="key-input" tabindex="0">e</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-p2-softDrop">Soft Drop:</label>
+                                <div id="key-p2-softDrop" class="key-input" tabindex="0">s</div>
+                            </div>
+                            <div class="setting">
+                                <label for="key-p2-hardDrop">Hard Drop:</label>
+                                <div id="key-p2-hardDrop" class="key-input" tabindex="0">Shift</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player 1 Gamepad Sub-tab -->
+                    <div class="controls-subtab-content" id="controls-gamepad1">
+                        <div class="settings-grid">
+                            <div class="setting">
+                                <label for="gamepad-moveLeft">Move Left:</label>
+                                <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-moveRight">Move Right:</label>
+                                <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-rotateRight">Rotate Right:</label>
+                                <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-rotateLeft">Rotate Left:</label>
+                                <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-flip">Flip (180°):</label>
+                                <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-softDrop">Soft Drop:</label>
+                                <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-hardDrop">Hard Drop:</label>
+                                <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-pause">Pause:</label>
+                                <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player 2 Gamepad Sub-tab -->
+                    <div class="controls-subtab-content" id="controls-gamepad2">
+                        <div class="settings-grid">
+                            <div class="setting">
+                                <label for="gamepad-p2-moveLeft">Move Left:</label>
+                                <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-moveRight">Move Right:</label>
+                                <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-rotateRight">Rotate Right:</label>
+                                <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-rotateLeft">Rotate Left:</label>
+                                <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-flip">Flip (180°):</label>
+                                <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-softDrop">Soft Drop:</label>
+                                <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-hardDrop">Hard Drop:</label>
+                                <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                            </div>
+                            <div class="setting">
+                                <label for="gamepad-p2-pause">Pause:</label>
+                                <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="high-scores-modal" class="modal">
+        <div class="modal-content">
+            <h1>HIGH SCORES</h1>
+            <div class="settings-scroll-container">
+                <div id="high-scores-list" style="padding: 20px;"></div>
+                <div id="statistics-section" style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 20px;"></div>
+            </div>
+            <button id="close-high-scores" class="action-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Multiplayer Countdown Overlay (Global - always accessible) -->
+    <div id="multiplayer-countdown" class="multiplayer-countdown" aria-live="polite"></div>
+
+    <!-- Phaser 4 Framework entrypoint (handled by Vite during build) -->
+    <script type="module" src="/src/main.js"></script>
+
+    <!-- Legacy scripts (for backward compatibility during migration) -->
+    <!-- <script src="renderer.js"></script> -->
+    <!-- <script src="script.js"></script> -->
 </body>
 </html>
