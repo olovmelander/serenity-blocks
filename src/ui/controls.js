@@ -1,12 +1,28 @@
 /**
- * @fileoverview Input Controls for Serenity Blocks
+ * @fileoverview Input Controls for Serenity Blocks (Phaser 4 Compatible)
  * Handles keyboard and touch input with DAS (Delayed Auto Shift) support
+ *
+ * **Architecture:** This input system uses native DOM events (keydown, touchstart, etc.)
+ * and is completely decoupled from Phaser APIs. This makes it compatible with Phaser 3,
+ * Phaser 4, and any other game engine or framework.
+ *
+ * **Benefits:**
+ * - Framework-agnostic: Works with any rendering system
+ * - Global input: Captures events even when focus is outside the canvas
+ * - Portable: Can be reused in non-Phaser projects
+ * - Testable: Easy to unit test without Phaser runtime
+ *
+ * **Phaser 4 Migration Status:** ✅ No changes required - already compatible
  */
 
 import { BLOCK_SIZE } from '../core/constants.js';
+import { performanceMonitor } from '../utils/performance-monitor.js';
 
 /**
- * Input controller state
+ * Input controller state management
+ * Tracks keyboard keys, touch gestures, and input timers for DAS (Delayed Auto Shift)
+ *
+ * @class InputController
  */
 export class InputController {
     constructor() {
@@ -26,10 +42,13 @@ export class InputController {
 
         // Sound initialization flag
         this.soundInitialized = false;
+
+        console.log('[InputController] Initialized');
     }
 
     /**
      * Resets touch state
+     * Call this when a touch gesture ends or is cancelled
      */
     resetTouch() {
         this.touchStartX = null;
@@ -40,7 +59,8 @@ export class InputController {
     }
 
     /**
-     * Clears all input timers
+     * Clears all input timers (DAS, soft drop)
+     * Call this when pausing or resetting the game
      */
     clearTimers() {
         if (this.dasTimer) clearTimeout(this.dasTimer);
@@ -50,316 +70,608 @@ export class InputController {
         this.dasIntervalTimer = null;
         this.softDropTimer = null;
     }
+
+    /**
+     * Validates that a game action callback exists and is callable
+     * @param {Object} gameActions - Game actions object
+     * @param {string} actionName - Name of the action to validate
+     * @returns {boolean} True if the action exists and is a function
+     */
+    static isValidAction(gameActions, actionName) {
+        return gameActions && typeof gameActions[actionName] === 'function';
+    }
 }
 
 /**
- * Sets up keyboard input handling
+ * Handles player 2 actions for local multiplayer
+ * @private
+ */
+function handlePlayer2Action(action, gameActions, inputController, settings) {
+    const {
+        moveP2, rotateP2, softDropP2, hardDropP2,
+    } = gameActions;
+
+    performanceMonitor.recordInputAction();
+
+    switch (action) {
+    case 'moveLeft':
+        if (moveP2) {
+            moveP2(-1);
+            inputController.dasTimerP2 = setTimeout(() => {
+                inputController.dasIntervalTimerP2 = setInterval(
+                    () => moveP2(-1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+        }
+        break;
+
+    case 'moveRight':
+        if (moveP2) {
+            moveP2(1);
+            inputController.dasTimerP2 = setTimeout(() => {
+                inputController.dasIntervalTimerP2 = setInterval(
+                    () => moveP2(1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+        }
+        break;
+
+    case 'softDrop':
+        if (softDropP2) {
+            softDropP2();
+            inputController.softDropTimerP2 = setInterval(() => softDropP2(), 50);
+        }
+        break;
+
+    case 'rotateRight':
+        if (rotateP2) rotateP2('right');
+        break;
+
+    case 'rotateLeft':
+        if (rotateP2) rotateP2('left');
+        break;
+
+    case 'flip':
+        if (rotateP2) rotateP2('flip');
+        break;
+
+    case 'hardDrop':
+        if (hardDropP2) hardDropP2();
+        break;
+
+    default:
+        break;
+    }
+}
+
+/**
+ * Sets up keyboard input handling with DAS (Delayed Auto Shift) support
+ * Uses native DOM events - compatible with Phaser 3, Phaser 4, and any framework
+ *
  * @param {InputController} inputController - Input controller instance
- * @param {Object} settings - Game settings
- * @param {Object} gameActions - Game action functions
+ * @param {Object} settings - Game settings (must include keyBindings, dasDelay, dasInterval)
+ * @param {Object} gameActions - Game action callbacks (move, rotate, hardDrop, etc.)
  */
 export function setupKeyboardControls(inputController, settings, gameActions) {
+    // Defensive validation
+    if (!inputController) {
+        console.error('[Keyboard] InputController is required');
+        return;
+    }
+    if (!settings || !settings.keyBindings) {
+        console.error('[Keyboard] Settings with keyBindings are required');
+        return;
+    }
+    if (!gameActions) {
+        console.error('[Keyboard] Game actions are required');
+        return;
+    }
+
+    console.log('[Keyboard] Setting up keyboard controls');
+
     const {
-        move,
-        rotate,
-        softDrop,
-        hardDrop,
-        togglePause,
-        startGame,
-        initSound
+        move, rotate, softDrop, hardDrop, togglePause, startGame, initSound,
     } = gameActions;
 
     // Keydown handler
     document.addEventListener('keydown', (e) => {
-        // Escape always toggles pause
-        if (e.key === 'Escape') {
-            togglePause();
-            return;
-        }
+        try {
+            // Performance monitoring: Record input timestamp
+            performanceMonitor.recordInput();
 
-        // Initialize sound on first interaction
-        if (!inputController.soundInitialized) {
-            inputController.soundInitialized = true;
-            if (initSound) initSound();
-        }
-
-        // Don't handle input if typing in key binding input
-        if (document.activeElement && document.activeElement.classList.contains('key-input')) {
-            return;
-        }
-
-        // Start game if on start/game-over modal
-        const startModal = document.getElementById('start-modal');
-        const gameOverModal = document.getElementById('game-over-modal');
-        if ((startModal && startModal.classList.contains('visible')) ||
-            (gameOverModal && gameOverModal.classList.contains('visible'))) {
-            startGame();
-            return;
-        }
-
-        // Get action from key binding
-        const key = e.key === ' ' ? 'Space' : e.key;
-        const action = Object.keys(settings.keyBindings).find(
-            k => settings.keyBindings[k] === key
-        );
-
-        if (!action || inputController.keyMap[action]) return;
-        inputController.keyMap[action] = true;
-
-        // Handle input queue during physics processing
-        if (gameActions.isProcessingPhysics && gameActions.inputQueue !== undefined) {
-            if (!gameActions.inputQueue &&
-                (action === 'moveLeft' || action === 'moveRight' ||
-                 action.startsWith('rotate') || action === 'flip')) {
-                gameActions.inputQueue = {
-                    type: action.startsWith('rotate') || action === 'flip' ? 'rotate' : 'move',
-                    dir: action === 'moveLeft' ? -1 :
-                         action === 'moveRight' ? 1 :
-                         action === 'rotateLeft' ? 'left' :
-                         action === 'flip' ? 'flip' : 'right'
-                };
+            // Check if settings modal is open - block ALL input if it is
+            const settingsModal = document.getElementById('settings-modal');
+            const settingsModalVisible = settingsModal?.classList.contains('visible');
+            
+            // Escape key behavior depends on context
+            if (e.key === 'Escape') {
+                if (settingsModalVisible) {
+                    // Settings modal is open - do nothing here, let modal handler close it
+                    console.log('[Controls] Settings modal open, Escape will close modal');
+                    return;
+                }
+                // Otherwise, toggle pause
+                console.log('[Controls] Toggling pause with Escape');
+                if (togglePause) togglePause();
+                return;
             }
-            return;
-        }
 
-        // Execute actions
-        switch (action) {
+            // Block all other input if settings modal is open
+            if (settingsModalVisible) {
+                console.log('[Controls] Settings modal open, ignoring input');
+                return;
+            }
+
+            // Initialize sound on first interaction
+            if (!inputController.soundInitialized) {
+                inputController.soundInitialized = true;
+                if (initSound) initSound();
+            }
+
+            // Don't handle input if typing in key binding input
+            if (document.activeElement && document.activeElement.classList.contains('key-input')) {
+                return;
+            }
+
+            // Get action from key binding (check this before auto-starting game)
+            const key = e.key === ' ' ? 'Space' : e.key;
+            const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
+
+            // Also check player 2 bindings (for local multiplayer)
+            let actionP2 = null;
+            if (settings.player2KeyBindings) {
+                actionP2 = Object.keys(settings.player2KeyBindings).find((k) => settings.player2KeyBindings[k] === key);
+            }
+
+            // Allow global actions (fullscreen, high scores) to work even on start modal
+            const globalActions = ['toggleFullscreen', 'showHighScores'];
+            const isGlobalAction = globalActions.includes(action);
+
+            // Start game if on start/game-over modal (but only for non-global actions)
+            const startModal = document.getElementById('start-modal');
+            const gameOverModal = document.getElementById('game-over-modal');
+            if (
+                !isGlobalAction &&
+                ((startModal && startModal.classList.contains('visible'))
+                || (gameOverModal && gameOverModal.classList.contains('visible')))
+            ) {
+                // Only start game on Space or Enter
+                if (e.key === ' ' || e.key === 'Enter') {
+                    if (startGame) startGame();
+                }
+                return;
+            }
+
+            // Handle player 2 input first (if applicable)
+            if (actionP2 && !inputController.keyMap['p2-' + actionP2]) {
+                inputController.keyMap['p2-' + actionP2] = true;
+                handlePlayer2Action(actionP2, gameActions, inputController, settings);
+            }
+
+            // Then handle player 1 input
+            if (!action || inputController.keyMap[action]) return;
+            inputController.keyMap[action] = true;
+
+            // Handle input queue during physics processing
+            if (gameActions.isProcessingPhysics && gameActions.inputQueue !== undefined) {
+                if (
+                    !gameActions.inputQueue
+                    && (action === 'moveLeft'
+                        || action === 'moveRight'
+                        || action.startsWith('rotate')
+                        || action === 'flip')
+                ) {
+                    const isRotate = action.startsWith('rotate') || action === 'flip';
+                    let dir;
+                    if (action === 'moveLeft') {
+                        dir = -1;
+                    } else if (action === 'moveRight') {
+                        dir = 1;
+                    } else if (action === 'rotateLeft') {
+                        dir = 'left';
+                    } else if (action === 'flip') {
+                        dir = 'flip';
+                    } else {
+                        dir = 'right';
+                    }
+
+                    gameActions.inputQueue = {
+                        type: isRotate ? 'rotate' : 'move',
+                        dir,
+                    };
+                }
+                return;
+            }
+
+            // Execute actions
+            switch (action) {
             case 'moveLeft':
-                move(-1);
-                inputController.dasTimer = setTimeout(() => {
-                    inputController.dasIntervalTimer = setInterval(
-                        () => move(-1),
-                        settings.dasInterval
-                    );
-                }, settings.dasDelay);
+                if (move) {
+                    move(-1);
+                    performanceMonitor.recordInputAction();
+                    inputController.dasTimer = setTimeout(() => {
+                        inputController.dasIntervalTimer = setInterval(
+                            () => move(-1),
+                            settings.dasInterval,
+                        );
+                    }, settings.dasDelay);
+                }
                 break;
 
             case 'moveRight':
-                move(1);
-                inputController.dasTimer = setTimeout(() => {
-                    inputController.dasIntervalTimer = setInterval(
-                        () => move(1),
-                        settings.dasInterval
-                    );
-                }, settings.dasDelay);
+                if (move) {
+                    move(1);
+                    performanceMonitor.recordInputAction();
+                    inputController.dasTimer = setTimeout(() => {
+                        inputController.dasIntervalTimer = setInterval(
+                            () => move(1),
+                            settings.dasInterval,
+                        );
+                    }, settings.dasDelay);
+                }
                 break;
 
             case 'softDrop':
-                softDrop();
-                inputController.softDropTimer = setInterval(() => softDrop(), 50);
+                if (softDrop) {
+                    softDrop();
+                    performanceMonitor.recordInputAction();
+                    inputController.softDropTimer = setInterval(() => softDrop(), 50);
+                }
                 break;
 
             case 'rotateRight':
-                rotate('right');
+                if (rotate) {
+                    rotate('right');
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'rotateLeft':
-                rotate('left');
+                if (rotate) {
+                    rotate('left');
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'flip':
-                rotate('flip');
+                if (rotate) {
+                    rotate('flip');
+                    performanceMonitor.recordInputAction();
+                }
                 break;
 
             case 'hardDrop':
                 e.preventDefault();
-                hardDrop();
+                if (hardDrop) {
+                    hardDrop();
+                    performanceMonitor.recordInputAction();
+                }
                 break;
+
+            case 'nextTrack':
+                if (gameActions.nextTrack) {
+                    gameActions.nextTrack();
+                }
+                break;
+
+            case 'randomTheme':
+                if (gameActions.randomTheme) {
+                    gameActions.randomTheme();
+                }
+                break;
+
+            case 'toggleFullscreen':
+                if (gameActions.toggleFullscreen) {
+                    gameActions.toggleFullscreen();
+                }
+                break;
+
+            case 'showHighScores':
+                if (gameActions.showHighScores) {
+                    gameActions.showHighScores();
+                }
+                break;
+
+            default:
+                // No action for unrecognized key binding
+                break;
+            }
+        } catch (error) {
+            console.error('[Keyboard] Error in keydown handler:', error);
         }
     });
 
     // Keyup handler
     document.addEventListener('keyup', (e) => {
-        const key = e.key === ' ' ? 'Space' : e.key;
-        const action = Object.keys(settings.keyBindings).find(
-            k => settings.keyBindings[k] === key
-        );
+        try {
+            // Block all input if settings modal is open
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal?.classList.contains('visible')) {
+                return;
+            }
 
-        if (action) {
-            inputController.keyMap[action] = false;
-        }
+            const key = e.key === ' ' ? 'Space' : e.key;
+            const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
 
-        // Clear DAS timers for movement
-        if (action === 'moveLeft' || action === 'moveRight') {
-            clearTimeout(inputController.dasTimer);
-            clearInterval(inputController.dasIntervalTimer);
-            inputController.dasTimer = null;
-            inputController.dasIntervalTimer = null;
-        }
+            // Also check player 2 bindings (for local multiplayer)
+            let actionP2 = null;
+            if (settings.player2KeyBindings) {
+                actionP2 = Object.keys(settings.player2KeyBindings).find((k) => settings.player2KeyBindings[k] === key);
+            }
 
-        // Clear soft drop timer
-        if (action === 'softDrop') {
-            clearInterval(inputController.softDropTimer);
-            inputController.softDropTimer = null;
+            if (action) {
+                inputController.keyMap[action] = false;
+            }
+
+            if (actionP2) {
+                inputController.keyMap['p2-' + actionP2] = false;
+            }
+
+            // Clear DAS timers for movement (Player 1)
+            if (action === 'moveLeft' || action === 'moveRight') {
+                clearTimeout(inputController.dasTimer);
+                clearInterval(inputController.dasIntervalTimer);
+                inputController.dasTimer = null;
+                inputController.dasIntervalTimer = null;
+            }
+
+            // Clear DAS timers for movement (Player 2)
+            if (actionP2 === 'moveLeft' || actionP2 === 'moveRight') {
+                clearTimeout(inputController.dasTimerP2);
+                clearInterval(inputController.dasIntervalTimerP2);
+                inputController.dasTimerP2 = null;
+                inputController.dasIntervalTimerP2 = null;
+            }
+
+            // Clear soft drop timer (Player 1)
+            if (action === 'softDrop') {
+                clearInterval(inputController.softDropTimer);
+                inputController.softDropTimer = null;
+            }
+
+            // Clear soft drop timer (Player 2)
+            if (actionP2 === 'softDrop') {
+                clearInterval(inputController.softDropTimerP2);
+                inputController.softDropTimerP2 = null;
+            }
+        } catch (error) {
+            console.error('[Keyboard] Error in keyup handler:', error);
         }
     });
+
+    console.log('[Keyboard] Keyboard controls initialized');
 }
 
 /**
- * Sets up touch input handling
+ * Sets up touch input handling with gesture detection (tap, drag, flick)
+ * Uses native DOM events - compatible with Phaser 3, Phaser 4, and any framework
+ *
  * @param {InputController} inputController - Input controller instance
- * @param {Object} settings - Game settings
- * @param {Object} gameActions - Game action functions
- * @param {HTMLCanvasElement} canvas - Game canvas element
+ * @param {Object} settings - Game settings (must include controlScheme)
+ * @param {Object} gameActions - Game action callbacks
+ * @param {HTMLCanvasElement} canvas - Game canvas element (for tap region detection)
  */
 export function setupTouchControls(inputController, settings, gameActions, canvas) {
+    // Defensive validation
+    if (!inputController) {
+        console.error('[Touch] InputController is required');
+        return;
+    }
+    if (!settings) {
+        console.error('[Touch] Settings are required');
+        return;
+    }
+    if (!gameActions) {
+        console.error('[Touch] Game actions are required');
+        return;
+    }
+    if (!canvas) {
+        console.warn('[Touch] Canvas not provided - tap region detection disabled');
+    }
+
+    console.log('[Touch] Setting up touch controls');
+
     const {
-        move,
-        rotate,
-        softDrop,
-        hardDrop,
-        startGame,
-        initSound
+        move, rotate, softDrop, hardDrop, startGame, initSound,
     } = gameActions;
 
     // Touch start handler
     document.addEventListener('touchstart', (e) => {
-        if (settings.controlScheme !== 'Touch') return;
+        try {
+            if (settings.controlScheme !== 'Touch') return;
 
-        // Don't handle touch on UI elements
-        if (e.target.tagName === 'BUTTON' ||
-            e.target.classList.contains('key-input') ||
-            e.target.tagName === 'SELECT' ||
-            e.target.tagName === 'INPUT') {
-            return;
+            // Don't handle touch on UI elements
+            if (
+                e.target.tagName === 'BUTTON'
+                || e.target.classList.contains('key-input')
+                || e.target.tagName === 'SELECT'
+                || e.target.tagName === 'INPUT'
+            ) {
+                return;
+            }
+
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            inputController.touchStartX = touch.clientX;
+            inputController.touchStartY = touch.clientY;
+            inputController.touchLastX = touch.clientX;
+            inputController.touchLastY = touch.clientY;
+            inputController.touchStartTime = Date.now();
+        } catch (error) {
+            console.error('[Touch] Error in touchstart handler:', error);
         }
-
-        e.preventDefault();
-
-        const touch = e.touches[0];
-        inputController.touchStartX = touch.clientX;
-        inputController.touchStartY = touch.clientY;
-        inputController.touchLastX = touch.clientX;
-        inputController.touchLastY = touch.clientY;
-        inputController.touchStartTime = Date.now();
     });
 
     // Touch move handler
     document.addEventListener('touchmove', (e) => {
-        if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
-        e.preventDefault();
+        try {
+            if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
+            e.preventDefault();
 
-        const touch = e.touches[0];
-        const deltaX = touch.clientX - inputController.touchLastX;
-        const deltaY = touch.clientY - inputController.touchLastY;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - inputController.touchLastX;
+            const deltaY = touch.clientY - inputController.touchLastY;
 
-        const moveThreshold = BLOCK_SIZE;
-        const softDropThreshold = BLOCK_SIZE / 2;
+            const moveThreshold = BLOCK_SIZE;
+            const softDropThreshold = BLOCK_SIZE / 2;
 
-        // Horizontal movement check
-        if (Math.abs(deltaX) > moveThreshold) {
-            move(deltaX > 0 ? 1 : -1);
-            inputController.touchLastX = touch.clientX;
-        }
+            // Horizontal movement check
+            if (Math.abs(deltaX) > moveThreshold) {
+                if (move) move(deltaX > 0 ? 1 : -1);
+                inputController.touchLastX = touch.clientX;
+            }
 
-        // Vertical movement check
-        if (deltaY > softDropThreshold) {
-            softDrop();
-            inputController.touchLastY = touch.clientY;
+            // Vertical movement check
+            if (deltaY > softDropThreshold) {
+                if (softDrop) softDrop();
+                inputController.touchLastY = touch.clientY;
+            }
+        } catch (error) {
+            console.error('[Touch] Error in touchmove handler:', error);
         }
     });
 
     // Touch end handler
     document.addEventListener('touchend', (e) => {
-        if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
-        e.preventDefault();
+        try {
+            if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
+            e.preventDefault();
 
-        // Initialize sound on first interaction
-        if (!inputController.soundInitialized) {
-            inputController.soundInitialized = true;
-            if (initSound) initSound();
-        }
+            // Initialize sound on first interaction
+            if (!inputController.soundInitialized) {
+                inputController.soundInitialized = true;
+                if (initSound) initSound();
+            }
 
-        // Start game if on start/game-over modal
-        const startModal = document.getElementById('start-modal');
-        const gameOverModal = document.getElementById('game-over-modal');
-        if ((startModal && startModal.classList.contains('visible')) ||
-            (gameOverModal && gameOverModal.classList.contains('visible'))) {
-            startGame();
+            // Start game if on start/game-over modal
+            const startModal = document.getElementById('start-modal');
+            const gameOverModal = document.getElementById('game-over-modal');
+            if (
+                (startModal && startModal.classList.contains('visible'))
+                || (gameOverModal && gameOverModal.classList.contains('visible'))
+            ) {
+                if (startGame) startGame();
+                inputController.resetTouch();
+                return;
+            }
+
+            const touch = e.changedTouches[0];
+            const deltaX = touch.clientX - inputController.touchStartX;
+            const deltaY = touch.clientY - inputController.touchStartY;
+            const deltaTime = Date.now() - inputController.touchStartTime;
+
+            const tapThreshold = 25;
+            const flickTime = 300;
+            const flickDistY = 60;
+
+            // Tap detection (quick, small movement)
+            if (
+                deltaTime < flickTime
+                && Math.abs(deltaX) < tapThreshold
+                && Math.abs(deltaY) < tapThreshold
+            ) {
+                // Only handle tap if canvas is available
+                if (canvas) {
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const touchXonCanvas = touch.clientX - canvasRect.left;
+
+                    // Left side = rotate left, right side = rotate right
+                    if (touchXonCanvas < canvas.width / 2) {
+                        if (rotate) rotate('left');
+                    } else if (rotate) {
+                        rotate('right');
+                    }
+                }
+            } else if (deltaTime < flickTime) {
+                // Flick detection (quick, large movement)
+                // Vertical flick for hard drop
+                if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY > flickDistY) {
+                    if (hardDrop) hardDrop();
+                }
+            }
+
             inputController.resetTouch();
-            return;
+        } catch (error) {
+            console.error('[Touch] Error in touchend handler:', error);
         }
-
-        const touch = e.changedTouches[0];
-        const deltaX = touch.clientX - inputController.touchStartX;
-        const deltaY = touch.clientY - inputController.touchStartY;
-        const deltaTime = Date.now() - inputController.touchStartTime;
-
-        const tapThreshold = 25;
-        const flickTime = 300;
-        const flickDistY = 60;
-
-        // Tap detection (quick, small movement)
-        if (deltaTime < flickTime &&
-            Math.abs(deltaX) < tapThreshold &&
-            Math.abs(deltaY) < tapThreshold) {
-            const canvasRect = canvas.getBoundingClientRect();
-            const touchXonCanvas = touch.clientX - canvasRect.left;
-
-            // Left side = rotate left, right side = rotate right
-            if (touchXonCanvas < canvas.width / 2) {
-                rotate('left');
-            } else {
-                rotate('right');
-            }
-        }
-        // Flick detection (quick, large movement)
-        else if (deltaTime < flickTime) {
-            // Vertical flick for hard drop
-            if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY > flickDistY) {
-                hardDrop();
-            }
-        }
-
-        inputController.resetTouch();
     });
+
+    console.log('[Touch] Touch controls initialized');
 }
 
 /**
- * Sets up click handling (for starting game)
+ * Sets up click handling (for starting game and sound initialization)
+ * Uses native DOM events - compatible with Phaser 3, Phaser 4, and any framework
+ *
  * @param {InputController} inputController - Input controller instance
- * @param {Function} startGame - Start game function
- * @param {Function} initSound - Initialize sound function
+ * @param {Function} startGame - Start game callback
+ * @param {Function} initSound - Initialize sound callback
  */
 export function setupClickControls(inputController, startGame, initSound) {
+    // Defensive validation
+    if (!inputController) {
+        console.error('[Click] InputController is required');
+        return;
+    }
+
+    console.log('[Click] Setting up click controls');
+
     document.addEventListener('click', (e) => {
-        // Initialize sound on first interaction
-        if (!inputController.soundInitialized) {
-            inputController.soundInitialized = true;
-            if (initSound) initSound();
-        }
+        try {
+            // Initialize sound on first interaction
+            if (!inputController.soundInitialized) {
+                inputController.soundInitialized = true;
+                if (initSound) initSound();
+            }
 
-        // Don't handle clicks on UI elements
-        if (e.target.tagName === 'BUTTON' ||
-            e.target.classList.contains('key-input') ||
-            e.target.tagName === 'SELECT' ||
-            e.target.tagName === 'INPUT') {
-            return;
-        }
+            // Don't handle clicks on UI elements
+            if (
+                e.target.tagName === 'BUTTON'
+                || e.target.classList.contains('key-input')
+                || e.target.tagName === 'SELECT'
+                || e.target.tagName === 'INPUT'
+            ) {
+                return;
+            }
 
-        // Start game if on start/game-over modal
-        const startModal = document.getElementById('start-modal');
-        const gameOverModal = document.getElementById('game-over-modal');
-        if ((startModal && startModal.classList.contains('visible')) ||
-            (gameOverModal && gameOverModal.classList.contains('visible'))) {
-            startGame();
+            // Start game if on start/game-over modal
+            const startModal = document.getElementById('start-modal');
+            const gameOverModal = document.getElementById('game-over-modal');
+            if (
+                (startModal && startModal.classList.contains('visible'))
+                || (gameOverModal && gameOverModal.classList.contains('visible'))
+            ) {
+                if (startGame) startGame();
+            }
+        } catch (error) {
+            console.error('[Click] Error in click handler:', error);
         }
     });
+
+    console.log('[Click] Click controls initialized');
 }
 
 /**
- * Initializes all input controls
- * @param {Object} settings - Game settings
- * @param {Object} gameActions - Game action functions
- * @param {HTMLCanvasElement} canvas - Game canvas element
+ * Initializes all input controls (keyboard, touch, click)
+ * This is the main entry point for setting up DOM-based input handling
+ *
+ * @param {Object} settings - Game settings (must include keyBindings, controlScheme)
+ * @param {Object} gameActions - Game action callbacks (move, rotate, hardDrop, etc.)
+ * @param {HTMLCanvasElement} canvas - Game canvas element (for touch tap region detection)
  * @returns {InputController} Input controller instance
  */
 export function initializeControls(settings, gameActions, canvas) {
+    console.log('[Input] Initializing all input controls...');
+
     const inputController = new InputController();
 
     setupKeyboardControls(inputController, settings, gameActions);
     setupTouchControls(inputController, settings, gameActions, canvas);
     setupClickControls(inputController, gameActions.startGame, gameActions.initSound);
 
+    console.log('[Input] ✅ All input controls initialized successfully');
     return inputController;
 }

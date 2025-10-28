@@ -11,7 +11,12 @@ export const wolfhourBackgroundCache = new Map();
 export const himalayanPeakCache = new Map();
 export const iceTempleCache = new Map();
 export const crystalCaveCache = new Map();
-export const lanternFestivalElementPool = { lanterns: [], reflections: [], petals: [], embers: [] };
+export const lanternFestivalElementPool = {
+    lanterns: [],
+    reflections: [],
+    petals: [],
+    embers: [],
+};
 export const lunaraBackgroundCache = new Map();
 
 /**

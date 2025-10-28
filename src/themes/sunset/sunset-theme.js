@@ -11,17 +11,35 @@ export default class SunsetTheme extends BaseTheme {
 
         // Procedurally generate clouds
         const cloudLayers = [
-            { el: document.getElementById('sunset-clouds-back'), count: 10, color: 'rgba(255, 255, 255, 0.2)', height: 300, width: 800 },
-            { el: document.getElementById('sunset-clouds-mid'), count: 8, color: 'rgba(255, 230, 200, 0.5)', height: 250, width: 600 },
-            { el: document.getElementById('sunset-clouds-front'), count: 6, color: 'rgba(255, 240, 220, 0.8)', height: 200, width: 400 }
+            {
+                el: document.getElementById('sunset-clouds-back'),
+                count: 10,
+                color: 'rgba(255, 255, 255, 0.2)',
+                height: 300,
+                width: 800,
+            },
+            {
+                el: document.getElementById('sunset-clouds-mid'),
+                count: 8,
+                color: 'rgba(255, 230, 200, 0.5)',
+                height: 250,
+                width: 600,
+            },
+            {
+                el: document.getElementById('sunset-clouds-front'),
+                count: 6,
+                color: 'rgba(255, 240, 220, 0.8)',
+                height: 200,
+                width: 400,
+            },
         ];
 
-        cloudLayers.forEach(layer => {
+        cloudLayers.forEach((layer) => {
             if (layer.el && layer.el.children.length === 0) {
-                let canvas = document.createElement('canvas');
+                const canvas = document.createElement('canvas');
                 canvas.width = layer.count * layer.width;
                 canvas.height = layer.height;
-                let ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d');
 
                 for (let i = 0; i < layer.count; i++) {
                     const x = i * layer.width + Math.random() * (layer.width / 2);
@@ -31,10 +49,10 @@ export default class SunsetTheme extends BaseTheme {
                     ctx.fillStyle = layer.color;
                     ctx.filter = `blur(${Math.random() * 10 + 5}px)`;
 
-                    for(let j=0; j<8; j++) {
+                    for (let j = 0; j < 8; j++) {
                         const puffX = x + (Math.random() - 0.5) * w;
                         const puffY = y + (Math.random() - 0.5) * h;
-                        const puffR = Math.random() * (w/4) + (w/8);
+                        const puffR = Math.random() * (w / 4) + w / 8;
                         ctx.beginPath();
                         ctx.arc(puffX, puffY, puffR, 0, 2 * Math.PI);
                         ctx.fill();
@@ -44,7 +62,7 @@ export default class SunsetTheme extends BaseTheme {
                 canvas.style.left = '0';
                 canvas.style.top = `${Math.random() * 20}%`;
                 canvas.style.width = `${canvas.width}px`;
-                canvas.style.height = `100%`;
+                canvas.style.height = '100%';
                 layer.el.appendChild(canvas);
                 this.registerContainer(layer.el);
             }
@@ -53,10 +71,10 @@ export default class SunsetTheme extends BaseTheme {
         // Procedurally generate mountain silhouette
         const mountainContainer = document.querySelector('.mountain-silhouette');
         if (mountainContainer && mountainContainer.children.length === 0) {
-            let canvas = document.createElement('canvas');
+            const canvas = document.createElement('canvas');
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight * 0.25;
-            let ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d');
 
             const drawMountainRange = (color, startY, amplitude, peaks) => {
                 ctx.fillStyle = color;
@@ -67,7 +85,10 @@ export default class SunsetTheme extends BaseTheme {
                     const peakWidth = canvas.width / peaks;
                     const step = peakWidth / 20;
                     for (let i = 0; i < 20; i++) {
-                        const y = startY + Math.sin((x / peakWidth) * Math.PI * 2) * amplitude * Math.sin((x/canvas.width)*Math.PI);
+                        const y = startY
+                            + Math.sin((x / peakWidth) * Math.PI * 2)
+                                * amplitude
+                                * Math.sin((x / canvas.width) * Math.PI);
                         ctx.lineTo(x, y);
                         x += step;
                     }
@@ -94,16 +115,46 @@ export default class SunsetTheme extends BaseTheme {
         const sunflareContainer = document.getElementById('sunset-sunflares');
         if (sunflareContainer && sunflareContainer.children.length === 0) {
             const flareConfigs = [
-                { color: 'rgba(255, 200, 100, 0.6)', size: 150, offsetX: 0, offsetY: 0 },      // Center main flare
-                { color: 'rgba(255, 150, 80, 0.5)', size: 100, offsetX: 80, offsetY: -40 },    // Top right
-                { color: 'rgba(255, 220, 150, 0.4)', size: 120, offsetX: -70, offsetY: 50 },   // Bottom left
-                { color: 'rgba(255, 180, 120, 0.5)', size: 90, offsetX: 60, offsetY: 70 },     // Bottom right
-                { color: 'rgba(255, 240, 200, 0.3)', size: 180, offsetX: -20, offsetY: -10 },  // Slightly off-center large
-                { color: 'rgba(255, 160, 100, 0.4)', size: 110, offsetX: -90, offsetY: -60 }   // Top left
+                {
+                    color: 'rgba(255, 200, 100, 0.6)',
+                    size: 150,
+                    offsetX: 0,
+                    offsetY: 0,
+                }, // Center main flare
+                {
+                    color: 'rgba(255, 150, 80, 0.5)',
+                    size: 100,
+                    offsetX: 80,
+                    offsetY: -40,
+                }, // Top right
+                {
+                    color: 'rgba(255, 220, 150, 0.4)',
+                    size: 120,
+                    offsetX: -70,
+                    offsetY: 50,
+                }, // Bottom left
+                {
+                    color: 'rgba(255, 180, 120, 0.5)',
+                    size: 90,
+                    offsetX: 60,
+                    offsetY: 70,
+                }, // Bottom right
+                {
+                    color: 'rgba(255, 240, 200, 0.3)',
+                    size: 180,
+                    offsetX: -20,
+                    offsetY: -10,
+                }, // Slightly off-center large
+                {
+                    color: 'rgba(255, 160, 100, 0.4)',
+                    size: 110,
+                    offsetX: -90,
+                    offsetY: -60,
+                }, // Top left
             ];
 
             flareConfigs.forEach((flare, i) => {
-                let flareEl = document.createElement('div');
+                const flareEl = document.createElement('div');
                 flareEl.className = 'sunset-sunflare';
                 flareEl.style.width = `${flare.size}px`;
                 flareEl.style.height = `${flare.size}px`;
@@ -120,7 +171,7 @@ export default class SunsetTheme extends BaseTheme {
         const godRayContainer = document.querySelector('.sunset-god-rays');
         if (godRayContainer && godRayContainer.children.length === 0) {
             for (let i = 0; i < 30; i++) {
-                let ray = document.createElement('div');
+                const ray = document.createElement('div');
                 ray.className = 'sunset-god-ray';
                 ray.style.transform = `rotate(${i * 12 + Math.random() * 4 - 2}deg)`;
                 ray.style.animationDelay = `-${Math.random() * 25}s`;
@@ -134,14 +185,29 @@ export default class SunsetTheme extends BaseTheme {
         if (dustContainer && dustContainer.children.length === 0) {
             // Create multiple types of particles
             const particleTypes = [
-                { count: 60, size: [1, 3], speed: [15, 25], color: 'rgba(255, 240, 200, 0.6)' }, // Dust motes
-                { count: 30, size: [2, 4], speed: [20, 35], color: 'rgba(255, 220, 180, 0.5)' }, // Light particles
-                { count: 20, size: [1, 2], speed: [10, 18], color: 'rgba(255, 255, 240, 0.7)' }, // Sparkles
+                {
+                    count: 60,
+                    size: [1, 3],
+                    speed: [15, 25],
+                    color: 'rgba(255, 240, 200, 0.6)',
+                }, // Dust motes
+                {
+                    count: 30,
+                    size: [2, 4],
+                    speed: [20, 35],
+                    color: 'rgba(255, 220, 180, 0.5)',
+                }, // Light particles
+                {
+                    count: 20,
+                    size: [1, 2],
+                    speed: [10, 18],
+                    color: 'rgba(255, 255, 240, 0.7)',
+                }, // Sparkles
             ];
 
-            particleTypes.forEach(type => {
+            particleTypes.forEach((type) => {
                 for (let i = 0; i < type.count; i++) {
-                    let particle = document.createElement('div');
+                    const particle = document.createElement('div');
                     particle.className = 'sunset-dust-particle';
 
                     const size = this.random(type.size[0], type.size[1]);
@@ -199,7 +265,7 @@ export default class SunsetTheme extends BaseTheme {
         // Add birds during day
         if (!dustContainer.querySelector('.sunset-bird')) {
             for (let i = 0; i < 5; i++) {
-                let bird = document.createElement('div');
+                const bird = document.createElement('div');
                 bird.className = 'sunset-bird';
                 bird.style.position = 'absolute';
                 bird.style.width = '20px';
@@ -245,7 +311,7 @@ export default class SunsetTheme extends BaseTheme {
         const starsContainer = document.getElementById('sunset-stars');
         if (starsContainer && starsContainer.children.length === 0) {
             for (let i = 0; i < 200; i++) {
-                let star = document.createElement('div');
+                const star = document.createElement('div');
                 star.className = 'sunset-star';
 
                 // Random size (1-3px)

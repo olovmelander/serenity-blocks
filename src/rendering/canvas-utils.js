@@ -3,7 +3,9 @@
  * Handles grid cache generation, block drawing, and canvas styling
  */
 
-import { COLS, ROWS, BLOCK_SIZE, HIDDEN_ROWS } from '../core/constants.js';
+import {
+    COLS, ROWS, BLOCK_SIZE, HIDDEN_ROWS,
+} from '../core/constants.js';
 
 /**
  * Offscreen canvas for cached grid (performance optimization)
@@ -22,6 +24,86 @@ let gridCacheCtx = null;
  * @type {number}
  */
 let lastRenderedLevel = 0;
+
+const BLOCK_SHADOW_BASE_BLUR = 6;
+const BLOCK_SHADOW_VARIATION = 6;
+const PULSE_SPEED = 0.005; // Controls speed of pulsing shadow (radians per ms)
+const POSITION_PHASE_SHIFT = 0.45; // Phase offset between neighboring blocks
+
+function clampColorComponent(value) {
+    return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseColorToRgb(color) {
+    if (!color || typeof color !== 'string') {
+        return null;
+    }
+
+    let value = color.trim();
+
+    if (value.startsWith('#')) {
+        value = value.slice(1);
+        if (value.length === 3) {
+            value = value
+                .split('')
+                .map((char) => char + char)
+                .join('');
+        }
+        if (value.length !== 6) {
+            return null;
+        }
+
+        const r = parseInt(value.substring(0, 2), 16);
+        const g = parseInt(value.substring(2, 4), 16);
+        const b = parseInt(value.substring(4, 6), 16);
+
+        if ([r, g, b].some((component) => Number.isNaN(component))) {
+            return null;
+        }
+
+        return { r, g, b };
+    }
+
+    const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (rgbMatch) {
+        return {
+            r: clampColorComponent(Number(rgbMatch[1])),
+            g: clampColorComponent(Number(rgbMatch[2])),
+            b: clampColorComponent(Number(rgbMatch[3])),
+        };
+    }
+
+    return null;
+}
+
+function colorToCss(rgb, alpha = 1) {
+    if (!rgb) {
+        return null;
+    }
+    return `rgba(${clampColorComponent(rgb.r)}, ${clampColorComponent(rgb.g)}, ${clampColorComponent(rgb.b)}, ${alpha})`;
+}
+
+function lightenRgb(rgb, amount) {
+    return {
+        r: clampColorComponent(rgb.r + (255 - rgb.r) * amount),
+        g: clampColorComponent(rgb.g + (255 - rgb.g) * amount),
+        b: clampColorComponent(rgb.b + (255 - rgb.b) * amount),
+    };
+}
+
+function darkenRgb(rgb, amount) {
+    return {
+        r: clampColorComponent(rgb.r * (1 - amount)),
+        g: clampColorComponent(rgb.g * (1 - amount)),
+        b: clampColorComponent(rgb.b * (1 - amount)),
+    };
+}
+
+function getPulseIntensity(gridX, gridY) {
+    const timestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const phase = timestamp * PULSE_SPEED + (gridX + gridY) * POSITION_PHASE_SHIFT;
+    return 0.5 + 0.5 * Math.sin(phase);
+}
 
 /**
  * Generates a cached grid image to avoid redrawing it every frame
@@ -130,87 +212,76 @@ export function drawBlock(
     pieceX = 0,
     pieceY = 0,
     blockX = 0,
-    blockY = 0
+    blockY = 0,
 ) {
-    // Draw the block
-    ctx.fillStyle = color;
-    ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+    const size = BLOCK_SIZE;
+    // Use Math.round to ensure pixel-perfect integer coordinates
+    const pixelX = Math.round(x * size);
+    const pixelY = Math.round(y * size);
+    const endX = pixelX + size;
+    const endY = pixelY + size;
+    const baseColor = color || '#808080';
 
-    // Draw borders (skip for ghost pieces)
-    if (!isGhost) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-        ctx.lineWidth = 2;
-
-        if (shape) {
-            // Shape-based border detection (for current piece)
-            // Top border
-            if (blockY === 0 || !shape[blockY - 1] || !shape[blockY - 1][blockX]) {
-                ctx.beginPath();
-                ctx.moveTo(x * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Bottom border
-            if (blockY === shape.length - 1 || !shape[blockY + 1] || !shape[blockY + 1][blockX]) {
-                ctx.beginPath();
-                ctx.moveTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.lineTo((x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Left border
-            if (blockX === 0 || !shape[blockY][blockX - 1]) {
-                ctx.beginPath();
-                ctx.moveTo(x * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Right border
-            if (blockX === shape[blockY].length - 1 || !shape[blockY][blockX + 1]) {
-                ctx.beginPath();
-                ctx.moveTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-        } else if (boardData) {
-            // Board-based border detection (for locked pieces)
-            const by = y + HIDDEN_ROWS;
-            const currentCell = boardData[by] ? boardData[by][blockX] : null;
-            const currentId = currentCell ? currentCell.id : null;
-
-            // Top border
-            if (by === 0 || !boardData[by - 1] || boardData[by - 1][blockX] === null ||
-                boardData[by - 1][blockX].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo(blockX * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((blockX + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Bottom border
-            if (by === boardData.length - 1 || !boardData[by + 1] ||
-                boardData[by + 1][blockX] === null || boardData[by + 1][blockX].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo(blockX * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.lineTo((blockX + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Left border
-            if (blockX === 0 || boardData[by][blockX - 1] === null ||
-                boardData[by][blockX - 1].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo(blockX * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo(blockX * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-            // Right border
-            if (blockX === boardData[by].length - 1 || boardData[by][blockX + 1] === null ||
-                boardData[by][blockX + 1].id !== currentId) {
-                ctx.beginPath();
-                ctx.moveTo((blockX + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-                ctx.lineTo((blockX + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-                ctx.stroke();
-            }
-        }
+    if (isGhost) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
+        return;
     }
+
+    // Disable image smoothing for crisp pixel-perfect rendering
+    ctx.imageSmoothingEnabled = false;
+
+    // Draw solid block fill
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(pixelX, pixelY, size, size);
+
+    // Draw borders - use edge detection if shape data is provided
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+
+    if (shape) {
+        // Edge-only borders: only draw borders on outer edges of the piece
+        const hasBlockAbove = blockY > 0 && shape[blockY - 1] && shape[blockY - 1][blockX] > 0;
+        const hasBlockBelow = blockY < shape.length - 1 && shape[blockY + 1] && shape[blockY + 1][blockX] > 0;
+        const hasBlockLeft = blockX > 0 && shape[blockY][blockX - 1] > 0;
+        const hasBlockRight = blockX < shape[blockY].length - 1 && shape[blockY][blockX + 1] > 0;
+
+        // Draw individual edge lines only where there's no adjacent block
+        ctx.beginPath();
+
+        // Top edge
+        if (!hasBlockAbove) {
+            ctx.moveTo(pixelX, pixelY + 0.5);
+            ctx.lineTo(pixelX + size, pixelY + 0.5);
+        }
+
+        // Bottom edge
+        if (!hasBlockBelow) {
+            ctx.moveTo(pixelX, pixelY + size - 0.5);
+            ctx.lineTo(pixelX + size, pixelY + size - 0.5);
+        }
+
+        // Left edge
+        if (!hasBlockLeft) {
+            ctx.moveTo(pixelX + 0.5, pixelY);
+            ctx.lineTo(pixelX + 0.5, pixelY + size);
+        }
+
+        // Right edge
+        if (!hasBlockRight) {
+            ctx.moveTo(pixelX + size - 0.5, pixelY);
+            ctx.lineTo(pixelX + size - 0.5, pixelY + size);
+        }
+
+        ctx.stroke();
+    } else {
+        // Full border around individual block (fallback or for board-based rendering)
+        ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
+    }
+
+    // Re-enable image smoothing for other rendering operations
+    ctx.imageSmoothingEnabled = true;
 }
 
 /**
@@ -219,18 +290,34 @@ export function drawBlock(
  * @param {Object} piece - Current piece
  * @param {number} ghostY - Y position where ghost should be drawn
  */
+/**
+ * Calculates pulsing opacity for ghost piece (Tetris Effect-inspired)
+ * @returns {number} Opacity value between 0.2 and 0.35
+ */
+function getGhostPulseOpacity() {
+    // 2-second cycle for gentle breathing effect
+    const time = Date.now() / 1000;
+    const cycle = (Math.sin(time * Math.PI) + 1) / 2; // 0 to 1
+    return 0.2 + cycle * 0.15; // 0.2 to 0.35
+}
+
 export function drawGhostPiece(ctx, piece, ghostY) {
+    const opacity = getGhostPulseOpacity();
+
     piece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
             if (cell > 0 && ghostY + y >= HIDDEN_ROWS) {
-                drawBlock(
-                    ctx,
-                    piece.x + x,
-                    ghostY + y - HIDDEN_ROWS,
-                    'rgba(255,255,255,0.2)',
-                    null,
-                    true
-                );
+                const blockX = piece.x + x;
+                const blockY = ghostY + y - HIDDEN_ROWS;
+
+                // Draw main ghost block with pulsing opacity
+                ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+                ctx.fillRect(blockX * BLOCK_SIZE, blockY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+
+                // Add subtle cyan glow on edges for Tetris Effect feel
+                ctx.strokeStyle = `rgba(100, 200, 255, ${opacity * 0.6})`;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(blockX * BLOCK_SIZE, blockY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             }
         });
     });

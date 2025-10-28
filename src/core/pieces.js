@@ -2,7 +2,9 @@
 // PIECES - Tetromino piece management for Serenity Blocks
 // =================================================================================
 
-import { SHAPES, COLORS, PIECE_KEYS, COLS } from './constants.js';
+import {
+    SHAPES, COLORS, PIECE_KEYS, COLS, HIDDEN_ROWS,
+} from './constants.js';
 
 /**
  * Piece queue and bag state
@@ -45,12 +47,14 @@ export function spawnPiece(isValidPositionFn) {
     const shapeKey = nextPieces.shift();
     const shape = SHAPES[shapeKey];
 
+    const spawnY = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
+
     const piece = {
         shapeKey,
-        shape: shape,
+        shape,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
-        y: 0,
-        color: COLORS[shapeKey]
+        y: spawnY,
+        color: COLORS[shapeKey],
     };
 
     fillBag();
@@ -77,7 +81,7 @@ export function createPiece(shapeKey, x = 0, y = 0) {
         x,
         y,
         color: COLORS[shapeKey],
-        pieceId: Date.now() + Math.random()
+        pieceId: Date.now() + Math.random(),
     };
 }
 
@@ -90,14 +94,14 @@ export function createPiece(shapeKey, x = 0, y = 0) {
 export function rotateShape(shape, direction = 'right') {
     if (direction === 'right') {
         // Rotate 90 degrees clockwise
-        return shape[0].map((_, i) => shape.map(row => row[i]).reverse());
-    } else if (direction === 'left') {
-        // Rotate 90 degrees counterclockwise
-        return shape[0].map((_, i) => shape.map(row => row[i])).reverse();
-    } else {
-        // Flip 180 degrees
-        return shape.map(row => row.slice().reverse()).reverse();
+        return shape[0].map((_, i) => shape.map((row) => row[i]).reverse());
     }
+    if (direction === 'left') {
+        // Rotate 90 degrees counterclockwise
+        return shape[0].map((_, i) => shape.map((row) => row[i])).reverse();
+    }
+    // Flip 180 degrees
+    return shape.map((row) => row.slice().reverse()).reverse();
 }
 
 /**
@@ -153,7 +157,7 @@ export function getPieceBounds(shape) {
         minY,
         maxY,
         width: maxX - minX + 1,
-        height: maxY - minY + 1
+        height: maxY - minY + 1,
     };
 }
 

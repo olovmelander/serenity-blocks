@@ -11,7 +11,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         if (veinContainer && veinContainer.children.length === 0) {
             const numVeins = 10;
             for (let i = 0; i < numVeins; i++) {
-                let vein = document.createElement('div');
+                const vein = document.createElement('div');
                 vein.className = 'electric-vein';
                 const size = Math.random() * 120 + 80;
                 vein.style.width = `${size}px`;
@@ -43,7 +43,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         if (particleContainer && particleContainer.children.length === 0) {
             const numParticles = 40;
             for (let i = 0; i < numParticles; i++) {
-                let particle = document.createElement('div');
+                const particle = document.createElement('div');
                 particle.className = 'electric-particle';
                 const size = Math.random() * 3 + 1;
                 particle.style.width = `${size}px`;

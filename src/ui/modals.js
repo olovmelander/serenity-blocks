@@ -7,13 +7,21 @@
  * Modal manager class
  */
 export class ModalManager {
-    constructor() {
+    constructor(gamepadController = null) {
         this.modals = {
             start: document.getElementById('start-modal'),
             gameOver: document.getElementById('game-over-modal'),
             settings: document.getElementById('settings-modal'),
-            highScores: document.getElementById('high-scores-modal')
+            highScores: document.getElementById('high-scores-modal'),
         };
+        this.gamepadController = gamepadController;
+    }
+
+    /**
+     * Set gamepad controller reference
+     */
+    setGamepadController(gamepadController) {
+        this.gamepadController = gamepadController;
     }
 
     /**
@@ -24,6 +32,11 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.add('visible');
+            
+            // Enable menu navigation when modal opens
+            if (this.gamepadController && modalName !== 'gameOver') {
+                this.gamepadController.enableMenuNavigation();
+            }
         }
     }
 
@@ -35,6 +48,11 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.remove('visible');
+            
+            // Disable menu navigation when modal closes
+            if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
+                this.gamepadController.disableMenuNavigation();
+            }
         }
     }
 
@@ -52,7 +70,7 @@ export class ModalManager {
      * Hides all modals
      */
     hideAll() {
-        Object.keys(this.modals).forEach(name => this.hide(name));
+        Object.keys(this.modals).forEach((name) => this.hide(name));
     }
 }
 
@@ -62,6 +80,7 @@ export class ModalManager {
  */
 export function showStartModal(modalManager) {
     modalManager.show('start');
+    // Menu navigation is enabled in show() method
 }
 
 /**
@@ -71,10 +90,15 @@ export function showStartModal(modalManager) {
  * @param {Object} highScoreManager - High score manager instance
  */
 export async function showGameOverModal(modalManager, gameState, highScoreManager) {
-    const { score, lines, level, dropInterval } = gameState;
+    const {
+        score, lines, level, dropInterval,
+    } = gameState;
 
     // Calculate speed multiplier
-    const LEVEL_SPEEDS = [1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60, 50];
+    const LEVEL_SPEEDS = [
+        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
+        50,
+    ];
     const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
 
     try {
@@ -93,8 +117,9 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
         }
 
         // Personal best
-        const personalBest = stats.highestScore > score ?
-            `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>` : '';
+        const personalBest = stats.highestScore > score
+            ? `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>`
+            : '';
 
         // Update final stats display
         document.getElementById('final-stats').innerHTML = `
@@ -124,6 +149,7 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
  */
 export function showSettingsModal(modalManager) {
     modalManager.show('settings');
+    // Menu navigation is enabled in show() method
 }
 
 /**
@@ -201,6 +227,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
     }
 
     modalManager.show('highScores');
+    // Menu navigation is enabled in show() method
 }
 
 /**
@@ -209,6 +236,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
  */
 export function closeHighScoresModal(modalManager) {
     modalManager.hide('highScores');
+    // Menu navigation is disabled in hide() method
 }
 
 /**
@@ -217,6 +245,7 @@ export function closeHighScoresModal(modalManager) {
  */
 export function closeSettingsModal(modalManager) {
     modalManager.hide('settings');
+    // Menu navigation is disabled in hide() method
 }
 
 /**
@@ -232,13 +261,22 @@ export function setupModalUI(modalManager, callbacks) {
         onHighScoresClose,
         onFullscreenToggle,
         onNextTrack,
-        onRandomTheme
+        onRandomTheme,
     } = callbacks;
 
-    // Settings button
+    // Settings button (single player)
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
         settingsBtn.addEventListener('click', () => {
+            showSettingsModal(modalManager);
+            if (onSettingsOpen) onSettingsOpen();
+        });
+    }
+
+    // Settings button (multiplayer)
+    const settingsBtnMp = document.getElementById('settings-btn-mp');
+    if (settingsBtnMp) {
+        settingsBtnMp.addEventListener('click', () => {
             showSettingsModal(modalManager);
             if (onSettingsOpen) onSettingsOpen();
         });
@@ -252,6 +290,17 @@ export function setupModalUI(modalManager, callbacks) {
             if (onSettingsClose) onSettingsClose();
         });
     }
+
+    // Close settings modal with Escape key
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modalManager.isVisible('settings')) {
+            event.preventDefault();
+            event.stopImmediatePropagation(); // Stop other handlers on same element
+            console.log('[Modals] Escape pressed, closing settings modal');
+            closeSettingsModal(modalManager);
+            if (onSettingsClose) onSettingsClose();
+        }
+    });
 
     // High scores button
     const highScoresBtn = document.getElementById('high-scores-btn');
@@ -294,12 +343,10 @@ export function setupModalUI(modalManager, callbacks) {
  */
 export function toggleFullScreen() {
     if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
+        document.documentElement.requestFullscreen().catch((err) => {
             console.error('Error attempting to enable fullscreen:', err);
         });
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        }
+    } else if (document.exitFullscreen) {
+        document.exitFullscreen();
     }
 }
