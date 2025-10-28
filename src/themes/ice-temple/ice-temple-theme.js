@@ -53,7 +53,7 @@ export default class IceTempleTheme extends BaseTheme {
         if (auroraContainer && auroraContainer.children.length === 0) {
             const colors = ['#74b9ff', '#55efc4', '#a29bfe', '#8b7bd8'];
             for (let i = 0; i < 4; i++) {
-                let curtain = document.createElement('div');
+                const curtain = document.createElement('div');
                 curtain.className = 'ice-aurora-curtain';
                 curtain.style.setProperty('--aurora-color', colors[i]);
                 curtain.style.setProperty('--aurora-duration', `${20 + i * 5}s`);
@@ -100,7 +100,7 @@ export default class IceTempleTheme extends BaseTheme {
                 const dataURL = `url(${canvas.toDataURL()})`;
                 iceTempleCache.set(cacheKey, {
                     backgroundImage: dataURL,
-                    backgroundSize: '3000px 800px'
+                    backgroundSize: '3000px 800px',
                 });
                 mountainsDistant.style.backgroundImage = dataURL;
                 mountainsDistant.style.backgroundSize = '3000px 800px';
@@ -266,10 +266,14 @@ export default class IceTempleTheme extends BaseTheme {
         // LAYER 8: Prismatic Light Refractions
         const refractionContainer = this.getContainer('ice-temple-refractions');
         if (refractionContainer && refractionContainer.children.length === 0) {
-            const colors = ['rgba(116, 185, 255, 0.4)', 'rgba(255, 255, 255, 0.5)', 'rgba(162, 155, 254, 0.4)'];
+            const colors = [
+                'rgba(116, 185, 255, 0.4)',
+                'rgba(255, 255, 255, 0.5)',
+                'rgba(162, 155, 254, 0.4)',
+            ];
             const rng = this.seededRandom(66666);
             for (let i = 0; i < 12; i++) {
-                let ray = document.createElement('div');
+                const ray = document.createElement('div');
                 ray.className = 'ice-refraction-ray';
                 ray.style.left = `${rng() * 100}%`;
                 ray.style.top = `${rng() * 100}%`;

@@ -5,144 +5,6 @@
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
 
-/**
- * Default settings configuration
- * @type {Object}
- */
-const DEFAULT_RIPPLE_COLOR = DEFAULT_SETTINGS.pieceLockRippleColor || '#64c8ff';
-function normalizeHexColor(value) {
-    if (!value) return null;
-
-    let hex = value.trim().toLowerCase();
-
-    if (!hex.startsWith('#')) {
-        hex = `#${hex}`;
-    }
-
-    if (hex.length === 4) {
-        hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
-    }
-
-    if (!/^#[0-9a-f]{6}$/.test(hex)) {
-        return null;
-    }
-
-    return hex;
-}
-
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-}
-
-function hexToRgb(hex) {
-    const normalized = normalizeHexColor(hex);
-    if (!normalized) return null;
-
-    const r = parseInt(normalized.slice(1, 3), 16);
-    const g = parseInt(normalized.slice(3, 5), 16);
-    const b = parseInt(normalized.slice(5, 7), 16);
-
-    if ([r, g, b].some((component) => Number.isNaN(component))) {
-        return null;
-    }
-
-    return { r, g, b };
-}
-
-function rgbToHex(r, g, b) {
-    const toHex = (value) => {
-        const clamped = clamp(Math.round(value), 0, 255);
-        const hex = clamped.toString(16).padStart(2, '0');
-        return hex;
-    };
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function rgbToHsl(r, g, b) {
-    const rNorm = r / 255;
-    const gNorm = g / 255;
-    const bNorm = b / 255;
-
-    const max = Math.max(rNorm, gNorm, bNorm);
-    const min = Math.min(rNorm, gNorm, bNorm);
-    let h = 0;
-    let s = 0;
-    const l = (max + min) / 2;
-
-    if (max !== min) {
-        const delta = max - min;
-        s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-
-        switch (max) {
-        case rNorm:
-            h = ((gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0));
-            break;
-        case gNorm:
-            h = ((bNorm - rNorm) / delta + 2);
-            break;
-        case bNorm:
-            h = ((rNorm - gNorm) / delta + 4);
-            break;
-        default:
-            break;
-        }
-
-        h /= 6;
-    }
-
-    return {
-        h: Math.round(h * 360),
-        s: Math.round(s * 100),
-        l: Math.round(l * 100)
-    };
-}
-
-function hexToHsl(hex) {
-    const rgb = hexToRgb(hex);
-    if (!rgb) {
-        return { h: 200, s: 70, l: 60 };
-    }
-    return rgbToHsl(rgb.r, rgb.g, rgb.b);
-}
-
-function hslToRgb(h, s, l) {
-    const hue = clamp(h, 0, 360) / 360;
-    const sat = clamp(s, 0, 100) / 100;
-    const light = clamp(l, 0, 100) / 100;
-
-    if (sat === 0) {
-        const value = Math.round(light * 255);
-        return { r: value, g: value, b: value };
-    }
-
-    const hueToRgb = (p, q, t) => {
-        let temp = t;
-        if (temp < 0) temp += 1;
-        if (temp > 1) temp -= 1;
-        if (temp < 1 / 6) return p + (q - p) * 6 * temp;
-        if (temp < 1 / 2) return q;
-        if (temp < 2 / 3) return p + (q - p) * (2 / 3 - temp) * 6;
-        return p;
-    };
-
-    const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
-    const p = 2 * light - q;
-
-    const r = hueToRgb(p, q, hue + 1 / 3);
-    const g = hueToRgb(p, q, hue);
-    const b = hueToRgb(p, q, hue - 1 / 3);
-
-    return {
-        r: Math.round(r * 255),
-        g: Math.round(g * 255),
-        b: Math.round(b * 255)
-    };
-}
-
-function hslToHex(h, s, l) {
-    const { r, g, b } = hslToRgb(h, s, l);
-    return rgbToHex(r, g, b);
-}
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -158,10 +20,13 @@ const DEFAULT_CONFIG = {
     autoThemeChange: false,
     randomThemeInterval: 60,
     pieceLockRipple: true,
-    pieceLockRippleColor: DEFAULT_RIPPLE_COLOR,
+    pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
     lineClearEffects: true,
+    backgroundComboEffects: true,
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
+    gamepadEnabled: true,
+    gamepadDeadzone: 0.25,
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -173,7 +38,7 @@ const DEFAULT_CONFIG = {
         nextTrack: 'm',
         randomTheme: 'b',
         toggleFullscreen: 'f',
-        showHighScores: 'h'
+        showHighScores: 'h',
     },
     player2KeyBindings: {
         moveLeft: 'a',
@@ -182,8 +47,28 @@ const DEFAULT_CONFIG = {
         rotateLeft: 'q',
         flip: 'e',
         softDrop: 's',
-        hardDrop: 'Shift'
-    }
+        hardDrop: 'Shift',
+    },
+    gamepadBindings: {
+        moveLeft: 14,      // D-pad Left
+        moveRight: 15,     // D-pad Right
+        rotateRight: 0,    // A Button
+        rotateLeft: 3,     // Y Button
+        flip: 2,           // X Button
+        softDrop: 13,      // D-pad Down
+        hardDrop: 1,       // B Button
+        pause: 9,          // Start Button
+    },
+    player2GamepadBindings: {
+        moveLeft: 14,      // D-pad Left
+        moveRight: 15,     // D-pad Right
+        rotateRight: 0,    // A Button
+        rotateLeft: 3,     // Y Button
+        flip: 2,           // X Button
+        softDrop: 13,      // D-pad Down
+        hardDrop: 1,       // B Button
+        pause: 9,          // Start Button
+    },
 };
 
 /**
@@ -214,7 +99,7 @@ export class SettingsManager {
         if (newSettings.keyBindings) {
             this.settings.keyBindings = {
                 ...this.settings.keyBindings,
-                ...newSettings.keyBindings
+                ...newSettings.keyBindings,
             };
         }
 
@@ -222,9 +107,11 @@ export class SettingsManager {
         if (emit && typeof window !== 'undefined') {
             const changes = this.getChanges(oldSettings, this.settings);
             if (Object.keys(changes).length > 0) {
-                window.dispatchEvent(new CustomEvent('settingsChanged', {
-                    detail: changes
-                }));
+                window.dispatchEvent(
+                    new CustomEvent('settingsChanged', {
+                        detail: changes,
+                    }),
+                );
             }
         }
     }
@@ -273,12 +160,12 @@ export class SettingsManager {
                     ...loaded,
                     keyBindings: {
                         ...DEFAULT_CONFIG.keyBindings,
-                        ...loadedKeyBindings
+                        ...loadedKeyBindings,
                     },
                     player2KeyBindings: {
                         ...DEFAULT_CONFIG.player2KeyBindings,
-                        ...loadedP2KeyBindings
-                    }
+                        ...loadedP2KeyBindings,
+                    },
                 };
             }
         } catch (error) {
@@ -335,22 +222,22 @@ export function updateControlsDisplay(settings) {
         'nextTrack',
         'randomTheme',
         'toggleFullscreen',
-        'showHighScores'
+        'showHighScores',
     ];
 
     if (settings.controlScheme === 'Keyboard') {
-        document.querySelectorAll('.key-input').forEach(el => {
+        document.querySelectorAll('.key-input').forEach((el) => {
             if (el.parentElement) el.parentElement.style.display = 'contents';
         });
 
-        actions.forEach(action => {
+        actions.forEach((action) => {
             if (settings.keyBindings[action]) {
-                const title = action.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+                const title = action.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
                 list.innerHTML += `<div>${title}: ${settings.keyBindings[action]}</div>`;
             }
         });
     } else {
-        document.querySelectorAll('.key-input').forEach(el => {
+        document.querySelectorAll('.key-input').forEach((el) => {
             if (el.parentElement) el.parentElement.style.display = 'none';
         });
         list.innerHTML = '<div>Swipe to move</div><div>Tap to rotate</div><div>Flick down to drop</div>';
@@ -367,24 +254,34 @@ export function updateControlsDisplay(settings) {
 export function handleKeybinding(event, element, settingsManager, updateCallback) {
     event.preventDefault();
 
-    const action = element.id.substring(4); // Remove 'key-' prefix
+    const elementId = element.id;
     const key = event.key === ' ' ? 'Space' : event.key;
     const settings = settingsManager.get();
 
-    // Check if key is already used for another action
-    if (Object.values(settings.keyBindings).includes(key) &&
-        settings.keyBindings[action] !== key) {
+    // Determine if this is player 2 binding
+    const isPlayer2 = elementId.startsWith('key-p2-');
+    const action = isPlayer2
+        ? elementId.substring(7) // Remove 'key-p2-' prefix
+        : elementId.substring(4); // Remove 'key-' prefix
+
+    const bindingsKey = isPlayer2 ? 'player2KeyBindings' : 'keyBindings';
+    const currentBindings = isPlayer2 ? settings.player2KeyBindings : settings.keyBindings;
+
+    // Check if key is already used for another action in the same player's bindings
+    if (Object.values(currentBindings).includes(key) && currentBindings[action] !== key) {
         // Revert to original key
-        element.textContent = settings.keyBindings[action];
+        element.textContent = currentBindings[action];
         element.classList.remove('listening');
         return;
     }
 
     // Set new key binding
-    settingsManager.setValue('keyBindings', {
-        ...settings.keyBindings,
-        [action]: key
-    });
+    const newBindings = {
+        ...currentBindings,
+        [action]: key,
+    };
+
+    settingsManager.update({ [bindingsKey]: newBindings });
     element.textContent = key;
     element.classList.remove('listening');
 
@@ -393,16 +290,152 @@ export function handleKeybinding(event, element, settingsManager, updateCallback
 }
 
 /**
+ * Button names for gamepad display
+ */
+const GAMEPAD_BUTTON_NAMES = {
+    0: 'A (Cross)',
+    1: 'B (Circle)',
+    2: 'X (Square)',
+    3: 'Y (Triangle)',
+    4: 'LB (L1)',
+    5: 'RB (R1)',
+    6: 'LT (L2)',
+    7: 'RT (R2)',
+    8: 'Select (Share)',
+    9: 'Start (Options)',
+    10: 'L3',
+    11: 'R3',
+    12: 'D-Up',
+    13: 'D-Down',
+    14: 'D-Left',
+    15: 'D-Right',
+    16: 'Home',
+};
+
+/**
+ * Handles gamepad binding input
+ * @param {HTMLElement} element - Input element
+ * @param {SettingsManager} settingsManager - Settings manager instance
+ * @param {Function} updateCallback - Callback to update controls display
+ */
+export function handleGamepadBinding(element, settingsManager, updateCallback) {
+    const elementId = element.id;
+    const settings = settingsManager.get();
+    
+    // Determine if this is player 2 binding
+    const isPlayer2 = elementId.startsWith('gamepad-p2-');
+    const action = isPlayer2
+        ? elementId.substring(11) // Remove 'gamepad-p2-' prefix
+        : elementId.substring(8); // Remove 'gamepad-' prefix
+
+    const bindingsKey = isPlayer2 ? 'player2GamepadBindings' : 'gamepadBindings';
+    const currentBindings = isPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+
+    // Listen for gamepad button press
+    let pollInterval = setInterval(() => {
+        const gamepads = navigator.getGamepads();
+        for (let i = 0; i < gamepads.length; i++) {
+            const gamepad = gamepads[i];
+            if (!gamepad) continue;
+
+            // Check all buttons
+            for (let btnIndex = 0; btnIndex < gamepad.buttons.length; btnIndex++) {
+                if (gamepad.buttons[btnIndex].pressed) {
+                    // Check if button is already used for another action
+                    if (Object.values(currentBindings).includes(btnIndex) && currentBindings[action] !== btnIndex) {
+                        // Revert to original button
+                        const originalButton = currentBindings[action];
+                        element.textContent = GAMEPAD_BUTTON_NAMES[originalButton] || `Button ${originalButton}`;
+                        element.classList.remove('listening');
+                        clearInterval(pollInterval);
+                        return;
+                    }
+
+                    // Set new button binding
+                    const newBindings = {
+                        ...currentBindings,
+                        [action]: btnIndex,
+                    };
+
+                    settingsManager.update({ [bindingsKey]: newBindings });
+                    element.textContent = GAMEPAD_BUTTON_NAMES[btnIndex] || `Button ${btnIndex}`;
+                    element.classList.remove('listening');
+                    clearInterval(pollInterval);
+                    
+                    settingsManager.save();
+                    if (updateCallback) updateCallback();
+                    return;
+                }
+            }
+        }
+    }, 50); // Poll at 20 FPS
+
+    // Timeout after 10 seconds
+    setTimeout(() => {
+        if (element.classList.contains('listening')) {
+            element.textContent = GAMEPAD_BUTTON_NAMES[currentBindings[action]] || `Button ${currentBindings[action]}`;
+            element.classList.remove('listening');
+            clearInterval(pollInterval);
+        }
+    }, 10000);
+}
+
+/**
+ * Updates gamepad controls display
+ * @param {Object} settings - Current settings
+ */
+export function updateGamepadControlsDisplay(settings) {
+    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'pause'];
+    
+    // Update Player 1 gamepad bindings
+    actions.forEach((action) => {
+        const element = document.getElementById(`gamepad-${action}`);
+        if (element && settings.gamepadBindings && settings.gamepadBindings[action] !== undefined) {
+            const buttonIndex = settings.gamepadBindings[action];
+            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
+    });
+
+    // Update Player 2 gamepad bindings
+    actions.forEach((action) => {
+        const element = document.getElementById(`gamepad-p2-${action}`);
+        if (element && settings.player2GamepadBindings && settings.player2GamepadBindings[action] !== undefined) {
+            const buttonIndex = settings.player2GamepadBindings[action];
+            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
+    });
+}
+
+/**
  * Sets up settings tab switching
  */
 export function setupSettingsTabs() {
-    document.querySelectorAll('.settings-tab').forEach(tab => {
+    document.querySelectorAll('.settings-tab').forEach((tab) => {
         tab.addEventListener('click', () => {
             const targetTab = tab.getAttribute('data-tab');
-            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
+            document
+                .querySelectorAll('.settings-tab-content')
+                .forEach((c) => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById('settings-' + targetTab).classList.add('active');
+            document.getElementById(`settings-${targetTab}`).classList.add('active');
+        });
+    });
+}
+
+/**
+ * Sets up controls sub-tab switching
+ */
+export function setupControlsSubTabs() {
+    document.querySelectorAll('.controls-subtab').forEach((subtab) => {
+        subtab.addEventListener('click', () => {
+            const targetSubtab = subtab.getAttribute('data-subtab');
+            document.querySelectorAll('.controls-subtab').forEach((t) => t.classList.remove('active'));
+            document
+                .querySelectorAll('.controls-subtab-content')
+                .forEach((c) => c.classList.remove('active'));
+            subtab.classList.add('active');
+            document.getElementById(`controls-${targetSubtab}`).classList.add('active');
         });
     });
 }
@@ -418,17 +451,28 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Setup tab switching
     setupSettingsTabs();
 
+    // Setup controls sub-tab switching
+    setupControlsSubTabs();
+
     // Game mode selector
     const gameModeSelect = document.getElementById('game-mode');
     if (gameModeSelect) {
         gameModeSelect.value = settings.gameMode || 'single';
 
-        gameModeSelect.addEventListener('change', (e) => {
+        gameModeSelect.addEventListener('change', async (e) => {
             const mode = e.target.value;
+            console.log('[Settings] Game mode changed to:', mode);
             settingsManager.update({ gameMode: mode });
 
-            if (callbacks.onGameModeChange) {
-                callbacks.onGameModeChange(mode);
+            if (callbacks && callbacks.onGameModeChange) {
+                console.log('[Settings] Calling onGameModeChange callback');
+                try {
+                    await callbacks.onGameModeChange(mode);
+                } catch (error) {
+                    console.error('[Settings] Error in onGameModeChange callback:', error);
+                }
+            } else {
+                console.warn('[Settings] No onGameModeChange callback registered');
             }
 
             settingsManager.save();
@@ -498,7 +542,8 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             } else if (mode === 'Random') {
                 setThemeSelectorVisibility(false);
                 setRandomIntervalVisibility(true);
-            } else { // 'Level'
+            } else {
+                // 'Level'
                 setThemeSelectorVisibility(false);
                 setRandomIntervalVisibility(false);
             }
@@ -525,8 +570,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         // Import themes list
         import('../core/constants.js').then(({ THEMES }) => {
             // Populate dropdown with available themes
-            bgThemeSelect.innerHTML = THEMES.map(theme =>
-                `<option value="${theme}">${theme.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>`
+            bgThemeSelect.innerHTML = THEMES.map(
+                (theme) => `<option value="${theme}">${theme
+                    .split('-')
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(' ')}</option>`,
             ).join('');
 
             // Set current value
@@ -548,249 +596,16 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Piece lock ripple toggle & custom color picker
     const pieceLockRippleSelect = document.getElementById('piece-lock-ripple');
-    const rippleColorInput = document.getElementById('piece-lock-ripple-color');
-    const rippleColorResetButton = document.getElementById('piece-lock-ripple-reset');
-    const rippleColorTrigger = document.getElementById('piece-lock-ripple-trigger');
-    const rippleColorPreview = document.getElementById('piece-lock-ripple-preview');
-    const ripplePickerWrapper = rippleColorTrigger?.closest('.color-picker-wrapper');
-    const ripplePanel = document.getElementById('piece-lock-ripple-panel');
-    const ripplePanelPreview = document.getElementById('piece-lock-ripple-panel-preview');
-    const ripplePanelHex = document.getElementById('piece-lock-ripple-hex');
-    const rippleHueSlider = document.getElementById('piece-lock-hue');
-    const rippleSaturationSlider = document.getElementById('piece-lock-saturation');
-    const rippleLightnessSlider = document.getElementById('piece-lock-lightness');
-    const ripplePanelClose = document.getElementById('piece-lock-ripple-close');
-    const ripplePanelDone = document.getElementById('piece-lock-ripple-done');
-
-    const rippleColorState = {
-        hex: normalizeHexColor(settings.pieceLockRippleColor) || DEFAULT_RIPPLE_COLOR,
-        h: 200,
-        s: 70,
-        l: 60
-    };
-
-    let isRipplePanelOpen = false;
-
-    const updateSliderBackgrounds = () => {
-        if (rippleHueSlider) {
-            rippleHueSlider.style.backgroundImage = 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)';
-        }
-        if (rippleSaturationSlider) {
-            const desaturated = hslToHex(rippleColorState.h, 0, rippleColorState.l);
-            const saturated = hslToHex(rippleColorState.h, 100, rippleColorState.l);
-            rippleSaturationSlider.style.backgroundImage = `linear-gradient(90deg, ${desaturated}, ${saturated})`;
-        }
-        if (rippleLightnessSlider) {
-            const dark = hslToHex(rippleColorState.h, rippleColorState.s, 0);
-            const mid = hslToHex(rippleColorState.h, rippleColorState.s, 50);
-            const light = hslToHex(rippleColorState.h, rippleColorState.s, 100);
-            rippleLightnessSlider.style.backgroundImage = `linear-gradient(90deg, ${dark}, ${mid}, ${light})`;
-        }
-    };
-
-    const updateRipplePreviewUI = () => {
-        if (rippleColorPreview) {
-            rippleColorPreview.style.setProperty('--preview-color', rippleColorState.hex);
-        }
-        if (ripplePanelPreview) {
-            ripplePanelPreview.style.setProperty('--panel-preview-color', rippleColorState.hex);
-        }
-        if (ripplePanelHex) {
-            ripplePanelHex.textContent = rippleColorState.hex.toUpperCase();
-        }
-        if (rippleColorTrigger) {
-            rippleColorTrigger.title = `Ripple color: ${rippleColorState.hex.toUpperCase()}`;
-        }
-        if (rippleColorInput) {
-            rippleColorInput.value = rippleColorState.hex;
-        }
-    };
-
-    const applyRippleColorState = ({ persist = true, save = false } = {}) => {
-        rippleColorState.hex = hslToHex(rippleColorState.h, rippleColorState.s, rippleColorState.l);
-        updateRipplePreviewUI();
-        updateSliderBackgrounds();
-
-        if (persist) {
-            settingsManager.update({ pieceLockRippleColor: rippleColorState.hex });
-            if (save) {
-                settingsManager.save();
-            }
-        }
-    };
-
-    const setRippleStateFromHex = (hex, { persist = false, updateSliders = true, save = persist } = {}) => {
-        const normalized = normalizeHexColor(hex) || DEFAULT_RIPPLE_COLOR;
-        const { h, s, l } = hexToHsl(normalized);
-        rippleColorState.hex = normalized;
-        rippleColorState.h = h;
-        rippleColorState.s = s;
-        rippleColorState.l = l;
-
-        if (updateSliders) {
-            if (rippleHueSlider) rippleHueSlider.value = h;
-            if (rippleSaturationSlider) rippleSaturationSlider.value = s;
-            if (rippleLightnessSlider) rippleLightnessSlider.value = l;
-        }
-
-        updateRipplePreviewUI();
-        updateSliderBackgrounds();
-
-        if (persist) {
-            settingsManager.update({ pieceLockRippleColor: normalized });
-            if (save) {
-                settingsManager.save();
-            }
-        }
-    };
-
-    const handleSliderInput = () => {
-        if (rippleHueSlider) {
-            rippleColorState.h = parseInt(rippleHueSlider.value, 10) || 0;
-        }
-        if (rippleSaturationSlider) {
-            rippleColorState.s = parseInt(rippleSaturationSlider.value, 10) || 0;
-        }
-        if (rippleLightnessSlider) {
-            rippleColorState.l = parseInt(rippleLightnessSlider.value, 10) || 0;
-        }
-        applyRippleColorState({ persist: true, save: false });
-    };
-
-    const handleSliderChange = () => {
-        applyRippleColorState({ persist: true, save: true });
-    };
-
-    const closeRipplePanel = () => {
-        if (!isRipplePanelOpen) return;
-        isRipplePanelOpen = false;
-        rippleColorTrigger?.setAttribute('aria-expanded', 'false');
-        if (ripplePanel) {
-            ripplePanel.hidden = true;
-        }
-        document.removeEventListener('mousedown', handleDocumentMouseDown);
-        document.removeEventListener('keydown', handleKeydown);
-        settingsManager.save();
-        ripplePickerWrapper?.classList.remove('panel-open');
-        if (rippleColorTrigger && !rippleColorTrigger.disabled) {
-            rippleColorTrigger.focus();
-        }
-    };
-
-    const openRipplePanel = () => {
-        if (!ripplePanel || !rippleColorTrigger || isRipplePanelOpen || rippleColorTrigger.disabled) {
-            return;
-        }
-        setRippleStateFromHex(rippleColorState.hex, { persist: false, updateSliders: true });
-        ripplePanel.hidden = false;
-        rippleColorTrigger.setAttribute('aria-expanded', 'true');
-        isRipplePanelOpen = true;
-        ripplePickerWrapper?.classList.add('panel-open');
-        ripplePanel.focus({ preventScroll: true });
-        document.addEventListener('mousedown', handleDocumentMouseDown);
-        document.addEventListener('keydown', handleKeydown);
-        rippleHueSlider?.focus();
-    };
-
-    const handleDocumentMouseDown = (event) => {
-        if (!isRipplePanelOpen) return;
-        if (!ripplePanel?.contains(event.target) && !rippleColorTrigger?.contains(event.target)) {
-            closeRipplePanel();
-        }
-    };
-
-    const handleKeydown = (event) => {
-        if (event.key === 'Escape') {
-            closeRipplePanel();
-        }
-    };
-
-    const setRippleControlsEnabled = (enabled) => {
-        if (rippleColorInput) {
-            rippleColorInput.disabled = !enabled;
-        }
-        if (rippleColorResetButton) {
-            rippleColorResetButton.disabled = !enabled;
-        }
-        if (rippleColorTrigger) {
-            rippleColorTrigger.disabled = !enabled;
-            rippleColorTrigger.setAttribute('aria-disabled', enabled ? 'false' : 'true');
-            rippleColorTrigger.setAttribute('aria-expanded', 'false');
-        }
-        if (ripplePickerWrapper) {
-            ripplePickerWrapper.classList.toggle('disabled', !enabled);
-        }
-        if (!enabled) {
-            closeRipplePanel();
-        }
-    };
 
     if (pieceLockRippleSelect) {
         pieceLockRippleSelect.value = settings.pieceLockRipple ? 'true' : 'false';
-        setRippleControlsEnabled(settings.pieceLockRipple);
 
         pieceLockRippleSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ pieceLockRipple: enabled });
-            setRippleControlsEnabled(enabled);
             settingsManager.save();
         });
     }
-
-    if (rippleColorTrigger) {
-        rippleColorTrigger.addEventListener('click', () => {
-            if (isRipplePanelOpen) {
-                closeRipplePanel();
-            } else {
-                openRipplePanel();
-            }
-        });
-    }
-
-    if (ripplePanelClose) {
-        ripplePanelClose.addEventListener('click', () => {
-            closeRipplePanel();
-        });
-    }
-
-    if (ripplePanelDone) {
-        ripplePanelDone.addEventListener('click', () => {
-            closeRipplePanel();
-        });
-    }
-
-    if (rippleColorResetButton) {
-        rippleColorResetButton.addEventListener('click', () => {
-            setRippleStateFromHex(DEFAULT_RIPPLE_COLOR, { persist: true, updateSliders: true });
-        });
-    }
-
-    if (rippleColorInput) {
-        rippleColorInput.value = rippleColorState.hex;
-        rippleColorInput.addEventListener('input', (e) => {
-            setRippleStateFromHex(e.target.value, { persist: true, updateSliders: true });
-        });
-        rippleColorInput.addEventListener('change', (e) => {
-            setRippleStateFromHex(e.target.value, { persist: true, updateSliders: true });
-        });
-    }
-
-    if (rippleHueSlider) {
-        rippleHueSlider.addEventListener('input', handleSliderInput);
-        rippleHueSlider.addEventListener('change', handleSliderChange);
-    }
-
-    if (rippleSaturationSlider) {
-        rippleSaturationSlider.addEventListener('input', handleSliderInput);
-        rippleSaturationSlider.addEventListener('change', handleSliderChange);
-    }
-
-    if (rippleLightnessSlider) {
-        rippleLightnessSlider.addEventListener('input', handleSliderInput);
-        rippleLightnessSlider.addEventListener('change', handleSliderChange);
-    }
-
-    setRippleStateFromHex(rippleColorState.hex, { persist: false, updateSliders: true });
 
     // Combo popup effect toggle
     const comboPopupSelect = document.getElementById('combo-popup-effect');
@@ -812,6 +627,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         lineClearEffectsSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ lineClearEffects: enabled });
+            settingsManager.save();
+        });
+    }
+
+    // Background combo effects toggle
+    const backgroundComboEffectsSelect = document.getElementById('background-combo-effects');
+    if (backgroundComboEffectsSelect) {
+        backgroundComboEffectsSelect.value = settings.backgroundComboEffects ? 'true' : 'false';
+
+        backgroundComboEffectsSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ backgroundComboEffects: enabled });
             settingsManager.save();
         });
     }
@@ -840,7 +667,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
         sfxSetSelect.addEventListener('change', (e) => {
             const soundSet = e.target.value;
-            settingsManager.update({ soundSet: soundSet });
+            settingsManager.update({ soundSet });
 
             if (callbacks.onSoundSetChange) {
                 callbacks.onSoundSetChange(soundSet);
@@ -884,12 +711,56 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
+    // Gamepad enabled toggle
+    const gamepadEnabledSelect = document.getElementById('gamepad-enabled');
+    if (gamepadEnabledSelect) {
+        gamepadEnabledSelect.value = settings.gamepadEnabled ? 'true' : 'false';
+
+        gamepadEnabledSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ gamepadEnabled: enabled });
+
+            if (callbacks.onGamepadEnabledChange) {
+                callbacks.onGamepadEnabledChange(enabled);
+            }
+
+            settingsManager.save();
+        });
+    }
+
+    // Gamepad deadzone slider
+    const gamepadDeadzoneSlider = document.getElementById('gamepad-deadzone');
+    const gamepadDeadzoneValue = document.getElementById('gamepad-deadzone-value');
+    if (gamepadDeadzoneSlider && gamepadDeadzoneValue) {
+        gamepadDeadzoneSlider.value = Math.round(settings.gamepadDeadzone * 100);
+        gamepadDeadzoneValue.textContent = Math.round(settings.gamepadDeadzone * 100);
+
+        gamepadDeadzoneSlider.addEventListener('input', (e) => {
+            const deadzone = parseInt(e.target.value) / 100;
+            settingsManager.update({ gamepadDeadzone: deadzone });
+
+            if (callbacks.onGamepadDeadzoneChange) {
+                callbacks.onGamepadDeadzoneChange(deadzone);
+            }
+
+            gamepadDeadzoneValue.textContent = e.target.value;
+            settingsManager.save();
+        });
+    }
+
     // Initialize key bindings listeners
     const keyInputs = document.querySelectorAll('.key-input');
-    keyInputs.forEach(input => {
-        const action = input.id.substring(4);
-        if (settings.keyBindings[action]) {
-            input.textContent = settings.keyBindings[action];
+    keyInputs.forEach((input) => {
+        const elementId = input.id;
+        const isPlayer2 = elementId.startsWith('key-p2-');
+        const action = isPlayer2
+            ? elementId.substring(7) // Remove 'key-p2-' prefix
+            : elementId.substring(4); // Remove 'key-' prefix
+
+        const currentBindings = isPlayer2 ? settings.player2KeyBindings : settings.keyBindings;
+
+        if (currentBindings && currentBindings[action]) {
+            input.textContent = currentBindings[action];
         }
 
         input.addEventListener('click', () => {
@@ -910,8 +781,46 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     });
 
+    // Initialize gamepad bindings listeners
+    const gamepadInputs = document.querySelectorAll('.gamepad-input');
+    gamepadInputs.forEach((input) => {
+        const elementId = input.id;
+        const isPlayer2 = elementId.startsWith('gamepad-p2-');
+        const action = isPlayer2
+            ? elementId.substring(11) // Remove 'gamepad-p2-' prefix
+            : elementId.substring(8); // Remove 'gamepad-' prefix
+
+        const currentBindings = isPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+
+        if (currentBindings && currentBindings[action] !== undefined) {
+            const buttonIndex = currentBindings[action];
+            input.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
+        }
+
+        input.addEventListener('click', () => {
+            // Clear other listening inputs
+            document.querySelectorAll('.gamepad-input.listening').forEach((el) => {
+                const elId = el.id;
+                const elIsPlayer2 = elId.startsWith('gamepad-p2-');
+                const elAction = elIsPlayer2 ? elId.substring(11) : elId.substring(8);
+                const elBindings = elIsPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+                const elButtonIndex = elBindings[elAction];
+                el.textContent = GAMEPAD_BUTTON_NAMES[elButtonIndex] || `Button ${elButtonIndex}`;
+                el.classList.remove('listening');
+            });
+
+            input.classList.add('listening');
+            input.textContent = 'Press a button...';
+
+            handleGamepadBinding(input, settingsManager, () => {
+                updateGamepadControlsDisplay(settingsManager.get());
+            });
+        });
+    });
+
     // Update controls display
     updateControlsDisplay(settings);
+    updateGamepadControlsDisplay(settings);
 }
 
 /**

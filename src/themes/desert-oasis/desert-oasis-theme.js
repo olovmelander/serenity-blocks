@@ -37,7 +37,10 @@ export default class DesertOasisTheme extends BaseTheme {
                 shootingStar.style.setProperty('--angle', `${Math.random() * 30 + 30}deg`);
                 starsContainer.appendChild(shootingStar);
                 shootingStar.addEventListener('animationend', () => shootingStar.remove());
-                this.shootingStarTimeout = setTimeout(createShootingStar, Math.random() * 30000 + 30000);
+                this.shootingStarTimeout = setTimeout(
+                    createShootingStar,
+                    Math.random() * 30000 + 30000,
+                );
             };
             this.shootingStarTimeout = setTimeout(createShootingStar, 15000);
         }

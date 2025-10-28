@@ -3,6 +3,8 @@
  */
 
 import { THEMES } from '../core/constants.js';
+import { THEME_REGISTRY, getThemeMeta } from './theme-registry.js';
+import { eventBus, EVENTS } from '../events/event-bus.js';
 
 /**
  * ThemeManager handles theme loading, switching, and lifecycle
@@ -26,54 +28,9 @@ export class ThemeManager {
      * This enables lazy loading of themes
      */
     initializeRegistry() {
-        // Map theme names to their module paths
-        const themeMap = {
-            'forest': './forest/forest-theme.js',
-            'himalayan-peak': './himalayan-peak/himalayan-peak-theme.js',
-            'ice-temple': './ice-temple/ice-temple-theme.js',
-            'moonlit-forest': './moonlit-forest/moonlit-forest-theme.js',
-            'wolfhour': './wolfhour/wolfhour-theme.js',
-            'ocean': './ocean/ocean-theme.js',
-            'sunset': './sunset/sunset-theme.js',
-            'mountain': './mountain/mountain-theme.js',
-            'zen': './zen/zen-theme.js',
-            'winter': './winter/winter-theme.js',
-            'fall': './fall/fall-theme.js',
-            'summer': './summer/summer-theme.js',
-            'spring': './spring/spring-theme.js',
-            'aurora': './aurora/aurora-theme.js',
-            'galaxy': './galaxy/galaxy-theme.js',
-            'rainy-window': './rainy-window/rainy-window-theme.js',
-            'koi-pond': './koi-pond/koi-pond-theme.js',
-            'meadow': './meadow/meadow-theme.js',
-            'cosmic-chimes': './cosmic-chimes/cosmic-chimes-theme.js',
-            'singing-bowl': './singing-bowl/singing-bowl-theme.js',
-            'starlight': './starlight/starlight-theme.js',
-            'swedish-forest': './swedish-forest/swedish-forest-theme.js',
-            'geode': './geode/geode-theme.js',
-            'bioluminescence': './bioluminescence/bioluminescence-theme.js',
-            'desert-oasis': './desert-oasis/desert-oasis-theme.js',
-            'bamboo-grove': './bamboo-grove/bamboo-grove-theme.js',
-            'misty-lake': './misty-lake/misty-lake-theme.js',
-            'waves': './waves/waves-theme.js',
-            'fluid-dreams': './fluid-dreams/fluid-dreams-theme.js',
-            'lantern-festival': './lantern-festival/lantern-festival-theme.js',
-            'crystal-cave': './crystal-cave/crystal-cave-theme.js',
-            'candlelit-monastery': './candlelit-monastery/candlelit-monastery-theme.js',
-            'cherry-blossom-garden': './cherry-blossom-garden/cherry-blossom-garden-theme.js',
-            'floating-islands': './floating-islands/floating-islands-theme.js',
-            'meditation-temple': './meditation-temple/meditation-temple-theme.js',
-            'moonlit-greenhouse': './moonlit-greenhouse/moonlit-greenhouse-theme.js',
-            'electric-dreams': './electric-dreams/electric-dreams-theme.js',
-            'lunara': './lunara/lunara-theme.js',
-            'pyrestorm': './pyrestorm/pyrestorm-theme.js',
-            'neon-dusk': './neon-dusk/neon-dusk-theme.js',
-            'stillwater': './stillwater/stillwater-theme.js'
-        };
-
-        for (const [name, path] of Object.entries(themeMap)) {
-            this.themeRegistry.set(name, path);
-        }
+        THEME_REGISTRY.forEach(({ id, module }) => {
+            this.themeRegistry.set(id, module);
+        });
     }
 
     /**
@@ -140,7 +97,7 @@ export class ThemeManager {
         }
 
         // Validate theme name
-        if (!THEMES.includes(themeName)) {
+        if (!getThemeMeta(themeName)) {
             console.error('[ThemeManager] Invalid theme name:', themeName);
             return;
         }
@@ -168,12 +125,9 @@ export class ThemeManager {
             this.activeThemeName = themeName;
 
             // Dispatch theme change event
-            window.dispatchEvent(new CustomEvent('themeChanged', {
-                detail: { themeName }
-            }));
+            eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
 
             console.log('[ThemeManager] Theme switch complete:', themeName);
-
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
         } finally {
@@ -197,7 +151,7 @@ export class ThemeManager {
      * @returns {string} Theme name
      */
     getRandomTheme() {
-        const availableThemes = THEMES.filter(name => name !== this.activeThemeName);
+        const availableThemes = THEMES.filter((name) => name !== this.activeThemeName);
         const randomIndex = Math.floor(Math.random() * availableThemes.length);
         return availableThemes[randomIndex];
     }

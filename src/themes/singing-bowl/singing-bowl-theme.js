@@ -8,8 +8,8 @@ export default class SingingBowlTheme extends BaseTheme {
     async createScene() {
         const ripplesContainer = document.getElementById('bowl-ripples');
         if (ripplesContainer && ripplesContainer.children.length === 0) {
-            for (let i=0; i<5; i++) {
-                let ripple = document.createElement('div');
+            for (let i = 0; i < 5; i++) {
+                const ripple = document.createElement('div');
                 ripple.className = 'bowl-ripple';
                 const duration = Math.random() * 4 + 6;
                 ripple.style.animationDuration = `${duration}s`;
@@ -21,8 +21,8 @@ export default class SingingBowlTheme extends BaseTheme {
         }
         const motesContainer = document.getElementById('bowl-motes');
         if (motesContainer && motesContainer.children.length === 0) {
-            for (let i=0; i<40; i++) {
-                let mote = document.createElement('div');
+            for (let i = 0; i < 40; i++) {
+                const mote = document.createElement('div');
                 mote.className = 'bowl-mote';
                 const size = Math.random() * 4 + 1;
                 mote.style.width = `${size}px`;

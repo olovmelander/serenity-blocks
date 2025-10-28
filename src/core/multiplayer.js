@@ -3,12 +3,9 @@
  * Manages two independent game states with garbage interaction
  */
 
-import { GameState } from './game.js';
+import { GameState, markBoardDirty } from './game.js';
 import {
-    GarbageQueue,
-    calculateGarbage,
-    insertGarbageEntries,
-    ATTACK_TYPES
+    GarbageQueue, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
 } from './garbage.js';
 import { processPhysics } from './physics.js';
 
@@ -37,7 +34,7 @@ export class MultiplayerGameState {
         // Attack sequencing per player for deterministic IDs
         this.attackSequences = {
             1: 0,
-            2: 0
+            2: 0,
         };
     }
 
@@ -76,22 +73,30 @@ export class MultiplayerGameState {
         attack.withId(attackId);
 
         const totalLines = attack.getTotalLines();
-        console.log(`[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}, clean=${attack.sendForClean}`);
-        console.log(`[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanBonus})`);
+        console.log(
+            `[MultiplayerState] Player ${player} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}, clean=${attack.sendForClean}`,
+        );
+        console.log(
+            `[MultiplayerState]   Total attack rows: ${totalLines} (clean bonus: ${attack.cleanBonus})`,
+        );
 
-        if (totalLines <= 0 && attack.attackType !== ATTACK_TYPES.BLIND && attack.attackType !== ATTACK_TYPES.FULL_BLIND) {
+        if (
+            totalLines <= 0
+            && attack.attackType !== ATTACK_TYPES.BLIND
+            && attack.attackType !== ATTACK_TYPES.FULL_BLIND
+        ) {
             return;
         }
 
         const context = {
             color: summary.sourceColor || attackerState.comboState?.sourceColor || '#808080',
-            team: summary.team || null
+            team: summary.team || null,
         };
 
         const entries = attack.expandEntries(context);
         const queueableEntries = [];
 
-        entries.forEach(entry => {
+        entries.forEach((entry) => {
             if (entry.type === 'full_blind') {
                 this.applyFullBlindEffect(opponentState, entry.duration, attack);
             } else {
@@ -105,7 +110,9 @@ export class MultiplayerGameState {
 
         const totalQueued = opponentQueue.getTotalLines();
         const opponentNum = player === 1 ? 2 : 1;
-        console.log(`[MultiplayerState] Player ${opponentNum} now has ${totalQueued} total garbage queued`);
+        console.log(
+            `[MultiplayerState] Player ${opponentNum} now has ${totalQueued} total garbage queued`,
+        );
 
         if (onGarbageSend) {
             onGarbageSend(player, totalLines);
@@ -124,7 +131,7 @@ export class MultiplayerGameState {
         const gameState = player === 1 ? this.player1 : this.player2;
 
         const blindEntries = queue.takePendingBlindEntries();
-        blindEntries.forEach(entry => this.applyBlindEffect(gameState, entry.duration));
+        blindEntries.forEach((entry) => this.applyBlindEffect(gameState, entry.duration));
 
         const burst = queue.dequeueLineBurst();
         if (burst.length === 0) {
@@ -133,11 +140,12 @@ export class MultiplayerGameState {
                 topOut: false,
                 garbagePieces: [],
                 settledSteps: 0,
-                linesAfterInsertion: []
+                linesAfterInsertion: [],
             };
         }
 
         const result = insertGarbageEntries(gameState.lockedPieces, burst, options);
+        markBoardDirty(gameState);
         return result;
     }
 
@@ -156,7 +164,9 @@ export class MultiplayerGameState {
             return;
         }
 
-        console.log(`[MultiplayerState] Resolving cascades after garbage insertion for Player ${player}`);
+        console.log(
+            `[MultiplayerState] Resolving cascades after garbage insertion for Player ${player}`,
+        );
 
         gameState.isProcessingPhysics = true;
         try {
@@ -164,7 +174,7 @@ export class MultiplayerGameState {
                 ...physicsCallbacks,
                 spawnPiece: () => {
                     // Suppress automatic respawn here. We'll spawn manually after physics settles.
-                }
+                },
             };
 
             await processPhysics(gameState, patchedCallbacks);
@@ -227,14 +237,16 @@ export class MultiplayerGameState {
         if (!gameState || duration <= 0) return;
         console.log(`[MultiplayerState] Applying blind effect for duration=${duration}`);
         gameState.blindTimers.pending = Math.max(gameState.blindTimers.pending || 0, duration);
-        gameState.lockedPieces.forEach(piece => {
+        gameState.lockedPieces.forEach((piece) => {
             piece.blindTime = Math.max(piece.blindTime || 0, duration);
         });
     }
 
     applyFullBlindEffect(gameState, duration, attack) {
         if (!gameState || duration <= 0) return;
-        console.log(`[MultiplayerState] Applying FULL blind effect for duration=${duration} (attack ${attack?.id || 'unknown'})`);
+        console.log(
+            `[MultiplayerState] Applying FULL blind effect for duration=${duration} (attack ${attack?.id || 'unknown'})`,
+        );
         gameState.blindTimers.field = Math.max(gameState.blindTimers.field || 0, duration);
         this.applyBlindEffect(gameState, duration);
     }

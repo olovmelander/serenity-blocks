@@ -29,32 +29,32 @@ export default class GeodeTheme extends BaseTheme {
             {
                 colors: ['#9b59b6', '#8e44ad', '#3498db', '#2980b9'],
                 glow: '#9b59b6',
-                intensity: 1.2
+                intensity: 1.2,
             },
             // Ethereal Cyan-Teal
             {
                 colors: ['#1abc9c', '#16a085', '#00d4ff', '#00a8cc'],
                 glow: '#1abc9c',
-                intensity: 1.0
+                intensity: 1.0,
             },
             // Warm Amber-Rose
             {
                 colors: ['#e74c3c', '#c0392b', '#f39c12', '#e67e22'],
                 glow: '#e74c3c',
-                intensity: 0.9
+                intensity: 0.9,
             },
             // Electric Pink-Purple
             {
                 colors: ['#ff006e', '#8338ec', '#fb5607', '#ff006e'],
                 glow: '#ff006e',
-                intensity: 1.3
+                intensity: 1.3,
             },
             // Cosmic Green-Blue
             {
                 colors: ['#06ffa5', '#00d9ff', '#4dff88', '#00ffc8'],
                 glow: '#06ffa5',
-                intensity: 1.1
-            }
+                intensity: 1.1,
+            },
         ];
 
         // Sophisticated crystal shapes
@@ -63,17 +63,32 @@ export default class GeodeTheme extends BaseTheme {
             'polygon(50% 0%, 95% 30%, 80% 100%, 20% 100%, 5% 30%)', // Elongated pentagon
             'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)', // Octagon
             'polygon(50% 0%, 90% 20%, 100% 60%, 75% 100%, 25% 100%, 0% 60%, 10% 20%)', // Heptagon
-            'polygon(50% 0%, 80% 10%, 100% 50%, 80% 90%, 50% 100%, 20% 90%, 0% 50%, 20% 10%)' // Diamond
+            'polygon(50% 0%, 80% 10%, 100% 50%, 80% 90%, 50% 100%, 20% 90%, 0% 50%, 20% 10%)', // Diamond
         ];
 
         // Create layered crystal clusters for depth - FEWER, LARGER crystals for less clutter
         const layers = [
-            { count: 4, depthClass: 'crystal-back', zIndex: 1, scaleRange: [80, 160] },
-            { count: 5, depthClass: 'crystal-mid', zIndex: 2, scaleRange: [120, 220] },
-            { count: 6, depthClass: 'crystal-front', zIndex: 3, scaleRange: [150, 280] }
+            {
+                count: 4,
+                depthClass: 'crystal-back',
+                zIndex: 1,
+                scaleRange: [80, 160],
+            },
+            {
+                count: 5,
+                depthClass: 'crystal-mid',
+                zIndex: 2,
+                scaleRange: [120, 220],
+            },
+            {
+                count: 6,
+                depthClass: 'crystal-front',
+                zIndex: 3,
+                scaleRange: [150, 280],
+            },
         ];
 
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
             for (let i = 0; i < layer.count; i++) {
                 const crystal = document.createElement('div');
                 crystal.className = `crystal ${layer.depthClass}`;
@@ -81,7 +96,8 @@ export default class GeodeTheme extends BaseTheme {
                 const palette = crystalPalettes[Math.floor(Math.random() * crystalPalettes.length)];
                 const shape = crystalShapes[Math.floor(Math.random() * crystalShapes.length)];
 
-                const size = Math.random() * (layer.scaleRange[1] - layer.scaleRange[0]) + layer.scaleRange[0];
+                const size = Math.random() * (layer.scaleRange[1] - layer.scaleRange[0])
+                    + layer.scaleRange[0];
                 const aspectRatio = Math.random() * 0.6 + 0.7; // 0.7 to 1.3
 
                 // Starting position
@@ -145,7 +161,7 @@ export default class GeodeTheme extends BaseTheme {
                     vx: (Math.random() - 0.5) * 0.05,
                     vy: (Math.random() - 0.5) * 0.05,
                     rotation: Math.random() * 360,
-                    rotationSpeed: (Math.random() - 0.5) * 0.1
+                    rotationSpeed: (Math.random() - 0.5) * 0.1,
                 });
             }
         });
@@ -164,7 +180,7 @@ export default class GeodeTheme extends BaseTheme {
                 sizeRange: [1, 3],
                 durationRange: [30, 50],
                 opacity: 0.2,
-                blur: 2
+                blur: 2,
             },
             {
                 container: document.getElementById('geode-dust-mid'),
@@ -172,7 +188,7 @@ export default class GeodeTheme extends BaseTheme {
                 sizeRange: [1.5, 4],
                 durationRange: [25, 40],
                 opacity: 0.35,
-                blur: 1.5
+                blur: 1.5,
             },
             {
                 container: document.getElementById('geode-dust-front'),
@@ -180,20 +196,13 @@ export default class GeodeTheme extends BaseTheme {
                 sizeRange: [2, 5],
                 durationRange: [20, 35],
                 opacity: 0.5,
-                blur: 1
-            }
+                blur: 1,
+            },
         ];
 
-        const dustColors = [
-            '#a29bfe',
-            '#74b9ff',
-            '#81ecec',
-            '#ffeaa7',
-            '#dfe6e9',
-            '#b2bec3'
-        ];
+        const dustColors = ['#a29bfe', '#74b9ff', '#81ecec', '#ffeaa7', '#dfe6e9', '#b2bec3'];
 
-        dustLayers.forEach(layer => {
+        dustLayers.forEach((layer) => {
             if (!layer.container || layer.container.children.length > 0) return;
 
             for (let i = 0; i < layer.count; i++) {
@@ -216,13 +225,20 @@ export default class GeodeTheme extends BaseTheme {
 
                 particle.style.setProperty('--x-start', `${startX}vw`);
                 particle.style.setProperty('--y-start', `${startY}vh`);
-                particle.style.setProperty('--x-mid', `${(startX + endX) / 2 + (Math.random() * 30 - 15)}vw`);
-                particle.style.setProperty('--y-mid', `${(startY + endY) / 2 + (Math.random() * 30 - 15)}vh`);
+                particle.style.setProperty(
+                    '--x-mid',
+                    `${(startX + endX) / 2 + (Math.random() * 30 - 15)}vw`,
+                );
+                particle.style.setProperty(
+                    '--y-mid',
+                    `${(startY + endY) / 2 + (Math.random() * 30 - 15)}vh`,
+                );
                 particle.style.setProperty('--x-end', `${endX}vw`);
                 particle.style.setProperty('--y-end', `${endY}vh`);
                 particle.style.setProperty('--opacity', layer.opacity);
 
-                const duration = Math.random() * (layer.durationRange[1] - layer.durationRange[0]) + layer.durationRange[0];
+                const duration = Math.random() * (layer.durationRange[1] - layer.durationRange[0])
+                    + layer.durationRange[0];
                 particle.style.animationDuration = `${duration}s`;
                 particle.style.animationDelay = `-${Math.random() * duration}s`;
 
@@ -321,7 +337,7 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     animateCrystals() {
-        this.crystals.forEach(crystal => {
+        this.crystals.forEach((crystal) => {
             crystal.x += crystal.vx;
             crystal.y += crystal.vy;
             crystal.rotation += crystal.rotationSpeed;

@@ -9,7 +9,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         const dustContainer = document.getElementById('space-dust');
         if (dustContainer && dustContainer.children.length === 0) {
             for (let i = 0; i < 70; i++) {
-                let particle = document.createElement('div');
+                const particle = document.createElement('div');
                 particle.className = 'dust-particle';
                 const size = Math.random() * 2 + 1;
                 particle.style.width = `${size}px`;
@@ -25,8 +25,8 @@ export default class CosmicChimesTheme extends BaseTheme {
         }
         const chimesContainer = document.getElementById('chimes');
         if (chimesContainer && chimesContainer.children.length === 0) {
-             for (let i = 0; i < 12; i++) {
-                let chime = document.createElement('div');
+            for (let i = 0; i < 12; i++) {
+                const chime = document.createElement('div');
                 chime.className = 'chime';
                 chime.style.left = `${5 + Math.random() * 90}%`;
                 chime.style.top = `${-10 + Math.random() * 30}%`;

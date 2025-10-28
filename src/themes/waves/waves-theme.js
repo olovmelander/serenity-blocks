@@ -24,7 +24,7 @@ export default class WavesTheme extends BaseTheme {
         const particleContainer = this.getContainer('waves-particles');
         if (particleContainer && particleContainer.children.length === 0) {
             for (let i = 0; i < 30; i++) {
-                let particle = document.createElement('div');
+                const particle = document.createElement('div');
                 particle.className = 'wave-particle';
                 const size = Math.random() * 2.5 + 1;
                 particle.style.width = `${size}px`;

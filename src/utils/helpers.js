@@ -20,7 +20,7 @@ export function random(min, max) {
  */
 export function seededRandom(seed) {
     let state = seed;
-    return function() {
+    return function () {
         state = (state * 9301 + 49297) % 233280;
         return state / 233280;
     };

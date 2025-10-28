@@ -14,7 +14,15 @@ export class GameModeUI {
         this.singlePlayerContainer = document.getElementById('single-player-container');
         this.multiplayerContainer = document.getElementById('multiplayer-container');
         this.singlePlayerBtn = document.getElementById('single-player-btn');
-        this.multiplayerBtn = document.getElementById('multiplayer-btn');
+        this.localMultiplayerBtn = document.getElementById('local-multiplayer-btn');
+        this.onlineMultiplayerBtn = document.getElementById('online-multiplayer-btn');
+        this.serenityBtn = document.getElementById('serenity-btn');
+
+        // Mode description elements
+        this.singlePlayerDesc = document.getElementById('single-player-desc');
+        this.localMultiplayerDesc = document.getElementById('local-multiplayer-desc');
+        this.onlineMultiplayerDesc = document.getElementById('online-multiplayer-desc');
+        this.serenityDesc = document.getElementById('serenity-desc');
 
         this.setupModeButtons();
     }
@@ -29,33 +37,64 @@ export class GameModeUI {
             });
         }
 
-        if (this.multiplayerBtn) {
-            this.multiplayerBtn.addEventListener('click', () => {
-                this.selectMode(GAME_MODES.MULTIPLAYER);
+        if (this.localMultiplayerBtn) {
+            this.localMultiplayerBtn.addEventListener('click', () => {
+                this.selectMode(GAME_MODES.LOCAL_MULTIPLAYER);
+            });
+        }
+
+        if (this.onlineMultiplayerBtn) {
+            this.onlineMultiplayerBtn.addEventListener('click', () => {
+                this.selectMode(GAME_MODES.ONLINE_MULTIPLAYER);
+            });
+        }
+
+        if (this.serenityBtn) {
+            this.serenityBtn.addEventListener('click', () => {
+                this.selectMode(GAME_MODES.SERENITY);
             });
         }
     }
 
     /**
      * Select a game mode
-     * @param {string} mode - Game mode ('single' or 'multiplayer')
+     * @param {string} mode - Game mode ('single', 'local-multiplayer', or 'online-multiplayer')
      */
     selectMode(mode) {
         this.currentMode = mode;
 
         // Update button states
-        if (this.singlePlayerBtn && this.multiplayerBtn) {
+        if (this.singlePlayerBtn && this.localMultiplayerBtn && this.onlineMultiplayerBtn && this.serenityBtn) {
             this.singlePlayerBtn.classList.toggle('active', mode === GAME_MODES.SINGLE_PLAYER);
-            this.multiplayerBtn.classList.toggle('active', mode === GAME_MODES.MULTIPLAYER);
+            this.localMultiplayerBtn.classList.toggle('active', mode === GAME_MODES.LOCAL_MULTIPLAYER);
+            this.onlineMultiplayerBtn.classList.toggle('active', mode === GAME_MODES.ONLINE_MULTIPLAYER);
+            this.serenityBtn.classList.toggle('active', mode === GAME_MODES.SERENITY);
         }
 
-        // Update container visibility (will be applied when game starts)
-        this.updateContainerVisibility();
+        // Update description visibility
+        this.updateDescriptionVisibility();
+
+        // NOTE: Container visibility is no longer updated here
+        // It will be handled by the GameModeManager when the mode is activated
 
         // Dispatch event
-        window.dispatchEvent(new CustomEvent('gameModeChanged', {
-            detail: { mode }
-        }));
+        window.dispatchEvent(
+            new CustomEvent('gameModeChanged', {
+                detail: { mode },
+            }),
+        );
+    }
+
+    /**
+     * Update description visibility based on current mode
+     */
+    updateDescriptionVisibility() {
+        if (this.singlePlayerDesc && this.localMultiplayerDesc && this.onlineMultiplayerDesc && this.serenityDesc) {
+            this.singlePlayerDesc.classList.toggle('active', this.currentMode === GAME_MODES.SINGLE_PLAYER);
+            this.localMultiplayerDesc.classList.toggle('active', this.currentMode === GAME_MODES.LOCAL_MULTIPLAYER);
+            this.onlineMultiplayerDesc.classList.toggle('active', this.currentMode === GAME_MODES.ONLINE_MULTIPLAYER);
+            this.serenityDesc.classList.toggle('active', this.currentMode === GAME_MODES.SERENITY);
+        }
     }
 
     /**
@@ -66,9 +105,13 @@ export class GameModeUI {
             if (this.currentMode === GAME_MODES.SINGLE_PLAYER) {
                 this.singlePlayerContainer.style.display = '';
                 this.multiplayerContainer.style.display = 'none';
-            } else {
+            } else if (this.currentMode === GAME_MODES.LOCAL_MULTIPLAYER) {
                 this.singlePlayerContainer.style.display = 'none';
                 this.multiplayerContainer.style.display = 'flex';
+            } else if (this.currentMode === GAME_MODES.ONLINE_MULTIPLAYER) {
+                // Online multiplayer uses its own UI system
+                this.singlePlayerContainer.style.display = 'none';
+                this.multiplayerContainer.style.display = 'none';
             }
         }
     }

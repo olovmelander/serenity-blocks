@@ -11,21 +11,21 @@ export const ATTACK_TYPES = {
     CLEAN: 'clean',
     BLIND: 'blind',
     FULL_BLIND: 'full_blind',
-    POTATO: 'potato'
+    POTATO: 'potato',
 };
 
 // Quadra handicap levels (net_version 24)
 export const HANDICAP_LEVELS = {
-    BEGINNER: 0,      // "-" - Easiest
-    APPRENTICE: 1,    // "A"
-    INTERMEDIATE: 2,  // Default
-    MASTER: 3,        // "M"
-    GRANDMASTER: 4    // "+" - Hardest
+    BEGINNER: 0, // "-" - Easiest
+    APPRENTICE: 1, // "A"
+    INTERMEDIATE: 2, // Default
+    MASTER: 3, // "M"
+    GRANDMASTER: 4, // "+" - Hardest
 };
 
 // Quadra constants
-export const STAMP_PER_HANDICAP = 3;  // Stamps needed to reduce 1 garbage line
-export const CROWD_THRESHOLD = 4;      // Players before crowd handicap kicks in
+export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
+export const CROWD_THRESHOLD = 4; // Players before crowd handicap kicks in
 
 // Quadra-authentic clean patterns (Quadra columns 5,8 and 4,7,10,13 mapped to 0-indexed)
 // Quadra even: 72  = 0b0001001000 = columns 5, 8 → [1, 4] in 0-indexed
@@ -52,9 +52,9 @@ function maskArrayToBits(mask) {
     let bits = 0;
     // Quadra encodes MSB-first: column 0 → bit 9, column 9 → bit 0
     for (let x = 0; x < COLS; x++) {
-        bits <<= 1;  // Shift left (MSB-first encoding)
+        bits <<= 1; // Shift left (MSB-first encoding)
         if (mask[x]) {
-            bits |= 1;  // Set bit if hole
+            bits |= 1; // Set bit if hole
         }
     }
     return bits;
@@ -65,11 +65,11 @@ function maskArrayToBits(mask) {
  * @param {number} bits - 10-bit hole position bitfield
  * @returns {Array<number>} Array of column indices with holes
  */
-function bitsToColumns(bits) {
+export function bitsToColumns(bits) {
     const columns = [];
     // Decode MSB-first: test bit 9 first (column 0), then bit 8 (column 1), etc.
     for (let x = 0; x < COLS; x++) {
-        const bitPos = COLS - 1 - x;  // Map column to bit position (MSB-first)
+        const bitPos = COLS - 1 - x; // Map column to bit position (MSB-first)
         if ((bits & (1 << bitPos)) !== 0) {
             columns.push(x);
         }
@@ -77,10 +77,10 @@ function bitsToColumns(bits) {
     return columns;
 }
 
-function columnsToMask(columns) {
+export function columnsToMask(columns) {
     const mask = Array(COLS).fill(false);
     if (Array.isArray(columns)) {
-        columns.forEach(col => {
+        columns.forEach((col) => {
             if (col >= 0 && col < COLS) {
                 mask[col] = true;
             }
@@ -100,9 +100,9 @@ function normalizeMaskRow(row, manualColumns) {
 
     if (Array.isArray(row)) {
         const mask = columnsToMask(row);
-        if (!mask.some(flag => flag)) {
+        if (!mask.some((flag) => flag)) {
             const fallback = manualColumns.length ? manualColumns : [Math.floor(COLS / 2)];
-            fallback.forEach(col => {
+            fallback.forEach((col) => {
                 if (col >= 0 && col < COLS) {
                     mask[col] = true;
                 }
@@ -151,7 +151,7 @@ export class GarbageAttack {
         sendForClean = false,
         attackType = ATTACK_TYPES.LINES,
         param = 0,
-        metadata = {}
+        metadata = {},
     } = {}) {
         this.id = id;
         this.depth = depth;
@@ -180,6 +180,7 @@ export class GarbageAttack {
         const attackId = this.id || 'attack';
         const color = context.color || '#808080';
         const team = context.team || null;
+        const attackerId = context.attackerId || null; // Track attacker for frag attribution
 
         if (this.attackType === ATTACK_TYPES.BLIND && this.param > 0) {
             entries.push({
@@ -187,7 +188,8 @@ export class GarbageAttack {
                 attackId,
                 duration: this.param,
                 combo: this.complexity,
-                depth: this.depth
+                depth: this.depth,
+                attackerId,
             });
         }
 
@@ -202,26 +204,28 @@ export class GarbageAttack {
                 holeMask: maskBits,
                 color,
                 team,
+                attackerId, // Store who sent this garbage line
                 blindTime: 0,
                 connectAbove: ordinal > 0,
                 connectBelow: ordinal < totalLines - 1,
                 isLastInBurst: ordinal === totalLines - 1,
                 combo: this.complexity,
-                depth: this.depth
+                depth: this.depth,
             });
             ordinal++;
         };
 
-        (this.cleanMasks || []).forEach(maskBits => pushLineEntry(maskBits, 'clean'));
-        (this.holeMasks || []).forEach(maskBits => pushLineEntry(maskBits, 'normal'));
+        (this.cleanMasks || []).forEach((maskBits) => pushLineEntry(maskBits, 'clean'));
+        (this.holeMasks || []).forEach((maskBits) => pushLineEntry(maskBits, 'normal'));
 
         if (this.attackType === ATTACK_TYPES.FULL_BLIND && this.param > 0) {
             entries.push({
                 type: 'full_blind',
                 attackId,
+                attackerId,
                 duration: this.param,
                 combo: this.complexity,
-                depth: this.depth
+                depth: this.depth,
             });
         }
 
@@ -240,7 +244,7 @@ export class GarbageAttack {
             sendForClean: this.sendForClean,
             attackType: this.attackType,
             param: this.param,
-            metadata: { ...this.metadata }
+            metadata: { ...this.metadata },
         };
     }
 
@@ -256,7 +260,7 @@ export class GarbageAttack {
             sendForClean: !!payload.sendForClean,
             attackType: payload.attackType || ATTACK_TYPES.LINES,
             param: payload.param || 0,
-            metadata: payload.metadata ? { ...payload.metadata } : {}
+            metadata: payload.metadata ? { ...payload.metadata } : {},
         });
     }
 }
@@ -290,7 +294,7 @@ export function applyHandicap(rows, senderState, opponentId, isClean = false) {
 
     // Consume stamps to reduce outgoing lines
     let stampsUsed = 0;
-    while (adjustedRows > 0 && (stamps - stampsUsed) >= STAMP_PER_HANDICAP) {
+    while (adjustedRows > 0 && stamps - stampsUsed >= STAMP_PER_HANDICAP) {
         adjustedRows--;
         stampsUsed += STAMP_PER_HANDICAP;
     }
@@ -395,7 +399,7 @@ export function calculateGarbage(summary, rules = {}) {
     const complexity = summary.complexity ?? summary.comboStages ?? 0;
     const rawMask = summary.holeMask ?? summary.holeMaskBuffer ?? [];
     const manualColumns = summary.manualColumns || [];
-    const maskMatrix = rawMask.map(row => normalizeMaskRow(row, manualColumns));
+    const maskMatrix = rawMask.map((row) => normalizeMaskRow(row, manualColumns));
 
     // QUADRA FORMULA: base attack = depth - 1
     const rowsToSend = Math.max(0, depth - 1);
@@ -408,7 +412,7 @@ export function calculateGarbage(summary, rules = {}) {
     // Generate clean garbage patterns (alternating 72/585 from Quadra)
     const cleanMasks = [];
     for (let i = 0; i < cleanBonus; i++) {
-        const pattern = (i % 2 === 0) ? CLEAN_PATTERN_EVEN : CLEAN_PATTERN_ODD;
+        const pattern = i % 2 === 0 ? CLEAN_PATTERN_EVEN : CLEAN_PATTERN_ODD;
         cleanMasks.push(maskArrayToBits(columnsToMask(pattern)));
     }
 
@@ -429,14 +433,14 @@ export function calculateGarbage(summary, rules = {}) {
             manualColumns: manualColumns.slice(),
             sourceColor: summary.sourceColor || null,
             sourcePiece: summary.sourcePiece || null,
-            sequence: summary.sequence
-        }
+            sequence: summary.sequence,
+        },
     });
 }
 
 function getHighestOccupiedRow(board) {
     for (let y = 0; y < board.length; y++) {
-        if (board[y].some(cell => cell !== null)) {
+        if (board[y].some((cell) => cell !== null)) {
             return y;
         }
     }
@@ -463,13 +467,13 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
         blocksStillFalling = false;
         const board = generateBoard(lockedPieces);
         const piecesToCheck = lockedPieces
-            .filter(piece => piece && Array.isArray(piece.shape) && piece.shape.length > 0)
+            .filter((piece) => piece && Array.isArray(piece.shape) && piece.shape.length > 0)
             .sort((a, b) => {
                 const aHeight = Array.isArray(a.shape) ? a.shape.length : 0;
                 const bHeight = Array.isArray(b.shape) ? b.shape.length : 0;
                 const aY = typeof a.y === 'number' ? a.y : 0;
                 const bY = typeof b.y === 'number' ? b.y : 0;
-                return (bY + bHeight) - (aY + aHeight);
+                return bY + bHeight - (aY + aHeight);
             });
 
         for (const piece of piecesToCheck) {
@@ -530,25 +534,27 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
  * @returns {Object} Result with success, topOut flags, and animation data
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
-    const lineEntries = entries.filter(entry => entry.type === 'line');
+    const lineEntries = entries.filter((entry) => entry.type === 'line');
     if (lineEntries.length === 0) {
         return {
             success: true,
             topOut: false,
             garbagePieces: [],
             settledSteps: 0,
-            linesAfterInsertion: []
+            linesAfterInsertion: [],
         };
     }
 
-    console.log(`[insertGarbageEntries] ========================================`);
+    console.log('[insertGarbageEntries] ========================================');
     console.log(`[insertGarbageEntries] Inserting ${lineEntries.length} garbage row(s)`);
 
     const board = generateBoard(lockedPieces);
     const highestOccupiedRow = getHighestOccupiedRow(board);
     const newHighestRow = highestOccupiedRow - lineEntries.length;
 
-    console.log(`[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}`);
+    console.log(
+        `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}`,
+    );
 
     if (newHighestRow < HIDDEN_ROWS) {
         console.log('[insertGarbageEntries] TOP OUT detected while inserting garbage burst');
@@ -557,12 +563,12 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             topOut: true,
             garbagePieces: [],
             settledSteps: 0,
-            linesAfterInsertion: []
+            linesAfterInsertion: [],
         };
     }
 
     // Shift existing pieces up
-    lockedPieces.forEach(piece => {
+    lockedPieces.forEach((piece) => {
         piece.y -= lineEntries.length;
     });
 
@@ -586,7 +592,9 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         }
 
         console.log(`[insertGarbageEntries] Row ${index + 1}/${lineEntries.length}:`);
-        console.log(`[insertGarbageEntries]   holeMask bits: ${entry.holeMask.toString(2).padStart(COLS, '0')} (${entry.holeMask})`);
+        console.log(
+            `[insertGarbageEntries]   holeMask bits: ${entry.holeMask.toString(2).padStart(COLS, '0')} (${entry.holeMask})`,
+        );
         console.log(`[insertGarbageEntries]   holes at columns: [${holeColumns.join(', ')}]`);
         console.log(`[insertGarbageEntries]   solid at columns: [${solidCols.join(', ')}]`);
         console.log(`[insertGarbageEntries]   variant: ${entry.variant || 'normal'}`);
@@ -605,11 +613,11 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
                 connectTop: !!entry.connectAbove,
                 connectBottom: !!entry.connectBelow,
                 combo: entry.combo,
-                depth: entry.depth
+                depth: entry.depth,
             },
             // Animation data
             animationOffset: options.animated ? lineEntries.length : 0,
-            isAnimating: options.animated || false
+            isAnimating: options.animated || false,
         };
 
         lockedPieces.push(garbagePiece);
@@ -620,21 +628,22 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     if (options.settleFloatingBlocks !== false) {
         settledSteps = settleFloatingBlocksAfterGarbage(lockedPieces);
         if (settledSteps > 0) {
-            console.log(`[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`);
+            console.log(
+                `[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`,
+            );
         }
     }
 
     const postBoard = generateBoard(lockedPieces);
-    const linesAfterInsertion = findCompleteLines(postBoard)
-        .filter(y => y >= HIDDEN_ROWS);
+    const linesAfterInsertion = findCompleteLines(postBoard).filter((y) => y >= HIDDEN_ROWS);
 
-    console.log(`[insertGarbageEntries] ========================================`);
+    console.log('[insertGarbageEntries] ========================================');
     return {
         success: true,
         topOut: false,
         garbagePieces,
         settledSteps,
-        linesAfterInsertion
+        linesAfterInsertion,
     };
 }
 
@@ -646,7 +655,7 @@ export class GarbageQueue {
     enqueue(entries) {
         if (!entries) return;
         if (Array.isArray(entries)) {
-            entries.forEach(entry => this.entries.push(cloneEntry(entry)));
+            entries.forEach((entry) => this.entries.push(cloneEntry(entry)));
             return;
         }
         this.entries.push(cloneEntry(entries));
@@ -659,7 +668,7 @@ export class GarbageQueue {
     }
 
     getTotalLines() {
-        return this.entries.reduce((sum, entry) => entry.type === 'line' ? sum + 1 : sum, 0);
+        return this.entries.reduce((sum, entry) => (entry.type === 'line' ? sum + 1 : sum), 0);
     }
 
     isEmpty() {
@@ -698,13 +707,13 @@ export class GarbageQueue {
     }
 
     serialize() {
-        return this.entries.map(entry => cloneEntry(entry));
+        return this.entries.map((entry) => cloneEntry(entry));
     }
 
     static fromSerialized(payload) {
         const queue = new GarbageQueue();
         if (Array.isArray(payload)) {
-            payload.forEach(entry => queue.enqueue(entry));
+            payload.forEach((entry) => queue.enqueue(entry));
         }
         return queue;
     }

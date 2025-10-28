@@ -1,0 +1,39 @@
+{
+  "name": "serenity-blocks",
+  "version": "1.0.0",
+  "description": "A modern Tetris-inspired puzzle game built with Phaser 4",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron": "electron electron/main.js",
+    "dev:electron": "NODE_ENV=development electron electron/main.js",
+    "lint": "eslint src --ext .js",
+    "lint:fix": "eslint src --ext .js --fix",
+    "format": "prettier --write \"src/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\""
+  },
+  "keywords": [
+    "tetris",
+    "puzzle",
+    "game",
+    "phaser",
+    "phaser4"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "greenworks": "^0.1.0",
+    "phaser": "4.0.0-rc.5"
+  },
+  "devDependencies": {
+    "electron": "^38.3.0",
+    "eslint": "^8.57.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "prettier": "^3.3.3",
+    "vite": "^5.4.11",
+    "vitest": "^3.2.4"
+  }
+}
