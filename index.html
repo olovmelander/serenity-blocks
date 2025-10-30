@@ -489,7 +489,6 @@
                 <h2>CONTROLS</h2>
                 <div class="controls-info"><div id="controls-list"></div></div>
             </div>
-            <button id="settings-btn" class="action-btn">⚙️</button>
         </div>
         <div class="game-area">
             <div id="next-queue-container" class="next-queue-container"></div>
@@ -501,6 +500,7 @@
                 <div id="score-popups"></div>
             </div>
         </div>
+        <button id="settings-btn" class="floating-settings-btn">⚙️</button>
     </div>
 
     <div class="game-container multiplayer-container" id="multiplayer-container" style="display: none;">
@@ -510,9 +510,15 @@
             <div class="player-card" id="player-1-card" data-player="1" aria-label="Player 1 Game Board" role="region">
                 <!-- Next Pieces -->
                 <div class="player-next-pieces">
-                    <canvas id="p1-next-0" width="60" height="50"></canvas>
-                    <canvas id="p1-next-1" width="50" height="40"></canvas>
-                    <canvas id="p1-next-2" width="50" height="40"></canvas>
+                    <div class="player-next-piece highlight">
+                        <canvas id="p1-next-0" width="88" height="88"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p1-next-1" width="76" height="76"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p1-next-2" width="76" height="76"></canvas>
+                    </div>
                 </div>
 
                 <!-- Board Section -->
@@ -551,9 +557,15 @@
             <div class="player-card" id="player-2-card" data-player="2" aria-label="Player 2 Game Board" role="region">
                 <!-- Next Pieces -->
                 <div class="player-next-pieces">
-                    <canvas id="p2-next-0" width="60" height="50"></canvas>
-                    <canvas id="p2-next-1" width="50" height="40"></canvas>
-                    <canvas id="p2-next-2" width="50" height="40"></canvas>
+                    <div class="player-next-piece highlight">
+                        <canvas id="p2-next-0" width="88" height="88"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p2-next-1" width="76" height="76"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p2-next-2" width="76" height="76"></canvas>
+                    </div>
                 </div>
 
                 <!-- Board Section -->
@@ -592,9 +604,15 @@
             <div class="player-card" id="player-3-card" data-player="3" style="display: none;" aria-label="Player 3 Game Board" role="region">
                 <!-- Next Pieces -->
                 <div class="player-next-pieces">
-                    <canvas id="p3-next-0" width="60" height="50"></canvas>
-                    <canvas id="p3-next-1" width="50" height="40"></canvas>
-                    <canvas id="p3-next-2" width="50" height="40"></canvas>
+                    <div class="player-next-piece highlight">
+                        <canvas id="p3-next-0" width="88" height="88"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p3-next-1" width="76" height="76"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p3-next-2" width="76" height="76"></canvas>
+                    </div>
                 </div>
 
                 <!-- Board Section -->
@@ -633,9 +651,15 @@
             <div class="player-card" id="player-4-card" data-player="4" style="display: none;" aria-label="Player 4 Game Board" role="region">
                 <!-- Next Pieces -->
                 <div class="player-next-pieces">
-                    <canvas id="p4-next-0" width="60" height="50"></canvas>
-                    <canvas id="p4-next-1" width="50" height="40"></canvas>
-                    <canvas id="p4-next-2" width="50" height="40"></canvas>
+                    <div class="player-next-piece highlight">
+                        <canvas id="p4-next-0" width="88" height="88"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p4-next-1" width="76" height="76"></canvas>
+                    </div>
+                    <div class="player-next-piece">
+                        <canvas id="p4-next-2" width="76" height="76"></canvas>
+                    </div>
                 </div>
 
                 <!-- Board Section -->
@@ -681,7 +705,7 @@
             <h1>SERENITY BLOCKS</h1>
             <div class="game-mode-selector" style="margin: 20px 0;">
                 <button id="single-player-btn" class="mode-btn active" data-mode="single">Single Player</button>
-                <button id="local-multiplayer-btn" class="mode-btn" data-mode="local-multiplayer">Local 2P</button>
+                <button id="local-multiplayer-btn" class="mode-btn" data-mode="local-multiplayer">Local MP</button>
                 <button id="online-multiplayer-btn" class="mode-btn" data-mode="online-multiplayer">Online MP</button>
                 <button id="serenity-btn" class="mode-btn" data-mode="serenity">Serenity</button>
             </div>

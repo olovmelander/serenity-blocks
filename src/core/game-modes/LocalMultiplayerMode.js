@@ -66,7 +66,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     getDisplayName() {
-        return 'Local Multiplayer (2P)';
+        return 'Local MP';
     }
 
     /**
@@ -1082,6 +1082,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
             if (card) {
                 card.style.borderColor = playerColor.primary;
                 card.style.boxShadow = `0 0 20px ${playerColor.glow}`;
+                card.style.setProperty('--player-primary', playerColor.primary);
+                card.style.setProperty('--player-primary-light', playerColor.light || playerColor.primary);
+                card.style.setProperty('--player-glow', playerColor.glow || `${playerColor.primary}55`);
             }
 
             // Apply color to board border

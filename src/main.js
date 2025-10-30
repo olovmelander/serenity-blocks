@@ -1074,7 +1074,7 @@ class SerenityBlocks {
                     // Show a notification about the mode switch
                     const modeNames = {
                         'single': 'Single Player',
-                        'local-multiplayer': 'Local Multiplayer',
+                        'local-multiplayer': 'Local MP',
                         'online-multiplayer': 'Online Multiplayer',
                         'serenity': 'Serenity Mode'
                     };
