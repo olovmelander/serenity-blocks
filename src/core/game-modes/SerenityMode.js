@@ -400,8 +400,13 @@ export class SerenityMode extends BaseGameMode {
                 event.stopPropagation(); // Stop event from bubbling
                 break;
 
-            case '?': // Show keyboard shortcuts
-                this._showKeyboardShortcuts();
+            case '?': // Show keyboard shortcuts (legacy)
+            case '/': // Toggle control hints
+                if (this.serenityHub) {
+                    this.serenityHub.toggleButtonHints();
+                } else {
+                    this._showKeyboardShortcuts();
+                }
                 break;
 
             case ' ': // Toggle breathing indicator

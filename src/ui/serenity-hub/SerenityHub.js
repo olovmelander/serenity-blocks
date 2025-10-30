@@ -608,40 +608,73 @@ export class SerenityHub {
    */
   toggleButtonHints() {
     let hintsOverlay = document.getElementById('gamepad-hints-overlay');
-    
+
     if (!hintsOverlay) {
+      // Detect if gamepad is connected
+      const gamepadController = this.serenityMode.deps?.gamepadController;
+      const connectionStatus = gamepadController?.getConnectionStatus?.();
+      const hasGamepad = connectionStatus?.controller1?.connected || connectionStatus?.controller2?.connected || false;
+
       // Create hints overlay
       hintsOverlay = document.createElement('div');
       hintsOverlay.id = 'gamepad-hints-overlay';
       hintsOverlay.className = 'gamepad-hints visible';
-      hintsOverlay.innerHTML = `
-        <div class="hint-title">🎮 Serenity Mode Controls</div>
-        <div class="hint-grid">
-          <div class="hint-item"><span class="hint-button">Y</span> Toggle Hub</div>
-          <div class="hint-item"><span class="hint-button">X</span> Breathing</div>
-          <div class="hint-item"><span class="hint-button">D▲</span> Prev Technique</div>
-          <div class="hint-item"><span class="hint-button">D▼</span> Next Technique</div>
-          <div class="hint-item"><span class="hint-button">L3</span> Random Theme</div>
-          <div class="hint-item"><span class="hint-button">R3</span> Fullscreen</div>
-          <div class="hint-item"><span class="hint-button">LB</span> Prev Track</div>
-          <div class="hint-item"><span class="hint-button">RB</span> Next Track</div>
-          <div class="hint-item"><span class="hint-button">LT</span> Volume Down</div>
-          <div class="hint-item"><span class="hint-button">RT</span> Volume Up</div>
-          <div class="hint-item"><span class="hint-button">Start</span> Settings</div>
-          <div class="hint-item"><span class="hint-button">Select</span> Hide Hints</div>
-        </div>
-        <div class="hint-title" style="margin-top: 15px;">When Hub is Open</div>
-        <div class="hint-grid">
-          <div class="hint-item"><span class="hint-button">A</span> Confirm</div>
-          <div class="hint-item"><span class="hint-button">B</span> Close Hub</div>
-          <div class="hint-item"><span class="hint-button">D-Pad</span> Navigate</div>
-          <div class="hint-item"><span class="hint-button">L-Stick</span> Navigate</div>
-          <div class="hint-item"><span class="hint-button">R-Stick</span> Scroll</div>
-        </div>
-        <div class="hint-footer">Press SELECT again to hide</div>
-      `;
+
+      if (hasGamepad) {
+        // Show gamepad controls
+        hintsOverlay.innerHTML = `
+          <div class="hint-title">🎮 Serenity Mode Controls</div>
+          <div class="hint-grid">
+            <div class="hint-item"><span class="hint-button">Y</span> Toggle Hub</div>
+            <div class="hint-item"><span class="hint-button">X</span> Breathing</div>
+            <div class="hint-item"><span class="hint-button">D▲</span> Prev Technique</div>
+            <div class="hint-item"><span class="hint-button">D▼</span> Next Technique</div>
+            <div class="hint-item"><span class="hint-button">L3</span> Random Theme</div>
+            <div class="hint-item"><span class="hint-button">R3</span> Fullscreen</div>
+            <div class="hint-item"><span class="hint-button">LB</span> Prev Track</div>
+            <div class="hint-item"><span class="hint-button">RB</span> Next Track</div>
+            <div class="hint-item"><span class="hint-button">LT</span> Volume Down</div>
+            <div class="hint-item"><span class="hint-button">RT</span> Volume Up</div>
+            <div class="hint-item"><span class="hint-button">Start</span> Settings</div>
+            <div class="hint-item"><span class="hint-button">Select</span> Hide Hints</div>
+          </div>
+          <div class="hint-title" style="margin-top: 15px;">When Hub is Open</div>
+          <div class="hint-grid">
+            <div class="hint-item"><span class="hint-button">A</span> Confirm</div>
+            <div class="hint-item"><span class="hint-button">B</span> Close Hub</div>
+            <div class="hint-item"><span class="hint-button">D-Pad</span> Navigate</div>
+            <div class="hint-item"><span class="hint-button">L-Stick</span> Navigate</div>
+            <div class="hint-item"><span class="hint-button">R-Stick</span> Scroll</div>
+          </div>
+          <div class="hint-footer">Press SELECT again to hide</div>
+        `;
+      } else {
+        // Show keyboard controls
+        hintsOverlay.innerHTML = `
+          <div class="hint-title">⌨️ Serenity Mode Controls</div>
+          <div class="hint-grid">
+            <div class="hint-item"><span class="hint-button">H</span> Toggle Hub</div>
+            <div class="hint-item"><span class="hint-button">Space</span> Breathing Guide</div>
+            <div class="hint-item"><span class="hint-button">T</span> Cycle Technique</div>
+            <div class="hint-item"><span class="hint-button">M</span> Next Track</div>
+            <div class="hint-item"><span class="hint-button">B</span> Random Theme</div>
+            <div class="hint-item"><span class="hint-button">F</span> Fullscreen</div>
+            <div class="hint-item"><span class="hint-button">/</span> Toggle Hints</div>
+            <div class="hint-item"><span class="hint-button">ESC</span> Exit to Menu</div>
+          </div>
+          <div class="hint-title" style="margin-top: 15px;">When Hub is Open</div>
+          <div class="hint-grid">
+            <div class="hint-item"><span class="hint-button">Click</span> Select Item</div>
+            <div class="hint-item"><span class="hint-button">H/ESC</span> Close Hub</div>
+            <div class="hint-item"><span class="hint-button">Mouse</span> Navigate</div>
+            <div class="hint-item"><span class="hint-button">Scroll</span> Browse Lists</div>
+          </div>
+          <div class="hint-footer">Press / again to hide</div>
+        `;
+      }
+
       document.body.appendChild(hintsOverlay);
-      
+
       // Auto-hide after 10 seconds
       setTimeout(() => {
         if (hintsOverlay && hintsOverlay.parentNode) {
