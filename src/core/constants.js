@@ -217,6 +217,7 @@ export const DEFAULT_SETTINGS = {
     breathingGuideEnabled: false,
     breathingTechnique: 'deep-relaxation', // Breathing technique
     breathingText: true, // Show text prompts
+    breathingGuideAutoStart: false, // Auto-start breathing guide on mode entry
 
     // Control settings
     controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',

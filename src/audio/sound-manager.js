@@ -161,6 +161,11 @@ export class SoundManager {
 
         // Apply auto theme change if enabled
         this.applyAutoThemeChange(trackName);
+
+        // Dispatch track change event for UI components to listen
+        window.dispatchEvent(new CustomEvent('musicTrackChanged', {
+            detail: { trackName }
+        }));
     }
 
     /**
@@ -170,6 +175,15 @@ export class SoundManager {
         const currentIndex = this.trackNames.indexOf(this.musicTrack);
         const nextIndex = (currentIndex + 1) % this.trackNames.length;
         this.setTrack(this.trackNames[nextIndex]);
+    }
+
+    /**
+     * Switches to the previous track
+     */
+    previousTrack() {
+        const currentIndex = this.trackNames.indexOf(this.musicTrack);
+        const prevIndex = (currentIndex - 1 + this.trackNames.length) % this.trackNames.length;
+        this.setTrack(this.trackNames[prevIndex]);
     }
 
     /**

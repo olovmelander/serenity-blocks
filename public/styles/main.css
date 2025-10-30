@@ -6034,6 +6034,101 @@ body {
             display: block;
         }
 
+        /* Serenity Mode Controls Styling */
+        .serenity-controls-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(139, 92, 246, 0.3);
+        }
+        
+        .serenity-controls-header h3 {
+            color: #c4b5fd;
+            font-size: 24px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .controls-description {
+            color: rgba(224, 231, 255, 0.6);
+            font-size: 14px;
+            margin: 0;
+        }
+        
+        .controls-section {
+            margin-bottom: 35px;
+            padding: 20px;
+            background: rgba(139, 92, 246, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+        }
+        
+        .controls-section-title {
+            color: #c4b5fd;
+            font-size: 16px;
+            margin: 0 0 20px 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .controls-info-box {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.15));
+            border: 2px solid rgba(139, 92, 246, 0.4);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-top: 20px;
+            color: #e0e7ff;
+            font-size: 14px;
+            text-align: center;
+        }
+        
+        .controls-info-box strong {
+            color: #c4b5fd;
+        }
+        
+        .controls-info-box kbd {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 2px solid rgba(139, 92, 246, 0.5);
+            font-family: 'Space Mono', monospace;
+            color: #00ffff;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .key-input.readonly,
+        .gamepad-display {
+            opacity: 0.9;
+            cursor: default;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        .key-input.readonly:hover,
+        .gamepad-display:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        .gamepad-display {
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(139, 92, 246, 0.3);
+            border-radius: 10px;
+            color: #e0e7ff;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-family: 'Space Mono', monospace;
+            text-transform: none;
+            letter-spacing: 0.5px;
+            display: inline-block;
+            width: 100%;
+            justify-self: start;
+            text-align: center;
+            font-weight: 600;
+        }
+
         .settings-grid {
             display: grid;
             grid-template-columns: 220px 1fr;
@@ -6646,6 +6741,49 @@ body {
             .key-input, .setting-select {
                 padding: 12px;
                 font-size: 16px;
+            }
+
+            /* Mobile Serenity Controls */
+            .controls-subtabs {
+                gap: 5px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+            }
+            
+            .controls-subtab {
+                padding: 8px 12px;
+                font-size: 11px;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            
+            .serenity-controls-header h3 {
+                font-size: 18px;
+            }
+            
+            .controls-description {
+                font-size: 12px;
+            }
+            
+            .controls-section {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .controls-section-title {
+                font-size: 14px;
+                margin-bottom: 15px;
+            }
+            
+            .controls-info-box {
+                padding: 12px 15px;
+                font-size: 12px;
+            }
+            
+            .controls-info-box kbd {
+                padding: 3px 8px;
+                font-size: 11px;
             }
         }
 
@@ -10400,8 +10538,9 @@ body.serenity-mode.cursor-hidden * {
     }
 }
 
-/* Hover area at bottom to trigger selector */
+/* Hover area at bottom to trigger selector - DISABLED */
 .breathing-hover-area {
+    display: none !important; /* Hidden - selector no longer used */
     position: fixed;
     bottom: 0;
     left: 0;
@@ -10414,7 +10553,7 @@ body.serenity-mode.cursor-hidden * {
 /* Technique description - shows when needed */
 .breathing-technique-desc {
     position: absolute;
-    bottom: 150px;
+    bottom: 40px; /* Lower position with selector removed */
     left: 50%;
     transform: translateX(-50%);
     font-family: 'Space Mono', monospace;
@@ -10447,27 +10586,9 @@ body.serenity-mode.cursor-hidden * {
     opacity: 0.95;
 }
 
-/* Technique selector - optimized for 7 techniques in 2 rows */
+/* Technique selector - DISABLED (now in Serenity Hub) */
 .breathing-technique-selector {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%) translateY(10px);
-    display: grid;
-    grid-template-columns: repeat(4, auto);
-    gap: 10px;
-    padding: 18px 24px;
-    background: rgba(0, 0, 0, 0.65);
-    border-radius: 25px;
-    border: 1.5px solid rgba(var(--breath-color-r), var(--breath-color-g), var(--breath-color-b), 0.5);
-    box-shadow:
-        0 0 30px rgba(var(--breath-color-r), var(--breath-color-g), var(--breath-color-b), 0.3),
-        0 4px 15px rgba(0, 0, 0, 0.7);
-    pointer-events: none; /* Disabled by default */
-    opacity: 0;
-    transition: opacity 0.3s ease, transform 0.3s ease, pointer-events 0s 0.3s;
-    max-width: 95%;
-    z-index: 10003;
+    display: none !important; /* Hidden - use Serenity Hub Breathing tab instead */
 }
 
 /* Enable pointer events when visible */
@@ -10598,7 +10719,7 @@ body.serenity-mode.cursor-hidden * {
     
     .breathing-technique-desc {
         font-size: 11px;
-        bottom: 135px;
+        bottom: 30px; /* Lower position with selector removed */
         padding: 8px 18px;
         max-width: 90%;
     }

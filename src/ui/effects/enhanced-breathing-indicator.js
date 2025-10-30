@@ -258,11 +258,11 @@ export class EnhancedBreathingIndicator {
         this.indicator.style.display = 'block';
         this.hoverArea.style.display = 'block';
         
-        // Setup keyboard listener for selector toggle
+        // Setup keyboard listener for info display
         this._setupKeyboardListener();
         
-        // Show selector briefly at start, then hide (with technique info)
-        this._showSelectorTemporarily(4000);
+        // Show technique info briefly at start (selector is now in Serenity Hub)
+        this._showTechniqueInfo(3000);
         
         this.phaseStartTime = performance.now();
         this.currentPhase = 'inhale';
@@ -312,9 +312,9 @@ export class EnhancedBreathingIndicator {
     /**
      * Set breathing technique
      * @param {string} techniqueName - Key from techniques object
-     * @param {boolean} showSelector - Whether to show the selector (default: false)
+     * @param {boolean} showInfo - Whether to show the technique info (default: true)
      */
-    setTechnique(techniqueName, showSelector = false) {
+    setTechnique(techniqueName, showInfo = true) {
         if (this.techniques[techniqueName]) {
             this.currentTechnique = techniqueName;
             this.technique = this.techniques[techniqueName];
@@ -325,11 +325,8 @@ export class EnhancedBreathingIndicator {
             this.techniqueDesc.textContent = this.technique.description;
             this._updateSelectorButtons();
 
-            // Show selector only if explicitly requested (e.g., on first start)
-            if (showSelector) {
-                this._showSelectorTemporarily(2000);
-            } else {
-                // Just show name + description briefly when pressing T
+            // Show technique info briefly (selector is now in Serenity Hub)
+            if (showInfo) {
                 this._showTechniqueInfo(3000);
             }
 
@@ -341,6 +338,22 @@ export class EnhancedBreathingIndicator {
 
             console.log('[EnhancedBreathingIndicator] Technique changed to:', this.technique.name);
         }
+    }
+
+    /**
+     * Cycle to next or previous breathing technique
+     * @param {number} direction - 1 for next, -1 for previous
+     */
+    cycleTechnique(direction = 1) {
+        const techniqueKeys = Object.keys(this.techniques);
+        const currentIndex = techniqueKeys.indexOf(this.currentTechnique);
+        let newIndex = currentIndex + direction;
+
+        // Wrap around
+        if (newIndex < 0) newIndex = techniqueKeys.length - 1;
+        if (newIndex >= techniqueKeys.length) newIndex = 0;
+
+        this.setTechnique(techniqueKeys[newIndex], true);
     }
 
     /**

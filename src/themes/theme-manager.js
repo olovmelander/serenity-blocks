@@ -164,6 +164,14 @@ export class ThemeManager {
     }
 
     /**
+     * Switch to a random theme immediately
+     */
+    switchToRandomTheme() {
+        const randomTheme = this.getRandomTheme();
+        this.switchTheme(randomTheme);
+    }
+
+    /**
      * Start random theme switching at interval
      * @param {number} intervalMinutes - Minutes between theme changes
      */
