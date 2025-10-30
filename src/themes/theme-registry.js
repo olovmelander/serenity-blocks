@@ -234,6 +234,12 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'solar-eclipse',
+        displayName: 'Solar Eclipse',
+        module: './solar-eclipse/solar-eclipse-theme.js',
+        group: 'cosmic',
+    },
+    {
         id: 'pyrestorm',
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',
