@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/styles/multiplayer-ui.css">
     <link rel="stylesheet" href="/styles/lobby-styles.css">
     <link rel="stylesheet" href="/styles/match-config-styles.css">
+    <link rel="stylesheet" href="/styles/serenity-hub.css">
 </head>
 <body>
     <svg width="0" height="0" style="position:absolute">
@@ -730,25 +731,28 @@
                 </div>
                 <div class="settings-tab-content" id="settings-controls">
                     <div class="controls-subtabs">
-                        <button class="controls-subtab active" data-subtab="general">General</button>
-                        <button class="controls-subtab" data-subtab="player1">Player 1 Keys</button>
-                        <button class="controls-subtab" data-subtab="player2">Player 2 Keys</button>
-                        <button class="controls-subtab" data-subtab="gamepad1">Player 1 Gamepad</button>
-                        <button class="controls-subtab" data-subtab="gamepad2">Player 2 Gamepad</button>
+                        <button class="controls-subtab active" data-subtab="general">⚙️ General</button>
+                        <button class="controls-subtab" data-subtab="serenity">🧘 Serenity Mode</button>
+                        <button class="controls-subtab" data-subtab="player1">⌨️ Player 1 Keys</button>
+                        <button class="controls-subtab" data-subtab="player2">⌨️ Player 2 Keys</button>
+                        <button class="controls-subtab" data-subtab="gamepad1">🎮 Player 1 Gamepad</button>
+                        <button class="controls-subtab" data-subtab="gamepad2">🎮 Player 2 Gamepad</button>
                     </div>
 
                     <!-- General Controls Sub-tab -->
                     <div class="controls-subtab-content active" id="controls-general">
-                        <div class="settings-grid">
-                            <div class="setting">
-                                <label for="control-scheme">Control Scheme:</label>
-                                <select id="control-scheme" class="setting-select">
-                                    <option value="Keyboard">Keyboard</option>
-                                    <option value="Touch">Touch</option>
-                                </select>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-enabled">Gamepad Support:</label>
+                        <div class="controls-section">
+                            <h4 class="controls-section-title">🎮 System-Wide Control Settings</h4>
+                            <div class="settings-grid">
+                                <div class="setting">
+                                    <label for="control-scheme">Control Scheme:</label>
+                                    <select id="control-scheme" class="setting-select">
+                                        <option value="Keyboard">Keyboard</option>
+                                        <option value="Touch">Touch</option>
+                                    </select>
+                                </div>
+                                <div class="setting">
+                                    <label for="gamepad-enabled">Gamepad Support:</label>
                                 <select id="gamepad-enabled" class="setting-select">
                                     <option value="true">Enabled</option>
                                     <option value="false">Disabled</option>
@@ -768,22 +772,129 @@
                                     <div id="controller-2-status">Controller 2: Not connected</div>
                                 </div>
                             </div>
-                            <div class="setting">
-                                <label for="key-nextTrack">Next Track:</label>
-                                <div id="key-nextTrack" class="key-input" tabindex="0">m</div>
                             </div>
-                            <div class="setting">
-                                <label for="key-randomTheme">Random Theme:</label>
-                                <div id="key-randomTheme" class="key-input" tabindex="0">b</div>
+                        </div>
+
+                        <div class="controls-section">
+                            <h4 class="controls-section-title">⌨️ Global Keyboard Shortcuts</h4>
+                            <div class="settings-grid">
+                                <div class="setting">
+                                    <label for="key-nextTrack">Next Track:</label>
+                                    <div id="key-nextTrack" class="key-input" tabindex="0">m</div>
+                                </div>
+                                <div class="setting">
+                                    <label for="key-randomTheme">Random Theme:</label>
+                                    <div id="key-randomTheme" class="key-input" tabindex="0">b</div>
+                                </div>
+                                <div class="setting">
+                                    <label for="key-toggleFullscreen">Toggle Fullscreen:</label>
+                                    <div id="key-toggleFullscreen" class="key-input" tabindex="0">f</div>
+                                </div>
+                                <div class="setting">
+                                    <label for="key-showHighScores">Show High Scores:</label>
+                                    <div id="key-showHighScores" class="key-input" tabindex="0">h</div>
+                                </div>
                             </div>
-                            <div class="setting">
-                                <label for="key-toggleFullscreen">Toggle Fullscreen:</label>
-                                <div id="key-toggleFullscreen" class="key-input" tabindex="0">f</div>
+                        </div>
+                    </div>
+
+                    <!-- Serenity Mode Controls Sub-tab -->
+                    <div class="controls-subtab-content" id="controls-serenity">
+                        <div class="serenity-controls-header">
+                            <h3>🎮 Gamepad Controls for Serenity Mode</h3>
+                            <p class="controls-description">Navigate and control your meditation experience with a gamepad</p>
+                        </div>
+                        
+                        <div class="controls-section">
+                            <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
+                            <div class="settings-grid">
+                                <div class="setting">
+                                    <label>Toggle Serenity Hub:</label>
+                                    <div class="gamepad-display readonly">Y (Triangle)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Toggle Breathing Guide:</label>
+                                    <div class="gamepad-display readonly">X (Square)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Random Theme:</label>
+                                    <div class="gamepad-display readonly">L3 (L-Stick Click)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Toggle Fullscreen:</label>
+                                    <div class="gamepad-display readonly">R3 (R-Stick Click)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Previous Music Track:</label>
+                                    <div class="gamepad-display readonly">LB (L1)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Next Music Track:</label>
+                                    <div class="gamepad-display readonly">RB (R1)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Volume Down:</label>
+                                    <div class="gamepad-display readonly">LT (L2)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Volume Up:</label>
+                                    <div class="gamepad-display readonly">RT (R2)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Toggle Button Hints:</label>
+                                    <div class="gamepad-display readonly">Select (Share)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Open Settings Menu:</label>
+                                    <div class="gamepad-display readonly">Start (Options)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Next Breathing Technique:</label>
+                                    <div class="gamepad-display readonly">D-Pad Down</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Previous Breathing Technique:</label>
+                                    <div class="gamepad-display readonly">D-Pad Up</div>
+                                </div>
                             </div>
-                            <div class="setting">
-                                <label for="key-showHighScores">Show High Scores:</label>
-                                <div id="key-showHighScores" class="key-input" tabindex="0">h</div>
+                        </div>
+
+                        <div class="controls-section">
+                            <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
+                            <div class="settings-grid">
+                                <div class="setting">
+                                    <label>Confirm Selection:</label>
+                                    <div class="gamepad-display readonly">A (Cross)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Close Hub:</label>
+                                    <div class="gamepad-display readonly">B (Circle)</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Switch Tab Left:</label>
+                                    <div class="gamepad-display readonly">D-Left / L-Stick Left</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Switch Tab Right:</label>
+                                    <div class="gamepad-display readonly">D-Right / L-Stick Right</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Navigate Up:</label>
+                                    <div class="gamepad-display readonly">D-Up / L-Stick Up</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Navigate Down:</label>
+                                    <div class="gamepad-display readonly">D-Down / L-Stick Down</div>
+                                </div>
+                                <div class="setting">
+                                    <label>Scroll Content:</label>
+                                    <div class="gamepad-display readonly">R-Stick Up/Down</div>
+                                </div>
                             </div>
+                        </div>
+
+                        <div class="controls-info-box">
+                            <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see an overlay of all available controls!
                         </div>
                     </div>
 

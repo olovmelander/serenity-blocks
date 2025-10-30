@@ -831,6 +831,7 @@ class SerenityBlocks {
             settingsManager: this.settingsManager,
             highScoreManager: this.highScoreManager,
             modalManager: this.modalManager,
+            gamepadController: this.gamepadController,
             BoardSceneClass: this.BoardSceneClass || null,
             MultiplayerBoardSceneClass: this.MultiplayerBoardSceneClass || null,
             getMultiplayerPhysicsCallbacks: (playerNum) => this.getMultiplayerPhysicsCallbacks(playerNum),
@@ -918,7 +919,7 @@ class SerenityBlocks {
             // Update music if theme-linked mode is enabled
             const settings = this.settingsManager.get();
             if (settings.themeLinkedMode) {
-                this.soundManager.setThemeLinkedTrack(themeName);
+                this.soundManager.applyThemeLinkedMusic(themeName);
             }
         });
 
@@ -1339,6 +1340,12 @@ class SerenityBlocks {
         };
 
         window.showHighScores = () => {
+            // Don't show high scores in Serenity Mode (it has its own hub)
+            const currentMode = this.gameModeManager?.getCurrentMode();
+            if (currentMode && currentMode.getModeId() === GAME_MODES.SERENITY) {
+                return;
+            }
+
             if (this.modalManager.isVisible('highScores')) {
                 closeHighScoresModal(this.modalManager);
             } else {

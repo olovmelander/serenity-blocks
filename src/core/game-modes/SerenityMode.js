@@ -1,5 +1,6 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { GAME_MODES } from '../constants.js';
+import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
 
 /**
  * SerenityMode - A peaceful, non-interactive mode featuring only background visuals,
@@ -26,6 +27,9 @@ export class SerenityMode extends BaseGameMode {
         // Event handlers (bound methods for proper cleanup)
         this.handleKeyPress = this._onKeyPress.bind(this);
         this.handleMouseMove = this._onMouseMove.bind(this);
+
+        // Serenity Hub instance
+        this.serenityHub = null;
     }
 
     getModeId() {
@@ -64,6 +68,18 @@ export class SerenityMode extends BaseGameMode {
 
         console.log('[Serenity] Starting Serenity mode...');
 
+        // Initialize Serenity Hub
+        this.serenityHub = new SerenityHub(this);
+        console.log('[Serenity] Serenity Hub initialized');
+
+        // Ensure gamepad controller is enabled for Serenity Mode
+        if (this.deps.gamepadController) {
+            this.deps.gamepadController.enable();
+            // Disable menu navigation mode so Serenity controls work
+            this.deps.gamepadController.disableMenuNavigation();
+            console.log('[Serenity] Gamepad controller enabled and menu navigation disabled');
+        }
+
         // Start music if not already playing
         this._ensureMusicPlaying();
 
@@ -78,7 +94,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Don't auto-show breathing indicator - user must press Space to enable
         // This keeps focus on the beautiful themes
-        console.log('[Serenity] Serenity mode active - Press Space for breathing guide');
+        console.log('[Serenity] Serenity mode active - Press H for Serenity Hub, Space for breathing guide');
     }
 
     /**
@@ -104,6 +120,12 @@ export class SerenityMode extends BaseGameMode {
     onResume() {
         super.onResume();
         console.log('[Serenity] Resumed');
+        
+        // Disable menu navigation mode so Serenity controls work
+        if (this.deps.gamepadController) {
+            this.deps.gamepadController.disableMenuNavigation();
+            console.log('[Serenity] Menu navigation disabled on resume');
+        }
         
         // Resume breathing indicator if it was active before pause
         if (this.breathingIndicatorWasActive && window.breathingIndicator) {
@@ -137,6 +159,12 @@ export class SerenityMode extends BaseGameMode {
         await super.onDeactivate();
 
         console.log('[Serenity] Deactivating...');
+
+        // Clean up Serenity Hub
+        if (this.serenityHub) {
+            this.serenityHub.destroy();
+            this.serenityHub = null;
+        }
 
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
@@ -364,8 +392,12 @@ export class SerenityMode extends BaseGameMode {
                 this._exitToMenu();
                 break;
 
-            case 'h': // Toggle settings
-                // Settings modal is handled globally
+            case 'h': // Toggle Serenity Hub
+                if (this.serenityHub) {
+                    this.serenityHub.toggle();
+                }
+                event.preventDefault(); // Prevent global high score handler
+                event.stopPropagation(); // Stop event from bubbling
                 break;
 
             case '?': // Show keyboard shortcuts
@@ -489,14 +521,13 @@ export class SerenityMode extends BaseGameMode {
             overlay.innerHTML = `
                 <div class="shortcuts-content">
                     <h3>Serenity Mode Controls</h3>
+                    <div class="shortcut"><kbd>H</kbd> Open Serenity Hub</div>
                     <div class="shortcut"><kbd>M</kbd> Next Music Track</div>
                     <div class="shortcut"><kbd>B</kbd> Random Theme</div>
                     <div class="shortcut"><kbd>Space</kbd> Toggle Breathing Guide</div>
                     <div class="shortcut"><kbd>I</kbd> Show Technique Info</div>
-                    <div class="shortcut"><kbd>S</kbd> Show/Hide Technique Selector</div>
                     <div class="shortcut"><kbd>T</kbd> Cycle Breathing Technique</div>
                     <div class="shortcut"><kbd>F</kbd> Toggle Fullscreen</div>
-                    <div class="shortcut"><kbd>H</kbd> Settings</div>
                     <div class="shortcut"><kbd>ESC</kbd> Exit to Menu</div>
                 </div>
             `;
@@ -563,6 +594,11 @@ export class SerenityMode extends BaseGameMode {
             window.breathingIndicator.start();
             this.breathingIndicatorActive = true;
 
+            // Update Serenity Hub icon state
+            if (this.serenityHub) {
+                this.serenityHub.updateIconState({ breathingActive: true });
+            }
+
             console.log('[Serenity] Enhanced breathing indicator started with technique:', technique);
         } else {
             console.warn('[Serenity] Breathing indicator not initialized');
@@ -577,6 +613,12 @@ export class SerenityMode extends BaseGameMode {
         if (window.breathingIndicator) {
             window.breathingIndicator.stop();
             this.breathingIndicatorActive = false;
+
+            // Update Serenity Hub icon state
+            if (this.serenityHub) {
+                this.serenityHub.updateIconState({ breathingActive: false });
+            }
+
             console.log('[Serenity] Breathing indicator stopped');
         }
     }
