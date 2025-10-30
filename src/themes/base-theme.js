@@ -38,9 +38,10 @@ export class BaseTheme {
      * Start theme animations and effects
      * Called when theme becomes active
      * @param {WebGLRenderer} webglRenderer - WebGL renderer instance
+     * @param {Object} managers - Optional resource managers { assetManager, audioManager }
      * @returns {Promise<void>}
      */
-    async start(webglRenderer) {
+    async start(webglRenderer, managers = {}) {
         console.warn('[BaseTheme] >>>>>> START METHOD CALLED <<<<<<', this.name);
         console.log('[BaseTheme] start() called, isActive:', this.isActive, 'theme:', this.name);
 
@@ -48,6 +49,10 @@ export class BaseTheme {
         // Set active state
         this.isActive = true;
         this.webglRenderer = webglRenderer;
+        
+        // Store resource managers for efficient asset loading
+        this.assetManager = managers.assetManager;
+        this.audioManager = managers.audioManager;
 
         console.warn('[BaseTheme] About to call loadTheme...');
         console.log('[BaseTheme] Starting theme:', this.name);
@@ -126,12 +131,31 @@ export class BaseTheme {
 
     /**
      * Clean up all theme resources
-     * Called when theme is being destroyed
+     * Called when theme is being destroyed or evicted from cache
+     * 
+     * IMPORTANT: Theme implementations should:
+     * 1. Cancel all animation frames (use registerAnimation())
+     * 2. Clear all intervals/timeouts
+     * 3. Remove all event listeners
+     * 4. Remove all DOM elements (use registerContainer())
+     * 5. Null out large object references
      */
     cleanup() {
+        console.log(`[BaseTheme] Cleaning up theme: ${this.name}`);
+        
+        // Stop animations and remove theme from active state
         this.stop();
 
+        // Verify animation frames were cleaned up
+        if (this.animationIds.length > 0) {
+            console.warn(`[BaseTheme] ${this.animationIds.length} animation frames were not cleaned up in stop()!`);
+            // Clean them up now
+            this.animationIds.forEach((id) => cancelAnimationFrame(id));
+            this.animationIds = [];
+        }
+
         // Remove containers from DOM
+        console.log(`[BaseTheme] Removing ${this.containers.length} DOM containers`);
         this.containers.forEach((container) => {
             if (container && container.parentNode) {
                 container.parentNode.removeChild(container);
@@ -139,7 +163,20 @@ export class BaseTheme {
         });
         this.containers = [];
 
+        // Clear WebGL layer tracking
+        this.webglLayers = [];
+
+        // Null out renderer reference
         this.webglRenderer = null;
+        
+        // Null out managers (they're shared, so we just clear references)
+        this.assetManager = null;
+        this.audioManager = null;
+        
+        // Null out options to release any closures
+        this.options = null;
+        
+        console.log(`✅ [BaseTheme] Cleanup complete for theme: ${this.name}`);
     }
 
     /**

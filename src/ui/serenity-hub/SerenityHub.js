@@ -10,6 +10,7 @@
 import { BreathingTab } from './BreathingTab.js';
 import { MusicTab } from './MusicTab.js';
 import { ThemesTab } from './ThemesTab.js';
+import { throttle } from '../../utils/performance-utils.js';
 
 export class SerenityHub {
   constructor(serenityMode) {
@@ -34,6 +35,14 @@ export class SerenityHub {
 
     // Gamepad support (uses global gamepadController from main app)
     this.gamepadCallbacks = null;
+
+    // AbortController for easy event listener cleanup (Phase 6.3)
+    // All event listeners use this signal - single abort() removes them all!
+    this.abortController = new AbortController();
+    
+    // Track tab elements and their handlers separately (dynamic tabs)
+    this.tabElements = [];
+    this.tabAbortControllers = new Map(); // Per-tab AbortControllers
 
     this.init();
   }
@@ -84,29 +93,34 @@ export class SerenityHub {
       <div class="hub-icon-pulse"></div>
     `;
 
-    // Add click handler
-    this.hubIcon.addEventListener('click', () => this.toggle());
-
-    // Add keyboard handler
-    this.hubIcon.addEventListener('keydown', (e) => {
+    // Store bound handler references
+    this.hubIconClickHandler = () => this.toggle();
+    
+    this.hubIconKeydownHandler = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         this.toggle();
       }
-    });
-
-    // Mouse enter/leave for auto-hide prevention
-    this.hubIcon.addEventListener('mouseenter', () => {
+    };
+    
+    this.hubIconMouseEnterHandler = () => {
       this.isMouseOverHub = true;
       this.cancelAutoHide();
-    });
-
-    this.hubIcon.addEventListener('mouseleave', () => {
+    };
+    
+    this.hubIconMouseLeaveHandler = () => {
       this.isMouseOverHub = false;
       if (!this.isOpen) {
         this.startAutoHide();
       }
-    });
+    };
+
+    // Add event listeners with AbortController signal for easy cleanup
+    const signal = this.abortController.signal;
+    this.hubIcon.addEventListener('click', this.hubIconClickHandler, { signal });
+    this.hubIcon.addEventListener('keydown', this.hubIconKeydownHandler, { signal });
+    this.hubIcon.addEventListener('mouseenter', this.hubIconMouseEnterHandler, { signal });
+    this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
 
     document.body.appendChild(this.hubIcon);
   }
@@ -118,7 +132,10 @@ export class SerenityHub {
     // Create backdrop
     this.backdrop = document.createElement('div');
     this.backdrop.className = 'serenity-hub-backdrop';
-    this.backdrop.addEventListener('click', () => this.hide());
+    
+    // Store handler reference
+    this.backdropClickHandler = () => this.hide();
+    this.backdrop.addEventListener('click', this.backdropClickHandler, { signal: this.abortController.signal });
 
     // Create panel
     this.panel = document.createElement('div');
@@ -190,14 +207,19 @@ export class SerenityHub {
       </div>
     `;
 
-    // Add close button handler
+    // Store handler references
+    this.closeBtnClickHandler = () => this.hide();
+    this.panelClickHandler = (e) => {
+      e.stopPropagation();
+    };
+
+    // Add close button handler with AbortController signal
+    const signal = this.abortController.signal;
     const closeBtn = this.panel.querySelector('.hub-close-btn');
-    closeBtn.addEventListener('click', () => this.hide());
+    closeBtn.addEventListener('click', this.closeBtnClickHandler, { signal });
 
     // Prevent clicks inside panel from closing it
-    this.panel.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
+    this.panel.addEventListener('click', this.panelClickHandler, { signal });
 
     document.body.appendChild(this.backdrop);
     document.body.appendChild(this.panel);
@@ -207,40 +229,58 @@ export class SerenityHub {
    * Attach event listeners
    */
   attachEventListeners() {
-    // Tab switching
+    // Tab switching - use separate AbortControllers for each tab
     const tabs = this.panel.querySelectorAll('.hub-tab');
+    this.tabElements = Array.from(tabs);
+    
     tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
+      // Create AbortController for this tab
+      const tabAbortController = new AbortController();
+      const signal = tabAbortController.signal;
+      this.tabAbortControllers.set(tab, tabAbortController);
+      
+      const clickHandler = () => {
         const tabName = tab.dataset.tab;
         this.switchTab(tabName);
-      });
+      };
 
       // Keyboard navigation for tabs
-      tab.addEventListener('keydown', (e) => {
+      const keydownHandler = (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           const tabName = tab.dataset.tab;
           this.switchTab(tabName);
         }
-      });
+      };
+      
+      // Add event listeners with AbortController signal
+      tab.addEventListener('click', clickHandler, { signal });
+      tab.addEventListener('keydown', keydownHandler, { signal });
     });
 
-    // ESC key to close
-    document.addEventListener('keydown', (e) => {
+    // Use main AbortController for global listeners
+    const signal = this.abortController.signal;
+    
+    // Document keydown handler (ESC to close)
+    this.documentKeydownHandler = (e) => {
       if (e.key === 'Escape' && this.isOpen) {
         this.hide();
       }
-    });
+    };
+    document.addEventListener('keydown', this.documentKeydownHandler, { signal });
 
-    // Mouse over panel prevents auto-hide
-    this.panel.addEventListener('mouseenter', () => {
+    // Panel mouse enter/leave handlers
+    this.panelMouseEnterHandler = () => {
       this.isMouseOverHub = true;
       this.cancelAutoHide();
-    });
-
-    this.panel.addEventListener('mouseleave', () => {
+    };
+    
+    this.panelMouseLeaveHandler = () => {
       this.isMouseOverHub = false;
-    });
+    };
+
+    this.panel.addEventListener('mouseenter', this.panelMouseEnterHandler, { signal });
+    this.panel.addEventListener('mouseleave', this.panelMouseLeaveHandler, { signal });
   }
 
   /**
@@ -249,7 +289,8 @@ export class SerenityHub {
   setupAutoHide() {
     let mouseMoveTimeout = null;
 
-    document.addEventListener('mousemove', () => {
+    // Store document mousemove handler reference
+    const mouseMoveHandler = () => {
       // Show icon on mouse movement
       this.showIcon();
 
@@ -261,7 +302,14 @@ export class SerenityHub {
           this.startAutoHide();
         }, this.hideDelay);
       }
-    });
+    };
+    
+    // Throttle mousemove to max once every 16ms (~60fps) to reduce CPU usage
+    this.documentMouseMoveHandler = throttle(mouseMoveHandler, 16);
+
+    // Use AbortController signal for easy cleanup
+    document.addEventListener('mousemove', this.documentMouseMoveHandler, { signal: this.abortController.signal });
+    console.log('[SerenityHub] Mousemove handler throttled to 16ms (~60fps)');
 
     // Initially hide after delay
     this.startAutoHide();
@@ -695,6 +743,8 @@ export class SerenityHub {
    * Destroy the hub and clean up
    */
   destroy() {
+    console.log('[SerenityHub] Starting cleanup...');
+    
     // Clear timers
     this.cancelAutoHide();
 
@@ -705,31 +755,70 @@ export class SerenityHub {
       console.log('[SerenityHub] Gamepad integration disabled');
     }
 
-    // Remove event listeners
-    document.removeEventListener('mousemove', this.setupAutoHide);
+    // ✨ PHASE 6.3: AbortController Pattern - Remove ALL event listeners with ONE line!
+    console.log('[SerenityHub] Aborting all event listeners via AbortController...');
+    if (this.abortController) {
+      this.abortController.abort();
+      console.log('  ✅ Main AbortController aborted (hub icon, backdrop, panel, document listeners)');
+    }
+    
+    // Abort all tab-specific listeners
+    if (this.tabAbortControllers.size > 0) {
+      for (const [tab, controller] of this.tabAbortControllers.entries()) {
+        controller.abort();
+      }
+      console.log(`  ✅ ${this.tabAbortControllers.size} tab AbortControllers aborted`);
+      this.tabAbortControllers.clear();
+    }
+    
+    // Clear tab tracking
+    this.tabElements = [];
 
     // Remove DOM elements
     if (this.hubIcon) {
       this.hubIcon.remove();
+      this.hubIcon = null;
     }
     if (this.panel) {
       this.panel.remove();
+      this.panel = null;
     }
     if (this.backdrop) {
       this.backdrop.remove();
+      this.backdrop = null;
     }
 
     // Clean up tab instances
     if (this.breathingTab) {
-      this.breathingTab.destroy?.();
+      if (typeof this.breathingTab.destroy === 'function') {
+        this.breathingTab.destroy();
+      } else {
+        console.warn('[SerenityHub] BreathingTab missing destroy method');
+      }
+      this.breathingTab = null;
     }
     if (this.musicTab) {
-      this.musicTab.destroy?.();
+      if (typeof this.musicTab.destroy === 'function') {
+        this.musicTab.destroy();
+      } else {
+        console.warn('[SerenityHub] MusicTab missing destroy method');
+      }
+      this.musicTab = null;
     }
     if (this.themesTab) {
-      this.themesTab.destroy?.();
+      if (typeof this.themesTab.destroy === 'function') {
+        this.themesTab.destroy();
+      } else {
+        console.warn('[SerenityHub] ThemesTab missing destroy method');
+      }
+      this.themesTab = null;
     }
 
-    console.log('Serenity Hub destroyed');
+    // Null out AbortController and references (Phase 6.1: Null Reference Cleanup)
+    this.abortController = null;
+    this.gamepadCallbacks = null;
+    this.serenityMode = null;
+
+    console.log('✅ [SerenityHub] Destroyed - all listeners removed via AbortController');
   }
 }
