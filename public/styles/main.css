@@ -10937,11 +10937,9 @@ body.phaser-multiplayer-active #single-player-container {
 
 /* Container for each Phaser game instance */
 .phaser-board-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 300px;
-    height: 600px;
+    position: relative;
+    width: 100%;
+    height: 100%;
     border-radius: 12px;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.6);
@@ -10950,8 +10948,8 @@ body.phaser-multiplayer-active #single-player-container {
 
 .phaser-board-container canvas {
     display: block !important;
-    width: 300px !important;
-    height: 600px !important;
+    width: 100% !important;
+    height: 100% !important;
     image-rendering: crisp-edges;
     image-rendering: -moz-crisp-edges;
     image-rendering: pixelated;
@@ -10960,8 +10958,10 @@ body.phaser-multiplayer-active #single-player-container {
 /* Border overlays for each board */
 .board-border-overlay {
     position: absolute;
-    width: 300px;
-    height: 600px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     border: 4px solid #8b5cf6;
     border-radius: 12px;
     box-shadow: 
@@ -10970,6 +10970,515 @@ body.phaser-multiplayer-active #single-player-container {
         0 0 90px rgba(139, 92, 246, 0.1);
     pointer-events: none;
     z-index: 2;
+}
+
+/* Player board labels (P1, P2, P3, P4) */
+.player-board-label {
+    position: absolute;
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: #8b5cf6;
+    text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    z-index: 3;
+    letter-spacing: 2px;
+}
+
+/* Player board stats (frags) */
+.player-board-stats {
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+}
+
+.board-frag-display {
+    font-family: 'Space Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #10b981;
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    padding: 4px 12px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 8px;
+    border: 2px solid rgba(16, 185, 129, 0.3);
+}
+
+/* ============================================
+   PLAYER COLOR SCHEME
+   ============================================ */
+
+/* Player 1 - Blue */
+.player-card[data-player="1"] .player-board-label {
+    color: #3B82F6;
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+#p1-border {
+    border-color: #3B82F6;
+    box-shadow:
+        0 0 30px rgba(59, 130, 246, 0.5),
+        inset 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+#p1-phaser-container {
+    border: 2px solid #3B82F6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+/* Player 2 - Red */
+.player-card[data-player="2"] .player-board-label {
+    color: #EF4444;
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5), 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+#p2-border {
+    border-color: #EF4444;
+    box-shadow:
+        0 0 30px rgba(239, 68, 68, 0.5),
+        inset 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+#p2-phaser-container {
+    border: 2px solid #EF4444;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+/* Player 3 - Green */
+.player-card[data-player="3"] .player-board-label {
+    color: #10B981;
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5), 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+#p3-border {
+    border-color: #10B981;
+    box-shadow:
+        0 0 30px rgba(16, 185, 129, 0.5),
+        inset 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+#p3-phaser-container {
+    border: 2px solid #10B981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+/* Player 4 - Amber/Orange */
+.player-card[data-player="4"] .player-board-label {
+    color: #F59E0B;
+    text-shadow: 0 0 10px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+#p4-border {
+    border-color: #F59E0B;
+    box-shadow:
+        0 0 30px rgba(245, 158, 11, 0.5),
+        inset 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+#p4-phaser-container {
+    border: 2px solid #F59E0B;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+/* ============================================
+   PLAYER CARD LAYOUT (NEW)
+   ============================================ */
+
+/* Main multiplayer container - centered layout */
+.multiplayer-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    min-height: 100vh;
+    padding: 20px;
+    position: relative;
+}
+
+/* Game area with CSS Grid */
+.multiplayer-game-area {
+    --board-width: 300px;
+    --board-height: 600px;
+    display: grid;
+    gap: 80px;
+    max-width: 1400px;
+    width: 100%;
+    justify-content: center;
+    justify-items: center;
+    position: relative;
+}
+
+/* 2 players - horizontal row */
+.multiplayer-game-area.players-2 {
+    --board-width: 300px;
+    --board-height: 600px;
+    grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 36px)));
+    gap: 80px;
+}
+
+/* 3 players - horizontal row */
+.multiplayer-game-area.players-3 {
+    --board-width: 260px;
+    --board-height: 520px;
+    grid-template-columns: repeat(3, minmax(0, calc(var(--board-width) + 32px)));
+    gap: 50px;
+}
+
+/* 4 players - 2x2 grid */
+.multiplayer-game-area.players-4 {
+    --board-width: 240px;
+    --board-height: 480px;
+    grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 32px)));
+    grid-template-rows: repeat(2, auto);
+    gap: 30px;
+}
+
+/* Individual player card */
+.player-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 15px;
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+/* Player card color variations */
+.player-card[data-player="1"] {
+    border-color: #3B82F6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.player-card[data-player="2"] {
+    border-color: #EF4444;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+.player-card[data-player="3"] {
+    border-color: #10B981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.player-card[data-player="4"] {
+    border-color: #F59E0B;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+/* Next pieces section - horizontal layout */
+.player-next-pieces {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    width: 100%;
+    justify-content: center;
+}
+
+.player-next-pieces canvas {
+    image-rendering: crisp-edges;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: pixelated;
+}
+
+/* Board section wrapper */
+.player-board-section {
+    position: relative;
+    width: var(--board-width);
+    height: var(--board-height);
+    border-radius: 12px;
+    overflow: visible;
+}
+
+/* Stats section - horizontal compact layout */
+.player-stats-compact {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    font-family: 'Space Mono', monospace;
+    gap: 4px;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 40px;
+}
+
+.stat-label {
+    font-size: 10px;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.stat-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+/* Highlight frags stat */
+.stat-item:first-child .stat-value {
+    color: #10b981;
+    font-size: 16px;
+}
+
+/* Floating settings button */
+.floating-settings-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1000;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+}
+
+.floating-settings-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: rotate(90deg);
+}
+
+/* Board scaling for different player counts */
+.players-2 .phaser-board-container,
+.players-2 .phaser-board-container canvas,
+.players-2 .board-border-overlay {
+    width: 300px;
+    height: 600px;
+}
+
+/* ============================================
+   RESPONSIVE BREAKPOINTS
+   ============================================ */
+
+/* Large Desktop (1920px+) */
+@media (min-width: 1920px) {
+    .multiplayer-game-area.players-2 {
+        gap: 100px;
+    }
+}
+
+/* Desktop (1440px - 1920px) */
+@media (min-width: 1440px) and (max-width: 1919px) {
+    .multiplayer-game-area.players-2 {
+        gap: 80px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        gap: 60px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        gap: 40px;
+    }
+}
+
+/* Laptop (1024px - 1440px) */
+@media (min-width: 1024px) and (max-width: 1439px) {
+    .multiplayer-game-area.players-2 {
+        gap: 60px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        gap: 40px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        gap: 30px;
+        --board-width: 220px;
+        --board-height: 440px;
+    }
+}
+
+/* Tablet/Small Laptop (768px - 1024px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+    .multiplayer-game-area.players-3,
+    .multiplayer-game-area.players-4 {
+        overflow-y: auto;
+        max-height: 90vh;
+    }
+
+    .multiplayer-game-area.players-2 {
+        gap: 40px;
+    }
+
+    .multiplayer-game-area.players-3,
+    .multiplayer-game-area.players-4 {
+        gap: 30px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        --board-width: 240px;
+        --board-height: 480px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        --board-width: 200px;
+        --board-height: 400px;
+    }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 767px) {
+    .multiplayer-game-area {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+        gap: 20px;
+    }
+
+    .player-card {
+        padding: 10px;
+    }
+
+    .multiplayer-game-area {
+        --board-width: 200px;
+        --board-height: 400px;
+    }
+
+    .stat-value {
+        font-size: 12px;
+    }
+
+    .stat-label {
+        font-size: 9px;
+    }
+
+    .floating-settings-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        bottom: 20px;
+        right: 20px;
+    }
+}
+
+/* ============================================
+   HORIZONTAL LAYOUTS FOR 2-4 PLAYERS (OLD - KEEP FOR FALLBACK)
+   ============================================ */
+
+/* 2-Player Layout - Side by side (default) */
+#phaser-multiplayer-wrapper.players-2 {
+    gap: 90px;
+}
+
+/* 3-Player Layout - Horizontal row */
+#phaser-multiplayer-wrapper.players-3 {
+    gap: 50px;
+}
+
+#phaser-multiplayer-wrapper.players-3 .multiplayer-board-wrapper {
+    width: 260px;
+    height: 520px;
+}
+
+#phaser-multiplayer-wrapper.players-3 .phaser-board-container,
+#phaser-multiplayer-wrapper.players-3 .phaser-board-container canvas,
+#phaser-multiplayer-wrapper.players-3 .board-border-overlay {
+    width: 260px;
+    height: 520px;
+}
+
+/* 4-Player Layout - Horizontal row */
+#phaser-multiplayer-wrapper.players-4 {
+    gap: 30px;
+}
+
+#phaser-multiplayer-wrapper.players-4 .multiplayer-board-wrapper {
+    width: 220px;
+    height: 440px;
+}
+
+#phaser-multiplayer-wrapper.players-4 .phaser-board-container,
+#phaser-multiplayer-wrapper.players-4 .phaser-board-container canvas,
+#phaser-multiplayer-wrapper.players-4 .board-border-overlay {
+    width: 220px;
+    height: 440px;
+}
+
+/* Responsive adjustments for 3-4 players */
+@media (max-width: 1400px) {
+    #phaser-multiplayer-wrapper.players-3 {
+        gap: 30px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .multiplayer-board-wrapper {
+        width: 240px;
+        height: 480px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-3 .board-border-overlay {
+        width: 240px;
+        height: 480px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-4 {
+        gap: 20px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-4 .multiplayer-board-wrapper {
+        width: 200px;
+        height: 400px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-4 .board-border-overlay {
+        width: 200px;
+        height: 400px;
+    }
+}
+
+/* Stack vertically on small screens */
+@media (max-width: 900px) {
+    #phaser-multiplayer-wrapper {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .multiplayer-board-wrapper,
+    #phaser-multiplayer-wrapper.players-4 .multiplayer-board-wrapper {
+        width: 300px;
+        height: 600px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-3 .board-border-overlay,
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-4 .board-border-overlay {
+        width: 300px;
+        height: 600px;
+    }
 }
 
 #p1-border {

@@ -30,7 +30,9 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
+    markBoardDirty,
 } from './core/game.js';
+import { insertGarbageEntries } from './core/garbage.js';
 import { initPieceSystem } from './core/pieces.js';
 import { MultiplayerGameState } from './core/multiplayer.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
@@ -1246,7 +1248,9 @@ class SerenityBlocks {
             const currentMode = this.gameModeManager?.getCurrentMode();
             // For local multiplayer, return player1
             if (currentMode && currentMode.multiplayerState) {
-                return currentMode.multiplayerState.player1;
+                const multiplayerState = currentMode.multiplayerState;
+                // Support both new (players array) and old (player1/player2) structure
+                return multiplayerState.players ? multiplayerState.players[0] : multiplayerState.player1;
             }
             // For other modes, return gameState
             if (currentMode && currentMode.gameState) {
@@ -1260,6 +1264,10 @@ class SerenityBlocks {
         window.move = (dir) => {
             const gameState = getCurrentGameState();
             if (!gameState || !gameState.currentPiece) return;
+            
+            // Check if game is paused (important for multiplayer round transitions)
+            const currentMode = this.gameModeManager?.getCurrentMode();
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
 
             coreMove(
                 gameState,
@@ -1272,6 +1280,10 @@ class SerenityBlocks {
         window.rotate = (dir) => {
             const gameState = getCurrentGameState();
             if (!gameState || !gameState.currentPiece) return;
+            
+            // Check if game is paused (important for multiplayer round transitions)
+            const currentMode = this.gameModeManager?.getCurrentMode();
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
 
             coreRotate(
                 gameState,
@@ -1287,6 +1299,10 @@ class SerenityBlocks {
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
+            
+            // Check if game is paused (important for multiplayer round transitions)
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
+            
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
                 : this.getPhysicsCallbacks();
@@ -1304,6 +1320,10 @@ class SerenityBlocks {
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
+            
+            // Check if game is paused (important for multiplayer round transitions)
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
+            
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
                 : this.getPhysicsCallbacks();
@@ -1363,51 +1383,182 @@ class SerenityBlocks {
             return this.multiplayerState;
         };
 
+        // Helper to get player state (supports both old and new structure)
+        const getPlayerState = (playerNum) => {
+            const multiplayerState = getMultiplayerState();
+            if (!multiplayerState) return null;
+            
+            // New structure uses players array (0-based), old structure uses player1/player2
+            if (multiplayerState.players) {
+                return multiplayerState.players[playerNum - 1];
+            } else {
+                return playerNum === 1 ? multiplayerState.player1 : multiplayerState.player2;
+            }
+        };
+
         // Expose Player 2 controls for multiplayer
         window.moveP2 = (dir) => {
             const multiplayerState = getMultiplayerState();
-            if (multiplayerState && !multiplayerState.isGameOver) {
-                coreMove(
-                    multiplayerState.player2,
-                    dir,
-                    () => this.soundManager.sfxPlayer.playMove(),
-                    addPieceTrail,
-                );
-            }
+            const player2State = getPlayerState(2);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreMove(
+                player2State,
+                dir,
+                () => this.soundManager.sfxPlayer.playMove(),
+                addPieceTrail,
+            );
         };
 
         window.rotateP2 = (dir) => {
             const multiplayerState = getMultiplayerState();
-            if (multiplayerState && !multiplayerState.isGameOver) {
-                coreRotate(
-                    multiplayerState.player2,
-                    dir,
-                    () => this.soundManager.sfxPlayer.playRotate(),
-                    addPieceTrail,
-                );
-            }
+            const player2State = getPlayerState(2);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreRotate(
+                player2State,
+                dir,
+                () => this.soundManager.sfxPlayer.playRotate(),
+                addPieceTrail,
+            );
         };
 
         window.softDropP2 = () => {
             const multiplayerState = getMultiplayerState();
-            if (multiplayerState && !multiplayerState.isGameOver) {
-                coreSoftDrop(
-                    multiplayerState.player2,
-                    () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getMultiplayerPhysicsCallbacks(2),
-                );
-            }
+            const player2State = getPlayerState(2);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreSoftDrop(
+                player2State,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(2),
+            );
         };
 
         window.hardDropP2 = () => {
             const multiplayerState = getMultiplayerState();
-            if (multiplayerState && !multiplayerState.isGameOver) {
-                coreHardDrop(
-                    multiplayerState.player2,
-                    () => this.soundManager.sfxPlayer.playDrop(),
-                    this.getMultiplayerPhysicsCallbacks(2),
-                );
-            }
+            const player2State = getPlayerState(2);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreHardDrop(
+                player2State,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(2),
+            );
+        };
+
+        // Expose Player 3 controls for multiplayer (Gamepad only)
+        window.moveP3 = (dir) => {
+            const multiplayerState = getMultiplayerState();
+            const player3State = getPlayerState(3);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreMove(
+                player3State,
+                dir,
+                () => this.soundManager.sfxPlayer.playMove(),
+                addPieceTrail,
+            );
+        };
+
+        window.rotateP3 = (dir) => {
+            const multiplayerState = getMultiplayerState();
+            const player3State = getPlayerState(3);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreRotate(
+                player3State,
+                dir,
+                () => this.soundManager.sfxPlayer.playRotate(),
+                addPieceTrail,
+            );
+        };
+
+        window.softDropP3 = () => {
+            const multiplayerState = getMultiplayerState();
+            const player3State = getPlayerState(3);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreSoftDrop(
+                player3State,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(3),
+            );
+        };
+
+        window.hardDropP3 = () => {
+            const multiplayerState = getMultiplayerState();
+            const player3State = getPlayerState(3);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreHardDrop(
+                player3State,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(3),
+            );
+        };
+
+        // Expose Player 4 controls for multiplayer (Gamepad only)
+        window.moveP4 = (dir) => {
+            const multiplayerState = getMultiplayerState();
+            const player4State = getPlayerState(4);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreMove(
+                player4State,
+                dir,
+                () => this.soundManager.sfxPlayer.playMove(),
+                addPieceTrail,
+            );
+        };
+
+        window.rotateP4 = (dir) => {
+            const multiplayerState = getMultiplayerState();
+            const player4State = getPlayerState(4);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreRotate(
+                player4State,
+                dir,
+                () => this.soundManager.sfxPlayer.playRotate(),
+                addPieceTrail,
+            );
+        };
+
+        window.softDropP4 = () => {
+            const multiplayerState = getMultiplayerState();
+            const player4State = getPlayerState(4);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreSoftDrop(
+                player4State,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(4),
+            );
+        };
+
+        window.hardDropP4 = () => {
+            const multiplayerState = getMultiplayerState();
+            const player4State = getPlayerState(4);
+            // Check if game is paused or game over
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            
+            coreHardDrop(
+                player4State,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(4),
+            );
         };
 
         // Setup keyboard and touch controls with the exposed gameActions
@@ -1428,6 +1579,16 @@ class SerenityBlocks {
             rotateP2: window.rotateP2,
             softDropP2: window.softDropP2,
             hardDropP2: window.hardDropP2,
+            // Player 3 actions (Gamepad only)
+            moveP3: window.moveP3,
+            rotateP3: window.rotateP3,
+            softDropP3: window.softDropP3,
+            hardDropP3: window.hardDropP3,
+            // Player 4 actions (Gamepad only)
+            moveP4: window.moveP4,
+            rotateP4: window.rotateP4,
+            softDropP4: window.softDropP4,
+            hardDropP4: window.hardDropP4,
         };
 
         setupKeyboardControls(this.inputController, this.settingsManager.get(), gameActions);
@@ -2074,7 +2235,10 @@ class SerenityBlocks {
             return this.getPhysicsCallbacks(); // Fallback to single player callbacks
         }
         
-        const playerState = playerNum === 1 ? multiplayerState.player1 : multiplayerState.player2;
+        // Support both old structure (player1/player2) and new structure (players array)
+        const playerState = multiplayerState.players 
+            ? multiplayerState.players[playerNum - 1]  // New array-based structure
+            : (playerNum === 1 ? multiplayerState.player1 : multiplayerState.player2);  // Old structure
         const sceneRef = () => {
             // Get board scenes from the current mode or fallback to main.js
             const boardScenes = currentMode?.boardScenes || this.multiplayerBoardScenes;
@@ -2111,8 +2275,13 @@ class SerenityBlocks {
                 eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, player: playerNum });
             },
             onGarbageReady: (summary) => {
+                // Convert playerNum to appropriate format based on multiplayerState structure
+                const playerIdentifier = multiplayerState.players 
+                    ? playerNum - 1  // New structure uses 0-based index
+                    : playerNum;     // Old structure uses 1-based player number
+                
                 multiplayerState.handleGarbageSummary(
-                    playerNum,
+                    playerIdentifier,
                     summary,
                     (player, garbageAmount) => {
                         if (garbageAmount > 0) {
@@ -2177,51 +2346,55 @@ class SerenityBlocks {
         };
 
         callbacks.spawnPiece = async () => {
+            // Convert playerNum to appropriate format based on multiplayerState structure
+            const playerIdentifier = multiplayerState.players
+                ? playerNum - 1  // New structure uses 0-based index
+                : playerNum;     // Old structure uses 1-based player number
+
             // Insert any pending garbage before spawning next piece (Quadra-style)
-            const garbageQueue = multiplayerState.getGarbageQueue(playerNum);
+            const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
             if (!garbageQueue.isEmpty()) {
-                const garbageAmount = garbageQueue.getTotalLines();
-                console.log(
-                    `[Garbage] Inserting ${garbageAmount} garbage lines into Player ${playerNum}'s board`,
-                );
+                // Get line-type garbage entries from the queue
+                const queuedEntries = garbageQueue.entries.filter(e => e.type === 'line');
 
-                const result = multiplayerState.insertPendingGarbage(playerNum, {
-                    animated: true,
-                });
-
-                if (result.topOut) {
-                    console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
-                    this.endMultiplayerGame(playerNum);
-                    return; // Don't spawn next piece
-                }
-
-                // Start animating the garbage pieces rising from bottom
-                if (result.garbagePieces && result.garbagePieces.length > 0) {
-                    this.animateGarbageRise(result.garbagePieces);
-                }
-
-                if (result.linesAfterInsertion && result.linesAfterInsertion.length > 0) {
+                if (queuedEntries.length > 0) {
                     console.log(
-                        `[Garbage] Player ${playerNum} filled ${result.linesAfterInsertion.length} line(s) immediately after garbage insertion`,
+                        `[Garbage] Inserting ${queuedEntries.length} garbage lines into Player ${playerNum}'s board`,
                     );
-                    await multiplayerState.resolveGarbageCascade(playerNum, callbacks);
 
-                    if (playerState.isGameOver) {
-                        console.log(
-                            `[Garbage] Player ${playerNum} topped out during garbage cascade resolution`,
-                        );
+                    // Insert garbage directly into locked pieces (becomes part of board foundation)
+                    const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {});
+
+                    if (result && result.garbagePieces) {
+                        // Mark board as dirty to trigger re-render
+                        markBoardDirty(playerState);
+
+                        // Start animating the garbage pieces rising from bottom
+                        if (result.garbagePieces.length > 0 && this.animateGarbageRise) {
+                            this.animateGarbageRise(result.garbagePieces);
+                        }
+                    }
+
+                    // Clear the processed garbage entries from queue
+                    garbageQueue.entries = garbageQueue.entries.filter(e => e.type !== 'line');
+
+                    // Check if garbage caused top-out
+                    // (Note: insertGarbageEntries doesn't return topOut, we check board height)
+                    const topRowOccupied = playerState.lockedPieces.some(piece => piece.y < HIDDEN_ROWS);
+                    if (topRowOccupied) {
+                        console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
                         this.endMultiplayerGame(playerNum);
-                        return;
+                        return; // Don't spawn next piece
                     }
                 }
             }
 
             // Spawn next piece
-            const nextCanvases = playerNum === 1 
+            const nextCanvases = playerNum === 1
                 ? (currentMode?.p1NextCanvases || this.p1NextCanvases)
                 : (currentMode?.p2NextCanvases || this.p2NextCanvases);
-            
+
             spawnPiece(
                 playerState,
                 () => {
@@ -2280,7 +2453,23 @@ class SerenityBlocks {
         
         if (multiplayerState.isGameOver) return;
 
-        multiplayerState.setGameOver(losingPlayer);
+        // New MultiPlayerState uses handlePlayerDeath with 0-based index
+        // Old MultiplayerGameState uses setGameOver with 1-based playerNum
+        if (multiplayerState.players && typeof multiplayerState.handlePlayerDeath === 'function') {
+            // New structure: Convert 1-based losingPlayer to 0-based index
+            const losingPlayerIndex = losingPlayer - 1;
+            multiplayerState.handlePlayerDeath(losingPlayerIndex);
+            
+            // If using new game mode system, call its handler
+            if (currentMode && typeof currentMode._handleGameOver === 'function') {
+                // Call LocalMultiplayerMode's round-end handler
+                await currentMode._handleGameOver(losingPlayerIndex);
+                return;
+            }
+        } else if (typeof multiplayerState.setGameOver === 'function') {
+            // Old structure
+            multiplayerState.setGameOver(losingPlayer);
+        }
 
         // Cancel animation frame
         if (multiplayerState.animationId) {

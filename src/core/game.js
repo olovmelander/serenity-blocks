@@ -111,6 +111,7 @@ export class GameState {
         this.isGameOver = false;
         this.isPaused = false;
         this.isProcessingPhysics = false;
+        this.isAlive = true; // For multiplayer: tracks if player is still in the round
 
         // Input
         this.inputQueue = null;
@@ -164,6 +165,7 @@ export class GameState {
         this.piecesPlaced = 0;
         this.isGameOver = false;
         this.isProcessingPhysics = false;
+        this.isAlive = true;
         this.inputQueue = null;
         this.startTime = Date.now();
         this.board = null;
@@ -233,6 +235,9 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     piece.color = COLORS[shapeKey];
 
     gameState.currentPiece = piece;
+    
+    // Reset drop counter for new piece (CRITICAL for gravity!)
+    gameState.dropCounter = 0;
 
     const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
     fillBag(gameState.nextPieces, rng);
