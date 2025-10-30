@@ -3,6 +3,8 @@
 // =================================================================================
 
 import { getQualityConfig, normalizeQuality } from '../utils/quality.js';
+import { throttle } from '../utils/performance-utils.js';
+import { TextureManager, BufferManager } from '../utils/texture-manager.js';
 
 const TEXTURE_VERTEX_SHADER = `
     attribute vec3 a_position;
@@ -701,7 +703,12 @@ export class WebGLRenderer {
         };
 
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        
+        // Store resize handler for proper cleanup
+        // Throttle resize to max once every 100ms to reduce CPU usage
+        this.resizeHandler = throttle(this.resize.bind(this), 100);
+        window.addEventListener('resize', this.resizeHandler);
+        console.log('[WebGLRenderer] Resize handler throttled to 100ms');
 
         this.texturedQuads = [];
         this.particleSystems = [];
@@ -711,6 +718,11 @@ export class WebGLRenderer {
         this.effectQuality = 'High';
         this.qualityConfig = getQualityConfig(this.effectQuality);
         this._frameSkipCounter = 0;
+        
+        // Initialize GPU resource managers for efficient memory management
+        this.textureManager = new TextureManager(this.gl, { maxTextures: 20 });
+        this.bufferManager = new BufferManager(this.gl);
+        console.log('[WebGLRenderer] GPU resource managers initialized');
     }
 
     resize() {
@@ -792,6 +804,72 @@ export class WebGLRenderer {
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
+    /**
+     * Cleanup method - removes all event listeners and clears resources
+     * Should be called when renderer is being destroyed
+     */
+    cleanup() {
+        console.log('[WebGLRenderer] Starting cleanup...');
+        
+        // Stop animation loop
+        this.stop();
+        
+        // Remove window resize listener
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+            console.log('[WebGLRenderer] Resize listener removed');
+        }
+        
+        // Use resource managers for cleanup (more efficient and tracked)
+        console.log('[WebGLRenderer] Disposing all GPU resources via managers');
+        
+        if (this.textureManager) {
+            this.textureManager.cleanup();
+        }
+        
+        if (this.bufferManager) {
+            this.bufferManager.cleanup();
+        }
+        
+        // Also clean up any manually created resources not tracked by managers
+        // (legacy cleanup for backwards compatibility)
+        this.texturedQuads.forEach(quad => {
+            if (quad.texture) {
+                this.gl.deleteTexture(quad.texture);
+            }
+            if (quad.positionBuffer) {
+                this.gl.deleteBuffer(quad.positionBuffer);
+            }
+            if (quad.texcoordBuffer) {
+                this.gl.deleteBuffer(quad.texcoordBuffer);
+            }
+        });
+        
+        // Dispose particle system resources
+        this.particleSystems.forEach(ps => {
+            if (ps.positionBuffer) {
+                this.gl.deleteBuffer(ps.positionBuffer);
+            }
+            if (ps.sizeBuffer) {
+                this.gl.deleteBuffer(ps.sizeBuffer);
+            }
+            if (ps.alphaBuffer) {
+                this.gl.deleteBuffer(ps.alphaBuffer);
+            }
+        });
+        
+        // Clear arrays
+        this.texturedQuads = [];
+        this.particleSystems = [];
+        
+        // Null out managers
+        this.textureManager = null;
+        this.bufferManager = null;
+        
+        console.log('✅ [WebGLRenderer] Cleanup complete - GPU resources freed');
+    }
+
     renderFrame() {
         const { gl } = this;
 
@@ -862,6 +940,40 @@ export class WebGLRenderer {
 
     loadTheme(themeName, themeData = null) {
         console.log('[WebGLRenderer] loadTheme called:', themeName);
+        
+        // IMPORTANT: Dispose GPU resources before clearing arrays
+        console.log('[WebGLRenderer] Disposing GPU resources from previous theme');
+        
+        // Dispose textured quad resources (textures and buffers)
+        this.texturedQuads.forEach(quad => {
+            if (quad.texture) {
+                this.gl.deleteTexture(quad.texture);
+                console.log('[WebGLRenderer] Deleted texture from textured quad');
+            }
+            if (quad.positionBuffer) {
+                this.gl.deleteBuffer(quad.positionBuffer);
+            }
+            if (quad.texcoordBuffer) {
+                this.gl.deleteBuffer(quad.texcoordBuffer);
+            }
+        });
+        
+        // Dispose particle system resources (buffers)
+        this.particleSystems.forEach(ps => {
+            if (ps.positionBuffer) {
+                this.gl.deleteBuffer(ps.positionBuffer);
+            }
+            if (ps.sizeBuffer) {
+                this.gl.deleteBuffer(ps.sizeBuffer);
+            }
+            if (ps.alphaBuffer) {
+                this.gl.deleteBuffer(ps.alphaBuffer);
+            }
+            console.log('[WebGLRenderer] Deleted buffers from particle system');
+        });
+        
+        console.log(`[WebGLRenderer] Disposed ${this.texturedQuads.length} textured quads and ${this.particleSystems.length} particle systems`);
+        
         // Clear both texturedQuads and particle systems to prevent theme overlap
         this.texturedQuads = [];
         this.particleSystems = [];

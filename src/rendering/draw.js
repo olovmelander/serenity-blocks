@@ -238,84 +238,164 @@ export function draw(canvas, ctx, gameState) {
  * @param {Array<HTMLCanvasElement>} nextCanvases - Array of canvas elements for next pieces
  * @param {Array<string>} nextPieces - Array of next piece keys (e.g., 'I', 'O', 'T')
  */
-export function drawNextPieces(nextCanvases, nextPieces) {
+export function drawNextPieces(nextCanvases, nextPieces = []) {
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
     nextCanvases.forEach((canv, idx) => {
-        const ctx = canv.getContext('2d');
-        ctx.clearRect(0, 0, canv.width, canv.height);
-
-        if (nextPieces[idx]) {
-            const shape = SHAPES[nextPieces[idx]];
-            const color = COLORS[nextPieces[idx]];
-
-            // Scale blocks based on which preview (first is larger)
-            const blockSize = BLOCK_SIZE * (idx === 0 ? 0.4 : 0.33);
-
-            // Center the shape in the canvas
-            const offsetX = (canv.width - shape[0].length * blockSize) / 2;
-            const offsetY = (canv.height - shape.length * blockSize) / 2;
-
-            // Draw all blocks as solid fill first
-            shape.forEach((row, y) => {
-                row.forEach((cell, x) => {
-                    if (cell > 0) {
-                        // Draw solid block
-                        ctx.fillStyle = color;
-                        ctx.fillRect(
-                            offsetX + x * blockSize,
-                            offsetY + y * blockSize,
-                            blockSize,
-                            blockSize,
-                        );
-                    }
-                });
-            });
-            
-            // Draw thin black outline around the entire piece
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.lineWidth = 1;
-            
-            shape.forEach((row, y) => {
-                row.forEach((cell, x) => {
-                    if (cell > 0) {
-                        const px = offsetX + x * blockSize;
-                        const py = offsetY + y * blockSize;
-                        
-                        // Draw borders only on outer edges
-                        // Top edge
-                        if (y === 0 || !shape[y - 1][x]) {
-                            ctx.beginPath();
-                            ctx.moveTo(px, py);
-                            ctx.lineTo(px + blockSize, py);
-                            ctx.stroke();
-                        }
-                        
-                        // Bottom edge
-                        if (y === shape.length - 1 || !shape[y + 1][x]) {
-                            ctx.beginPath();
-                            ctx.moveTo(px, py + blockSize);
-                            ctx.lineTo(px + blockSize, py + blockSize);
-                            ctx.stroke();
-                        }
-                        
-                        // Left edge
-                        if (x === 0 || !shape[y][x - 1]) {
-                            ctx.beginPath();
-                            ctx.moveTo(px, py);
-                            ctx.lineTo(px, py + blockSize);
-                            ctx.stroke();
-                        }
-                        
-                        // Right edge
-                        if (x === row.length - 1 || !shape[y][x + 1]) {
-                            ctx.beginPath();
-                            ctx.moveTo(px + blockSize, py);
-                            ctx.lineTo(px + blockSize, py + blockSize);
-                            ctx.stroke();
-                        }
-                    }
-                });
-            });
+        if (!(canv instanceof HTMLCanvasElement)) {
+            return;
         }
+
+        const ctx = canv.getContext('2d');
+        if (!ctx) return;
+
+        const slot = canv.closest('.player-next-piece, .next-queue-piece');
+        const nextKey = nextPieces[idx];
+
+        const displayWidth = canv.clientWidth || canv.width || 0;
+        const displayHeight = canv.clientHeight || canv.height || 0;
+        const renderWidth = Math.max(1, Math.round(displayWidth * dpr));
+        const renderHeight = Math.max(1, Math.round(displayHeight * dpr));
+
+        if (canv.width !== renderWidth || canv.height !== renderHeight) {
+            canv.width = renderWidth;
+            canv.height = renderHeight;
+        }
+
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, displayWidth, displayHeight);
+        ctx.imageSmoothingEnabled = false;
+
+        if (!nextKey || !SHAPES[nextKey]) {
+            if (slot) slot.classList.add('empty');
+            ctx.imageSmoothingEnabled = true;
+            ctx.restore();
+            return;
+        }
+
+        if (slot) slot.classList.remove('empty');
+
+        const shape = SHAPES[nextKey];
+        const color = COLORS[nextKey] || '#808080';
+
+        const rows = shape.length;
+        const cols = shape[0].length;
+
+        const paddingFactor = idx === 0 ? 0.18 : 0.22;
+        const padding = Math.max(6, Math.min(displayWidth, displayHeight) * paddingFactor);
+        const availableWidth = Math.max(1, displayWidth - padding * 2);
+        const availableHeight = Math.max(1, displayHeight - padding * 2);
+        const blockSize = Math.max(4, Math.floor(Math.min(
+            availableWidth / cols,
+            availableHeight / rows,
+        )));
+
+        const pieceWidth = cols * blockSize;
+        const pieceHeight = rows * blockSize;
+        const offsetX = Math.round((displayWidth - pieceWidth) / 2);
+        const offsetY = Math.round((displayHeight - pieceHeight) / 2);
+
+        // Draw fills with subtle lighting
+        shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (!cell) return;
+
+                const px = offsetX + x * blockSize;
+                const py = offsetY + y * blockSize;
+
+                ctx.fillStyle = color;
+                ctx.fillRect(px, py, blockSize, blockSize);
+
+                const highlightGradient = ctx.createLinearGradient(px, py, px, py + blockSize);
+                highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+                highlightGradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.12)');
+                highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = highlightGradient;
+                ctx.fillRect(px, py, blockSize, blockSize);
+
+                const shadowGradient = ctx.createLinearGradient(px, py, px + blockSize, py + blockSize);
+                shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                shadowGradient.addColorStop(1, 'rgba(0, 0, 0, 0.25)');
+                ctx.fillStyle = shadowGradient;
+                ctx.fillRect(px, py, blockSize, blockSize);
+            });
+        });
+
+        // Draw outline on outer edges only
+        const outlineWidth = Math.max(1, Math.round(blockSize * 0.08));
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.lineWidth = outlineWidth;
+        ctx.lineJoin = 'miter';
+
+        shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (!cell) return;
+
+                const px = offsetX + x * blockSize;
+                const py = offsetY + y * blockSize;
+
+                const hasTop = y > 0 && shape[y - 1]?.[x];
+                const hasBottom = y < rows - 1 && shape[y + 1]?.[x];
+                const hasLeft = x > 0 && row[x - 1];
+                const hasRight = x < row.length - 1 && row[x + 1];
+
+                if (!hasTop) {
+                    ctx.beginPath();
+                    ctx.moveTo(px, py + outlineWidth * 0.5);
+                    ctx.lineTo(px + blockSize, py + outlineWidth * 0.5);
+                    ctx.stroke();
+                }
+
+                if (!hasBottom) {
+                    ctx.beginPath();
+                    ctx.moveTo(px, py + blockSize - outlineWidth * 0.5);
+                    ctx.lineTo(px + blockSize, py + blockSize - outlineWidth * 0.5);
+                    ctx.stroke();
+                }
+
+                if (!hasLeft) {
+                    ctx.beginPath();
+                    ctx.moveTo(px + outlineWidth * 0.5, py);
+                    ctx.lineTo(px + outlineWidth * 0.5, py + blockSize);
+                    ctx.stroke();
+                }
+
+                if (!hasRight) {
+                    ctx.beginPath();
+                    ctx.moveTo(px + blockSize - outlineWidth * 0.5, py);
+                    ctx.lineTo(px + blockSize - outlineWidth * 0.5, py + blockSize);
+                    ctx.stroke();
+                }
+            });
+        });
+
+        // Subtle glow around highlighted piece
+        if (idx === 0) {
+            const glowPadding = Math.max(4, Math.round(blockSize * 0.4));
+            const glowX = offsetX - glowPadding;
+            const glowY = offsetY - glowPadding;
+            const glowWidth = pieceWidth + glowPadding * 2;
+            const glowHeight = pieceHeight + glowPadding * 2;
+
+            const glowGradient = ctx.createRadialGradient(
+                offsetX + pieceWidth / 2,
+                offsetY + pieceHeight / 2,
+                Math.max(pieceWidth, pieceHeight) * 0.15,
+                offsetX + pieceWidth / 2,
+                offsetY + pieceHeight / 2,
+                Math.max(pieceWidth, pieceHeight) * 0.85,
+            );
+
+            glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(glowX, glowY, glowWidth, glowHeight);
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.restore();
     });
 }
 

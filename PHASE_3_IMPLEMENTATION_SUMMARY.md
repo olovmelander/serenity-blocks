@@ -1,397 +1,573 @@
-# Phase 3 Implementation - Technical Summary
+# Phase 3: Animation Frame & Timer Management - Implementation Summary
 
-**Date:** October 18, 2025  
-**Status:** ✅ COMPLETE  
-**Files Modified:** 5  
-**Lines Added:** ~350  
-**Features Added:** 5 major systems
+**Date**: 2025-10-30  
+**Status**: ✅ **COMPLETED**  
+**Expected Impact**: Prevent timer leaks, provide debugging tools, ensure animation frames properly cancelled
 
 ---
 
-## 📝 Changes Made
+## Overview
 
-### 1. Enhanced Attack Router
-**File:** `src/core/multiplayer/ffa-attack-router.js`
-
-**Changes:**
-- Added immediate garbage insertion logic in `sendGarbageToPlayer()`
-- Garbage now inserts immediately if opponent has no active piece
-- Prevents stalling and makes gameplay more responsive
-
-**Lines Added:** ~8
+Phase 3 focused on ensuring all timers and animation frames are properly managed and cancelled. This prevents CPU usage leaks from orphaned timers and provides development tools for detecting animation frame leaks.
 
 ---
 
-### 2. Garbage Counter System
-**File:** `src/core/multiplayer/ffa-p2p-game-state.js`
+## Changes Implemented
 
-**Changes:**
-- Added `applyGarbageCounter()` method
-- Reduces incoming garbage when sending attacks
-- Dispatches `ffa:garbage-countered` event for feedback
-- Integrated into attack router's `routeAttack()` flow
+### ✅ Phase 3.3: Timer Management Utility (Priority 1)
 
-**Features:**
-- Competitive defensive mechanic
-- Visual/audio feedback
-- Works with line-type garbage only (as intended)
+**File**: `src/utils/timer-manager.js` **(NEW FILE)**
 
-**Lines Added:** ~50
+**Purpose**: Centralized timer tracking and cleanup for setInterval/setTimeout
 
----
+**Problems Solved**:
+- timers created with `setInterval`/`setTimeout` often not cleared
+- Difficult to track which timers are active
+- No easy way to clear all timers on component destruction
+- Timer leaks cause unnecessary CPU usage
 
-### 3. Event-Driven Visual Effects
-**File:** `src/core/multiplayer/ffa-p2p-game-state.js`
+**Features Implemented**:
 
-**Changes:**
-- Modified `insertPendingGarbage()` to dispatch `ffa:garbage-inserted` event
-- Added `ffa:player-topped-out` event dispatch
-- Events include player info and metadata
+1. **Managed Intervals & Timeouts**:
+   ```javascript
+   const timers = new TimerManager();
+   
+   // Instead of native setTimeout/setInterval:
+   const id = timers.setInterval(() => update(), 1000);
+   timers.setTimeout(() => cleanup(), 5000);
+   
+   // Clear all at once:
+   timers.clearAll();
+   ```
 
-**Events Added:**
-- `ffa:garbage-inserted` - When garbage is applied to board
-- `ffa:garbage-countered` - When garbage is canceled
-- `ffa:player-topped-out` - When player dies from garbage
+2. **Auto-removal of Timeouts**:
+   - Timeouts automatically removed from tracking after execution
+   - Prevents unnecessary Map entries
 
-**Lines Added:** ~30
+3. **Individual or Bulk Clearing**:
+   - `clearInterval(id)` - Clear specific interval
+   - `clearTimeout(id)` - Clear specific timeout
+   - `clearAllIntervals()` - Clear only intervals
+   - `clearAllTimeouts()` - Clear only timeouts
+   - `clearAll()` - Clear everything
 
----
+4. **Statistics & Debugging**:
+   - `getActiveCount()` - Get active timer counts
+   - `getStats()` - Full statistics (created, cleared, active)
+   - `listActiveTimers()` - List all active timers with details
+   - `warnIfLeaked()` - Warn about timers not cleaned up
 
-### 4. Visual Effects System
-**File:** `src/ui/multi-player-canvas-layout.js`
+5. **Leak Detection**:
+   ```javascript
+   // In development mode:
+   timers.warnIfLeaked(); // Warns if timers still active
+   
+   // Output: "Potential timer leak detected! 2 intervals and 1 timeout still active"
+   ```
 
-**Changes:**
-- Added `setupVisualEffectsListeners()` method
-- Added `applyShakeEffect()` - Canvas shake on garbage insertion
-- Added `applyFlashEffect()` - Green flash on garbage counter
-- Added `applyDeathEffect()` - Grayscale + overlay on death
-- Added `showGarbagePopup()` - Popup notifications for garbage events
-- Enhanced `drawGarbageIndicator()` - Pulsing warnings, stripes, "DANGER" label
+**Usage Example**:
+```javascript
+class MyComponent {
+    constructor() {
+        this.timers = new TimerManager();
+    }
 
-**Features:**
-- GPU-accelerated effects
-- Intensity scales with garbage amount
-- Warning levels: normal → stripes (10+) → DANGER (15+)
-- Smooth animations (damped oscillation)
+    start() {
+        // Use wrapper methods
+        this.timers.setInterval(() => this.update(), 100);
+        this.timers.setTimeout(() => this.init(), 1000);
+    }
 
-**Lines Added:** ~180
-
----
-
-### 5. Sound Effects System
-**File:** `src/audio/sound-effects.js`
-
-**Changes:**
-- Added `playGarbageReceived()` method
-- Added `playGarbageCountered()` method
-- Added `playPlayerDeath()` method
-- All include fallback sounds if custom sounds not available
-
-**File:** `src/audio/sound-manager.js`
-
-**Changes:**
-- Added wrapper methods for all new sounds
-- Added `playGarbageReceived()`
-- Added `playGarbageCountered()`
-- Added `playPlayerDeath()`
-- Added `playGarbageSend()` (wrapper for existing)
-
-**File:** `src/ui/multi-player-canvas-layout.js`
-
-**Changes:**
-- Integrated sound calls into event listeners
-- Sounds only play for local player (except death)
-- Respects mute settings
-
-**Lines Added:** ~80
-
----
-
-## 🔧 Technical Details
-
-### Event Flow
-
-```
-Line Clear → Physics → onGarbageReady callback
-    ↓
-FFAAttackRouter.routeAttack()
-    ↓
-applyGarbageCounter() [NEW!]
-    └─ Dispatch: ffa:garbage-countered
-    └─ Visual: Flash green + popup
-    └─ Audio: playGarbageCountered()
-    ↓
-sendGarbageToPlayer()
-    ├─ Enqueue garbage
-    └─ If no piece: insertPendingGarbage() [NEW!]
-    ↓
-insertPendingGarbage()
-    ├─ Dequeue burst
-    ├─ Insert lines
-    ├─ Dispatch: ffa:garbage-inserted [NEW!]
-    ├─ Visual: Shake + popup
-    ├─ Audio: playGarbageReceived()
-    └─ Check top-out
-        └─ Dispatch: ffa:player-topped-out [NEW!]
-        └─ Visual: Death effect
-        └─ Audio: playPlayerDeath()
+    destroy() {
+        // Development mode check
+        if (process.env.NODE_ENV === 'development') {
+            this.timers.warnIfLeaked();
+        }
+        
+        // Clear everything
+        this.timers.clearAll(); // Done!
+    }
+}
 ```
 
-### Performance Impact
+**Export**: Also exports `globalTimerManager` singleton for shared use
 
-| Feature | CPU Impact | GPU Impact |
-|---------|-----------|------------|
-| Garbage Counter | < 0.1ms | None |
-| Immediate Insertion | < 1ms | None |
-| Shake Effect | < 0.5ms | < 1ms (transform) |
-| Flash Effect | < 0.5ms | < 1ms (overlay) |
-| Death Effect | < 0.5ms | < 2ms (filter) |
-| Popup Notifications | < 0.5ms | < 1ms (DOM) |
-| Enhanced Indicators | 0ms* | 0ms* |
-| Sound Effects | < 0.5ms | None |
-
-**Total: < 5ms worst case** (still 60 FPS)  
-*Already part of render loop, no additional overhead
+**Expected Impact**: 
+- Easy timer tracking and cleanup
+- Prevents orphaned timers
+- Better debugging in development mode
 
 ---
 
-## 🎨 Visual Improvements
+### ✅ Phase 3.2: Game Mode Animation Cleanup Verification
 
-### Before Phase 3:
-- Basic red garbage bar
-- No visual feedback for garbage events
-- No counter mechanic feedback
-- No death effects
+**Files Verified**:
+- `src/core/game-modes/SerenityMode.js` ✅
+- `src/core/game-modes/SinglePlayerMode.js` ✅
 
-### After Phase 3:
-- ✨ Pulsing garbage indicator (intensity scales with danger)
-- ✨ Warning stripes for high garbage (10+ lines)
-- ✨ "DANGER" label for critical amounts (15+ lines)
-- ✨ Shake effect when receiving garbage
-- ✨ Green flash when countering garbage
-- ✨ Grayscale + "💀 DEAD" overlay on death
-- ✨ Popup notifications ("+X" red, "-X" green)
+**Status**: **Already Properly Implemented** 🎉
 
----
+#### SerenityMode Cleanup (Already Good)
+**Lines 140-181**: `onStop()` and `onDeactivate()` methods
 
-## 🔊 Audio Improvements
+Properly clears:
+- ✅ `cursorTimeout` - Cleared in `onDeactivate()`
+- ✅ `keyboardOverlayTimeout` - Cleared in `onDeactivate()`
+- ✅ Event listeners - Uses `cleanupHandlers` array pattern
+- ✅ Serenity Hub - Calls `serenityHub.destroy()`
 
-### Before Phase 3:
-- Basic gameplay sounds (move, rotate, drop, line clear)
-- No multiplayer-specific sounds
+**Code:**
+```javascript
+async onStop() {
+    await super.onStop();
+    this._hideBreathingIndicator();
+    this._hideKeyboardShortcuts();
+    document.body.classList.remove('cursor-hidden');
+}
 
-### After Phase 3:
-- ✨ Garbage send sound (when attacking)
-- ✨ Garbage receive sound (when attacked)
-- ✨ Garbage counter sound (when defending)
-- ✨ Player death sound (when someone tops out)
-- ✨ Proper event-driven triggering
-- ✨ Local player filtering (only hear your own events)
+async onDeactivate() {
+    if (this.serenityHub) {
+        this.serenityHub.destroy();
+        this.serenityHub = null;
+    }
+    
+    // Clear timeouts
+    if (this.cursorTimeout) {
+        clearTimeout(this.cursorTimeout);
+        this.cursorTimeout = null;
+    }
+    if (this.keyboardOverlayTimeout) {
+        clearTimeout(this.keyboardOverlayTimeout);
+        this.keyboardOverlayTimeout = null;
+    }
+    
+    // Clean up event listeners
+    this._cleanupEventListeners(this.cleanupHandlers);
+}
+```
 
----
+#### SinglePlayerMode Cleanup (Already Good)
+**Lines 153-187**: `onStop()` method
 
-## 🎮 Gameplay Improvements
+Properly clears:
+- ✅ `animationFrameId` - Cancelled with `cancelAnimationFrame()`
+- ✅ Game state - Nulled out
+- ✅ Event listeners - Uses `cleanupHandlers` array pattern
 
-### 1. Garbage Counter System
-**Impact:** Major competitive mechanic
-- Rewards attacking while under pressure
-- Creates risk/reward decisions
-- Makes defense more active
-- Reduces "runaway leader" problem
+**Code:**
+```javascript
+async onStop() {
+    await super.onStop();
+    
+    // Stop game loop
+    if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+    }
+    
+    // Mark game as over
+    if (this.gameState) {
+        this.gameState.isGameOver = true;
+    }
+    
+    // Clean up event listeners
+    this._cleanupEventListeners(this.cleanupHandlers);
+}
+```
 
-### 2. Immediate Insertion
-**Impact:** Fairness & responsiveness
-- Prevents stalling tactics
-- More predictable timing
-- Faster-paced gameplay
-- No waiting for piece spawn
-
-### 3. Warning Indicators
-**Impact:** Better telegraphing
-- Clear visual danger levels
-- Helps with decision-making
-- Reduces frustration (you see it coming)
-- Adds urgency
-
-### 4. Visual/Audio Feedback
-**Impact:** Game feel
-- Makes actions feel impactful
-- Provides clear feedback loop
-- Increases satisfaction
-- Adds "juice" to the game
-
----
-
-## 📊 Code Quality
-
-### Maintainability:
-- ✅ Well-documented functions
-- ✅ Clear event names
-- ✅ Separation of concerns (logic vs visual vs audio)
-- ✅ Consistent naming conventions
-- ✅ PHASE markers for tracking changes
-
-### Extensibility:
-- ✅ Easy to add new visual effects
-- ✅ Easy to add new sound effects
-- ✅ Event-driven architecture allows easy hooking
-- ✅ Fallback sounds for missing assets
-
-### Performance:
-- ✅ No blocking operations
-- ✅ GPU-accelerated effects
-- ✅ Efficient event dispatch
-- ✅ Minimal memory allocations
-- ✅ No performance regressions
+**Assessment**: ✅ **No changes needed** - Both game modes already follow best practices!
 
 ---
 
-## 🧪 Testing Recommendations
+### ✅ Phase 3.1: Animation Frame Registry (Debugging Tool)
 
-### Unit Tests (if implementing):
-1. Test `applyGarbageCounter()` with various queue states
-2. Test immediate insertion logic (with/without piece)
-3. Test visual effect cleanup (no memory leaks)
-4. Test sound effect muting
+**File**: `src/utils/animation-frame-registry.js` **(NEW FILE)**
 
-### Integration Tests:
-1. Test garbage counter in 1v1 scenario
-2. Test immediate insertion in FFA
-3. Test multiple simultaneous effects
-4. Test event dispatching order
+**Purpose**: Track active animation frames and detect leaks (development tool)
 
-### Manual Tests:
-1. See `PHASE_3_QUICK_TEST.md` for full manual test suite
-2. Focus on edge cases (0 lines, 20+ lines, simultaneous events)
-3. Test with audio on/off
-4. Test with different player counts (2-8)
+**Features Implemented**:
 
----
+1. **Frame Registration with Tracking**:
+   ```javascript
+   const registry = new AnimationFrameRegistry();
+   
+   // Instead of:
+   const id = requestAnimationFrame(callback);
+   
+   // Use:
+   const id = registry.register(() => callback(), 'MyComponent');
+   ```
 
-## 🐛 Potential Issues & Solutions
+2. **Automatic Execution Tracking**:
+   - Automatically removes frame from tracking when executed
+   - Tracks execution count for statistics
 
-### Issue: Sound effects not playing
-**Cause:** AudioContext not resumed (browser security)  
-**Solution:** Ensure user interacts with page before playing sounds  
-**Status:** Handled by existing audio system
+3. **Source-Based Management**:
+   ```javascript
+   registry.register(update, 'GameLoop');
+   registry.register(render, 'Renderer');
+   
+   // Cancel all frames from specific source
+   registry.cancelAll('GameLoop'); // Cancels only GameLoop frames
+   ```
 
-### Issue: Visual effects lag on old devices
-**Cause:** Heavy GPU usage for filters/transforms  
-**Solution:** Could add "reduced effects" setting  
-**Status:** Low priority, effects are brief
+4. **Leak Detection**:
+   ```javascript
+   // Detect frames pending > 5 seconds
+   const leaks = registry.detectLeaks(5000);
+   
+   // Start periodic leak detection
+   const intervalId = registry.startLeakDetection(10000, 5000);
+   ```
 
-### Issue: Popups overlap with many events
-**Cause:** Multiple events triggering simultaneously  
-**Solution:** Queue system or position stacking  
-**Status:** Low priority, auto-clears in 2s
+5. **Statistics & Monitoring**:
+   - `getActiveCount()` - Number of pending frames
+   - `getActiveBySource()` - Map of source → frame count
+   - `listActive()` - Detailed list of all active frames
+   - `logActiveFrames()` - Pretty console output
+   - `getStats()` - Comprehensive statistics
 
-### Issue: Garbage counter removes too much
-**Cause:** Multiple attacks processed simultaneously  
-**Solution:** Working as intended (first-come-first-served)  
-**Status:** Feature, not bug
+6. **Global Monitoring (Development Mode)**:
+   ```javascript
+   // Enable global monkey-patching of requestAnimationFrame
+   import { GlobalAnimationFrameMonitor } from './utils/animation-frame-registry.js';
+   
+   GlobalAnimationFrameMonitor.enable({ enableLogging: true });
+   
+   // Now ALL requestAnimationFrame calls are tracked
+   
+   // Check for leaks anywhere in the codebase
+   GlobalAnimationFrameMonitor.detectLeaks(5000);
+   GlobalAnimationFrameMonitor.logActive();
+   
+   // Available on window object for console access
+   window.AnimationFrameMonitor.detectLeaks();
+   ```
 
----
+**Example Output**:
+```
+[AnimationFrameRegistry] Active Animation Frames
+Total active frames: 5
 
-## 📈 Metrics
+By source:
+  GameLoop: 1
+  ParticleSystem: 3
+  ThemeAnimation: 1
 
-### Code Additions:
-- **Files Modified:** 5
-- **Methods Added:** 8
-- **Events Added:** 3
-- **Lines Added:** ~350
-- **Comments Added:** ~100
+┌─────────┬──────────┬──────────────────┬──────┬────────────────┐
+│ (index) │ frameId  │     source       │  age │    callback    │
+├─────────┼──────────┼──────────────────┼──────┼────────────────┤
+│    0    │  12345   │   'GameLoop'     │ 142  │ '() => {...}'  │
+│    1    │  12346   │ 'ParticleSystem' │  87  │ 'function ...' │
+└─────────┴──────────┴──────────────────┴──────┴────────────────┘
+```
 
-### Features:
-- **Garbage Counter:** ✅ Fully functional
-- **Immediate Insertion:** ✅ Fully functional
-- **Visual Effects:** ✅ 4 types implemented
-- **Sound Effects:** ✅ 4 sounds integrated
-- **Warning Indicators:** ✅ 3-tier system
+**Leak Detection Example**:
+```javascript
+// Detect frames pending > 5 seconds (potential leaks)
+const leaks = registry.detectLeaks(5000);
 
-### Coverage:
-- **Gameplay Logic:** 100% of planned features
-- **Visual Feedback:** 100% of planned effects
-- **Audio Feedback:** 100% of planned sounds
-- **Edge Cases:** 90%+ (some rare cases remain)
+// Output:
+// [AnimationFrameRegistry] Detected 2 potential leaks (frames pending > 5000ms)
+```
 
----
-
-## 🎉 Achievements
-
-What this implementation accomplishes:
-
-1. **Complete Competitive Mechanics**
-   - Offensive AND defensive gameplay
-   - Risk/reward decision-making
-   - Strategic depth
-
-2. **Polished Game Feel**
-   - Satisfying visual feedback
-   - Clear audio cues
-   - Professional presentation
-
-3. **Fair Gameplay**
-   - No stalling exploits
-   - Clear danger indicators
-   - Predictable mechanics
-
-4. **Extensible Architecture**
-   - Easy to add more effects
-   - Easy to add more sounds
-   - Easy to add more mechanics
-
-5. **Production Quality**
-   - No linting errors
-   - Well-documented
-   - Performance-optimized
-   - Edge cases handled
+**Expected Impact**:
+- Easy animation frame leak detection in development
+- Source tracking helps identify problematic components
+- Statistics for performance analysis
 
 ---
 
-## 🚀 Next Steps
+## Summary of Phase 3
 
-### Immediate:
-1. **Test thoroughly** using `PHASE_3_QUICK_TEST.md`
-2. **Play with friends** to get real feedback
-3. **Document any bugs** you find
+### What Was Already Good ✅
+- ✅ SerenityMode properly clears timeouts
+- ✅ SinglePlayerMode properly cancels animation frames
+- ✅ Both modes use `cleanupHandlers` pattern for event listeners
+- ✅ No changes needed to existing game modes!
 
-### Short Term (Phase 4):
-- Add kill feed
-- Add attack indicators
-- Add combo counter
-- Polish HUD
+### What Was Added 🆕
+- ✅ **TimerManager** utility for easy timer tracking
+- ✅ **AnimationFrameRegistry** for debugging animation frames
+- ✅ **GlobalAnimationFrameMonitor** for development mode tracking
 
-### Medium Term (Phase 5):
-- Stress test with 8 players
-- Optimize performance
-- Add network resilience
-- Fix any bugs found in testing
-
-### Long Term (Phase 6):
-- Spectator mode
-- Replay system
-- Tournament mode
-- Statistics tracking
+### Files Created
+1. `src/utils/timer-manager.js` - Timer management utility
+2. `src/utils/animation-frame-registry.js` - Animation frame debugging tool
+3. `PHASE_3_IMPLEMENTATION_SUMMARY.md` - This documentation
 
 ---
 
-## 🎮 Conclusion
+## How to Use New Utilities
 
-**Phase 3 is complete and fully functional!**
+### For New Components
 
-The garbage system is now:
-- ✅ Fully integrated into networked gameplay
-- ✅ Enhanced with competitive mechanics
-- ✅ Polished with visual and audio feedback
-- ✅ Tested and ready for play
+```javascript
+import { TimerManager } from '../utils/timer-manager.js';
 
-**Your FFA multiplayer Tetris is now production-ready for competitive play!** 🎉
+class NewComponent {
+    constructor() {
+        this.timers = new TimerManager();
+    }
 
-All essential features are working. Phases 4-6 are optional polish and advanced features.
+    start() {
+        // Use TimerManager instead of native timers
+        this.timers.setInterval(() => this.update(), 100);
+        this.timers.setTimeout(() => this.initialize(), 1000);
+    }
+
+    destroy() {
+        // One line cleanup!
+        this.timers.clearAll();
+    }
+}
+```
+
+### For Debugging Animation Frames
+
+```javascript
+// In development mode, enable global monitoring
+import { GlobalAnimationFrameMonitor } from './utils/animation-frame-registry.js';
+
+if (process.env.NODE_ENV === 'development') {
+    GlobalAnimationFrameMonitor.enable();
+    
+    // Check for leaks periodically
+    setInterval(() => {
+        GlobalAnimationFrameMonitor.detectLeaks(5000);
+    }, 30000); // Every 30 seconds
+}
+```
+
+### For Existing Components (Refactoring)
+
+**Before**:
+```javascript
+class OldComponent {
+    start() {
+        this.intervalId = setInterval(() => this.update(), 1000);
+        this.timeoutId = setTimeout(() => this.init(), 500);
+    }
+
+    destroy() {
+        clearInterval(this.intervalId);
+        clearTimeout(this.timeoutId);
+    }
+}
+```
+
+**After** (Optional refactoring for better tracking):
+```javascript
+import { TimerManager } from '../utils/timer-manager.js';
+
+class OldComponent {
+    constructor() {
+        this.timers = new TimerManager();
+    }
+
+    start() {
+        this.timers.setInterval(() => this.update(), 1000);
+        this.timers.setTimeout(() => this.init(), 500);
+    }
+
+    destroy() {
+        this.timers.clearAll(); // Much simpler!
+    }
+}
+```
 
 ---
 
-**Congratulations on completing Phase 3!** 🚀🎊
+## Testing Instructions
 
-Ready to play? Open two browser windows and test it out! 🎮
+### Test Timer Management
 
+```javascript
+// In browser console or test file:
+import { TimerManager } from './utils/timer-manager.js';
+
+const timers = new TimerManager();
+
+// Create some timers
+timers.setInterval(() => console.log('tick'), 1000);
+timers.setTimeout(() => console.log('boom'), 3000);
+
+// Check active count
+console.log(timers.getActiveCount()); // { intervals: 1, timeouts: 1, total: 2 }
+
+// Get statistics
+console.log(timers.getStats());
+// { intervalsCreated: 1, timeoutsCreated: 1, ...activeIntervals: 1, activeTimeouts: 1 }
+
+// List active timers
+console.log(timers.listActiveTimers());
+
+// Clear all
+timers.clearAll();
+
+// Verify empty
+console.log(timers.getActiveCount()); // { intervals: 0, timeouts: 0, total: 0 }
+```
+
+### Test Animation Frame Registry
+
+```javascript
+// In browser console:
+import { AnimationFrameRegistry } from './utils/animation-frame-registry.js';
+
+const registry = new AnimationFrameRegistry({ enableLogging: true });
+
+// Register some frames
+const id1 = registry.register(() => console.log('frame 1'), 'Test1');
+const id2 = registry.register(() => console.log('frame 2'), 'Test2');
+
+// Check active
+console.log('Active:', registry.getActiveCount()); // 2
+
+// Log details
+registry.logActiveFrames();
+
+// Cancel one
+registry.cancel(id1);
+
+// Cancel all from source
+registry.cancelAll('Test2');
+
+// Verify empty
+console.log('Active:', registry.getActiveCount()); // 0
+```
+
+### Test Global Monitoring
+
+```javascript
+// In browser console:
+window.AnimationFrameMonitor.enable({ enableLogging: true });
+
+// Now all requestAnimationFrame calls are tracked!
+requestAnimationFrame(() => console.log('tracked!'));
+
+// Check for leaks after 10 seconds of gameplay
+setTimeout(() => {
+    window.AnimationFrameMonitor.detectLeaks(5000);
+    window.AnimationFrameMonitor.logActive();
+}, 10000);
+```
+
+---
+
+## Expected Results
+
+### Before Phase 3
+- Manual timer tracking required
+- No easy way to detect timer leaks
+- No animation frame leak detection
+- Potential for orphaned timers
+
+### After Phase 3
+- ✅ Easy timer tracking with `TimerManager`
+- ✅ One-line cleanup: `timers.clearAll()`
+- ✅ Leak detection warnings in development
+- ✅ Animation frame monitoring available
+- ✅ Source-based tracking for debugging
+
+---
+
+## Performance Impact
+
+### Memory
+- **TimerManager**: Negligible (~1KB per instance)
+- **AnimationFrameRegistry**: Minimal (~5-10KB when active)
+- **Global Monitoring**: Only enable in development mode
+
+### CPU
+- **TimerManager**: No overhead (simple Map lookups)
+- **AnimationFrameRegistry**: Minimal (wraps native RAF)
+- **Statistics**: Only computed on-demand
+
+### When to Use
+- **Production**: Use `TimerManager` optionally (or keep existing code if already working)
+- **Development**: Enable `GlobalAnimationFrameMonitor` for leak detection
+- **Debugging**: Use both utilities to track down leaks
+
+---
+
+## Integration Recommendations
+
+### Required Changes (None!)
+- ✅ Game modes already have proper cleanup
+- ✅ No breaking changes needed
+
+### Optional Refactoring
+1. **Refactor components with timers** to use `TimerManager`:
+   - MusicTab (has updateInterval)
+   - SerenityMode (has cursor/keyboard timeouts)
+   - Any other components with setInterval/setTimeout
+
+2. **Add development mode monitoring**:
+   ```javascript
+   // In main.js or development entry point:
+   if (process.env.NODE_ENV === 'development') {
+       import('./utils/animation-frame-registry.js').then(module => {
+           module.GlobalAnimationFrameMonitor.enable();
+           console.log('Animation frame monitoring enabled');
+       });
+   }
+   ```
+
+### Best Practices for New Code
+1. Use `TimerManager` for all new components with timers
+2. Call `clearAll()` in destroy/cleanup methods
+3. Use `warnIfLeaked()` in development mode
+4. Track animation frames by source for easier debugging
+
+---
+
+## Known Issues & Future Work
+
+### Known Issues
+- **None** - Phase 3 utilities are optional and non-breaking
+
+### Future Enhancements
+1. **Timer Pausing**: Add pause/resume functionality to TimerManager
+2. **Memory Profiler Integration**: Connect to Chrome DevTools
+3. **Automatic Cleanup**: Auto-cleanup timers when components are garbage collected (using WeakMap)
+
+---
+
+## Developer Notes
+
+### Key Learnings
+
+1. **Existing cleanup was already good**: No critical issues found in game modes
+2. **Utilities provide value**: Easy timer management and debugging tools
+3. **Optional adoption**: Can be adopted gradually without breaking changes
+
+### When to Use These Utilities
+
+**Use TimerManager when**:
+- Component has multiple timers
+- You want one-line cleanup
+- You need timer statistics
+- Debugging timer-related issues
+
+**Use AnimationFrameRegistry when**:
+- Debugging animation frame leaks
+- Need source-based tracking
+- Want to monitor all RAF calls globally
+- Investigating performance issues
+
+**Don't need these when**:
+- Component has 1-2 simple timers that are already cleaned up properly
+- Using existing patterns that work well
+
+---
+
+**Implementation Complete**: Phase 3 is fully implemented! 🎉
+
+**Key Takeaway**: Game modes already had good cleanup practices. Phase 3 adds **optional utilities** for easier timer management and debugging.
+
+**Next Phases**: 
+- **Phase 4**: DOM & Event Optimization (throttling, debouncing)
+- **Phase 5**: Asset Management (loading, caching)
+- **Phase 6**: Memory Best Practices (WeakMap, null references)
+- **Phase 7**: Performance Monitoring (dashboards, alerts)

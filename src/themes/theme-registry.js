@@ -234,6 +234,24 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'solar-eclipse',
+        displayName: 'Solar Eclipse',
+        module: './solar-eclipse/solar-eclipse-theme.js',
+        group: 'cosmic',
+    },
+    {
+        id: 'moonrise-summit',
+        displayName: 'Moonrise Summit',
+        module: './moonrise-summit/moonrise-summit-theme.js',
+        group: 'biomes',
+    },
+    {
+        id: 'black-hole',
+        displayName: 'Black Hole',
+        module: './black-hole/black-hole-theme.js',
+        group: 'cosmic',
+    },
+    {
         id: 'pyrestorm',
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',

@@ -8099,6 +8099,1189 @@ body {
     66% { transform: translate(1px, -1px); }
 }
 
+/* --- Solar Eclipse Theme --- */
+#solar-eclipse-theme {
+    background: radial-gradient(ellipse at center,
+        #1a0f2e 0%,
+        #0f0820 30%,
+        #050210 60%,
+        #000000 100%);
+    overflow: hidden;
+}
+
+/* Stars */
+#eclipse-stars {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+}
+
+.eclipse-star {
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    animation: eclipse-star-twinkle 4s ease-in-out infinite;
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+@keyframes eclipse-star-twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
+}
+
+/* Sun */
+.eclipse-sun {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 300px;
+    height: 300px;
+    margin-top: -150px;
+    margin-left: -150px;
+    background: radial-gradient(circle,
+        #fffacd 0%,
+        #ffd700 30%,
+        #ff8c00 60%,
+        #ff4500 100%);
+    border-radius: 50%;
+    z-index: 2;
+    box-shadow:
+        0 0 60px rgba(255, 215, 0, 0.8),
+        0 0 120px rgba(255, 140, 0, 0.6),
+        0 0 180px rgba(255, 69, 0, 0.4),
+        inset 0 0 40px rgba(255, 255, 205, 0.5);
+    animation: eclipse-sun-pulse 8s ease-in-out infinite;
+}
+
+@keyframes eclipse-sun-pulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+    50% {
+        transform: scale(1.05);
+        filter: brightness(1.1);
+    }
+}
+
+/* Moon */
+.eclipse-moon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 310px;
+    height: 310px;
+    margin-top: -155px;
+    margin-left: -155px;
+    background: radial-gradient(circle at 35% 35%,
+        #1a1a1a 0%,
+        #0d0d0d 50%,
+        #000000 100%);
+    border-radius: 50%;
+    z-index: 4;
+    box-shadow:
+        0 0 20px rgba(0, 0, 0, 0.9),
+        inset -10px -10px 30px rgba(50, 50, 50, 0.3);
+    animation: eclipse-moon-drift 60s linear infinite;
+}
+
+@keyframes eclipse-moon-drift {
+    0% {
+        transform: translate(-5px, -5px);
+    }
+    25% {
+        transform: translate(5px, -3px);
+    }
+    50% {
+        transform: translate(3px, 5px);
+    }
+    75% {
+        transform: translate(-3px, 3px);
+    }
+    100% {
+        transform: translate(-5px, -5px);
+    }
+}
+
+/* Corona */
+.eclipse-corona {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 500px;
+    height: 500px;
+    margin-top: -250px;
+    margin-left: -250px;
+    background: radial-gradient(circle,
+        transparent 0%,
+        transparent 30%,
+        rgba(255, 200, 100, 0.3) 35%,
+        rgba(255, 150, 50, 0.2) 45%,
+        rgba(255, 100, 30, 0.1) 60%,
+        transparent 80%);
+    border-radius: 50%;
+    z-index: 3;
+    filter: blur(20px);
+    animation: eclipse-corona-glow 6s ease-in-out infinite;
+}
+
+@keyframes eclipse-corona-glow {
+    0%, 100% {
+        opacity: 0.7;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.05);
+    }
+}
+
+/* Corona Canvas */
+#eclipse-corona-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+/* Solar Flares */
+#eclipse-flares {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    margin-top: -50%;
+    margin-left: -50%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.eclipse-flare {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--flare-width, 100px);
+    height: var(--flare-length, 300px);
+    margin-left: calc(var(--flare-width, 100px) / -2);
+    margin-top: -150px;
+    background: linear-gradient(to bottom,
+        rgba(255, 200, 100, 0.6) 0%,
+        rgba(255, 150, 50, 0.4) 30%,
+        rgba(255, 100, 30, 0.2) 60%,
+        transparent 100%);
+    filter: blur(30px);
+    transform-origin: 50% 150px;
+    transform: rotate(var(--flare-angle, 0deg));
+    animation: eclipse-flare-shimmer var(--flare-duration, 6s) ease-in-out infinite;
+    opacity: 0.8;
+}
+
+@keyframes eclipse-flare-shimmer {
+    0%, 100% {
+        opacity: 0.5;
+        filter: blur(25px);
+    }
+    50% {
+        opacity: 0.9;
+        filter: blur(35px);
+    }
+}
+
+/* Solar Bursts */
+#eclipse-bursts {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    margin-top: -50%;
+    margin-left: -50%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.eclipse-burst {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    margin-top: -100px;
+    margin-left: -100px;
+    background: radial-gradient(circle,
+        rgba(255, 220, 150, 0.8) 0%,
+        rgba(255, 180, 80, 0.4) 30%,
+        transparent 70%);
+    border-radius: 50%;
+    transform: rotate(var(--burst-angle, 0deg));
+    animation: eclipse-burst-expand 1s ease-out forwards;
+}
+
+@keyframes eclipse-burst-expand {
+    0% {
+        transform: rotate(var(--burst-angle, 0deg)) scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: rotate(var(--burst-angle, 0deg)) scale(3);
+        opacity: 0;
+    }
+}
+
+/* Coronal Mass Ejections */
+#eclipse-cme {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    margin-top: -50%;
+    margin-left: -50%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.eclipse-cme {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 150px;
+    height: 400px;
+    margin-left: -75px;
+    margin-top: -200px;
+    background: linear-gradient(to bottom,
+        rgba(255, 150, 80, 0.7) 0%,
+        rgba(255, 100, 50, 0.5) 20%,
+        rgba(255, 80, 40, 0.3) 40%,
+        transparent 100%);
+    filter: blur(20px);
+    transform-origin: 50% 200px;
+    transform: rotate(var(--cme-angle, 0deg));
+    animation: eclipse-cme-erupt 2s ease-out forwards;
+}
+
+@keyframes eclipse-cme-erupt {
+    0% {
+        transform: rotate(var(--cme-angle, 0deg)) translateY(0) scaleY(0);
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: rotate(var(--cme-angle, 0deg)) translateY(-300px) scaleY(1.5);
+        opacity: 0;
+    }
+}
+
+/* Shooting stars for combo effects */
+.shooting-star {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 4px white;
+    animation: eclipse-shooting-star 1.2s ease-out forwards;
+}
+
+@keyframes eclipse-shooting-star {
+    0% {
+        transform: translateX(0) translateY(0) rotate(var(--shooting-angle, -45deg));
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(300px) translateY(300px) rotate(var(--shooting-angle, -45deg));
+        opacity: 0;
+    }
+}
+
+/* --- Moonrise Summit Theme --- */
+#moonrise-summit-theme {
+    background: transparent;
+    overflow: hidden;
+}
+
+/* Sky Gradient */
+#moonrise-sky {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: linear-gradient(to bottom,
+        #1a1f3a 0%,
+        #2a3050 15%,
+        #3d4560 30%,
+        #5a4f50 50%,
+        #7a5f4a 70%,
+        #8b6f50 85%,
+        #a0826a 100%);
+    z-index: 1;
+}
+
+/* Stars */
+#moonrise-stars {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 2;
+}
+
+.moonrise-star {
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    animation: moonrise-star-twinkle 5s ease-in-out infinite;
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.6);
+}
+
+@keyframes moonrise-star-twinkle {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.4); }
+}
+
+/* Shooting Stars */
+#moonrise-shooting-stars {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.moonrise-shooting-star {
+    position: absolute;
+    width: 120px;
+    height: 2px;
+    background: linear-gradient(to right,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.8) 40%,
+        rgba(255, 255, 255, 1) 60%,
+        rgba(255, 255, 255, 0) 100%);
+    transform: rotate(var(--shooting-angle, -45deg));
+    animation: moonrise-shooting 2s ease-out forwards;
+    filter: blur(0.5px);
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+@keyframes moonrise-shooting {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--shooting-angle, -45deg)) translateX(0);
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: rotate(var(--shooting-angle, -45deg)) translateX(600px);
+    }
+}
+
+/* Moon */
+.moonrise-moon {
+    position: absolute;
+    top: 28%;
+    left: 50%;
+    width: 380px;
+    height: 380px;
+    margin-top: -190px;
+    margin-left: -190px;
+    background: radial-gradient(circle at 40% 40%,
+        #ffecd2 0%,
+        #f5d7b8 20%,
+        #e8c09f 40%,
+        #d4a882 60%,
+        #c89968 80%,
+        #b88a5e 100%);
+    border-radius: 50%;
+    z-index: 5;
+    box-shadow:
+        0 0 80px rgba(255, 200, 150, 0.6),
+        0 0 150px rgba(255, 180, 120, 0.4),
+        0 0 250px rgba(255, 160, 100, 0.2),
+        inset -20px -20px 60px rgba(200, 150, 120, 0.3),
+        inset 10px 10px 40px rgba(255, 230, 200, 0.4);
+    animation: moonrise-moon-glow 10s ease-in-out infinite;
+}
+
+@keyframes moonrise-moon-glow {
+    0%, 100% {
+        box-shadow:
+            0 0 80px rgba(255, 200, 150, 0.6),
+            0 0 150px rgba(255, 180, 120, 0.4),
+            0 0 250px rgba(255, 160, 100, 0.2),
+            inset -20px -20px 60px rgba(200, 150, 120, 0.3),
+            inset 10px 10px 40px rgba(255, 230, 200, 0.4);
+    }
+    50% {
+        box-shadow:
+            0 0 100px rgba(255, 200, 150, 0.7),
+            0 0 180px rgba(255, 180, 120, 0.5),
+            0 0 300px rgba(255, 160, 100, 0.3),
+            inset -20px -20px 60px rgba(200, 150, 120, 0.3),
+            inset 10px 10px 40px rgba(255, 230, 200, 0.5);
+    }
+}
+
+/* Moon surface details */
+.moonrise-moon::before {
+    content: '';
+    position: absolute;
+    top: 25%;
+    left: 30%;
+    width: 40px;
+    height: 40px;
+    background: rgba(200, 160, 130, 0.3);
+    border-radius: 50%;
+    filter: blur(8px);
+}
+
+.moonrise-moon::after {
+    content: '';
+    position: absolute;
+    top: 60%;
+    right: 25%;
+    width: 50px;
+    height: 50px;
+    background: rgba(200, 160, 130, 0.25);
+    border-radius: 50%;
+    filter: blur(10px);
+}
+
+/* Moon Aura for combo effects */
+#moonrise-moon-aura {
+    position: absolute;
+    top: 28%;
+    left: 50%;
+    width: 380px;
+    height: 380px;
+    margin-top: -190px;
+    margin-left: -190px;
+    z-index: 4;
+    pointer-events: none;
+}
+
+.moonrise-aura-pulse {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: radial-gradient(circle,
+        rgba(255, 220, 180, 0.4) 0%,
+        rgba(255, 200, 150, 0.2) 40%,
+        transparent 70%);
+    border-radius: 50%;
+    animation: moonrise-aura-expand 2s ease-out forwards;
+}
+
+@keyframes moonrise-aura-expand {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2.5);
+        opacity: 0;
+    }
+}
+
+/* Clouds */
+#moonrise-clouds {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 6;
+    pointer-events: none;
+}
+
+.moonrise-cloud {
+    position: absolute;
+    background: radial-gradient(ellipse,
+        rgba(140, 110, 90, 0.4) 0%,
+        rgba(120, 95, 75, 0.3) 40%,
+        rgba(100, 80, 65, 0.15) 70%,
+        transparent 100%);
+    border-radius: 50%;
+    filter: blur(15px);
+    animation: moonrise-cloud-drift var(--drift-duration, 80s) linear infinite;
+}
+
+@keyframes moonrise-cloud-drift {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(100vw);
+    }
+}
+
+/* Mountains Container */
+#moonrise-mountains {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 7;
+    pointer-events: none;
+}
+
+/* Mountain Layers */
+.moonrise-mountain-layer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 50%;
+}
+
+#moonrise-mountain-far {
+    z-index: 1;
+    opacity: 0.6;
+}
+
+#moonrise-mountain-mid {
+    z-index: 2;
+    opacity: 0.8;
+    height: 55%;
+}
+
+#moonrise-mountain-close {
+    z-index: 3;
+    opacity: 1;
+    height: 60%;
+}
+
+/* Create mountain shapes using clip-path */
+#moonrise-mountain-far::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom,
+        transparent 0%,
+        #2a2f45 40%,
+        #1f2435 100%);
+    clip-path: polygon(
+        0% 100%,
+        0% 65%,
+        8% 55%,
+        15% 45%,
+        22% 50%,
+        30% 40%,
+        38% 48%,
+        45% 35%,
+        52% 42%,
+        60% 38%,
+        68% 45%,
+        75% 40%,
+        82% 50%,
+        90% 45%,
+        95% 55%,
+        100% 60%,
+        100% 100%
+    );
+}
+
+#moonrise-mountain-mid::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom,
+        transparent 0%,
+        #1f2540 30%,
+        #151a30 100%);
+    clip-path: polygon(
+        0% 100%,
+        0% 70%,
+        5% 62%,
+        12% 50%,
+        18% 55%,
+        25% 45%,
+        32% 52%,
+        40% 40%,
+        48% 48%,
+        55% 42%,
+        62% 50%,
+        70% 45%,
+        78% 52%,
+        85% 48%,
+        92% 58%,
+        100% 65%,
+        100% 100%
+    );
+}
+
+#moonrise-mountain-close::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom,
+        transparent 0%,
+        #0f1425 20%,
+        #080d1a 100%);
+    clip-path: polygon(
+        0% 100%,
+        0% 75%,
+        7% 68%,
+        14% 58%,
+        20% 62%,
+        28% 52%,
+        35% 60%,
+        42% 48%,
+        50% 55%,
+        58% 50%,
+        65% 58%,
+        72% 52%,
+        80% 60%,
+        88% 55%,
+        95% 65%,
+        100% 70%,
+        100% 100%
+    );
+}
+
+/* Mountain peak glow highlights */
+#moonrise-peak-glow {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 60%;
+    z-index: 8;
+    pointer-events: none;
+}
+
+.moonrise-peak-highlight {
+    position: absolute;
+    bottom: 45%;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(to right,
+        transparent 0%,
+        rgba(220, 180, 140, 0.6) 30%,
+        rgba(240, 200, 150, 0.8) 50%,
+        rgba(220, 180, 140, 0.6) 70%,
+        transparent 100%);
+    filter: blur(2px);
+    animation: moonrise-peak-shimmer 6s ease-in-out infinite;
+}
+
+@keyframes moonrise-peak-shimmer {
+    0%, 100% {
+        opacity: 0.5;
+        filter: blur(2px) brightness(1);
+    }
+    50% {
+        opacity: 0.9;
+        filter: blur(3px) brightness(1.3);
+    }
+}
+
+/* --- Black Hole Theme --- */
+#black-hole-theme {
+    background: transparent;
+    overflow: hidden;
+}
+
+/* Deep space background */
+#stellar-background {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: radial-gradient(ellipse at 50% 50%,
+        #0a0515 0%,
+        #050210 30%,
+        #020108 60%,
+        #000000 100%);
+    z-index: 1;
+}
+
+/* Nebula Cloud Layers */
+.stellar-nebula-cloud {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    mix-blend-mode: screen;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Pink/Magenta nebula (upper right) */
+#stellar-nebula-layer-1 {
+    top: 10%;
+    right: 10%;
+    width: 600px;
+    height: 500px;
+    background: radial-gradient(ellipse,
+        rgba(255, 100, 180, 0.75) 0%,
+        rgba(255, 120, 200, 0.55) 20%,
+        rgba(240, 80, 160, 0.35) 45%,
+        rgba(220, 60, 140, 0.18) 70%,
+        transparent 100%);
+    z-index: 2;
+    animation: stellar-nebula-drift-1 40s ease-in-out infinite alternate;
+}
+
+@keyframes stellar-nebula-drift-1 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-30px, 20px) scale(1.05); }
+    100% { transform: translate(0, 0) scale(1); }
+}
+
+/* Cyan/Blue nebula (left side) */
+#stellar-nebula-layer-2 {
+    top: 20%;
+    left: 5%;
+    width: 550px;
+    height: 600px;
+    background: radial-gradient(ellipse,
+        rgba(80, 180, 255, 0.7) 0%,
+        rgba(120, 200, 255, 0.5) 25%,
+        rgba(60, 160, 240, 0.3) 50%,
+        rgba(40, 140, 220, 0.15) 75%,
+        transparent 100%);
+    z-index: 2;
+    animation: stellar-nebula-drift-2 45s ease-in-out infinite alternate;
+}
+
+@keyframes stellar-nebula-drift-2 {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+    50% { transform: translate(20px, -30px) scale(1.08) rotate(3deg); }
+    100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+}
+
+/* Orange/Coral nebula (center right) */
+#stellar-nebula-layer-3 {
+    top: 40%;
+    right: 20%;
+    width: 500px;
+    height: 450px;
+    background: radial-gradient(ellipse,
+        rgba(255, 150, 80, 0.7) 0%,
+        rgba(255, 170, 100, 0.5) 25%,
+        rgba(240, 130, 60, 0.3) 50%,
+        rgba(220, 110, 40, 0.15) 75%,
+        transparent 100%);
+    z-index: 3;
+    animation: stellar-nebula-drift-3 50s ease-in-out infinite alternate;
+}
+
+@keyframes stellar-nebula-drift-3 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(25px, 25px) scale(1.06); }
+    100% { transform: translate(0, 0) scale(1); }
+}
+
+/* Purple/Violet nebula (lower center) */
+#stellar-nebula-layer-4 {
+    bottom: 15%;
+    left: 30%;
+    width: 480px;
+    height: 520px;
+    background: radial-gradient(ellipse,
+        rgba(180, 100, 255, 0.7) 0%,
+        rgba(200, 130, 255, 0.5) 25%,
+        rgba(160, 80, 240, 0.3) 50%,
+        rgba(140, 60, 220, 0.15) 75%,
+        transparent 100%);
+    z-index: 2;
+    animation: stellar-nebula-drift-4 48s ease-in-out infinite alternate;
+}
+
+@keyframes stellar-nebula-drift-4 {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+    50% { transform: translate(-20px, 15px) scale(1.07) rotate(-2deg); }
+    100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+}
+
+/* Teal/Aqua nebula (top center) */
+#stellar-nebula-layer-5 {
+    top: 5%;
+    left: 40%;
+    width: 420px;
+    height: 380px;
+    background: radial-gradient(ellipse,
+        rgba(100, 220, 255, 0.65) 0%,
+        rgba(140, 230, 255, 0.45) 25%,
+        rgba(80, 200, 240, 0.25) 50%,
+        rgba(60, 180, 220, 0.12) 75%,
+        transparent 100%);
+    z-index: 2;
+    animation: stellar-nebula-drift-5 42s ease-in-out infinite alternate;
+}
+
+@keyframes stellar-nebula-drift-5 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(15px, -20px) scale(1.05); }
+    100% { transform: translate(0, 0) scale(1); }
+}
+
+/* Black Hole */
+#stellar-black-hole {
+    position: absolute;
+    top: 50%;
+    left: 35%;
+    width: 300px;
+    height: 300px;
+    margin-top: -150px;
+    margin-left: -150px;
+    z-index: 4;
+    pointer-events: none;
+}
+
+/* Event Horizon (the black center) */
+.black-hole-event-horizon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 120px;
+    height: 120px;
+    margin-top: -60px;
+    margin-left: -60px;
+    background: radial-gradient(circle,
+        rgba(0, 0, 0, 1) 0%,
+        rgba(5, 5, 10, 0.95) 60%,
+        rgba(10, 10, 15, 0.8) 80%,
+        transparent 100%);
+    border-radius: 50%;
+    z-index: 4;
+    animation: black-hole-pulse 8s ease-in-out infinite;
+}
+
+@keyframes black-hole-pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow:
+            0 0 30px rgba(0, 0, 0, 0.8),
+            inset 0 0 20px rgba(0, 0, 0, 1);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow:
+            0 0 40px rgba(0, 0, 0, 0.9),
+            inset 0 0 25px rgba(0, 0, 0, 1);
+    }
+}
+
+/* Accretion Disk */
+.black-hole-accretion-disk {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 280px;
+    height: 280px;
+    margin-top: -140px;
+    margin-left: -140px;
+    background: conic-gradient(
+        from 0deg,
+        rgba(255, 150, 80, 0.6) 0deg,
+        rgba(255, 100, 180, 0.5) 60deg,
+        rgba(80, 180, 255, 0.4) 120deg,
+        rgba(180, 100, 255, 0.5) 180deg,
+        rgba(255, 170, 100, 0.6) 240deg,
+        rgba(100, 220, 255, 0.4) 300deg,
+        rgba(255, 150, 80, 0.6) 360deg
+    );
+    border-radius: 50%;
+    z-index: 2;
+    clip-path: ellipse(50% 15% at 50% 50%);
+    transform-origin: center center;
+    animation: black-hole-accretion-spin 20s linear infinite;
+    filter: blur(3px);
+}
+
+@keyframes black-hole-accretion-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Accretion Disk Glow */
+.black-hole-accretion-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 300px;
+    height: 300px;
+    margin-top: -150px;
+    margin-left: -150px;
+    background: radial-gradient(ellipse 50% 20% at 50% 50%,
+        rgba(255, 180, 120, 0.4) 0%,
+        rgba(255, 150, 180, 0.3) 30%,
+        rgba(180, 150, 255, 0.2) 60%,
+        transparent 100%);
+    border-radius: 50%;
+    z-index: 1;
+    animation: black-hole-glow-pulse 6s ease-in-out infinite alternate;
+    filter: blur(15px);
+}
+
+@keyframes black-hole-glow-pulse {
+    0% {
+        opacity: 0.6;
+        transform: scale(1) rotate(0deg);
+    }
+    100% {
+        opacity: 0.9;
+        transform: scale(1.1) rotate(10deg);
+    }
+}
+
+/* Gravitational Lensing Effect */
+.black-hole-gravitational-lens {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    margin-top: -100px;
+    margin-left: -100px;
+    border-radius: 50%;
+    z-index: 3;
+    animation: gravitational-lens-distort 10s ease-in-out infinite;
+}
+
+.black-hole-gravitational-lens::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: rgba(255, 200, 150, 0.3);
+    border-right-color: rgba(180, 150, 255, 0.25);
+    border-bottom-color: rgba(100, 220, 255, 0.2);
+    border-left-color: rgba(255, 150, 180, 0.25);
+    animation: lens-ring-rotate 15s linear infinite;
+    filter: blur(2px);
+}
+
+.black-hole-gravitational-lens::after {
+    content: '';
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    border-top-color: rgba(255, 150, 80, 0.2);
+    border-right-color: rgba(255, 100, 180, 0.15);
+    border-bottom-color: rgba(80, 180, 255, 0.15);
+    border-left-color: rgba(200, 130, 255, 0.2);
+    animation: lens-ring-rotate 12s linear infinite reverse;
+    filter: blur(1px);
+}
+
+@keyframes gravitational-lens-distort {
+    0%, 100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 0.7;
+    }
+    50% {
+        transform: scale(1.08) rotate(5deg);
+        opacity: 1;
+    }
+}
+
+@keyframes lens-ring-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Star Field */
+#stellar-stars {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 5;
+}
+
+.stellar-star {
+    position: absolute;
+    border-radius: 50%;
+    animation: stellar-star-twinkle 6s ease-in-out infinite;
+}
+
+.stellar-star-bright {
+    animation: stellar-star-bright-pulse 4s ease-in-out infinite;
+}
+
+@keyframes stellar-star-twinkle {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes stellar-star-bright-pulse {
+    0%, 100% { opacity: 0.8; transform: scale(1); filter: brightness(1); }
+    50% { opacity: 1; transform: scale(1.5); filter: brightness(1.5); }
+}
+
+/* Stardust Canvas */
+#stellar-stardust-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 6;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+/* Star Bursts */
+#stellar-bursts {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 7;
+    pointer-events: none;
+}
+
+.stellar-star-burst {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    margin-left: -75px;
+    margin-top: -75px;
+    background: radial-gradient(circle,
+        rgba(255, 255, 255, 0.9) 0%,
+        rgba(200, 220, 255, 0.6) 20%,
+        rgba(255, 200, 180, 0.3) 40%,
+        transparent 70%);
+    border-radius: 50%;
+    animation: stellar-burst-expand 1.5s ease-out forwards;
+}
+
+@keyframes stellar-burst-expand {
+    0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(3) rotate(180deg);
+        opacity: 0;
+    }
+}
+
+/* Supernova Effect */
+#stellar-supernova {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 8;
+    pointer-events: none;
+}
+
+.stellar-supernova {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    margin-left: -200px;
+    margin-top: -200px;
+    animation: stellar-supernova-explosion 2.5s ease-out forwards;
+}
+
+@keyframes stellar-supernova-explosion {
+    0% {
+        background: radial-gradient(circle,
+            rgba(255, 255, 255, 1) 0%,
+            rgba(200, 220, 255, 0.9) 10%,
+            rgba(255, 200, 180, 0.7) 20%,
+            rgba(255, 150, 200, 0.5) 35%,
+            transparent 50%);
+        transform: scale(0);
+        opacity: 1;
+    }
+    20% {
+        background: radial-gradient(circle,
+            rgba(255, 255, 255, 1) 0%,
+            rgba(200, 220, 255, 0.95) 15%,
+            rgba(255, 200, 180, 0.8) 30%,
+            rgba(255, 150, 200, 0.6) 45%,
+            transparent 60%);
+        opacity: 1;
+    }
+    100% {
+        background: radial-gradient(circle,
+            rgba(255, 255, 255, 0.3) 0%,
+            rgba(200, 220, 255, 0.2) 20%,
+            rgba(255, 200, 180, 0.1) 40%,
+            transparent 70%);
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+/* Bright star cluster effect */
+.stellar-star-cluster {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    background: radial-gradient(circle,
+        rgba(255, 255, 255, 0.9) 0%,
+        rgba(220, 235, 255, 0.6) 25%,
+        rgba(200, 220, 255, 0.3) 50%,
+        transparent 75%);
+    border-radius: 50%;
+    filter: blur(3px);
+    animation: stellar-cluster-glow 8s ease-in-out infinite;
+}
+
+@keyframes stellar-cluster-glow {
+    0%, 100% {
+        opacity: 0.7;
+        transform: scale(1);
+        filter: blur(3px) brightness(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+        filter: blur(4px) brightness(1.3);
+    }
+}
+
+/* Gravitational Wave Effect */
+.gravitational-wave {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    margin-left: -150px;
+    margin-top: -150px;
+    border: 3px solid rgba(255, 200, 150, 0.7);
+    border-radius: 50%;
+    box-shadow:
+        0 0 20px rgba(255, 200, 150, 0.5),
+        inset 0 0 20px rgba(255, 200, 150, 0.3);
+    animation: gravitational-wave-expand 2s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes gravitational-wave-expand {
+    0% {
+        transform: scale(0);
+        opacity: 1;
+        border-width: 3px;
+    }
+    50% {
+        opacity: 0.8;
+        border-width: 2px;
+    }
+    100% {
+        transform: scale(4);
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
 /* === PYRESTORM THEME === */
 #pyrestorm-theme {
     background: transparent;
@@ -9754,11 +10937,9 @@ body.phaser-multiplayer-active #single-player-container {
 
 /* Container for each Phaser game instance */
 .phaser-board-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 300px;
-    height: 600px;
+    position: relative;
+    width: 100%;
+    height: 100%;
     border-radius: 12px;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.6);
@@ -9767,8 +10948,8 @@ body.phaser-multiplayer-active #single-player-container {
 
 .phaser-board-container canvas {
     display: block !important;
-    width: 300px !important;
-    height: 600px !important;
+    width: 100% !important;
+    height: 100% !important;
     image-rendering: crisp-edges;
     image-rendering: -moz-crisp-edges;
     image-rendering: pixelated;
@@ -9777,8 +10958,10 @@ body.phaser-multiplayer-active #single-player-container {
 /* Border overlays for each board */
 .board-border-overlay {
     position: absolute;
-    width: 300px;
-    height: 600px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     border: 4px solid #8b5cf6;
     border-radius: 12px;
     box-shadow: 
@@ -9787,6 +10970,553 @@ body.phaser-multiplayer-active #single-player-container {
         0 0 90px rgba(139, 92, 246, 0.1);
     pointer-events: none;
     z-index: 2;
+}
+
+/* Player board labels (P1, P2, P3, P4) */
+.player-board-label {
+    position: absolute;
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: #8b5cf6;
+    text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    z-index: 3;
+    letter-spacing: 2px;
+}
+
+/* Player board stats (frags) */
+.player-board-stats {
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+}
+
+.board-frag-display {
+    font-family: 'Space Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #10b981;
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    padding: 4px 12px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 8px;
+    border: 2px solid rgba(16, 185, 129, 0.3);
+}
+
+/* ============================================
+   PLAYER COLOR SCHEME
+   ============================================ */
+
+/* Player 1 - Blue */
+.player-card[data-player="1"] .player-board-label {
+    color: #3B82F6;
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+#p1-border {
+    border-color: #3B82F6;
+    box-shadow:
+        0 0 30px rgba(59, 130, 246, 0.5),
+        inset 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+#p1-phaser-container {
+    border: 2px solid #3B82F6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+/* Player 2 - Red */
+.player-card[data-player="2"] .player-board-label {
+    color: #EF4444;
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5), 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+#p2-border {
+    border-color: #EF4444;
+    box-shadow:
+        0 0 30px rgba(239, 68, 68, 0.5),
+        inset 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+#p2-phaser-container {
+    border: 2px solid #EF4444;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+/* Player 3 - Green */
+.player-card[data-player="3"] .player-board-label {
+    color: #10B981;
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5), 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+#p3-border {
+    border-color: #10B981;
+    box-shadow:
+        0 0 30px rgba(16, 185, 129, 0.5),
+        inset 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+#p3-phaser-container {
+    border: 2px solid #10B981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+/* Player 4 - Amber/Orange */
+.player-card[data-player="4"] .player-board-label {
+    color: #F59E0B;
+    text-shadow: 0 0 10px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+#p4-border {
+    border-color: #F59E0B;
+    box-shadow:
+        0 0 30px rgba(245, 158, 11, 0.5),
+        inset 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+#p4-phaser-container {
+    border: 2px solid #F59E0B;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+/* ============================================
+   PLAYER CARD LAYOUT (NEW)
+   ============================================ */
+
+/* Main multiplayer container - centered layout */
+.multiplayer-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    min-height: 100vh;
+    padding: 20px;
+    position: relative;
+}
+
+/* Game area with CSS Grid */
+.multiplayer-game-area {
+    --board-width: 300px;
+    --board-height: 600px;
+    display: grid;
+    gap: 80px;
+    max-width: 1400px;
+    width: 100%;
+    justify-content: center;
+    justify-items: center;
+    position: relative;
+}
+
+/* 2 players - horizontal row */
+.multiplayer-game-area.players-2 {
+    --board-width: 300px;
+    --board-height: 600px;
+    grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 36px)));
+    gap: 80px;
+}
+
+/* 3 players - horizontal row */
+.multiplayer-game-area.players-3 {
+    --board-width: 260px;
+    --board-height: 520px;
+    grid-template-columns: repeat(3, minmax(0, calc(var(--board-width) + 32px)));
+    gap: 50px;
+}
+
+/* 4 players - horizontal row */
+.multiplayer-game-area.players-4 {
+    --board-width: 240px;
+    --board-height: 480px;
+    grid-template-columns: repeat(4, minmax(0, calc(var(--board-width) + 32px)));
+    gap: 30px;
+}
+
+/* Individual player card */
+.player-card {
+    --player-primary: #8b5cf6;
+    --player-primary-light: #c4b5fd;
+    --player-glow: rgba(139, 92, 246, 0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 15px;
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+/* Player card color variations */
+.player-card[data-player="1"] {
+    border-color: #3B82F6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.player-card[data-player="2"] {
+    border-color: #EF4444;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+.player-card[data-player="3"] {
+    border-color: #10B981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.player-card[data-player="4"] {
+    border-color: #F59E0B;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+/* Next pieces section - horizontal layout */
+.player-card .player-next-pieces {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px;
+    width: 100%;
+    margin: 0;
+    background: rgba(16, 16, 32, 0.55);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+}
+
+.player-card .player-next-piece {
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, rgba(12, 12, 22, 0.95), rgba(24, 24, 44, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+}
+
+.player-card .player-next-piece.highlight {
+    border-color: var(--player-primary, #8b5cf6);
+    box-shadow:
+        0 0 18px var(--player-glow, rgba(139, 92, 246, 0.45)),
+        inset 0 0 18px rgba(255, 255, 255, 0.05);
+    transform: translateY(-3px) scale(1.045);
+}
+
+.player-card .player-next-piece.empty {
+    opacity: 0.35;
+    transform: none;
+    box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.4);
+}
+
+.player-card .player-next-piece canvas {
+    image-rendering: crisp-edges;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: pixelated;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Board section wrapper */
+.player-board-section {
+    position: relative;
+    width: var(--board-width);
+    height: var(--board-height);
+    border-radius: 12px;
+    overflow: visible;
+}
+
+/* Stats section - horizontal compact layout */
+.player-stats-compact {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    font-family: 'Space Mono', monospace;
+    gap: 4px;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 40px;
+}
+
+.stat-label {
+    font-size: 10px;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.stat-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+/* Highlight frags stat */
+.stat-item:first-child .stat-value {
+    color: #10b981;
+    font-size: 16px;
+}
+
+/* Floating settings button */
+.floating-settings-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1000;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+}
+
+.floating-settings-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: rotate(90deg);
+}
+
+/* Board scaling for different player counts */
+.players-2 .phaser-board-container,
+.players-2 .phaser-board-container canvas,
+.players-2 .board-border-overlay {
+    width: 300px;
+    height: 600px;
+}
+
+/* ============================================
+   RESPONSIVE BREAKPOINTS
+   ============================================ */
+
+/* Large Desktop (1920px+) */
+@media (min-width: 1920px) {
+    .multiplayer-game-area.players-2 {
+        gap: 100px;
+    }
+}
+
+/* Desktop (1440px - 1920px) */
+@media (min-width: 1440px) and (max-width: 1919px) {
+    .multiplayer-game-area.players-2 {
+        gap: 80px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        gap: 60px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        gap: 40px;
+    }
+}
+
+/* Laptop (1024px - 1440px) */
+@media (min-width: 1024px) and (max-width: 1439px) {
+    .multiplayer-game-area.players-2 {
+        gap: 60px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        gap: 40px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        gap: 30px;
+        --board-width: 220px;
+        --board-height: 440px;
+    }
+}
+
+/* Tablet/Small Laptop (768px - 1024px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+    .multiplayer-game-area.players-3,
+    .multiplayer-game-area.players-4 {
+        overflow-y: auto;
+        max-height: 90vh;
+    }
+
+    .multiplayer-game-area.players-2 {
+        gap: 40px;
+    }
+
+    .multiplayer-game-area.players-3,
+    .multiplayer-game-area.players-4 {
+        gap: 30px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        --board-width: 240px;
+        --board-height: 480px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        --board-width: 200px;
+        --board-height: 400px;
+        grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 28px)));
+        grid-template-rows: repeat(2, auto);
+    }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 767px) {
+    .multiplayer-game-area {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+        gap: 20px;
+    }
+
+    .player-card {
+        padding: 10px;
+    }
+
+    .multiplayer-game-area {
+        --board-width: 200px;
+        --board-height: 400px;
+    }
+
+    .stat-value {
+        font-size: 12px;
+    }
+
+    .stat-label {
+        font-size: 9px;
+    }
+
+    .floating-settings-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        bottom: 20px;
+        right: 20px;
+    }
+}
+
+/* ============================================
+   HORIZONTAL LAYOUTS FOR 2-4 PLAYERS (OLD - KEEP FOR FALLBACK)
+   ============================================ */
+
+/* 2-Player Layout - Side by side (default) */
+#phaser-multiplayer-wrapper.players-2 {
+    gap: 90px;
+}
+
+/* 3-Player Layout - Horizontal row */
+#phaser-multiplayer-wrapper.players-3 {
+    gap: 50px;
+}
+
+#phaser-multiplayer-wrapper.players-3 .multiplayer-board-wrapper {
+    width: 260px;
+    height: 520px;
+}
+
+#phaser-multiplayer-wrapper.players-3 .phaser-board-container,
+#phaser-multiplayer-wrapper.players-3 .phaser-board-container canvas,
+#phaser-multiplayer-wrapper.players-3 .board-border-overlay {
+    width: 260px;
+    height: 520px;
+}
+
+/* 4-Player Layout - Horizontal row */
+#phaser-multiplayer-wrapper.players-4 {
+    gap: 30px;
+}
+
+#phaser-multiplayer-wrapper.players-4 .multiplayer-board-wrapper {
+    width: 220px;
+    height: 440px;
+}
+
+#phaser-multiplayer-wrapper.players-4 .phaser-board-container,
+#phaser-multiplayer-wrapper.players-4 .phaser-board-container canvas,
+#phaser-multiplayer-wrapper.players-4 .board-border-overlay {
+    width: 220px;
+    height: 440px;
+}
+
+/* Responsive adjustments for 3-4 players */
+@media (max-width: 1400px) {
+    #phaser-multiplayer-wrapper.players-3 {
+        gap: 30px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .multiplayer-board-wrapper {
+        width: 240px;
+        height: 480px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-3 .board-border-overlay {
+        width: 240px;
+        height: 480px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-4 {
+        gap: 20px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-4 .multiplayer-board-wrapper {
+        width: 200px;
+        height: 400px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-4 .board-border-overlay {
+        width: 200px;
+        height: 400px;
+    }
+}
+
+/* Stack vertically on small screens */
+@media (max-width: 900px) {
+    #phaser-multiplayer-wrapper {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .multiplayer-board-wrapper,
+    #phaser-multiplayer-wrapper.players-4 .multiplayer-board-wrapper {
+        width: 300px;
+        height: 600px;
+    }
+    
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-3 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-3 .board-border-overlay,
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container,
+    #phaser-multiplayer-wrapper.players-4 .phaser-board-container canvas,
+    #phaser-multiplayer-wrapper.players-4 .board-border-overlay {
+        width: 300px;
+        height: 600px;
+    }
 }
 
 #p1-border {
@@ -9909,19 +11639,6 @@ body.phaser-multiplayer-active #single-player-container {
     color: #00ffff;
     font-weight: bold;
     font-size: 14px;
-}
-
-.player-next-pieces {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
-}
-
-.player-next-pieces .next-piece-box {
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    padding: 5px;
 }
 
 .multiplayer-center {

@@ -77,6 +77,8 @@ export function createBaseBoardScene(
             this.gameState = null;
             this.effectQuality = 'High';
             this.qualityConfig = getQualityConfig(this.effectQuality);
+            
+            // No caching needed - simple is better
         }
 
         /**
@@ -120,6 +122,8 @@ export function createBaseBoardScene(
             try {
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
+                
+                // Render game state
                 this.renderGameState();
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
@@ -235,9 +239,16 @@ export function createBaseBoardScene(
             if (!this.gameState) return;
             
             this.drawGrid();
-            this.drawLockedPieces();
+            
+            // CORRECT DRAW ORDER (like Tetris):
+            // 1. Ghost piece (behind everything - drawn first)
+            // 2. Locked pieces (on top of ghost)
+            // 3. Current piece (on top of everything)
             if (this.gameState.currentPiece) {
                 this.drawGhostPiece();
+            }
+            this.drawLockedPieces();
+            if (this.gameState.currentPiece) {
                 this.drawCurrentPiece();
             }
         }
@@ -275,6 +286,7 @@ export function createBaseBoardScene(
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
 
+            // Calculate ghost position (where piece will land)
             let ghostY = piece.y;
             while (this.isValidPosition(piece.x, ghostY + 1, piece.shape)) {
                 ghostY++;

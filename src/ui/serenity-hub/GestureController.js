@@ -23,6 +23,17 @@ export class GestureController {
         // Visual feedback
         this.swipeIndicator = null;
 
+        // Bind event handlers for proper cleanup
+        this.handleTouchStartBound = this.handleTouchStart.bind(this);
+        this.handleTouchMoveBound = this.handleTouchMove.bind(this);
+        this.handleTouchEndBound = this.handleTouchEnd.bind(this);
+        this.handleMouseDownBound = this.handleMouseDown.bind(this);
+        this.handleMouseMoveBound = this.handleMouseMove.bind(this);
+        this.handleMouseUpBound = this.handleMouseUp.bind(this);
+        
+        // AbortController for easy event listener cleanup (Phase 6.3)
+        this.abortController = new AbortController();
+
         this.init();
     }
 
@@ -63,15 +74,18 @@ export class GestureController {
      * Attach touch event listeners
      */
     attachEventListeners() {
-        // Touch events
-        this.element.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: true });
-        this.element.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
-        this.element.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: true });
+        // Use AbortController signal for easy cleanup (Phase 6.3)
+        const signal = this.abortController.signal;
+        
+        // Touch events - use bound handlers with AbortController signal
+        this.element.addEventListener('touchstart', this.handleTouchStartBound, { passive: true, signal });
+        this.element.addEventListener('touchmove', this.handleTouchMoveBound, { passive: false, signal });
+        this.element.addEventListener('touchend', this.handleTouchEndBound, { passive: true, signal });
 
         // Mouse events for desktop testing (optional)
-        this.element.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-        this.element.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-        this.element.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        this.element.addEventListener('mousedown', this.handleMouseDownBound, { signal });
+        this.element.addEventListener('mousemove', this.handleMouseMoveBound, { signal });
+        this.element.addEventListener('mouseup', this.handleMouseUpBound, { signal });
     }
 
     /**
@@ -283,21 +297,29 @@ export class GestureController {
      * Destroy gesture controller
      */
     destroy() {
-        if (this.element) {
-            // Remove event listeners
-            this.element.removeEventListener('touchstart', this.handleTouchStart);
-            this.element.removeEventListener('touchmove', this.handleTouchMove);
-            this.element.removeEventListener('touchend', this.handleTouchEnd);
-            this.element.removeEventListener('mousedown', this.handleMouseDown);
-            this.element.removeEventListener('mousemove', this.handleMouseMove);
-            this.element.removeEventListener('mouseup', this.handleMouseUp);
+        // ✨ PHASE 6.3: AbortController Pattern - Remove ALL event listeners with ONE line!
+        if (this.abortController) {
+            this.abortController.abort();
+            console.log('[GestureController] AbortController aborted - all 6 listeners removed');
         }
 
         // Remove indicator
         if (this.swipeIndicator && this.swipeIndicator.parentNode) {
             this.swipeIndicator.parentNode.removeChild(this.swipeIndicator);
+            this.swipeIndicator = null;
         }
 
-        console.log('[GestureController] Destroyed');
+        // Phase 6.1: Null out references for garbage collection
+        this.element = null;
+        this.callbacks = null;
+        this.abortController = null;
+        this.handleTouchStartBound = null;
+        this.handleTouchMoveBound = null;
+        this.handleTouchEndBound = null;
+        this.handleMouseDownBound = null;
+        this.handleMouseMoveBound = null;
+        this.handleMouseUpBound = null;
+
+        console.log('✅ [GestureController] Destroyed via AbortController');
     }
 }

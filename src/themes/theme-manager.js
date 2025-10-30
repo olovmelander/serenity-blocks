@@ -5,6 +5,8 @@
 import { THEMES } from '../core/constants.js';
 import { THEME_REGISTRY, getThemeMeta } from './theme-registry.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { assetManager } from '../utils/asset-manager.js';
+import { audioManager } from '../utils/audio-manager.js';
 
 /**
  * ThemeManager handles theme loading, switching, and lifecycle
@@ -19,8 +21,18 @@ export class ThemeManager {
         this.randomThemeInterval = null;
         this.isTransitioning = false;
 
+        // LRU cache management
+        this.maxCachedThemes = 5; // Limit cache size to prevent memory growth
+        this.themeLRU = []; // Track theme access order (oldest to newest)
+        
+        // Asset and Audio managers (shared across all themes for efficient caching)
+        this.assetManager = assetManager;
+        this.audioManager = audioManager;
+
         // Initialize theme registry
         this.initializeRegistry();
+        
+        console.log('[ThemeManager] Initialized with asset and audio managers');
     }
 
     /**
@@ -41,6 +53,55 @@ export class ThemeManager {
     }
 
     /**
+     * Update LRU order - mark theme as most recently used
+     * @param {string} themeName - Theme to mark as accessed
+     */
+    updateLRU(themeName) {
+        // Remove from current position if exists
+        const index = this.themeLRU.indexOf(themeName);
+        if (index > -1) {
+            this.themeLRU.splice(index, 1);
+        }
+        // Add to end (most recent)
+        this.themeLRU.push(themeName);
+    }
+
+    /**
+     * Evict oldest theme from cache if over limit
+     * Protects active theme from eviction
+     */
+    evictOldThemeIfNeeded() {
+        if (this.themeInstances.size <= this.maxCachedThemes) {
+            return; // Under limit, no eviction needed
+        }
+
+        // Find oldest theme that's not currently active
+        for (const themeName of this.themeLRU) {
+            if (themeName !== this.activeThemeName) {
+                console.log(`[ThemeManager] Evicting old theme from cache: ${themeName}`);
+                const themeInstance = this.themeInstances.get(themeName);
+                
+                if (themeInstance) {
+                    // Call cleanup to free resources
+                    if (typeof themeInstance.cleanup === 'function') {
+                        themeInstance.cleanup();
+                    }
+                    this.themeInstances.delete(themeName);
+                }
+                
+                // Remove from LRU tracking
+                const index = this.themeLRU.indexOf(themeName);
+                if (index > -1) {
+                    this.themeLRU.splice(index, 1);
+                }
+                
+                console.log(`[ThemeManager] Cache size after eviction: ${this.themeInstances.size}/${this.maxCachedThemes}`);
+                break; // Only evict one at a time
+            }
+        }
+    }
+
+    /**
      * Load a theme module dynamically
      * @param {string} themeName - Name of theme to load
      * @returns {Promise<BaseTheme>} Theme instance
@@ -48,6 +109,8 @@ export class ThemeManager {
     async loadTheme(themeName) {
         // Check if already loaded
         if (this.themeInstances.has(themeName)) {
+            console.log(`[ThemeManager] Theme "${themeName}" found in cache`);
+            this.updateLRU(themeName); // Mark as recently used
             return this.themeInstances.get(themeName);
         }
 
@@ -60,6 +123,8 @@ export class ThemeManager {
         }
 
         try {
+            console.log(`[ThemeManager] Loading theme "${themeName}" from disk`);
+            
             // Dynamically import the theme module
             const module = await importer();
             const ThemeClass = module.default;
@@ -72,7 +137,12 @@ export class ThemeManager {
 
             // Cache the instance
             this.themeInstances.set(themeName, themeInstance);
+            this.updateLRU(themeName);
+            
+            // Evict old themes if cache is full
+            this.evictOldThemeIfNeeded();
 
+            console.log(`[ThemeManager] Theme "${themeName}" loaded. Cache: ${this.themeInstances.size}/${this.maxCachedThemes}`);
             return themeInstance;
         } catch (error) {
             console.error(`Failed to load theme "${themeName}":`, error);
@@ -117,19 +187,31 @@ export class ThemeManager {
             const newTheme = await this.loadTheme(themeName);
             console.log('[ThemeManager] Theme loaded:', newTheme);
 
-            // Stop current theme if any
+            // Stop and cleanup current theme if any
             if (this.activeTheme) {
                 console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
                 this.activeTheme.stop();
+                
+                // IMPORTANT: Clean up renderer resources before loading new theme
+                if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
+                    console.log('[ThemeManager] Cleaning up renderer resources');
+                    this.webglRenderer.cleanup();
+                }
             }
 
-            // Start new theme
+            // Start new theme (pass resource managers for efficient asset loading)
             console.log('[ThemeManager] Starting new theme with renderer:', this.webglRenderer);
-            await newTheme.start(this.webglRenderer);
+            await newTheme.start(this.webglRenderer, {
+                assetManager: this.assetManager,
+                audioManager: this.audioManager
+            });
 
             // Update active theme
             this.activeTheme = newTheme;
             this.activeThemeName = themeName;
+            
+            // Update LRU to mark this theme as active/recent
+            this.updateLRU(themeName);
 
             // Dispatch theme change event
             eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
@@ -211,20 +293,43 @@ export class ThemeManager {
      * Clean up all theme resources
      */
     cleanup() {
+        console.log('[ThemeManager] Starting full cleanup...');
+        
         this.stopRandomThemeInterval();
 
         if (this.activeTheme) {
             this.activeTheme.stop();
         }
+        
+        // Stop all audio before cleaning up
+        if (this.audioManager) {
+            console.log('[ThemeManager] Stopping all audio');
+            this.audioManager.stopAll();
+        }
+        
+        // Clean up renderer resources
+        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
+            console.log('[ThemeManager] Cleaning up renderer');
+            this.webglRenderer.cleanup();
+        }
 
         // Cleanup all cached theme instances
-        for (const theme of this.themeInstances.values()) {
-            theme.cleanup();
+        console.log(`[ThemeManager] Cleaning up ${this.themeInstances.size} cached themes`);
+        for (const [themeName, theme] of this.themeInstances.entries()) {
+            console.log(`[ThemeManager] Cleaning up theme: ${themeName}`);
+            if (typeof theme.cleanup === 'function') {
+                theme.cleanup();
+            }
         }
         this.themeInstances.clear();
+        
+        // Clear LRU tracking
+        this.themeLRU = [];
 
         this.activeTheme = null;
         this.webglRenderer = null;
+        
+        console.log('✅ [ThemeManager] Cleanup complete');
     }
 
     /**

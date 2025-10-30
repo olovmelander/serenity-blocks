@@ -1,7 +1,7 @@
 /**
  * @fileoverview Gamepad Controller for Serenity Blocks
  * Handles Xbox controllers and other Bluetooth gamepads
- * Supports up to 2 controllers for local multiplayer
+ * Supports up to 4 controllers for local multiplayer
  */
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
@@ -78,9 +78,9 @@ function convertBindingsToConfig(bindings) {
  */
 export class GamepadController {
     constructor() {
-        this.gamepads = [null, null]; // Support for 2 gamepads
-        this.previousStates = [{}, {}]; // Previous button/axis states for edge detection
-        this.connected = [false, false];
+        this.gamepads = [null, null, null, null]; // Support for 4 gamepads
+        this.previousStates = [{}, {}, {}, {}]; // Previous button/axis states for edge detection
+        this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
         this.gameActions = null;
@@ -93,13 +93,15 @@ export class GamepadController {
         // DAS (Delayed Auto Shift) timers for each gamepad
         this.dasTimers = [
             { left: null, right: null, down: null },
+            { left: null, right: null, down: null },
+            { left: null, right: null, down: null },
             { left: null, right: null, down: null }
         ];
         this.dasDelay = 120;
         this.dasInterval = 40;
 
         // Custom bindings for each player
-        this.customBindings = [null, null];
+        this.customBindings = [null, null, null, null];
 
         // Menu navigation state
         this.menuNavigationEnabled = false;
@@ -969,8 +971,6 @@ export class GamepadController {
             return;
         }
         
-        const isPlayer2 = slot === 1;
-        
         // Use custom bindings if available, otherwise use default
         const customBinding = this.customBindings[slot];
         const config = convertBindingsToConfig(customBinding);
@@ -980,20 +980,49 @@ export class GamepadController {
             return;
         }
 
-        // Get appropriate action functions
-        const actions = isPlayer2 ? {
-            move: this.gameActions.moveP2,
-            rotate: this.gameActions.rotateP2,
-            softDrop: this.gameActions.softDropP2,
-            hardDrop: this.gameActions.hardDropP2,
-            pause: this.gameActions.togglePause,
-        } : {
-            move: this.gameActions.move,
-            rotate: this.gameActions.rotate,
-            softDrop: this.gameActions.softDrop,
-            hardDrop: this.gameActions.hardDrop,
-            pause: this.gameActions.togglePause,
-        };
+        // Get appropriate action functions based on player slot (0-3 = P1-P4)
+        let actions;
+        switch (slot) {
+            case 0: // Player 1
+                actions = {
+                    move: this.gameActions.move,
+                    rotate: this.gameActions.rotate,
+                    softDrop: this.gameActions.softDrop,
+                    hardDrop: this.gameActions.hardDrop,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 1: // Player 2
+                actions = {
+                    move: this.gameActions.moveP2,
+                    rotate: this.gameActions.rotateP2,
+                    softDrop: this.gameActions.softDropP2,
+                    hardDrop: this.gameActions.hardDropP2,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 2: // Player 3
+                actions = {
+                    move: this.gameActions.moveP3,
+                    rotate: this.gameActions.rotateP3,
+                    softDrop: this.gameActions.softDropP3,
+                    hardDrop: this.gameActions.hardDropP3,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 3: // Player 4
+                actions = {
+                    move: this.gameActions.moveP4,
+                    rotate: this.gameActions.rotateP4,
+                    softDrop: this.gameActions.softDropP4,
+                    hardDrop: this.gameActions.hardDropP4,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            default:
+                console.warn(`[Gamepad] Invalid player slot: ${slot}`);
+                return;
+        }
 
         // Process movement (D-pad left/right or left stick X)
         const leftPressed = this.isButtonPressed(gamepad, config.moveLeft) ||

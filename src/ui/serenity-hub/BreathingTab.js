@@ -17,6 +17,12 @@ export class BreathingTab {
     // Get techniques from EnhancedBreathingIndicator
     this.techniques = this.getTechniques();
 
+    // Store event handler references for cleanup
+    this.toggleHandler = null;
+    this.gridClickHandler = null;
+    this.textToggleHandler = null;
+    this.autoStartToggleHandler = null;
+
     this.init();
   }
 
@@ -264,40 +270,49 @@ export class BreathingTab {
    * Attach event listeners
    */
   attachEventListeners() {
+    // Store handler references for cleanup
+    this.toggleHandler = (e) => {
+      this.toggleBreathingGuide(e.target.checked);
+    };
+    
+    this.gridClickHandler = (e) => {
+      const card = e.target.closest('.technique-card');
+      if (card) {
+        const techniqueId = card.dataset.techniqueId;
+        this.selectTechnique(techniqueId);
+      }
+    };
+    
+    this.textToggleHandler = (e) => {
+      this.updateSetting('breathingText', e.target.checked);
+    };
+    
+    this.autoStartToggleHandler = (e) => {
+      this.updateSetting('breathingGuideAutoStart', e.target.checked);
+    };
+
     // Toggle breathing guide
     const toggle = document.getElementById('breathing-guide-toggle');
     if (toggle) {
-      toggle.addEventListener('change', (e) => {
-        this.toggleBreathingGuide(e.target.checked);
-      });
+      toggle.addEventListener('change', this.toggleHandler);
     }
 
     // Technique card clicks
     const grid = document.getElementById('breathing-technique-grid');
     if (grid) {
-      grid.addEventListener('click', (e) => {
-        const card = e.target.closest('.technique-card');
-        if (card) {
-          const techniqueId = card.dataset.techniqueId;
-          this.selectTechnique(techniqueId);
-        }
-      });
+      grid.addEventListener('click', this.gridClickHandler);
     }
 
     // Text prompts toggle
     const textToggle = document.getElementById('breathing-text-toggle');
     if (textToggle) {
-      textToggle.addEventListener('change', (e) => {
-        this.updateSetting('breathingText', e.target.checked);
-      });
+      textToggle.addEventListener('change', this.textToggleHandler);
     }
 
     // Auto-start toggle
     const autoStartToggle = document.getElementById('breathing-auto-start');
     if (autoStartToggle) {
-      autoStartToggle.addEventListener('change', (e) => {
-        this.updateSetting('breathingGuideAutoStart', e.target.checked);
-      });
+      autoStartToggle.addEventListener('change', this.autoStartToggleHandler);
     }
   }
 
@@ -417,7 +432,37 @@ export class BreathingTab {
    * Cleanup
    */
   destroy() {
-    // Remove event listeners (handled by DOM removal)
-    console.log('[BreathingTab] Destroyed');
+    // Remove event listeners explicitly
+    const toggle = document.getElementById('breathing-guide-toggle');
+    if (toggle && this.toggleHandler) {
+      toggle.removeEventListener('change', this.toggleHandler);
+    }
+
+    const grid = document.getElementById('breathing-technique-grid');
+    if (grid && this.gridClickHandler) {
+      grid.removeEventListener('click', this.gridClickHandler);
+    }
+
+    const textToggle = document.getElementById('breathing-text-toggle');
+    if (textToggle && this.textToggleHandler) {
+      textToggle.removeEventListener('change', this.textToggleHandler);
+    }
+
+    const autoStartToggle = document.getElementById('breathing-auto-start');
+    if (autoStartToggle && this.autoStartToggleHandler) {
+      autoStartToggle.removeEventListener('change', this.autoStartToggleHandler);
+    }
+
+    // Null out references
+    this.toggleHandler = null;
+    this.gridClickHandler = null;
+    this.textToggleHandler = null;
+    this.autoStartToggleHandler = null;
+    this.hub = null;
+    this.breathingIndicator = null;
+    this.serenityMode = null;
+    this.techniques = null;
+
+    console.log('✅ [BreathingTab] Destroyed - all listeners removed');
   }
 }

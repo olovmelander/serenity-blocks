@@ -1,19 +1,22 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { MultiplayerGameState } from '../multiplayer.js';
+import { MultiPlayerState } from '../multi-player-state.js';
 import { GAME_MODES, COLS, ROWS, BLOCK_SIZE } from '../constants.js';
 import { spawnPiece, fillBag, softDrop } from '../game.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
+import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 
 /**
- * LocalMultiplayerMode - Local 2-player competitive mode
+ * LocalMultiplayerMode - Local 2-4 player competitive mode
  *
  * Manages:
- * - MultiplayerGameState with two player instances
- * - Two Phaser board scenes (side-by-side)
+ * - MultiplayerGameState with multiple player instances
+ * - Multiple Phaser board scenes (side-by-side or grid layout)
  * - Multiplayer game loop with garbage system
  * - Shared RNG seed for fairness
+ * - Configuration options (win conditions, player count, etc.)
  */
 export class LocalMultiplayerMode extends BaseGameMode {
     constructor(dependencies) {
@@ -34,18 +37,27 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Canvas references for next pieces
         this.p1NextCanvases = [];
         this.p2NextCanvases = [];
+        this.playerNextCanvases = new Map();
         
-        // Round tracking (frags)
-        this.roundsToWin = 7; // First to 7 frags
+        // Match configuration (from modal)
+        this.matchConfig = null;
+        this.configModal = null;
+        this.configuredForStart = false; // Track if config modal has been shown
+        
+        // Round tracking (frags) - will be configured by modal
         this.roundWins = {
             player1: 0,
-            player2: 0
+            player2: 0,
+            player3: 0,
+            player4: 0
         };
         
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
             player1: { score: 0, lines: 0 },
-            player2: { score: 0, lines: 0 }
+            player2: { score: 0, lines: 0 },
+            player3: { score: 0, lines: 0 },
+            player4: { score: 0, lines: 0 }
         };
     }
 
@@ -54,7 +66,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     getDisplayName() {
-        return 'Local Multiplayer (2P)';
+        return 'Local MP';
     }
 
     /**
@@ -65,11 +77,56 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log('[LocalMultiplayer] Activating local multiplayer mode...');
 
-        // Get next piece canvas references (main boards are rendered by Phaser)
-        this.p1NextCanvases = Array.from({ length: 3 }, (_, i) => document.getElementById(`p1-next-${i}`));
-        this.p2NextCanvases = Array.from({ length: 3 }, (_, i) => document.getElementById(`p2-next-${i}`));
+        // Show configuration modal instead of immediately setting up
+        if (!this.configModal) {
+            this.configModal = new LocalMatchConfigModal((config) => {
+                this.handleConfigurationComplete(config);
+            });
+        }
+        
+        this.configModal.show();
+        console.log('[LocalMultiplayer] Showing configuration modal');
+    }
+    
+    /**
+     * Called when configuration modal is submitted
+     */
+    async handleConfigurationComplete(config) {
+        console.log('[LocalMultiplayer] Configuration received:', config);
+        
+        this.matchConfig = config;
+        this.configuredForStart = true;
+        
+        // Now setup the UI for the configured number of players
+        await this._setupMultiplayerUI();
+        
+        console.log('[LocalMultiplayer] UI setup complete, starting match...');
+        
+        // Automatically start the match after configuration
+        await this.onStart();
+    }
+    
+    /**
+     * Setup multiplayer UI based on configuration
+     */
+    async _setupMultiplayerUI() {
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+        
+        console.log(`[LocalMultiplayer] Setting up UI for ${numPlayers} players`);
+        
+        // Collect next piece canvas references for all players (main boards rendered by Phaser)
+        this.playerNextCanvases.clear();
+        for (let i = 1; i <= 4; i++) {
+            const canvases = Array.from({ length: 3 }, (_, idx) => document.getElementById(`p${i}-next-${idx}`));
+            if (canvases.every(Boolean)) {
+                this.playerNextCanvases.set(i, canvases);
+            }
+        }
 
-        if (!this.p1NextCanvases[0] || !this.p2NextCanvases[0]) {
+        this.p1NextCanvases = this.playerNextCanvases.get(1) || [];
+        this.p2NextCanvases = this.playerNextCanvases.get(2) || [];
+
+        if (!this.p1NextCanvases.length || !this.p2NextCanvases.length) {
             throw new Error('Multiplayer next piece canvases not found');
         }
 
@@ -82,8 +139,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Show multiplayer container
         const multiplayerContainer = document.getElementById('multiplayer-container');
         if (multiplayerContainer) {
-            multiplayerContainer.style.display = 'block';
+            multiplayerContainer.style.display = 'flex';
         }
+
+        // Update layout for player count
+        this._updatePlayerLayout(numPlayers);
 
         // Create separate Phaser game instances for each player
         await this._createSeparatePhaserGames();
@@ -91,7 +151,38 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Pause single player scene
         this._pauseSinglePlayerScene();
 
-        console.log('[LocalMultiplayer] Mode activated, ready to start');
+        console.log('[LocalMultiplayer] UI setup complete');
+    }
+
+    /**
+     * Update UI layout based on number of players
+     * @private
+     */
+    _updatePlayerLayout(numPlayers) {
+        const gameArea = document.querySelector('.multiplayer-game-area');
+        if (!gameArea) return;
+
+        // Remove all player count classes
+        gameArea.classList.remove('players-2', 'players-3', 'players-4');
+        
+        // Add appropriate class for current player count
+        gameArea.classList.add(`players-${numPlayers}`);
+
+        // Show/hide player cards
+        for (let i = 1; i <= 4; i++) {
+            const playerCard = document.getElementById(`player-${i}-card`);
+            if (playerCard) {
+                if (i <= numPlayers) {
+                    playerCard.style.display = 'flex';
+                    playerCard.removeAttribute('aria-hidden');
+                } else {
+                    playerCard.style.display = 'none';
+                    playerCard.setAttribute('aria-hidden', 'true');
+                }
+            }
+        }
+
+        console.log(`[LocalMultiplayer] Layout updated for ${numPlayers} players`);
     }
 
     /**
@@ -102,53 +193,75 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log('[LocalMultiplayer] Starting game...');
         
+        // Check if configuration has been set
+        if (!this.configuredForStart || !this.matchConfig) {
+            console.warn('[LocalMultiplayer] Configuration not set, cannot start game');
+            // Show config modal again
+            if (this.configModal) {
+                this.configModal.show();
+            }
+            return;
+        }
+        
         // Hide start modal immediately
         this.deps.modalManager.hideAll();
 
         // Reset match stats for new game
         this.matchStats = {
             player1: { score: 0, lines: 0 },
-            player2: { score: 0, lines: 0 }
+            player2: { score: 0, lines: 0 },
+            player3: { score: 0, lines: 0 },
+            player4: { score: 0, lines: 0 }
         };
         this.roundWins = {
             player1: 0,
-            player2: 0
+            player2: 0,
+            player3: 0,
+            player4: 0
         };
+        
+        // Store match start time for time-based win conditions
+        this.matchStartTime = Date.now();
 
-        // Initialize multiplayer state (lazy initialization)
-        this.multiplayerState = new MultiplayerGameState();
+        // Initialize multiplayer state with new MultiPlayerState
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+        console.log(`[LocalMultiplayer] Creating MultiPlayerState for ${numPlayers} players`);
+        
+        this.multiplayerState = new MultiPlayerState(numPlayers);
+        this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
         this.multiplayerState.isPaused = true;
 
         // Activate Phaser multiplayer UI
         this._activatePhaserMultiplayerUI();
 
-        // Get references to the board scenes (created in onActivate)
-        if (!this.p1BoardScene || !this.p2BoardScene) {
+        // Get references to the board scenes (created in _createSeparatePhaserGames)
+        if (!this.boardScenes || this.boardScenes.length === 0) {
             throw new Error('Board scenes not initialized. Call onActivate first.');
         }
         
-        // Store scenes in array for compatibility with existing sync code
-        this.boardScenes = [this.p1BoardScene, this.p2BoardScene];
-        console.log('[LocalMultiplayer] Using separate board scenes:', {
-            p1: this.p1BoardScene?.scene?.key,
-            p2: this.p2BoardScene?.scene?.key
-        });
+        console.log(`[LocalMultiplayer] Using ${this.boardScenes.length} board scenes`);
 
         // Create shared RNG seed for fairness
         const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
         this.multiplayerState.sharedPieceSeed = sharedSeed;
-        this.multiplayerState.player1.randomGenerator = seededRandom(sharedSeed);
-        this.multiplayerState.player2.randomGenerator = seededRandom(sharedSeed);
+        
+        // Initialize RNG and piece bags for all players
+        for (let i = 0; i < numPlayers; i++) {
+            const player = this.multiplayerState.players[i];
+            player.randomGenerator = seededRandom(sharedSeed);
+            fillBag(player.nextPieces, player.randomGenerator);
+        }
         console.log(`[LocalMultiplayer] Shared seed: ${sharedSeed}`);
 
-        // Fill piece bags for both players
-        fillBag(this.multiplayerState.player1.nextPieces, this.multiplayerState.player1.randomGenerator);
-        fillBag(this.multiplayerState.player2.nextPieces, this.multiplayerState.player2.randomGenerator);
-
-        // Draw initial next pieces
-        drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-        drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
+        // Draw initial next pieces for all players
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const canvases = this.playerNextCanvases.get(playerNum);
+            if (canvases && canvases.length) {
+                drawNextPieces(canvases, this.multiplayerState.players[i].nextPieces);
+            }
+        }
 
         // Update stats display
         this._updateMultiplayerStats();
@@ -156,26 +269,25 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Show countdown
         await this._showCountdown();
 
-        // Spawn first pieces for both players
+        // Spawn first pieces for all players
         this.multiplayerState.lastTime = performance.now();
 
-        spawnPiece(
-            this.multiplayerState.player1,
-            () => {
-                drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-                this._syncBoardScenes();
-            },
-            () => this._handleGameOver(1)
-        );
+        // Spawn pieces for all configured players
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const nextCanvases = this.playerNextCanvases.get(playerNum);
+            const playerState = this.multiplayerState.players[i];
 
-        spawnPiece(
-            this.multiplayerState.player2,
-            () => {
-                drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
+            // Spawn initial piece (no garbage on first spawn)
+            spawnPiece(playerState, () => {
+                if (nextCanvases) {
+                    drawNextPieces(nextCanvases, playerState.nextPieces);
+                }
                 this._syncBoardScenes();
-            },
-            () => this._handleGameOver(2)
-        );
+            }, () => this._handleGameOver(i));
+
+            console.log(`[LocalMultiplayer] Spawned initial piece for Player ${playerNum}`);
+        }
 
         this._syncBoardScenes();
 
@@ -242,6 +354,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
         await super.onDeactivate();
 
         console.log('[LocalMultiplayer] Deactivating...');
+        
+        // Hide and destroy config modal
+        if (this.configModal) {
+            this.configModal.hide();
+            this.configModal.destroy();
+            this.configModal = null;
+        }
+        
+        // Reset configuration state
+        this.matchConfig = null;
+        this.configuredForStart = false;
 
         // Deactivate Phaser multiplayer UI
         this._deactivatePhaserMultiplayerUI();
@@ -286,14 +409,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return {
             ...super.getState(),
             player1: {
-                score: this.multiplayerState?.player1.score || 0,
-                lines: this.multiplayerState?.player1.lines || 0,
-                level: this.multiplayerState?.player1.level || 1,
+                score: this.multiplayerState?.players[0].score || 0,
+                lines: this.multiplayerState?.players[0].totalLinesCleared || 0,
+                level: this.multiplayerState?.players[0].level || 1,
             },
             player2: {
-                score: this.multiplayerState?.player2.score || 0,
-                lines: this.multiplayerState?.player2.lines || 0,
-                level: this.multiplayerState?.player2.level || 1,
+                score: this.multiplayerState?.players[1].score || 0,
+                lines: this.multiplayerState?.players[1].totalLinesCleared || 0,
+                level: this.multiplayerState?.players[1].level || 1,
             },
         };
     }
@@ -305,8 +428,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     _startGameLoop() {
+        let frameCount = 0;
+        
         const loop = (currentTime) => {
             if (!this.isRunning || this.multiplayerState.isGameOver) {
+                console.log('[LocalMultiplayer] Game loop stopped:', { isRunning: this.isRunning, isGameOver: this.multiplayerState.isGameOver });
                 return;
             }
 
@@ -318,18 +444,57 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const delta = currentTime - this.multiplayerState.lastTime;
             this.multiplayerState.lastTime = currentTime;
 
-            // Update both players using the core game physics
-            [1, 2].forEach((playerNum) => {
-                const playerState = playerNum === 1
-                    ? this.multiplayerState.player1
-                    : this.multiplayerState.player2;
+            // Debug log every 60 frames (once per second at 60fps)
+            frameCount++;
+            if (frameCount % 60 === 0) {
+                console.log('[LocalMultiplayer] Game loop running. Players:', this.multiplayerState.numPlayers, 'Delta:', Math.floor(delta));
+                // Log player state periodically to debug gravity
+                for (let i = 0; i < this.multiplayerState.numPlayers; i++) {
+                    const ps = this.multiplayerState.players[i];
+                    console.log(`  P${i+1}: piece=${!!ps.currentPiece}, counter=${Math.floor(ps.dropCounter)}, interval=${ps.dropInterval}, processing=${ps.isProcessingPhysics}`);
+                }
+            }
+
+            // Update all players using the core game physics
+            for (let playerIndex = 0; playerIndex < this.multiplayerState.numPlayers; playerIndex++) {
+                const playerNum = playerIndex + 1; // 1-based for compatibility
+                const playerState = this.multiplayerState.players[playerIndex];
+
+                // Skip dead players
+                if (!playerState.isAlive) {
+                    continue;
+                }
+
+                // Debug log for first few frames
+                if (frameCount <= 5) {
+                    console.log(`[LocalMultiplayer] P${playerNum} state:`, {
+                        hasCurrentPiece: !!playerState.currentPiece,
+                        isProcessing: playerState.isProcessingPhysics,
+                        dropCounter: playerState.dropCounter,
+                        dropInterval: playerState.dropInterval,
+                        delta: delta
+                    });
+                }
 
                 if (!playerState.isProcessingPhysics && playerState.currentPiece) {
+                    // Log before and after adding delta (first few frames)
+                    if (frameCount <= 3) {
+                        console.log(`[LocalMultiplayer] P${playerNum} BEFORE: dropCounter=${playerState.dropCounter}, delta=${delta}`);
+                    }
+                    
                     playerState.dropCounter += delta;
+                    
+                    if (frameCount <= 3) {
+                        console.log(`[LocalMultiplayer] P${playerNum} AFTER: dropCounter=${playerState.dropCounter}`);
+                    }
+                    
                     if (playerState.dropCounter > playerState.dropInterval) {
                         // Use proper multiplayer callbacks (from main.js) to handle garbage and spawning
                         const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum) 
                             || this._getPhysicsCallbacks();
+                        
+                        console.log(`[LocalMultiplayer] Dropping piece for P${playerNum}, counter was ${playerState.dropCounter}`);
+                        
                         softDrop(
                             playerState,
                             () => this.deps.soundManager.sfxPlayer.playDrop(),
@@ -337,7 +502,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                         );
                     }
                 }
-            });
+            }
 
             // Update stats display
             this._updateMultiplayerStats();
@@ -349,6 +514,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this.animationFrameId = requestAnimationFrame(loop);
         };
 
+        console.log('[LocalMultiplayer] Starting game loop...');
         this.animationFrameId = requestAnimationFrame(loop);
     }
 
@@ -384,37 +550,43 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return;
         }
 
-        // Calculate cumulative scores (match total + current round)
-        const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.player1.score;
-        const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.player1.lines;
-        const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.player2.score;
-        const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.player2.lines;
+        const numPlayers = this.multiplayerState.numPlayers;
 
-        // Update Player 1 stats
-        const p1Frags = document.getElementById('p1-frags');
-        const p1Score = document.getElementById('p1-score');
-        const p1Lines = document.getElementById('p1-lines');
-        const p1Level = document.getElementById('p1-level');
-        const p1Garbage = document.getElementById('p1-garbage');
-        
-        if (p1Frags) p1Frags.textContent = this.roundWins.player1;
-        if (p1Score) p1Score.textContent = p1TotalScore;
-        if (p1Lines) p1Lines.textContent = p1TotalLines;
-        if (p1Level) p1Level.textContent = this.multiplayerState.player1.level;
-        if (p1Garbage) p1Garbage.textContent = this.multiplayerState.getGarbageQueue(1).getTotalLines();
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const playerState = this.multiplayerState.players[i];
+            if (!playerState) continue;
 
-        // Update Player 2 stats
-        const p2Frags = document.getElementById('p2-frags');
-        const p2Score = document.getElementById('p2-score');
-        const p2Lines = document.getElementById('p2-lines');
-        const p2Level = document.getElementById('p2-level');
-        const p2Garbage = document.getElementById('p2-garbage');
-        
-        if (p2Frags) p2Frags.textContent = this.roundWins.player2;
-        if (p2Score) p2Score.textContent = p2TotalScore;
-        if (p2Lines) p2Lines.textContent = p2TotalLines;
-        if (p2Level) p2Level.textContent = this.multiplayerState.player2.level;
-        if (p2Garbage) p2Garbage.textContent = this.multiplayerState.getGarbageQueue(2).getTotalLines();
+            const matchKey = `player${playerNum}`;
+            const matchTotals = this.matchStats[matchKey] || { score: 0, lines: 0 };
+
+            const totalScore = (matchTotals.score || 0) + (playerState.score || 0);
+            const totalLines = (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0);
+            const totalLevel = playerState.level ?? 1;
+            const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
+            const roundFrags = this.roundWins[matchKey] ?? 0;
+
+            const fragsEl = document.getElementById(`p${playerNum}-frags`);
+            const scoreEl = document.getElementById(`p${playerNum}-score`);
+            const linesEl = document.getElementById(`p${playerNum}-lines`);
+            const levelEl = document.getElementById(`p${playerNum}-level`);
+            const garbageEl = document.getElementById(`p${playerNum}-garbage`);
+
+            if (fragsEl) fragsEl.textContent = roundFrags;
+            if (scoreEl) scoreEl.textContent = totalScore;
+            if (linesEl) linesEl.textContent = totalLines;
+            if (levelEl) levelEl.textContent = totalLevel;
+            if (garbageEl) garbageEl.textContent = totalGarbage;
+        }
+
+        // Update board-level frag displays for all players (used in 3-4 player mode)
+        for (let i = 1; i <= numPlayers; i++) {
+            const boardFragDisplay = document.getElementById(`p${i}-board-frags`);
+            if (boardFragDisplay) {
+                const playerKey = `player${i}`;
+                boardFragDisplay.textContent = `${this.roundWins[playerKey] || 0} F`;
+            }
+        }
     }
 
     /**
@@ -428,8 +600,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         this.boardScenes.forEach((scene, index) => {
-            const playerState = index === 0 ? this.multiplayerState.player1 : this.multiplayerState.player2;
+            // Use array-based access for new MultiPlayerState
+            const playerState = this.multiplayerState.players[index];
             const playerNum = index + 1;
+            
+            if (!playerState) {
+                console.warn(`[LocalMultiplayer] No player state for index ${index}`);
+                return;
+            }
             
             if (scene && scene.syncFromGameState) {
                 scene.syncFromGameState(playerState);
@@ -446,24 +624,60 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Handle game over for a player
      * @private
      */
-    async _handleGameOver(playerNumber) {
-        console.log(`[LocalMultiplayer] Player ${playerNumber} lost!`);
+    async _handleGameOver(playerIndex) {
+        console.log(`[LocalMultiplayer] Player ${playerIndex + 1} lost!`);
 
-        await this.onStop();
+        // Mark player as dead and handle frag attribution
+        this.multiplayerState.handlePlayerDeath(playerIndex);
 
-        const winner = playerNumber === 1 ? 2 : 1;
-        const winnerState = winner === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
+        // Clear the eliminated player's current piece so it stops dropping
+        const playerState = this.multiplayerState.players[playerIndex];
+        if (playerState && playerState.currentPiece) {
+            playerState.currentPiece = null;
+            console.log(`[LocalMultiplayer] Cleared current piece for eliminated Player ${playerIndex + 1}`);
+        }
 
-        // Show winner modal
-        window.dispatchEvent(new CustomEvent('multiplayerGameOver', {
-            detail: {
-                winner,
-                winnerScore: winnerState.score,
-                winnerLines: winnerState.lines,
+        // Show death animation for the eliminated player
+        this._showPlayerDeathAnimation(playerIndex);
+
+        // For 2 players, determine winner immediately and pause
+        if (this.multiplayerState.numPlayers === 2) {
+            // ONLY pause when round ends (2 players)
+            this.multiplayerState.isPaused = true;
+            const winnerIndex = playerIndex === 0 ? 1 : 0;
+            const winnerKey = `player${winnerIndex + 1}`;
+
+            // Show victory animation for the winner
+            this._showVictoryAnimation(winnerIndex);
+
+            // Wait for victory animation before showing round end
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            await this.handleRoundEnd(winnerKey);
+        } else {
+            // For 3-4 players, check if we need to end the round
+            const alivePlayers = this.multiplayerState.players.filter(p => p.isAlive);
+            console.log(`[LocalMultiplayer] ${alivePlayers.length} players still alive`);
+
+            if (alivePlayers.length <= 1) {
+                // Round ends - pause the game
+                this.multiplayerState.isPaused = true;
+
+                // Find last player standing
+                const winnerIndex = this.multiplayerState.players.findIndex(p => p.isAlive);
+                const winnerKey = winnerIndex >= 0 ? `player${winnerIndex + 1}` : null;
+                if (winnerKey && winnerIndex >= 0) {
+                    // Show victory animation for the winner
+                    this._showVictoryAnimation(winnerIndex);
+
+                    // Wait a bit for victory animation before showing round end
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+
+                    await this.handleRoundEnd(winnerKey);
+                }
             }
-        }));
-
-        this.deps.modalManager.show('gameOver');
+            // If multiple players still alive, DO NOT pause - continue the match
+        }
     }
 
     /**
@@ -699,7 +913,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     async _createSeparatePhaserGames() {
-        console.log('[LocalMultiplayer] Creating separate Phaser instances for each player...');
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+        console.log(`[LocalMultiplayer] Creating separate Phaser instances for ${numPlayers} players...`);
 
         const BoardScene = this.deps.BoardSceneClass || this.deps.MultiplayerBoardSceneClass;
         if (!BoardScene) {
@@ -726,34 +941,48 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
         });
 
-        // Create Player 1 Phaser game instance
-        console.log('[LocalMultiplayer] Creating Player 1 Phaser game...');
-        this.p1PhaserGame = new Phaser.Game(createGameConfig('p1-phaser-container'));
-        
-        // Wait for game to initialize
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Add and start BoardScene for Player 1
-        this.p1BoardScene = new BoardScene('P1Board');
-        this.p1PhaserGame.scene.add('P1Board', this.p1BoardScene, true);
-        console.log('[LocalMultiplayer] Player 1 scene created:', this.p1BoardScene.scene?.key);
-        
-        // Create Player 2 Phaser game instance
-        console.log('[LocalMultiplayer] Creating Player 2 Phaser game...');
-        this.p2PhaserGame = new Phaser.Game(createGameConfig('p2-phaser-container'));
-        
-        // Wait for game to initialize
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Add and start BoardScene for Player 2
-        this.p2BoardScene = new BoardScene('P2Board');
-        this.p2PhaserGame.scene.add('P2Board', this.p2BoardScene, true);
-        console.log('[LocalMultiplayer] Player 2 scene created:', this.p2BoardScene.scene?.key);
+        // Arrays to store Phaser games and scenes
+        this.phaserGames = [];
+        this.boardScenes = [];
 
-        // Wait for scenes to fully initialize
+        // Create Phaser instance for each player
+        for (let i = 1; i <= numPlayers; i++) {
+            console.log(`[LocalMultiplayer] Creating Player ${i} Phaser game...`);
+            
+            const phaserGame = new Phaser.Game(createGameConfig(`p${i}-phaser-container`));
+            
+            // Wait for game to initialize
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Add and start BoardScene
+            const boardScene = new BoardScene(`P${i}Board`);
+            phaserGame.scene.add(`P${i}Board`, boardScene, true);
+            console.log(`[LocalMultiplayer] Player ${i} scene created:`, boardScene.scene?.key);
+            
+            // Store references
+            this.phaserGames.push(phaserGame);
+            this.boardScenes.push(boardScene);
+            
+            // Also maintain legacy p1/p2 references for backwards compatibility
+            if (i === 1) {
+                this.p1PhaserGame = phaserGame;
+                this.p1BoardScene = boardScene;
+            } else if (i === 2) {
+                this.p2PhaserGame = phaserGame;
+                this.p2BoardScene = boardScene;
+            } else if (i === 3) {
+                this.p3PhaserGame = phaserGame;
+                this.p3BoardScene = boardScene;
+            } else if (i === 4) {
+                this.p4PhaserGame = phaserGame;
+                this.p4BoardScene = boardScene;
+            }
+        }
+
+        // Wait for all scenes to fully initialize
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        console.log('[LocalMultiplayer] Separate Phaser instances created successfully');
+        console.log(`[LocalMultiplayer] ${numPlayers} Phaser instances created successfully`);
     }
 
     /**
@@ -821,6 +1050,62 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     _activatePhaserMultiplayerUI() {
         document.body.classList.add('phaser-multiplayer-active');
+
+        // Apply player colors to UI elements
+        this._applyPlayerColors();
+    }
+
+    /**
+     * Apply player-specific colors to UI elements
+     * Colors player labels, borders, and other visual indicators
+     * @private
+     */
+    _applyPlayerColors() {
+        const numPlayers = this.multiplayerState?.numPlayers || 2;
+
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const playerColor = this.multiplayerState.getPlayerColor(i);
+
+            if (!playerColor) continue;
+
+            // Apply color to player label
+            const label = document.querySelector(`#player-${playerNum}-card .player-board-label`);
+            if (label) {
+                label.style.color = playerColor.primary;
+                label.style.textShadow = `0 0 10px ${playerColor.glow}, 0 0 20px ${playerColor.glow}`;
+                label.style.fontWeight = 'bold';
+            }
+
+            // Apply color to player card border/glow
+            const card = document.getElementById(`player-${playerNum}-card`);
+            if (card) {
+                card.style.borderColor = playerColor.primary;
+                card.style.boxShadow = `0 0 20px ${playerColor.glow}`;
+                card.style.setProperty('--player-primary', playerColor.primary);
+                card.style.setProperty('--player-primary-light', playerColor.light || playerColor.primary);
+                card.style.setProperty('--player-glow', playerColor.glow || `${playerColor.primary}55`);
+            }
+
+            // Apply color to board border
+            const border = document.getElementById(`p${playerNum}-border`);
+            if (border) {
+                border.style.borderColor = playerColor.primary;
+                border.style.boxShadow = `
+                    0 0 30px ${playerColor.glow},
+                    inset 0 0 20px ${playerColor.glow}
+                `;
+            }
+
+            // Apply color to phaser container border
+            const container = document.getElementById(`p${playerNum}-phaser-container`);
+            if (container) {
+                container.style.border = `2px solid ${playerColor.primary}`;
+                container.style.boxShadow = `0 0 20px ${playerColor.glow}`;
+            }
+
+            console.log(`[LocalMultiplayer] Applied ${playerColor.name} color to Player ${playerNum}`);
+        }
     }
 
     /**
@@ -856,21 +1141,58 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
+     * Get the target value for the win condition
+     */
+    _getWinTarget() {
+        if (!this.matchConfig) {
+            return 7; // Default fallback
+        }
+        return this.matchConfig.endConditionValue || 7;
+    }
+    
+    /**
+     * Get win condition display text
+     */
+    _getWinConditionText() {
+        if (!this.matchConfig) {
+            return 'First to 7 frags wins';
+        }
+        
+        const config = this.matchConfig;
+        switch (config.endCondition) {
+            case 'frags':
+                return `First to ${config.endConditionValue} frags wins`;
+            case 'time':
+                return `${config.endConditionValue} minute time limit`;
+            case 'points':
+                return `First to ${config.endConditionValue * 1000} points wins`;
+            case 'lines':
+                return `First to ${config.endConditionValue} lines wins`;
+            case 'never':
+                return 'Play until manual end';
+            default:
+                return `First to ${config.endConditionValue} frags wins`;
+        }
+    }
+
+    /**
      * Handle round end - check if match is over or start new round
      * @param {string} winner - 'player1' or 'player2'
      */
     async handleRoundEnd(winner) {
         console.log(`[LocalMultiplayer] Round ended! Winner: ${winner}`);
         
-        // Increment round wins
+        // Increment round wins (frags)
         this.roundWins[winner]++;
         
         const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
         const p1Wins = this.roundWins.player1;
         const p2Wins = this.roundWins.player2;
         
-        // Check if someone won the match
-        if (this.roundWins[winner] >= this.roundsToWin) {
+        // Check if someone won the match based on win condition
+        const wonMatch = this._checkMatchWinCondition(winner);
+        
+        if (wonMatch) {
             console.log(`[LocalMultiplayer] ${winnerName} wins the match! (${p1Wins}-${p2Wins})`);
             await this._showMatchEnd(winner, p1Wins, p2Wins);
             return;
@@ -880,6 +1202,52 @@ export class LocalMultiplayerMode extends BaseGameMode {
         console.log(`[LocalMultiplayer] Starting next round... Score: ${p1Wins}-${p2Wins}`);
         await this._showRoundEnd(winner, p1Wins, p2Wins);
         await this._startNewRound();
+    }
+    
+    /**
+     * Check if the match win condition has been met
+     */
+    _checkMatchWinCondition(lastRoundWinner) {
+        if (!this.matchConfig) {
+            // Fallback to old behavior
+            return this.roundWins[lastRoundWinner] >= 7;
+        }
+        
+        const config = this.matchConfig;
+        
+        switch (config.endCondition) {
+            case 'frags':
+                // Frags are round wins
+                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+                
+            case 'time': {
+                // Check if time limit has been reached
+                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+                return elapsedMinutes >= config.endConditionValue;
+            }
+                
+            case 'points': {
+                // Check if either player reached the score target
+                const targetScore = config.endConditionValue * 1000;
+                const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+                const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+                return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+            }
+                
+            case 'lines': {
+                // Check if either player cleared enough lines
+                const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+                const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+                return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+            }
+                
+            case 'never':
+                // Never end automatically
+                return false;
+                
+            default:
+                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+        }
     }
 
     /**
@@ -916,7 +1284,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     Frags: ${p1Wins} - ${p2Wins}
                 </div>
                 <div style="font-size: 24px; color: #94a3b8;">
-                    First to ${this.roundsToWin} wins
+                    ${this._getWinConditionText()}
                 </div>
                 <div style="font-size: 20px; color: #64748b; margin-top: 10px;">
                     Next round starting...
@@ -941,60 +1309,81 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async _startNewRound() {
         console.log('[LocalMultiplayer] Resetting for new round...');
-        
+
+        // Clear death animations from previous round
+        this._clearDeathAnimations();
+
+        const numPlayers = this.multiplayerState.numPlayers;
+
         // Accumulate stats from this round into match totals before resetting
-        this.matchStats.player1.score += this.multiplayerState.player1.score;
-        this.matchStats.player1.lines += this.multiplayerState.player1.lines;
-        this.matchStats.player2.score += this.multiplayerState.player2.score;
-        this.matchStats.player2.lines += this.multiplayerState.player2.lines;
-        
-        console.log('[LocalMultiplayer] Match stats accumulated:', {
-            p1: this.matchStats.player1,
-            p2: this.matchStats.player2
-        });
-        
+        const accumulatedLog = {};
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const matchKey = `player${playerNum}`;
+            const playerState = this.multiplayerState.players[i];
+            if (!playerState) continue;
+
+            if (!this.matchStats[matchKey]) {
+                this.matchStats[matchKey] = { score: 0, lines: 0 };
+            }
+
+            this.matchStats[matchKey].score += playerState.score || 0;
+            this.matchStats[matchKey].lines += playerState.totalLinesCleared || 0;
+            accumulatedLog[matchKey] = this.matchStats[matchKey];
+        }
+
+        console.log('[LocalMultiplayer] Match stats accumulated:', accumulatedLog);
+
         // Reset multiplayer state
         this.multiplayerState.reset();
         this.multiplayerState.isPaused = true;
         
-        // Create new shared seed
+        // Create new shared seed and reinitialize RNG for all players
         const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
         this.multiplayerState.sharedPieceSeed = sharedSeed;
-        this.multiplayerState.player1.randomGenerator = seededRandom(sharedSeed);
-        this.multiplayerState.player2.randomGenerator = seededRandom(sharedSeed);
         
-        // Fill piece bags
-        fillBag(this.multiplayerState.player1.nextPieces, this.multiplayerState.player1.randomGenerator);
-        fillBag(this.multiplayerState.player2.nextPieces, this.multiplayerState.player2.randomGenerator);
+        for (let i = 0; i < numPlayers; i++) {
+            const player = this.multiplayerState.players[i];
+            player.randomGenerator = seededRandom(sharedSeed);
+            fillBag(player.nextPieces, player.randomGenerator);
+        }
         
-        // Draw next pieces
-        drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-        drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
+        // Draw next pieces for all players
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const canvases = this.playerNextCanvases.get(playerNum);
+            if (canvases && canvases.length) {
+                drawNextPieces(canvases, this.multiplayerState.players[i].nextPieces);
+            }
+        }
         
         // Update stats
         this._updateMultiplayerStats();
-        
+
+        // Wait 1 second before showing countdown
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         // Show countdown
         await this._showCountdown();
         
-        // Spawn initial pieces
-        spawnPiece(
-            this.multiplayerState.player1,
-            () => {
-                drawNextPieces(this.p1NextCanvases, this.multiplayerState.player1.nextPieces);
-                this._syncBoardScenes();
-            },
-            () => {}
-        );
-        
-        spawnPiece(
-            this.multiplayerState.player2,
-            () => {
-                drawNextPieces(this.p2NextCanvases, this.multiplayerState.player2.nextPieces);
-                this._syncBoardScenes();
-            },
-            () => {}
-        );
+        // Spawn initial pieces for all configured players
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const nextCanvases = this.playerNextCanvases.get(playerNum);
+            
+            spawnPiece(
+                this.multiplayerState.players[i],
+                () => {
+                    if (nextCanvases) {
+                        drawNextPieces(nextCanvases, this.multiplayerState.players[i].nextPieces);
+                    }
+                    this._syncBoardScenes();
+                },
+                () => this._handleGameOver(i)
+            );
+            
+            console.log(`[LocalMultiplayer] Spawned piece for Player ${playerNum} in new round`);
+        }
         
         this._syncBoardScenes();
         
@@ -1014,10 +1403,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
         
         // Accumulate final round stats before showing match end
-        const finalP1Score = this.matchStats.player1.score + this.multiplayerState.player1.score;
-        const finalP1Lines = this.matchStats.player1.lines + this.multiplayerState.player1.lines;
-        const finalP2Score = this.matchStats.player2.score + this.multiplayerState.player2.score;
-        const finalP2Lines = this.matchStats.player2.lines + this.multiplayerState.player2.lines;
+        const finalP1Score = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+        const finalP1Lines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+        const finalP2Score = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+        const finalP2Lines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
         
         console.log('[LocalMultiplayer] Match ended! Final stats:', {
             p1: { frags: p1Wins, score: finalP1Score, lines: finalP1Lines },
@@ -1053,7 +1442,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     Final Frags: ${p1Wins} - ${p2Wins}
                 </div>
                 <div style="font-size: 28px; margin-bottom: 30px; color: #94a3b8;">
-                    First to ${this.roundsToWin}
+                    ${this._getWinConditionText()}
                 </div>
                 <div style="display: flex; gap: 80px; justify-content: center; margin-bottom: 60px;">
                     <div>
@@ -1099,8 +1488,343 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Reset round wins for next match
             this.roundWins.player1 = 0;
             this.roundWins.player2 = 0;
+            this.roundWins.player3 = 0;
+            this.roundWins.player4 = 0;
             // Trigger mode change back to start screen
             window.location.reload(); // Simple approach - reload to start screen
         });
+    }
+
+    /**
+     * Show death animation when a player is eliminated
+     * @private
+     */
+    _showPlayerDeathAnimation(playerIndex) {
+        const playerNum = playerIndex + 1;
+        const boardScene = this.boardScenes[playerIndex];
+
+        if (!boardScene) {
+            console.warn(`[LocalMultiplayer] No board scene found for Player ${playerNum}`);
+            return;
+        }
+
+        console.log(`[LocalMultiplayer] Showing death animation for Player ${playerNum}`);
+
+        // === PHASER EFFECTS ===
+        this._createEliminationExplosion(boardScene, playerIndex);
+
+        // Get the Phaser container for this player
+        const phaserContainer = document.getElementById(`p${playerNum}-phaser-container`);
+        if (!phaserContainer) {
+            console.warn(`[LocalMultiplayer] No phaser container found for Player ${playerNum}`);
+            return;
+        }
+
+        // Create death overlay
+        const deathOverlay = document.createElement('div');
+        deathOverlay.className = 'player-death-overlay';
+        deathOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            pointer-events: none;
+            transition: background 0.5s ease;
+        `;
+
+        // Create skull/death icon
+        const deathIcon = document.createElement('div');
+        deathIcon.style.cssText = `
+            font-size: 80px;
+            margin-bottom: 10px;
+            opacity: 0;
+            transform: scale(0.5) rotate(-45deg);
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        `;
+        deathIcon.textContent = '💀';
+
+        // Create "ELIMINATED" text
+        const eliminatedText = document.createElement('div');
+        eliminatedText.style.cssText = `
+            font-family: Arial, sans-serif;
+            font-size: 28px;
+            font-weight: bold;
+            color: #ef4444;
+            text-shadow:
+                0 0 10px rgba(239, 68, 68, 0.8),
+                0 0 20px rgba(239, 68, 68, 0.6);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease 0.2s;
+        `;
+        eliminatedText.textContent = 'ELIMINATED';
+
+        deathOverlay.appendChild(deathIcon);
+        deathOverlay.appendChild(eliminatedText);
+
+        // Make container relative for absolute positioning
+        if (phaserContainer.style.position !== 'relative') {
+            phaserContainer.style.position = 'relative';
+        }
+
+        phaserContainer.appendChild(deathOverlay);
+
+        // Delay overlay appearance to let fade effect play first
+        setTimeout(() => {
+            // Trigger animations
+            requestAnimationFrame(() => {
+                deathOverlay.style.background = 'rgba(0, 0, 0, 0.75)';
+                deathIcon.style.opacity = '1';
+                deathIcon.style.transform = 'scale(1) rotate(0deg)';
+                eliminatedText.style.opacity = '1';
+                eliminatedText.style.transform = 'translateY(0)';
+            });
+        }, 1000); // Show overlay after gentle fade (1 second)
+
+        // Dim the board scene if possible
+        if (boardScene.cameras && boardScene.cameras.main) {
+            boardScene.cameras.main.setAlpha(0.3);
+        }
+
+        // Store reference for cleanup if needed
+        if (!this.deathOverlays) {
+            this.deathOverlays = [];
+        }
+        this.deathOverlays[playerIndex] = deathOverlay;
+
+        console.log(`[LocalMultiplayer] Death animation displayed for Player ${playerNum}`);
+    }
+
+    /**
+     * Clear all death overlays (when starting new round)
+     * @private
+     */
+    _clearDeathAnimations() {
+        console.log('[LocalMultiplayer] Clearing death animations, overlays:', this.deathOverlays?.length || 0);
+
+        // Clear overlay array
+        if (this.deathOverlays && this.deathOverlays.length > 0) {
+            this.deathOverlays.forEach((overlay, index) => {
+                if (overlay) {
+                    console.log(`[LocalMultiplayer] Removing overlay for player ${index + 1}`);
+                    if (overlay.parentElement) {
+                        overlay.remove();
+                    }
+
+                    // Restore board scene alpha
+                    const boardScene = this.boardScenes[index];
+                    if (boardScene && boardScene.cameras && boardScene.cameras.main) {
+                        boardScene.cameras.main.setAlpha(1.0);
+                        console.log(`[LocalMultiplayer] Restored alpha for player ${index + 1}`);
+                    }
+                }
+            });
+        }
+
+        // Also search for any lingering overlays in the DOM (safety cleanup)
+        const numPlayers = this.multiplayerState?.numPlayers || 4;
+        for (let i = 1; i <= numPlayers; i++) {
+            const container = document.getElementById(`p${i}-phaser-container`);
+            if (container) {
+                const overlays = container.querySelectorAll('.player-death-overlay');
+                overlays.forEach(overlay => {
+                    console.log(`[LocalMultiplayer] Force removing overlay from P${i} container`);
+                    overlay.remove();
+                });
+            }
+        }
+
+        // Reset array
+        this.deathOverlays = [];
+        console.log('[LocalMultiplayer] Death animations cleared');
+    }
+
+    /**
+     * Create simple gentle fade out elimination effect - covers entire player canvas
+     * @private
+     */
+    _createEliminationExplosion(boardScene, playerIndex) {
+        const playerNum = playerIndex + 1;
+        console.log(`[LocalMultiplayer] Creating gentle fade out for Player ${playerNum}`);
+
+        try {
+            // Get the entire player container (includes board, stats, next pieces, etc.)
+            const playerContainer = document.getElementById(`player${playerNum}-container`)
+                || document.getElementById(`p${playerNum}-container`);
+
+            if (!playerContainer) {
+                console.warn(`[LocalMultiplayer] Player ${playerNum} container not found`);
+                return;
+            }
+
+            // Create full-canvas fade overlay
+            const fadeOverlay = document.createElement('div');
+            fadeOverlay.className = 'elimination-fade-overlay';
+            fadeOverlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: white;
+                opacity: 0;
+                z-index: 50;
+                pointer-events: none;
+                transition: opacity 0.6s ease-in-out;
+            `;
+
+            // Ensure container has position relative
+            if (playerContainer.style.position !== 'relative' && playerContainer.style.position !== 'absolute') {
+                playerContainer.style.position = 'relative';
+            }
+
+            playerContainer.appendChild(fadeOverlay);
+
+            // Animate fade in
+            requestAnimationFrame(() => {
+                fadeOverlay.style.opacity = '0.8';
+            });
+
+            // Hold briefly then fade out
+            setTimeout(() => {
+                fadeOverlay.style.transition = 'opacity 0.4s ease-out';
+                fadeOverlay.style.opacity = '0';
+
+                // Remove overlay after fade completes
+                setTimeout(() => {
+                    if (fadeOverlay.parentElement) {
+                        fadeOverlay.remove();
+                    }
+                }, 400);
+            }, 800); // Hold for 800ms (600ms fade in + 200ms hold)
+
+            // Also add camera flash to Phaser board if available
+            if (boardScene && boardScene.cameras && boardScene.cameras.main) {
+                boardScene.cameras.main.flash(400, 255, 255, 255, false);
+            }
+
+            console.log('[LocalMultiplayer] Full-canvas gentle fade out created successfully');
+
+        } catch (error) {
+            console.error('[LocalMultiplayer] Error creating elimination effect:', error);
+        }
+    }
+
+    /**
+     * Show victory animation for last player standing
+     * @private
+     */
+    _showVictoryAnimation(winnerIndex) {
+        const boardScene = this.boardScenes[winnerIndex];
+        if (!boardScene || !boardScene.add) {
+            console.warn('[LocalMultiplayer] Cannot create victory animation - scene not ready');
+            return;
+        }
+
+        const PhaserRef = window.Phaser;
+        if (!PhaserRef) {
+            console.warn('[LocalMultiplayer] Phaser not available');
+            return;
+        }
+
+        console.log(`[LocalMultiplayer] Showing victory animation for Player ${winnerIndex + 1}`);
+
+        const width = boardScene.cols * boardScene.blockSize;
+        const height = boardScene.rows * boardScene.blockSize;
+        const particleKey = boardScene.commonParticleKey || 'common-circle-4px';
+
+        try {
+            // 1. GOLDEN FLASH
+            if (boardScene.cameras && boardScene.cameras.main) {
+                boardScene.cameras.main.flash(400, 255, 215, 0, false);
+            }
+
+            // 2. FIREWORKS - Multiple bursts
+            if (boardScene.textures && boardScene.textures.exists(particleKey)) {
+                const fireworkColors = [0xFFD700, 0xFFA500, 0xFF69B4, 0x00FF00, 0x00FFFF];
+
+                // Launch 5 fireworks at different times and positions
+                for (let i = 0; i < 5; i++) {
+                    setTimeout(() => {
+                        const x = (width * (0.2 + i * 0.15)) + (Math.random() - 0.5) * 30;
+                        const y = height * (0.2 + Math.random() * 0.3);
+                        const color = fireworkColors[i % fireworkColors.length];
+
+                        // Firework burst
+                        const firework = boardScene.add.particles(x, y, particleKey, {
+                            speed: { min: 100, max: 200 },
+                            angle: { min: 0, max: 360 },
+                            scale: { start: 1.5, end: 0 },
+                            tint: color,
+                            lifespan: 1000,
+                            gravityY: 150,
+                            quantity: 30,
+                            blendMode: 'ADD'
+                        });
+
+                        setTimeout(() => firework.destroy(), 1200);
+                    }, i * 200);
+                }
+
+                // 3. CONTINUOUS CONFETTI from top
+                const confetti = boardScene.add.particles(0, 0, particleKey, {
+                    x: { min: 0, max: width },
+                    y: -10,
+                    speedY: { min: 100, max: 200 },
+                    speedX: { min: -30, max: 30 },
+                    scale: { start: 1.0, end: 0.5 },
+                    tint: fireworkColors,
+                    lifespan: 3000,
+                    gravityY: 100,
+                    frequency: 50,
+                    blendMode: 'NORMAL'
+                });
+
+                // Stop confetti after 2.5 seconds
+                setTimeout(() => {
+                    confetti.stop();
+                    setTimeout(() => confetti.destroy(), 3000);
+                }, 2500);
+
+                // 4. SPARKLE EFFECTS around the board
+                for (let i = 0; i < 8; i++) {
+                    setTimeout(() => {
+                        const edge = Math.floor(Math.random() * 4);
+                        let x, y;
+
+                        switch(edge) {
+                            case 0: x = Math.random() * width; y = 0; break; // Top
+                            case 1: x = width; y = Math.random() * height; break; // Right
+                            case 2: x = Math.random() * width; y = height; break; // Bottom
+                            case 3: x = 0; y = Math.random() * height; break; // Left
+                        }
+
+                        const sparkle = boardScene.add.particles(x, y, particleKey, {
+                            speed: { min: 50, max: 100 },
+                            angle: { min: 0, max: 360 },
+                            scale: { start: 1.0, end: 0 },
+                            tint: 0xFFFFFF,
+                            lifespan: 600,
+                            quantity: 15,
+                            blendMode: 'ADD'
+                        });
+
+                        setTimeout(() => sparkle.destroy(), 800);
+                    }, i * 150);
+                }
+            }
+
+            console.log('[LocalMultiplayer] Victory animation created successfully');
+
+        } catch (error) {
+            console.error('[LocalMultiplayer] Error creating victory animation:', error);
+        }
     }
 }
