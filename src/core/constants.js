@@ -266,6 +266,26 @@ export const DEFAULT_SETTINGS = {
         hardDrop: 1,       // B Button
         pause: 9,          // Start Button
     },
+    player3GamepadBindings: {
+        moveLeft: 14,
+        moveRight: 15,
+        rotateRight: 0,
+        rotateLeft: 3,
+        flip: 2,
+        softDrop: 13,
+        hardDrop: 1,
+        pause: 9,
+    },
+    player4GamepadBindings: {
+        moveLeft: 14,
+        moveRight: 15,
+        rotateRight: 0,
+        rotateLeft: 3,
+        flip: 2,
+        softDrop: 13,
+        hardDrop: 1,
+        pause: 9,
+    },
     // Gamepad settings
     gamepadEnabled: true,
     gamepadDeadzone: 0.25,

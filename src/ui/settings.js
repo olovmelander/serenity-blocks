@@ -69,7 +69,79 @@ const DEFAULT_CONFIG = {
         hardDrop: 1,       // B Button
         pause: 9,          // Start Button
     },
+    player3GamepadBindings: {
+        moveLeft: 14,
+        moveRight: 15,
+        rotateRight: 0,
+        rotateLeft: 3,
+        flip: 2,
+        softDrop: 13,
+        hardDrop: 1,
+        pause: 9,
+    },
+    player4GamepadBindings: {
+        moveLeft: 14,
+        moveRight: 15,
+        rotateRight: 0,
+        rotateLeft: 3,
+        flip: 2,
+        softDrop: 13,
+        hardDrop: 1,
+        pause: 9,
+    },
 };
+
+const GAMEPAD_BINDING_KEYS = [
+    'gamepadBindings',
+    'player2GamepadBindings',
+    'player3GamepadBindings',
+    'player4GamepadBindings',
+];
+
+const DEFAULT_GAMEPAD_BINDINGS = [
+    DEFAULT_CONFIG.gamepadBindings,
+    DEFAULT_CONFIG.player2GamepadBindings,
+    DEFAULT_CONFIG.player3GamepadBindings,
+    DEFAULT_CONFIG.player4GamepadBindings,
+];
+
+const SERENITY_GAMEPAD_DEFAULTS = [
+    'Y (Triangle)',
+    'X (Square)',
+    'L3 (L-Stick Click)',
+    'R3 (R-Stick Click)',
+    'LB (L1)',
+    'RB (R1)',
+    'LT (L2)',
+    'RT (R2)',
+    'Select (Share)',
+    'Start (Options)',
+    'D-Pad Down',
+    'D-Pad Up',
+    'A (Cross)',
+    'B (Circle)',
+    'D-Left / L-Stick Left',
+    'D-Right / L-Stick Right',
+    'D-Up / L-Stick Up',
+    'D-Down / L-Stick Down',
+    'R-Stick Up/Down',
+];
+
+const SERENITY_KEYBOARD_DEFAULTS = [
+    'H',
+    'Space',
+    'T',
+    'M',
+    'B',
+    'F',
+    '/ or ?',
+    'ESC',
+    'Click',
+    'H or ESC',
+    'Click Tab Button',
+    'Mouse Wheel',
+    'Mouse / Click',
+];
 
 /**
  * Settings manager class
@@ -312,6 +384,19 @@ const GAMEPAD_BUTTON_NAMES = {
     16: 'Home',
 };
 
+function getGamepadBindingContext(elementId) {
+    const match = /^gamepad(?:-p(\d))?-(.+)$/.exec(elementId);
+    const rawIndex = match && match[1] ? parseInt(match[1], 10) - 1 : 0;
+    const playerIndex = Number.isNaN(rawIndex) ? 0 : Math.min(Math.max(rawIndex, 0), GAMEPAD_BINDING_KEYS.length - 1);
+    const action = match ? match[2] : elementId;
+
+    return {
+        playerIndex,
+        action,
+        bindingsKey: GAMEPAD_BINDING_KEYS[playerIndex],
+    };
+}
+
 /**
  * Handles gamepad binding input
  * @param {HTMLElement} element - Input element
@@ -320,16 +405,17 @@ const GAMEPAD_BUTTON_NAMES = {
  */
 export function handleGamepadBinding(element, settingsManager, updateCallback) {
     const elementId = element.id;
-    const settings = settingsManager.get();
-    
-    // Determine if this is player 2 binding
-    const isPlayer2 = elementId.startsWith('gamepad-p2-');
-    const action = isPlayer2
-        ? elementId.substring(11) // Remove 'gamepad-p2-' prefix
-        : elementId.substring(8); // Remove 'gamepad-' prefix
+    let settings = settingsManager.get();
 
-    const bindingsKey = isPlayer2 ? 'player2GamepadBindings' : 'gamepadBindings';
-    const currentBindings = isPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
+    const { playerIndex, action, bindingsKey } = getGamepadBindingContext(elementId);
+    let currentBindings = settings[bindingsKey];
+
+    if (!currentBindings) {
+        currentBindings = { ...DEFAULT_GAMEPAD_BINDINGS[playerIndex] };
+        settingsManager.update({ [bindingsKey]: currentBindings }, false);
+        settingsManager.save();
+        settings = settingsManager.get();
+    }
 
     // Listen for gamepad button press
     let pollInterval = setInterval(() => {
@@ -353,7 +439,7 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
 
                     // Set new button binding
                     const newBindings = {
-                        ...currentBindings,
+                        ...settings[bindingsKey],
                         [action]: btnIndex,
                     };
 
@@ -373,7 +459,9 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
     // Timeout after 10 seconds
     setTimeout(() => {
         if (element.classList.contains('listening')) {
-            element.textContent = GAMEPAD_BUTTON_NAMES[currentBindings[action]] || `Button ${currentBindings[action]}`;
+            const latestBindings = settingsManager.get()[bindingsKey] || currentBindings;
+            const fallbackButton = latestBindings[action];
+            element.textContent = GAMEPAD_BUTTON_NAMES[fallbackButton] || `Button ${fallbackButton}`;
             element.classList.remove('listening');
             clearInterval(pollInterval);
         }
@@ -386,23 +474,22 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
  */
 export function updateGamepadControlsDisplay(settings) {
     const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'pause'];
-    
-    // Update Player 1 gamepad bindings
-    actions.forEach((action) => {
-        const element = document.getElementById(`gamepad-${action}`);
-        if (element && settings.gamepadBindings && settings.gamepadBindings[action] !== undefined) {
-            const buttonIndex = settings.gamepadBindings[action];
-            element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
-        }
-    });
+    const descriptors = [
+        { key: 'gamepadBindings', prefix: 'gamepad-' },
+        { key: 'player2GamepadBindings', prefix: 'gamepad-p2-' },
+        { key: 'player3GamepadBindings', prefix: 'gamepad-p3-' },
+        { key: 'player4GamepadBindings', prefix: 'gamepad-p4-' },
+    ];
 
-    // Update Player 2 gamepad bindings
-    actions.forEach((action) => {
-        const element = document.getElementById(`gamepad-p2-${action}`);
-        if (element && settings.player2GamepadBindings && settings.player2GamepadBindings[action] !== undefined) {
-            const buttonIndex = settings.player2GamepadBindings[action];
+    descriptors.forEach((descriptor, index) => {
+        const bindings = settings[descriptor.key] || DEFAULT_GAMEPAD_BINDINGS[index];
+        actions.forEach((action) => {
+            const element = document.getElementById(`${descriptor.prefix}${action}`);
+            if (!element || bindings?.[action] === undefined) return;
+
+            const buttonIndex = bindings[action];
             element.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
-        }
+        });
     });
 }
 
@@ -446,13 +533,99 @@ export function setupControlsSubTabs() {
  * @param {Object} callbacks - Callback functions
  */
 export function initializeSettingsUI(settingsManager, callbacks) {
-    const settings = settingsManager.get();
+    let settings = settingsManager.get();
+
+    let bindingsUpdated = false;
+    GAMEPAD_BINDING_KEYS.forEach((key, index) => {
+        if (!settings[key]) {
+            settingsManager.update({ [key]: { ...DEFAULT_GAMEPAD_BINDINGS[index] } }, false);
+            bindingsUpdated = true;
+        }
+    });
+    if (bindingsUpdated) {
+        settings = settingsManager.get();
+        settingsManager.save();
+    }
 
     // Setup tab switching
     setupSettingsTabs();
 
     // Setup controls sub-tab switching
     setupControlsSubTabs();
+
+    const detectControllersBtn = document.getElementById('detect-controllers');
+    if (detectControllersBtn) {
+        detectControllersBtn.addEventListener('click', () => {
+            if (callbacks && typeof callbacks.onGamepadRescan === 'function') {
+                callbacks.onGamepadRescan();
+            }
+        });
+    }
+
+    const resetBindingsBtn = document.getElementById('reset-all-bindings');
+    if (resetBindingsBtn) {
+        resetBindingsBtn.addEventListener('click', () => {
+            if (callbacks && typeof callbacks.onResetGamepadBindings === 'function') {
+                callbacks.onResetGamepadBindings();
+            }
+        });
+    }
+
+    const resetSerenityGamepadDisplay = () => {
+        const nodes = document.querySelectorAll('#controls-serenity-gamepad .gamepad-display');
+        nodes.forEach((node, index) => {
+            const value = SERENITY_GAMEPAD_DEFAULTS[index];
+            if (value !== undefined) {
+                node.textContent = value;
+            }
+        });
+    };
+
+    const resetSerenityKeyboardDisplay = () => {
+        const nodes = document.querySelectorAll('#controls-serenity-keyboard .gamepad-display');
+        nodes.forEach((node, index) => {
+            const value = SERENITY_KEYBOARD_DEFAULTS[index];
+            if (value !== undefined) {
+                node.textContent = value;
+            }
+        });
+    };
+
+    const applyKeyDefaults = (key) => {
+        if (!DEFAULT_SETTINGS[key]) return;
+        settingsManager.update({ [key]: { ...DEFAULT_SETTINGS[key] } });
+        settingsManager.save();
+        updateControlsDisplay(settingsManager.get());
+    };
+
+    const applyGamepadDefaults = (key) => {
+        if (!DEFAULT_SETTINGS[key]) return;
+        settingsManager.update({ [key]: { ...DEFAULT_SETTINGS[key] } });
+        settingsManager.save();
+        updateGamepadControlsDisplay(settingsManager.get());
+    };
+
+    const bindingResetHandlers = {
+        'keyboard-player1': () => applyKeyDefaults('keyBindings'),
+        'keyboard-player2': () => applyKeyDefaults('player2KeyBindings'),
+        'keyboard-serenity': () => resetSerenityKeyboardDisplay(),
+        'gamepad-player1': () => applyGamepadDefaults('gamepadBindings'),
+        'gamepad-player2': () => applyGamepadDefaults('player2GamepadBindings'),
+        'gamepad-player3': () => applyGamepadDefaults('player3GamepadBindings'),
+        'gamepad-player4': () => applyGamepadDefaults('player4GamepadBindings'),
+        'gamepad-serenity': () => resetSerenityGamepadDisplay(),
+    };
+
+    document.querySelectorAll('[data-reset-target]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const target = button.getAttribute('data-reset-target');
+            const handler = bindingResetHandlers[target];
+            if (handler) {
+                handler();
+                button.blur();
+            }
+        });
+    });
 
     // Game mode selector
     const gameModeSelect = document.getElementById('game-mode');
@@ -784,28 +957,24 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Initialize gamepad bindings listeners
     const gamepadInputs = document.querySelectorAll('.gamepad-input');
     gamepadInputs.forEach((input) => {
-        const elementId = input.id;
-        const isPlayer2 = elementId.startsWith('gamepad-p2-');
-        const action = isPlayer2
-            ? elementId.substring(11) // Remove 'gamepad-p2-' prefix
-            : elementId.substring(8); // Remove 'gamepad-' prefix
+        const context = getGamepadBindingContext(input.id);
+        const currentBindings = settings[context.bindingsKey] || DEFAULT_GAMEPAD_BINDINGS[context.playerIndex];
 
-        const currentBindings = isPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
-
-        if (currentBindings && currentBindings[action] !== undefined) {
-            const buttonIndex = currentBindings[action];
+        if (currentBindings && currentBindings[context.action] !== undefined) {
+            const buttonIndex = currentBindings[context.action];
             input.textContent = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
         }
 
         input.addEventListener('click', () => {
             // Clear other listening inputs
             document.querySelectorAll('.gamepad-input.listening').forEach((el) => {
-                const elId = el.id;
-                const elIsPlayer2 = elId.startsWith('gamepad-p2-');
-                const elAction = elIsPlayer2 ? elId.substring(11) : elId.substring(8);
-                const elBindings = elIsPlayer2 ? settings.player2GamepadBindings : settings.gamepadBindings;
-                const elButtonIndex = elBindings[elAction];
-                el.textContent = GAMEPAD_BUTTON_NAMES[elButtonIndex] || `Button ${elButtonIndex}`;
+                const otherContext = getGamepadBindingContext(el.id);
+                const latestSettings = settingsManager.get();
+                const otherBindings = latestSettings[otherContext.bindingsKey] || DEFAULT_GAMEPAD_BINDINGS[otherContext.playerIndex];
+                const otherButtonIndex = otherBindings?.[otherContext.action];
+                if (otherButtonIndex !== undefined) {
+                    el.textContent = GAMEPAD_BUTTON_NAMES[otherButtonIndex] || `Button ${otherButtonIndex}`;
+                }
                 el.classList.remove('listening');
             });
 
@@ -813,12 +982,14 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             input.textContent = 'Press a button...';
 
             handleGamepadBinding(input, settingsManager, () => {
-                updateGamepadControlsDisplay(settingsManager.get());
+                const refreshedSettings = settingsManager.get();
+                updateGamepadControlsDisplay(refreshedSettings);
             });
         });
     });
 
     // Update controls display
+    settings = settingsManager.get();
     updateControlsDisplay(settings);
     updateGamepadControlsDisplay(settings);
 }
