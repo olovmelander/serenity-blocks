@@ -112,7 +112,7 @@ export class GamepadController {
         this.onPauseCallback = null;
         this.onResumeCallback = null;
         // Gate menu toggles until Start is released after a press
-        this.waitingForStartRelease = [false, false];
+        this.waitingForStartRelease = [false, false, false, false];
         this.selectEditState = {
             active: false,
             element: null,
@@ -152,11 +152,102 @@ export class GamepadController {
      */
     checkConnectedGamepads() {
         const gamepads = navigator.getGamepads();
-        for (let i = 0; i < gamepads.length && i < 2; i++) {
-            if (gamepads[i]) {
-                this.onGamepadConnected({ gamepad: gamepads[i] });
+        const activeSlots = new Set();
+
+        for (let i = 0; i < gamepads.length; i++) {
+            const gamepad = gamepads[i];
+            if (!gamepad) continue;
+
+            const slot = this.assignGamepadToSlot(gamepad);
+            if (slot !== -1) {
+                activeSlots.add(slot);
             }
         }
+
+        for (let slot = 0; slot < this.gamepads.length; slot++) {
+            if (!activeSlots.has(slot) && this.connected[slot]) {
+                this.handleSlotDisconnect(slot);
+            }
+        }
+    }
+
+    /**
+     * Assign a connected gamepad to a slot
+     * @param {Gamepad} gamepad - Connected gamepad
+     * @returns {number} Slot index or -1 if no slot available
+     */
+    assignGamepadToSlot(gamepad) {
+        if (!gamepad) return -1;
+
+        // Check if this gamepad is already tracked
+        let slot = this.gamepads.findIndex((existing) => existing && existing.index === gamepad.index);
+        if (slot === -1) {
+            slot = this.connected.findIndex((isConnected) => !isConnected);
+        }
+
+        if (slot === -1) {
+            console.warn(`[Gamepad] Maximum controllers (${this.gamepads.length}) already connected`);
+            return -1;
+        }
+
+        const wasConnected = this.connected[slot];
+        this.gamepads[slot] = gamepad;
+        this.connected[slot] = true;
+        if (!this.previousStates[slot]) {
+            this.previousStates[slot] = {};
+        }
+
+        if (!wasConnected) {
+            this.clearDasTimers(slot);
+            console.log(`[Gamepad] Controller ${slot + 1} connected:`, gamepad.id);
+            window.dispatchEvent(new CustomEvent('gamepadStatusChanged', {
+                detail: {
+                    slot,
+                    connected: true,
+                    name: gamepad.id,
+                },
+            }));
+        }
+
+        if (!this.pollInterval && this.enabled) {
+            this.startPolling();
+        }
+
+        return slot;
+    }
+
+    /**
+     * Cleanup when a gamepad slot disconnects
+     * @param {number} slot - Slot index
+     */
+    handleSlotDisconnect(slot) {
+        const gamepad = this.gamepads[slot];
+        if (gamepad) {
+            console.log(`[Gamepad] Controller ${slot + 1} disconnected:`, gamepad.id);
+        }
+
+        this.gamepads[slot] = null;
+        this.connected[slot] = false;
+        this.previousStates[slot] = {};
+        this.clearDasTimers(slot);
+
+        window.dispatchEvent(new CustomEvent('gamepadStatusChanged', {
+            detail: {
+                slot,
+                connected: false,
+            },
+        }));
+
+        if (!this.connected.some(Boolean)) {
+            this.stopPolling();
+        }
+    }
+
+    /**
+     * Force refresh of connected gamepads (manual rescan)
+     */
+    rescan() {
+        this.checkConnectedGamepads();
     }
 
     /**
@@ -164,39 +255,7 @@ export class GamepadController {
      */
     onGamepadConnected(event) {
         const gamepad = event.gamepad;
-        const index = gamepad.index;
-
-        // Assign to first available slot (0 or 1)
-        let slot = -1;
-        if (!this.connected[0]) {
-            slot = 0;
-        } else if (!this.connected[1]) {
-            slot = 1;
-        }
-
-        if (slot !== -1) {
-            this.gamepads[slot] = gamepad;
-            this.connected[slot] = true;
-            this.previousStates[slot] = {};
-
-            console.log(`[Gamepad] Controller ${slot + 1} connected:`, gamepad.id);
-
-            // Dispatch custom event for UI updates
-            window.dispatchEvent(new CustomEvent('gamepadStatusChanged', {
-                detail: {
-                    slot,
-                    connected: true,
-                    name: gamepad.id,
-                }
-            }));
-
-            // Start polling if not already running
-            if (!this.pollInterval && this.enabled) {
-                this.startPolling();
-            }
-        } else {
-            console.warn('[Gamepad] Maximum controllers (2) already connected');
-        }
+        this.assignGamepadToSlot(gamepad);
     }
 
     /**
@@ -206,30 +265,9 @@ export class GamepadController {
         const gamepad = event.gamepad;
 
         // Find which slot this gamepad was in
-        for (let i = 0; i < 2; i++) {
-            if (this.gamepads[i] && this.gamepads[i].index === gamepad.index) {
-                console.log(`[Gamepad] Controller ${i + 1} disconnected:`, gamepad.id);
-
-                this.gamepads[i] = null;
-                this.connected[i] = false;
-                this.previousStates[i] = {};
-                this.clearDasTimers(i);
-
-                // Dispatch custom event for UI updates
-                window.dispatchEvent(new CustomEvent('gamepadStatusChanged', {
-                    detail: {
-                        slot: i,
-                        connected: false,
-                    }
-                }));
-
-                break;
-            }
-        }
-
-        // Stop polling if no gamepads connected
-        if (!this.connected[0] && !this.connected[1]) {
-            this.stopPolling();
+        const slot = this.gamepads.findIndex((existing) => existing && existing.index === gamepad.index);
+        if (slot !== -1) {
+            this.handleSlotDisconnect(slot);
         }
     }
 
@@ -253,7 +291,7 @@ export class GamepadController {
      */
     enable() {
         this.enabled = true;
-        if ((this.connected[0] || this.connected[1]) && !this.pollInterval) {
+        if (this.connected.some(Boolean) && !this.pollInterval) {
             this.startPolling();
         }
     }
@@ -299,7 +337,7 @@ export class GamepadController {
 
         const gamepads = navigator.getGamepads();
 
-        for (let slot = 0; slot < 2; slot++) {
+        for (let slot = 0; slot < this.gamepads.length; slot++) {
             if (!this.connected[slot]) continue;
 
             const gamepad = this.gamepads[slot];
@@ -1196,7 +1234,7 @@ export class GamepadController {
      * Clear all DAS timers for all gamepads
      */
     clearAllDasTimers() {
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < this.gamepads.length; i++) {
             this.clearDasTimers(i);
         }
     }
@@ -1213,7 +1251,15 @@ export class GamepadController {
             controller2: {
                 connected: this.connected[1],
                 name: this.gamepads[1]?.id || null,
-            }
+            },
+            controller3: {
+                connected: this.connected[2],
+                name: this.gamepads[2]?.id || null,
+            },
+            controller4: {
+                connected: this.connected[3],
+                name: this.gamepads[3]?.id || null,
+            },
         };
     }
 
@@ -1230,9 +1276,11 @@ export class GamepadController {
      * @param {Object} player1Bindings - Player 1 gamepad bindings
      * @param {Object} player2Bindings - Player 2 gamepad bindings
      */
-    updateBindings(player1Bindings, player2Bindings) {
+    updateBindings(player1Bindings, player2Bindings, player3Bindings = null, player4Bindings = null) {
         this.customBindings[0] = player1Bindings;
         this.customBindings[1] = player2Bindings;
+        this.customBindings[2] = player3Bindings;
+        this.customBindings[3] = player4Bindings;
         console.log('[Gamepad] Updated custom bindings');
     }
 

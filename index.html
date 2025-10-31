@@ -906,388 +906,548 @@
                     </div>
                 </div>
                 <div class="settings-tab-content" id="settings-controls">
-                    <div class="controls-subtabs">
-                        <button class="controls-subtab active" data-subtab="general">⚙️ General</button>
-                        <button class="controls-subtab" data-subtab="serenity">🧘 Serenity Mode</button>
-                        <button class="controls-subtab" data-subtab="player1">⌨️ Player 1 Keys</button>
-                        <button class="controls-subtab" data-subtab="player2">⌨️ Player 2 Keys</button>
-                        <button class="controls-subtab" data-subtab="gamepad1">🎮 Player 1 Gamepad</button>
-                        <button class="controls-subtab" data-subtab="gamepad2">🎮 Player 2 Gamepad</button>
-                    </div>
+                    <div class="controls-layout">
+                        <aside class="controls-nav">
+                            <div class="controls-nav-group">
+                                <h3 class="controls-nav-heading">Overview</h3>
+                                <div class="controls-subtabs">
+                                    <button class="controls-subtab active" data-subtab="general">
+                                        <span class="controls-subtab-icon">⚙️</span>
+                                        <span class="controls-subtab-label">General</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="controls-nav-group">
+                                <h3 class="controls-nav-heading">Keyboard</h3>
+                                <div class="controls-subtabs">
+                                    <button class="controls-subtab" data-subtab="player1">
+                                        <span class="controls-subtab-icon">⌨️</span>
+                                        <span class="controls-subtab-label">Player 1 Keys</span>
+                                    </button>
+                                    <button class="controls-subtab" data-subtab="player2">
+                                        <span class="controls-subtab-icon">⌨️</span>
+                                        <span class="controls-subtab-label">Player 2 Keys</span>
+                                    </button>
+                                    <button class="controls-subtab" data-subtab="serenity-keyboard">
+                                        <span class="controls-subtab-icon">🧘</span>
+                                        <span class="controls-subtab-label">Serenity Mode Keys</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="controls-nav-group">
+                                <h3 class="controls-nav-heading">Gamepads</h3>
+                                <div class="controls-subtabs">
+                                    <button class="controls-subtab" data-subtab="gamepad1">
+                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-label">Player 1</span>
+                                        <span class="controls-status-dot controller-1" data-controller-status="1"></span>
+                                    </button>
+                                    <button class="controls-subtab" data-subtab="gamepad2">
+                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-label">Player 2</span>
+                                        <span class="controls-status-dot controller-2" data-controller-status="2"></span>
+                                    </button>
+                                    <button class="controls-subtab" data-subtab="gamepad3">
+                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-label">Player 3</span>
+                                        <span class="controls-status-dot controller-3" data-controller-status="3"></span>
+                                    </button>
+                                    <button class="controls-subtab" data-subtab="gamepad4">
+                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-label">Player 4</span>
+                                        <span class="controls-status-dot controller-4" data-controller-status="4"></span>
+                                    </button>
+                                    <button class="controls-subtab" data-subtab="serenity-gamepad">
+                                        <span class="controls-subtab-icon">🧘</span>
+                                        <span class="controls-subtab-label">Serenity Mode</span>
+                                        
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="controls-nav-footer">
+                                <button class="controls-nav-action" id="detect-controllers">Detect Controllers</button>
+                                <button class="controls-nav-action ghost" id="reset-all-bindings">Reset All Bindings</button>
+                            </div>
+                        </aside>
+                        <div class="controls-content">
+                            <div class="controls-subtab-content active" id="controls-general">
+                                <div class="controls-section">
+                                    <h4 class="controls-section-title">🎮 System-Wide Control Settings</h4>
+                                    <div class="settings-grid">
+                                        <div class="setting">
+                                            <label for="control-scheme">Control Scheme:</label>
+                                            <select id="control-scheme" class="setting-select">
+                                                <option value="Keyboard">Keyboard</option>
+                                                <option value="Touch">Touch</option>
+                                            </select>
+                                        </div>
+                                        <div class="setting">
+                                            <label for="gamepad-enabled">Gamepad Support:</label>
+                                            <select id="gamepad-enabled" class="setting-select">
+                                                <option value="true">Enabled</option>
+                                                <option value="false">Disabled</option>
+                                            </select>
+                                        </div>
+                                        <div class="setting">
+                                            <label for="gamepad-deadzone">Gamepad Deadzone:</label>
+                                            <div class="slider-container">
+                                                <input type="range" id="gamepad-deadzone" min="0" max="50" step="5">
+                                                <span id="gamepad-deadzone-value">25</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting" id="gamepad-status-display">
+                                            <label>Connected Controllers:</label>
+                                            <div id="gamepad-status" style="color: rgba(224, 231, 255, 0.7); font-size: 14px;">
+                                                <div id="controller-1-status">Controller 1: Not connected</div>
+                                                <div id="controller-2-status">Controller 2: Not connected</div>
+                                                <div id="controller-3-status">Controller 3: Not connected</div>
+                                                <div id="controller-4-status">Controller 4: Not connected</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="controls-section">
+                                    <h4 class="controls-section-title">⌨️ Global Keyboard Shortcuts</h4>
+                                    <div class="settings-grid">
+                                        <div class="setting">
+                                            <label for="key-nextTrack">Next Track:</label>
+                                            <div id="key-nextTrack" class="key-input" tabindex="0">m</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label for="key-randomTheme">Random Theme:</label>
+                                            <div id="key-randomTheme" class="key-input" tabindex="0">b</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label for="key-toggleFullscreen">Toggle Fullscreen:</label>
+                                            <div id="key-toggleFullscreen" class="key-input" tabindex="0">f</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label for="key-showHighScores">Show High Scores:</label>
+                                            <div id="key-showHighScores" class="key-input" tabindex="0">h</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="controls-helper-card" id="controls-binding-helper">
+                                    <h5>How rebinding works</h5>
+                                    <p>Focus any binding tile, then press a key or button to remap instantly. Conflicts will prompt you to confirm or choose a different input.</p>
+                                </div>
+                                <div class="controls-info-box">
+                                    <strong>💡 Tip:</strong> Use Detect Controllers whenever you plug in a new pad or wake a wireless controller to refresh status indicators.
+                                </div>
+                            </div>
 
-                    <!-- General Controls Sub-tab -->
-                    <div class="controls-subtab-content active" id="controls-general">
-                        <div class="controls-section">
-                            <h4 class="controls-section-title">🎮 System-Wide Control Settings</h4>
-                            <div class="settings-grid">
-                                <div class="setting">
-                                    <label for="control-scheme">Control Scheme:</label>
-                                    <select id="control-scheme" class="setting-select">
-                                        <option value="Keyboard">Keyboard</option>
-                                        <option value="Touch">Touch</option>
-                                    </select>
+                            <div class="controls-subtab-content" id="controls-serenity-gamepad">
+                                <div class="serenity-controls-header">
+                                    <h3>🎮 Serenity Mode Gamepad Controls</h3>
+                                    <p class="controls-description">Relaxed navigation and playback tools tailored for a controller.</p>
                                 </div>
-                                <div class="setting">
-                                    <label for="gamepad-enabled">Gamepad Support:</label>
-                                <select id="gamepad-enabled" class="setting-select">
-                                    <option value="true">Enabled</option>
-                                    <option value="false">Disabled</option>
-                                </select>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-deadzone">Gamepad Deadzone:</label>
-                                <div class="slider-container">
-                                    <input type="range" id="gamepad-deadzone" min="0" max="50" step="5">
-                                    <span id="gamepad-deadzone-value">25</span>
-                                </div>
-                            </div>
-                            <div class="setting" id="gamepad-status-display">
-                                <label>Connected Controllers:</label>
-                                <div id="gamepad-status" style="color: rgba(224, 231, 255, 0.7); font-size: 14px;">
-                                    <div id="controller-1-status">Controller 1: Not connected</div>
-                                    <div id="controller-2-status">Controller 2: Not connected</div>
-                                </div>
-                            </div>
-                            </div>
-                        </div>
 
-                        <div class="controls-section">
-                            <h4 class="controls-section-title">⌨️ Global Keyboard Shortcuts</h4>
-                            <div class="settings-grid">
-                                <div class="setting">
-                                    <label for="key-nextTrack">Next Track:</label>
-                                    <div id="key-nextTrack" class="key-input" tabindex="0">m</div>
+                                <div class="controls-section">
+                                    <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
+                                    <div class="settings-grid">
+                                        <div class="setting">
+                                            <label>Toggle Serenity Hub:</label>
+                                            <div class="gamepad-display readonly">Y (Triangle)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Toggle Breathing Guide:</label>
+                                            <div class="gamepad-display readonly">X (Square)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Random Theme:</label>
+                                            <div class="gamepad-display readonly">L3 (L-Stick Click)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Toggle Fullscreen:</label>
+                                            <div class="gamepad-display readonly">R3 (R-Stick Click)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Previous Music Track:</label>
+                                            <div class="gamepad-display readonly">LB (L1)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Next Music Track:</label>
+                                            <div class="gamepad-display readonly">RB (R1)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Volume Down:</label>
+                                            <div class="gamepad-display readonly">LT (L2)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Volume Up:</label>
+                                            <div class="gamepad-display readonly">RT (R2)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Toggle Button Hints:</label>
+                                            <div class="gamepad-display readonly">Select (Share)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Open Settings Menu:</label>
+                                            <div class="gamepad-display readonly">Start (Options)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Next Breathing Technique:</label>
+                                            <div class="gamepad-display readonly">D-Pad Down</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Previous Breathing Technique:</label>
+                                            <div class="gamepad-display readonly">D-Pad Up</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="setting">
-                                    <label for="key-randomTheme">Random Theme:</label>
-                                    <div id="key-randomTheme" class="key-input" tabindex="0">b</div>
-                                </div>
-                                <div class="setting">
-                                    <label for="key-toggleFullscreen">Toggle Fullscreen:</label>
-                                    <div id="key-toggleFullscreen" class="key-input" tabindex="0">f</div>
-                                </div>
-                                <div class="setting">
-                                    <label for="key-showHighScores">Show High Scores:</label>
-                                    <div id="key-showHighScores" class="key-input" tabindex="0">h</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Serenity Mode Controls Sub-tab -->
-                    <div class="controls-subtab-content" id="controls-serenity">
-                        <div class="serenity-controls-header">
-                            <h3>🎮 Gamepad Controls for Serenity Mode</h3>
-                            <p class="controls-description">Navigate and control your meditation experience with a gamepad</p>
-                        </div>
-                        
-                        <div class="controls-section">
-                            <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
-                            <div class="settings-grid">
-                                <div class="setting">
-                                    <label>Toggle Serenity Hub:</label>
-                                    <div class="gamepad-display readonly">Y (Triangle)</div>
+                                <div class="controls-section">
+                                    <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
+                                    <div class="settings-grid">
+                                        <div class="setting">
+                                            <label>Confirm Selection:</label>
+                                            <div class="gamepad-display readonly">A (Cross)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Close Hub:</label>
+                                            <div class="gamepad-display readonly">B (Circle)</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Switch Tab Left:</label>
+                                            <div class="gamepad-display readonly">D-Left / L-Stick Left</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Switch Tab Right:</label>
+                                            <div class="gamepad-display readonly">D-Right / L-Stick Right</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Navigate Up:</label>
+                                            <div class="gamepad-display readonly">D-Up / L-Stick Up</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Navigate Down:</label>
+                                            <div class="gamepad-display readonly">D-Down / L-Stick Down</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Scroll Content:</label>
+                                            <div class="gamepad-display readonly">R-Stick Up/Down</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="setting">
-                                    <label>Toggle Breathing Guide:</label>
-                                    <div class="gamepad-display readonly">X (Square)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Random Theme:</label>
-                                    <div class="gamepad-display readonly">L3 (L-Stick Click)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Toggle Fullscreen:</label>
-                                    <div class="gamepad-display readonly">R3 (R-Stick Click)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Previous Music Track:</label>
-                                    <div class="gamepad-display readonly">LB (L1)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Next Music Track:</label>
-                                    <div class="gamepad-display readonly">RB (R1)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Volume Down:</label>
-                                    <div class="gamepad-display readonly">LT (L2)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Volume Up:</label>
-                                    <div class="gamepad-display readonly">RT (R2)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Toggle Button Hints:</label>
-                                    <div class="gamepad-display readonly">Select (Share)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Open Settings Menu:</label>
-                                    <div class="gamepad-display readonly">Start (Options)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Next Breathing Technique:</label>
-                                    <div class="gamepad-display readonly">D-Pad Down</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Previous Breathing Technique:</label>
-                                    <div class="gamepad-display readonly">D-Pad Up</div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div class="controls-section">
-                            <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
-                            <div class="settings-grid">
-                                <div class="setting">
-                                    <label>Confirm Selection:</label>
-                                    <div class="gamepad-display readonly">A (Cross)</div>
+                                <div class="controls-info-box">
+                                    <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see an overlay of all available controls!
                                 </div>
-                                <div class="setting">
-                                    <label>Close Hub:</label>
-                                    <div class="gamepad-display readonly">B (Circle)</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Switch Tab Left:</label>
-                                    <div class="gamepad-display readonly">D-Left / L-Stick Left</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Switch Tab Right:</label>
-                                    <div class="gamepad-display readonly">D-Right / L-Stick Right</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Navigate Up:</label>
-                                    <div class="gamepad-display readonly">D-Up / L-Stick Up</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Navigate Down:</label>
-                                    <div class="gamepad-display readonly">D-Down / L-Stick Down</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Scroll Content:</label>
-                                    <div class="gamepad-display readonly">R-Stick Up/Down</div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div class="controls-info-box">
-                            <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see an overlay of all available controls!
-                        </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-serenity">Reset Serenity Gamepad</button>
+                                </div>
+                            </div>
 
-                        <!-- Keyboard Controls Section -->
-                        <div class="serenity-controls-header" style="margin-top: 40px; border-top: 2px solid rgba(224, 231, 255, 0.1); padding-top: 30px;">
-                            <h3>⌨️ Keyboard Controls for Serenity Mode</h3>
-                            <p class="controls-description">Navigate and control your meditation experience with keyboard shortcuts</p>
-                        </div>
+                            <div class="controls-subtab-content" id="controls-serenity-keyboard">
+                                <div class="serenity-controls-header">
+                                    <h3>⌨️ Serenity Mode Keyboard Controls</h3>
+                                    <p class="controls-description">Keyboard shortcuts for maintaining calm flow and quick adjustments.</p>
+                                </div>
 
-                        <div class="controls-section">
-                            <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
-                            <div class="settings-grid">
-                                <div class="setting">
-                                    <label>Toggle Serenity Hub:</label>
-                                    <div class="gamepad-display readonly">H</div>
+                                <div class="controls-section">
+                                    <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
+                                    <div class="settings-grid">
+                                        <div class="setting">
+                                            <label>Toggle Serenity Hub:</label>
+                                            <div class="gamepad-display readonly">H</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Toggle Breathing Guide:</label>
+                                            <div class="gamepad-display readonly">Space</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Cycle Breathing Technique:</label>
+                                            <div class="gamepad-display readonly">T</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Next Music Track:</label>
+                                            <div class="gamepad-display readonly">M</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Random Theme:</label>
+                                            <div class="gamepad-display readonly">B</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Toggle Fullscreen:</label>
+                                            <div class="gamepad-display readonly">F</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Toggle Control Hints:</label>
+                                            <div class="gamepad-display readonly">/ or ?</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Exit to Menu:</label>
+                                            <div class="gamepad-display readonly">ESC</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="setting">
-                                    <label>Toggle Breathing Guide:</label>
-                                    <div class="gamepad-display readonly">Space</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Cycle Breathing Technique:</label>
-                                    <div class="gamepad-display readonly">T</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Next Music Track:</label>
-                                    <div class="gamepad-display readonly">M</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Random Theme:</label>
-                                    <div class="gamepad-display readonly">B</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Toggle Fullscreen:</label>
-                                    <div class="gamepad-display readonly">F</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Toggle Control Hints:</label>
-                                    <div class="gamepad-display readonly">/ or ?</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Exit to Menu:</label>
-                                    <div class="gamepad-display readonly">ESC</div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div class="controls-section">
-                            <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
-                            <div class="settings-grid">
-                                <div class="setting">
-                                    <label>Select Item:</label>
-                                    <div class="gamepad-display readonly">Click</div>
+                                <div class="controls-section">
+                                    <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
+                                    <div class="settings-grid">
+                                        <div class="setting">
+                                            <label>Select Item:</label>
+                                            <div class="gamepad-display readonly">Click</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Close Hub:</label>
+                                            <div class="gamepad-display readonly">H or ESC</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Switch Tabs:</label>
+                                            <div class="gamepad-display readonly">Click Tab Button</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Scroll Content:</label>
+                                            <div class="gamepad-display readonly">Mouse Wheel</div>
+                                        </div>
+                                        <div class="setting">
+                                            <label>Navigate Lists:</label>
+                                            <div class="gamepad-display readonly">Mouse / Click</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="setting">
-                                    <label>Close Hub:</label>
-                                    <div class="gamepad-display readonly">H or ESC</div>
+
+                                <div class="controls-info-box">
+                                    <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an overlay of all available keyboard controls!
                                 </div>
-                                <div class="setting">
-                                    <label>Switch Tabs:</label>
-                                    <div class="gamepad-display readonly">Click Tab Button</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Scroll Content:</label>
-                                    <div class="gamepad-display readonly">Mouse Wheel</div>
-                                </div>
-                                <div class="setting">
-                                    <label>Navigate Lists:</label>
-                                    <div class="gamepad-display readonly">Mouse / Click</div>
+
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="keyboard-serenity">Reset Serenity Keys</button>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="controls-info-box">
-                            <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an overlay of all available keyboard controls!
-                        </div>
-                    </div>
+                            <div class="controls-subtab-content" id="controls-player1">
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="key-moveLeft">Move Left:</label>
+                                        <div id="key-moveLeft" class="key-input" tabindex="0">ArrowLeft</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-moveRight">Move Right:</label>
+                                        <div id="key-moveRight" class="key-input" tabindex="0">ArrowRight</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-rotateRight">Rotate Right:</label>
+                                        <div id="key-rotateRight" class="key-input" tabindex="0">ArrowUp</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-rotateLeft">Rotate Left:</label>
+                                        <div id="key-rotateLeft" class="key-input" tabindex="0">z</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-flip">Flip (180°):</label>
+                                        <div id="key-flip" class="key-input" tabindex="0">a</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-softDrop">Soft Drop:</label>
+                                        <div id="key-softDrop" class="key-input" tabindex="0">ArrowDown</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-hardDrop">Hard Drop:</label>
+                                        <div id="key-hardDrop" class="key-input" tabindex="0">Space</div>
+                                    </div>
+                                </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="keyboard-player1">Reset Player 1 Keys</button>
+                                </div>
+                            </div>
 
-                    <!-- Player 1 Controls Sub-tab -->
-                    <div class="controls-subtab-content" id="controls-player1">
-                        <div class="settings-grid">
-                            <div class="setting">
-                                <label for="key-moveLeft">Move Left:</label>
-                                <div id="key-moveLeft" class="key-input" tabindex="0">ArrowLeft</div>
+                            <div class="controls-subtab-content" id="controls-player2">
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="key-p2-moveLeft">Move Left:</label>
+                                        <div id="key-p2-moveLeft" class="key-input" tabindex="0">a</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-moveRight">Move Right:</label>
+                                        <div id="key-p2-moveRight" class="key-input" tabindex="0">d</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-rotateRight">Rotate Right:</label>
+                                        <div id="key-p2-rotateRight" class="key-input" tabindex="0">w</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-rotateLeft">Rotate Left:</label>
+                                        <div id="key-p2-rotateLeft" class="key-input" tabindex="0">q</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-flip">Flip (180°):</label>
+                                        <div id="key-p2-flip" class="key-input" tabindex="0">e</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-softDrop">Soft Drop:</label>
+                                        <div id="key-p2-softDrop" class="key-input" tabindex="0">s</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-hardDrop">Hard Drop:</label>
+                                        <div id="key-p2-hardDrop" class="key-input" tabindex="0">Shift</div>
+                                    </div>
+                                </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="keyboard-player2">Reset Player 2 Keys</button>
+                                </div>
                             </div>
-                            <div class="setting">
-                                <label for="key-moveRight">Move Right:</label>
-                                <div id="key-moveRight" class="key-input" tabindex="0">ArrowRight</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-rotateRight">Rotate Right:</label>
-                                <div id="key-rotateRight" class="key-input" tabindex="0">ArrowUp</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-rotateLeft">Rotate Left:</label>
-                                <div id="key-rotateLeft" class="key-input" tabindex="0">z</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-flip">Flip (180°):</label>
-                                <div id="key-flip" class="key-input" tabindex="0">a</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-softDrop">Soft Drop:</label>
-                                <div id="key-softDrop" class="key-input" tabindex="0">ArrowDown</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-hardDrop">Hard Drop:</label>
-                                <div id="key-hardDrop" class="key-input" tabindex="0">Space</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Player 2 Controls Sub-tab -->
-                    <div class="controls-subtab-content" id="controls-player2">
-                        <div class="settings-grid">
-                            <div class="setting">
-                                <label for="key-p2-moveLeft">Move Left:</label>
-                                <div id="key-p2-moveLeft" class="key-input" tabindex="0">a</div>
+                            <div class="controls-subtab-content" id="controls-gamepad1">
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="gamepad-moveLeft">Move Left:</label>
+                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-moveRight">Move Right:</label>
+                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-rotateRight">Rotate Right:</label>
+                                        <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-rotateLeft">Rotate Left:</label>
+                                        <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-flip">Flip (180°):</label>
+                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-softDrop">Soft Drop:</label>
+                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-hardDrop">Hard Drop:</label>
+                                        <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-pause">Pause:</label>
+                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                    </div>
+                                </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player1">Reset Player 1 Gamepad</button>
+                                </div>
                             </div>
-                            <div class="setting">
-                                <label for="key-p2-moveRight">Move Right:</label>
-                                <div id="key-p2-moveRight" class="key-input" tabindex="0">d</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-p2-rotateRight">Rotate Right:</label>
-                                <div id="key-p2-rotateRight" class="key-input" tabindex="0">w</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-p2-rotateLeft">Rotate Left:</label>
-                                <div id="key-p2-rotateLeft" class="key-input" tabindex="0">q</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-p2-flip">Flip (180°):</label>
-                                <div id="key-p2-flip" class="key-input" tabindex="0">e</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-p2-softDrop">Soft Drop:</label>
-                                <div id="key-p2-softDrop" class="key-input" tabindex="0">s</div>
-                            </div>
-                            <div class="setting">
-                                <label for="key-p2-hardDrop">Hard Drop:</label>
-                                <div id="key-p2-hardDrop" class="key-input" tabindex="0">Shift</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Player 1 Gamepad Sub-tab -->
-                    <div class="controls-subtab-content" id="controls-gamepad1">
-                        <div class="settings-grid">
-                            <div class="setting">
-                                <label for="gamepad-moveLeft">Move Left:</label>
-                                <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                            <div class="controls-subtab-content" id="controls-gamepad2">
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="gamepad-p2-moveLeft">Move Left:</label>
+                                        <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-moveRight">Move Right:</label>
+                                        <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-rotateRight">Rotate Right:</label>
+                                        <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-rotateLeft">Rotate Left:</label>
+                                        <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-flip">Flip (180°):</label>
+                                        <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-softDrop">Soft Drop:</label>
+                                        <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-hardDrop">Hard Drop:</label>
+                                        <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-pause">Pause:</label>
+                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                    </div>
+                                </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player2">Reset Player 2 Gamepad</button>
+                                </div>
                             </div>
-                            <div class="setting">
-                                <label for="gamepad-moveRight">Move Right:</label>
-                                <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-rotateRight">Rotate Right:</label>
-                                <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-rotateLeft">Rotate Left:</label>
-                                <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-flip">Flip (180°):</label>
-                                <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-softDrop">Soft Drop:</label>
-                                <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-hardDrop">Hard Drop:</label>
-                                <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-pause">Pause:</label>
-                                <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Player 2 Gamepad Sub-tab -->
-                    <div class="controls-subtab-content" id="controls-gamepad2">
-                        <div class="settings-grid">
-                            <div class="setting">
-                                <label for="gamepad-p2-moveLeft">Move Left:</label>
-                                <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                            <div class="controls-subtab-content" id="controls-gamepad3">
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="gamepad-p3-moveLeft">Move Left:</label>
+                                        <div id="gamepad-p3-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-moveRight">Move Right:</label>
+                                        <div id="gamepad-p3-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-rotateRight">Rotate Right:</label>
+                                        <div id="gamepad-p3-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-rotateLeft">Rotate Left:</label>
+                                        <div id="gamepad-p3-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-flip">Flip (180°):</label>
+                                        <div id="gamepad-p3-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-softDrop">Soft Drop:</label>
+                                        <div id="gamepad-p3-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-hardDrop">Hard Drop:</label>
+                                        <div id="gamepad-p3-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p3-pause">Pause:</label>
+                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                    </div>
+                                </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player3">Reset Player 3 Gamepad</button>
+                                </div>
                             </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-moveRight">Move Right:</label>
-                                <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-rotateRight">Rotate Right:</label>
-                                <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-rotateLeft">Rotate Left:</label>
-                                <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-flip">Flip (180°):</label>
-                                <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-softDrop">Soft Drop:</label>
-                                <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-hardDrop">Hard Drop:</label>
-                                <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
-                            </div>
-                            <div class="setting">
-                                <label for="gamepad-p2-pause">Pause:</label>
-                                <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+
+                            <div class="controls-subtab-content" id="controls-gamepad4">
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="gamepad-p4-moveLeft">Move Left:</label>
+                                        <div id="gamepad-p4-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-moveRight">Move Right:</label>
+                                        <div id="gamepad-p4-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-rotateRight">Rotate Right:</label>
+                                        <div id="gamepad-p4-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-rotateLeft">Rotate Left:</label>
+                                        <div id="gamepad-p4-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-flip">Flip (180°):</label>
+                                        <div id="gamepad-p4-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-softDrop">Soft Drop:</label>
+                                        <div id="gamepad-p4-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-hardDrop">Hard Drop:</label>
+                                        <div id="gamepad-p4-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-pause">Pause:</label>
+                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                    </div>
+                                </div>
+                                <div class="controls-subtab-actions">
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player4">Reset Player 4 Gamepad</button>
+                                </div>
                             </div>
                         </div>
                     </div>
