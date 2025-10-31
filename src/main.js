@@ -66,7 +66,7 @@ import {
     toggleFullScreen,
     closeHighScoresModal,
 } from './ui/modals.js';
-import { SettingsManager, initializeSettingsUI } from './ui/settings.js';
+import { SettingsManager, initializeSettingsUI, updateGamepadControlsDisplay } from './ui/settings.js';
 import { InputController, setupKeyboardControls, setupTouchControls } from './ui/controls.js';
 import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
@@ -793,12 +793,12 @@ class SerenityBlocks {
         
         // Initialize gamepad with custom bindings from settings
         const settings = this.settingsManager.get();
-        if (settings.gamepadBindings && settings.player2GamepadBindings) {
-            this.gamepadController.updateBindings(
-                settings.gamepadBindings,
-                settings.player2GamepadBindings
-            );
-        }
+        this.gamepadController.updateBindings(
+            settings.gamepadBindings,
+            settings.player2GamepadBindings,
+            settings.player3GamepadBindings,
+            settings.player4GamepadBindings,
+        );
         if (settings.gamepadDeadzone !== undefined) {
             this.gamepadController.updateDeadzone(settings.gamepadDeadzone);
         }
@@ -1014,6 +1014,29 @@ class SerenityBlocks {
             onGamepadDeadzoneChange: (deadzone) => {
                 console.log('[Main] Gamepad deadzone:', deadzone);
                 this.gamepadController.updateDeadzone(deadzone);
+            },
+            onGamepadRescan: () => {
+                this.gamepadController.rescan();
+                this.updateGamepadStatusDisplay();
+            },
+            onResetGamepadBindings: () => {
+                const defaults = DEFAULT_SETTINGS;
+                this.settingsManager.update({
+                    gamepadBindings: { ...defaults.gamepadBindings },
+                    player2GamepadBindings: { ...defaults.player2GamepadBindings },
+                    player3GamepadBindings: { ...defaults.player3GamepadBindings },
+                    player4GamepadBindings: { ...defaults.player4GamepadBindings },
+                });
+                this.settingsManager.save();
+                const refreshedSettings = this.settingsManager.get();
+                updateGamepadControlsDisplay(refreshedSettings);
+                this.gamepadController.updateBindings(
+                    refreshedSettings.gamepadBindings,
+                    refreshedSettings.player2GamepadBindings,
+                    refreshedSettings.player3GamepadBindings,
+                    refreshedSettings.player4GamepadBindings,
+                );
+                this.updateGamepadStatusDisplay();
             },
             onBackgroundModeChange: (mode) => {
                 const settings = this.settingsManager.get();
@@ -1689,29 +1712,42 @@ class SerenityBlocks {
      */
     updateGamepadStatusDisplay() {
         const status = this.gamepadController.getConnectionStatus();
+        const controllerStatuses = [
+            {
+                element: document.getElementById('controller-1-status'),
+                summary: status.controller1,
+            },
+            {
+                element: document.getElementById('controller-2-status'),
+                summary: status.controller2,
+            },
+            {
+                element: document.getElementById('controller-3-status'),
+                summary: status.controller3,
+            },
+            {
+                element: document.getElementById('controller-4-status'),
+                summary: status.controller4,
+            },
+        ];
 
-        const controller1Status = document.getElementById('controller-1-status');
-        const controller2Status = document.getElementById('controller-2-status');
+        const accentColors = ['#38bdf8', '#a78bfa', '#fbbf24', '#f472b6'];
 
-        if (controller1Status) {
-            if (status.controller1.connected) {
-                controller1Status.textContent = `Controller 1: ${status.controller1.name}`;
-                controller1Status.style.color = '#00ff00';
-            } else {
-                controller1Status.textContent = 'Controller 1: Not connected';
-                controller1Status.style.color = 'rgba(224, 231, 255, 0.5)';
+        controllerStatuses.forEach((entry, index) => {
+            const { element, summary } = entry;
+            if (!element || !summary) return;
+
+            const connected = Boolean(summary.connected);
+            element.textContent = connected
+                ? `Controller ${index + 1}: ${summary.name ?? 'Connected'}`
+                : `Controller ${index + 1}: Not connected`;
+            element.style.color = connected ? accentColors[index] : 'rgba(224, 231, 255, 0.5)';
+
+            const statusDot = document.querySelector(`.controls-status-dot[data-controller-status="${index + 1}"]`);
+            if (statusDot) {
+                statusDot.classList.toggle('connected', connected);
             }
-        }
-
-        if (controller2Status) {
-            if (status.controller2.connected) {
-                controller2Status.textContent = `Controller 2: ${status.controller2.name}`;
-                controller2Status.style.color = '#00ff00';
-            } else {
-                controller2Status.textContent = 'Controller 2: Not connected';
-                controller2Status.style.color = 'rgba(224, 231, 255, 0.5)';
-            }
-        }
+        });
     }
 
     /**
@@ -1784,10 +1820,17 @@ class SerenityBlocks {
         }
 
         // Handle gamepad binding changes
-        if (changes.gamepadBindings || changes.player2GamepadBindings) {
+        if (
+            changes.gamepadBindings
+            || changes.player2GamepadBindings
+            || changes.player3GamepadBindings
+            || changes.player4GamepadBindings
+        ) {
             this.gamepadController.updateBindings(
                 settings.gamepadBindings,
-                settings.player2GamepadBindings
+                settings.player2GamepadBindings,
+                settings.player3GamepadBindings,
+                settings.player4GamepadBindings,
             );
         }
     }
