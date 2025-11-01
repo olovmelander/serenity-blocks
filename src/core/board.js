@@ -4,25 +4,39 @@
 
 import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
 
-/**
- * Generate a 2D board representation from locked pieces
- * @param {Array} pieces - Array of locked piece objects
- * @returns {Array} 2D array representing the board state
- */
-export function generateBoard(pieces) {
-    const board = Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(null));
+export function createBoardGrid() {
+    return Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(null));
+}
+
+export function clearBoardGrid(grid) {
+    if (!grid) return;
+    for (let y = 0; y < grid.length; y++) {
+        grid[y].fill(null);
+    }
+}
+
+export function cloneBoardGrid(grid) {
+    if (!grid) return null;
+    return grid.map((row) => row.map((cell) => (cell ? { ...cell } : null)));
+}
+
+export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid()) {
+    clearBoardGrid(targetGrid);
 
     for (const piece of pieces) {
+        const pieceId = piece.pieceId || piece.shapeKey;
+        const color = piece.color || piece.shapeKey;
+
         piece.shape.forEach((row, y) => {
             row.forEach((cell, x) => {
                 if (cell > 0) {
                     const boardX = piece.x + x;
                     const boardY = piece.y + y;
 
-                    if (boardY >= 0 && boardY < board.length && boardX >= 0 && boardX < COLS) {
-                        board[boardY][boardX] = {
-                            color: piece.shapeKey,
-                            id: piece.pieceId || piece.shapeKey,
+                    if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
+                        targetGrid[boardY][boardX] = {
+                            color,
+                            id: pieceId,
                         };
                     }
                 }
@@ -30,7 +44,22 @@ export function generateBoard(pieces) {
         });
     }
 
-    return board;
+    return targetGrid;
+}
+
+/**
+ * Generate a 2D board representation from locked pieces
+ * @param {Array} pieces - Array of locked piece objects
+ * @returns {Array} 2D array representing the board state
+ */
+export function generateBoard(pieces, options = {}) {
+    const { boardGrid } = options;
+
+    if (boardGrid) {
+        return cloneBoardGrid(boardGrid);
+    }
+
+    return rebuildBoardGridFromPieces(pieces);
 }
 
 /**

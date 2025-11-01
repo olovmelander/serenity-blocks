@@ -226,6 +226,12 @@ export class SerenityMode extends BaseGameMode {
             singlePlayerContainer.style.display = 'none';
         }
 
+        // Hide single player stats bar
+        const statsBar = document.querySelector('.single-player-stats-bar');
+        if (statsBar) {
+            statsBar.style.display = 'none';
+        }
+
         // Hide multiplayer container
         const multiplayerContainer = document.getElementById('multiplayer-container');
         if (multiplayerContainer) {

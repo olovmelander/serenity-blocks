@@ -6,7 +6,7 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS,
 } from './constants.js';
-import { generateBoard } from './board.js';
+import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './board.js';
 import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
@@ -29,7 +29,9 @@ function ensureBoardCache(gameState) {
     if (!gameState) return null;
 
     if (!gameState.boardCache || gameState.boardCacheDirty) {
-        gameState.boardCache = generateBoard(gameState.lockedPieces);
+        gameState.boardCache = generateBoard(gameState.lockedPieces, {
+            boardGrid: gameState.boardGrid,
+        });
         gameState.boardCacheDirty = false;
     }
 
@@ -124,6 +126,7 @@ export class GameState {
         this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
+        this.boardGrid = createBoardGrid();
 
         // Quadra-style garbage: Track last placed piece columns for deterministic holes
         this.lastPlacedPieceX = [];
@@ -172,6 +175,7 @@ export class GameState {
         this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
+        this.boardGrid = createBoardGrid();
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
         this.blindTimers = {
@@ -448,6 +452,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     // Add piece to locked pieces with unique ID
     gameState.lockedPieces.push(lockedPieceSnapshot);
     markBoardDirty(gameState);
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
     piecePool.release(lockedPiece);
     gameState.currentPiece = null;
     gameState.dropCounter = 0;

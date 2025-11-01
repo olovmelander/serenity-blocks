@@ -60,6 +60,12 @@ export class SinglePlayerMode extends BaseGameMode {
             multiplayerContainer.style.display = 'none';
         }
 
+        // Show single player stats bar
+        const statsBar = document.querySelector('.single-player-stats-bar');
+        if (statsBar) {
+            statsBar.style.display = 'flex';
+        }
+
         // Hide any existing multiplayer Phaser scenes
         this._hideMultiplayerScenes();
 

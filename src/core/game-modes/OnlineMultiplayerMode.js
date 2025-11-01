@@ -60,6 +60,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             singlePlayerContainer.style.display = 'none';
         }
 
+        // Hide single player stats bar
+        const statsBar = document.querySelector('.single-player-stats-bar');
+        if (statsBar) {
+            statsBar.style.display = 'none';
+        }
+
         const multiplayerContainer = document.getElementById('multiplayer-container');
         if (multiplayerContainer) {
             multiplayerContainer.style.display = 'none';
