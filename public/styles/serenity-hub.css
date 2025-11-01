@@ -167,6 +167,25 @@
 }
 
 /* ===========================
+   Serenity Settings Button
+   =========================== */
+.floating-settings-btn.serenity-settings {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  opacity: 0 !important;
+  transform: scale(0.9) !important;
+  transition: all var(--hub-transition-normal);
+  pointer-events: none !important;
+}
+
+.floating-settings-btn.serenity-settings.visible {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  pointer-events: all !important;
+}
+
+/* ===========================
    Hub Backdrop
    =========================== */
 .serenity-hub-backdrop {

@@ -20,6 +20,7 @@ export class SerenityHub {
 
     // DOM elements
     this.hubIcon = null;
+    this.settingsBtn = null;
     this.panel = null;
     this.backdrop = null;
 
@@ -27,6 +28,7 @@ export class SerenityHub {
     this.hideTimeout = null;
     this.hideDelay = 3000; // 3 seconds
     this.isMouseOverHub = false;
+    this.isMouseOverSettings = false;
 
     // Tab instances
     this.breathingTab = null;
@@ -52,6 +54,7 @@ export class SerenityHub {
    */
   init() {
     this.createHubIcon();
+    this.createSettingsButton();
     this.createPanel();
     this.attachEventListeners();
     this.setupAutoHide();
@@ -123,6 +126,52 @@ export class SerenityHub {
     this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
 
     document.body.appendChild(this.hubIcon);
+  }
+
+  /**
+   * Create the floating settings button (bottom-right corner)
+   */
+  createSettingsButton() {
+    this.settingsBtn = document.createElement('button');
+    this.settingsBtn.id = 'serenity-settings-btn';
+    this.settingsBtn.className = 'floating-settings-btn serenity-settings';
+    this.settingsBtn.setAttribute('aria-label', 'Open Settings');
+
+    this.settingsBtn.innerHTML = `
+      <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+    `;
+
+    // Store bound handler references
+    this.settingsBtnClickHandler = () => {
+      // Open settings modal
+      const settingsModal = document.getElementById('settings-modal');
+      if (settingsModal) {
+        settingsModal.classList.add('visible');
+      }
+    };
+
+    this.settingsBtnMouseEnterHandler = () => {
+      this.isMouseOverSettings = true;
+      this.cancelAutoHide();
+    };
+
+    this.settingsBtnMouseLeaveHandler = () => {
+      this.isMouseOverSettings = false;
+      if (!this.isOpen) {
+        this.startAutoHide();
+      }
+    };
+
+    // Add event listeners with AbortController signal
+    const signal = this.abortController.signal;
+    this.settingsBtn.addEventListener('click', this.settingsBtnClickHandler, { signal });
+    this.settingsBtn.addEventListener('mouseenter', this.settingsBtnMouseEnterHandler, { signal });
+    this.settingsBtn.addEventListener('mouseleave', this.settingsBtnMouseLeaveHandler, { signal });
+
+    document.body.appendChild(this.settingsBtn);
   }
 
   /**
@@ -316,22 +365,28 @@ export class SerenityHub {
   }
 
   /**
-   * Show the hub icon
+   * Show the hub icon and settings button
    */
   showIcon() {
     this.hubIcon.classList.add('visible');
+    if (this.settingsBtn) {
+      this.settingsBtn.classList.add('visible');
+    }
     this.cancelAutoHide();
   }
 
   /**
-   * Start auto-hide timer for icon
+   * Start auto-hide timer for icon and settings button
    */
   startAutoHide() {
     this.cancelAutoHide();
 
-    if (!this.isOpen && !this.isMouseOverHub) {
+    if (!this.isOpen && !this.isMouseOverHub && !this.isMouseOverSettings) {
       this.hideTimeout = setTimeout(() => {
         this.hubIcon.classList.remove('visible');
+        if (this.settingsBtn) {
+          this.settingsBtn.classList.remove('visible');
+        }
       }, this.hideDelay);
     }
   }
@@ -778,6 +833,10 @@ export class SerenityHub {
     if (this.hubIcon) {
       this.hubIcon.remove();
       this.hubIcon = null;
+    }
+    if (this.settingsBtn) {
+      this.settingsBtn.remove();
+      this.settingsBtn = null;
     }
     if (this.panel) {
       this.panel.remove();
