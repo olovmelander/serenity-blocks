@@ -534,6 +534,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
  * @returns {Object} Result with success, topOut flags, and animation data
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
+    const { boardGrid } = options;
     const lineEntries = entries.filter((entry) => entry.type === 'line');
     if (lineEntries.length === 0) {
         return {
@@ -548,7 +549,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     console.log('[insertGarbageEntries] ========================================');
     console.log(`[insertGarbageEntries] Inserting ${lineEntries.length} garbage row(s)`);
 
-    const board = generateBoard(lockedPieces);
+    const board = generateBoard(lockedPieces, { boardGrid });
     const highestOccupiedRow = getHighestOccupiedRow(board);
     const newHighestRow = highestOccupiedRow - lineEntries.length;
 
@@ -634,7 +635,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         }
     }
 
-    const postBoard = generateBoard(lockedPieces);
+    const postBoard = generateBoard(lockedPieces, { boardGrid });
     const linesAfterInsertion = findCompleteLines(postBoard).filter((y) => y >= HIDDEN_ROWS);
 
     console.log('[insertGarbageEntries] ========================================');

@@ -33,6 +33,7 @@ import {
     markBoardDirty,
 } from './core/game.js';
 import { insertGarbageEntries } from './core/garbage.js';
+import { rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
 import { MultiplayerGameState } from './core/multiplayer.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
@@ -2640,11 +2641,14 @@ class SerenityBlocks {
                     );
 
                     // Insert garbage directly into locked pieces (becomes part of board foundation)
-                    const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {});
+                    const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {
+                        boardGrid: playerState.boardGrid,
+                    });
 
                     if (result && result.garbagePieces) {
                         // Mark board as dirty to trigger re-render
                         markBoardDirty(playerState);
+                        rebuildBoardGridFromPieces(playerState.lockedPieces, playerState.boardGrid);
 
                         // Start animating the garbage pieces rising from bottom
                         if (result.garbagePieces.length > 0 && this.animateGarbageRise) {

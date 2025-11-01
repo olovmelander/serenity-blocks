@@ -7,7 +7,7 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS,
 } from './constants.js';
-import { generateBoard } from './board.js';
+import { cloneBoardGrid, rebuildBoardGridFromPieces } from './board.js';
 
 const PHYSICS_DEBUG = false;
 const physicsLog = (...args) => {
@@ -125,12 +125,14 @@ export function findConnectedComponents(boardData) {
  * @param {Array<Array<boolean>>} movedArray - 2D array to track which cells moved (optional)
  * @returns {Promise<void>} Resolves when all blocks have settled
  */
-export async function applyGravity(lockedPieces, drawCallback, movedArray = null) {
+export async function applyGravity(gameState, drawCallback, movedArray = null) {
+    const { lockedPieces, boardGrid } = gameState;
     let blocksStillFalling = true;
 
     while (blocksStillFalling) {
         blocksStillFalling = false;
-        const currentBoard = generateBoard(lockedPieces);
+        rebuildBoardGridFromPieces(lockedPieces, boardGrid);
+        const currentBoard = boardGrid;
 
         // Process blocks from bottom to top to prevent double-processing
         lockedPieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
@@ -189,6 +191,8 @@ export async function applyGravity(lockedPieces, drawCallback, movedArray = null
             await new Promise((resolve) => setTimeout(resolve, 25)); // Reduced from 50ms for smoother motion
         }
     }
+
+    rebuildBoardGridFromPieces(lockedPieces, boardGrid);
 }
 
 /**
@@ -533,8 +537,9 @@ export async function processPhysics(gameState, callbacks) {
     let preGravityBoard = null;
 
     while (true) {
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         // Phase 1: Line detection and clearing
-        const boardData = generateBoard(gameState.lockedPieces);
+        const boardData = gameState.boardGrid;
         const fullLines = detectFullLines(boardData);
 
         if (fullLines.length === 0) {
@@ -680,7 +685,8 @@ export async function processPhysics(gameState, callbacks) {
         // --- Enhanced Visual Feedback with Smooth Fade Animation ---
         // Multi-stage flash effect for smoother, faster transition
         // Timing gets progressively faster for cascades to maintain momentum
-        const markedBoard = generateBoard(gameState.lockedPieces);
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
         // Speed multiplier: first clear is normal, cascades get 30% faster
         const speedMultiplier = cascadeCount === 1 ? 1.0 : 0.7;
@@ -725,13 +731,14 @@ export async function processPhysics(gameState, callbacks) {
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
 
         // Split pieces into individual blocks for independent gravity
-        gameState.lockedPieces = findConnectedComponents(generateBoard(gameState.lockedPieces));
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        gameState.lockedPieces = findConnectedComponents(gameState.boardGrid);
 
         // Snapshot board state before gravity so the next cascade can compare deltas
-        preGravityBoard = generateBoard(gameState.lockedPieces).map((row) => row.map((cell) => cell !== null));
+        preGravityBoard = cloneBoardGrid(gameState.boardGrid).map((row) => row.map((cell) => cell !== null));
 
         // Phase 2: Apply gravity to individual blocks and track movement
-        await applyGravity(gameState.lockedPieces, callbacks.draw, movedArray);
+        await applyGravity(gameState, callbacks.draw, movedArray);
 
         // Phase 3: Recursive cascade - continue the loop to check for new lines
         // The while(true) loop will automatically check for new complete lines
@@ -774,4 +781,6 @@ export async function processPhysics(gameState, callbacks) {
         gameState.comboState.lockFootprint = [];
         gameState.comboState.sourceColor = null;
     }
+
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
 }

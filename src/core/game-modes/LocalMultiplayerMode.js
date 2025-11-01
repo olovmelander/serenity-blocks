@@ -136,6 +136,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
             singlePlayerContainer.style.display = 'none';
         }
 
+        // Hide single player stats bar
+        const statsBar = document.querySelector('.single-player-stats-bar');
+        if (statsBar) {
+            statsBar.style.display = 'none';
+        }
+
         // Show multiplayer container
         const multiplayerContainer = document.getElementById('multiplayer-container');
         if (multiplayerContainer) {
