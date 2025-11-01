@@ -67,7 +67,7 @@ import {
     closeHighScoresModal,
 } from './ui/modals.js';
 import { SettingsManager, initializeSettingsUI, updateGamepadControlsDisplay } from './ui/settings.js';
-import { InputController, setupKeyboardControls, setupTouchControls } from './ui/controls.js';
+import { InputController, setupKeyboardControls } from './ui/controls.js';
 import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
@@ -1615,12 +1615,6 @@ class SerenityBlocks {
         };
 
         setupKeyboardControls(this.inputController, this.settingsManager.get(), gameActions);
-        setupTouchControls(
-            this.inputController,
-            this.settingsManager.get(),
-            gameActions,
-            this.canvas, // Canvas may be null (using Phaser), touch controls will adapt
-        );
 
         // Setup gamepad controls
         this.gamepadController.setGameActions(gameActions);

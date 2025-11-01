@@ -500,7 +500,12 @@
                 <div id="score-popups"></div>
             </div>
         </div>
-        <button id="settings-btn" class="floating-settings-btn">⚙️</button>
+        <button id="settings-btn" class="floating-settings-btn">
+            <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+        </button>
     </div>
 
     <div class="game-container multiplayer-container" id="multiplayer-container" style="display: none;">
@@ -697,7 +702,12 @@
         </div>
 
         <!-- Floating Settings Button -->
-        <button id="settings-btn-mp" class="floating-settings-btn">⚙️</button>
+        <button id="settings-btn-mp" class="floating-settings-btn">
+            <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+        </button>
     </div>
 
     <div id="start-modal" class="modal visible">
@@ -974,13 +984,6 @@
                                 <div class="controls-section">
                                     <h4 class="controls-section-title">🎮 System-Wide Control Settings</h4>
                                     <div class="settings-grid">
-                                        <div class="setting">
-                                            <label for="control-scheme">Control Scheme:</label>
-                                            <select id="control-scheme" class="setting-select">
-                                                <option value="Keyboard">Keyboard</option>
-                                                <option value="Touch">Touch</option>
-                                            </select>
-                                        </div>
                                         <div class="setting">
                                             <label for="gamepad-enabled">Gamepad Support:</label>
                                             <select id="gamepad-enabled" class="setting-select">

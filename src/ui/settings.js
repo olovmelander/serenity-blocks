@@ -24,7 +24,7 @@ const DEFAULT_CONFIG = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
-    controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
+    controlScheme: 'Keyboard',
     gamepadEnabled: true,
     gamepadDeadzone: 0.25,
     keyBindings: {

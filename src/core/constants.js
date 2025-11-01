@@ -220,7 +220,7 @@ export const DEFAULT_SETTINGS = {
     breathingGuideAutoStart: false, // Auto-start breathing guide on mode entry
 
     // Control settings
-    controlScheme: 'ontouchstart' in window ? 'Touch' : 'Keyboard',
+    controlScheme: 'Keyboard',
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
