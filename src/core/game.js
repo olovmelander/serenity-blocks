@@ -9,6 +9,7 @@ import {
 import { generateBoard } from './board.js';
 import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
+import { performanceMonitor } from '../utils/performance-monitor.js';
 
 function createComboState() {
     return {
@@ -481,9 +482,23 @@ export function gameLoop(
     playDropCallback,
     physicsCallbacks,
 ) {
-    if (gameState.isGameOver) return;
+    const monitoring = performanceMonitor && performanceMonitor.enabled;
+    if (monitoring) {
+        performanceMonitor.frameStart();
+        performanceMonitor.updateStart();
+    }
+
+    if (gameState.isGameOver) {
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+        }
+        return;
+    }
 
     if (gameState.isPaused) {
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+        }
         gameState.animationId = requestAnimationFrame((t) => gameLoop(
             t,
             gameState,
@@ -502,11 +517,19 @@ export function gameLoop(
     if (!gameState.isProcessingPhysics && gameState.currentPiece) {
         gameState.dropCounter += delta;
         if (gameState.dropCounter > gameState.dropInterval) {
-            softDrop(gameState, playDropCallback, physicsCallbacks);
+        softDrop(gameState, playDropCallback, physicsCallbacks);
         }
     }
 
+    if (monitoring) {
+        performanceMonitor.updateEnd();
+        performanceMonitor.renderStart();
+    }
+
     if (drawCallback) drawCallback();
+    if (monitoring) {
+        performanceMonitor.renderEnd();
+    }
     if (updateStatsCallback) updateStatsCallback();
 
     gameState.animationId = requestAnimationFrame((t) => gameLoop(
