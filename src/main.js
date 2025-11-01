@@ -74,6 +74,7 @@ import { InputController, setupKeyboardControls } from './ui/controls.js';
 import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
+import { introAnimation } from './ui/intro-animation.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -2895,6 +2896,11 @@ let app = null;
 async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
+
+        // Show epic intro animation
+        console.log('✨ Playing intro animation...');
+        await introAnimation.show();
+        console.log('✨ Intro animation complete!');
 
         app = new SerenityBlocks();
         await app.init();
