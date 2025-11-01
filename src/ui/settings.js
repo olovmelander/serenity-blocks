@@ -27,6 +27,21 @@ const DEFAULT_CONFIG = {
     controlScheme: 'Keyboard',
     gamepadEnabled: true,
     gamepadDeadzone: 0.25,
+    // Display Settings (Phase 1)
+    displayMode: 'windowed',        // 'windowed' | 'fullscreen' | 'borderless'
+    resolution: 'auto',             // 'auto' | '1280x720' | '1920x1080' | etc.
+    customResolution: null,         // { width: number, height: number } or null
+    vsyncEnabled: true,
+    targetFrameRate: 60,            // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
+    graphicsQuality: 'High',        // 'Low' | 'Medium' | 'High' | 'Ultra' | 'Custom'
+    // Advanced Graphics Settings
+    enableAntialiasing: true,
+    enableMotionBlur: false,
+    enableBloom: true,
+    enableShadows: true,
+    particleQuality: 'high',        // 'low' | 'medium' | 'high' | 'ultra'
+    textureQuality: 'high',         // 'low' | 'medium' | 'high' | 'ultra'
+    showFPSCounter: false,
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -898,6 +913,110 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             }
 
             settingsManager.save();
+        });
+    }
+
+    // Display Settings (Phase 1)
+    // Resolution selector
+    const resolutionSelect = document.getElementById('resolution-select');
+    if (resolutionSelect) {
+        resolutionSelect.value = settings.resolution || 'auto';
+
+        resolutionSelect.addEventListener('change', (e) => {
+            const resolution = e.target.value;
+            settingsManager.update({ resolution });
+            settingsManager.save();
+
+            // Apply settings immediately
+            if (callbacks.onDisplaySettingsApply) {
+                callbacks.onDisplaySettingsApply(settingsManager.get());
+            }
+        });
+    }
+
+    // Display mode selector
+    const displayModeSelect = document.getElementById('display-mode');
+    if (displayModeSelect) {
+        displayModeSelect.value = settings.displayMode || 'windowed';
+
+        displayModeSelect.addEventListener('change', (e) => {
+            const displayMode = e.target.value;
+            settingsManager.update({ displayMode });
+            settingsManager.save();
+
+            // Apply settings immediately
+            if (callbacks.onDisplaySettingsApply) {
+                callbacks.onDisplaySettingsApply(settingsManager.get());
+            }
+        });
+    }
+
+    // Graphics quality selector
+    const graphicsQualitySelect = document.getElementById('graphics-quality');
+    if (graphicsQualitySelect) {
+        graphicsQualitySelect.value = settings.graphicsQuality || 'High';
+
+        graphicsQualitySelect.addEventListener('change', (e) => {
+            const quality = e.target.value;
+            settingsManager.update({ graphicsQuality: quality });
+            settingsManager.save();
+
+            console.log(`[Settings] Graphics quality changed to: ${quality}`);
+        });
+    }
+
+    // FPS target selector
+    const fpsTargetSelect = document.getElementById('fps-target');
+    if (fpsTargetSelect) {
+        fpsTargetSelect.value = String(settings.targetFrameRate || 60);
+
+        fpsTargetSelect.addEventListener('change', (e) => {
+            const fps = parseInt(e.target.value);
+            settingsManager.update({ targetFrameRate: fps });
+            settingsManager.save();
+
+            console.log(`[Settings] Target frame rate changed to: ${fps}`);
+
+            if (callbacks.onFrameRateSettingsApply) {
+                callbacks.onFrameRateSettingsApply(settingsManager.get());
+            }
+        });
+    }
+
+    // VSync toggle
+    const vsyncToggle = document.getElementById('vsync-toggle');
+    if (vsyncToggle) {
+        vsyncToggle.value = String(settings.vsyncEnabled ?? true);
+
+        vsyncToggle.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ vsyncEnabled: enabled });
+            settingsManager.save();
+
+            console.log(`[Settings] VSync ${enabled ? 'enabled' : 'disabled'}`);
+
+            if (callbacks.onFrameRateSettingsApply) {
+                callbacks.onFrameRateSettingsApply(settingsManager.get());
+            }
+        });
+    }
+
+    // FPS counter toggle
+    const showFPSCounter = document.getElementById('show-fps-counter');
+    if (showFPSCounter) {
+        showFPSCounter.value = String(settings.showFPSCounter || false);
+
+        showFPSCounter.addEventListener('change', (e) => {
+            const show = e.target.value === 'true';
+            settingsManager.update({ showFPSCounter: show });
+            settingsManager.save();
+
+            console.log(`[Settings] FPS counter ${show ? 'shown' : 'hidden'}`);
+
+            // Apply immediately
+            if (callbacks.onDisplaySettingsApply) {
+                callbacks.onDisplaySettingsApply(settingsManager.get());
+            }
         });
     }
 
