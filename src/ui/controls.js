@@ -1,8 +1,8 @@
 /**
  * @fileoverview Input Controls for Serenity Blocks (Phaser 4 Compatible)
- * Handles keyboard and touch input with DAS (Delayed Auto Shift) support
+ * Handles keyboard input with DAS (Delayed Auto Shift) support
  *
- * **Architecture:** This input system uses native DOM events (keydown, touchstart, etc.)
+ * **Architecture:** This input system uses native DOM events (keydown, etc.)
  * and is completely decoupled from Phaser APIs. This makes it compatible with Phaser 3,
  * Phaser 4, and any other game engine or framework.
  *
@@ -20,20 +20,12 @@ import { performanceMonitor } from '../utils/performance-monitor.js';
 
 /**
  * Input controller state management
- * Tracks keyboard keys, touch gestures, and input timers for DAS (Delayed Auto Shift)
+ * Tracks keyboard keys and input timers for DAS (Delayed Auto Shift)
  *
  * @class InputController
  */
 export class InputController {
     constructor() {
-        // Touch state
-        this.touchStartX = null;
-        this.touchStartY = null;
-        this.touchStartTime = null;
-        this.lastTap = 0;
-        this.touchLastX = null;
-        this.touchLastY = null;
-
         // Keyboard state
         this.keyMap = {};
         this.dasTimer = null;
@@ -44,18 +36,6 @@ export class InputController {
         this.soundInitialized = false;
 
         console.log('[InputController] Initialized');
-    }
-
-    /**
-     * Resets touch state
-     * Call this when a touch gesture ends or is cancelled
-     */
-    resetTouch() {
-        this.touchStartX = null;
-        this.touchStartY = null;
-        this.touchStartTime = null;
-        this.touchLastX = null;
-        this.touchLastY = null;
     }
 
     /**
@@ -445,164 +425,6 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 }
 
 /**
- * Sets up touch input handling with gesture detection (tap, drag, flick)
- * Uses native DOM events - compatible with Phaser 3, Phaser 4, and any framework
- *
- * @param {InputController} inputController - Input controller instance
- * @param {Object} settings - Game settings (must include controlScheme)
- * @param {Object} gameActions - Game action callbacks
- * @param {HTMLCanvasElement} canvas - Game canvas element (for tap region detection)
- */
-export function setupTouchControls(inputController, settings, gameActions, canvas) {
-    // Defensive validation
-    if (!inputController) {
-        console.error('[Touch] InputController is required');
-        return;
-    }
-    if (!settings) {
-        console.error('[Touch] Settings are required');
-        return;
-    }
-    if (!gameActions) {
-        console.error('[Touch] Game actions are required');
-        return;
-    }
-    if (!canvas) {
-        console.warn('[Touch] Canvas not provided - tap region detection disabled');
-    }
-
-    console.log('[Touch] Setting up touch controls');
-
-    const {
-        move, rotate, softDrop, hardDrop, startGame, initSound,
-    } = gameActions;
-
-    // Touch start handler
-    document.addEventListener('touchstart', (e) => {
-        try {
-            if (settings.controlScheme !== 'Touch') return;
-
-            // Don't handle touch on UI elements
-            if (
-                e.target.tagName === 'BUTTON'
-                || e.target.classList.contains('key-input')
-                || e.target.tagName === 'SELECT'
-                || e.target.tagName === 'INPUT'
-            ) {
-                return;
-            }
-
-            e.preventDefault();
-
-            const touch = e.touches[0];
-            inputController.touchStartX = touch.clientX;
-            inputController.touchStartY = touch.clientY;
-            inputController.touchLastX = touch.clientX;
-            inputController.touchLastY = touch.clientY;
-            inputController.touchStartTime = Date.now();
-        } catch (error) {
-            console.error('[Touch] Error in touchstart handler:', error);
-        }
-    });
-
-    // Touch move handler
-    document.addEventListener('touchmove', (e) => {
-        try {
-            if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
-            e.preventDefault();
-
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - inputController.touchLastX;
-            const deltaY = touch.clientY - inputController.touchLastY;
-
-            const moveThreshold = BLOCK_SIZE;
-            const softDropThreshold = BLOCK_SIZE / 2;
-
-            // Horizontal movement check
-            if (Math.abs(deltaX) > moveThreshold) {
-                if (move) move(deltaX > 0 ? 1 : -1);
-                inputController.touchLastX = touch.clientX;
-            }
-
-            // Vertical movement check
-            if (deltaY > softDropThreshold) {
-                if (softDrop) softDrop();
-                inputController.touchLastY = touch.clientY;
-            }
-        } catch (error) {
-            console.error('[Touch] Error in touchmove handler:', error);
-        }
-    });
-
-    // Touch end handler
-    document.addEventListener('touchend', (e) => {
-        try {
-            if (!inputController.touchStartX || settings.controlScheme !== 'Touch') return;
-            e.preventDefault();
-
-            // Initialize sound on first interaction
-            if (!inputController.soundInitialized) {
-                inputController.soundInitialized = true;
-                if (initSound) initSound();
-            }
-
-            // Start game if on start/game-over modal
-            const startModal = document.getElementById('start-modal');
-            const gameOverModal = document.getElementById('game-over-modal');
-            if (
-                (startModal && startModal.classList.contains('visible'))
-                || (gameOverModal && gameOverModal.classList.contains('visible'))
-            ) {
-                if (startGame) startGame();
-                inputController.resetTouch();
-                return;
-            }
-
-            const touch = e.changedTouches[0];
-            const deltaX = touch.clientX - inputController.touchStartX;
-            const deltaY = touch.clientY - inputController.touchStartY;
-            const deltaTime = Date.now() - inputController.touchStartTime;
-
-            const tapThreshold = 25;
-            const flickTime = 300;
-            const flickDistY = 60;
-
-            // Tap detection (quick, small movement)
-            if (
-                deltaTime < flickTime
-                && Math.abs(deltaX) < tapThreshold
-                && Math.abs(deltaY) < tapThreshold
-            ) {
-                // Only handle tap if canvas is available
-                if (canvas) {
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const touchXonCanvas = touch.clientX - canvasRect.left;
-
-                    // Left side = rotate left, right side = rotate right
-                    if (touchXonCanvas < canvas.width / 2) {
-                        if (rotate) rotate('left');
-                    } else if (rotate) {
-                        rotate('right');
-                    }
-                }
-            } else if (deltaTime < flickTime) {
-                // Flick detection (quick, large movement)
-                // Vertical flick for hard drop
-                if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY > flickDistY) {
-                    if (hardDrop) hardDrop();
-                }
-            }
-
-            inputController.resetTouch();
-        } catch (error) {
-            console.error('[Touch] Error in touchend handler:', error);
-        }
-    });
-
-    console.log('[Touch] Touch controls initialized');
-}
-
-/**
  * Sets up click handling (for starting game and sound initialization)
  * Uses native DOM events - compatible with Phaser 3, Phaser 4, and any framework
  *
@@ -655,21 +477,19 @@ export function setupClickControls(inputController, startGame, initSound) {
 }
 
 /**
- * Initializes all input controls (keyboard, touch, click)
+ * Initializes all input controls (keyboard, click)
  * This is the main entry point for setting up DOM-based input handling
  *
  * @param {Object} settings - Game settings (must include keyBindings, controlScheme)
  * @param {Object} gameActions - Game action callbacks (move, rotate, hardDrop, etc.)
- * @param {HTMLCanvasElement} canvas - Game canvas element (for touch tap region detection)
  * @returns {InputController} Input controller instance
  */
-export function initializeControls(settings, gameActions, canvas) {
+export function initializeControls(settings, gameActions) {
     console.log('[Input] Initializing all input controls...');
 
     const inputController = new InputController();
 
     setupKeyboardControls(inputController, settings, gameActions);
-    setupTouchControls(inputController, settings, gameActions, canvas);
     setupClickControls(inputController, gameActions.startGame, gameActions.initSound);
 
     console.log('[Input] ✅ All input controls initialized successfully');

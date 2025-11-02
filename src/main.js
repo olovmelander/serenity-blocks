@@ -33,6 +33,7 @@ import {
     markBoardDirty,
 } from './core/game.js';
 import { insertGarbageEntries } from './core/garbage.js';
+import { rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
 import { MultiplayerGameState } from './core/multiplayer.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
@@ -56,6 +57,8 @@ import { createBackgroundScene } from './rendering/phaser/background-scene.js';
 import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
 import { eventBus, EVENTS } from './events/event-bus.js';
 import { normalizeQuality } from './utils/quality.js';
+import { DisplayManager } from './core/display-manager.js';
+import { FrameRateController } from './core/frame-rate-controller.js';
 
 // UI imports
 import {
@@ -67,10 +70,11 @@ import {
     closeHighScoresModal,
 } from './ui/modals.js';
 import { SettingsManager, initializeSettingsUI, updateGamepadControlsDisplay } from './ui/settings.js';
-import { InputController, setupKeyboardControls, setupTouchControls } from './ui/controls.js';
+import { InputController, setupKeyboardControls } from './ui/controls.js';
 import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
+import { introAnimation } from './ui/intro-animation.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -81,6 +85,7 @@ import { ThemeManager } from './themes/theme-manager.js';
 // Utility imports
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
 import { seededRandom } from './utils/helpers.js';
+import { performanceMonitor } from './utils/performance-monitor.js';
 
 // Serenity Mode imports
 import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-indicator.js';
@@ -167,6 +172,8 @@ class SerenityBlocks {
         this.multiplayerBoardScenes = [];
         this.gameModeUI = null;
         this.gameModeManager = null; // NEW: Central game mode orchestrator
+        this.displayManager = null; // Phase 1: Display management
+        this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.cleanupHandlers = [];
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
 
@@ -176,6 +183,15 @@ class SerenityBlocks {
 
         // Initialization flag
         this.isInitialized = false;
+
+        // FPS Counter
+        this.fpsCounter = {
+            element: null,
+            frames: 0,
+            lastTime: performance.now(),
+            fps: 0,
+            rafId: null
+        };
     }
 
     /**
@@ -247,6 +263,43 @@ class SerenityBlocks {
     }
 
     /**
+     * Apply frame rate settings (Phase 2)
+     * @param {Object} settings
+     */
+    async applyFrameRateSettings(settings = {}) {
+        if (!this.frameRateController) {
+            this.frameRateController = new FrameRateController();
+        }
+
+        const {
+            vsyncEnabled = true,
+            targetFrameRate = 60,
+        } = settings;
+
+        try {
+            this.frameRateController.setVSync(vsyncEnabled);
+            this.frameRateController.setTargetFPS(targetFrameRate || 0);
+            this.frameRateController.resetStats();
+
+            if (this.displayManager?.isElectron) {
+                try {
+                    const { ipcRenderer } = window.require('electron');
+                    await ipcRenderer.invoke('set-vsync', !!vsyncEnabled);
+                } catch (ipcError) {
+                    console.warn('[FrameRate] Failed to sync VSync with Electron main process:', ipcError);
+                }
+            }
+
+            console.log('[Settings] Frame rate settings applied:', {
+                vsyncEnabled,
+                targetFrameRate,
+            });
+        } catch (error) {
+            console.error('[FrameRate] Failed to apply frame settings:', error);
+        }
+    }
+
+    /**
      * Initialize canvas and context
      */
     initializeCanvas() {
@@ -267,9 +320,7 @@ class SerenityBlocks {
         const calculatedBlockSize = 30;
         setBlockSize(calculatedBlockSize);
 
-        // Phaser container dimensions are now set in CSS (300x600)
-        // The outer container (#phaser-game-container-outer) has padding and border
-        // to visually inset the canvas from the border
+        // Phaser board sizing is driven by CSS (player card variables) and remains 300x600
         const boardWidth = COLS * BLOCK_SIZE;
         const boardHeight = ROWS * BLOCK_SIZE;
 
@@ -506,6 +557,167 @@ class SerenityBlocks {
         }
     }
 
+    /**
+     * Apply display settings (Phase 1)
+     * @param {Object} settings - Settings object with display configuration
+     */
+    async applyDisplaySettings(settings) {
+        console.log('[Display] Applying display settings:', settings);
+
+        const { displayMode, resolution, customResolution, showFPSCounter } = settings;
+
+        try {
+            // Parse resolution
+            let width, height;
+
+            if (resolution === 'auto') {
+                const displays = await this.displayManager.getAvailableDisplays();
+                const primary = displays[0];
+                if (primary) {
+                    width = primary.workArea.width;
+                    height = primary.workArea.height;
+                } else {
+                    width = 1280;
+                    height = 720;
+                }
+            } else if (customResolution) {
+                width = customResolution.width;
+                height = customResolution.height;
+            } else {
+                // Parse resolution string like "1920x1080"
+                const parsed = this.displayManager.parseResolution(resolution);
+                if (parsed) {
+                    width = parsed.width;
+                    height = parsed.height;
+                } else {
+                    console.warn('[Display] Invalid resolution, using defaults');
+                    width = 1280;
+                    height = 720;
+                }
+            }
+
+            // Validate resolution
+            const isValid = await this.displayManager.validateResolution(width, height);
+            if (!isValid) {
+                console.warn('[Display] Resolution validation failed, using safe defaults');
+                width = 1280;
+                height = 720;
+            }
+
+            // Apply display mode
+            await this.displayManager.setDisplayMode(displayMode, { width, height });
+
+            // Apply FPS counter visibility
+            if (showFPSCounter !== undefined) {
+                if (showFPSCounter) {
+                    this.showFPSCounter();
+                } else {
+                    this.hideFPSCounter();
+                }
+            }
+
+            // Emit event for other systems to respond
+            window.dispatchEvent(new CustomEvent('displaySettingsChanged', {
+                detail: { displayMode, width, height }
+            }));
+
+            console.log('[Display] Display settings applied successfully');
+            return true;
+        } catch (error) {
+            console.error('[Display] Failed to apply display settings:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Show FPS counter
+     */
+    showFPSCounter() {
+        if (!this.fpsCounter.element) {
+            this.fpsCounter.element = document.getElementById('fps-counter');
+        }
+
+        if (this.fpsCounter.element) {
+            this.fpsCounter.element.classList.remove('hidden');
+            this.updateFPSCounter(performance.now());
+            this.startFPSMonitor();
+            console.log('[FPS] Counter shown');
+        }
+    }
+
+    /**
+     * Hide FPS counter
+     */
+    hideFPSCounter() {
+        if (!this.fpsCounter.element) {
+            this.fpsCounter.element = document.getElementById('fps-counter');
+        }
+
+        if (this.fpsCounter.element) {
+            this.fpsCounter.element.classList.add('hidden');
+            this.stopFPSMonitor();
+            console.log('[FPS] Counter hidden');
+        }
+    }
+
+    /**
+     * Update FPS counter
+     */
+    updateFPSCounter(currentTime = performance.now()) {
+        if (!this.fpsCounter.element) {
+            this.fpsCounter.element = document.getElementById('fps-counter');
+        }
+
+        let stats = null;
+
+        if (this.frameRateController) {
+            stats = this.frameRateController.recordFrame(currentTime);
+            const currentFPS = stats.current;
+
+            if (Number.isFinite(currentFPS) && currentFPS > 0) {
+                this.fpsCounter.fps = currentFPS;
+            }
+        } else {
+            this.fpsCounter.frames++;
+            const elapsed = currentTime - this.fpsCounter.lastTime;
+
+            if (elapsed >= 1000) {
+                this.fpsCounter.fps = Math.round((this.fpsCounter.frames * 1000) / elapsed);
+                this.fpsCounter.frames = 0;
+                this.fpsCounter.lastTime = currentTime;
+            }
+        }
+
+        this.fpsCounter.lastTime = currentTime;
+
+        if (this.fpsCounter.element && !this.fpsCounter.element.classList.contains('hidden')) {
+            const displayFPS = Number.isFinite(this.fpsCounter.fps) && this.fpsCounter.fps > 0
+                ? Math.round(this.fpsCounter.fps)
+                : '--';
+            this.fpsCounter.element.textContent = `${displayFPS} FPS`;
+        }
+    }
+
+    startFPSMonitor() {
+        if (this.fpsCounter.rafId != null) {
+            return;
+        }
+
+        const tick = (time) => {
+            this.updateFPSCounter(time);
+            this.fpsCounter.rafId = requestAnimationFrame(tick);
+        };
+
+        this.fpsCounter.rafId = requestAnimationFrame(tick);
+    }
+
+    stopFPSMonitor() {
+        if (this.fpsCounter.rafId != null) {
+            cancelAnimationFrame(this.fpsCounter.rafId);
+            this.fpsCounter.rafId = null;
+        }
+    }
+
     startBackgroundScene() {
         if (!this.phaserGame || !this.backgroundScene || !this.webglRenderer) {
             return;
@@ -739,7 +951,21 @@ class SerenityBlocks {
         // Settings
         this.settingsManager = new SettingsManager();
         this.settingsManager.load(); // Load from localStorage
-        setPieceLockRippleCss(this.settingsManager.get().pieceLockRippleColor);
+        const currentSettings = this.settingsManager.get();
+        setPieceLockRippleCss(currentSettings.pieceLockRippleColor);
+
+        // Display manager (Phase 1)
+        this.displayManager = new DisplayManager();
+        console.log('[DisplayManager] Initialized', {
+            isElectron: this.displayManager.isElectron
+        });
+
+        // Initialize FPS counter element
+        this.fpsCounter.element = document.getElementById('fps-counter');
+
+        // Apply display/frame settings immediately
+        await this.applyDisplaySettings(currentSettings);
+        await this.applyFrameRateSettings(currentSettings);
 
         // Modal manager (gamepad controller will be set after it's created)
         this.modalManager = new ModalManager();
@@ -852,7 +1078,7 @@ class SerenityBlocks {
             console.log(`[Main] Mode stopped: ${modeId}`);
         });
 
-        // Setup start button click handler
+        // Setup start button click handler (for old button-based UI)
         const startGameBtn = document.getElementById('start-game-btn');
         if (startGameBtn) {
             startGameBtn.addEventListener('click', async () => {
@@ -938,6 +1164,41 @@ class SerenityBlocks {
         };
         window.addEventListener('gameModeChanged', gameModeHandler);
 
+        // Handle card-based mode selection (new UI)
+        const startGameWithModeHandler = async (e) => {
+            try {
+                const { mode } = e.detail;
+                console.log('[Main] Starting game with mode from card selection:', mode);
+
+                // Disable gamepad mode selection
+                if (this.gamepadController) {
+                    this.gamepadController.disableGameModeSelection();
+                }
+
+                // Hide start modal first
+                this.modalManager.hideAll();
+
+                // Dismiss intro animation background completely BEFORE starting game
+                const { introAnimation } = await import('./ui/intro-animation.js');
+                if (introAnimation) {
+                    introAnimation.dismiss();
+                }
+
+                // Wait a bit for intro to start fading
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Activate the mode
+                await this.gameModeManager.activateMode(mode);
+
+                // Start the game
+                await this.gameModeManager.startCurrentMode();
+            } catch (error) {
+                console.error('[Main] Failed to start game from card selection:', error);
+                alert(`Failed to start game: ${error.message}`);
+            }
+        };
+        window.addEventListener('startGameWithMode', startGameWithModeHandler);
+
         // REMOVED: "Press any key" auto-start mechanism
         // Now using explicit "START GAME" button for better UX
         // No game modes start automatically - user must explicitly click start button
@@ -946,6 +1207,7 @@ class SerenityBlocks {
             unsubscribeThemeChanged();
             window.removeEventListener('resize', resizeHandler);
             window.removeEventListener('settingsChanged', settingsHandler);
+            window.removeEventListener('startGameWithMode', startGameWithModeHandler);
             window.removeEventListener('gameModeChanged', gameModeHandler);
         });
     }
@@ -1090,7 +1352,7 @@ class SerenityBlocks {
                 try {
                     console.log(`[Main] Activating new mode: ${targetMode}`);
                     await this.gameModeManager.activateMode(targetMode);
-                    
+
                     // Update UI to reflect the new mode
                     this.gameModeUI.setModeFromSettings(mode);
 
@@ -1108,7 +1370,7 @@ class SerenityBlocks {
                         console.log(`[Main] Auto-starting new mode: ${targetMode}`);
                         await this.gameModeManager.startCurrentMode();
                         this.modalManager.hideAll();
-                        
+
                         // Show a brief notification (if the mode has this feature)
                         const activeMode = this.gameModeManager.getMode(targetMode);
                         if (activeMode && activeMode._showNotification) {
@@ -1123,6 +1385,15 @@ class SerenityBlocks {
                     console.error('[Main] Failed to switch game mode:', error);
                     this.modalManager.show('start');
                 }
+            },
+            // Display Settings (Phase 1)
+            onDisplaySettingsApply: async (settings) => {
+                console.log('[Settings] Applying display settings:', settings);
+                await this.applyDisplaySettings(settings);
+            },
+            onFrameRateSettingsApply: async (settings) => {
+                console.log('[Settings] Applying frame rate settings:', settings);
+                await this.applyFrameRateSettings(settings);
             },
         });
 
@@ -1615,12 +1886,6 @@ class SerenityBlocks {
         };
 
         setupKeyboardControls(this.inputController, this.settingsManager.get(), gameActions);
-        setupTouchControls(
-            this.inputController,
-            this.settingsManager.get(),
-            gameActions,
-            this.canvas, // Canvas may be null (using Phaser), touch controls will adapt
-        );
 
         // Setup gamepad controls
         this.gamepadController.setGameActions(gameActions);
@@ -2174,6 +2439,9 @@ class SerenityBlocks {
      * Main game loop
      */
     gameLoop(currentTime) {
+        // Update FPS counter
+        this.updateFPSCounter(currentTime);
+
         // Sync game state to Phaser scene
         if (this.boardScene) {
             this.boardScene.syncFromGameState(this.gameState);
@@ -2213,6 +2481,9 @@ class SerenityBlocks {
      * Multiplayer game loop
      */
     multiplayerGameLoop(currentTime) {
+        // Update FPS counter
+        this.updateFPSCounter(currentTime);
+
         if (this.multiplayerState.isGameOver) return;
 
         if (this.multiplayerState.isPaused) {
@@ -2407,11 +2678,14 @@ class SerenityBlocks {
                     );
 
                     // Insert garbage directly into locked pieces (becomes part of board foundation)
-                    const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {});
+                    const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {
+                        boardGrid: playerState.boardGrid,
+                    });
 
                     if (result && result.garbagePieces) {
                         // Mark board as dirty to trigger re-render
                         markBoardDirty(playerState);
+                        rebuildBoardGridFromPieces(playerState.lockedPieces, playerState.boardGrid);
 
                         // Start animating the garbage pieces rising from bottom
                         if (result.garbagePieces.length > 0 && this.animateGarbageRise) {
@@ -2659,12 +2933,29 @@ async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
 
+        // Show epic intro animation
+        console.log('✨ Playing intro animation...');
+        await introAnimation.show();
+        console.log('✨ Intro animation complete!');
+
+        // Show the start modal after intro animation completes
+        const startModal = document.getElementById('start-modal');
+        if (startModal) {
+            startModal.classList.add('visible');
+        }
+
         app = new SerenityBlocks();
         await app.init();
+
+        // Enable gamepad navigation for game mode selection
+        if (app.gamepadController) {
+            app.gamepadController.enableGameModeSelection();
+        }
 
         // Expose to window for debugging (can be removed in production)
         if (typeof window !== 'undefined') {
             window.serenityBlocks = app;
+            window.performanceMonitor = performanceMonitor;
             
             // Add test/debug functions
             window.testMultiplayer = async (numPlayers = 4) => {

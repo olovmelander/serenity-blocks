@@ -24,10 +24,10 @@ export default class LunaraTheme extends BaseTheme {
     }
 
     async createScene() {
-        // 1. Create twinkling stars
+        // 1. Create twinkling stars (optimized count for performance)
         const starsContainer = this.getContainer('lunara-stars');
         if (starsContainer && starsContainer.children.length === 0) {
-            const starCount = 200;
+            const starCount = 100; // Reduced from 200 for better performance
             for (let i = 0; i < starCount; i++) {
                 const star = document.createElement('div');
                 star.className = 'lunara-star';

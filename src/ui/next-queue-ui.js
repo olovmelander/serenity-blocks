@@ -31,17 +31,17 @@ export function drawPiece(canvas, pieceKey) {
             }
         }
     }
-    
+
     // Draw outline around the entire piece
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.lineWidth = 1.5;
-    
+
     for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
             if (shape[row][col]) {
                 const x = PADDING + col * BLOCK_SIZE;
                 const y = PADDING + row * BLOCK_SIZE;
-                
+
                 // Draw borders only on outer edges
                 // Top edge
                 if (row === 0 || !shape[row - 1][col]) {
@@ -50,7 +50,7 @@ export function drawPiece(canvas, pieceKey) {
                     ctx.lineTo(x + BLOCK_SIZE, y);
                     ctx.stroke();
                 }
-                
+
                 // Bottom edge
                 if (row === rows - 1 || !shape[row + 1][col]) {
                     ctx.beginPath();
@@ -58,7 +58,7 @@ export function drawPiece(canvas, pieceKey) {
                     ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
                     ctx.stroke();
                 }
-                
+
                 // Left edge
                 if (col === 0 || !shape[row][col - 1]) {
                     ctx.beginPath();
@@ -66,7 +66,7 @@ export function drawPiece(canvas, pieceKey) {
                     ctx.lineTo(x, y + BLOCK_SIZE);
                     ctx.stroke();
                 }
-                
+
                 // Right edge
                 if (col === cols - 1 || !shape[row][col + 1]) {
                     ctx.beginPath();
@@ -84,14 +84,15 @@ export function updateNextQueue(nextPieces) {
     if (!queueContainer) return;
     queueContainer.innerHTML = '';
 
-    const nextLabel = document.createElement('div');
-    nextLabel.className = 'next-queue-label';
-    nextLabel.textContent = 'NEXT';
-    queueContainer.appendChild(nextLabel);
+    queueContainer.classList.remove('next-queue-container');
+    queueContainer.classList.add('player-next-pieces', 'single-player-next');
 
-    nextPieces.slice(0, 3).forEach((pieceKey, index) => {
+    const slotsToRender = 3;
+
+    for (let index = 0; index < slotsToRender; index += 1) {
+        const pieceKey = nextPieces[index];
         const pieceContainer = document.createElement('div');
-        pieceContainer.className = 'next-queue-piece';
+        pieceContainer.className = 'player-next-piece';
         if (index === 0) {
             pieceContainer.classList.add('highlight');
         }
@@ -100,6 +101,10 @@ export function updateNextQueue(nextPieces) {
         pieceContainer.appendChild(canvas);
         queueContainer.appendChild(pieceContainer);
 
-        drawPiece(canvas, pieceKey);
-    });
+        if (pieceKey) {
+            drawPiece(canvas, pieceKey);
+        } else {
+            pieceContainer.classList.add('empty');
+        }
+    }
 }

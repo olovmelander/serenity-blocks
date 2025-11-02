@@ -5143,30 +5143,79 @@ body {
             border-radius: 6px;
             padding: 4px;
         }
-        /* Phaser Game Container Outer - Border and padding wrapper */
-        #phaser-game-container-outer {
-            position: relative;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(10px);
-            border-radius: 4px; /* Reduced from 12px to prevent tetrominos from sticking out at corners */
-            padding: 2px; /* Inset the canvas from the border */
-            border: 2px solid rgba(102, 126, 234, 0.5);
-            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-            display: inline-block; /* Shrink to fit content */
-            box-sizing: border-box;
-            overflow: visible; /* Allow effects outside container */
+        /* Single Player Layout */
+        .game-container.single-player-layout {
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            min-width: auto;
+            padding: 0;
+            width: auto;
         }
-        
-        /* Phaser Game Container Inner - Canvas wrapper */
-        #phaser-game-container {
-            position: relative;
-            width: 300px !important; /* Exact canvas size - prevent any resize */
-            height: 600px !important; /* Exact canvas size - prevent any resize */
-            display: block;
-            overflow: visible;
-            margin: 0 !important;
-            padding: 0 !important;
-            line-height: 0; /* Remove line-height spacing under canvas */
+
+        .single-player-card {
+            --player-primary: #8b5cf6;
+            --player-primary-light: #c4b5fd;
+            --player-glow: rgba(139, 92, 246, 0.35);
+            --board-width: 300px;
+            --board-height: 600px;
+            width: auto;
+            align-items: stretch;
+            gap: 18px;
+            padding: 24px;
+            border-color: var(--player-primary);
+            box-shadow:
+                0 0 26px var(--player-glow),
+                inset 0 0 12px rgba(139, 92, 246, 0.18);
+        }
+
+        .single-player-body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            width: auto;
+        }
+
+        .single-player-main {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .single-player-card .player-next-pieces {
+            width: var(--board-width);
+            justify-content: center;
+            margin: 0;
+        }
+
+        .single-player-card .player-board-section {
+            width: var(--board-width);
+            height: var(--board-height);
+        }
+
+        .single-player-card .phaser-board-container {
+            border: 2px solid rgba(139, 92, 246, 0.45);
+            box-shadow:
+                inset 0 0 18px rgba(139, 92, 246, 0.15),
+                0 0 30px rgba(139, 92, 246, 0.25);
+        }
+
+        #single-player-border {
+            border-color: rgba(139, 92, 246, 0.9);
+            box-shadow:
+                0 0 30px rgba(139, 92, 246, 0.45),
+                inset 0 0 18px rgba(139, 92, 246, 0.35);
+        }
+
+        .board-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: 12px;
+            z-index: 2;
         }
 
         body.phaser-hud-ready .next-pieces-container {
@@ -5179,46 +5228,105 @@ body {
             display: none;
         }
 
-        #phaser-game-container canvas,
-        #single-player-game-canvas {
+        /* Line Clear Flash Effect - Container */
+        #line-clear-flash {
+            z-index: 2;
+            overflow: hidden;
+        }
+
+        .score-popups-layer {
+            z-index: 3;
+        }
+
+        #single-player-card #phaser-game-container {
+            position: relative;
+            display: block;
+            width: var(--board-width);
+            height: var(--board-height);
+            margin: 0;
+            padding: 0;
+        }
+
+        #single-player-card #phaser-game-container canvas {
+            width: var(--board-width) !important;
+            height: var(--board-height) !important;
+            margin: 0 !important;
+            padding: 0 !important;
             display: block !important;
             image-rendering: crisp-edges;
             image-rendering: -moz-crisp-edges;
             image-rendering: pixelated;
-            width: 300px !important; /* Force exact canvas display size */
-            height: 600px !important; /* Force exact canvas display size */
-            margin: 0 !important; /* Remove all margins */
-            padding: 0 !important;
-            border: 0 !important; /* Remove any default borders */
-            position: relative !important;
-            top: 0 !important;
-            left: 0 !important;
-            transform: none !important; /* Prevent any transforms */
-        }
-        
-        /* Make Phaser canvas fit perfectly in container */
-        #phaser-game-container > canvas {
-            pointer-events: none; /* Phaser canvas for effects only */
-            z-index: 10; /* Effects on top */
-            opacity: 1 !important;
-        }
-        
-        #single-player-game-canvas {
-            position: relative;
-            z-index: 1; /* Canvas renderer base layer */
         }
 
-        /* Line Clear Flash Effect - Container */
-        #line-clear-flash {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 10;
-            overflow: hidden;
-            border-radius: 8px;
+        .single-player-stats-bar {
+            margin: 10px auto 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: flex-start;
+            width: fit-content;
+        }
+
+        .single-player-stat {
+            width: 160px;
+            padding: 12px 16px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(24, 20, 64, 0.85), rgba(8, 9, 24, 0.75));
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            box-shadow:
+                0 12px 28px rgba(10, 8, 24, 0.45),
+                inset 0 0 16px rgba(99, 102, 241, 0.18);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .single-player-stat:first-child {
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow:
+                0 12px 32px rgba(16, 185, 129, 0.45),
+                inset 0 0 18px rgba(16, 185, 129, 0.25);
+        }
+
+        .single-player-stat-label {
+            font-family: 'Space Mono', monospace;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            font-size: 10px;
+            color: rgba(209, 213, 219, 0.75);
+        }
+
+        .single-player-stat-value {
+            font-family: 'Orbitron', 'Space Mono', monospace;
+            font-weight: 700;
+            font-size: 26px;
+            line-height: 1.05;
+            color: #ffffff;
+            text-shadow: 0 0 14px rgba(99, 102, 241, 0.5);
+        }
+
+        .single-player-stat-value#score {
+            color: #34d399;
+            text-shadow: 0 0 18px rgba(34, 197, 94, 0.55);
+        }
+
+@media (max-width: 820px) {
+            .single-player-stage {
+                flex-direction: column;
+                max-width: calc(100% - 40px);
+            }
+
+            .single-player-stats-bar {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+                width: 100%;
+            }
+
+            .single-player-stat {
+                width: calc(50% - 12px);
+            }
         }
 
         /* Individual line flash bars */
@@ -7793,6 +7901,7 @@ body {
     border-radius: 50%;
     animation: wolfhour-twinkle var(--twinkle-duration, 3s) ease-in-out infinite;
     animation-delay: var(--twinkle-delay, 0s);
+    will-change: opacity;
 }
 
 @keyframes wolfhour-twinkle {
@@ -7809,15 +7918,16 @@ body {
     box-shadow: 0 0 4px 2px rgba(255,255,255,0.8);
     animation: wolfhour-shoot var(--shoot-duration, 2s) linear;
     z-index: 3;
+    will-change: transform, opacity;
 }
 
 @keyframes wolfhour-shoot {
     from {
-        transform: translate(0, 0);
+        transform: translate(0, 0) translateZ(0);
         opacity: 1;
     }
     to {
-        transform: translate(var(--shoot-x, -200px), var(--shoot-y, 200px));
+        transform: translate(var(--shoot-x, -200px), var(--shoot-y, 200px)) translateZ(0);
         opacity: 0;
     }
 }
@@ -7831,6 +7941,8 @@ body {
     animation: wolfhour-nebula-drift linear infinite;
     background-repeat: repeat-x;
     background-size: 2000px 100%;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 #wolfhour-nebula-back {
@@ -7845,8 +7957,8 @@ body {
 }
 
 @keyframes wolfhour-nebula-drift {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-50%) translateZ(0); }
 }
 
 @keyframes wolfhour-nebula-breathe {
@@ -7863,6 +7975,8 @@ body {
     background-repeat: repeat-x;
     background-position: bottom;
     opacity: 0.6;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 #wolfhour-mountains-fore {
@@ -7874,16 +7988,18 @@ body {
     background-repeat: repeat-x;
     background-position: bottom;
     opacity: 0.9;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 @keyframes wolfhour-parallax-slow {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-50%) translateZ(0); }
 }
 
 @keyframes wolfhour-parallax-fast {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-50%) translateZ(0); }
 }
 
 #wolfhour-fog {
@@ -7893,11 +8009,13 @@ body {
     background: linear-gradient(to top, rgba(120,120,120,0.15) 0%, transparent 100%);
     z-index: 6;
     animation: wolfhour-fog-drift 80s linear infinite;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 @keyframes wolfhour-fog-drift {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-50%) translateZ(0); }
 }
 
 #wolfhour-grain {
@@ -7908,7 +8026,8 @@ body {
     z-index: 10;
     pointer-events: none;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.5"/></svg>');
-    animation: wolfhour-grain-shift 0.5s steps(4) infinite;
+    animation: wolfhour-grain-shift 2s steps(4) infinite;
+    will-change: transform;
 }
 
 @keyframes wolfhour-grain-shift {
@@ -7941,15 +8060,17 @@ body {
     animation: wolfhour-ray-sway var(--ray-duration, 8s) ease-in-out infinite;
     animation-delay: var(--ray-delay, 0s);
     filter: blur(1px);
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 @keyframes wolfhour-ray-sway {
     0%, 100% {
-        transform: rotate(var(--ray-angle-start, 0deg)) translateX(0);
+        transform: rotate(var(--ray-angle-start, 0deg)) translateX(0) translateZ(0);
         opacity: 0.3;
     }
     50% {
-        transform: rotate(var(--ray-angle-end, 3deg)) translateX(10px);
+        transform: rotate(var(--ray-angle-end, 3deg)) translateX(10px) translateZ(0);
         opacity: 0.6;
     }
 }
@@ -7978,16 +8099,18 @@ body {
     animation: wolfhour-rift-pulse var(--rift-duration, 4s) ease-in-out infinite;
     animation-delay: var(--rift-delay, 0s);
     filter: blur(0.5px);
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 @keyframes wolfhour-rift-pulse {
     0%, 100% {
         opacity: 0.2;
-        transform: scaleY(0.8);
+        transform: scaleY(0.8) translateZ(0);
     }
     50% {
         opacity: 0.7;
-        transform: scaleY(1.2);
+        transform: scaleY(1.2) translateZ(0);
     }
 }
 
@@ -8014,11 +8137,13 @@ body {
     animation: wolfhour-spirit-float var(--spirit-duration, 20s) ease-in-out infinite;
     animation-delay: var(--spirit-delay, 0s);
     filter: blur(2px);
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 @keyframes wolfhour-spirit-float {
     0% {
-        transform: translate(var(--spirit-x-start, 0), var(--spirit-y-start, 0)) scale(0.8);
+        transform: translate(var(--spirit-x-start, 0), var(--spirit-y-start, 0)) scale(0.8) translateZ(0);
         opacity: 0;
     }
     10% {
@@ -8026,13 +8151,13 @@ body {
     }
     50% {
         opacity: 0.7;
-        transform: translate(var(--spirit-x-mid, 50px), var(--spirit-y-mid, -100px)) scale(1.2);
+        transform: translate(var(--spirit-x-mid, 50px), var(--spirit-y-mid, -100px)) scale(1.2) translateZ(0);
     }
     90% {
         opacity: 0.5;
     }
     100% {
-        transform: translate(var(--spirit-x-end, 100px), var(--spirit-y-end, -200px)) scale(0.8);
+        transform: translate(var(--spirit-x-end, 100px), var(--spirit-y-end, -200px)) scale(0.8) translateZ(0);
         opacity: 0;
     }
 }
@@ -8066,6 +8191,7 @@ body {
     animation: lunara-star-twinkle var(--twinkle-duration, 3s) ease-in-out infinite;
     animation-delay: var(--twinkle-delay, 0s);
     box-shadow: 0 0 4px rgba(255,255,255,0.8);
+    will-change: opacity, transform;
 }
 
 @keyframes lunara-star-twinkle {
@@ -8096,15 +8222,17 @@ body {
     animation-delay: var(--aurora-delay, 0s);
     transform-origin: top center;
     opacity: 0.6;
+    will-change: transform, opacity;
+    transform: translateZ(0); /* Force GPU layer */
 }
 
 @keyframes lunara-aurora-flow {
     0%, 100% {
-        transform: translateX(-20px) translateY(0) skewX(-5deg);
+        transform: translateX(-20px) translateY(0) skewX(-5deg) translateZ(0);
         opacity: 0.4;
     }
     50% {
-        transform: translateX(20px) translateY(-30px) skewX(5deg);
+        transform: translateX(20px) translateY(-30px) skewX(5deg) translateZ(0);
         opacity: 0.8;
     }
 }
@@ -8117,6 +8245,7 @@ body {
     background-size: cover;
     background-position: center top;
     animation: lunara-planet-pulse 30s ease-in-out infinite;
+    will-change: opacity, filter;
 }
 
 @keyframes lunara-planet-pulse {
@@ -8133,6 +8262,8 @@ body {
     background-position: bottom;
     opacity: 0.7;
     animation: lunara-parallax-slow 250s linear infinite;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 #lunara-mountains-mid {
@@ -8144,16 +8275,18 @@ body {
     background-position: bottom;
     opacity: 0.85;
     animation: lunara-parallax-mid 180s linear infinite;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 @keyframes lunara-parallax-slow {
-    from { transform: translateX(0); }
-    to { transform: translateX(-33.33%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-33.33%) translateZ(0); }
 }
 
 @keyframes lunara-parallax-mid {
-    from { transform: translateX(0); }
-    to { transform: translateX(-33.33%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-33.33%) translateZ(0); }
 }
 
 #lunara-forest-left, #lunara-forest-right {
@@ -8184,6 +8317,8 @@ body {
     animation: lunara-tree-sway var(--sway-duration, 5s) ease-in-out infinite;
     animation-delay: var(--sway-delay, 0s);
     transform-origin: bottom center;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 .lunara-tree::before {
@@ -8211,8 +8346,8 @@ body {
 }
 
 @keyframes lunara-tree-sway {
-    0%, 100% { transform: rotate(-1deg); }
-    50% { transform: rotate(1deg); }
+    0%, 100% { transform: rotate(-1deg) translateZ(0); }
+    50% { transform: rotate(1deg) translateZ(0); }
 }
 
 #lunara-snowfield {
@@ -8225,6 +8360,7 @@ body {
         transparent 100%);
     z-index: 8;
     animation: lunara-snowfield-shimmer 8s ease-in-out infinite;
+    will-change: opacity;
 }
 
 @keyframes lunara-snowfield-shimmer {
@@ -8242,11 +8378,13 @@ body {
         transparent 100%);
     z-index: 9;
     animation: lunara-fog-drift 120s linear infinite;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 @keyframes lunara-fog-drift {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
+    from { transform: translateX(0) translateZ(0); }
+    to { transform: translateX(-50%) translateZ(0); }
 }
 
 #lunara-grain {
@@ -8257,7 +8395,8 @@ body {
     z-index: 10;
     pointer-events: none;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.5"/></svg>');
-    animation: lunara-grain-shift 0.6s steps(3) infinite;
+    animation: lunara-grain-shift 2s steps(3) infinite;
+    will-change: transform;
 }
 
 @keyframes lunara-grain-shift {
@@ -11120,6 +11259,9 @@ body.phaser-multiplayer-active #single-player-container {
     image-rendering: crisp-edges;
     image-rendering: -moz-crisp-edges;
     image-rendering: pixelated;
+    pointer-events: none;
+    position: relative;
+    z-index: 1;
 }
 
 /* Border overlays for each board */
@@ -11136,7 +11278,7 @@ body.phaser-multiplayer-active #single-player-container {
         0 0 60px rgba(139, 92, 246, 0.3), 
         0 0 90px rgba(139, 92, 246, 0.1);
     pointer-events: none;
-    z-index: 2;
+    z-index: 4;
 }
 
 /* Player board labels (P1, P2, P3, P4) */
@@ -11308,6 +11450,8 @@ body.phaser-multiplayer-active #single-player-container {
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.4);
+    --board-width: 300px;
+    --board-height: 600px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -11320,6 +11464,16 @@ body.phaser-multiplayer-active #single-player-container {
     backdrop-filter: blur(10px);
     border: 2px solid rgba(255, 255, 255, 0.1);
     transition: all 0.3s ease;
+}
+
+.player-card.single-player-card {
+    --board-width: 300px;
+    --board-height: 600px;
+    --player-primary: #8b5cf6;
+    --player-primary-light: #c4b5fd;
+    --player-glow: rgba(139, 92, 246, 0.35);
+    padding: 24px;
+    gap: 20px;
 }
 
 /* Player card color variations */
@@ -11445,27 +11599,80 @@ body.phaser-multiplayer-active #single-player-container {
     font-size: 16px;
 }
 
-/* Floating settings button */
+/* Floating settings button - Serenity Hub inspired design */
 .floating-settings-btn {
     position: fixed;
     bottom: 30px;
     right: 30px;
     z-index: 1000;
-    width: 50px;
-    height: 50px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.7);
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    background: transparent;
+    border: none;
     color: white;
-    font-size: 24px;
     cursor: pointer;
-    backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.25));
+    transform: scale(1);
 }
 
 .floating-settings-btn:hover {
-    background: rgba(0, 0, 0, 0.9);
-    border-color: rgba(255, 255, 255, 0.4);
+    transform: scale(1.05);
+    filter: drop-shadow(0 6px 16px rgba(255, 255, 255, 0.4));
+}
+
+.floating-settings-btn:active {
+    transform: scale(0.95);
+}
+
+/* Settings button glow effect */
+.floating-settings-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.3), transparent);
+    filter: blur(10px);
+    animation: settings-gentle-glow 3s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes settings-gentle-glow {
+    0%, 100% {
+        opacity: 0.5;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+}
+
+/* Settings icon SVG styling */
+.settings-icon {
+    width: 20px;
+    height: 20px;
+    color: rgba(255, 255, 255, 0.7);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    z-index: 1;
+}
+
+.floating-settings-btn:hover .settings-icon {
+    color: rgba(255, 255, 255, 0.95);
+    transform: rotate(45deg);
+}
+
+.floating-settings-btn:active .settings-icon {
     transform: rotate(90deg);
 }
 
@@ -11576,11 +11783,15 @@ body.phaser-multiplayer-active #single-player-container {
     }
 
     .floating-settings-btn {
-        width: 40px;
-        height: 40px;
-        font-size: 20px;
+        width: 36px;
+        height: 36px;
         bottom: 20px;
         right: 20px;
+    }
+
+    .settings-icon {
+        width: 16px;
+        height: 16px;
     }
 }
 
@@ -12624,5 +12835,274 @@ body.serenity-mode.cursor-hidden * {
         padding: 10px 14px;
         font-size: 10px;
         letter-spacing: 1px;
+    }
+}
+
+/* FPS Counter */
+#fps-counter {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #0f0;
+    padding: 8px 12px;
+    font-family: 'Courier New', 'Space Mono', monospace;
+    font-size: 14px;
+    border-radius: 4px;
+    z-index: 10000;
+    user-select: none;
+    pointer-events: none;
+    border: 1px solid rgba(0, 255, 0, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    min-width: 80px;
+    text-align: center;
+}
+
+#fps-counter.hidden {
+    display: none;
+}
+.single-player-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    margin: 0 auto;
+    width: fit-content;
+    max-width: calc(100% - 80px);
+}
+
+/* === Floating Game Mode Cards (over intro animation) === */
+.modal.game-mode-selection {
+    background: transparent;
+    backdrop-filter: none;
+    pointer-events: none;
+}
+
+.game-mode-cards-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 30px;
+    padding: 40px;
+    padding-top: 120px; /* Make room for logo at top */
+    max-width: 1200px;
+    width: 90%;
+    margin: 0 auto;
+    pointer-events: all;
+    animation: cardsFloatIn 1s ease-out forwards;
+}
+
+@keyframes cardsFloatIn {
+    from {
+        opacity: 0;
+        transform: translateY(50px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.game-mode-card {
+    position: relative;
+    background: rgba(15, 15, 30, 0.7);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 2px solid rgba(100, 200, 255, 0.3);
+    border-radius: 24px;
+    padding: 40px 30px;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    overflow: hidden;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 1px rgba(255, 255, 255, 0.1);
+    animation: cardFloat 6s ease-in-out infinite;
+}
+
+.game-mode-card:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.game-mode-card:nth-child(2) {
+    animation-delay: -1.5s;
+}
+
+.game-mode-card:nth-child(3) {
+    animation-delay: -3s;
+}
+
+.game-mode-card:nth-child(4) {
+    animation-delay: -4.5s;
+}
+
+@keyframes cardFloat {
+    0%, 100% {
+        transform: translateY(0) rotateY(0deg);
+    }
+    25% {
+        transform: translateY(-10px) rotateY(2deg);
+    }
+    75% {
+        transform: translateY(-5px) rotateY(-2deg);
+    }
+}
+
+.game-mode-card:hover {
+    transform: translateY(-15px) scale(1.05) !important;
+    border-color: rgba(139, 92, 246, 0.8);
+    box-shadow:
+        0 20px 60px rgba(139, 92, 246, 0.4),
+        0 0 40px rgba(139, 92, 246, 0.3),
+        inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    background: rgba(25, 25, 50, 0.85);
+}
+
+.game-mode-card:hover .mode-card-glow {
+    opacity: 0.8;
+}
+
+.game-mode-card:active {
+    transform: translateY(-12px) scale(1.02) !important;
+}
+
+/* Gamepad focus state */
+.game-mode-card.gamepad-focused {
+    transform: translateY(-15px) scale(1.05);
+    border-color: rgba(100, 200, 255, 0.9);
+    box-shadow:
+        0 20px 60px rgba(100, 200, 255, 0.5),
+        0 0 40px rgba(100, 200, 255, 0.4),
+        inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    background: rgba(25, 25, 50, 0.85);
+}
+
+.game-mode-card.gamepad-focused .mode-card-glow {
+    opacity: 1;
+    background: radial-gradient(
+        circle,
+        rgba(100, 200, 255, 0.5) 0%,
+        transparent 70%
+    );
+}
+
+.mode-card-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(
+        circle,
+        rgba(139, 92, 246, 0.4) 0%,
+        transparent 70%
+    );
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.mode-card-icon {
+    font-size: 4rem;
+    text-align: center;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 4px 12px rgba(100, 200, 255, 0.5));
+    position: relative;
+    z-index: 1;
+    animation: iconBreathe 3s ease-in-out infinite;
+}
+
+@keyframes iconBreathe {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+.mode-card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 900;
+    text-align: center;
+    margin-bottom: 15px;
+    background: linear-gradient(135deg, #ffffff, #64c8ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+    text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+}
+
+.mode-card-desc {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.95rem;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.6;
+    position: relative;
+    z-index: 1;
+    margin: 0;
+}
+
+.game-mode-card:hover .mode-card-desc {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+    .game-mode-cards-container {
+        gap: 20px;
+        padding: 30px;
+    }
+
+    .game-mode-card {
+        padding: 30px 20px;
+    }
+
+    .mode-card-icon {
+        font-size: 3rem;
+    }
+
+    .mode-card-title {
+        font-size: 1.4rem;
+    }
+
+    .mode-card-desc {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .game-mode-cards-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .game-mode-card {
+        padding: 25px 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-mode-cards-container {
+        padding: 15px;
+    }
+
+    .mode-card-icon {
+        font-size: 2.5rem;
+    }
+
+    .mode-card-title {
+        font-size: 1.2rem;
+    }
+
+    .mode-card-desc {
+        font-size: 0.8rem;
     }
 }

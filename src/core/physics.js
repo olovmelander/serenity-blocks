@@ -7,7 +7,15 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS,
 } from './constants.js';
-import { generateBoard } from './board.js';
+import { cloneBoardGrid, rebuildBoardGridFromPieces } from './board.js';
+
+const PHYSICS_DEBUG = false;
+const physicsLog = (...args) => {
+    if (PHYSICS_DEBUG) console.log(...args);
+};
+const physicsWarn = (...args) => {
+    if (PHYSICS_DEBUG) console.warn(...args);
+};
 
 /**
  * Determines if a specific board position is part of a given piece
@@ -117,12 +125,14 @@ export function findConnectedComponents(boardData) {
  * @param {Array<Array<boolean>>} movedArray - 2D array to track which cells moved (optional)
  * @returns {Promise<void>} Resolves when all blocks have settled
  */
-export async function applyGravity(lockedPieces, drawCallback, movedArray = null) {
+export async function applyGravity(gameState, drawCallback, movedArray = null) {
+    const { lockedPieces, boardGrid } = gameState;
     let blocksStillFalling = true;
 
     while (blocksStillFalling) {
         blocksStillFalling = false;
-        const currentBoard = generateBoard(lockedPieces);
+        rebuildBoardGridFromPieces(lockedPieces, boardGrid);
+        const currentBoard = boardGrid;
 
         // Process blocks from bottom to top to prevent double-processing
         lockedPieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
@@ -181,6 +191,8 @@ export async function applyGravity(lockedPieces, drawCallback, movedArray = null
             await new Promise((resolve) => setTimeout(resolve, 25)); // Reduced from 50ms for smoother motion
         }
     }
+
+    rebuildBoardGridFromPieces(lockedPieces, boardGrid);
 }
 
 /**
@@ -195,7 +207,7 @@ export function detectFullLines(boardData) {
         if (isFull) {
             const hasGarbage = boardData[y].some((cell) => cell && cell.color === 'GARBAGE');
             if (hasGarbage) {
-                console.log(`[detectFullLines] Line ${y} is full and contains GARBAGE blocks`);
+                physicsLog(`[detectFullLines] Line ${y} is full and contains GARBAGE blocks`);
             }
             fullLines.push(y);
         }
@@ -226,8 +238,8 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     const highestClearedLine = Math.min(...fullLines);
     const lowestClearedLine = Math.max(...fullLines);
 
-    console.log('[calculateCascadeHoleColumns] ========================================');
-    console.log(
+    physicsLog('[calculateCascadeHoleColumns] ========================================');
+    physicsLog(
         `[calculateCascadeHoleColumns] QUADRA METHOD: Analyzing cleared lines [${fullLines.join(', ')}]`,
     );
 
@@ -246,16 +258,16 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     });
 
     // Visualize the moved array for debugging
-    console.log(
+    physicsLog(
         '[calculateCascadeHoleColumns] Moved array visualization (. = not moved, X = moved):',
     );
-    console.log(`  Columns:     ${Array.from({ length: COLS }, (_, i) => i).join('')}`);
+    physicsLog(`  Columns:     ${Array.from({ length: COLS }, (_, i) => i).join('')}`);
     fullLines.slice(0, 4).forEach((y) => {
         if (movedArray[y]) {
             const viz = Array.from({ length: COLS }, (_, x) => (movedArray[y][x] ? 'X' : '.')).join(
                 '',
             );
-            console.log(`  Row Y=${String(y).padStart(2)}: ${viz}`);
+            physicsLog(`  Row Y=${String(y).padStart(2)}: ${viz}`);
         }
     });
 
@@ -264,14 +276,14 @@ export function calculateCascadeHoleColumns(movedArray, fullLines) {
     if (holeColumns.length === 0) {
         // Fallback if no movement tracked (shouldn't happen)
         const mid = Math.floor(COLS / 2);
-        console.log(
+        physicsWarn(
             `[calculateCascadeHoleColumns] WARNING: No moved columns found, using fallback [${mid}]`,
         );
         return [mid];
     }
 
-    console.log(`[calculateCascadeHoleColumns] Moved columns (holes): [${holeColumns.join(', ')}]`);
-    console.log('[calculateCascadeHoleColumns] ========================================');
+    physicsLog(`[calculateCascadeHoleColumns] Moved columns (holes): [${holeColumns.join(', ')}]`);
+    physicsLog('[calculateCascadeHoleColumns] ========================================');
     return holeColumns;
 }
 
@@ -517,7 +529,7 @@ export async function processPhysics(gameState, callbacks) {
                 movedArray[y][x] = true;
             }
         });
-        console.log(
+        physicsLog(
             `[Physics] Initial moved[][] tracking: ${comboState.lockFootprint.length} cells marked from placed piece`,
         );
     }
@@ -525,8 +537,9 @@ export async function processPhysics(gameState, callbacks) {
     let preGravityBoard = null;
 
     while (true) {
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         // Phase 1: Line detection and clearing
-        const boardData = generateBoard(gameState.lockedPieces);
+        const boardData = gameState.boardGrid;
         const fullLines = detectFullLines(boardData);
 
         if (fullLines.length === 0) {
@@ -545,10 +558,10 @@ export async function processPhysics(gameState, callbacks) {
         const waveHoleMasks = [];
         const waveHoleColumns = new Set();
 
-        console.log(
+        physicsLog(
             `[Physics] ===== Cascade ${cascadeCount}: Processing ${fullLines.length} cleared lines =====`,
         );
-        console.log('[Physics] Moved[][] array state before line clear:');
+        physicsLog('[Physics] Moved[][] array state before line clear:');
         fullLines.slice(0, Math.min(4, fullLines.length)).forEach((y) => {
             const movedCols = [];
             for (let x = 0; x < COLS; x++) {
@@ -556,7 +569,7 @@ export async function processPhysics(gameState, callbacks) {
                     movedCols.push(x);
                 }
             }
-            console.log(
+            physicsLog(
                 `[Physics]   Row ${y}: moved columns = [${movedCols.join(', ')}]${movedCols.length === 0 ? ' (NONE - will use fallback)' : ''}`,
             );
         });
@@ -575,7 +588,7 @@ export async function processPhysics(gameState, callbacks) {
 
             // Fallback if no moved cells found (shouldn't happen in correct implementation)
             if (!mask.some((value) => value)) {
-                console.log(`[Physics]   WARNING: Row ${y} has no moved[] markers, using fallback`);
+                physicsWarn(`[Physics]   WARNING: Row ${y} has no moved[] markers, using fallback`);
                 let fallbackColumns = [];
 
                 if (cascadeCount === 1 && manualHoleColumns.length > 0) {
@@ -614,8 +627,8 @@ export async function processPhysics(gameState, callbacks) {
 
         const holeColumns = Array.from(waveHoleColumns).sort((a, b) => a - b);
 
-        console.log(`[Physics] Cascade ${cascadeCount} result: ${fullLines.length} lines cleared`);
-        console.log('[Physics] Hole masks (TRUE = hole in garbage):');
+        physicsLog(`[Physics] Cascade ${cascadeCount} result: ${fullLines.length} lines cleared`);
+        physicsLog('[Physics] Hole masks (TRUE = hole in garbage):');
         waveHoleMasks.forEach((mask, index) => {
             const holeCols = [];
             const solidCols = [];
@@ -623,11 +636,11 @@ export async function processPhysics(gameState, callbacks) {
                 if (flag) holeCols.push(x);
                 else solidCols.push(x);
             });
-            console.log(
+            physicsLog(
                 `[Physics]   Line ${index + 1}/${waveHoleMasks.length}: holes=[${holeCols.join(', ')}], solid=[${solidCols.join(', ')}]`,
             );
         });
-        console.log(`[Physics] Merged hole columns: [${holeColumns.join(', ')}]`);
+        physicsLog(`[Physics] Merged hole columns: [${holeColumns.join(', ')}]`);
 
         // --- Line Clear Animation and Scoring ---
         linesClearedThisTurn += fullLines.length;
@@ -666,13 +679,14 @@ export async function processPhysics(gameState, callbacks) {
 
         // QUADRA CRITICAL: Clear moved[][] AFTER reading hole positions
         // This prepares it to track which cells fall during gravity
-        console.log('[Physics] Clearing moved[][] array for gravity tracking');
+        physicsLog('[Physics] Clearing moved[][] array for gravity tracking');
         resetMovedArray(movedArray);
 
         // --- Enhanced Visual Feedback with Smooth Fade Animation ---
         // Multi-stage flash effect for smoother, faster transition
         // Timing gets progressively faster for cascades to maintain momentum
-        const markedBoard = generateBoard(gameState.lockedPieces);
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
         // Speed multiplier: first clear is normal, cascades get 30% faster
         const speedMultiplier = cascadeCount === 1 ? 1.0 : 0.7;
@@ -717,13 +731,14 @@ export async function processPhysics(gameState, callbacks) {
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
 
         // Split pieces into individual blocks for independent gravity
-        gameState.lockedPieces = findConnectedComponents(generateBoard(gameState.lockedPieces));
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        gameState.lockedPieces = findConnectedComponents(gameState.boardGrid);
 
         // Snapshot board state before gravity so the next cascade can compare deltas
-        preGravityBoard = generateBoard(gameState.lockedPieces).map((row) => row.map((cell) => cell !== null));
+        preGravityBoard = cloneBoardGrid(gameState.boardGrid).map((row) => row.map((cell) => cell !== null));
 
         // Phase 2: Apply gravity to individual blocks and track movement
-        await applyGravity(gameState.lockedPieces, callbacks.draw, movedArray);
+        await applyGravity(gameState, callbacks.draw, movedArray);
 
         // Phase 3: Recursive cascade - continue the loop to check for new lines
         // The while(true) loop will automatically check for new complete lines
@@ -766,4 +781,6 @@ export async function processPhysics(gameState, callbacks) {
         gameState.comboState.lockFootprint = [];
         gameState.comboState.sourceColor = null;
     }
+
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
 }

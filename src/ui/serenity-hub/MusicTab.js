@@ -3,8 +3,6 @@
  * Provides music player controls, playlist browser, and volume settings
  */
 
-import { GestureController } from './GestureController.js';
-
 export class MusicTab {
     constructor(hubInstance, soundManager) {
         this.hub = hubInstance;
@@ -13,7 +11,6 @@ export class MusicTab {
         this.currentSong = null;
         this.songs = [];
         this.updateInterval = null;
-        this.gestureController = null;
         this.init();
     }
 
@@ -489,24 +486,6 @@ export class MusicTab {
     }
 
     /**
-     * Initialize gesture control for swipe navigation
-     */
-    initializeGestureControl() {
-        const musicTab = document.getElementById('tab-music');
-        if (!musicTab) {
-            console.warn('[MusicTab] Tab container not found for gesture control');
-            return;
-        }
-
-        this.gestureController = new GestureController(musicTab, {
-            onSwipeLeft: () => this.nextTrack(),
-            onSwipeRight: () => this.previousTrack()
-        });
-
-        console.log('[MusicTab] Gesture control initialized');
-    }
-
-    /**
      * Listen for track changes from external sources (like keyboard shortcut)
      */
     listenForTrackChanges() {
@@ -531,11 +510,6 @@ export class MusicTab {
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
             this.updateInterval = null;
-        }
-
-        if (this.gestureController) {
-            this.gestureController.destroy();
-            this.gestureController = null;
         }
 
         if (this.trackChangeHandler) {

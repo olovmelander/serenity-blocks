@@ -108,6 +108,11 @@ export class GamepadController {
         this.menuNavigationRepeatDelay = 300; // ms before repeat starts
         this.menuNavigationRepeatInterval = 150; // ms between repeats
 
+        // Game mode selection state
+        this.gameModeSelectionEnabled = false;
+        this.gameModeCards = [];
+        this.selectedGameModeIndex = 0;
+
         // Callback functions
         this.onPauseCallback = null;
         this.onResumeCallback = null;
@@ -347,14 +352,140 @@ export class GamepadController {
             const freshGamepad = gamepads[gamepad.index];
             if (!freshGamepad) continue;
 
-            // Process menu navigation if enabled, otherwise process game input
-            if (this.menuNavigationEnabled) {
+            // Process game mode selection, menu navigation, or game input
+            if (this.gameModeSelectionEnabled) {
+                this.processGameModeSelection(freshGamepad, slot);
+            } else if (this.menuNavigationEnabled) {
                 this.processMenuNavigation(freshGamepad, slot);
             } else {
                 // Always check for Start button to open settings, even without gameActions
             this.processGamepadInput(freshGamepad, slot);
             }
         }
+    }
+
+    /**
+     * Enable game mode selection mode
+     */
+    enableGameModeSelection() {
+        this.gameModeSelectionEnabled = true;
+        console.log('[Gamepad] Game mode selection enabled');
+
+        // Get all game mode cards
+        this.gameModeCards = Array.from(document.querySelectorAll('.game-mode-card'));
+        this.selectedGameModeIndex = 0;
+
+        // Clear all previous button states
+        for (let i = 0; i < this.previousStates.length; i++) {
+            this.previousStates[i] = {};
+        }
+
+        // Apply focus to first card
+        this.updateGameModeCardFocus();
+    }
+
+    /**
+     * Disable game mode selection mode
+     */
+    disableGameModeSelection() {
+        this.gameModeSelectionEnabled = false;
+        console.log('[Gamepad] Game mode selection disabled');
+
+        // Remove focus from all cards
+        this.gameModeCards.forEach(card => {
+            card.classList.remove('gamepad-focused');
+        });
+
+        // Clear all previous button states
+        for (let i = 0; i < this.previousStates.length; i++) {
+            this.previousStates[i] = {};
+        }
+    }
+
+    /**
+     * Update visual focus on game mode cards
+     */
+    updateGameModeCardFocus() {
+        this.gameModeCards.forEach((card, index) => {
+            if (index === this.selectedGameModeIndex) {
+                card.classList.add('gamepad-focused');
+            } else {
+                card.classList.remove('gamepad-focused');
+            }
+        });
+    }
+
+    /**
+     * Process gamepad input for game mode selection
+     */
+    processGameModeSelection(gamepad, slot) {
+        const prevState = this.previousStates[slot];
+
+        // Only allow first gamepad to navigate
+        if (slot !== 0) return;
+
+        // D-pad / Left stick navigation
+        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed ||
+                           gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed ||
+                            gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed ||
+                         gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed ||
+                           gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+
+        // Navigate left (decrement index)
+        if (leftPressed && !prevState.gameModeLeft) {
+            this.selectedGameModeIndex--;
+            if (this.selectedGameModeIndex < 0) {
+                this.selectedGameModeIndex = this.gameModeCards.length - 1;
+            }
+            this.updateGameModeCardFocus();
+        }
+        prevState.gameModeLeft = leftPressed;
+
+        // Navigate right (increment index)
+        if (rightPressed && !prevState.gameModeRight) {
+            this.selectedGameModeIndex++;
+            if (this.selectedGameModeIndex >= this.gameModeCards.length) {
+                this.selectedGameModeIndex = 0;
+            }
+            this.updateGameModeCardFocus();
+        }
+        prevState.gameModeRight = rightPressed;
+
+        // Navigate up (move to card above in grid)
+        if (upPressed && !prevState.gameModeUp) {
+            this.selectedGameModeIndex -= 2; // Grid has 2 columns
+            if (this.selectedGameModeIndex < 0) {
+                // Wrap to bottom row
+                this.selectedGameModeIndex += this.gameModeCards.length;
+            }
+            this.updateGameModeCardFocus();
+        }
+        prevState.gameModeUp = upPressed;
+
+        // Navigate down (move to card below in grid)
+        if (downPressed && !prevState.gameModeDown) {
+            this.selectedGameModeIndex += 2; // Grid has 2 columns
+            if (this.selectedGameModeIndex >= this.gameModeCards.length) {
+                // Wrap to top row
+                this.selectedGameModeIndex %= this.gameModeCards.length;
+            }
+            this.updateGameModeCardFocus();
+        }
+        prevState.gameModeDown = downPressed;
+
+        // A button - Select game mode
+        const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
+        if (aPressed && !prevState.gameModeSelect) {
+            const selectedCard = this.gameModeCards[this.selectedGameModeIndex];
+            if (selectedCard) {
+                console.log('[Gamepad] Selecting game mode card:', selectedCard.id);
+                selectedCard.click();
+            }
+        }
+        prevState.gameModeSelect = aPressed;
     }
 
     /**

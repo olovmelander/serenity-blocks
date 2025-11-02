@@ -215,9 +215,14 @@ export function drawBlock(
     blockY = 0,
 ) {
     const size = BLOCK_SIZE;
+    const visibleY = y - HIDDEN_ROWS;
+    if (visibleY < 0 || visibleY >= ROWS) {
+        return;
+    }
+
     // Use Math.round to ensure pixel-perfect integer coordinates
     const pixelX = Math.round(x * size);
-    const pixelY = Math.round(y * size);
+    const pixelY = Math.round(visibleY * size);
     const endX = pixelX + size;
     const endY = pixelY + size;
     const baseColor = color || '#808080';
@@ -242,10 +247,23 @@ export function drawBlock(
 
     if (shape) {
         // Edge-only borders: only draw borders on outer edges of the piece
-        const hasBlockAbove = blockY > 0 && shape[blockY - 1] && shape[blockY - 1][blockX] > 0;
-        const hasBlockBelow = blockY < shape.length - 1 && shape[blockY + 1] && shape[blockY + 1][blockX] > 0;
-        const hasBlockLeft = blockX > 0 && shape[blockY][blockX - 1] > 0;
-        const hasBlockRight = blockX < shape[blockY].length - 1 && shape[blockY][blockX + 1] > 0;
+        const worldX = pieceX + blockX;
+        const worldY = pieceY + blockY;
+
+        const hasShapeAbove = blockY > 0 && shape[blockY - 1] && shape[blockY - 1][blockX] > 0;
+        const hasShapeBelow = blockY < shape.length - 1 && shape[blockY + 1] && shape[blockY + 1][blockX] > 0;
+        const hasShapeLeft = blockX > 0 && shape[blockY][blockX - 1] > 0;
+        const hasShapeRight = blockX < shape[blockY].length - 1 && shape[blockY][blockX + 1] > 0;
+
+        const hasBoardAbove = boardData && worldY > 0 && boardData[worldY - 1] && boardData[worldY - 1][worldX];
+        const hasBoardBelow = boardData && worldY < boardData.length - 1 && boardData[worldY + 1] && boardData[worldY + 1][worldX];
+        const hasBoardLeft = boardData && worldX > 0 && boardData[worldY] && boardData[worldY][worldX - 1];
+        const hasBoardRight = boardData && boardData[worldY] && worldX < boardData[worldY].length - 1 && boardData[worldY][worldX + 1];
+
+        const hasBlockAbove = hasShapeAbove || hasBoardAbove;
+        const hasBlockBelow = hasShapeBelow || hasBoardBelow;
+        const hasBlockLeft = hasShapeLeft || hasBoardLeft;
+        const hasBlockRight = hasShapeRight || hasBoardRight;
 
         // Draw individual edge lines only where there's no adjacent block
         ctx.beginPath();
@@ -275,8 +293,35 @@ export function drawBlock(
         }
 
         ctx.stroke();
+    } else if (boardData) {
+        const worldY = y;
+        const worldX = x;
+
+        const rowData = boardData[worldY] || [];
+        const topEmpty = worldY <= HIDDEN_ROWS || !boardData[worldY - 1] || !boardData[worldY - 1][worldX];
+        const bottomEmpty = worldY >= boardData.length - 1 || !boardData[worldY + 1] || !boardData[worldY + 1][worldX];
+        const leftEmpty = worldX === 0 || !rowData[worldX - 1];
+        const rightEmpty = worldX === rowData.length - 1 || !rowData[worldX + 1];
+
+        ctx.beginPath();
+        if (topEmpty) {
+            ctx.moveTo(pixelX, pixelY + 0.5);
+            ctx.lineTo(pixelX + size, pixelY + 0.5);
+        }
+        if (bottomEmpty) {
+            ctx.moveTo(pixelX, pixelY + size - 0.5);
+            ctx.lineTo(pixelX + size, pixelY + size - 0.5);
+        }
+        if (leftEmpty) {
+            ctx.moveTo(pixelX + 0.5, pixelY);
+            ctx.lineTo(pixelX + 0.5, pixelY + size);
+        }
+        if (rightEmpty) {
+            ctx.moveTo(pixelX + size - 0.5, pixelY);
+            ctx.lineTo(pixelX + size - 0.5, pixelY + size);
+        }
+        ctx.stroke();
     } else {
-        // Full border around individual block (fallback or for board-based rendering)
         ctx.strokeRect(pixelX + 0.5, pixelY + 0.5, size - 1, size - 1);
     }
 
@@ -306,18 +351,19 @@ export function drawGhostPiece(ctx, piece, ghostY) {
 
     piece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
-            if (cell > 0 && ghostY + y >= HIDDEN_ROWS) {
+            if (cell > 0) {
+                const worldY = ghostY + y;
+                if (worldY < HIDDEN_ROWS) return;
+
+                const visibleY = worldY - HIDDEN_ROWS;
                 const blockX = piece.x + x;
-                const blockY = ghostY + y - HIDDEN_ROWS;
 
-                // Draw main ghost block with pulsing opacity
                 ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-                ctx.fillRect(blockX * BLOCK_SIZE, blockY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                ctx.fillRect(blockX * BLOCK_SIZE, visibleY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
 
-                // Add subtle cyan glow on edges for Tetris Effect feel
                 ctx.strokeStyle = `rgba(100, 200, 255, ${opacity * 0.6})`;
                 ctx.lineWidth = 1;
-                ctx.strokeRect(blockX * BLOCK_SIZE, blockY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                ctx.strokeRect(blockX * BLOCK_SIZE, visibleY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             }
         });
     });
