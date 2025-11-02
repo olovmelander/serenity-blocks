@@ -119,15 +119,27 @@ export class GameModeUI {
      * Update container visibility based on current mode
      */
     updateContainerVisibility() {
+        const singlePlayerStage = document.querySelector('.single-player-stage');
+
         if (this.singlePlayerContainer && this.multiplayerContainer) {
             if (this.currentMode === GAME_MODES.SINGLE_PLAYER) {
+                // Show single player stage and container
+                if (singlePlayerStage) singlePlayerStage.style.display = '';
                 this.singlePlayerContainer.style.display = '';
                 this.multiplayerContainer.style.display = 'none';
             } else if (this.currentMode === GAME_MODES.LOCAL_MULTIPLAYER) {
+                // Hide single player, show multiplayer
+                if (singlePlayerStage) singlePlayerStage.style.display = 'none';
                 this.singlePlayerContainer.style.display = 'none';
                 this.multiplayerContainer.style.display = 'flex';
             } else if (this.currentMode === GAME_MODES.ONLINE_MULTIPLAYER) {
                 // Online multiplayer uses its own UI system
+                if (singlePlayerStage) singlePlayerStage.style.display = 'none';
+                this.singlePlayerContainer.style.display = 'none';
+                this.multiplayerContainer.style.display = 'none';
+            } else if (this.currentMode === GAME_MODES.SERENITY) {
+                // Serenity mode hides game boards
+                if (singlePlayerStage) singlePlayerStage.style.display = 'none';
                 this.singlePlayerContainer.style.display = 'none';
                 this.multiplayerContainer.style.display = 'none';
             }
