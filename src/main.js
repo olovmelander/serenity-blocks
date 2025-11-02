@@ -1170,6 +1170,11 @@ class SerenityBlocks {
                 const { mode } = e.detail;
                 console.log('[Main] Starting game with mode from card selection:', mode);
 
+                // Disable gamepad mode selection
+                if (this.gamepadController) {
+                    this.gamepadController.disableGameModeSelection();
+                }
+
                 // Hide start modal first
                 this.modalManager.hideAll();
 
@@ -2941,6 +2946,11 @@ async function bootstrap() {
 
         app = new SerenityBlocks();
         await app.init();
+
+        // Enable gamepad navigation for game mode selection
+        if (app.gamepadController) {
+            app.gamepadController.enableGameModeSelection();
+        }
 
         // Expose to window for debugging (can be removed in production)
         if (typeof window !== 'undefined') {
