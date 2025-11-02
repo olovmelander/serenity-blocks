@@ -415,6 +415,9 @@ export class IntroAnimation {
         const maxTetrominos = 15; // Max tetrominos on screen at once
         let activeTetrominos = 0;
 
+        // Array to store all active tetromino containers for collision detection
+        const activeTetrominoContainers = [];
+
         // Function to spawn a single tetromino
         const spawnTetromino = () => {
             if (activeTetrominos >= maxTetrominos) return;
@@ -530,17 +533,33 @@ export class IntroAnimation {
                 container.add(glowGraphics);
                 container.sendToBack(glowGraphics);
 
-                // Store velocity for continuous movement
+                // Store velocity and physics properties for continuous movement
                 container.velocityX = velocityX;
                 container.velocityY = velocityY;
+                container.tetrominoColor = color;
+                container.tetrominoShape = shape;
+
+                // Calculate bounding circle for collision detection
+                const maxDistance = Math.max(
+                    ...shape.map(([bx, by]) =>
+                        Math.sqrt(Math.pow(bx * (blockSize + spacing), 2) + Math.pow(by * (blockSize + spacing), 2))
+                    )
+                );
+                container.collisionRadius = maxDistance + blockSize;
+
+                // Add to active containers array
+                activeTetrominoContainers.push(container);
 
                 // Add to scene update to move continuously
                 const updateMovement = () => {
                     if (!container || !container.active) return;
 
                     // Move the container
-                    container.x += velocityX * 0.016; // Assuming 60fps
-                    container.y += velocityY * 0.016;
+                    container.x += container.velocityX * 0.016; // Assuming 60fps
+                    container.y += container.velocityY * 0.016;
+
+                    // Check for collisions with other tetrominos
+                    this.checkTetrominoCollisions(container, activeTetrominoContainers, scene, color);
 
                     // Check if out of bounds (with margin for cleanup)
                     const margin = 200;
@@ -549,6 +568,11 @@ export class IntroAnimation {
                         container.y < -margin ||
                         container.y > height + margin) {
                         activeTetrominos--;
+                        // Remove from active containers
+                        const index = activeTetrominoContainers.indexOf(container);
+                        if (index > -1) {
+                            activeTetrominoContainers.splice(index, 1);
+                        }
                         container.destroy();
                         scene.events.off('update', updateMovement);
                     }
@@ -609,6 +633,153 @@ export class IntroAnimation {
         });
 
         console.log('[IntroAnimation] Continuous tetromino spawning started (max: ' + maxTetrominos + ')');
+    }
+
+    /**
+     * Check collisions between tetrominos and apply bounce physics
+     */
+    checkTetrominoCollisions(container, allContainers, scene, color) {
+        if (!container.active) return;
+
+        for (let i = 0; i < allContainers.length; i++) {
+            const other = allContainers[i];
+
+            // Skip self and inactive containers
+            if (other === container || !other.active) continue;
+
+            // Calculate distance between centers
+            const dx = other.x - container.x;
+            const dy = other.y - container.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Check if collision occurred
+            const minDistance = container.collisionRadius + other.collisionRadius;
+            if (distance < minDistance && distance > 0) {
+                // Collision detected! Apply bounce physics
+                this.applyBouncePhysics(container, other, dx, dy, distance);
+
+                // Create visual effects at collision point
+                const collisionX = container.x + (dx / distance) * container.collisionRadius;
+                const collisionY = container.y + (dy / distance) * container.collisionRadius;
+                this.createCollisionEffect(scene, collisionX, collisionY, color, other.tetrominoColor);
+            }
+        }
+    }
+
+    /**
+     * Apply bounce physics when two tetrominos collide
+     */
+    applyBouncePhysics(container1, container2, dx, dy, distance) {
+        // Normalize collision vector
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        // Calculate relative velocity
+        const dvx = container2.velocityX - container1.velocityX;
+        const dvy = container2.velocityY - container1.velocityY;
+
+        // Calculate relative velocity in collision normal direction
+        const dotProduct = dvx * nx + dvy * ny;
+
+        // Don't apply forces if objects are moving apart
+        if (dotProduct > 0) return;
+
+        // Apply elastic collision with damping (bounce coefficient)
+        const bounceCoefficient = 0.8; // Some energy loss for realistic bounce
+        const impulse = (1 + bounceCoefficient) * dotProduct;
+
+        // Update velocities (assuming equal mass)
+        container1.velocityX += impulse * nx * 0.5;
+        container1.velocityY += impulse * ny * 0.5;
+        container2.velocityX -= impulse * nx * 0.5;
+        container2.velocityY -= impulse * ny * 0.5;
+
+        // Add slight random perturbation to prevent perfect alignment
+        const randomFactor = 0.05;
+        container1.velocityX += (Math.random() - 0.5) * randomFactor;
+        container1.velocityY += (Math.random() - 0.5) * randomFactor;
+
+        // Separate overlapping objects to prevent sticking
+        const overlap = (container1.collisionRadius + container2.collisionRadius - distance) / 2;
+        container1.x -= nx * overlap;
+        container1.y -= ny * overlap;
+        container2.x += nx * overlap;
+        container2.y += ny * overlap;
+    }
+
+    /**
+     * Create visual effects at collision point
+     */
+    createCollisionEffect(scene, x, y, color1, color2) {
+        // Create particle burst at collision point
+        const particleCount = 8;
+        const particles = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            const angle = (i / particleCount) * Math.PI * 2;
+            const speed = 30 + Math.random() * 20;
+            const particle = scene.add.circle(x, y, 1.5, i % 2 === 0 ? color1 : color2, 1);
+            particle.velocityX = Math.cos(angle) * speed;
+            particle.velocityY = Math.sin(angle) * speed;
+            particles.push(particle);
+
+            // Animate particle
+            scene.tweens.add({
+                targets: particle,
+                alpha: 0,
+                scale: 0,
+                duration: 400,
+                ease: 'Cubic.easeOut',
+                onComplete: () => particle.destroy()
+            });
+        }
+
+        // Move particles
+        const moveParticles = () => {
+            particles.forEach(p => {
+                if (p.active) {
+                    p.x += p.velocityX * 0.016;
+                    p.y += p.velocityY * 0.016;
+                }
+            });
+        };
+
+        const moveInterval = setInterval(() => {
+            if (particles.every(p => !p.active)) {
+                clearInterval(moveInterval);
+            } else {
+                moveParticles();
+            }
+        }, 16);
+
+        // Create flash effect at collision point
+        const flash = scene.add.circle(x, y, 10, 0xffffff, 0.8);
+        flash.setBlendMode(Phaser.BlendModes.ADD);
+
+        scene.tweens.add({
+            targets: flash,
+            alpha: 0,
+            scale: 2,
+            duration: 300,
+            ease: 'Cubic.easeOut',
+            onComplete: () => flash.destroy()
+        });
+
+        // Create expanding ring effect
+        const ring = scene.add.graphics();
+        ring.lineStyle(2, color1, 1);
+        ring.strokeCircle(0, 0, 5);
+        ring.x = x;
+        ring.y = y;
+
+        scene.tweens.add({
+            targets: ring,
+            alpha: 0,
+            scale: 3,
+            duration: 500,
+            ease: 'Cubic.easeOut',
+            onComplete: () => ring.destroy()
+        });
     }
 
     /**
