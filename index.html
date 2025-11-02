@@ -727,26 +727,35 @@
         </button>
     </div>
 
-    <div id="start-modal" class="modal">
-        <div class="modal-content">
-            <h1>SERENITY BLOCKS</h1>
-            <div class="game-mode-selector" style="margin: 20px 0;">
-                <button id="single-player-btn" class="mode-btn active" data-mode="single">Single Player</button>
-                <button id="local-multiplayer-btn" class="mode-btn" data-mode="local-multiplayer">Local MP</button>
-                <button id="online-multiplayer-btn" class="mode-btn" data-mode="online-multiplayer">Online MP</button>
-                <button id="serenity-btn" class="mode-btn" data-mode="serenity">Serenity</button>
+    <div id="start-modal" class="modal game-mode-selection">
+        <div class="game-mode-cards-container">
+            <div class="game-mode-card" data-mode="single" id="single-player-card-btn">
+                <div class="mode-card-icon">🎮</div>
+                <h2 class="mode-card-title">Single Player</h2>
+                <p class="mode-card-desc">Classic Tetris experience with progressive difficulty</p>
+                <div class="mode-card-glow"></div>
             </div>
 
-            <!-- Mode-specific descriptions -->
-            <div id="mode-description" class="mode-description">
-                <p id="single-player-desc" class="mode-desc active">Classic Tetris experience with progressive difficulty</p>
-                <p id="local-multiplayer-desc" class="mode-desc">Compete head-to-head with a friend on the same device</p>
-                <p id="online-multiplayer-desc" class="mode-desc">Free-for-all online battles with lobby system and matchmaking</p>
-                <p id="serenity-desc" class="mode-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing guide</p>
+            <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn">
+                <div class="mode-card-icon">🎯</div>
+                <h2 class="mode-card-title">Local MP</h2>
+                <p class="mode-card-desc">Compete head-to-head with a friend on the same device</p>
+                <div class="mode-card-glow"></div>
             </div>
 
-            <!-- Explicit start button (replaces "press any key") -->
-            <button id="start-game-btn" class="start-game-btn">START GAME</button>
+            <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn">
+                <div class="mode-card-icon">🌐</div>
+                <h2 class="mode-card-title">Online MP</h2>
+                <p class="mode-card-desc">Free-for-all online battles with lobby system and matchmaking</p>
+                <div class="mode-card-glow"></div>
+            </div>
+
+            <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn">
+                <div class="mode-card-icon">🧘</div>
+                <h2 class="mode-card-title">Serenity</h2>
+                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing guide</p>
+                <div class="mode-card-glow"></div>
+            </div>
         </div>
     </div>
     <div id="game-over-modal" class="modal">

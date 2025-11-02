@@ -447,3 +447,45 @@
         animation: none !important;
     }
 }
+
+/* Fade out text animation (reverse of intro) */
+.fade-out-text {
+    animation: fadeOutText 1s ease-out forwards !important;
+}
+
+.fade-out-text .intro-letter {
+    animation: letterReverse 0.6s cubic-bezier(0.64, 0, 0.78, 0) forwards !important;
+}
+
+.fade-out-text .intro-letter:nth-child(1) { animation-delay: 0s !important; }
+.fade-out-text .intro-letter:nth-child(2) { animation-delay: 0.03s !important; }
+.fade-out-text .intro-letter:nth-child(3) { animation-delay: 0.06s !important; }
+.fade-out-text .intro-letter:nth-child(4) { animation-delay: 0.09s !important; }
+.fade-out-text .intro-letter:nth-child(5) { animation-delay: 0.12s !important; }
+.fade-out-text .intro-letter:nth-child(6) { animation-delay: 0.15s !important; }
+.fade-out-text .intro-letter:nth-child(7) { animation-delay: 0.18s !important; }
+.fade-out-text .intro-letter:nth-child(8) { animation-delay: 0.21s !important; }
+.fade-out-text .intro-letter:nth-child(9) { animation-delay: 0.24s !important; }
+.fade-out-text .intro-letter:nth-child(10) { animation-delay: 0.27s !important; }
+.fade-out-text .intro-letter:nth-child(11) { animation-delay: 0.3s !important; }
+.fade-out-text .intro-letter:nth-child(12) { animation-delay: 0.33s !important; }
+.fade-out-text .intro-letter:nth-child(13) { animation-delay: 0.36s !important; }
+.fade-out-text .intro-letter:nth-child(14) { animation-delay: 0.39s !important; }
+.fade-out-text .intro-letter:nth-child(15) { animation-delay: 0.42s !important; }
+
+@keyframes fadeOutText {
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes letterReverse {
+    from {
+        opacity: 1;
+        transform: translateY(0) rotateX(0deg);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-100px) rotateX(90deg);
+    }
+}

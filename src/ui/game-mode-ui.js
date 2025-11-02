@@ -13,12 +13,14 @@ export class GameModeUI {
         this.currentMode = GAME_MODES.SINGLE_PLAYER;
         this.singlePlayerContainer = document.getElementById('single-player-container');
         this.multiplayerContainer = document.getElementById('multiplayer-container');
-        this.singlePlayerBtn = document.getElementById('single-player-btn');
-        this.localMultiplayerBtn = document.getElementById('local-multiplayer-btn');
-        this.onlineMultiplayerBtn = document.getElementById('online-multiplayer-btn');
-        this.serenityBtn = document.getElementById('serenity-btn');
 
-        // Mode description elements
+        // Support both old button IDs and new card IDs
+        this.singlePlayerBtn = document.getElementById('single-player-btn') || document.getElementById('single-player-card-btn');
+        this.localMultiplayerBtn = document.getElementById('local-multiplayer-btn') || document.getElementById('local-multiplayer-card-btn');
+        this.onlineMultiplayerBtn = document.getElementById('online-multiplayer-btn') || document.getElementById('online-multiplayer-card-btn');
+        this.serenityBtn = document.getElementById('serenity-btn') || document.getElementById('serenity-card-btn');
+
+        // Mode description elements (may not exist with card design)
         this.singlePlayerDesc = document.getElementById('single-player-desc');
         this.localMultiplayerDesc = document.getElementById('local-multiplayer-desc');
         this.onlineMultiplayerDesc = document.getElementById('online-multiplayer-desc');
@@ -28,32 +30,48 @@ export class GameModeUI {
     }
 
     /**
-     * Setup mode selection buttons
+     * Setup mode selection buttons/cards
      */
     setupModeButtons() {
         if (this.singlePlayerBtn) {
-            this.singlePlayerBtn.addEventListener('click', () => {
-                this.selectMode(GAME_MODES.SINGLE_PLAYER);
+            this.singlePlayerBtn.addEventListener('click', async () => {
+                await this.selectModeAndStart(GAME_MODES.SINGLE_PLAYER);
             });
         }
 
         if (this.localMultiplayerBtn) {
-            this.localMultiplayerBtn.addEventListener('click', () => {
-                this.selectMode(GAME_MODES.LOCAL_MULTIPLAYER);
+            this.localMultiplayerBtn.addEventListener('click', async () => {
+                await this.selectModeAndStart(GAME_MODES.LOCAL_MULTIPLAYER);
             });
         }
 
         if (this.onlineMultiplayerBtn) {
-            this.onlineMultiplayerBtn.addEventListener('click', () => {
-                this.selectMode(GAME_MODES.ONLINE_MULTIPLAYER);
+            this.onlineMultiplayerBtn.addEventListener('click', async () => {
+                await this.selectModeAndStart(GAME_MODES.ONLINE_MULTIPLAYER);
             });
         }
 
         if (this.serenityBtn) {
-            this.serenityBtn.addEventListener('click', () => {
-                this.selectMode(GAME_MODES.SERENITY);
+            this.serenityBtn.addEventListener('click', async () => {
+                await this.selectModeAndStart(GAME_MODES.SERENITY);
             });
         }
+    }
+
+    /**
+     * Select mode and immediately start the game (for card-based UI)
+     * @param {string} mode - Game mode to select and start
+     */
+    async selectModeAndStart(mode) {
+        // Select the mode
+        this.selectMode(mode);
+
+        // Dispatch custom event to trigger game start
+        window.dispatchEvent(
+            new CustomEvent('startGameWithMode', {
+                detail: { mode },
+            }),
+        );
     }
 
     /**
