@@ -26,6 +26,8 @@ export default class OceanTheme extends BaseTheme {
         // God Rays
         const godRayContainer = document.querySelector('.ocean-god-rays');
         if (godRayContainer && godRayContainer.children.length === 0) {
+            this.godRays = [];
+            const rayFragment = document.createDocumentFragment();
             for (let i = 0; i < 15; i++) {
                 const ray = document.createElement('div');
                 ray.className = 'ocean-god-ray';
@@ -35,9 +37,10 @@ export default class OceanTheme extends BaseTheme {
                 ray.style.height = '120%';
                 ray.style.transform = `rotate(${Math.random() * 20 - 10}deg)`;
                 ray.style.opacity = `${Math.random() * 0.1 + 0.05}`;
-                godRayContainer.appendChild(ray);
+                rayFragment.appendChild(ray);
                 this.godRays.push(ray); // Store reference for reactive effects
             }
+            godRayContainer.appendChild(rayFragment);
             this.registerContainer(godRayContainer);
         }
 
@@ -45,6 +48,7 @@ export default class OceanTheme extends BaseTheme {
         const sedimentContainer = document.getElementById('ocean-sediment-layer');
         if (sedimentContainer) {
             sedimentContainer.innerHTML = ''; // Clear old sediment
+            const sedimentFragment = document.createDocumentFragment();
             for (let i = 0; i < 100; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'ocean-sediment';
@@ -59,8 +63,9 @@ export default class OceanTheme extends BaseTheme {
                 particle.style.setProperty('--y-end', `${startY + (Math.random() * 40 - 20)}vh`);
                 particle.style.animationDelay = `-${Math.random() * 30}s`;
                 particle.style.animationDuration = `${Math.random() * 40 + 30}s`;
-                sedimentContainer.appendChild(particle);
+                sedimentFragment.appendChild(particle);
             }
+            sedimentContainer.appendChild(sedimentFragment);
             this.registerContainer(sedimentContainer);
         }
 
@@ -68,6 +73,7 @@ export default class OceanTheme extends BaseTheme {
         const bubblesContainer = document.getElementById('bubbles');
         if (bubblesContainer) {
             bubblesContainer.innerHTML = ''; // Clear old bubbles
+            const bubbleFragment = document.createDocumentFragment();
             for (let i = 0; i < 150; i++) {
                 const el = document.createElement('div');
                 el.className = 'bubble';
@@ -79,8 +85,9 @@ export default class OceanTheme extends BaseTheme {
                 el.style.animationDelay = `-${Math.random() * 20}s`;
                 el.style.setProperty('--x-drift', `${Math.random() * 6 - 3}vw`);
                 el.style.setProperty('--x-drift-end', `${Math.random() * 6 - 3}vw`);
-                bubblesContainer.appendChild(el);
+                bubbleFragment.appendChild(el);
             }
+            bubblesContainer.appendChild(bubbleFragment);
             this.registerContainer(bubblesContainer);
         }
 
@@ -88,6 +95,7 @@ export default class OceanTheme extends BaseTheme {
         const planktonContainer = document.getElementById('ocean-plankton-layer');
         if (planktonContainer) {
             planktonContainer.innerHTML = ''; // Clear old plankton
+            const planktonFragment = document.createDocumentFragment();
             for (let i = 0; i < 200; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'ocean-plankton';
@@ -100,8 +108,9 @@ export default class OceanTheme extends BaseTheme {
                 particle.style.setProperty('--y-end', `${Math.random() * 100}vh`);
                 particle.style.animationDelay = `-${Math.random() * 15}s`;
                 particle.style.animationDuration = `${Math.random() * 20 + 15}s`;
-                planktonContainer.appendChild(particle);
+                planktonFragment.appendChild(particle);
             }
+            planktonContainer.appendChild(planktonFragment);
             this.registerContainer(planktonContainer);
         }
 
@@ -109,6 +118,7 @@ export default class OceanTheme extends BaseTheme {
         const jellyfishContainer = document.getElementById('jellyfish-layer');
         if (jellyfishContainer) {
             jellyfishContainer.innerHTML = ''; // Clear old jellyfish
+            const jellyfishFragment = document.createDocumentFragment();
             for (let i = 0; i < 12; i++) {
                 const fish = document.createElement('div');
                 fish.className = 'jellyfish';
@@ -137,8 +147,9 @@ export default class OceanTheme extends BaseTheme {
                 fish.style.animationDelay = `-${Math.random() * 35}s`;
                 body.style.animationDelay = `-${Math.random() * 4}s`;
 
-                jellyfishContainer.appendChild(fish);
+                jellyfishFragment.appendChild(fish);
             }
+            jellyfishContainer.appendChild(jellyfishFragment);
             this.registerContainer(jellyfishContainer);
         }
 
@@ -165,17 +176,19 @@ export default class OceanTheme extends BaseTheme {
         ];
 
         layers.forEach((layer) => {
-            if (layer.el && layer.el.children.length === 0) {
+            const { el } = layer;
+            if (el && el.children.length === 0) {
                 const C_WIDTH = 250;
                 const canvas = document.createElement('canvas');
-                canvas.width = layer.count * C_WIDTH;
+                canvas.width = Math.ceil(layer.count * C_WIDTH);
                 canvas.height = layer.height;
                 const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: true });
+                if (!ctx) {
+                    return;
+                }
 
-                // Clear canvas to transparent
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // Draw ground at bottom only
                 ctx.fillStyle = layer.color;
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
@@ -191,22 +204,32 @@ export default class OceanTheme extends BaseTheme {
                 ctx.closePath();
                 ctx.fill();
 
-                // Draw flora
+                const colorComponents = this.parseRgbaColor(layer.color);
+                const seaweedColor = this.formatRgba(
+                    this.clamp(colorComponents.r + 10, 0, 255),
+                    this.clamp(colorComponents.g + 10, 0, 255),
+                    this.clamp(colorComponents.b + 10, 0, 255),
+                    this.clamp(colorComponents.a * 1.2, 0, 1),
+                );
+                const coralColor = this.formatRgba(
+                    this.clamp(colorComponents.r - 5, 0, 255),
+                    this.clamp(colorComponents.g + 5, 0, 255),
+                    this.clamp(colorComponents.b + 5, 0, 255),
+                    this.clamp(colorComponents.a, 0, 1),
+                );
+
+                const groundHeights = this.computeGroundHeights(ctx, canvas.width, canvas.height);
+
                 for (let i = 0; i < layer.count * 1.5; i++) {
                     const x = Math.random() * canvas.width;
-                    let groundY = 0;
-                    // Find ground Y at this x (approximate)
-                    for (let j = 0; j < canvas.height; j++) {
-                        if (ctx.getImageData(x, j, 1, 1).data[3] > 0) {
-                            groundY = j;
-                            break;
-                        }
+                    const groundIndex = groundHeights[Math.max(0, Math.min(canvas.width - 1, Math.floor(x)))];
+                    if (groundIndex === undefined) {
+                        continue;
                     }
-                    if (groundY === 0) continue;
+                    const groundY = groundIndex;
 
                     if (Math.random() > 0.3) {
-                        // Seaweed
-                        ctx.strokeStyle = `rgba(${parseInt(layer.color.slice(5, -1).split(',')[0]) + 10}, ${parseInt(layer.color.slice(5, -1).split(',')[1]) + 10}, ${parseInt(layer.color.slice(5, -1).split(',')[2]) + 10}, ${parseFloat(layer.color.slice(5, -1).split(',')[3]) * 1.2})`;
+                        ctx.strokeStyle = seaweedColor;
                         const h = (Math.random() * 0.8 + 0.2) * layer.height;
                         ctx.beginPath();
                         ctx.moveTo(x, groundY);
@@ -221,8 +244,7 @@ export default class OceanTheme extends BaseTheme {
                         ctx.lineWidth = Math.random() * 3 + 1;
                         ctx.stroke();
                     } else {
-                        // Coral Fan
-                        ctx.fillStyle = `rgba(${parseInt(layer.color.slice(5, -1).split(',')[0]) - 5}, ${parseInt(layer.color.slice(5, -1).split(',')[1]) + 5}, ${parseInt(layer.color.slice(5, -1).split(',')[2]) + 5}, ${parseFloat(layer.color.slice(5, -1).split(',')[3])})`;
+                        ctx.fillStyle = coralColor;
                         const h = (Math.random() * 0.2 + 0.1) * layer.height;
                         const w = ((Math.random() * 0.4 + 0.2) * C_WIDTH) / 4;
                         ctx.beginPath();
@@ -234,6 +256,7 @@ export default class OceanTheme extends BaseTheme {
                         ctx.fill();
                     }
                 }
+
                 canvas.style.position = 'absolute';
                 canvas.style.left = '0';
                 canvas.style.bottom = '0';
@@ -241,8 +264,8 @@ export default class OceanTheme extends BaseTheme {
                 canvas.style.height = `${canvas.height}px`;
                 canvas.style.pointerEvents = 'none';
                 canvas.style.backgroundColor = 'transparent';
-                layer.el.appendChild(canvas);
-                this.registerContainer(layer.el);
+                el.appendChild(canvas);
+                this.registerContainer(el);
             }
         });
         
@@ -541,6 +564,48 @@ export default class OceanTheme extends BaseTheme {
             }, i * 80);
         }
     }
+
+    parseRgbaColor(color) {
+        if (!color) {
+            return { r: 0, g: 0, b: 0, a: 1 };
+        }
+        const match = color.match(/rgba?\(([^)]+)\)/i);
+        if (!match) {
+            return { r: 0, g: 0, b: 0, a: 1 };
+        }
+        const parts = match[1].split(',').map(part => parseFloat(part.trim()));
+        const [r = 0, g = 0, b = 0, a = 1] = parts;
+        return { r, g, b, a };
+    }
+
+    clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    formatRgba(r, g, b, a) {
+        return `rgba(${Math.round(this.clamp(r, 0, 255))}, ${Math.round(this.clamp(g, 0, 255))}, ${Math.round(this.clamp(b, 0, 255))}, ${this.clamp(a, 0, 1)})`;
+    }
+
+    computeGroundHeights(ctx, width, height) {
+        try {
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            const heights = new Array(width);
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const alphaIndex = (y * width + x) * 4 + 3;
+                    if (data[alphaIndex] > 0) {
+                        heights[x] = y;
+                        break;
+                    }
+                }
+            }
+            return heights;
+        } catch (error) {
+            console.warn('[Ocean] Failed to compute ground heights:', error);
+            return [];
+        }
+    }
     
     stop() {
         // Unsubscribe from all events
@@ -555,6 +620,7 @@ export default class OceanTheme extends BaseTheme {
         if (theme) {
             theme.style.filter = '';
         }
+        this.godRays = [];
         
         super.stop();
     }
