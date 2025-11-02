@@ -732,14 +732,19 @@ export class IntroAnimation {
             clearInterval(this.gamepadCheckInterval);
         }
 
-        // Fade out text elements with reverse animation
+        // Get text elements
         const titleContainer = this.container.querySelector('.intro-title-container');
         const prompt = this.container.querySelector('.intro-prompt');
         const chromatic = this.container.querySelector('.intro-chromatic');
 
-        if (titleContainer) titleContainer.classList.add('fade-out-text');
+        // Fade out prompt and chromatic effect
         if (prompt) prompt.classList.add('fade-out-text');
         if (chromatic) chromatic.classList.add('fade-out-text');
+
+        // Transition title to top as logo
+        if (titleContainer) {
+            titleContainer.classList.add('shrink-to-logo');
+        }
 
         // Lower the z-index so modal cards can appear on top
         if (this.container) {
@@ -749,9 +754,8 @@ export class IntroAnimation {
             this.container.style.pointerEvents = 'none';
         }
 
-        // After text fades out, resolve the promise but keep background
+        // After animation completes, clean up and resolve
         setTimeout(() => {
-            if (titleContainer) titleContainer.style.display = 'none';
             if (prompt) prompt.style.display = 'none';
             if (chromatic) chromatic.style.display = 'none';
 
