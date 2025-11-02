@@ -662,8 +662,8 @@ export class IntroAnimation {
             this.createBurstParticles(rect.width / 2, rect.height / 2);
         }
 
-        // Dismiss intro
-        this.dismiss();
+        // Dismiss only the text, keep the background
+        this.dismissText();
     }
 
     /**
@@ -716,13 +716,12 @@ export class IntroAnimation {
     }
 
     /**
-     * Dismiss the intro animation
+     * Dismiss only the text elements (title and prompt) while keeping the background
      */
-    dismiss() {
+    dismissText() {
         if (!this.isActive) return;
 
         this.isActive = false;
-        this.hasCompleted = true;
 
         // Remove event listeners
         this.container.removeEventListener('click', this.boundHandlers.click);
@@ -733,8 +732,60 @@ export class IntroAnimation {
             clearInterval(this.gamepadCheckInterval);
         }
 
+        // Fade out text elements with reverse animation
+        const titleContainer = this.container.querySelector('.intro-title-container');
+        const prompt = this.container.querySelector('.intro-prompt');
+        const chromatic = this.container.querySelector('.intro-chromatic');
+
+        if (titleContainer) titleContainer.classList.add('fade-out-text');
+        if (prompt) prompt.classList.add('fade-out-text');
+        if (chromatic) chromatic.classList.add('fade-out-text');
+
+        // Lower the z-index so modal cards can appear on top
+        if (this.container) {
+            this.container.style.zIndex = '100';
+            // Remove cursor pointer since we don't want clicks anymore
+            this.container.style.cursor = 'default';
+            this.container.style.pointerEvents = 'none';
+        }
+
+        // After text fades out, resolve the promise but keep background
+        setTimeout(() => {
+            if (titleContainer) titleContainer.style.display = 'none';
+            if (prompt) prompt.style.display = 'none';
+            if (chromatic) chromatic.style.display = 'none';
+
+            // Resolve the promise
+            if (this.onComplete) {
+                this.onComplete();
+            }
+        }, 1000);
+    }
+
+    /**
+     * Dismiss the intro animation completely
+     */
+    dismiss() {
+        if (!this.isActive && !this.hasCompleted) return;
+
+        this.isActive = false;
+        this.hasCompleted = true;
+
+        // Remove event listeners if still attached
+        if (this.container) {
+            this.container.removeEventListener('click', this.boundHandlers.click);
+            this.container.removeEventListener('touchstart', this.boundHandlers.touchstart);
+        }
+        window.removeEventListener('keydown', this.boundHandlers.keydown);
+
+        if (this.gamepadCheckInterval) {
+            clearInterval(this.gamepadCheckInterval);
+        }
+
         // Fade out
-        this.container.classList.add('fade-out');
+        if (this.container) {
+            this.container.classList.add('fade-out');
+        }
 
         // Remove from DOM after fade
         setTimeout(() => {
@@ -751,7 +802,7 @@ export class IntroAnimation {
             }
             this.container = null;
 
-            // Resolve the promise
+            // Resolve the promise if not already resolved
             if (this.onComplete) {
                 this.onComplete();
             }

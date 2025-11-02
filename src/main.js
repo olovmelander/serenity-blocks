@@ -1078,7 +1078,7 @@ class SerenityBlocks {
             console.log(`[Main] Mode stopped: ${modeId}`);
         });
 
-        // Setup start button click handler
+        // Setup start button click handler (for old button-based UI)
         const startGameBtn = document.getElementById('start-game-btn');
         if (startGameBtn) {
             startGameBtn.addEventListener('click', async () => {
@@ -1164,6 +1164,33 @@ class SerenityBlocks {
         };
         window.addEventListener('gameModeChanged', gameModeHandler);
 
+        // Handle card-based mode selection (new UI)
+        const startGameWithModeHandler = async (e) => {
+            try {
+                const { mode } = e.detail;
+                console.log('[Main] Starting game with mode from card selection:', mode);
+
+                // Activate the mode
+                await this.gameModeManager.activateMode(mode);
+
+                // Start the game
+                await this.gameModeManager.startCurrentMode();
+
+                // Hide start modal and intro animation
+                this.modalManager.hideAll();
+
+                // Dismiss intro animation background completely
+                const introAnimation = await import('./ui/intro-animation.js');
+                if (introAnimation && introAnimation.introAnimation) {
+                    introAnimation.introAnimation.dismiss();
+                }
+            } catch (error) {
+                console.error('[Main] Failed to start game from card selection:', error);
+                alert(`Failed to start game: ${error.message}`);
+            }
+        };
+        window.addEventListener('startGameWithMode', startGameWithModeHandler);
+
         // REMOVED: "Press any key" auto-start mechanism
         // Now using explicit "START GAME" button for better UX
         // No game modes start automatically - user must explicitly click start button
@@ -1172,6 +1199,7 @@ class SerenityBlocks {
             unsubscribeThemeChanged();
             window.removeEventListener('resize', resizeHandler);
             window.removeEventListener('settingsChanged', settingsHandler);
+            window.removeEventListener('startGameWithMode', startGameWithModeHandler);
             window.removeEventListener('gameModeChanged', gameModeHandler);
         });
     }
