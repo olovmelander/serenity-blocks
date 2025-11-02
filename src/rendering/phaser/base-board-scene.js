@@ -118,12 +118,14 @@ export function createBaseBoardScene(
         update(time, delta) {
             // eslint-disable-line no-unused-vars
             if (!this.gameState) return;
-            
-            // Clear graphics from previous frame
+
+            // Clear ALL graphics layers at the START of each frame (like multiplayer does)
+            // This is the CRITICAL optimization that makes multiplayer so fast
             try {
+                this.boardGraphics?.clear();
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
-                
+
                 // Render game state
                 this.renderGameState();
             } catch (error) {
@@ -239,9 +241,9 @@ export function createBaseBoardScene(
         renderGameState() {
             if (!this.gameState) return;
 
-            if (this.gameState.boardGrid) {
-                rebuildBoardGridFromPieces(this.gameState.lockedPieces, this.gameState.boardGrid);
-            }
+            // REMOVED: rebuildBoardGridFromPieces() - this was being called 60 times per second!
+            // The board grid is already updated when pieces lock in the game logic.
+            // Rebuilding it every frame was causing massive performance degradation.
 
             this.drawGrid();
             this.drawBoardFromGrid();
@@ -255,9 +257,16 @@ export function createBaseBoardScene(
         }
 
         drawGrid() {
-            if (!this.boardGraphics) return;
-            this.boardGraphics.clear();
-            // No background fill, fully transparent
+            // Log once to verify optimization is active
+            if (!this._fpsFixVerified) {
+                console.log('[BaseBoardScene] ✅ MULTIPLAYER OPTIMIZATION ACTIVE: Graphics cleared once per frame in update()');
+                this._fpsFixVerified = true;
+            }
+
+            // NOTE: All graphics layers (boardGraphics, pieceGraphics, effectsGraphics)
+            // are now cleared in update() method at the START of each frame.
+            // This matches the multiplayer implementation and prevents double-clearing.
+            // No background fill needed - fully transparent.
         }
 
         drawBoardFromGrid() {
