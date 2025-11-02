@@ -12852,6 +12852,7 @@ body.serenity-mode.cursor-hidden * {
     grid-template-columns: repeat(2, 1fr);
     gap: 30px;
     padding: 40px;
+    padding-top: 120px; /* Make room for logo at top */
     max-width: 1200px;
     width: 90%;
     margin: 0 auto;
