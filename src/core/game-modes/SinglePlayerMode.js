@@ -49,6 +49,12 @@ export class SinglePlayerMode extends BaseGameMode {
         this.nextCanvases = Array.from({ length: 5 }, (_, i) => document.getElementById(`next-${i}`));
 
         // Show single player container (flex for proper layout)
+        // Show single player stage and container
+        const singlePlayerStage = document.querySelector('.single-player-stage');
+        if (singlePlayerStage) {
+            singlePlayerStage.style.display = '';
+        }
+
         const singlePlayerContainer = document.getElementById('single-player-container');
         if (singlePlayerContainer) {
             singlePlayerContainer.style.display = 'flex';

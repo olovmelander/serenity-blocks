@@ -770,7 +770,8 @@ export class IntroAnimation {
      * Dismiss the intro animation completely
      */
     dismiss() {
-        if (!this.isActive && !this.hasCompleted) return;
+        // Allow dismissal even if not active anymore
+        if (!this.container) return;
 
         this.isActive = false;
         this.hasCompleted = true;

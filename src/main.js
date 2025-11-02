@@ -1170,20 +1170,23 @@ class SerenityBlocks {
                 const { mode } = e.detail;
                 console.log('[Main] Starting game with mode from card selection:', mode);
 
+                // Hide start modal first
+                this.modalManager.hideAll();
+
+                // Dismiss intro animation background completely BEFORE starting game
+                const { introAnimation } = await import('./ui/intro-animation.js');
+                if (introAnimation) {
+                    introAnimation.dismiss();
+                }
+
+                // Wait a bit for intro to start fading
+                await new Promise(resolve => setTimeout(resolve, 100));
+
                 // Activate the mode
                 await this.gameModeManager.activateMode(mode);
 
                 // Start the game
                 await this.gameModeManager.startCurrentMode();
-
-                // Hide start modal and intro animation
-                this.modalManager.hideAll();
-
-                // Dismiss intro animation background completely
-                const introAnimation = await import('./ui/intro-animation.js');
-                if (introAnimation && introAnimation.introAnimation) {
-                    introAnimation.introAnimation.dismiss();
-                }
             } catch (error) {
                 console.error('[Main] Failed to start game from card selection:', error);
                 alert(`Failed to start game: ${error.message}`);
