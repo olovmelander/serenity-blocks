@@ -2902,6 +2902,12 @@ async function bootstrap() {
         await introAnimation.show();
         console.log('✨ Intro animation complete!');
 
+        // Show the start modal after intro animation completes
+        const startModal = document.getElementById('start-modal');
+        if (startModal) {
+            startModal.classList.add('visible');
+        }
+
         app = new SerenityBlocks();
         await app.init();
 
