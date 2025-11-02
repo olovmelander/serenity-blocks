@@ -6,7 +6,7 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
 } from '../core/constants.js';
-import { generateBoard } from '../core/board.js';
+import { generateBoard, rebuildBoardGridFromPieces } from '../core/board.js';
 import { canPlacePiece } from '../core/game.js';
 import { calculateGhostY as calculateGhostLanding } from '../core/pieces.js';
 import {
@@ -119,6 +119,11 @@ export function draw(canvas, ctx, gameState) {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Ensure board grid reflects current locked pieces
+    if (gameState.boardGrid) {
+        rebuildBoardGridFromPieces(lockedPieces, gameState.boardGrid);
+    }
+
     // Use cached grid instead of redrawing it every frame
     const gridCache = getGridCache();
     if (gridCache) {
@@ -128,70 +133,73 @@ export function draw(canvas, ctx, gameState) {
     // Draw piece trails first (behind everything)
     drawPieceTrails(ctx);
 
-    // Generate board data for border detection
-    const boardData = generateBoard(lockedPieces);
+    const boardGrid = gameState.boardGrid || generateBoard(lockedPieces);
 
-    // Draw locked pieces (with animation support for garbage)
-    lockedPieces.forEach((piece) => {
-        // Calculate Y offset for animating garbage
-        let yOffset = 0;
-        if (piece.isAnimating && piece.animationOffset !== undefined) {
-            yOffset = piece.animationOffset; // Will be reduced over time
+    for (let worldY = HIDDEN_ROWS; worldY < boardGrid.length; worldY++) {
+        const row = boardGrid[worldY];
+        if (!row) continue;
+
+        for (let worldX = 0; worldX < COLS; worldX++) {
+            const cell = row[worldX];
+            if (!cell) continue;
+
+            let blockColor = COLORS[cell.color] || cell.color || '#808080';
+            const visibleY = worldY - HIDDEN_ROWS;
+            if (visibleY < 0 || visibleY >= ROWS) continue;
+            drawBlock(
+                ctx,
+                worldX,
+                visibleY,
+                blockColor,
+                boardGrid,
+                false,
+                null,
+                0,
+                0,
+                worldX,
+                worldY,
+            );
         }
+    }
 
-        piece.shape.forEach((row, localY) => {
-            row.forEach((cell, localX) => {
-                if (cell > 0) {
+    // Overlay animated locked pieces (e.g., rising garbage) that require offsets
+    lockedPieces
+        .filter((piece) => piece.isAnimating && piece.animationOffset)
+        .forEach((piece) => {
+            piece.shape.forEach((row, localY) => {
+                row.forEach((cell, localX) => {
+                    if (cell <= 0) return;
+
                     const boardX = piece.x + localX;
-                    const boardY = piece.y + localY;
-                    const renderY = boardY + yOffset;
+                    const boardY = piece.y + localY + piece.animationOffset;
+                    if (boardY < HIDDEN_ROWS || boardY >= ROWS + HIDDEN_ROWS) return;
 
-                    // Skip if outside visible area
-                    if (renderY < HIDDEN_ROWS) return;
-                    if (renderY >= ROWS + HIDDEN_ROWS) return;
-
-                    // Determine color
                     let blockColor = piece.color;
                     if (piece.shapeKey && COLORS[piece.shapeKey]) {
                         blockColor = COLORS[piece.shapeKey];
                     }
-                    // Fallback to gray if color is undefined/null to prevent black rendering
                     if (!blockColor) {
                         blockColor = '#808080';
                     }
 
-                    // For animating pieces, use piece shape for borders instead of boardData
-                    // This fixes border rendering when garbage is animating with offset
-                    const useBoardData = !piece.isAnimating || yOffset === 0;
-
-                    // Draw with optional fade for cleared pieces (alpha property)
-                    const alpha = piece.alpha !== undefined ? piece.alpha : 1.0;
-                    if (alpha < 1.0) {
-                        ctx.save();
-                        ctx.globalAlpha = alpha;
-                    }
-
+                    const visibleY = boardY - HIDDEN_ROWS;
+                    if (visibleY < 0 || visibleY >= ROWS) return;
                     drawBlock(
                         ctx,
                         boardX,
-                        renderY - HIDDEN_ROWS,
+                        visibleY,
                         blockColor,
-                        useBoardData ? boardData : null,
+                        null,
                         false,
-                        useBoardData ? null : piece.shape,
-                        useBoardData ? 0 : piece.x,
-                        useBoardData ? 0 : renderY - HIDDEN_ROWS,
-                        useBoardData ? boardX : localX,
-                        useBoardData ? renderY : localY,
+                        null,
+                        0,
+                        0,
+                        boardX,
+                        boardY,
                     );
-
-                    if (alpha < 1.0) {
-                        ctx.restore();
-                    }
-                }
+                });
             });
         });
-    });
 
     // Draw current piece with ghost
     if (currentPiece) {
@@ -209,21 +217,19 @@ export function draw(canvas, ctx, gameState) {
             row.forEach((cell, x) => {
                 const worldY = currentPiece.y + y;
 
-                // Draw all blocks, even those in hidden rows, for smooth drop-in animation
-                // Canvas Y coordinate still needs HIDDEN_ROWS subtracted to map world space to canvas space
                 if (cell > 0) {
-                    console.log(`[CANVAS RENDER DEBUG] Drawing block at worldY=${worldY}, canvasY=${worldY - HIDDEN_ROWS}, HIDDEN_ROWS=${HIDDEN_ROWS}`);
-
+                    const visibleY = worldY - HIDDEN_ROWS;
+                    if (visibleY < 0 || visibleY >= ROWS) return;
                     drawBlock(
                         ctx,
                         currentPiece.x + x,
-                        worldY - HIDDEN_ROWS,  // Canvas space: subtract hidden rows to get 0-based canvas Y
+                        visibleY,
                         currentPiece.color,
-                        null,
+                        boardGrid,
                         false,
                         currentPiece.shape,
                         currentPiece.x,
-                        currentPiece.y - HIDDEN_ROWS,
+                        currentPiece.y,
                         x,
                         y,
                     );

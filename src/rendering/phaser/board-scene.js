@@ -62,6 +62,11 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.lastImpactIntensity = 0;
             this.currentComboCount = 0; // Track current combo for enhanced effects
             this.hudElements = null;
+
+            // Track active tweens and timers for cleanup
+            this.activeTweens = [];
+            this.activeTimers = [];
+            this.activeGraphics = [];
         }
 
         createHud() {
@@ -133,9 +138,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.spawnLineClearParticles(clearedRows);
 
             // Fade out over time (handled in update loop)
-            this.time.delayedCall(100, () => {
+            const timer = this.time.delayedCall(100, () => {
                 this.effectsGraphics.clear();
+                // Remove from tracking
+                const timerIndex = this.activeTimers.indexOf(timer);
+                if (timerIndex > -1) this.activeTimers.splice(timerIndex, 1);
             });
+            this.activeTimers.push(timer);
         }
 
         /**
@@ -167,12 +176,16 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
                 // Create expanding circle effect using tweens
                 const ripple = this.add.graphics();
+                ripple.setDepth(10); // Above all other graphics layers
                 const colorInt = parseInt(piece.color.replace('#', ''), 16);
+
+                // Track graphics object for cleanup
+                this.activeGraphics.push(ripple);
 
                 // Create a data object to tween
                 const rippleData = { radius: 0, alpha: 0.6 };
 
-                this.tweens.add({
+                const tween = this.tweens.add({
                     targets: rippleData,
                     radius: this.blockSize * 3,
                     alpha: 0,
@@ -184,9 +197,19 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                         ripple.strokeCircle(centerX, centerY, rippleData.radius);
                     },
                     onComplete: () => {
+                        // Remove from tracking arrays
+                        const graphicsIndex = this.activeGraphics.indexOf(ripple);
+                        if (graphicsIndex > -1) this.activeGraphics.splice(graphicsIndex, 1);
+
+                        const tweenIndex = this.activeTweens.indexOf(tween);
+                        if (tweenIndex > -1) this.activeTweens.splice(tweenIndex, 1);
+
                         ripple.destroy();
                     },
                 });
+
+                // Track tween for cleanup
+                this.activeTweens.push(tween);
             }
         }
 
@@ -215,7 +238,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             text.setOrigin(0.5);
 
             // Animate popup
-            this.tweens.add({
+            const tween = this.tweens.add({
                 targets: text,
                 y: text.y - 50,
                 alpha: { from: 1, to: 0 },
@@ -223,9 +246,16 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 duration: 800,
                 ease: 'Cubic.easeOut',
                 onComplete: () => {
+                    // Remove from tracking
+                    const tweenIndex = this.activeTweens.indexOf(tween);
+                    if (tweenIndex > -1) this.activeTweens.splice(tweenIndex, 1);
+
                     text.destroy();
                 },
             });
+
+            // Track tween for cleanup
+            this.activeTweens.push(tween);
             
             // Trigger background explosion particles for combos
             if (comboCount >= 2) {
@@ -526,17 +556,128 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         }
 
         /**
-         * Cleanup
+         * Cleanup - called when scene is stopped
+         * This is CRITICAL for preventing memory leaks in single player mode
          */
         shutdown() {
-            super.shutdown();
-            console.log('[BoardScene] Shutdown');
-            this.boardGraphics?.destroy();
-            this.pieceGraphics?.destroy();
-            this.effectsGraphics?.destroy();
-            this.activeParticleSystems?.forEach((system) => system.destroy());
-            this.activeParticleSystems?.clear();
+            console.log('[BoardScene] Starting comprehensive shutdown and cleanup...');
+
+            // Destroy ALL particle emitters (both tracked and any stragglers)
+            if (this.activeParticleSystems) {
+                this.activeParticleSystems.forEach((system) => {
+                    if (system && system.destroy) {
+                        system.destroy();
+                    }
+                });
+                this.activeParticleSystems.clear();
+            }
+
+            // Destroy line clear emitters
+            if (this.lineClearEmitters) {
+                this.lineClearEmitters.forEach(emitter => {
+                    if (emitter && emitter.destroy) {
+                        emitter.destroy();
+                    }
+                });
+                this.lineClearEmitters = [];
+            }
+
+            // Destroy piece lock emitters
+            if (this.pieceLockEmitters) {
+                this.pieceLockEmitters.forEach(emitter => {
+                    if (emitter && emitter.destroy) {
+                        emitter.destroy();
+                    }
+                });
+                this.pieceLockEmitters = [];
+            }
+
+            // Clear ALL tweens (very important - tweens can accumulate quickly)
+            if (this.tweens) {
+                this.tweens.killAll();
+            }
+
+            // Destroy tracked tweens
+            if (this.activeTweens) {
+                this.activeTweens.forEach(tween => {
+                    if (tween && tween.stop) {
+                        tween.stop();
+                    }
+                });
+                this.activeTweens = [];
+            }
+
+            // Destroy tracked timers
+            if (this.activeTimers) {
+                this.activeTimers.forEach(timer => {
+                    if (timer && timer.destroy) {
+                        timer.destroy();
+                    }
+                });
+                this.activeTimers = [];
+            }
+
+            // Destroy tracked graphics objects
+            if (this.activeGraphics) {
+                this.activeGraphics.forEach(graphic => {
+                    if (graphic && graphic.destroy) {
+                        graphic.destroy();
+                    }
+                });
+                this.activeGraphics = [];
+            }
+
+            // Remove custom textures from cache
+            const customTextures = [
+                'blockTexture',
+                'ghostTexture',
+                'gridTexture',
+                this.lineClearParticleKey,
+                this.commonParticleKey,
+                'common-circle-4px'
+            ];
+            customTextures.forEach(key => {
+                if (key && this.textures && this.textures.exists(key)) {
+                    this.textures.remove(key);
+                }
+            });
+
+            // Destroy graphics layers
+            if (this.boardGraphics) {
+                this.boardGraphics.clear();
+                this.boardGraphics.destroy();
+                this.boardGraphics = null;
+            }
+            if (this.pieceGraphics) {
+                this.pieceGraphics.clear();
+                this.pieceGraphics.destroy();
+                this.pieceGraphics = null;
+            }
+            if (this.effectsGraphics) {
+                this.effectsGraphics.clear();
+                this.effectsGraphics.destroy();
+                this.effectsGraphics = null;
+            }
+
+            // Clear block pool
+            if (this.blockPool) {
+                this.blockPool.forEach(block => {
+                    if (block && block.destroy) {
+                        block.destroy();
+                    }
+                });
+                this.blockPool = [];
+            }
+
+            // Clear any other resources
             this.hudElements = null;
+            this.currentComboCount = 0;
+            this.lastImpactIntensity = 0;
+
+            // Call parent shutdown
+            super.shutdown();
+
+            console.log('[BoardScene] Comprehensive cleanup complete');
         }
     };
 }

@@ -6,9 +6,10 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS,
 } from './constants.js';
-import { generateBoard } from './board.js';
+import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './board.js';
 import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
+import { performanceMonitor } from '../utils/performance-monitor.js';
 
 function createComboState() {
     return {
@@ -28,7 +29,9 @@ function ensureBoardCache(gameState) {
     if (!gameState) return null;
 
     if (!gameState.boardCache || gameState.boardCacheDirty) {
-        gameState.boardCache = generateBoard(gameState.lockedPieces);
+        gameState.boardCache = generateBoard(gameState.lockedPieces, {
+            boardGrid: gameState.boardGrid,
+        });
         gameState.boardCacheDirty = false;
     }
 
@@ -123,6 +126,7 @@ export class GameState {
         this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
+        this.boardGrid = createBoardGrid();
 
         // Quadra-style garbage: Track last placed piece columns for deterministic holes
         this.lastPlacedPieceX = [];
@@ -171,6 +175,7 @@ export class GameState {
         this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
+        this.boardGrid = createBoardGrid();
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
         this.blindTimers = {
@@ -447,6 +452,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     // Add piece to locked pieces with unique ID
     gameState.lockedPieces.push(lockedPieceSnapshot);
     markBoardDirty(gameState);
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
     piecePool.release(lockedPiece);
     gameState.currentPiece = null;
     gameState.dropCounter = 0;
@@ -481,9 +487,23 @@ export function gameLoop(
     playDropCallback,
     physicsCallbacks,
 ) {
-    if (gameState.isGameOver) return;
+    const monitoring = performanceMonitor && performanceMonitor.enabled;
+    if (monitoring) {
+        performanceMonitor.frameStart();
+        performanceMonitor.updateStart();
+    }
+
+    if (gameState.isGameOver) {
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+        }
+        return;
+    }
 
     if (gameState.isPaused) {
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+        }
         gameState.animationId = requestAnimationFrame((t) => gameLoop(
             t,
             gameState,
@@ -502,11 +522,19 @@ export function gameLoop(
     if (!gameState.isProcessingPhysics && gameState.currentPiece) {
         gameState.dropCounter += delta;
         if (gameState.dropCounter > gameState.dropInterval) {
-            softDrop(gameState, playDropCallback, physicsCallbacks);
+        softDrop(gameState, playDropCallback, physicsCallbacks);
         }
     }
 
+    if (monitoring) {
+        performanceMonitor.updateEnd();
+        performanceMonitor.renderStart();
+    }
+
     if (drawCallback) drawCallback();
+    if (monitoring) {
+        performanceMonitor.renderEnd();
+    }
     if (updateStatsCallback) updateStatsCallback();
 
     gameState.animationId = requestAnimationFrame((t) => gameLoop(

@@ -18,8 +18,7 @@
 │
 ├── BreathingTab.js      # Breathing techniques (Phase 2 ⏳)
 ├── MusicTab.js          # Music player (Phase 3 ⏳)
-├── ThemesTab.js         # Theme browser (Phase 4 ⏳)
-└── GestureController.js # Swipe controls (Phase 5 ⏳)
+└── ThemesTab.js         # Theme browser (Phase 4 ⏳)
 ```
 
 ---
@@ -31,7 +30,6 @@ The Serenity Hub provides a **unified interface** for controlling all Serenity M
 - 🧘 **Breathing Techniques** - 7 meditation patterns
 - 🎵 **Music Player** - Ambient track controls
 - 🎨 **Themes** - Visual theme browser
-- 👆 **Gestures** - Swipe-to-skip music
 
 ---
 
@@ -52,7 +50,6 @@ The Serenity Hub provides a **unified interface** for controlling all Serenity M
 - ⏳ Breathing techniques selector (Phase 2)
 - ⏳ Music player controls (Phase 3)
 - ⏳ Theme browser (Phase 4)
-- ⏳ Swipe gestures (Phase 5)
 
 ---
 
@@ -358,11 +355,6 @@ None! Phase 1 is complete.
 - Category filtering
 - One-click switching
 - Auto-rotation
-
-### Phase 5: Gestures
-- Swipe left/right for tracks
-- Visual feedback
-- Haptic feedback
 
 ---
 

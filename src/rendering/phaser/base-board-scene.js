@@ -1,6 +1,7 @@
 import {
-    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE,
+    COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, COLORS,
 } from '../../core/constants.js';
+import { rebuildBoardGridFromPieces } from '../../core/board.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 
@@ -117,12 +118,14 @@ export function createBaseBoardScene(
         update(time, delta) {
             // eslint-disable-line no-unused-vars
             if (!this.gameState) return;
-            
-            // Clear graphics from previous frame
+
+            // Clear ALL graphics layers at the START of each frame (like multiplayer does)
+            // This is the CRITICAL optimization that makes multiplayer so fast
             try {
+                this.boardGraphics?.clear();
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
-                
+
                 // Render game state
                 this.renderGameState();
             } catch (error) {
@@ -237,49 +240,77 @@ export function createBaseBoardScene(
 
         renderGameState() {
             if (!this.gameState) return;
-            
+
+            // REMOVED: rebuildBoardGridFromPieces() - this was being called 60 times per second!
+            // The board grid is already updated when pieces lock in the game logic.
+            // Rebuilding it every frame was causing massive performance degradation.
+
             this.drawGrid();
-            
-            // CORRECT DRAW ORDER (like Tetris):
-            // 1. Ghost piece (behind everything - drawn first)
-            // 2. Locked pieces (on top of ghost)
-            // 3. Current piece (on top of everything)
+            this.drawBoardFromGrid();
             if (this.gameState.currentPiece) {
                 this.drawGhostPiece();
             }
-            this.drawLockedPieces();
+            this.drawAnimatedPieces();
             if (this.gameState.currentPiece) {
                 this.drawCurrentPiece();
             }
         }
 
         drawGrid() {
-            if (!this.boardGraphics) return;
-            this.boardGraphics.clear();
-            // No background fill, fully transparent
+            // Log once to verify optimization is active
+            if (!this._fpsFixVerified) {
+                console.log('[BaseBoardScene] ✅ MULTIPLAYER OPTIMIZATION ACTIVE: Graphics cleared once per frame in update()');
+                this._fpsFixVerified = true;
+            }
+
+            // NOTE: All graphics layers (boardGraphics, pieceGraphics, effectsGraphics)
+            // are now cleared in update() method at the START of each frame.
+            // This matches the multiplayer implementation and prevents double-clearing.
+            // No background fill needed - fully transparent.
         }
 
-        drawLockedPieces() {
-            if (!this.gameState?.lockedPieces) return;
+        drawBoardFromGrid() {
+            const grid = this.gameState?.boardGrid;
+            if (!grid) return;
 
-            this.gameState.lockedPieces.forEach((piece) => {
-                const pieceColor = piece.color || '#808080';
-                
-                // Draw all blocks of the piece as solid fill first
-                piece.shape.forEach((row, y) => {
-                    row.forEach((cell, x) => {
-                        if (cell > 0) {
-                            const worldY = piece.y + y;
-                            if (worldY >= this.hiddenRows) {
-                                this.drawBlock(piece.x + x, worldY, pieceColor, 1.0, false, piece.shape, x, y);
-                            }
-                        }
+            for (let worldY = this.hiddenRows; worldY < grid.length; worldY++) {
+                const row = grid[worldY];
+                if (!row) continue;
+
+                for (let worldX = 0; worldX < this.cols; worldX++) {
+                    const cell = row[worldX];
+                    if (!cell) continue;
+
+                    let colorValue = cell.color;
+                    if (typeof colorValue === 'string' && COLORS[colorValue]) {
+                        colorValue = COLORS[colorValue];
+                    }
+
+                    this.drawBlock(worldX, worldY, colorValue, 1.0);
+                }
+            }
+        }
+
+        drawAnimatedPieces() {
+            const pieces = this.gameState?.lockedPieces;
+            if (!pieces) return;
+
+            pieces
+                .filter((piece) => piece?.isAnimating && typeof piece.animationOffset === 'number' && piece.animationOffset !== 0)
+                .forEach((piece) => {
+                    piece.shape.forEach((row, localY) => {
+                        row.forEach((cell, localX) => {
+                            if (cell <= 0) return;
+
+                            const worldX = piece.x + localX;
+                            const worldY = piece.y + localY + piece.animationOffset;
+
+                            if (worldY < this.hiddenRows || worldY >= this.rows + this.hiddenRows) return;
+
+                            this.drawBlock(worldX, worldY, piece.color, 1.0);
+                        });
                     });
                 });
-                
-                // Draw outline around the entire piece
-                this.drawPieceOutline(piece);
-            });
         }
 
         drawGhostPiece() {
@@ -343,7 +374,8 @@ export function createBaseBoardScene(
         }
 
         drawBlock(x, y, color, alpha = 1.0, isGhost = false, shape = null, localX = 0, localY = 0) {
-            // Use Math.round for pixel-perfect integer coordinates
+            // y is already in world coordinates (0-23), draw directly
+            // The camera is positioned to show only the visible portion
             const px = Math.round(x * this.blockSize);
             const py = Math.round(y * this.blockSize);
             const size = this.blockSize;
@@ -375,7 +407,7 @@ export function createBaseBoardScene(
          */
         drawPieceOutline(piece) {
             if (!piece || !piece.shape) return;
-            
+
             let colorInt = 0x000000;
             if (piece.color && typeof piece.color === 'string') {
                 const parsed = parseInt(piece.color.replace('#', ''), 16);
@@ -383,19 +415,19 @@ export function createBaseBoardScene(
                     colorInt = parsed;
                 }
             }
-            
+
             // Draw crisp, thin black borders only on the outer edges of the piece
             this.pieceGraphics.lineStyle(0.25, 0x000000, 1.0);
-            
+
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         const worldX = piece.x + x;
                         const worldY = piece.y + y;
-                        
+
                         if (worldY < this.hiddenRows) return;
-                        
-                        // Use Math.round for pixel-perfect integer coordinates
+
+                        // Use world coordinates directly - camera handles the viewport
                         const px = Math.round(worldX * this.blockSize);
                         const py = Math.round(worldY * this.blockSize);
                         const size = this.blockSize;

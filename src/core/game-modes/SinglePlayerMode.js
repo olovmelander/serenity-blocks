@@ -27,6 +27,10 @@ export class SinglePlayerMode extends BaseGameMode {
         this.canvas = null;
         this.ctx = null;
         this.nextCanvases = [];
+
+        // Performance optimization: Throttle stats updates
+        this.lastStatsUpdateTime = 0;
+        this.statsUpdateInterval = 250; // Update stats every 250ms instead of every frame (16ms)
     }
 
     getModeId() {
@@ -49,6 +53,12 @@ export class SinglePlayerMode extends BaseGameMode {
         this.nextCanvases = Array.from({ length: 5 }, (_, i) => document.getElementById(`next-${i}`));
 
         // Show single player container (flex for proper layout)
+        // Show single player stage and container
+        const singlePlayerStage = document.querySelector('.single-player-stage');
+        if (singlePlayerStage) {
+            singlePlayerStage.style.display = '';
+        }
+
         const singlePlayerContainer = document.getElementById('single-player-container');
         if (singlePlayerContainer) {
             singlePlayerContainer.style.display = 'flex';
@@ -58,6 +68,12 @@ export class SinglePlayerMode extends BaseGameMode {
         const multiplayerContainer = document.getElementById('multiplayer-container');
         if (multiplayerContainer) {
             multiplayerContainer.style.display = 'none';
+        }
+
+        // Show single player stats bar
+        const statsBar = document.querySelector('.single-player-stats-bar');
+        if (statsBar) {
+            statsBar.style.display = 'flex';
         }
 
         // Hide any existing multiplayer Phaser scenes
@@ -88,8 +104,8 @@ export class SinglePlayerMode extends BaseGameMode {
         // Initialize game state (lazy initialization)
         this.gameState = new GameState();
 
-        // Resume Phaser board scene
-        this._resumePhaserBoardScene();
+        // Start Phaser board scene (triggers create() for fresh state)
+        this._startPhaserBoardScene();
 
         // Clear board graphics to ensure clean slate
         this._clearPhaserBoard();
@@ -165,6 +181,9 @@ export class SinglePlayerMode extends BaseGameMode {
         if (this.gameState) {
             this.gameState.isGameOver = true;
         }
+
+        // Stop Phaser scene (triggers shutdown() for cleanup)
+        this._stopPhaserBoardScene();
     }
 
     /**
@@ -175,8 +194,8 @@ export class SinglePlayerMode extends BaseGameMode {
 
         console.log('[SinglePlayer] Deactivating...');
 
-        // Pause Phaser scene
-        this._pausePhaserBoardScene();
+        // Stop Phaser scene (triggers shutdown() for cleanup)
+        this._stopPhaserBoardScene();
 
         // Clean up state
         this.gameState = null;
@@ -245,9 +264,13 @@ export class SinglePlayerMode extends BaseGameMode {
                     }
                 },
                 () => {
-                    // Update stats callback
-                    updateStats(this.gameState);
-                    this._updateStats();
+                    // Update stats callback - THROTTLED for performance
+                    // Only update stats every 250ms instead of every frame (16ms)
+                    // This reduces BPM calculations from 60/sec to 4/sec
+                    if (currentTime - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
+                        this.lastStatsUpdateTime = currentTime;
+                        updateStats(this.gameState);
+                    }
 
                     // Check for level-based theme changes
                     const settings = this.deps.settingsManager.get();
@@ -286,6 +309,13 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
+            // Piece lock ripple effect
+            onPieceLock: (piece) => {
+                const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+                if (boardScene && boardScene.createPieceLockRipple) {
+                    boardScene.createPieceLockRipple(piece);
+                }
+            },
             // CRITICAL: Spawn next piece after physics completes (after piece lock)
             spawnPiece: () => {
                 spawnPiece(
@@ -364,24 +394,39 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     /**
-     * Resume Phaser board scene
+     * Start Phaser board scene (triggers create() for fresh state)
      * @private
      */
-    _resumePhaserBoardScene() {
-        const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+    _startPhaserBoardScene() {
+        const phaserGame = this.deps.phaserGame;
+        if (!phaserGame?.scene) return;
+
+        const boardScene = phaserGame.scene.getScene('BoardScene');
         if (boardScene) {
-            boardScene.scene.resume();
+            // Check if scene is already running
+            if (boardScene.scene.isActive()) {
+                console.log('[SinglePlayer] BoardScene already active, restarting...');
+                boardScene.scene.restart();
+            } else {
+                // Scene exists but is stopped, start it (triggers create())
+                console.log('[SinglePlayer] Starting stopped BoardScene...');
+                boardScene.scene.start();
+            }
+        } else {
+            // Scene doesn't exist, start it for the first time
+            console.log('[SinglePlayer] Starting BoardScene for first time...');
+            phaserGame.scene.start('BoardScene');
         }
     }
 
     /**
-     * Pause Phaser board scene
+     * Stop Phaser board scene (triggers shutdown() for cleanup)
      * @private
      */
-    _pausePhaserBoardScene() {
+    _stopPhaserBoardScene() {
         const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
         if (boardScene) {
-            boardScene.scene.pause();
+            boardScene.scene.stop();
         }
     }
 
@@ -443,7 +488,10 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     _showSinglePlayerScene() {
-        const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+        const phaserGame = this.deps.phaserGame;
+        if (!phaserGame?.scene) return;
+
+        const boardScene = phaserGame.scene.getScene('BoardScene');
         if (boardScene) {
             // Reset camera viewport to full canvas
             if (boardScene.cameras?.main) {
@@ -451,9 +499,10 @@ export class SinglePlayerMode extends BaseGameMode {
                 const boardHeight = ROWS * BLOCK_SIZE;
                 boardScene.cameras.main.setViewport(0, 0, boardWidth, boardHeight);
             }
-            
+
             boardScene.scene.setVisible(true);
-            boardScene.scene.resume();
+            // Note: Don't call start() here - scene will be started in onStart()
+            // This method is only for initial activation setup
         }
     }
 }
