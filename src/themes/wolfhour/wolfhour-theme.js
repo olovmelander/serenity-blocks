@@ -26,10 +26,10 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     async createScene() {
-        // 1. Create dense star field
+        // 1. Create dense star field (optimized count for performance)
         const starsContainer = this.getContainer('wolfhour-stars');
         if (starsContainer && starsContainer.children.length === 0) {
-            const starCount = 300;
+            const starCount = 150; // Reduced from 300 for better performance
             for (let i = 0; i < starCount; i++) {
                 const star = document.createElement('div');
                 star.className = 'wolfhour-star';
