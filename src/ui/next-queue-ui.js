@@ -23,60 +23,24 @@ export function drawPiece(canvas, pieceKey) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all blocks as solid fill first
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            if (shape[row][col]) {
-                drawMiniBlock(ctx, PADDING + col * BLOCK_SIZE, PADDING + row * BLOCK_SIZE, color);
-            }
-        }
-    }
+    // Disable anti-aliasing for crisp pixel-perfect rendering
+    ctx.imageSmoothingEnabled = false;
 
-    // Draw outline around the entire piece
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.lineWidth = 1.5;
+    // Draw as one solid path to avoid any gaps between blocks
+    ctx.fillStyle = color;
+    ctx.beginPath();
 
     for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
             if (shape[row][col]) {
                 const x = PADDING + col * BLOCK_SIZE;
                 const y = PADDING + row * BLOCK_SIZE;
-
-                // Draw borders only on outer edges
-                // Top edge
-                if (row === 0 || !shape[row - 1][col]) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, y);
-                    ctx.lineTo(x + BLOCK_SIZE, y);
-                    ctx.stroke();
-                }
-
-                // Bottom edge
-                if (row === rows - 1 || !shape[row + 1][col]) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, y + BLOCK_SIZE);
-                    ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
-                    ctx.stroke();
-                }
-
-                // Left edge
-                if (col === 0 || !shape[row][col - 1]) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, y);
-                    ctx.lineTo(x, y + BLOCK_SIZE);
-                    ctx.stroke();
-                }
-
-                // Right edge
-                if (col === cols - 1 || !shape[row][col + 1]) {
-                    ctx.beginPath();
-                    ctx.moveTo(x + BLOCK_SIZE, y);
-                    ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
-                    ctx.stroke();
-                }
+                ctx.rect(x, y, BLOCK_SIZE, BLOCK_SIZE);
             }
         }
     }
+
+    ctx.fill();
 }
 
 export function updateNextQueue(nextPieces) {
