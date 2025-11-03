@@ -70,10 +70,13 @@
 
 .intro-particle {
     position: absolute;
-    background: radial-gradient(circle, rgba(100, 200, 255, 0.8) 0%, transparent 70%);
+    background: radial-gradient(circle, var(--particle-color, rgba(100, 200, 255, 0.8)) 0%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     animation: floatParticle linear infinite;
+    box-shadow: 0 0 8px var(--particle-color, rgba(100, 200, 255, 0.6)),
+                0 0 16px var(--particle-color, rgba(100, 200, 255, 0.3));
+    filter: blur(0.5px);
 }
 
 @keyframes floatParticle {
@@ -333,13 +336,12 @@
 /* Particle burst on click */
 .intro-burst-particle {
     position: absolute;
-    width: 4px;
-    height: 4px;
-    background: #64c8ff;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     pointer-events: none;
-    box-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
     animation: burstParticle 1s ease-out forwards;
+    /* Background and box-shadow are set dynamically via JavaScript */
 }
 
 @keyframes burstParticle {
