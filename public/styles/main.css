@@ -12878,6 +12878,11 @@ body.serenity-mode.cursor-hidden * {
     pointer-events: none;
 }
 
+.modal.game-mode-selection .floating-settings-btn {
+    pointer-events: all;
+    z-index: 1001;
+}
+
 .game-mode-cards-container {
     display: grid;
     grid-template-columns: repeat(2, 1fr);

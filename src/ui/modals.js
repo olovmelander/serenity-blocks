@@ -282,6 +282,15 @@ export function setupModalUI(modalManager, callbacks) {
         });
     }
 
+    // Settings button (start modal)
+    const settingsBtnStart = document.getElementById('settings-btn-start');
+    if (settingsBtnStart) {
+        settingsBtnStart.addEventListener('click', () => {
+            showSettingsModal(modalManager);
+            if (onSettingsOpen) onSettingsOpen();
+        });
+    }
+
     // Close settings button
     const closeSettingsBtn = document.getElementById('close-settings');
     if (closeSettingsBtn) {

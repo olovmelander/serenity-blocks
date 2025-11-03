@@ -2398,6 +2398,13 @@ class SerenityBlocks {
     togglePause() {
         if (this.gameState.isGameOver) return;
 
+        // If we're on the start modal, open settings
+        if (this.modalManager.isVisible('start')) {
+            console.log('[Main] Start modal visible, opening settings');
+            this.pauseGame();
+            return;
+        }
+
         const currentMode = this.gameModeManager?.getCurrentMode();
 
         if (currentMode && currentMode.isRunning) {
@@ -2434,6 +2441,13 @@ class SerenityBlocks {
             return;
         }
 
+        // If we're on the start modal, just open settings without changing game state
+        if (this.modalManager.isVisible('start')) {
+            console.log('[Main] Opening settings from start modal');
+            this.modalManager.show('settings');
+            return;
+        }
+
         // Check if GameModeManager has a running mode (Serenity, etc.)
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             this.gameModeManager.pauseCurrentMode();
@@ -2455,6 +2469,12 @@ class SerenityBlocks {
         // Check if settings modal is still open - don't resume if it is
         if (this.modalManager.isVisible('settings')) {
             console.log('[Main] Settings still open, not resuming yet');
+            return;
+        }
+
+        // If start modal is visible, we're in the initial menu - don't resume game
+        if (this.modalManager.isVisible('start')) {
+            console.log('[Main] Start modal visible, not resuming game');
             return;
         }
 
