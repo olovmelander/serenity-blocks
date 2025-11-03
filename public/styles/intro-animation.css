@@ -50,6 +50,12 @@
     display: none;
 }
 
+/* Background-only mode: lower z-index so start modal can appear on top */
+#intro-animation.background-only {
+    z-index: 1;
+    pointer-events: none; /* Allow clicks to pass through to modal */
+}
+
 /* Animated background particles */
 .intro-particles {
     position: absolute;

@@ -1424,6 +1424,40 @@ class SerenityBlocks {
                     this.modalManager.show('start');
                 }
             },
+            onChangeGameMode: async () => {
+                console.log('[Main] Change Game Mode button clicked - returning to start modal');
+
+                // Stop and deactivate current game mode if active
+                const currentMode = this.gameModeManager?.getCurrentMode();
+                if (currentMode) {
+                    console.log('[Main] Stopping and deactivating current mode');
+                    await this.gameModeManager.stopCurrentMode();
+                    await this.gameModeManager.deactivateCurrentMode();
+                }
+
+                // Hide all game UI containers
+                const singlePlayerContainer = document.getElementById('single-player-container');
+                if (singlePlayerContainer) singlePlayerContainer.style.display = 'none';
+
+                const multiplayerContainer = document.getElementById('multiplayer-container');
+                if (multiplayerContainer) multiplayerContainer.style.display = 'none';
+
+                const statsBar = document.querySelector('.single-player-stats-bar');
+                if (statsBar) statsBar.style.display = 'none';
+
+                const singlePlayerStage = document.querySelector('.single-player-stage');
+                if (singlePlayerStage) singlePlayerStage.style.display = 'none';
+
+                // Show intro animation background (without title text)
+                const { introAnimation } = await import('./ui/intro-animation.js');
+                if (introAnimation) {
+                    introAnimation.showBackgroundOnly(this.soundManager);
+                }
+
+                // Close settings modal and show start modal
+                this.modalManager.hide('settings');
+                this.modalManager.show('start');
+            },
             // Display Settings (Phase 1)
             onDisplaySettingsApply: async (settings) => {
                 console.log('[Settings] Applying display settings:', settings);

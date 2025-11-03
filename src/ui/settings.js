@@ -642,28 +642,14 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     });
 
-    // Game mode selector
-    const gameModeSelect = document.getElementById('game-mode');
-    if (gameModeSelect) {
-        gameModeSelect.value = settings.gameMode || 'single';
-
-        gameModeSelect.addEventListener('change', async (e) => {
-            const mode = e.target.value;
-            console.log('[Settings] Game mode changed to:', mode);
-            settingsManager.update({ gameMode: mode });
-
-            if (callbacks && callbacks.onGameModeChange) {
-                console.log('[Settings] Calling onGameModeChange callback');
-                try {
-                    await callbacks.onGameModeChange(mode);
-                } catch (error) {
-                    console.error('[Settings] Error in onGameModeChange callback:', error);
-                }
-            } else {
-                console.warn('[Settings] No onGameModeChange callback registered');
+    // Change Game Mode button - returns to start modal
+    const changeGameModeBtn = document.getElementById('change-game-mode-btn');
+    if (changeGameModeBtn) {
+        changeGameModeBtn.addEventListener('click', () => {
+            console.log('[Settings] Change Game Mode button clicked');
+            if (callbacks && callbacks.onChangeGameMode) {
+                callbacks.onChangeGameMode();
             }
-
-            settingsManager.save();
         });
     }
 
