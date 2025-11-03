@@ -13,16 +13,24 @@ export class IntroAnimation {
         this.boundHandlers = {};
         this.phaserGame = null;
         this.particleEmitters = [];
+        this.soundManager = null;
+        this.introMusicTrack = 'CosmicChimes';
     }
 
     /**
      * Initialize and show the intro animation
      * @returns {Promise<void>} Resolves when user dismisses the intro
      */
-    async show() {
+    async show(soundManager = null) {
         if (this.hasCompleted) {
             return Promise.resolve();
         }
+
+        if (soundManager) {
+            this.setSoundManager(soundManager);
+        }
+
+        this.ensureIntroMusic();
 
         this.isActive = true;
         this.createIntroHTML();
@@ -33,6 +41,45 @@ export class IntroAnimation {
         return new Promise((resolve) => {
             this.onComplete = resolve;
         });
+    }
+
+    /**
+     * Set the shared sound manager used for intro music
+     * @param {?Object} soundManager
+     */
+    setSoundManager(soundManager) {
+        this.soundManager = soundManager;
+    }
+
+    /**
+     * Ensure the intro music track is playing
+     */
+    ensureIntroMusic() {
+        if (!this.soundManager) return;
+
+        const trackKey = this.introMusicTrack;
+        const hasTrackList = Array.isArray(this.soundManager.trackNames)
+            && this.soundManager.trackNames.length > 0;
+
+        if (hasTrackList && this.soundManager.trackNames.includes(trackKey)) {
+            if (this.soundManager.musicTrack !== trackKey) {
+                this.soundManager.setTrack(trackKey);
+            } else if (typeof this.soundManager.isMusicPlaying === 'function'
+                && !this.soundManager.isMusicPlaying()) {
+                this.soundManager.startBackgroundMusic();
+            }
+            return;
+        }
+
+        if (typeof this.soundManager.isMusicPlaying === 'function'
+            && this.soundManager.isMusicPlaying()) {
+            return;
+        }
+
+        if (typeof this.soundManager.playAudioFile === 'function') {
+            this.soundManager.musicTrack = trackKey;
+            this.soundManager.playAudioFile('./assets/music/Cosmic Chimes.mp3');
+        }
     }
 
     /**
@@ -297,26 +344,6 @@ export class IntroAnimation {
         graphics.fillCircle(3, 3, 3);
         graphics.generateTexture('cosmic-dust', 6, 6);
 
-        // Create minimalistic tetromino block texture (small, distant feel)
-        const blockSize = 6;
-        graphics.clear();
-
-        // Main block with crisp edges (minimalistic design)
-        graphics.fillStyle(0xffffff, 1);
-        graphics.fillRect(0, 0, blockSize, blockSize);
-
-        // Inner highlight for depth
-        graphics.fillStyle(0xffffff, 0.3);
-        graphics.fillRect(1, 1, blockSize - 2, 1);
-        graphics.fillRect(1, 1, 1, blockSize - 2);
-
-        // Inner shadow for depth
-        graphics.fillStyle(0x000000, 0.2);
-        graphics.fillRect(1, blockSize - 2, blockSize - 1, 1);
-        graphics.fillRect(blockSize - 2, 1, 1, blockSize - 2);
-
-        graphics.generateTexture('tetromino-block', blockSize, blockSize);
-
         graphics.destroy();
 
         // Actual game tetromino colors (from constants.js)
@@ -429,7 +456,7 @@ export class IntroAnimation {
 
         const shapeNames = Object.keys(tetrominoShapes);
         const blockSize = 6;
-        const spacing = 1;
+        const cellSize = blockSize;
         const maxTetrominos = 15; // Max tetrominos on screen at once
         let activeTetrominos = 0;
 
@@ -443,199 +470,202 @@ export class IntroAnimation {
             activeTetrominos++;
 
             // Random shape
-                const shapeName = shapeNames[Math.floor(Math.random() * shapeNames.length)];
-                const shape = tetrominoShapes[shapeName];
-                const color = tetrominoColors[shapeName]; // Use actual game color for this shape
+            const shapeName = shapeNames[Math.floor(Math.random() * shapeNames.length)];
+            const baseShape = tetrominoShapes[shapeName];
+            const color = tetrominoColors[shapeName]; // Use actual game color for this shape
 
-                // Random starting position (from any edge)
-                const edge = Math.floor(Math.random() * 4);
-                let startX, startY, velocityX, velocityY;
+            // Normalize shape so the smallest coordinate starts at zero
+            const minX = Math.min(...baseShape.map(([bx]) => bx));
+            const minY = Math.min(...baseShape.map(([, by]) => by));
+            const shape = baseShape.map(([bx, by]) => [bx - minX, by - minY]);
 
-                switch (edge) {
-                    case 0: // Top
-                        startX = Math.random() * width;
-                        startY = -100;
-                        velocityX = (Math.random() - 0.5) * 40;
-                        velocityY = Math.random() * 30 + 20;
-                        break;
-                    case 1: // Right
-                        startX = width + 100;
-                        startY = Math.random() * height;
-                        velocityX = -(Math.random() * 30 + 20);
-                        velocityY = (Math.random() - 0.5) * 40;
-                        break;
-                    case 2: // Bottom
-                        startX = Math.random() * width;
-                        startY = height + 100;
-                        velocityX = (Math.random() - 0.5) * 40;
-                        velocityY = -(Math.random() * 30 + 20);
-                        break;
-                    case 3: // Left
-                        startX = -100;
-                        startY = Math.random() * height;
-                        velocityX = Math.random() * 30 + 20;
-                        velocityY = (Math.random() - 0.5) * 40;
-                        break;
-                }
+            // Random starting position (from any edge)
+            const edge = Math.floor(Math.random() * 4);
+            let startX;
+            let startY;
+            let velocityX;
+            let velocityY;
 
-                // Create container for the tetromino
-                const container = scene.add.container(startX, startY);
+            switch (edge) {
+                case 0: // Top
+                    startX = Math.random() * width;
+                    startY = -100;
+                    velocityX = (Math.random() - 0.5) * 40;
+                    velocityY = Math.random() * 30 + 20;
+                    break;
+                case 1: // Right
+                    startX = width + 100;
+                    startY = Math.random() * height;
+                    velocityX = -(Math.random() * 30 + 20);
+                    velocityY = (Math.random() - 0.5) * 40;
+                    break;
+                case 2: // Bottom
+                    startX = Math.random() * width;
+                    startY = height + 100;
+                    velocityX = (Math.random() - 0.5) * 40;
+                    velocityY = -(Math.random() * 30 + 20);
+                    break;
+                case 3: // Left
+                    startX = -100;
+                    startY = Math.random() * height;
+                    velocityX = Math.random() * 30 + 20;
+                    velocityY = (Math.random() - 0.5) * 40;
+                    break;
+                default:
+                    startX = Math.random() * width;
+                    startY = Math.random() * height;
+                    velocityX = (Math.random() - 0.5) * 40;
+                    velocityY = (Math.random() - 0.5) * 40;
+                    break;
+            }
 
-                // Create blocks for this tetromino
-                const blocks = [];
+            // Create container for the tetromino
+            const container = scene.add.container(startX, startY);
+
+            // Draw a single solid shape using graphics so the tetromino appears as one piece
+            const tetrominoGraphics = scene.add.graphics();
+            tetrominoGraphics.fillStyle(color, 1);
+            shape.forEach(([bx, by]) => {
+                const x = bx * cellSize;
+                const y = by * cellSize;
+                tetrominoGraphics.fillRect(x, y, blockSize, blockSize);
+            });
+            tetrominoGraphics.setAlpha(0.95);
+            container.add(tetrominoGraphics);
+
+            // Create neon outline glow that follows the tetromino shape
+            const glowGraphics = scene.add.graphics();
+            const occupied = new Set(shape.map(([bx, by]) => `${bx},${by}`));
+
+            // Draw outline only on exterior edges
+            const drawOutline = (thickness, alpha) => {
+                glowGraphics.lineStyle(thickness, color, alpha);
+
                 shape.forEach(([bx, by]) => {
-                    const x = bx * (blockSize + spacing);
-                    const y = by * (blockSize + spacing);
-                    const block = scene.add.image(x, y, 'tetromino-block');
-                    block.setTint(color);
-                    block.setAlpha(0.95);
-                    block.setOrigin(0, 0); // Top-left origin for precise positioning
-                    container.add(block);
-                    blocks.push({ x, y });
-                });
+                    const x = bx * cellSize;
+                    const y = by * cellSize;
 
-                // Create neon outline glow that follows the tetromino shape
-                const glowGraphics = scene.add.graphics();
-
-                // Build a map of occupied cells for edge detection
-                const occupied = new Set();
-                shape.forEach(([bx, by]) => {
-                    occupied.add(`${bx},${by}`);
-                });
-
-                // Draw outline only on exterior edges
-                const drawOutline = (thickness, alpha) => {
-                    glowGraphics.lineStyle(thickness, color, alpha);
-
-                    shape.forEach(([bx, by]) => {
-                        const x = bx * (blockSize + spacing);
-                        const y = by * (blockSize + spacing);
-
-                        // Check each edge and only draw if it's an exterior edge
-                        // Top edge
-                        if (!occupied.has(`${bx},${by - 1}`)) {
-                            glowGraphics.beginPath();
-                            glowGraphics.moveTo(x, y);
-                            glowGraphics.lineTo(x + blockSize, y);
-                            glowGraphics.strokePath();
-                        }
-                        // Right edge
-                        if (!occupied.has(`${bx + 1},${by}`)) {
-                            glowGraphics.beginPath();
-                            glowGraphics.moveTo(x + blockSize, y);
-                            glowGraphics.lineTo(x + blockSize, y + blockSize);
-                            glowGraphics.strokePath();
-                        }
-                        // Bottom edge
-                        if (!occupied.has(`${bx},${by + 1}`)) {
-                            glowGraphics.beginPath();
-                            glowGraphics.moveTo(x, y + blockSize);
-                            glowGraphics.lineTo(x + blockSize, y + blockSize);
-                            glowGraphics.strokePath();
-                        }
-                        // Left edge
-                        if (!occupied.has(`${bx - 1},${by}`)) {
-                            glowGraphics.beginPath();
-                            glowGraphics.moveTo(x, y);
-                            glowGraphics.lineTo(x, y + blockSize);
-                            glowGraphics.strokePath();
-                        }
-                    });
-                };
-
-                // Draw multiple layers for neon glow effect
-                drawOutline(4, 0.2); // Outer glow (thick, soft)
-                drawOutline(2.5, 0.4); // Middle glow
-                drawOutline(1.5, 0.7); // Inner glow (bright)
-
-                container.add(glowGraphics);
-                container.sendToBack(glowGraphics);
-
-                // Store velocity and physics properties for continuous movement
-                container.velocityX = velocityX;
-                container.velocityY = velocityY;
-                container.tetrominoColor = color;
-                container.tetrominoShape = shape;
-
-                // Calculate bounding circle for collision detection
-                const maxDistance = Math.max(
-                    ...shape.map(([bx, by]) =>
-                        Math.sqrt(Math.pow(bx * (blockSize + spacing), 2) + Math.pow(by * (blockSize + spacing), 2))
-                    )
-                );
-                container.collisionRadius = maxDistance + blockSize;
-
-                // Add to active containers array
-                activeTetrominoContainers.push(container);
-
-                // Add to scene update to move continuously
-                const updateMovement = () => {
-                    if (!container || !container.active) return;
-
-                    // Move the container
-                    container.x += container.velocityX * 0.016; // Assuming 60fps
-                    container.y += container.velocityY * 0.016;
-
-                    // Check for collisions with other tetrominos
-                    this.checkTetrominoCollisions(container, activeTetrominoContainers, scene, color);
-
-                    // Check if out of bounds (with margin for cleanup)
-                    const margin = 200;
-                    if (container.x < -margin ||
-                        container.x > width + margin ||
-                        container.y < -margin ||
-                        container.y > height + margin) {
-                        activeTetrominos--;
-                        // Remove from active containers
-                        const index = activeTetrominoContainers.indexOf(container);
-                        if (index > -1) {
-                            activeTetrominoContainers.splice(index, 1);
-                        }
-                        container.destroy();
-                        scene.events.off('update', updateMovement);
+                    // Check each edge and only draw if it's an exterior edge
+                    if (!occupied.has(`${bx},${by - 1}`)) {
+                        glowGraphics.beginPath();
+                        glowGraphics.moveTo(x, y);
+                        glowGraphics.lineTo(x + blockSize, y);
+                        glowGraphics.strokePath();
                     }
-                };
-
-                scene.events.on('update', updateMovement);
-
-                // Animate rotation
-                scene.tweens.add({
-                    targets: container,
-                    angle: Math.random() > 0.5 ? 360 : -360,
-                    duration: 8000 + Math.random() * 8000,
-                    ease: 'Linear',
-                    repeat: -1,
+                    if (!occupied.has(`${bx + 1},${by}`)) {
+                        glowGraphics.beginPath();
+                        glowGraphics.moveTo(x + blockSize, y);
+                        glowGraphics.lineTo(x + blockSize, y + blockSize);
+                        glowGraphics.strokePath();
+                    }
+                    if (!occupied.has(`${bx},${by + 1}`)) {
+                        glowGraphics.beginPath();
+                        glowGraphics.moveTo(x, y + blockSize);
+                        glowGraphics.lineTo(x + blockSize, y + blockSize);
+                        glowGraphics.strokePath();
+                    }
+                    if (!occupied.has(`${bx - 1},${by}`)) {
+                        glowGraphics.beginPath();
+                        glowGraphics.moveTo(x, y);
+                        glowGraphics.lineTo(x, y + blockSize);
+                        glowGraphics.strokePath();
+                    }
                 });
+            };
 
-                // Animate alpha (neon pulse effect)
-                scene.tweens.add({
-                    targets: container,
-                    alpha: 0.7,
-                    duration: 1500 + Math.random() * 1500,
-                    ease: 'Sine.easeInOut',
-                    yoyo: true,
-                    repeat: -1,
-                });
+            // Draw multiple layers for neon glow effect
+            drawOutline(4, 0.2); // Outer glow (thick, soft)
+            drawOutline(2.5, 0.4); // Middle glow
+            drawOutline(1.5, 0.7); // Inner glow (bright)
 
-                // Animate glow intensity (neon flicker)
-                scene.tweens.add({
-                    targets: glowGraphics,
-                    alpha: 0.6,
-                    duration: 1000 + Math.random() * 1000,
-                    ease: 'Sine.easeInOut',
-                    yoyo: true,
-                    repeat: -1,
-                });
+            container.add(glowGraphics);
+            container.sendToBack(glowGraphics);
 
-                // Animate scale (very subtle breathe for distant feel)
-                scene.tweens.add({
-                    targets: container,
-                    scale: 0.9,
-                    duration: 3000 + Math.random() * 3000,
-                    ease: 'Sine.easeInOut',
-                    yoyo: true,
-                    repeat: -1,
-                });
+            // Store velocity and physics properties for continuous movement
+            container.velocityX = velocityX;
+            container.velocityY = velocityY;
+            container.tetrominoColor = color;
+            container.tetrominoShape = shape;
+
+            // Calculate bounding circle for collision detection
+            const maxDistance = Math.max(
+                ...shape.map(([bx, by]) =>
+                    Math.sqrt(Math.pow(bx * cellSize, 2) + Math.pow(by * cellSize, 2))
+                )
+            );
+            container.collisionRadius = maxDistance + blockSize;
+
+            // Add to active containers array
+            activeTetrominoContainers.push(container);
+
+            // Add to scene update to move continuously
+            const updateMovement = () => {
+                if (!container || !container.active) return;
+
+                // Move the container
+                container.x += container.velocityX * 0.016; // Assuming 60fps
+                container.y += container.velocityY * 0.016;
+
+                // Check for collisions with other tetrominos
+                this.checkTetrominoCollisions(container, activeTetrominoContainers, scene, color);
+
+                // Check if out of bounds (with margin for cleanup)
+                const margin = 200;
+                if (container.x < -margin ||
+                    container.x > width + margin ||
+                    container.y < -margin ||
+                    container.y > height + margin) {
+                    activeTetrominos--;
+                    // Remove from active containers
+                    const index = activeTetrominoContainers.indexOf(container);
+                    if (index > -1) {
+                        activeTetrominoContainers.splice(index, 1);
+                    }
+                    container.destroy();
+                    scene.events.off('update', updateMovement);
+                }
+            };
+
+            scene.events.on('update', updateMovement);
+
+            // Animate rotation
+            scene.tweens.add({
+                targets: container,
+                angle: Math.random() > 0.5 ? 360 : -360,
+                duration: 8000 + Math.random() * 8000,
+                ease: 'Linear',
+                repeat: -1,
+            });
+
+            // Animate alpha (neon pulse effect)
+            scene.tweens.add({
+                targets: container,
+                alpha: 0.7,
+                duration: 1500 + Math.random() * 1500,
+                ease: 'Sine.easeInOut',
+                yoyo: true,
+                repeat: -1,
+            });
+
+            // Animate glow intensity (neon flicker)
+            scene.tweens.add({
+                targets: glowGraphics,
+                alpha: 0.6,
+                duration: 1000 + Math.random() * 1000,
+                ease: 'Sine.easeInOut',
+                yoyo: true,
+                repeat: -1,
+            });
+
+            // Animate scale (very subtle breathe for distant feel)
+            scene.tweens.add({
+                targets: container,
+                scale: 0.9,
+                duration: 3000 + Math.random() * 3000,
+                ease: 'Sine.easeInOut',
+                yoyo: true,
+                repeat: -1,
+            });
         };
 
         // Spawn initial tetrominos
