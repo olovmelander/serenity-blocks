@@ -176,6 +176,9 @@ export class GameModeManager {
         console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`);
 
         try {
+            if (this.deps?.soundManager?.resumeThemeLinkedMusic) {
+                this.deps.soundManager.resumeThemeLinkedMusic(true);
+            }
             await this.currentMode.onStart();
             this._emitEvent('modeStarted', { modeId: this.currentModeId, mode: this.currentMode });
             console.log(`[GameModeManager] Mode ${this.currentModeId} started successfully`);

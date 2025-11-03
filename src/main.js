@@ -93,6 +93,36 @@ import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-
 const RIPPLE_BORDER_ALPHA = 0.8;
 const RIPPLE_SHADOW_ALPHA = 0.6;
 
+const INTRO_MUSIC_TRACK_KEY = 'CosmicChimes';
+const INTRO_MUSIC_PATH = './assets/music/Cosmic Chimes.mp3';
+const sharedSoundManager = new SoundManager();
+let introMusicInitialized = false;
+
+async function ensureIntroMusicIsPlaying() {
+    sharedSoundManager.suspendThemeLinkedMusic();
+    if (!introMusicInitialized) {
+        await sharedSoundManager.initializeTracks();
+        introMusicInitialized = true;
+    }
+
+    const hasTrackList = Array.isArray(sharedSoundManager.trackNames)
+        && sharedSoundManager.trackNames.length > 0;
+
+    if (hasTrackList && sharedSoundManager.trackNames.includes(INTRO_MUSIC_TRACK_KEY)) {
+        if (sharedSoundManager.musicTrack !== INTRO_MUSIC_TRACK_KEY) {
+            sharedSoundManager.setTrack(INTRO_MUSIC_TRACK_KEY);
+        } else if (!sharedSoundManager.isMusicPlaying()) {
+            sharedSoundManager.startBackgroundMusic();
+        }
+        return;
+    }
+
+    if (!sharedSoundManager.isMusicPlaying()) {
+        sharedSoundManager.musicTrack = INTRO_MUSIC_TRACK_KEY;
+        sharedSoundManager.playAudioFile(INTRO_MUSIC_PATH);
+    }
+}
+
 function hexToRgb(hex) {
     if (!hex) {
         return null;
@@ -151,7 +181,7 @@ function setPieceLockRippleCss(colorHex) {
  * Main application class that orchestrates all systems
  */
 class SerenityBlocks {
-    constructor() {
+    constructor(soundManager = null) {
         // Core systems (deprecated - will be managed by GameModeManager)
         this.gameState = null;
         this.multiplayerState = null;
@@ -164,7 +194,7 @@ class SerenityBlocks {
         this.settingsManager = null;
         this.inputController = null;
         this.highScoreManager = null;
-        this.soundManager = null;
+        this.soundManager = soundManager;
         this.themeManager = null;
         this.webglRenderer = null;
         this.phaserGame = null;
@@ -971,10 +1001,18 @@ class SerenityBlocks {
         this.modalManager = new ModalManager();
 
         // Audio
-        this.soundManager = new SoundManager();
-        // this.soundManager.init(); // Deferred to user gesture
-        await this.soundManager.initializeTracks();
-        this.soundManager.startBackgroundMusic();
+        if (!this.soundManager) {
+            this.soundManager = new SoundManager();
+        }
+        if (!Array.isArray(this.soundManager.songsData) || this.soundManager.songsData.length === 0) {
+            await this.soundManager.initializeTracks();
+        } else {
+            this.soundManager.populateMusicDropdown();
+        }
+        if (typeof this.soundManager.isMusicPlaying === 'function'
+            && !this.soundManager.isMusicPlaying()) {
+            this.soundManager.startBackgroundMusic();
+        }
 
         const resumeAudio = () => {
             this.soundManager.resumeAudioContext();
@@ -1385,6 +1423,40 @@ class SerenityBlocks {
                     console.error('[Main] Failed to switch game mode:', error);
                     this.modalManager.show('start');
                 }
+            },
+            onChangeGameMode: async () => {
+                console.log('[Main] Change Game Mode button clicked - returning to start modal');
+
+                // Stop and deactivate current game mode if active
+                const currentMode = this.gameModeManager?.getCurrentMode();
+                if (currentMode) {
+                    console.log('[Main] Stopping and deactivating current mode');
+                    await this.gameModeManager.stopCurrentMode();
+                    await this.gameModeManager.deactivateCurrentMode();
+                }
+
+                // Hide all game UI containers
+                const singlePlayerContainer = document.getElementById('single-player-container');
+                if (singlePlayerContainer) singlePlayerContainer.style.display = 'none';
+
+                const multiplayerContainer = document.getElementById('multiplayer-container');
+                if (multiplayerContainer) multiplayerContainer.style.display = 'none';
+
+                const statsBar = document.querySelector('.single-player-stats-bar');
+                if (statsBar) statsBar.style.display = 'none';
+
+                const singlePlayerStage = document.querySelector('.single-player-stage');
+                if (singlePlayerStage) singlePlayerStage.style.display = 'none';
+
+                // Show intro animation background (without title text)
+                const { introAnimation } = await import('./ui/intro-animation.js');
+                if (introAnimation) {
+                    introAnimation.showBackgroundOnly(this.soundManager);
+                }
+
+                // Close settings modal and show start modal
+                this.modalManager.hide('settings');
+                this.modalManager.show('start');
             },
             // Display Settings (Phase 1)
             onDisplaySettingsApply: async (settings) => {
@@ -2360,6 +2432,13 @@ class SerenityBlocks {
     togglePause() {
         if (this.gameState.isGameOver) return;
 
+        // If we're on the start modal, open settings
+        if (this.modalManager.isVisible('start')) {
+            console.log('[Main] Start modal visible, opening settings');
+            this.pauseGame();
+            return;
+        }
+
         const currentMode = this.gameModeManager?.getCurrentMode();
 
         if (currentMode && currentMode.isRunning) {
@@ -2396,6 +2475,13 @@ class SerenityBlocks {
             return;
         }
 
+        // If we're on the start modal, just open settings without changing game state
+        if (this.modalManager.isVisible('start')) {
+            console.log('[Main] Opening settings from start modal');
+            this.modalManager.show('settings');
+            return;
+        }
+
         // Check if GameModeManager has a running mode (Serenity, etc.)
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             this.gameModeManager.pauseCurrentMode();
@@ -2417,6 +2503,12 @@ class SerenityBlocks {
         // Check if settings modal is still open - don't resume if it is
         if (this.modalManager.isVisible('settings')) {
             console.log('[Main] Settings still open, not resuming yet');
+            return;
+        }
+
+        // If start modal is visible, we're in the initial menu - don't resume game
+        if (this.modalManager.isVisible('start')) {
+            console.log('[Main] Start modal visible, not resuming game');
             return;
         }
 
@@ -2933,9 +3025,11 @@ async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
 
+        await ensureIntroMusicIsPlaying();
+
         // Show epic intro animation
         console.log('✨ Playing intro animation...');
-        await introAnimation.show();
+        await introAnimation.show(sharedSoundManager);
         console.log('✨ Intro animation complete!');
 
         // Show the start modal after intro animation completes
@@ -2944,7 +3038,7 @@ async function bootstrap() {
             startModal.classList.add('visible');
         }
 
-        app = new SerenityBlocks();
+        app = new SerenityBlocks(sharedSoundManager);
         await app.init();
 
         // Enable gamepad navigation for game mode selection

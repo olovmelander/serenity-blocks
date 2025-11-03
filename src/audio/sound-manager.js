@@ -30,6 +30,8 @@ export class SoundManager {
         this.audioElement = null; // HTML5 Audio element for MP3 playback
         this.trackNames = [];
         this.songsData = [];
+        this.themeLinkSuspended = false;
+        this.pendingThemeLinkedTrack = null;
 
         // Initialize sound sets (will be populated after init)
         this.soundSets = null;
@@ -145,6 +147,7 @@ export class SoundManager {
     setTrack(trackName) {
         if (!this.trackNames.includes(trackName)) return;
 
+        this.pendingThemeLinkedTrack = null;
         this.musicTrack = trackName;
 
         // Update settings if available
@@ -209,10 +212,16 @@ export class SoundManager {
 
         const linkedSong = getSongForTheme(themeName, this.songsData);
         if (linkedSong) {
+            if (this.themeLinkSuspended) {
+                console.log(`🎵 Theme-linked music deferred (suspended): ${themeName} → ${linkedSong}`);
+                this.pendingThemeLinkedTrack = linkedSong;
+                return;
+            }
             console.log(`🎵 Theme-linked: ${themeName} → ${linkedSong}`);
             this.setTrack(linkedSong);
         } else {
             console.log(`🎵 No theme match for ${themeName}, continuing current track`);
+            this.pendingThemeLinkedTrack = null;
         }
     }
 
@@ -389,6 +398,39 @@ export class SoundManager {
 
     setSFXVolume(volume) {
         this.sfxVolume = volume;
+    }
+
+    /**
+     * Temporarily suspend automatic theme-linked music switching
+     */
+    suspendThemeLinkedMusic() {
+        this.themeLinkSuspended = true;
+    }
+
+    /**
+     * Resume theme-linked music switching
+     * @param {boolean} applyPending - Whether to apply any deferred track change
+     */
+    resumeThemeLinkedMusic(applyPending = true) {
+        this.themeLinkSuspended = false;
+        if (applyPending && this.pendingThemeLinkedTrack) {
+            const pendingTrack = this.pendingThemeLinkedTrack;
+            this.pendingThemeLinkedTrack = null;
+            this.setTrack(pendingTrack);
+        } else {
+            this.pendingThemeLinkedTrack = null;
+        }
+    }
+
+    /**
+     * Checks if background music is currently playing
+     * @returns {boolean} True if an audio element is actively playing
+     */
+    isMusicPlaying() {
+        if (!this.audioElement) {
+            return false;
+        }
+        return !this.audioElement.paused && !this.audioElement.ended;
     }
 
     // ==================== Procedural Music Generators ====================
