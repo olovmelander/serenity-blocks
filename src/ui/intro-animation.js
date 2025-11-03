@@ -117,20 +117,34 @@ export class IntroAnimation {
     }
 
     /**
-     * Create floating particle background
+     * Create floating particle background with vibrant colors
      * @returns {HTMLElement}
      */
     createParticles() {
         const particlesContainer = document.createElement('div');
         particlesContainer.className = 'intro-particles';
 
-        // Create 50 particles
-        for (let i = 0; i < 50; i++) {
+        // Vibrant color palette matching the theme
+        const colors = [
+            'rgba(100, 200, 255, 0.8)',   // Cyan/Blue
+            'rgba(147, 51, 234, 0.8)',    // Purple
+            'rgba(59, 130, 246, 0.8)',    // Blue
+            'rgba(236, 72, 153, 0.8)',    // Pink
+            'rgba(16, 185, 129, 0.8)',    // Emerald/Green
+            'rgba(139, 92, 246, 0.8)',    // Violet
+            'rgba(20, 184, 166, 0.8)',    // Teal
+            'rgba(255, 153, 0, 0.8)',     // Orange
+            'rgba(255, 255, 0, 0.8)',     // Yellow
+            'rgba(0, 255, 255, 0.8)',     // Cyan
+        ];
+
+        // Create 80 particles (increased from 50 for more vibrant effect)
+        for (let i = 0; i < 80; i++) {
             const particle = document.createElement('div');
             particle.className = 'intro-particle';
 
-            // Random size
-            const size = Math.random() * 3 + 1;
+            // Random size with some variation
+            const size = Math.random() * 4 + 1;
             particle.style.width = `${size}px`;
             particle.style.height = `${size}px`;
 
@@ -146,6 +160,10 @@ export class IntroAnimation {
             // Random horizontal drift
             const drift = (Math.random() - 0.5) * 200;
             particle.style.setProperty('--drift', `${drift}px`);
+
+            // Assign random color from palette
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            particle.style.setProperty('--particle-color', color);
 
             particlesContainer.appendChild(particle);
         }
@@ -852,10 +870,24 @@ export class IntroAnimation {
     }
 
     /**
-     * Create particle burst effect at position
+     * Create particle burst effect at position with vibrant colors
      */
     createBurstParticles(x, y) {
-        const particleCount = 20;
+        const particleCount = 30; // Increased from 20
+
+        // Vibrant color palette for burst particles
+        const burstColors = [
+            '#64c8ff', // Cyan
+            '#9333ea', // Purple
+            '#3b82f6', // Blue
+            '#ec4899', // Pink
+            '#10b981', // Emerald
+            '#8b5cf6', // Violet
+            '#14b8a6', // Teal
+            '#ff9900', // Orange
+            '#ffff00', // Yellow
+            '#00ffff', // Cyan
+        ];
 
         for (let i = 0; i < particleCount; i++) {
             const particle = document.createElement('div');
@@ -871,6 +903,11 @@ export class IntroAnimation {
 
             particle.style.setProperty('--burst-x', `${burstX}px`);
             particle.style.setProperty('--burst-y', `${burstY}px`);
+
+            // Assign random color
+            const color = burstColors[i % burstColors.length];
+            particle.style.backgroundColor = color;
+            particle.style.boxShadow = `0 0 10px ${color}`;
 
             this.container.appendChild(particle);
 
