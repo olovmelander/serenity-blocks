@@ -302,37 +302,9 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
         const offsetX = Math.round((displayWidth - pieceWidth) / 2);
         const offsetY = Math.round((displayHeight - pieceHeight) / 2);
 
-        // Draw fills with subtle lighting
-        shape.forEach((row, y) => {
-            row.forEach((cell, x) => {
-                if (!cell) return;
-
-                const px = offsetX + x * blockSize;
-                const py = offsetY + y * blockSize;
-
-                ctx.fillStyle = color;
-                ctx.fillRect(px, py, blockSize, blockSize);
-
-                const highlightGradient = ctx.createLinearGradient(px, py, px, py + blockSize);
-                highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
-                highlightGradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.12)');
-                highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                ctx.fillStyle = highlightGradient;
-                ctx.fillRect(px, py, blockSize, blockSize);
-
-                const shadowGradient = ctx.createLinearGradient(px, py, px + blockSize, py + blockSize);
-                shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-                shadowGradient.addColorStop(1, 'rgba(0, 0, 0, 0.25)');
-                ctx.fillStyle = shadowGradient;
-                ctx.fillRect(px, py, blockSize, blockSize);
-            });
-        });
-
-        // Draw outline on outer edges only
-        const outlineWidth = Math.max(1, Math.round(blockSize * 0.08));
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
-        ctx.lineWidth = outlineWidth;
-        ctx.lineJoin = 'miter';
+        // Draw as one solid path to avoid any gaps between blocks
+        ctx.fillStyle = color;
+        ctx.beginPath();
 
         shape.forEach((row, y) => {
             row.forEach((cell, x) => {
@@ -341,64 +313,11 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
                 const px = offsetX + x * blockSize;
                 const py = offsetY + y * blockSize;
 
-                const hasTop = y > 0 && shape[y - 1]?.[x];
-                const hasBottom = y < rows - 1 && shape[y + 1]?.[x];
-                const hasLeft = x > 0 && row[x - 1];
-                const hasRight = x < row.length - 1 && row[x + 1];
-
-                if (!hasTop) {
-                    ctx.beginPath();
-                    ctx.moveTo(px, py + outlineWidth * 0.5);
-                    ctx.lineTo(px + blockSize, py + outlineWidth * 0.5);
-                    ctx.stroke();
-                }
-
-                if (!hasBottom) {
-                    ctx.beginPath();
-                    ctx.moveTo(px, py + blockSize - outlineWidth * 0.5);
-                    ctx.lineTo(px + blockSize, py + blockSize - outlineWidth * 0.5);
-                    ctx.stroke();
-                }
-
-                if (!hasLeft) {
-                    ctx.beginPath();
-                    ctx.moveTo(px + outlineWidth * 0.5, py);
-                    ctx.lineTo(px + outlineWidth * 0.5, py + blockSize);
-                    ctx.stroke();
-                }
-
-                if (!hasRight) {
-                    ctx.beginPath();
-                    ctx.moveTo(px + blockSize - outlineWidth * 0.5, py);
-                    ctx.lineTo(px + blockSize - outlineWidth * 0.5, py + blockSize);
-                    ctx.stroke();
-                }
+                ctx.rect(px, py, blockSize, blockSize);
             });
         });
 
-        // Subtle glow around highlighted piece
-        if (idx === 0) {
-            const glowPadding = Math.max(4, Math.round(blockSize * 0.4));
-            const glowX = offsetX - glowPadding;
-            const glowY = offsetY - glowPadding;
-            const glowWidth = pieceWidth + glowPadding * 2;
-            const glowHeight = pieceHeight + glowPadding * 2;
-
-            const glowGradient = ctx.createRadialGradient(
-                offsetX + pieceWidth / 2,
-                offsetY + pieceHeight / 2,
-                Math.max(pieceWidth, pieceHeight) * 0.15,
-                offsetX + pieceWidth / 2,
-                offsetY + pieceHeight / 2,
-                Math.max(pieceWidth, pieceHeight) * 0.85,
-            );
-
-            glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
-            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-            ctx.fillStyle = glowGradient;
-            ctx.fillRect(glowX, glowY, glowWidth, glowHeight);
-        }
+        ctx.fill();
 
         ctx.imageSmoothingEnabled = true;
         ctx.restore();
