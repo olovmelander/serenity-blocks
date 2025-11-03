@@ -247,6 +247,7 @@ export function createBaseBoardScene(
 
             this.drawGrid();
             this.drawBoardFromGrid();
+            this.drawLockedPieceOutlines();
             if (this.gameState.currentPiece) {
                 this.drawGhostPiece();
             }
@@ -287,6 +288,72 @@ export function createBaseBoardScene(
                     }
 
                     this.drawBlock(worldX, worldY, colorValue, 1.0);
+                }
+            }
+        }
+
+        drawLockedPieceOutlines() {
+            const grid = this.gameState?.boardGrid;
+            if (!grid) return;
+
+            // Draw extremely subtle outlines around locked pieces by detecting edges
+            // Very low opacity (0.08) makes it barely visible but helps distinguish pieces
+            this.pieceGraphics.lineStyle(0.5, 0x000000, 0.08);
+
+            for (let worldY = this.hiddenRows; worldY < grid.length; worldY++) {
+                const row = grid[worldY];
+                if (!row) continue;
+
+                for (let worldX = 0; worldX < this.cols; worldX++) {
+                    const cell = row[worldX];
+                    if (!cell) continue;
+
+                    const px = Math.round(worldX * this.blockSize);
+                    const py = Math.round(worldY * this.blockSize);
+                    const size = this.blockSize;
+
+                    const pieceId = cell.id;
+
+                    // Check each edge - only draw if the adjacent cell has a different piece ID
+                    // Top edge
+                    const topCell = worldY > 0 ? grid[worldY - 1]?.[worldX] : null;
+                    if (!topCell || topCell.id !== pieceId) {
+                        this.pieceGraphics.beginPath();
+                        this.pieceGraphics.moveTo(px, py);
+                        this.pieceGraphics.lineTo(px + size, py);
+                        this.pieceGraphics.strokePath();
+                        this.pieceGraphics.closePath();
+                    }
+
+                    // Bottom edge
+                    const bottomCell = worldY < grid.length - 1 ? grid[worldY + 1]?.[worldX] : null;
+                    if (!bottomCell || bottomCell.id !== pieceId) {
+                        this.pieceGraphics.beginPath();
+                        this.pieceGraphics.moveTo(px, py + size);
+                        this.pieceGraphics.lineTo(px + size, py + size);
+                        this.pieceGraphics.strokePath();
+                        this.pieceGraphics.closePath();
+                    }
+
+                    // Left edge
+                    const leftCell = worldX > 0 ? grid[worldY]?.[worldX - 1] : null;
+                    if (!leftCell || leftCell.id !== pieceId) {
+                        this.pieceGraphics.beginPath();
+                        this.pieceGraphics.moveTo(px, py);
+                        this.pieceGraphics.lineTo(px, py + size);
+                        this.pieceGraphics.strokePath();
+                        this.pieceGraphics.closePath();
+                    }
+
+                    // Right edge
+                    const rightCell = worldX < this.cols - 1 ? grid[worldY]?.[worldX + 1] : null;
+                    if (!rightCell || rightCell.id !== pieceId) {
+                        this.pieceGraphics.beginPath();
+                        this.pieceGraphics.moveTo(px + size, py);
+                        this.pieceGraphics.lineTo(px + size, py + size);
+                        this.pieceGraphics.strokePath();
+                        this.pieceGraphics.closePath();
+                    }
                 }
             }
         }
@@ -416,8 +483,9 @@ export function createBaseBoardScene(
                 }
             }
 
-            // Draw crisp, thin black borders only on the outer edges of the piece
-            this.pieceGraphics.lineStyle(0.25, 0x000000, 1.0);
+            // Draw extremely subtle borders only on the outer edges of the piece
+            // Very low opacity (0.08) makes it barely visible but helps distinguish pieces
+            this.pieceGraphics.lineStyle(0.5, 0x000000, 0.08);
 
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
