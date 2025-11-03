@@ -93,6 +93,36 @@ import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-
 const RIPPLE_BORDER_ALPHA = 0.8;
 const RIPPLE_SHADOW_ALPHA = 0.6;
 
+const INTRO_MUSIC_TRACK_KEY = 'CosmicChimes';
+const INTRO_MUSIC_PATH = './assets/music/Cosmic Chimes.mp3';
+const sharedSoundManager = new SoundManager();
+let introMusicInitialized = false;
+
+async function ensureIntroMusicIsPlaying() {
+    sharedSoundManager.suspendThemeLinkedMusic();
+    if (!introMusicInitialized) {
+        await sharedSoundManager.initializeTracks();
+        introMusicInitialized = true;
+    }
+
+    const hasTrackList = Array.isArray(sharedSoundManager.trackNames)
+        && sharedSoundManager.trackNames.length > 0;
+
+    if (hasTrackList && sharedSoundManager.trackNames.includes(INTRO_MUSIC_TRACK_KEY)) {
+        if (sharedSoundManager.musicTrack !== INTRO_MUSIC_TRACK_KEY) {
+            sharedSoundManager.setTrack(INTRO_MUSIC_TRACK_KEY);
+        } else if (!sharedSoundManager.isMusicPlaying()) {
+            sharedSoundManager.startBackgroundMusic();
+        }
+        return;
+    }
+
+    if (!sharedSoundManager.isMusicPlaying()) {
+        sharedSoundManager.musicTrack = INTRO_MUSIC_TRACK_KEY;
+        sharedSoundManager.playAudioFile(INTRO_MUSIC_PATH);
+    }
+}
+
 function hexToRgb(hex) {
     if (!hex) {
         return null;
@@ -151,7 +181,7 @@ function setPieceLockRippleCss(colorHex) {
  * Main application class that orchestrates all systems
  */
 class SerenityBlocks {
-    constructor() {
+    constructor(soundManager = null) {
         // Core systems (deprecated - will be managed by GameModeManager)
         this.gameState = null;
         this.multiplayerState = null;
@@ -164,7 +194,7 @@ class SerenityBlocks {
         this.settingsManager = null;
         this.inputController = null;
         this.highScoreManager = null;
-        this.soundManager = null;
+        this.soundManager = soundManager;
         this.themeManager = null;
         this.webglRenderer = null;
         this.phaserGame = null;
@@ -971,10 +1001,18 @@ class SerenityBlocks {
         this.modalManager = new ModalManager();
 
         // Audio
-        this.soundManager = new SoundManager();
-        // this.soundManager.init(); // Deferred to user gesture
-        await this.soundManager.initializeTracks();
-        this.soundManager.startBackgroundMusic();
+        if (!this.soundManager) {
+            this.soundManager = new SoundManager();
+        }
+        if (!Array.isArray(this.soundManager.songsData) || this.soundManager.songsData.length === 0) {
+            await this.soundManager.initializeTracks();
+        } else {
+            this.soundManager.populateMusicDropdown();
+        }
+        if (typeof this.soundManager.isMusicPlaying === 'function'
+            && !this.soundManager.isMusicPlaying()) {
+            this.soundManager.startBackgroundMusic();
+        }
 
         const resumeAudio = () => {
             this.soundManager.resumeAudioContext();
@@ -2933,9 +2971,11 @@ async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
 
+        await ensureIntroMusicIsPlaying();
+
         // Show epic intro animation
         console.log('✨ Playing intro animation...');
-        await introAnimation.show();
+        await introAnimation.show(sharedSoundManager);
         console.log('✨ Intro animation complete!');
 
         // Show the start modal after intro animation completes
@@ -2944,7 +2984,7 @@ async function bootstrap() {
             startModal.classList.add('visible');
         }
 
-        app = new SerenityBlocks();
+        app = new SerenityBlocks(sharedSoundManager);
         await app.init();
 
         // Enable gamepad navigation for game mode selection
