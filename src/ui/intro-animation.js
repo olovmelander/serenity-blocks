@@ -1094,6 +1094,54 @@ export class IntroAnimation {
         }
         this.container = null;
     }
+
+    /**
+     * Show only the background animation without the title
+     * (for returning to start modal from gameplay)
+     */
+    showBackgroundOnly(soundManager = null) {
+        // If already showing, do nothing
+        if (this.container && document.body.contains(this.container)) {
+            return;
+        }
+
+        if (soundManager) {
+            this.setSoundManager(soundManager);
+        }
+
+        this.ensureIntroMusic();
+        this.isActive = true;
+        this.hasCompleted = true; // Mark as completed so show() won't work
+
+        // Create container
+        this.container = document.createElement('div');
+        this.container.id = 'intro-animation';
+        this.container.classList.add('background-only'); // Add class for background-only mode
+
+        // Create Phaser canvas container
+        const phaserCanvas = document.createElement('div');
+        phaserCanvas.id = 'intro-phaser-canvas';
+        this.container.appendChild(phaserCanvas);
+
+        // Initialize Phaser cosmic particle system
+        this.initPhaserCosmicParticles(phaserCanvas);
+
+        // Create particle background (floating up from bottom)
+        const particles = this.createParticles();
+        this.container.appendChild(particles);
+
+        // Create floating orbs
+        const orbs = this.createOrbs();
+        this.container.appendChild(orbs);
+
+        // Add to DOM
+        document.body.appendChild(this.container);
+
+        // Trigger animations
+        requestAnimationFrame(() => {
+            this.container.classList.add('active');
+        });
+    }
 }
 
 // Create singleton instance
