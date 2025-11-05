@@ -463,8 +463,21 @@ export class IntroAnimation {
         // Array to store all active tetromino containers for collision detection
         const activeTetrominoContainers = [];
 
+        const isSceneActive = () => {
+            if (!scene || !scene.sys || !scene.sys.displayList) {
+                return false;
+            }
+            const scenePlugin = scene.scene;
+            if (scenePlugin && typeof scenePlugin.isActive === 'function' && !scenePlugin.isActive()) {
+                return false;
+            }
+            return true;
+        };
+
         // Function to spawn a single tetromino
         const spawnTetromino = () => {
+            if (!isSceneActive()) return;
+
             if (activeTetrominos >= maxTetrominos) return;
 
             activeTetrominos++;
@@ -599,8 +612,30 @@ export class IntroAnimation {
             activeTetrominoContainers.push(container);
 
             // Add to scene update to move continuously
+            const cleanupContainer = () => {
+                activeTetrominos = Math.max(0, activeTetrominos - 1);
+                const index = activeTetrominoContainers.indexOf(container);
+                if (index > -1) {
+                    activeTetrominoContainers.splice(index, 1);
+                }
+                if (scene?.events) {
+                    scene.events.off('update', updateMovement);
+                }
+                if (container && container.destroy) {
+                    container.destroy();
+                }
+            };
+
             const updateMovement = () => {
-                if (!container || !container.active) return;
+                if (!isSceneActive()) {
+                    cleanupContainer();
+                    return;
+                }
+
+                if (!container || !container.active) {
+                    cleanupContainer();
+                    return;
+                }
 
                 // Move the container
                 container.x += container.velocityX * 0.016; // Assuming 60fps
@@ -615,14 +650,7 @@ export class IntroAnimation {
                     container.x > width + margin ||
                     container.y < -margin ||
                     container.y > height + margin) {
-                    activeTetrominos--;
-                    // Remove from active containers
-                    const index = activeTetrominoContainers.indexOf(container);
-                    if (index > -1) {
-                        activeTetrominoContainers.splice(index, 1);
-                    }
-                    container.destroy();
-                    scene.events.off('update', updateMovement);
+                    cleanupContainer();
                 }
             };
 

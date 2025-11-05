@@ -10,6 +10,7 @@ import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './bo
 import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
+import { createInfinityGrid } from './infinity-grid.js';
 
 function createComboState() {
     return {
@@ -90,7 +91,18 @@ export function getGhostLandingY(gameState) {
  * Game state object that holds all game data
  */
 export class GameState {
-    constructor() {
+    constructor(options = {}) {
+        // Infinity mode configuration
+        this.isInfinityMode = options.isInfinityMode || false;
+        this.maxRows = options.maxRows || 1000;
+        this.disableLevelProgression = options.disableLevelProgression || false;
+        this.disableGarbage = options.disableGarbage || false;
+        this.initialInfinityRows = options.initialInfinityRows || ROWS + HIDDEN_ROWS;
+
+        // Infinity mode tracking
+        this.currentTopRow = 0; // Highest row with blocks
+        this.cameraRow = 0; // Current camera viewport offset
+
         // Pieces
         this.lockedPieces = [];
         this.currentPiece = null;
@@ -126,7 +138,28 @@ export class GameState {
         this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
-        this.boardGrid = createBoardGrid();
+
+        // Initialize board grid based on mode
+        if (this.isInfinityMode) {
+            const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
+            this.boardGrid = infinityGrid;
+            this.board = infinityGrid;
+            console.log('[GameState] Initialized infinity grid:', this.boardGrid.length, 'rows');
+        } else {
+            this.boardGrid = createBoardGrid();
+        }
+
+        // Infinity mode statistics
+        if (this.isInfinityMode) {
+            this.infinityStats = {
+                maxComboDepth: 0,
+                maxComboComplexity: 0,
+                totalCascades: 0,
+                rowsReached: 0,
+                blocksPlaced: 0,
+                sessionStartTime: Date.now(),
+            };
+        }
 
         // Quadra-style garbage: Track last placed piece columns for deterministic holes
         this.lastPlacedPieceX = [];
@@ -172,10 +205,16 @@ export class GameState {
         this.isAlive = true;
         this.inputQueue = null;
         this.startTime = Date.now();
-        this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
-        this.boardGrid = createBoardGrid();
+        if (this.isInfinityMode) {
+            const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
+            this.boardGrid = infinityGrid;
+            this.board = infinityGrid;
+        } else {
+            this.board = null;
+            this.boardGrid = createBoardGrid();
+        }
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
         this.blindTimers = {
@@ -236,7 +275,19 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     piece.type = shapeKey;
     piece.shape = shape;
     piece.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
-    piece.y = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
+
+    // Infinity Mode: spawn pieces at the top of the current viewport (where camera is looking)
+    // Standard Mode: spawn at fixed position (HIDDEN_ROWS - 2)
+    if (gameState.isInfinityMode) {
+        // Spawn at the camera's current top row (or slightly above it)
+        // This ensures pieces always spawn just above the visible area
+        const cameraTopRow = gameState.cameraRow || 0;
+        const spawnOffset = 2; // Spawn 2 rows above the camera's top edge
+        piece.y = Math.max(0, cameraTopRow - spawnOffset);
+    } else {
+        piece.y = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
+    }
+
     piece.color = COLORS[shapeKey];
 
     gameState.currentPiece = piece;
@@ -260,13 +311,17 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     }
 
     // Check if piece can spawn (game over condition)
-    if (!canPlacePiece(
-        gameState,
-        gameState.currentPiece,
-        gameState.currentPiece.x,
-        gameState.currentPiece.y,
-    )) {
-        if (gameOverCallback) gameOverCallback();
+    // In Infinity Mode, game over is handled separately by checkInfinityGameOver
+    // Don't trigger game over here for Infinity Mode
+    if (!gameState.isInfinityMode) {
+        if (!canPlacePiece(
+            gameState,
+            gameState.currentPiece,
+            gameState.currentPiece.x,
+            gameState.currentPiece.y,
+        )) {
+            if (gameOverCallback) gameOverCallback();
+        }
     }
 }
 

@@ -172,9 +172,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                     console.log('[Controls] Settings modal open, Escape will close modal');
                     return;
                 }
-                // Otherwise, toggle pause
-                console.log('[Controls] Toggling pause with Escape');
-                if (togglePause) togglePause();
+                // Open settings menu (pauses game and shows settings)
+                console.log('[Controls] Opening settings menu with Escape');
+                if (gameActions.openSettingsMenu) gameActions.openSettingsMenu();
                 return;
             }
 
@@ -339,6 +339,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             case 'randomTheme':
                 if (gameActions.randomTheme) {
                     gameActions.randomTheme();
+                }
+                break;
+
+            case 'togglePause':
+                if (togglePause) {
+                    togglePause();
                 }
                 break;
 

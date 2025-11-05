@@ -171,6 +171,7 @@ export const GAME_MODES = {
     LOCAL_MULTIPLAYER: 'local-multiplayer',
     ONLINE_MULTIPLAYER: 'online-multiplayer',
     SERENITY: 'serenity',
+    INFINITY: 'infinity',
 };
 
 /**
@@ -231,6 +232,7 @@ export const DEFAULT_SETTINGS = {
         hardDrop: 'Space',
         nextTrack: 'm',
         randomTheme: 'b',
+        togglePause: 'p',
         toggleFullscreen: 'f',
         showHighScores: 'h',
     },

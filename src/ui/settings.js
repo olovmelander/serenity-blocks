@@ -52,6 +52,7 @@ const DEFAULT_CONFIG = {
         hardDrop: 'Space',
         nextTrack: 'm',
         randomTheme: 'b',
+        togglePause: 'p',
         toggleFullscreen: 'f',
         showHighScores: 'h',
     },
