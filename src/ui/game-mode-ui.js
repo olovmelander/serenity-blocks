@@ -19,12 +19,14 @@ export class GameModeUI {
         this.localMultiplayerBtn = document.getElementById('local-multiplayer-btn') || document.getElementById('local-multiplayer-card-btn');
         this.onlineMultiplayerBtn = document.getElementById('online-multiplayer-btn') || document.getElementById('online-multiplayer-card-btn');
         this.serenityBtn = document.getElementById('serenity-btn') || document.getElementById('serenity-card-btn');
+        this.infinityBtn = document.getElementById('infinity-btn') || document.getElementById('infinity-card-btn');
 
         // Mode description elements (may not exist with card design)
         this.singlePlayerDesc = document.getElementById('single-player-desc');
         this.localMultiplayerDesc = document.getElementById('local-multiplayer-desc');
         this.onlineMultiplayerDesc = document.getElementById('online-multiplayer-desc');
         this.serenityDesc = document.getElementById('serenity-desc');
+        this.infinityDesc = document.getElementById('infinity-desc');
 
         this.setupModeButtons();
     }
@@ -56,6 +58,12 @@ export class GameModeUI {
                 await this.selectModeAndStart(GAME_MODES.SERENITY);
             });
         }
+
+        if (this.infinityBtn) {
+            this.infinityBtn.addEventListener('click', async () => {
+                await this.selectModeAndStart(GAME_MODES.INFINITY);
+            });
+        }
     }
 
     /**
@@ -82,11 +90,20 @@ export class GameModeUI {
         this.currentMode = mode;
 
         // Update button states
-        if (this.singlePlayerBtn && this.localMultiplayerBtn && this.onlineMultiplayerBtn && this.serenityBtn) {
+        if (this.singlePlayerBtn) {
             this.singlePlayerBtn.classList.toggle('active', mode === GAME_MODES.SINGLE_PLAYER);
+        }
+        if (this.localMultiplayerBtn) {
             this.localMultiplayerBtn.classList.toggle('active', mode === GAME_MODES.LOCAL_MULTIPLAYER);
+        }
+        if (this.onlineMultiplayerBtn) {
             this.onlineMultiplayerBtn.classList.toggle('active', mode === GAME_MODES.ONLINE_MULTIPLAYER);
+        }
+        if (this.serenityBtn) {
             this.serenityBtn.classList.toggle('active', mode === GAME_MODES.SERENITY);
+        }
+        if (this.infinityBtn) {
+            this.infinityBtn.classList.toggle('active', mode === GAME_MODES.INFINITY);
         }
 
         // Update description visibility
@@ -107,11 +124,20 @@ export class GameModeUI {
      * Update description visibility based on current mode
      */
     updateDescriptionVisibility() {
-        if (this.singlePlayerDesc && this.localMultiplayerDesc && this.onlineMultiplayerDesc && this.serenityDesc) {
+        if (this.singlePlayerDesc) {
             this.singlePlayerDesc.classList.toggle('active', this.currentMode === GAME_MODES.SINGLE_PLAYER);
+        }
+        if (this.localMultiplayerDesc) {
             this.localMultiplayerDesc.classList.toggle('active', this.currentMode === GAME_MODES.LOCAL_MULTIPLAYER);
+        }
+        if (this.onlineMultiplayerDesc) {
             this.onlineMultiplayerDesc.classList.toggle('active', this.currentMode === GAME_MODES.ONLINE_MULTIPLAYER);
+        }
+        if (this.serenityDesc) {
             this.serenityDesc.classList.toggle('active', this.currentMode === GAME_MODES.SERENITY);
+        }
+        if (this.infinityDesc) {
+            this.infinityDesc.classList.toggle('active', this.currentMode === GAME_MODES.INFINITY);
         }
     }
 
@@ -122,8 +148,8 @@ export class GameModeUI {
         const singlePlayerStage = document.querySelector('.single-player-stage');
 
         if (this.singlePlayerContainer && this.multiplayerContainer) {
-            if (this.currentMode === GAME_MODES.SINGLE_PLAYER) {
-                // Show single player stage and container
+            if (this.currentMode === GAME_MODES.SINGLE_PLAYER || this.currentMode === GAME_MODES.INFINITY) {
+                // Show single player stage and container (infinity uses same layout as single player)
                 if (singlePlayerStage) singlePlayerStage.style.display = '';
                 this.singlePlayerContainer.style.display = '';
                 this.multiplayerContainer.style.display = 'none';
