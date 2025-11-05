@@ -1705,6 +1705,10 @@ class SerenityBlocks {
             this.togglePause();
         };
 
+        window.openSettingsMenu = () => {
+            this.openSettingsMenu();
+        };
+
         window.startGame = () => {
             this.startGame();
         };
@@ -1934,6 +1938,7 @@ class SerenityBlocks {
             softDrop: window.softDrop,
             hardDrop: window.hardDrop,
             togglePause: window.togglePause,
+            openSettingsMenu: window.openSettingsMenu,
             startGame: window.startGame,
             initSound: window.initSound,
             nextTrack: window.nextTrack,
@@ -2484,7 +2489,17 @@ class SerenityBlocks {
 
         // Check if GameModeManager has a running mode (Serenity, etc.)
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
+            const currentMode = this.gameModeManager.getCurrentMode();
             this.gameModeManager.pauseCurrentMode();
+
+            // In Infinity Mode, pause (via 'P' key) enables manual camera controls without opening settings
+            // Escape key should call openSettingsMenu() instead for Infinity Mode
+            if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
+                console.log('[Main] Infinity Mode paused - manual camera controls enabled');
+                return;
+            }
+
+            // For other modes, show settings modal
             this.modalManager.show('settings');
             return;
         }
@@ -2494,6 +2509,31 @@ class SerenityBlocks {
 
         this.gameState.isPaused = true;
         this.modalManager.show('settings');
+    }
+
+    /**
+     * Open settings menu (used by Escape key in Infinity Mode)
+     */
+    openSettingsMenu() {
+        if (this.gameState.isGameOver) return;
+
+        // Pause the game if not already paused
+        if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
+            const currentMode = this.gameModeManager.getCurrentMode();
+            if (!currentMode.isPaused) {
+                this.gameModeManager.pauseCurrentMode();
+                // Also sync pause state for Infinity Mode
+                if (currentMode.getModeId && currentMode.getModeId() === 'infinity' && currentMode.gameState) {
+                    currentMode.gameState.isPaused = true;
+                }
+            }
+        } else if (!this.gameState.isPaused) {
+            this.gameState.isPaused = true;
+        }
+
+        // Always show settings modal
+        this.modalManager.show('settings');
+        console.log('[Main] Settings menu opened');
     }
 
     /**

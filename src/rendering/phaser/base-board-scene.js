@@ -78,6 +78,7 @@ export function createBaseBoardScene(
             this.gameState = null;
             this.effectQuality = 'High';
             this.qualityConfig = getQualityConfig(this.effectQuality);
+            this.cameraSettings = null;
             
             // No caching needed - simple is better
         }
@@ -202,13 +203,133 @@ export function createBaseBoardScene(
             const { width, height } = this.getBoardDimensions();
             const { hiddenRows, blockSize } = this.boardConfig;
 
-            // Set the camera bounds to the entire logical canvas size
-            camera.setBounds(0, 0, width, height);
+            const isInfinityMode = this.gameState?.isInfinityMode;
 
-            // Center the camera on the *visible* portion of the board, not the entire canvas.
-            // This is done by offsetting the center point by the height of the hidden rows.
-            const visibleHeight = height - hiddenRows * blockSize;
-            camera.centerOn(width / 2, visibleHeight / 2 + hiddenRows * blockSize);
+            if (isInfinityMode) {
+                const totalRows = this.gameState.board?.length
+                    ?? (this.rows + this.hiddenRows);
+                const visibleRows = this.boardConfig.rows;
+                const visibleHeight = visibleRows * blockSize;
+
+                // START CAMERA AT BOTTOM (showing rows 980-1000)
+                // In a 1000-row grid: row 0 = TOP (goal), row 1000 = BOTTOM (starting point)
+                // Initial camera should show bottom 20 rows (rows 980-1000)
+                const STARTING_CAMERA_ROW = Math.max(0, totalRows - visibleRows);
+                const initialTopRow = STARTING_CAMERA_ROW;
+                const centerY = initialTopRow * blockSize + visibleHeight / 2;
+
+                // Camera bounds encompass entire grid (will expand to 1000 rows)
+                camera.setBounds(0, 0, width, totalRows * blockSize);
+                camera.centerOn(width / 2, centerY);
+
+                this.cameraSettings = {
+                    visibleRows,
+                    visibleHeight,
+                    lerpSpeed: 0.12,
+                    manualControl: false,
+                    topPadding: 6,
+                    bottomPadding: 0,
+                    bottomKeepRows: 4,
+                    pieceLeadRows: Math.ceil(visibleRows * 0.6), // 60% threshold
+                    currentTopRow: initialTopRow,
+                    targetTopRow: initialTopRow,
+                    activeTopRow: initialTopRow,
+                    centerRow: initialTopRow + visibleRows / 2,
+                };
+                camera.setLerp(0.15, 0.15);
+
+                if (this.gameState) {
+                    this.gameState.cameraRow = initialTopRow;
+                    this.gameState.cameraCenterRow = initialTopRow + visibleRows / 2;
+                }
+
+                console.log(`[BaseBoardScene] Infinity camera initialized:`);
+                console.log(`  - Total rows: ${totalRows}`);
+                console.log(`  - Showing rows ${initialTopRow} to ${initialTopRow + visibleRows}`);
+                console.log(`  - Camera Y position: ${centerY}px`);
+            } else {
+                // Set the camera bounds to the entire logical canvas size
+                camera.setBounds(0, 0, width, height);
+
+                // Center the camera on the *visible* portion of the board, not the entire canvas.
+                // This is done by offsetting the center point by the height of the hidden rows.
+                const visibleHeight = height - hiddenRows * blockSize;
+                camera.centerOn(width / 2, visibleHeight / 2 + hiddenRows * blockSize);
+
+                this.cameraSettings = null;
+            }
+        }
+
+        updateCameraPosition(targetRow) {
+            const camera = this.cameras?.main;
+            if (!camera || !this.cameraSettings) return;
+
+            this.updateCameraBounds();
+
+            const blockSize = this.boardConfig.blockSize;
+            const totalRows = this.gameState?.board?.length
+                ?? (this.rows + this.hiddenRows);
+            const visibleRows = this.cameraSettings.visibleRows || this.rows;
+            const bottomPadding = this.cameraSettings.bottomPadding ?? 0;
+
+            const maxTopRow = Math.max(0, totalRows - visibleRows + bottomPadding);
+            const clampedTarget = Math.max(0, Math.min(targetRow, maxTopRow));
+            this.cameraSettings.targetTopRow = clampedTarget;
+
+            const speed = this.cameraSettings.lerpSpeed ?? 0.08;
+            if (this.cameraSettings.manualControl) {
+                this.cameraSettings.currentTopRow = clampedTarget;
+            } else {
+                this.cameraSettings.currentTopRow += (clampedTarget - this.cameraSettings.currentTopRow) * speed;
+            }
+
+            const currentTopRow = Math.max(0, Math.min(this.cameraSettings.currentTopRow, maxTopRow));
+            const centerY = currentTopRow * blockSize + (visibleRows * blockSize) / 2;
+
+            this.updateCameraBounds();
+
+            const { width } = this.getBoardDimensions();
+            camera.centerOn(width / 2, centerY);
+
+            const centerRow = currentTopRow + visibleRows / 2;
+            this.cameraSettings.centerRow = centerRow;
+            this.cameraSettings.activeTopRow = currentTopRow;
+            this.cameraSettings.currentTopRow = currentTopRow;
+
+            if (this.gameState) {
+                this.gameState.cameraRow = currentTopRow;
+                this.gameState.cameraCenterRow = centerRow;
+            }
+        }
+
+        updateCameraBounds() {
+            const camera = this.cameras?.main;
+            if (!camera || !this.cameraSettings) return;
+
+            const blockSize = this.boardConfig.blockSize;
+            const totalRows = this.gameState?.board?.length
+                ?? (this.rows + this.hiddenRows);
+            const totalHeight = totalRows * blockSize;
+            const { width } = this.getBoardDimensions();
+
+            camera.setBounds(0, 0, width, totalHeight);
+        }
+
+        enableManualCameraControl() {
+            if (!this.cameraSettings) return;
+            this.cameraSettings.manualControl = true;
+        }
+
+        disableManualCameraControl() {
+            if (!this.cameraSettings) return;
+            this.cameraSettings.manualControl = false;
+        }
+
+        moveCamera(deltaRows) {
+            if (!this.cameraSettings?.manualControl) return;
+
+            const targetTopRow = this.cameraSettings.targetTopRow + deltaRows;
+            this.updateCameraPosition(targetTopRow);
         }
 
         /**
@@ -550,17 +671,31 @@ export function createBaseBoardScene(
         }
 
         isValidPosition(checkX, checkY, shape) {
+            const boardGrid = this.gameState?.boardGrid;
+            const totalRows = boardGrid?.length ?? (this.rows + this.hiddenRows);
+
             for (let row = 0; row < shape.length; row++) {
                 for (let col = 0; col < shape[row].length; col++) {
-                    if (shape[row][col] > 0) {
-                        const newX = checkX + col;
-                        const newY = checkY + row;
+                    if (shape[row][col] <= 0) continue;
 
-                        if (newX < 0 || newX >= this.cols || newY >= this.rows + this.hiddenRows) {
-                            return false;
-                        }
+                    const newX = checkX + col;
+                    const newY = checkY + row;
 
-                        if (this.gameState?.lockedPieces) {
+                    if (newX < 0 || newX >= this.cols) {
+                        return false;
+                    }
+
+                    if (newY >= totalRows) {
+                        return false;
+                    }
+
+                    if (newY >= 0) {
+                        if (boardGrid) {
+                            const cell = boardGrid[newY]?.[newX];
+                            if (cell) {
+                                return false;
+                            }
+                        } else if (this.gameState?.lockedPieces) {
                             for (const locked of this.gameState.lockedPieces) {
                                 for (let ly = 0; ly < locked.shape.length; ly++) {
                                     for (let lx = 0; lx < locked.shape[ly].length; lx++) {
@@ -576,6 +711,7 @@ export function createBaseBoardScene(
                     }
                 }
             }
+
             return true;
         }
 

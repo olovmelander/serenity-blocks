@@ -309,6 +309,15 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
+            // Trigger combo visual effects
+            triggerCombo: (comboCount) => {
+                const settings = this.deps.settingsManager.get();
+                const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+                if (settings.comboPopupEffect && boardScene) {
+                    boardScene.showComboPopup(comboCount);
+                    console.log(`[SinglePlayer] Combo popup triggered: ${comboCount}x`);
+                }
+            },
             // Piece lock ripple effect
             onPieceLock: (piece) => {
                 const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');

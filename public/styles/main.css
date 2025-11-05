@@ -5154,6 +5154,54 @@ body {
             width: auto;
         }
 
+        .game-container.single-player-layout.infinity-mode-active {
+            flex-direction: row;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 32px;
+            width: auto;
+            min-width: auto;
+            padding: 12px 0;
+        }
+
+        .single-player-stage.infinity-mode-active {
+            gap: 36px;
+            align-items: flex-start;
+        }
+
+        #single-player-container.infinity-mode-active .floating-settings-btn {
+            order: 3;
+            align-self: flex-start;
+            margin-top: 4px;
+            margin-left: auto;
+        }
+
+        #infinity-side-panels {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 24px;
+            min-width: 0;
+            order: 2;
+            flex-wrap: nowrap;
+            flex: 0 0 auto;
+        }
+
+        #infinity-side-panels > * {
+            flex: 0 0 auto;
+        }
+
+        #single-player-container.infinity-mode-active .single-player-card {
+            order: 1;
+            --player-primary: #3b82f6;
+            --player-primary-light: #93c5fd;
+            --player-glow: rgba(59, 130, 246, 0.35);
+        }
+
+        .single-player-stage.infinity-mode-active .single-player-stats-bar {
+            display: none !important;
+        }
+
         .single-player-card {
             --player-primary: #8b5cf6;
             --player-primary-light: #c4b5fd;
