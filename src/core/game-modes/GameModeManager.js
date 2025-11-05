@@ -2,6 +2,7 @@ import { SinglePlayerMode } from './SinglePlayerMode.js';
 import { LocalMultiplayerMode } from './LocalMultiplayerMode.js';
 import { OnlineMultiplayerMode } from './OnlineMultiplayerMode.js';
 import { SerenityMode } from './SerenityMode.js';
+import { InfinityMode } from './InfinityMode.js';
 import { GAME_MODES } from '../constants.js';
 
 /**
@@ -55,6 +56,7 @@ export class GameModeManager {
         this.registerMode(new LocalMultiplayerMode(this.deps));
         this.registerMode(new OnlineMultiplayerMode(this.deps));
         this.registerMode(new SerenityMode(this.deps));
+        this.registerMode(new InfinityMode(this.deps));
     }
 
     /**
