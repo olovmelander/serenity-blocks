@@ -179,9 +179,19 @@ export class InfinityMode extends BaseGameMode {
             if (this.boardScene && this.gameState.isPaused) {
                 const centerRow = event.detail.targetRow;
                 const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-                const targetTopRow = Math.max(0, centerRow - visibleRows / 2);
+                const totalRows = this.gameState.board.length;
+
+                // Calculate target top row (centerRow - half viewport)
+                let targetTopRow = centerRow - Math.floor(visibleRows / 2);
+
+                // Clamp to valid camera range
+                // Min: 0 (show rows 0-20 at the top)
+                // Max: totalRows - visibleRows (show bottom rows)
+                const maxCameraRow = Math.max(0, totalRows - visibleRows);
+                targetTopRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
+
                 this.boardScene.updateCameraPosition(targetTopRow);
-                console.log('[Infinity] Minimap jump to top row:', targetTopRow);
+                console.log('[Infinity] Minimap jump: clicked row', centerRow, '→ camera top row:', targetTopRow);
             }
         });
 
@@ -505,11 +515,24 @@ export class InfinityMode extends BaseGameMode {
         const currentSize = this.gameState.board.length;
         const requiredRows = Math.min(this.gameState.maxRows, currentSize + 10);
 
+        // Store current camera position before expansion
+        const oldCameraRow = this.boardScene.cameraSettings.currentTopRow || 0;
+
         if (expandGridIfNeeded(this.gameState, requiredRows)) {
+            const rowsAdded = this.gameState.board.length - currentSize;
             console.log('[Infinity] Grid expanded:', currentSize, '→', this.gameState.board.length, 'rows');
+            console.log('[Infinity] Rows added at top:', rowsAdded);
+
+            // CRITICAL FIX: Update camera position to compensate for new rows added at the top
+            // When rows are added at the top, all existing content shifts down by rowsAdded
+            // So we need to shift the camera down by the same amount to keep the view stable
+            const newCameraRow = oldCameraRow + rowsAdded;
 
             if (this.boardScene) {
                 this.boardScene.updateCameraBounds();
+                // Update camera position to maintain the same view
+                this.boardScene.updateCameraPosition(newCameraRow);
+                console.log('[Infinity] Camera adjusted for grid expansion:', oldCameraRow, '→', newCameraRow);
             }
 
             if (this.gameState.infinityStats) {
@@ -844,20 +867,40 @@ export class InfinityMode extends BaseGameMode {
         // Find highest block (smallest row number where blocks exist)
         const highestBlockRow = this._findHighestBlockRow();
 
-        // Calculate threshold: 60% down from TOP of viewport
-        // If viewport shows rows 980-1000, threshold is at row 988
-        const thresholdRow = currentCameraRow + Math.floor(visibleRows * 0.6);
+        // If no blocks exist yet (highestBlockRow == board.length), don't move camera
+        // This prevents the camera from jumping at game start
+        if (highestBlockRow >= this.gameState.board.length) {
+            // No blocks placed yet, keep camera at initial position (bottom)
+            this.gameState.cameraRow = currentCameraRow;
+            return;
+        }
+
+        // CRITICAL: Camera should stay at bottom until blocks reach near the TOP of viewport
+        // Calculate the maximum bottom position (where camera should stay initially)
+        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+
+        // Only start scrolling UP when blocks reach the top 30% of the viewport
+        // This keeps the bottom visible as long as possible
+        const scrollThreshold = currentCameraRow + Math.floor(visibleRows * 0.3);
+
+        // If we're at the bottom position and blocks haven't reached the scroll threshold yet,
+        // stay at the bottom to keep all placed blocks visible
+        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= scrollThreshold) {
+            // Still at bottom, blocks haven't filled enough of the viewport yet
+            this.gameState.cameraRow = currentCameraRow;
+            return;
+        }
 
         // If blocks have built UP past the threshold (smaller row number than threshold)
         // then scroll camera UP (decrease camera row)
-        if (highestBlockRow < thresholdRow) {
-            // Target: keep highest blocks at 60% position in viewport
-            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.6);
+        if (highestBlockRow < scrollThreshold) {
+            // Target: keep highest blocks at 30% position in viewport (closer to top)
+            // This ensures bottom blocks remain visible longer
+            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
 
             // Clamp to valid range
             // Min: 0 (can show rows 0-20 at the very top)
             // Max: (totalRows - visibleRows) (can show bottom rows)
-            const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
             const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
 
             // Update camera (lerp handles smooth transition)
@@ -866,7 +909,7 @@ export class InfinityMode extends BaseGameMode {
             // Store for minimap
             this.gameState.cameraRow = clampedCameraRow;
 
-            if (highestBlockRow < currentCameraRow + 10) { // Only log when significantly changed
+            if (highestBlockRow < currentCameraRow + 5) { // Only log when significantly changed
                 console.log(`[Infinity] Camera following: highest block at row ${highestBlockRow}, camera at row ${clampedCameraRow}`);
             }
         } else {
