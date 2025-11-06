@@ -862,8 +862,9 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Updates camera to follow player's building progress upward
+     * Updates camera to follow player's building progress upward and falling pieces downward
      * Camera scrolls UP (toward row 0) as blocks fill the viewport
+     * Camera scrolls DOWN to follow soft-dropping pieces
      * @private
      */
     _updateCameraPosition() {
@@ -879,6 +880,35 @@ export class InfinityMode extends BaseGameMode {
         // Calculate current viewport in row coordinates
         const currentCameraRow = Math.floor(camera.scrollY / blockSize);
         const viewportBottomRow = currentCameraRow + visibleRows;
+
+        // Check if we need to follow a falling piece
+        const currentPiece = this.gameState.currentPiece;
+        if (currentPiece) {
+            // Calculate the bottom of the current piece
+            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
+
+            // Define the threshold - when piece goes below 50% of viewport, follow it
+            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.5);
+
+            // If piece is below the follow threshold, smoothly follow it down
+            if (pieceBottomRow > followThreshold) {
+                // Calculate the maximum camera position (bottom of grid)
+                const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+
+                // Target: keep piece at 50% position in viewport (center)
+                const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
+
+                // Clamp to valid range
+                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+
+                // Update camera (lerp handles smooth transition)
+                this.boardScene.updateCameraPosition(clampedCameraRow);
+
+                // Store for minimap
+                this.gameState.cameraRow = clampedCameraRow;
+                return; // Exit early - we're following the piece
+            }
+        }
 
         // Find highest block (smallest row number where blocks exist)
         const highestBlockRow = this._findHighestBlockRow();
