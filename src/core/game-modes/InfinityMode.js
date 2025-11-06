@@ -517,22 +517,38 @@ export class InfinityMode extends BaseGameMode {
 
         // Store current camera position before expansion
         const oldCameraRow = this.boardScene.cameraSettings.currentTopRow || 0;
+        const oldTargetRow = this.boardScene.cameraSettings.targetTopRow || 0;
 
         if (expandGridIfNeeded(this.gameState, requiredRows)) {
             const rowsAdded = this.gameState.board.length - currentSize;
             console.log('[Infinity] Grid expanded:', currentSize, '→', this.gameState.board.length, 'rows');
             console.log('[Infinity] Rows added at top:', rowsAdded);
 
-            // CRITICAL FIX: Update camera position to compensate for new rows added at the top
+            // SMOOTH CAMERA TRANSITION FIX: Update both current and target camera positions
             // When rows are added at the top, all existing content shifts down by rowsAdded
-            // So we need to shift the camera down by the same amount to keep the view stable
+            // We update both positions so the lerp system can smoothly transition
             const newCameraRow = oldCameraRow + rowsAdded;
+            const newTargetRow = oldTargetRow + rowsAdded;
 
             if (this.boardScene) {
                 this.boardScene.updateCameraBounds();
-                // Update camera position to maintain the same view
-                this.boardScene.updateCameraPosition(newCameraRow);
-                console.log('[Infinity] Camera adjusted for grid expansion:', oldCameraRow, '→', newCameraRow);
+
+                // Update the current position directly to maintain visual continuity
+                // This prevents the jump by keeping the viewport stable
+                this.boardScene.cameraSettings.currentTopRow = newCameraRow;
+                this.boardScene.cameraSettings.activeTopRow = newCameraRow;
+
+                // Update target position for smooth lerping to the correct position
+                this.boardScene.cameraSettings.targetTopRow = newTargetRow;
+
+                // Immediately update camera to the new position (no jump because we're compensating)
+                const blockSize = this.boardScene.boardConfig?.blockSize || 30;
+                const visibleRows = this.boardScene.cameraSettings.visibleRows;
+                const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
+                const { width } = this.boardScene.getBoardDimensions();
+                this.boardScene.cameras.main.centerOn(width / 2, centerY);
+
+                console.log('[Infinity] Camera smoothly adjusted for grid expansion:', oldCameraRow, '→', newCameraRow);
             }
 
             if (this.gameState.infinityStats) {
