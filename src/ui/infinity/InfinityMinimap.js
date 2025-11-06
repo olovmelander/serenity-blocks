@@ -134,8 +134,7 @@ export class InfinityMinimap {
      * Show minimap
      */
     show() {
-        const panel = document.getElementById('infinity-side-panels')
-            || document.getElementById('single-player-container');
+        const panel = document.getElementById('single-player-container');
 
         if (panel && this.container.parentElement !== panel) {
             panel.appendChild(this.container);

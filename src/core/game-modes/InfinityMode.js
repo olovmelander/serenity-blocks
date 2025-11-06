@@ -371,26 +371,9 @@ export class InfinityMode extends BaseGameMode {
         if (enable) {
             stage.classList.add('infinity-mode-active');
             container.classList.add('infinity-mode-active');
-
-            let sidePanel = document.getElementById('infinity-side-panels');
-            if (!sidePanel) {
-                sidePanel = document.createElement('div');
-                sidePanel.id = 'infinity-side-panels';
-                sidePanel.className = 'infinity-side-panels';
-                container.appendChild(sidePanel);
-            }
-
-            this.infinitySidePanel = sidePanel;
         } else {
             stage.classList.remove('infinity-mode-active');
             container.classList.remove('infinity-mode-active');
-
-            const sidePanel = document.getElementById('infinity-side-panels');
-            if (sidePanel && sidePanel.children.length === 0) {
-                sidePanel.remove();
-            }
-
-            this.infinitySidePanel = null;
 
             const statsBar = document.querySelector('.single-player-stats-bar');
             if (statsBar) {
