@@ -532,17 +532,32 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: (lines) => {
-                if (lines === 4) {
-                    this.deps.soundManager.sfxPlayer.playTetris();
-                } else {
-                    this.deps.soundManager.sfxPlayer.playLineClear();
-                }
+            onLineClear: () => {
+                this.deps.soundManager.sfxPlayer.playLineClear();
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
             onGarbageReceived: () => this.deps.soundManager.sfxPlayer.playGarbageReceived?.(),
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
+            // Trigger combo visual effects
+            triggerCombo: (comboCount) => {
+                const settings = this.deps.settingsManager.get();
+                // Show combo effects on all active board scenes
+                this.boardScenes.forEach((scene) => {
+                    if (scene && settings.comboPopupEffect && scene.showComboPopup) {
+                        scene.showComboPopup(comboCount);
+                    }
+                });
+            },
+            // Trigger cascade wave visual effect
+            triggerCascadeWave: (cascadeCount) => {
+                // Show cascade wave on all active board scenes
+                this.boardScenes.forEach((scene) => {
+                    if (scene && scene.sharedEffects && scene.sharedEffects.showCascadeWave) {
+                        scene.sharedEffects.showCascadeWave(cascadeCount);
+                    }
+                });
+            },
         };
     }
 
