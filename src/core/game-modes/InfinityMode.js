@@ -728,6 +728,18 @@ export class InfinityMode extends BaseGameMode {
                 this.lastDropWasHard = false;
                 this.suppressFollowUntilLock = false;
             },
+            // Update camera during each gravity step to follow falling blocks
+            onGravityStep: () => {
+                // Update camera every frame during gravity to smoothly follow the cascade
+                this._updateCameraAfterCascade();
+            },
+            // Update camera after cascade completes
+            onCascadeComplete: (cascadeCount) => {
+                if (cascadeCount > 0) {
+                    // After cascade, do final camera position update
+                    this._updateCameraAfterCascade();
+                }
+            },
             // Spawn next piece after physics completes
             spawnPiece: () => {
                 spawnPiece(
@@ -1132,6 +1144,52 @@ export class InfinityMode extends BaseGameMode {
         } else {
             // Not past threshold yet, keep current camera position
             this.gameState.cameraRow = currentCameraRow;
+        }
+    }
+
+    /**
+     * Update camera after a cascade completes to follow new highest block position
+     * @private
+     */
+    _updateCameraAfterCascade() {
+        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+        if (this.boardScene.cameraSettings.manualControl) return; // Don't interfere with manual control
+
+        const camera = this.boardScene.cameras.main;
+        const cameraSettings = this.boardScene.cameraSettings;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const blockSize = this.boardScene.boardConfig?.blockSize || 30;
+
+        // Find the new highest block position after cascade
+        const highestBlockRow = this._findHighestBlockRow();
+
+        if (highestBlockRow >= this.gameState.board.length) {
+            // No blocks left, return
+            return;
+        }
+
+        // Get current camera position
+        const currentCameraRow = Math.floor(camera.scrollY / blockSize);
+
+        const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.25);
+        const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.75);
+        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+
+        let targetCameraRow = null;
+
+        if (highestBlockRow < topThreshold) {
+            // Blocks moved upward (closer to row 0) - keep them near top third
+            targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+        } else if (highestBlockRow > bottomThreshold) {
+            // Blocks cascaded downward and are exiting bottom of viewport
+            targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.7);
+        }
+
+        if (targetCameraRow !== null) {
+            const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+            this.boardScene.updateCameraPosition(clampedCameraRow);
+            this.gameState.cameraRow = clampedCameraRow;
+            console.log(`[Infinity] Camera updated after cascade: highest block at row ${highestBlockRow}, camera → row ${clampedCameraRow}`);
         }
     }
 
