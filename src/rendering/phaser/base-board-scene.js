@@ -225,7 +225,7 @@ export function createBaseBoardScene(
                 this.cameraSettings = {
                     visibleRows,
                     visibleHeight,
-                    lerpSpeed: 0.12,
+                    lerpSpeed: 0.08, // Smooth but responsive lerp speed
                     manualControl: false,
                     topPadding: 6,
                     bottomPadding: 0,
@@ -236,7 +236,8 @@ export function createBaseBoardScene(
                     activeTopRow: initialTopRow,
                     centerRow: initialTopRow + visibleRows / 2,
                 };
-                camera.setLerp(0.15, 0.15);
+                // Buttery smooth camera lerp - slower lerp for smoother, more elegant transitions
+                camera.setLerp(0.08, 0.08);
 
                 if (this.gameState) {
                     this.gameState.cameraRow = initialTopRow;
@@ -260,7 +261,7 @@ export function createBaseBoardScene(
             }
         }
 
-        updateCameraPosition(targetRow) {
+        updateCameraPosition(targetRow, instant = false) {
             const camera = this.cameras?.main;
             if (!camera || !this.cameraSettings) return;
 
@@ -277,7 +278,7 @@ export function createBaseBoardScene(
             this.cameraSettings.targetTopRow = clampedTarget;
 
             const speed = this.cameraSettings.lerpSpeed ?? 0.08;
-            if (this.cameraSettings.manualControl) {
+            if (this.cameraSettings.manualControl || instant) {
                 this.cameraSettings.currentTopRow = clampedTarget;
             } else {
                 this.cameraSettings.currentTopRow += (clampedTarget - this.cameraSettings.currentTopRow) * speed;

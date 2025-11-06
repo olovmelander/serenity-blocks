@@ -6,6 +6,7 @@ import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
+import { TranceStateEffects } from '../../rendering/phaser/trance-state-effects.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -43,6 +44,25 @@ export class InfinityMode extends BaseGameMode {
         // Event handlers (bound for proper cleanup)
         this.handleKeyPress = this._onKeyPress.bind(this);
         this.handleWheel = this._onWheel.bind(this);
+
+        // Trance state effects for pause
+        this.tranceEffects = null;
+
+        // Track if we were following a soft-dropping piece
+        this.wasFollowingPiece = false;
+        this.followMemoryFrames = 0;
+        this.followMemoryDuration = 12;
+
+        // Cooldown to prevent camera follow immediately after snapping
+        this.snapCooldownFrames = 0;
+        this.snapCooldownDuration = 18;
+
+        // Track whether the last drop action was a hard drop
+        this.lastDropWasHard = false;
+        this.suppressFollowUntilLock = false;
+
+        // Cache physics callbacks so input handlers can reuse them
+        this.physicsCallbacks = null;
     }
 
     /**
@@ -179,9 +199,19 @@ export class InfinityMode extends BaseGameMode {
             if (this.boardScene && this.gameState.isPaused) {
                 const centerRow = event.detail.targetRow;
                 const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-                const targetTopRow = Math.max(0, centerRow - visibleRows / 2);
+                const totalRows = this.gameState.board.length;
+
+                // Calculate target top row (centerRow - half viewport)
+                let targetTopRow = centerRow - Math.floor(visibleRows / 2);
+
+                // Clamp to valid camera range
+                // Min: 0 (show rows 0-20 at the top)
+                // Max: totalRows - visibleRows (show bottom rows)
+                const maxCameraRow = Math.max(0, totalRows - visibleRows);
+                targetTopRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
+
                 this.boardScene.updateCameraPosition(targetTopRow);
-                console.log('[Infinity] Minimap jump to top row:', targetTopRow);
+                console.log('[Infinity] Minimap jump: clicked row', centerRow, '→ camera top row:', targetTopRow);
             }
         });
 
@@ -216,6 +246,13 @@ export class InfinityMode extends BaseGameMode {
             this._setupCameraControls();
             console.log('[Infinity] Camera controls enabled - Use arrow keys, Page Up/Down, or mouse wheel to navigate');
         }
+
+        // Start trance state visual effects
+        if (this.boardScene && !this.tranceEffects) {
+            this.tranceEffects = new TranceStateEffects(this.boardScene);
+            this.tranceEffects.start();
+            console.log('[Infinity] Trance state effects activated');
+        }
     }
 
     /**
@@ -228,6 +265,14 @@ export class InfinityMode extends BaseGameMode {
         // Sync pause state to gameState
         if (this.gameState) {
             this.gameState.isPaused = false;
+        }
+
+        // Stop trance state visual effects
+        if (this.tranceEffects) {
+            this.tranceEffects.stop();
+            this.tranceEffects.destroy();
+            this.tranceEffects = null;
+            console.log('[Infinity] Trance state effects deactivated');
         }
 
         // Disable camera navigation, return to auto-follow
@@ -288,6 +333,13 @@ export class InfinityMode extends BaseGameMode {
         if (this.heightHUD) {
             this.heightHUD.destroy();
             this.heightHUD = null;
+        }
+
+        // Clean up trance effects if active
+        if (this.tranceEffects) {
+            this.tranceEffects.stop();
+            this.tranceEffects.destroy();
+            this.tranceEffects = null;
         }
 
         // Remove Infinity layout styling
@@ -371,26 +423,9 @@ export class InfinityMode extends BaseGameMode {
         if (enable) {
             stage.classList.add('infinity-mode-active');
             container.classList.add('infinity-mode-active');
-
-            let sidePanel = document.getElementById('infinity-side-panels');
-            if (!sidePanel) {
-                sidePanel = document.createElement('div');
-                sidePanel.id = 'infinity-side-panels';
-                sidePanel.className = 'infinity-side-panels';
-                container.appendChild(sidePanel);
-            }
-
-            this.infinitySidePanel = sidePanel;
         } else {
             stage.classList.remove('infinity-mode-active');
             container.classList.remove('infinity-mode-active');
-
-            const sidePanel = document.getElementById('infinity-side-panels');
-            if (sidePanel && sidePanel.children.length === 0) {
-                sidePanel.remove();
-            }
-
-            this.infinitySidePanel = null;
 
             const statsBar = document.querySelector('.single-player-stats-bar');
             if (statsBar) {
@@ -488,7 +523,7 @@ export class InfinityMode extends BaseGameMode {
                         }
                     },
                     () => this.deps.soundManager.sfxPlayer.playDrop(),
-                    this._getPhysicsCallbacks()
+                    this.getPhysicsCallbacks()
                 );
             }
 
@@ -522,11 +557,40 @@ export class InfinityMode extends BaseGameMode {
         const currentSize = this.gameState.board.length;
         const requiredRows = Math.min(this.gameState.maxRows, currentSize + 10);
 
+        // Store current camera position before expansion
+        const oldCameraRow = this.boardScene.cameraSettings.currentTopRow || 0;
+        const oldTargetRow = this.boardScene.cameraSettings.targetTopRow || 0;
+
         if (expandGridIfNeeded(this.gameState, requiredRows)) {
+            const rowsAdded = this.gameState.board.length - currentSize;
             console.log('[Infinity] Grid expanded:', currentSize, '→', this.gameState.board.length, 'rows');
+            console.log('[Infinity] Rows added at top:', rowsAdded);
+
+            // SMOOTH CAMERA TRANSITION FIX: Update both current and target camera positions
+            // When rows are added at the top, all existing content shifts down by rowsAdded
+            // We update both positions so the lerp system can smoothly transition
+            const newCameraRow = oldCameraRow + rowsAdded;
+            const newTargetRow = oldTargetRow + rowsAdded;
 
             if (this.boardScene) {
                 this.boardScene.updateCameraBounds();
+
+                // Update the current position directly to maintain visual continuity
+                // This prevents the jump by keeping the viewport stable
+                this.boardScene.cameraSettings.currentTopRow = newCameraRow;
+                this.boardScene.cameraSettings.activeTopRow = newCameraRow;
+
+                // Update target position for smooth lerping to the correct position
+                this.boardScene.cameraSettings.targetTopRow = newTargetRow;
+
+                // Immediately update camera to the new position (no jump because we're compensating)
+                const blockSize = this.boardScene.boardConfig?.blockSize || 30;
+                const visibleRows = this.boardScene.cameraSettings.visibleRows;
+                const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
+                const { width } = this.boardScene.getBoardDimensions();
+                this.boardScene.cameras.main.centerOn(width / 2, centerY);
+
+                console.log('[Infinity] Camera smoothly adjusted for grid expansion:', oldCameraRow, '→', newCameraRow);
             }
 
             if (this.gameState.infinityStats) {
@@ -542,8 +606,16 @@ export class InfinityMode extends BaseGameMode {
      * Get physics callbacks for sound effects and piece spawning
      * @private
      */
+    getPhysicsCallbacks() {
+        return this._getPhysicsCallbacks();
+    }
+
     _getPhysicsCallbacks() {
-        return {
+        if (this.physicsCallbacks) {
+            return this.physicsCallbacks;
+        }
+
+        this.physicsCallbacks = {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
             onLineClear: (lines) => {
@@ -580,7 +652,17 @@ export class InfinityMode extends BaseGameMode {
             onLevelUp: () => {
                 // Level up disabled in infinity mode, but keep callback for compatibility
             },
-            onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
+            onHardDrop: () => {
+                this.lastDropWasHard = true;
+                this.suppressFollowUntilLock = true;
+
+                const sfxPlayer = this.deps.soundManager?.sfxPlayer;
+                if (sfxPlayer?.playHardDrop) {
+                    sfxPlayer.playHardDrop();
+                } else if (sfxPlayer?.playDrop) {
+                    sfxPlayer.playDrop();
+                }
+            },
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
                 const settings = this.deps.settingsManager.get();
@@ -599,6 +681,20 @@ export class InfinityMode extends BaseGameMode {
                 if (this.gameState.infinityStats) {
                     this.gameState.infinityStats.blocksPlaced += 4; // Approximate blocks per piece
                 }
+
+                const lockedBelowViewport = this._didPieceLockBelowViewport(piece);
+                const hardDropSnap = this.lastDropWasHard && lockedBelowViewport;
+
+                // If we were (recently) following a soft- or hard-dropped piece that landed out of view, snap back to the top
+                if (this.wasFollowingPiece || lockedBelowViewport || hardDropSnap) {
+                    this._snapCameraToTopArea();
+                    this.wasFollowingPiece = false;
+                    this.followMemoryFrames = 0;
+                    this.snapCooldownFrames = this.snapCooldownDuration;
+                }
+                // Reset hard drop tracking flags after handling the lock event
+                this.lastDropWasHard = false;
+                this.suppressFollowUntilLock = false;
             },
             // Spawn next piece after physics completes
             spawnPiece: () => {
@@ -609,6 +705,8 @@ export class InfinityMode extends BaseGameMode {
                 );
             },
         };
+
+        return this.physicsCallbacks;
     }
 
     /**
@@ -818,6 +916,50 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
+     * Determine if the locked piece finished below the current viewport.
+     * @param {Object} piece
+     * @private
+     */
+    _didPieceLockBelowViewport(piece) {
+        if (!piece || !this.boardScene?.cameraSettings) return false;
+
+        const cameraSettings = this.boardScene.cameraSettings;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const cameraTopRow = Math.floor(cameraSettings.activeTopRow ?? cameraSettings.currentTopRow ?? 0);
+        const cameraBottomRow = cameraTopRow + visibleRows - 1;
+
+        const pieceBottomRow = piece.y + (piece.shape?.length || 0) - 1;
+
+        return pieceBottomRow >= cameraBottomRow;
+    }
+
+    /**
+     * Quickly snap camera back to the top area after locking a soft-dropped piece
+     * @private
+     */
+    _snapCameraToTopArea() {
+        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+
+        const cameraSettings = this.boardScene.cameraSettings;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const highestBlockRow = this._findHighestBlockRow();
+
+        let targetTopRow;
+
+        if (highestBlockRow >= this.gameState.board.length) {
+            targetTopRow = Math.max(0, this.gameState.board.length - visibleRows);
+            console.log(`[Infinity] Camera snapped to bottom: row ${targetTopRow}`);
+        } else {
+            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+            const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+            targetTopRow = Math.max(0, Math.min(maxCameraRow, preferredRow));
+            console.log(`[Infinity] Camera snapped back to top area: row ${targetTopRow} (highest block: ${highestBlockRow})`);
+        }
+
+        this.boardScene.updateCameraPosition(targetTopRow, true);
+    }
+
+    /**
      * Finds the highest block position (smallest row number with blocks)
      * @returns {number} Row number (0-999), or maxRows if no blocks exist
      * @private
@@ -840,8 +982,9 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Updates camera to follow player's building progress upward
+     * Updates camera to follow player's building progress upward and falling pieces downward
      * Camera scrolls UP (toward row 0) as blocks fill the viewport
+     * Camera scrolls DOWN to follow soft-dropping pieces
      * @private
      */
     _updateCameraPosition() {
@@ -858,23 +1001,91 @@ export class InfinityMode extends BaseGameMode {
         const currentCameraRow = Math.floor(camera.scrollY / blockSize);
         const viewportBottomRow = currentCameraRow + visibleRows;
 
+        // Check if we need to follow a falling piece
+        const currentPiece = this.gameState.currentPiece;
+        if (this.snapCooldownFrames > 0) {
+            this.snapCooldownFrames--;
+            return;
+        }
+
+        if (currentPiece && !this.suppressFollowUntilLock) {
+            // Calculate the bottom of the current piece
+            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
+
+            // Define the threshold - when piece goes below 50% of viewport, follow it
+            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.5);
+
+            // If piece is below the follow threshold, smoothly follow it down
+            if (pieceBottomRow > followThreshold) {
+                // Calculate the maximum camera position (bottom of grid)
+                const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+
+                // Target: keep piece at 50% position in viewport (center)
+                const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
+
+                // Clamp to valid range
+                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+
+                // Update camera (lerp handles smooth transition)
+                this.boardScene.updateCameraPosition(clampedCameraRow);
+
+                // Store for minimap
+                this.gameState.cameraRow = clampedCameraRow;
+
+                // Mark that we're following a piece (and remember it for a few frames)
+                this.wasFollowingPiece = true;
+                this.followMemoryFrames = this.followMemoryDuration;
+
+                return; // Exit early - we're following the piece
+            }
+        }
+
+        if (this.followMemoryFrames > 0) {
+            this.followMemoryFrames--;
+            if (this.followMemoryFrames === 0) {
+                this.wasFollowingPiece = false;
+            }
+        } else {
+            this.wasFollowingPiece = false;
+        }
+
         // Find highest block (smallest row number where blocks exist)
         const highestBlockRow = this._findHighestBlockRow();
 
-        // Calculate threshold: 60% down from TOP of viewport
-        // If viewport shows rows 980-1000, threshold is at row 988
-        const thresholdRow = currentCameraRow + Math.floor(visibleRows * 0.6);
+        // If no blocks exist yet (highestBlockRow == board.length), don't move camera
+        // This prevents the camera from jumping at game start
+        if (highestBlockRow >= this.gameState.board.length) {
+            // No blocks placed yet, keep camera at initial position (bottom)
+            this.gameState.cameraRow = currentCameraRow;
+            return;
+        }
+
+        // CRITICAL: Camera should stay at bottom until blocks reach near the TOP of viewport
+        // Calculate the maximum bottom position (where camera should stay initially)
+        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+
+        // Only start scrolling UP when blocks reach the top 30% of the viewport
+        // This keeps the bottom visible as long as possible
+        const scrollThreshold = currentCameraRow + Math.floor(visibleRows * 0.3);
+
+        // If we're at the bottom position and blocks haven't reached the scroll threshold yet,
+        // stay at the bottom to keep all placed blocks visible
+        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= scrollThreshold) {
+            // Still at bottom, blocks haven't filled enough of the viewport yet
+            this.gameState.cameraRow = currentCameraRow;
+            return;
+        }
 
         // If blocks have built UP past the threshold (smaller row number than threshold)
         // then scroll camera UP (decrease camera row)
-        if (highestBlockRow < thresholdRow) {
-            // Target: keep highest blocks at 60% position in viewport
-            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.6);
+        if (highestBlockRow < scrollThreshold) {
+            // Target: keep highest blocks at 30% position in viewport (closer to top)
+            // This ensures bottom blocks remain visible longer
+            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
 
             // Clamp to valid range
             // Min: 0 (can show rows 0-20 at the very top)
             // Max: (totalRows - visibleRows) (can show bottom rows)
-            const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
             const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
 
             // Update camera (lerp handles smooth transition)
@@ -883,7 +1094,7 @@ export class InfinityMode extends BaseGameMode {
             // Store for minimap
             this.gameState.cameraRow = clampedCameraRow;
 
-            if (highestBlockRow < currentCameraRow + 10) { // Only log when significantly changed
+            if (highestBlockRow < currentCameraRow + 5) { // Only log when significantly changed
                 console.log(`[Infinity] Camera following: highest block at row ${highestBlockRow}, camera at row ${clampedCameraRow}`);
             }
         } else {

@@ -1489,6 +1489,14 @@ class SerenityBlocks {
      * Get physics callbacks for piece locking
      */
     getPhysicsCallbacks() {
+        const currentMode = this.gameModeManager?.getCurrentMode();
+        if (currentMode && typeof currentMode.getPhysicsCallbacks === 'function') {
+            const modeCallbacks = currentMode.getPhysicsCallbacks();
+            if (modeCallbacks) {
+                return modeCallbacks;
+            }
+        }
+
         const getState = () => this.getActiveGameState();
 
         return {

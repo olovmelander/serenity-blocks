@@ -460,7 +460,6 @@
 .shrink-to-logo {
     animation: shrinkToLogo 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
     position: fixed !important;
-    top: 0 !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
     z-index: 200 !important;
@@ -486,7 +485,7 @@
         transform: translate(-50%, -50%) perspective(1000px);
     }
     to {
-        top: 30px;
+        top: 35px;
         transform: translate(-50%, 0) perspective(1000px) scale(0.4);
     }
 }
@@ -515,7 +514,7 @@
 @media (max-width: 768px) {
     @keyframes shrinkToLogo {
         to {
-            top: 20px;
+            top: 30px;
             transform: translate(-50%, 0) perspective(1000px) scale(0.35);
         }
     }
@@ -524,7 +523,7 @@
 @media (max-width: 480px) {
     @keyframes shrinkToLogo {
         to {
-            top: 15px;
+            top: 25px;
             transform: translate(-50%, 0) perspective(1000px) scale(0.3);
         }
     }
