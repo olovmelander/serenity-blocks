@@ -161,14 +161,14 @@ export async function applyGravity(gameState, drawCallback, movedArray = null) {
     });
 
     // Adaptive gravity delay based on maximum fall distance
-    // Optimized for visual satisfaction while keeping pace in infinity mode
-    // Short falls (1-10 rows): 25ms per frame - smooth and fully visible
-    // Medium falls (11-30 rows): 18ms per frame - slightly faster but still satisfying
-    // Long falls (31-60 rows): 12ms per frame - faster for very tall structures
-    // Very long falls (61+ rows): 8ms per frame - quick but not instant
-    const gravityDelay = maxPotentialFall <= 10 ? 25 :
-                        maxPotentialFall <= 30 ? 18 :
-                        maxPotentialFall <= 60 ? 12 : 8;
+    // Optimized for smooth, cinematic cascades - very slow and satisfying
+    // Short falls (1-10 rows): 80ms per frame - buttery smooth
+    // Medium falls (11-30 rows): 70ms per frame - very leisurely and enjoyable
+    // Long falls (31-60 rows): 60ms per frame - smooth for tall structures
+    // Very long falls (61+ rows): 50ms per frame - still very smooth and visible
+    const gravityDelay = maxPotentialFall <= 10 ? 80 :
+                        maxPotentialFall <= 30 ? 70 :
+                        maxPotentialFall <= 60 ? 60 : 50;
 
     physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using ${gravityDelay}ms delay`);
 
@@ -736,16 +736,16 @@ export async function processPhysics(gameState, callbacks) {
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
-        // Progressive speed multiplier: accelerates dramatically for deep cascades
-        // Cascade 1: 1.0x (150ms total) - First manual clear, keep it visible
-        // Cascade 2-4: 0.7x (105ms) - Standard cascade speed
-        // Cascade 5-9: 0.4x (60ms) - Fast cascades
-        // Cascade 10+: 0.25x (37ms) - Nearly instant for mega cascades
-        const speedMultiplier = cascadeCount === 1 ? 1.0 :
-                               cascadeCount <= 4 ? 0.7 :
-                               cascadeCount <= 9 ? 0.4 : 0.25;
+        // Progressive speed multiplier: Keep it slower for visual enjoyment
+        // Cascade 1: 1.5x (225ms total) - First manual clear, keep it very visible
+        // Cascade 2-4: 1.2x (180ms) - Slightly faster but still satisfying
+        // Cascade 5-9: 1.0x (150ms) - Standard cascade speed
+        // Cascade 10+: 0.8x (120ms) - Faster for mega cascades but still visible
+        const speedMultiplier = cascadeCount === 1 ? 1.5 :
+                               cascadeCount <= 4 ? 1.2 :
+                               cascadeCount <= 9 ? 1.0 : 0.8;
 
-        // Stage 1: Keep original colors, full opacity - snappier feel
+        // Stage 1: Keep original colors, full opacity - smooth and visible
         fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
@@ -755,9 +755,9 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 80 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 100 * speedMultiplier));
 
-        // Stage 2: Keep original colors, slightly dimmed - reduced timing for smoother flow
+        // Stage 2: Keep original colors, slightly dimmed - smooth transition
         fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
@@ -767,9 +767,9 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 40 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 60 * speedMultiplier));
 
-        // Stage 3: Keep original colors, fade to transparent - quick final fade
+        // Stage 3: Keep original colors, fade to transparent - smooth final fade
         fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
@@ -779,7 +779,7 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 30 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 50 * speedMultiplier));
 
         // --- Remove cleared lines from pieces ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
