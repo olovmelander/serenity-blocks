@@ -5156,17 +5156,24 @@ body {
 
         .game-container.single-player-layout.infinity-mode-active {
             flex-direction: row;
-            align-items: flex-start;
+            align-items: stretch;
             justify-content: center;
-            gap: 32px;
-            width: auto;
-            min-width: auto;
-            padding: 12px 0;
+            gap: clamp(24px, 4vw, 56px);
+            width: 100%;
+            min-width: 0;
+            padding: clamp(12px, 2vh, 28px) clamp(20px, 4vw, 72px);
+            box-sizing: border-box;
         }
 
         .single-player-stage.infinity-mode-active {
-            gap: 36px;
-            align-items: flex-start;
+            gap: clamp(24px, 3vw, 48px);
+            align-items: stretch;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            padding: clamp(12px, 2vh, 32px) clamp(10px, 3vw, 48px);
+            min-height: calc(100vh - clamp(120px, 16vh, 200px)); /* leave breathing room at top/bottom */
+            box-sizing: border-box;
         }
 
         #single-player-container.infinity-mode-active .floating-settings-btn {
@@ -5179,6 +5186,9 @@ body {
         /* Infinity HUD - Left side */
         #single-player-container.infinity-mode-active #infinity-hud {
             order: 1;
+            align-self: flex-start;
+            max-height: clamp(320px, 70vh, 640px);
+            overflow: visible;
         }
 
         /* Game board - Center */
@@ -5187,11 +5197,26 @@ body {
             --player-primary: #3b82f6;
             --player-primary-light: #93c5fd;
             --player-glow: rgba(59, 130, 246, 0.35);
+            --board-width: min(clamp(320px, 42vw, 420px), calc(85vh / 2));
+            --board-height: calc(var(--board-width) * 2);
+            flex: 0 1 auto;
+            padding: clamp(6px, 1.2vw, 14px);
+            width: calc(var(--board-width) + clamp(8px, 1.2vw, 20px));
+            max-width: calc(var(--board-width) + clamp(8px, 1.2vw, 20px));
+        }
+
+        #single-player-container.infinity-mode-active .single-player-body {
+            gap: clamp(6px, 1vw, 12px);
+        }
+
+        #single-player-container.infinity-mode-active .single-player-main {
+            gap: clamp(10px, 1.4vw, 18px);
         }
 
         /* Infinity Minimap - Right side */
         #single-player-container.infinity-mode-active #infinity-minimap {
             order: 3;
+            align-self: flex-start;
         }
 
         .single-player-stage.infinity-mode-active .single-player-stats-bar {
