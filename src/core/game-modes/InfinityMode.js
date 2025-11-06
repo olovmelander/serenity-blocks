@@ -47,6 +47,22 @@ export class InfinityMode extends BaseGameMode {
 
         // Trance state effects for pause
         this.tranceEffects = null;
+
+        // Track if we were following a soft-dropping piece
+        this.wasFollowingPiece = false;
+        this.followMemoryFrames = 0;
+        this.followMemoryDuration = 12;
+
+        // Cooldown to prevent camera follow immediately after snapping
+        this.snapCooldownFrames = 0;
+        this.snapCooldownDuration = 18;
+
+        // Track whether the last drop action was a hard drop
+        this.lastDropWasHard = false;
+        this.suppressFollowUntilLock = false;
+
+        // Cache physics callbacks so input handlers can reuse them
+        this.physicsCallbacks = null;
     }
 
     /**
@@ -507,7 +523,7 @@ export class InfinityMode extends BaseGameMode {
                         }
                     },
                     () => this.deps.soundManager.sfxPlayer.playDrop(),
-                    this._getPhysicsCallbacks()
+                    this.getPhysicsCallbacks()
                 );
             }
 
@@ -590,8 +606,16 @@ export class InfinityMode extends BaseGameMode {
      * Get physics callbacks for sound effects and piece spawning
      * @private
      */
+    getPhysicsCallbacks() {
+        return this._getPhysicsCallbacks();
+    }
+
     _getPhysicsCallbacks() {
-        return {
+        if (this.physicsCallbacks) {
+            return this.physicsCallbacks;
+        }
+
+        this.physicsCallbacks = {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
             onLineClear: (lines) => {
@@ -628,7 +652,17 @@ export class InfinityMode extends BaseGameMode {
             onLevelUp: () => {
                 // Level up disabled in infinity mode, but keep callback for compatibility
             },
-            onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
+            onHardDrop: () => {
+                this.lastDropWasHard = true;
+                this.suppressFollowUntilLock = true;
+
+                const sfxPlayer = this.deps.soundManager?.sfxPlayer;
+                if (sfxPlayer?.playHardDrop) {
+                    sfxPlayer.playHardDrop();
+                } else if (sfxPlayer?.playDrop) {
+                    sfxPlayer.playDrop();
+                }
+            },
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
                 const settings = this.deps.settingsManager.get();
@@ -647,6 +681,20 @@ export class InfinityMode extends BaseGameMode {
                 if (this.gameState.infinityStats) {
                     this.gameState.infinityStats.blocksPlaced += 4; // Approximate blocks per piece
                 }
+
+                const lockedBelowViewport = this._didPieceLockBelowViewport(piece);
+                const hardDropSnap = this.lastDropWasHard && lockedBelowViewport;
+
+                // If we were (recently) following a soft- or hard-dropped piece that landed out of view, snap back to the top
+                if (this.wasFollowingPiece || lockedBelowViewport || hardDropSnap) {
+                    this._snapCameraToTopArea();
+                    this.wasFollowingPiece = false;
+                    this.followMemoryFrames = 0;
+                    this.snapCooldownFrames = this.snapCooldownDuration;
+                }
+                // Reset hard drop tracking flags after handling the lock event
+                this.lastDropWasHard = false;
+                this.suppressFollowUntilLock = false;
             },
             // Spawn next piece after physics completes
             spawnPiece: () => {
@@ -657,6 +705,8 @@ export class InfinityMode extends BaseGameMode {
                 );
             },
         };
+
+        return this.physicsCallbacks;
     }
 
     /**
@@ -866,6 +916,50 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
+     * Determine if the locked piece finished below the current viewport.
+     * @param {Object} piece
+     * @private
+     */
+    _didPieceLockBelowViewport(piece) {
+        if (!piece || !this.boardScene?.cameraSettings) return false;
+
+        const cameraSettings = this.boardScene.cameraSettings;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const cameraTopRow = Math.floor(cameraSettings.activeTopRow ?? cameraSettings.currentTopRow ?? 0);
+        const cameraBottomRow = cameraTopRow + visibleRows - 1;
+
+        const pieceBottomRow = piece.y + (piece.shape?.length || 0) - 1;
+
+        return pieceBottomRow >= cameraBottomRow;
+    }
+
+    /**
+     * Quickly snap camera back to the top area after locking a soft-dropped piece
+     * @private
+     */
+    _snapCameraToTopArea() {
+        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+
+        const cameraSettings = this.boardScene.cameraSettings;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const highestBlockRow = this._findHighestBlockRow();
+
+        let targetTopRow;
+
+        if (highestBlockRow >= this.gameState.board.length) {
+            targetTopRow = Math.max(0, this.gameState.board.length - visibleRows);
+            console.log(`[Infinity] Camera snapped to bottom: row ${targetTopRow}`);
+        } else {
+            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+            const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+            targetTopRow = Math.max(0, Math.min(maxCameraRow, preferredRow));
+            console.log(`[Infinity] Camera snapped back to top area: row ${targetTopRow} (highest block: ${highestBlockRow})`);
+        }
+
+        this.boardScene.updateCameraPosition(targetTopRow, true);
+    }
+
+    /**
      * Finds the highest block position (smallest row number with blocks)
      * @returns {number} Row number (0-999), or maxRows if no blocks exist
      * @private
@@ -909,7 +1003,12 @@ export class InfinityMode extends BaseGameMode {
 
         // Check if we need to follow a falling piece
         const currentPiece = this.gameState.currentPiece;
-        if (currentPiece) {
+        if (this.snapCooldownFrames > 0) {
+            this.snapCooldownFrames--;
+            return;
+        }
+
+        if (currentPiece && !this.suppressFollowUntilLock) {
             // Calculate the bottom of the current piece
             const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
 
@@ -932,8 +1031,22 @@ export class InfinityMode extends BaseGameMode {
 
                 // Store for minimap
                 this.gameState.cameraRow = clampedCameraRow;
+
+                // Mark that we're following a piece (and remember it for a few frames)
+                this.wasFollowingPiece = true;
+                this.followMemoryFrames = this.followMemoryDuration;
+
                 return; // Exit early - we're following the piece
             }
+        }
+
+        if (this.followMemoryFrames > 0) {
+            this.followMemoryFrames--;
+            if (this.followMemoryFrames === 0) {
+                this.wasFollowingPiece = false;
+            }
+        } else {
+            this.wasFollowingPiece = false;
         }
 
         // Find highest block (smallest row number where blocks exist)
