@@ -5170,32 +5170,28 @@ body {
         }
 
         #single-player-container.infinity-mode-active .floating-settings-btn {
-            order: 3;
+            order: 4;
             align-self: flex-start;
             margin-top: 4px;
             margin-left: auto;
         }
 
-        #infinity-side-panels {
-            display: flex;
-            flex-direction: row;
-            align-items: flex-start;
-            gap: 24px;
-            min-width: 0;
-            order: 2;
-            flex-wrap: nowrap;
-            flex: 0 0 auto;
-        }
-
-        #infinity-side-panels > * {
-            flex: 0 0 auto;
-        }
-
-        #single-player-container.infinity-mode-active .single-player-card {
+        /* Infinity HUD - Left side */
+        #single-player-container.infinity-mode-active #infinity-hud {
             order: 1;
+        }
+
+        /* Game board - Center */
+        #single-player-container.infinity-mode-active .single-player-card {
+            order: 2;
             --player-primary: #3b82f6;
             --player-primary-light: #93c5fd;
             --player-glow: rgba(59, 130, 246, 0.35);
+        }
+
+        /* Infinity Minimap - Right side */
+        #single-player-container.infinity-mode-active #infinity-minimap {
+            order: 3;
         }
 
         .single-player-stage.infinity-mode-active .single-player-stats-bar {
@@ -12943,10 +12939,11 @@ body.serenity-mode.cursor-hidden * {
 .game-mode-cards-container {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 30px;
-    padding: 40px;
-    padding-top: 120px; /* Make room for logo at top */
-    max-width: 1200px;
+    gap: 18px;
+    padding: 25px;
+    padding-top: 110px; /* Make room for logo at top */
+    padding-bottom: 25px;
+    max-width: 950px;
     width: 90%;
     margin: 0 auto;
     pointer-events: all;
@@ -12969,8 +12966,8 @@ body.serenity-mode.cursor-hidden * {
     background: rgba(15, 15, 30, 0.7);
     backdrop-filter: blur(20px) saturate(180%);
     border: 2px solid rgba(100, 200, 255, 0.3);
-    border-radius: 24px;
-    padding: 40px 30px;
+    border-radius: 20px;
+    padding: 25px 20px;
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     overflow: hidden;
@@ -13065,9 +13062,9 @@ body.serenity-mode.cursor-hidden * {
 }
 
 .mode-card-icon {
-    font-size: 4rem;
+    font-size: 3rem;
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     filter: drop-shadow(0 4px 12px rgba(100, 200, 255, 0.5));
     position: relative;
     z-index: 1;
@@ -13085,15 +13082,15 @@ body.serenity-mode.cursor-hidden * {
 
 .mode-card-title {
     font-family: 'Orbitron', sans-serif;
-    font-size: 1.8rem;
+    font-size: 1.4rem;
     font-weight: 900;
     text-align: center;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     background: linear-gradient(135deg, #ffffff, #64c8ff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    letter-spacing: 2px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
     position: relative;
     z-index: 1;
@@ -13102,10 +13099,10 @@ body.serenity-mode.cursor-hidden * {
 
 .mode-card-desc {
     font-family: 'Space Mono', monospace;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     text-align: center;
     color: rgba(255, 255, 255, 0.7);
-    line-height: 1.6;
+    line-height: 1.5;
     position: relative;
     z-index: 1;
     margin: 0;
@@ -13118,53 +13115,65 @@ body.serenity-mode.cursor-hidden * {
 /* Responsive adjustments */
 @media (max-width: 1024px) {
     .game-mode-cards-container {
-        gap: 20px;
-        padding: 30px;
+        gap: 15px;
+        padding: 20px;
+        padding-top: 100px;
     }
 
     .game-mode-card {
-        padding: 30px 20px;
+        padding: 22px 18px;
     }
 
     .mode-card-icon {
-        font-size: 3rem;
+        font-size: 2.5rem;
+        margin-bottom: 10px;
     }
 
     .mode-card-title {
-        font-size: 1.4rem;
+        font-size: 1.2rem;
+        margin-bottom: 8px;
     }
 
     .mode-card-desc {
-        font-size: 0.85rem;
+        font-size: 0.75rem;
     }
 }
 
 @media (max-width: 768px) {
     .game-mode-cards-container {
         grid-template-columns: 1fr;
-        gap: 20px;
-        padding: 20px;
+        gap: 15px;
+        padding: 15px;
+        padding-top: 90px;
     }
 
     .game-mode-card {
-        padding: 25px 20px;
+        padding: 20px 18px;
     }
 }
 
 @media (max-width: 480px) {
     .game-mode-cards-container {
-        padding: 15px;
+        padding: 12px;
+        padding-top: 75px;
+        gap: 12px;
     }
 
     .mode-card-icon {
-        font-size: 2.5rem;
+        font-size: 2.2rem;
+        margin-bottom: 8px;
     }
 
     .mode-card-title {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
+        margin-bottom: 6px;
     }
 
     .mode-card-desc {
-        font-size: 0.8rem;
+        font-size: 0.7rem;
+    }
+
+    .game-mode-card {
+        padding: 18px 15px;
     }
 }

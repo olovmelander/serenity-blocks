@@ -212,6 +212,11 @@ export class GamepadController {
                     name: gamepad.id,
                 },
             }));
+
+            // Update game mode card focus if in selection mode
+            if (this.gameModeSelectionEnabled && this.gameModeCards) {
+                this.updateGameModeCardFocus();
+            }
         }
 
         if (!this.pollInterval && this.enabled) {
@@ -242,6 +247,11 @@ export class GamepadController {
                 connected: false,
             },
         }));
+
+        // Update game mode card focus if in selection mode
+        if (this.gameModeSelectionEnabled && this.gameModeCards) {
+            this.updateGameModeCardFocus();
+        }
 
         if (!this.connected.some(Boolean)) {
             this.stopPolling();
@@ -380,8 +390,10 @@ export class GamepadController {
             this.previousStates[i] = {};
         }
 
-        // Apply focus to first card
-        this.updateGameModeCardFocus();
+        // Only apply focus to first card if a gamepad is actually connected
+        if (this.isAnyGamepadConnected()) {
+            this.updateGameModeCardFocus();
+        }
     }
 
     /**
@@ -406,6 +418,15 @@ export class GamepadController {
      * Update visual focus on game mode cards
      */
     updateGameModeCardFocus() {
+        // Only update focus if a gamepad is connected
+        if (!this.isAnyGamepadConnected()) {
+            // Remove all focus if no gamepad connected
+            this.gameModeCards.forEach(card => {
+                card.classList.remove('gamepad-focused');
+            });
+            return;
+        }
+
         this.gameModeCards.forEach((card, index) => {
             if (index === this.selectedGameModeIndex) {
                 card.classList.add('gamepad-focused');
@@ -413,6 +434,13 @@ export class GamepadController {
                 card.classList.remove('gamepad-focused');
             }
         });
+    }
+
+    /**
+     * Check if any gamepad is currently connected
+     */
+    isAnyGamepadConnected() {
+        return this.connected.some(isConnected => isConnected);
     }
 
     /**

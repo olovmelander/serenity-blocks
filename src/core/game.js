@@ -435,6 +435,10 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks) {
 export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return;
 
+    if (physicsCallbacks?.onHardDrop) {
+        physicsCallbacks.onHardDrop();
+    }
+
     let distance = 0;
     while (canPlacePiece(
         gameState,

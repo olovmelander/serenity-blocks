@@ -134,8 +134,7 @@ export class InfinityMinimap {
      * Show minimap
      */
     show() {
-        const panel = document.getElementById('infinity-side-panels')
-            || document.getElementById('single-player-container');
+        const panel = document.getElementById('single-player-container');
 
         if (panel && this.container.parentElement !== panel) {
             panel.appendChild(this.container);
@@ -275,29 +274,33 @@ export class InfinityMinimap {
         const board = this.gameState.board;
 
         // Sample blocks for minimap (can't draw every single block at this scale)
-        // Draw a simplified representation
+        // Draw a simplified representation using actual row positions
         const topRow = calculateTopRow(this.gameState);
-        const buildHeight = calculateBuildHeight(this.gameState);
 
-        if (buildHeight > 0) {
-            // Draw filled area from bottom to top row
-            const bottomY = height;
-            const topY = height - (buildHeight * pixelsPerRow);
-            const fillHeight = bottomY - topY;
-
-            // Create gradient for depth effect
-            const gradient = ctx.createLinearGradient(0, topY, 0, bottomY);
-            gradient.addColorStop(0, 'rgba(100, 200, 255, 0.6)');
-            gradient.addColorStop(1, 'rgba(50, 100, 200, 0.8)');
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(2, topY, width - 4, fillHeight);
-
-            // Add outline
-            ctx.strokeStyle = 'rgba(150, 220, 255, 0.8)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(2, topY, width - 4, fillHeight);
+        // Only draw if there are blocks on the board
+        if (topRow >= totalRows) {
+            // No blocks yet
+            return;
         }
+
+        // Draw filled area from topRow (in row coordinates) to bottom
+        // topRow is the row index, so Y position = topRow * pixelsPerRow
+        const topY = topRow * pixelsPerRow;
+        const bottomY = totalRows * pixelsPerRow;
+        const fillHeight = bottomY - topY;
+
+        // Create gradient for depth effect
+        const gradient = ctx.createLinearGradient(0, topY, 0, bottomY);
+        gradient.addColorStop(0, 'rgba(100, 200, 255, 0.6)');
+        gradient.addColorStop(1, 'rgba(50, 100, 200, 0.8)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(2, topY, width - 4, fillHeight);
+
+        // Add outline
+        ctx.strokeStyle = 'rgba(150, 220, 255, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(2, topY, width - 4, fillHeight);
     }
 
     /**
@@ -452,24 +455,22 @@ export class InfinityMinimap {
 
     /**
      * Get row from Y coordinate on minimap
-     * CORRECTED: Row 0 at TOP, Row 1000 at BOTTOM
+     * Returns the CENTER row of where the user clicked
      * @private
      * @param {number} y - Y coordinate on canvas
-     * @returns {number} - Row index
+     * @returns {number} - Row index at center of clicked position
      */
     _getRowFromY(y) {
         const totalRows = this.gameState.board.length;
         const pixelsPerRow = this.canvas.height / totalRows;
 
-        // Convert Y to row - direct mapping (top = row 0, bottom = row 1000)
-        // Top of canvas (y=0) = Row 0
-        // Bottom of canvas (y=height) = Row totalRows
-        const row = y / pixelsPerRow;
+        // Convert Y to row - direct mapping (top = row 0, bottom = row totalRows)
+        // This gives us the row that was clicked
+        const clickedRow = Math.floor(y / pixelsPerRow);
 
-        // Clamp to valid range (can't show past bottom)
-        const visibleRows = this.visibleRows || 20;
-        const maxCameraRow = Math.max(0, totalRows - visibleRows);
-        return Math.max(0, Math.min(maxCameraRow, Math.floor(row)));
+        // Return the clicked row, which will be used as the center point
+        // The minimap handler will calculate the appropriate camera top position
+        return Math.max(0, Math.min(totalRows - 1, clickedRow));
     }
 
     /**
