@@ -41,11 +41,9 @@ export class TranceStateEffects {
         this.overlayGlow = null;
         this.pausedText = null;
         this.subtitleText = null;
-        this.auraGraphics = null;
         this.domOverlay = null;
         this.domOverlayRemovalTimer = null;
         this.bokehOrbs = [];
-        this.dreamAuraConfig = null;
         this.isStopping = false;
         this.pendingDestroy = false;
         this.fadeOutDuration = 5200;
@@ -96,7 +94,6 @@ export class TranceStateEffects {
 
         // Start breathing pulse effect on board
         this.createBreathingPulse();
-        this.createDreamAuraLayer();
         this.createBokehOrbs();
 
         // Start update loop for animated effects
@@ -174,9 +171,7 @@ export class TranceStateEffects {
         this.overlayGlow = null;
         this.pausedText = null;
         this.subtitleText = null;
-        this.auraGraphics = null;
         this.bokehOrbs = [];
-        this.dreamAuraConfig = null;
 
         this.destroyDomOverlay(immediateDom);
         this.pendingDestroy = false;
@@ -206,42 +201,12 @@ export class TranceStateEffects {
             } : 'no camera',
         });
 
-        // Create overlay in screen coordinates (since scrollFactor is 0)
-        // Center position for Rectangle with default origin (0.5, 0.5)
-        const overlay = this.scene.add.rectangle(
-            viewportWidth / 2,
-            viewportHeight / 2,
-            viewportWidth,
-            viewportHeight,
-            0x1a0033, // Deep purple-blue
-            0, // Start invisible
-        );
-
-        // CRITICAL: Use scrollFactor 0 to pin to viewport (not follow camera in world space)
-        overlay.setScrollFactor(0, 0);
-        overlay.setDepth(1000);
-        overlay.setBlendMode('NORMAL');
-        this.overlayRect = overlay;
-
-        console.log('[TranceStateEffects] Overlay rectangle created:', {
-            x: overlay.x,
-            y: overlay.y,
-            width: overlay.width,
-            height: overlay.height,
-            depth: overlay.depth,
-            scrollFactorX: overlay.scrollFactorX,
-            scrollFactorY: overlay.scrollFactorY,
-        });
-
-        this.activeGraphics.push(overlay);
-        this.updateViewportAnchoredElements();
-
         // Add an additive golden glow layer for a warmer pause feel
         const glow = this.scene.add.rectangle(
             viewportWidth / 2,
             viewportHeight / 2,
-            viewportWidth * 0.85,
-            viewportHeight * 0.85,
+            viewportWidth * 1.5,
+            viewportHeight * 1.5,
             0xffd88a,
             0,
         );
@@ -253,18 +218,6 @@ export class TranceStateEffects {
         this.activeGraphics.push(glow);
 
         // Fade in the overlay
-        const tween = this.scene.tweens.add({
-            targets: overlay,
-            alpha: 0.5,
-            duration: 1000,
-            ease: 'Sine.easeInOut',
-            onComplete: () => {
-                console.log('[TranceStateEffects] Overlay fade complete, alpha:', overlay.alpha);
-            },
-        });
-
-        this.activeTweens.push(tween);
-
         const glowTween = this.scene.tweens.add({
             targets: glow,
             alpha: 0.22,
@@ -519,24 +472,6 @@ export class TranceStateEffects {
         const screenCenterX = screenWidth / 2;
         const screenCenterY = screenHeight / 2;
 
-        if (this.overlayRect) {
-            this.overlayRect.x = screenCenterX;
-            this.overlayRect.y = screenCenterY;
-
-            if (this.overlayRect.width !== screenWidth || this.overlayRect.height !== screenHeight) {
-                if (this.overlayRect.setSize) {
-                    this.overlayRect.setSize(screenWidth, screenHeight);
-                } else {
-                    this.overlayRect.width = screenWidth;
-                    this.overlayRect.height = screenHeight;
-                }
-
-                if (this.overlayRect.setDisplaySize) {
-                    this.overlayRect.setDisplaySize(screenWidth, screenHeight);
-                }
-            }
-        }
-
         if (this.pausedText) {
             this.pausedText.x = screenCenterX;
             this.pausedText.y = screenHeight * 0.35;
@@ -548,8 +483,8 @@ export class TranceStateEffects {
         }
 
         if (this.overlayGlow) {
-            const glowWidth = screenWidth * 0.85;
-            const glowHeight = screenHeight * 0.85;
+            const glowWidth = screenWidth * 1.5;
+            const glowHeight = screenHeight * 1.5;
             this.overlayGlow.x = screenCenterX;
             this.overlayGlow.y = screenCenterY;
             if (this.overlayGlow.setSize) {
@@ -611,7 +546,6 @@ export class TranceStateEffects {
             });
         }
 
-        this.updateDreamAura(screenCenterX, screenCenterY, screenWidth, screenHeight);
         this.updateBokehOrbs(screenCenterX, screenCenterY, screenWidth, screenHeight);
     }
 
@@ -739,7 +673,6 @@ export class TranceStateEffects {
         this.overlayGlow = null;
         this.pausedText = null;
         this.subtitleText = null;
-        this.auraGraphics = null;
 
         const finalize = () => {
             console.log('[TranceStateEffects] Cleanup complete');
@@ -844,26 +777,6 @@ export class TranceStateEffects {
     }
 
     /**
-     * Create a dreamy aura glow rendered in Phaser
-     */
-    createDreamAuraLayer() {
-        if (!this.scene || this.auraGraphics) return;
-
-        const graphics = this.scene.add.graphics();
-        graphics.setScrollFactor(0, 0);
-        graphics.setDepth(-25);
-        graphics.setBlendMode('ADD');
-        this.auraGraphics = graphics;
-        this.activeGraphics.push(graphics);
-
-        this.dreamAuraConfig = [
-            { color: 0x9f7aea, baseRadius: 140, pulse: 60, speed: 0.0006, alpha: 0.18 },
-            { color: 0x7dd3fc, baseRadius: 220, pulse: 70, speed: 0.0004, alpha: 0.12 },
-            { color: 0xffd89c, baseRadius: 320, pulse: 90, speed: 0.0005, alpha: 0.1 },
-        ];
-    }
-
-    /**
      * Spawn slow-moving bokeh orbs for parallax and dreaminess
      */
     createBokehOrbs() {
@@ -887,28 +800,6 @@ export class TranceStateEffects {
                 verticalSkew: 0.35 + Math.random() * 0.2,
             });
         }
-    }
-
-    updateDreamAura(cx, cy, width, height) {
-        if (!this.auraGraphics || !this.dreamAuraConfig) return;
-
-        const g = this.auraGraphics;
-        g.clear();
-        const verticalOffset = height * 0.04;
-
-        this.dreamAuraConfig.forEach((ring, index) => {
-            const phase = (this.time * ring.speed) + index;
-            const radius = ring.baseRadius + Math.sin(phase) * ring.pulse + Math.min(width, height) * 0.12;
-            const alpha = Math.max(0.02, ring.alpha + Math.sin(phase * 1.2) * 0.04);
-            if (g.fillStyle) {
-                g.fillStyle(ring.color, alpha);
-                if (g.fillCircle) {
-                    g.fillCircle(cx, cy - verticalOffset, radius);
-                } else {
-                    g.fillRect(cx - radius, cy - radius - verticalOffset, radius * 2, radius * 2);
-                }
-            }
-        });
     }
 
     updateBokehOrbs(cx, cy, width, height) {
