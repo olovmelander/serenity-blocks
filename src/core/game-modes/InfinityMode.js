@@ -6,6 +6,7 @@ import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
+import { TranceStateEffects } from '../../rendering/phaser/trance-state-effects.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -43,6 +44,9 @@ export class InfinityMode extends BaseGameMode {
         // Event handlers (bound for proper cleanup)
         this.handleKeyPress = this._onKeyPress.bind(this);
         this.handleWheel = this._onWheel.bind(this);
+
+        // Trance state effects for pause
+        this.tranceEffects = null;
     }
 
     /**
@@ -226,6 +230,13 @@ export class InfinityMode extends BaseGameMode {
             this._setupCameraControls();
             console.log('[Infinity] Camera controls enabled - Use arrow keys, Page Up/Down, or mouse wheel to navigate');
         }
+
+        // Start trance state visual effects
+        if (this.boardScene && !this.tranceEffects) {
+            this.tranceEffects = new TranceStateEffects(this.boardScene);
+            this.tranceEffects.start();
+            console.log('[Infinity] Trance state effects activated');
+        }
     }
 
     /**
@@ -238,6 +249,14 @@ export class InfinityMode extends BaseGameMode {
         // Sync pause state to gameState
         if (this.gameState) {
             this.gameState.isPaused = false;
+        }
+
+        // Stop trance state visual effects
+        if (this.tranceEffects) {
+            this.tranceEffects.stop();
+            this.tranceEffects.destroy();
+            this.tranceEffects = null;
+            console.log('[Infinity] Trance state effects deactivated');
         }
 
         // Disable camera navigation, return to auto-follow
@@ -298,6 +317,13 @@ export class InfinityMode extends BaseGameMode {
         if (this.heightHUD) {
             this.heightHUD.destroy();
             this.heightHUD = null;
+        }
+
+        // Clean up trance effects if active
+        if (this.tranceEffects) {
+            this.tranceEffects.stop();
+            this.tranceEffects.destroy();
+            this.tranceEffects = null;
         }
 
         // Remove Infinity layout styling
