@@ -187,20 +187,11 @@ export async function applyGravity(
         maxPotentialFall = Math.max(maxPotentialFall, fallDistance);
     });
 
-    // Adaptive gravity delay based on maximum fall distance.
-    // Faster, smoother animation with minimal delay for responsive cascades
-    const minCascadeDuration = 40; // ms - very fast minimum
-    const maxCascadeDuration = 600; // ms - quick max duration
-    const estimatedDuration = Math.max(
-        minCascadeDuration,
-        Math.min(maxCascadeDuration, maxPotentialFall * 5 + 35),
-    );
-    const gravityDelay = Math.max(
-        8, // Reduced minimum delay for smoother motion
-        Math.round(estimatedDuration / Math.max(1, maxPotentialFall || 1)),
-    );
+    // Fixed gravity delay for consistent cascade feel regardless of height
+    // This gives the same snappy, responsive feel in both single player and infinity mode
+    const gravityDelay = 12; // ms - fixed delay for consistent speed
 
-    physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, target ${estimatedDuration}ms total, ${gravityDelay}ms per step`);
+    physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using fixed ${gravityDelay}ms per step`);
 
     while (blocksStillFalling) {
         blocksStillFalling = false;
