@@ -261,7 +261,7 @@ export function createBaseBoardScene(
             }
         }
 
-        updateCameraPosition(targetRow) {
+        updateCameraPosition(targetRow, instant = false) {
             const camera = this.cameras?.main;
             if (!camera || !this.cameraSettings) return;
 
@@ -278,7 +278,7 @@ export function createBaseBoardScene(
             this.cameraSettings.targetTopRow = clampedTarget;
 
             const speed = this.cameraSettings.lerpSpeed ?? 0.08;
-            if (this.cameraSettings.manualControl) {
+            if (this.cameraSettings.manualControl || instant) {
                 this.cameraSettings.currentTopRow = clampedTarget;
             } else {
                 this.cameraSettings.currentTopRow += (clampedTarget - this.cameraSettings.currentTopRow) * speed;
