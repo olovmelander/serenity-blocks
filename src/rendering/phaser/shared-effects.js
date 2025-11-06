@@ -264,7 +264,24 @@ export class SharedEffects {
             return;
         }
 
-        clearedRows.forEach((row, index) => {
+        // PARTICLE BATCHING: For mega cascades (10+ lines), reduce particle count to prevent lag
+        // Instead of spawning particles for every row, sample rows and increase intensity
+        let processedRows = clearedRows;
+        let intensityBoost = 1;
+
+        if (clearedRows.length >= 20) {
+            // 20+ lines: Only spawn particles for every 3rd row, triple intensity
+            processedRows = clearedRows.filter((_, i) => i % 3 === 0);
+            intensityBoost = 2.5;
+            console.log(`[SharedEffects] Mega cascade batching: ${clearedRows.length} → ${processedRows.length} rows (3x sampling)`);
+        } else if (clearedRows.length >= 10) {
+            // 10-19 lines: Only spawn particles for every 2nd row, double intensity
+            processedRows = clearedRows.filter((_, i) => i % 2 === 0);
+            intensityBoost = 1.8;
+            console.log(`[SharedEffects] Large cascade batching: ${clearedRows.length} → ${processedRows.length} rows (2x sampling)`);
+        }
+
+        processedRows.forEach((row, index) => {
             const zoneY = (row - this.scene.hiddenRows) * this.scene.blockSize;
 
             console.log('[SharedEffects] Spawning particles for row', row, {
@@ -276,17 +293,20 @@ export class SharedEffects {
             });
 
             // Use compatibility layer to create particles
+            // Apply intensity boost for batched mega cascades
+            const finalIntensity = totalIntensity * intensityBoost;
+
             const emitter = createParticleEmitter(this.scene, 0, zoneY, this.lineClearParticleKey, {
                 emitZone: {
                     type: 'random',
                     source: new PhaserRef.Geom.Rectangle(0, 0, boardWidth, this.scene.blockSize),
                 },
-                speed: { min: 90 * comboMultiplier, max: 220 * totalIntensity },
+                speed: { min: 90 * comboMultiplier * intensityBoost, max: 220 * finalIntensity },
                 angle: { min: -110, max: -70 },
-                lifespan: { min: 350, max: RIPPLE_PARTICLE_LIFESPAN * Math.min(comboMultiplier, 2) },
+                lifespan: { min: 350, max: RIPPLE_PARTICLE_LIFESPAN * Math.min(comboMultiplier * intensityBoost, 2) },
                 quantity: 0, // Required for explode
                 alpha: { start: 0.9, end: 0 },
-                scale: { start: 0.85 * Math.min(comboMultiplier, 1.5), end: 0 },
+                scale: { start: 0.85 * Math.min(comboMultiplier * intensityBoost, 1.8), end: 0 },
                 gravityY: 400,
                 blendMode: 'ADD',
                 on: false, // Emitter is not started automatically
@@ -308,8 +328,8 @@ export class SharedEffects {
                 emitter.setScrollFactor(0);
             }
 
-            // More particles for bigger combos
-            const burstAmount = Math.round(18 * totalIntensity);
+            // More particles for bigger combos, scaled by intensity boost
+            const burstAmount = Math.round(18 * finalIntensity);
             const emitSuccess = emitParticles(emitter, burstAmount);
 
             if (!emitSuccess) {
@@ -528,6 +548,12 @@ export class SharedEffects {
     showCascadeWave(cascadeCount) {
         if (cascadeCount < 2) return; // Only show for actual cascades (2+)
 
+        // For mega cascades (10+), show special effect instead
+        if (cascadeCount >= 10) {
+            this.showMegaCascadeEffect(cascadeCount);
+            return;
+        }
+
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const boardHeight = this.scene.rows * this.scene.blockSize;
 
@@ -565,6 +591,149 @@ export class SharedEffects {
             },
             onComplete: () => {
                 waveGraphics.destroy();
+            }
+        });
+    }
+
+    /**
+     * Show mega cascade special effect for 10+ cascades
+     * Creates an intense screen-filling effect to celebrate massive combos
+     * @param {number} cascadeCount - Current cascade number
+     */
+    showMegaCascadeEffect(cascadeCount) {
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+
+        console.log(`[SharedEffects] MEGA CASCADE x${cascadeCount}!`);
+
+        // Screen flash effect - more intense for higher cascades
+        const flashGraphics = this.scene.add.graphics();
+        flashGraphics.setScrollFactor(0);
+        flashGraphics.setDepth(10); // On top of everything
+
+        const flashColor = this.getComboTint(cascadeCount);
+        const flashIntensity = Math.min(cascadeCount / 10, 3); // Scale up to 3x
+
+        flashGraphics.fillStyle(flashColor, 0.5 * Math.min(flashIntensity, 1.5));
+        flashGraphics.fillRect(0, 0, boardWidth, boardHeight);
+
+        // Pulse the flash
+        this.scene.tweens.add({
+            targets: flashGraphics,
+            alpha: { from: 0.7, to: 0 },
+            duration: 500,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                flashGraphics.destroy();
+            }
+        });
+
+        // Expanding ring effect
+        const ringGraphics = this.scene.add.graphics();
+        ringGraphics.setScrollFactor(0);
+        ringGraphics.setDepth(9);
+
+        const centerX = boardWidth / 2;
+        const centerY = boardHeight / 2;
+
+        const ringData = { radius: 0, alpha: 0.8, thickness: 8 };
+
+        this.scene.tweens.add({
+            targets: ringData,
+            radius: Math.max(boardWidth, boardHeight) * 1.5,
+            alpha: 0,
+            thickness: 2,
+            duration: 800,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+                ringGraphics.clear();
+                ringGraphics.lineStyle(ringData.thickness, flashColor, ringData.alpha);
+                ringGraphics.strokeCircle(centerX, centerY, ringData.radius);
+            },
+            onComplete: () => {
+                ringGraphics.destroy();
+            }
+        });
+
+        // Display cascade count text
+        const megaText = this.scene.add.text(
+            centerX,
+            centerY,
+            `${cascadeCount}x CASCADE!`,
+            {
+                fontSize: cascadeCount >= 20 ? '48px' : '40px',
+                fontFamily: 'Orbitron',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 6,
+                fontStyle: 'bold',
+            }
+        );
+
+        megaText.setOrigin(0.5);
+        megaText.setScrollFactor(0);
+        megaText.setDepth(11);
+
+        // Intense scale and bounce animation
+        this.scene.tweens.add({
+            targets: megaText,
+            scale: { from: 0.5, to: 1.4 },
+            alpha: { from: 1, to: 0 },
+            y: centerY - 80,
+            duration: 1000,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                megaText.destroy();
+            }
+        });
+
+        // Multiple shockwave rings for cascades 15+
+        if (cascadeCount >= 15) {
+            for (let i = 1; i <= 3; i++) {
+                this.scene.time.delayedCall(i * 150, () => {
+                    this.createShockwaveRing(centerX, centerY, flashColor, i);
+                });
+            }
+        }
+
+        // Camera shake - more intense for mega cascades
+        if (this.scene.shakeCamera) {
+            const shakeDuration = 400 + (cascadeCount * 20);
+            this.scene.shakeCamera(Math.min(cascadeCount / 2, 8), shakeDuration);
+        }
+    }
+
+    /**
+     * Create a single shockwave ring effect
+     * @param {number} centerX - Center X position
+     * @param {number} centerY - Center Y position
+     * @param {number} color - Ring color
+     * @param {number} index - Ring index for delay
+     */
+    createShockwaveRing(centerX, centerY, color, index) {
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+
+        const ringGraphics = this.scene.add.graphics();
+        ringGraphics.setScrollFactor(0);
+        ringGraphics.setDepth(8);
+
+        const ringData = { radius: 20 * index, alpha: 0.6, thickness: 4 };
+
+        this.scene.tweens.add({
+            targets: ringData,
+            radius: Math.max(boardWidth, boardHeight) * 1.2,
+            alpha: 0,
+            thickness: 1,
+            duration: 600,
+            ease: 'Quad.easeOut',
+            onUpdate: () => {
+                ringGraphics.clear();
+                ringGraphics.lineStyle(ringData.thickness, color, ringData.alpha);
+                ringGraphics.strokeCircle(centerX, centerY, ringData.radius);
+            },
+            onComplete: () => {
+                ringGraphics.destroy();
             }
         });
     }

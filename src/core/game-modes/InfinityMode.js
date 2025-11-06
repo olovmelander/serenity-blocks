@@ -618,13 +618,9 @@ export class InfinityMode extends BaseGameMode {
         this.physicsCallbacks = {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: (lines) => {
+            onLineClear: () => {
                 // Play sound effects
-                if (lines === 4) {
-                    this.deps.soundManager.sfxPlayer.playTetris();
-                } else {
-                    this.deps.soundManager.sfxPlayer.playLineClear();
-                }
+                this.deps.soundManager.sfxPlayer.playLineClear();
 
                 // Track combo stats for infinity mode
                 if (this.gameState.infinityStats && this.gameState.comboState) {
@@ -670,6 +666,42 @@ export class InfinityMode extends BaseGameMode {
                     this.boardScene.showComboPopup(comboCount);
                     console.log(`[Infinity] Combo popup triggered: ${comboCount}x`);
                 }
+            },
+            // Trigger cascade wave visual effect
+            triggerCascadeWave: (cascadeCount) => {
+                if (this.boardScene && this.boardScene.sharedEffects) {
+                    this.boardScene.sharedEffects.showCascadeWave(cascadeCount);
+                    console.log(`[Infinity] Cascade wave ${cascadeCount} triggered`);
+                }
+
+                // Update HUD cascade counter
+                if (this.heightHUD && this.heightHUD.updateCascadeCounter) {
+                    this.heightHUD.updateCascadeCounter(cascadeCount);
+                }
+            },
+            // Line clear flash effect
+            triggerFlash: (fullLines) => {
+                if (this.boardScene && this.boardScene.triggerLineClearFlash) {
+                    this.boardScene.triggerLineClearFlash(fullLines);
+                }
+            },
+            // Line clear impact (camera shake and particles)
+            onLineClearImpact: (lineCount, _cascadeCount) => {
+                if (this.boardScene && this.boardScene.playLineClearImpact) {
+                    this.boardScene.playLineClearImpact(lineCount);
+                }
+            },
+            // Background pulse effect (not used in infinity mode but included for compatibility)
+            triggerBackgroundPulse: (_lineCount) => {
+                // Could add background effects in the future
+            },
+            // Score addition animation (could add floating score text)
+            onScoreAdd: (_points) => {
+                // Could add floating score text effect in the future
+            },
+            // Background update (not used in infinity mode)
+            updateBackground: (_level) => {
+                // Infinity mode doesn't change backgrounds by level
             },
             // Piece lock ripple effect
             onPieceLock: (piece) => {

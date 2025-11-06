@@ -300,12 +300,8 @@ export class SinglePlayerMode extends BaseGameMode {
         return {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: (lines) => {
-                if (lines === 4) {
-                    this.deps.soundManager.sfxPlayer.playTetris();
-                } else {
-                    this.deps.soundManager.sfxPlayer.playLineClear();
-                }
+            onLineClear: () => {
+                this.deps.soundManager.sfxPlayer.playLineClear();
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
@@ -316,6 +312,14 @@ export class SinglePlayerMode extends BaseGameMode {
                 if (settings.comboPopupEffect && boardScene) {
                     boardScene.showComboPopup(comboCount);
                     console.log(`[SinglePlayer] Combo popup triggered: ${comboCount}x`);
+                }
+            },
+            // Trigger cascade wave visual effect
+            triggerCascadeWave: (cascadeCount) => {
+                const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+                if (boardScene && boardScene.sharedEffects) {
+                    boardScene.sharedEffects.showCascadeWave(cascadeCount);
+                    console.log(`[SinglePlayer] Cascade wave ${cascadeCount} triggered`);
                 }
             },
             // Piece lock ripple effect
