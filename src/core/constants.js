@@ -14,7 +14,7 @@ export const HIDDEN_ROWS = 4;
 /**
  * Block size (will be dynamically adjusted based on viewport)
  */
-export let BLOCK_SIZE = 30;
+export let BLOCK_SIZE = 40;
 
 /**
  * Update block size (called on resize)

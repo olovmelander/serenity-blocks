@@ -347,10 +347,10 @@ class SerenityBlocks {
         this.p2NextCanvases = Array.from({ length: 3 }, (_, i) => document.getElementById(`p2-next-${i}`));
 
         // Block size is now fixed, and scaling is handled by Phaser's Scale.FIT mode.
-        const calculatedBlockSize = 30;
+        const calculatedBlockSize = 40;
         setBlockSize(calculatedBlockSize);
 
-        // Phaser board sizing is driven by CSS (player card variables) and remains 300x600
+        // Phaser board sizing is driven by CSS (player card variables) and is 400x800
         const boardWidth = COLS * BLOCK_SIZE;
         const boardHeight = ROWS * BLOCK_SIZE;
 
@@ -2104,8 +2104,8 @@ class SerenityBlocks {
      * Handle window resize
      */
     handleResize() {
-    // Use fixed block size (30) as elsewhere
-        setBlockSize(30);
+    // Use fixed block size (40) as elsewhere
+        setBlockSize(40);
 
         // Update legacy canvas if it exists (for fallback rendering)
         if (this.canvas) {

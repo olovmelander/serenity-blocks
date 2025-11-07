@@ -492,15 +492,15 @@ export class InfinityHUD {
      */
     _updateHeightDisplays() {
         const buildHeight = calculateBuildHeight(this.gameState);
-        const topRow = calculateTopRow(this.gameState);
-        const totalRows = this.gameState.board.length;
+        const maxRows = this.gameState.maxRows || 1000;
 
         // Build height from bottom
         this.heightDisplay.textContent = `${buildHeight} ROWS`;
 
-        // Top row (distance from ceiling)
+        // Rows remaining to reach the ceiling (1000 rows)
         if (buildHeight > 0) {
-            this.topRowDisplay.textContent = `${topRow} ROWS`;
+            const rowsRemaining = maxRows - buildHeight;
+            this.topRowDisplay.textContent = `${rowsRemaining} ROWS`;
         } else {
             this.topRowDisplay.textContent = '— ROWS';
         }
