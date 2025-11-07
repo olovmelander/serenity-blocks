@@ -62,13 +62,14 @@ export class InfinityMode extends BaseGameMode {
         this.suppressFollowUntilLock = false;
 
         // Cascade camera following configuration
-        // Use slower lerp during cascades to prevent speed illusion
-        this.cascadeCameraLerpSpeed = 0.02; // Much slower than normal 0.08
+        // Use faster lerp during cascades to keep up with falling blocks
+        this.cascadeCameraLerpSpeed = 0.15; // Faster to track cascading blocks (was 0.02)
         this.normalCameraLerpSpeed = 0.08;  // Default camera lerp speed
 
         // Track cleared line positions for camera following
         this.lastClearedLines = null;       // Array of cleared line Y coordinates
         this.lastClearedLinesCenter = null; // Center position of cleared lines
+        this.lowestFallingBlock = null;     // Track the lowest block that's falling
 
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
@@ -692,6 +693,8 @@ export class InfinityMode extends BaseGameMode {
                     const minRow = Math.min(...fullLines);
                     const maxRow = Math.max(...fullLines);
                     this.lastClearedLinesCenter = (minRow + maxRow) / 2;
+
+                    console.log(`[Infinity] Lines cleared at rows ${minRow}-${maxRow}, center: ${this.lastClearedLinesCenter}`);
                 }
 
                 if (this.boardScene && this.boardScene.triggerLineClearFlash) {
@@ -743,12 +746,12 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
-                // Use slower lerp speed during cascades to prevent speed illusion
-                // Camera follows blocks but lags behind, creating clear relative motion
+                // Use faster lerp speed during cascades to keep up with falling blocks
+                // Camera tracks the action zone where blocks are falling and clearing
                 if (this.boardScene?.cameraSettings) {
                     this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
-                    // Pass cleared line center position to camera update
-                    this._updateCameraAfterCascade(this.lastClearedLinesCenter);
+                    // Track the falling blocks and cleared lines to position camera optimally
+                    this._updateCameraDuringCascade();
                 }
             },
             // Update camera after cascade completes
@@ -1178,6 +1181,68 @@ export class InfinityMode extends BaseGameMode {
             // Not past threshold yet, keep current camera position
             this.gameState.cameraRow = currentCameraRow;
         }
+    }
+
+    /**
+     * Update camera during cascade to follow falling blocks and show line clears
+     * This method is called on every gravity step during cascades
+     * @private
+     */
+    _updateCameraDuringCascade() {
+        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+        if (this.boardScene.cameraSettings.manualControl) return;
+
+        const cameraSettings = this.boardScene.cameraSettings;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const board = this.gameState.board;
+        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+
+        // Strategy: Follow the "action zone" where blocks are falling and lines are clearing
+        // Priority 1: If we have cleared lines, focus on that area
+        // Priority 2: Track the falling blocks in that region
+
+        let targetRow;
+
+        if (this.lastClearedLinesCenter !== null) {
+            // We know where lines were just cleared - that's the focal point
+            // Find blocks around this area to track the falling action
+            const searchStart = Math.max(0, Math.floor(this.lastClearedLinesCenter) - 10);
+            const searchEnd = Math.min(board.length, Math.ceil(this.lastClearedLinesCenter) + 10);
+
+            let highestInZone = searchEnd;
+            let lowestInZone = searchStart;
+
+            // Find the extent of blocks in the action zone
+            for (let row = searchStart; row < searchEnd; row++) {
+                for (let col = 0; col < board[row].length; col++) {
+                    if (board[row][col] !== null) {
+                        highestInZone = Math.min(highestInZone, row);
+                        lowestInZone = Math.max(lowestInZone, row);
+                    }
+                }
+            }
+
+            // Target the center of the active falling zone, weighted towards cleared lines
+            // This keeps both the cleared line flash AND the falling blocks visible
+            if (lowestInZone > searchStart) {
+                targetRow = (highestInZone + lowestInZone) / 2;
+            } else {
+                // No blocks found, just use cleared line center
+                targetRow = this.lastClearedLinesCenter;
+            }
+        } else {
+            // Fallback: track overall highest and lowest blocks
+            targetRow = this._findHighestBlockRow();
+        }
+
+        // Position camera to center the action zone at 50% viewport
+        // This ensures maximum visibility of both line clears and falling blocks
+        const targetCameraRow = Math.floor(targetRow - visibleRows * 0.5);
+
+        // Clamp and update camera position
+        const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+        this.boardScene.updateCameraPosition(clampedCameraRow);
+        this.gameState.cameraRow = clampedCameraRow;
     }
 
     /**
