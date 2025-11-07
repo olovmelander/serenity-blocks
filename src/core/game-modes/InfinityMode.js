@@ -646,12 +646,7 @@ export class InfinityMode extends BaseGameMode {
                         this.gameState.infinityStats.maxComboComplexity = comboComplexity;
                     }
 
-                    // Increment total cascades counter if this is part of a combo
-                    if (comboDepth > 0) {
-                        this.gameState.infinityStats.totalCascades++;
-                    }
-
-                    console.log(`[Infinity] Combo: depth=${comboDepth}, complexity=${comboComplexity}, total cascades=${this.gameState.infinityStats.totalCascades}`);
+                    console.log(`[Infinity] Line clear: depth=${comboDepth}, complexity=${comboComplexity}, maxDepth=${this.gameState.infinityStats.maxComboDepth}, maxComplexity=${this.gameState.infinityStats.maxComboComplexity}`);
                 }
             },
             onLevelUp: () => {
@@ -759,6 +754,13 @@ export class InfinityMode extends BaseGameMode {
             // Update camera after cascade completes
             onCascadeComplete: (cascadeCount) => {
                 if (cascadeCount > 0) {
+                    // Track cascade statistics for infinity mode
+                    if (this.gameState.infinityStats && cascadeCount >= 2) {
+                        // Only count actual cascades (2+), not the initial clear
+                        this.gameState.infinityStats.totalCascades++;
+                        console.log(`[Infinity] Cascade completed: count=${cascadeCount}, total cascades=${this.gameState.infinityStats.totalCascades}`);
+                    }
+
                     // Restore normal camera lerp speed after cascade
                     if (this.boardScene?.cameraSettings) {
                         this.boardScene.cameraSettings.lerpSpeed = this.normalCameraLerpSpeed;
