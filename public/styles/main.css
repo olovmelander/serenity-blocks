@@ -10,7 +10,7 @@ body {
     height: 100vh; /* Use full viewport height */
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     overflow: hidden; /* Prevent any scrollbars */
     position: relative;
     margin: 0;
@@ -5189,6 +5189,7 @@ body {
             align-self: flex-start;
             max-height: clamp(320px, 70vh, 640px);
             overflow: visible;
+            margin-top: 130px !important;
         }
 
         /* Game board - Center */
@@ -5217,6 +5218,7 @@ body {
         #single-player-container.infinity-mode-active #infinity-minimap {
             order: 3;
             align-self: flex-start;
+            margin-top: 130px !important;
         }
 
         .single-player-stage.infinity-mode-active .single-player-stats-bar {
@@ -5318,8 +5320,8 @@ body {
             --player-primary: #8b5cf6;
             --player-primary-light: #c4b5fd;
             --player-glow: rgba(139, 92, 246, 0.35);
-            --board-width: 300px;
-            --board-height: 600px;
+            --board-width: 400px;
+            --board-height: 800px;
             width: auto;
             align-items: stretch;
             gap: 18px;
@@ -11636,8 +11638,8 @@ body.phaser-multiplayer-active #single-player-container {
 }
 
 .player-card.single-player-card {
-    --board-width: 300px;
-    --board-height: 600px;
+    --board-width: 400px;
+    --board-height: 800px;
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.35);
@@ -13032,12 +13034,15 @@ body.serenity-mode.cursor-hidden * {
 }
 .single-player-stage {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     gap: 28px;
     margin: 0 auto;
+    padding-top: 20px;
+    padding-bottom: 20px;
     width: fit-content;
     max-width: calc(100% - 80px);
+    min-height: calc(100vh - 40px);
 }
 
 /* === Floating Game Mode Cards (over intro animation) === */
