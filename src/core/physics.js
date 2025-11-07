@@ -189,7 +189,7 @@ export async function applyGravity(
 
     // Fixed gravity delay - same speed for all game modes
     // This ensures consistent, snappy cascade feel everywhere
-    const gravityDelay = 24; // ms - fixed delay for consistent speed
+    const gravityDelay = 16; // ms - fixed delay for consistent speed
 
     physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using fixed ${gravityDelay}ms per step`);
 
