@@ -187,9 +187,9 @@ export async function applyGravity(
         maxPotentialFall = Math.max(maxPotentialFall, fallDistance);
     });
 
-    // Fixed gravity delay for consistent cascade feel regardless of height
-    // This gives the same snappy, responsive feel in both single player and infinity mode
-    const gravityDelay = 12; // ms - fixed delay for consistent speed
+    // Fixed gravity delay - same speed for all game modes
+    // This ensures consistent, snappy cascade feel everywhere
+    const gravityDelay = 24; // ms - fixed delay for consistent speed
 
     physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using fixed ${gravityDelay}ms per step`);
 
@@ -249,14 +249,20 @@ export async function applyGravity(
             }
         }
 
-        // Adaptive visual feedback with variable speed based on fall distance
-        if (blocksStillFalling && drawCallback) {
-            drawCallback();
+        // Visual feedback with consistent timing
+        if (blocksStillFalling) {
+            if (drawCallback) {
+                drawCallback();
+            }
 
             // Update camera to follow falling blocks during cascade
             callbacks.onGravityStep?.();
 
+            // Use requestAnimationFrame-based timing for smooth, consistent gravity
+            const startTime = performance.now();
             await waitForAnimationFrame(gravityDelay);
+            const actualDelay = performance.now() - startTime;
+            physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
         }
     }
 
