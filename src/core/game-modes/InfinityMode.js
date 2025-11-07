@@ -730,8 +730,9 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
-                // Update camera every frame during gravity to smoothly follow the cascade
-                this._updateCameraAfterCascade();
+                // DISABLED: Camera updates during gravity can create illusion of faster falling
+                // Only update camera after cascade completes for more accurate speed perception
+                // this._updateCameraAfterCascade();
             },
             // Update camera after cascade completes
             onCascadeComplete: (cascadeCount) => {
