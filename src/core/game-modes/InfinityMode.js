@@ -61,6 +61,15 @@ export class InfinityMode extends BaseGameMode {
         this.lastDropWasHard = false;
         this.suppressFollowUntilLock = false;
 
+        // Cascade camera following configuration
+        // Use slower lerp during cascades to prevent speed illusion
+        this.cascadeCameraLerpSpeed = 0.02; // Much slower than normal 0.08
+        this.normalCameraLerpSpeed = 0.08;  // Default camera lerp speed
+
+        // Track cleared line positions for camera following
+        this.lastClearedLines = null;       // Array of cleared line Y coordinates
+        this.lastClearedLinesCenter = null; // Center position of cleared lines
+
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
     }
@@ -681,6 +690,15 @@ export class InfinityMode extends BaseGameMode {
             },
             // Line clear flash effect
             triggerFlash: (fullLines) => {
+                // Store cleared line positions for camera following
+                this.lastClearedLines = fullLines;
+                if (fullLines && fullLines.length > 0) {
+                    // Calculate center of cleared lines for camera targeting
+                    const minRow = Math.min(...fullLines);
+                    const maxRow = Math.max(...fullLines);
+                    this.lastClearedLinesCenter = (minRow + maxRow) / 2;
+                }
+
                 if (this.boardScene && this.boardScene.triggerLineClearFlash) {
                     this.boardScene.triggerLineClearFlash(fullLines);
                 }
@@ -730,15 +748,27 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
-                // DISABLED: Camera updates during gravity can create illusion of faster falling
-                // Only update camera after cascade completes for more accurate speed perception
-                // this._updateCameraAfterCascade();
+                // Use slower lerp speed during cascades to prevent speed illusion
+                // Camera follows blocks but lags behind, creating clear relative motion
+                if (this.boardScene?.cameraSettings) {
+                    this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
+                    // Pass cleared line center position to camera update
+                    this._updateCameraAfterCascade(this.lastClearedLinesCenter);
+                }
             },
             // Update camera after cascade completes
             onCascadeComplete: (cascadeCount) => {
                 if (cascadeCount > 0) {
-                    // After cascade, do final camera position update
+                    // Restore normal camera lerp speed after cascade
+                    if (this.boardScene?.cameraSettings) {
+                        this.boardScene.cameraSettings.lerpSpeed = this.normalCameraLerpSpeed;
+                    }
+                    // Do final camera position adjustment (no cleared lines, use highest block)
                     this._updateCameraAfterCascade();
+
+                    // Clear stored cleared line positions
+                    this.lastClearedLines = null;
+                    this.lastClearedLinesCenter = null;
                 }
             },
             // Spawn next piece after physics completes
@@ -1150,9 +1180,10 @@ export class InfinityMode extends BaseGameMode {
 
     /**
      * Update camera after a cascade completes to follow new highest block position
+     * @param {number|null} clearedLineCenter - Center position of cleared lines (if available)
      * @private
      */
-    _updateCameraAfterCascade() {
+    _updateCameraAfterCascade(clearedLineCenter = null) {
         if (!this.boardScene || !this.boardScene.cameraSettings) return;
         if (this.boardScene.cameraSettings.manualControl) return; // Don't interfere with manual control
 
@@ -1161,37 +1192,55 @@ export class InfinityMode extends BaseGameMode {
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
         const blockSize = this.boardScene.boardConfig?.blockSize || 30;
 
-        // Find the new highest block position after cascade
-        const highestBlockRow = this._findHighestBlockRow();
+        // Determine target row: use cleared line center if available, otherwise highest block
+        let targetRow;
+        if (clearedLineCenter !== null) {
+            // Follow the center of cleared lines (the action)
+            targetRow = clearedLineCenter;
+        } else {
+            // Fall back to highest block tracking
+            targetRow = this._findHighestBlockRow();
+        }
 
-        if (highestBlockRow >= this.gameState.board.length) {
+        if (targetRow >= this.gameState.board.length) {
             // No blocks left, return
             return;
         }
 
         // Get current camera position
         const currentCameraRow = Math.floor(camera.scrollY / blockSize);
-
-        const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.25);
-        const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.75);
         const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
 
-        let targetCameraRow = null;
+        // When following cleared lines, center them at 50-60% from top
+        // When following highest block, use the existing 30%/70% thresholds
+        let targetCameraRow;
+        if (clearedLineCenter !== null) {
+            // Position camera so cleared lines appear at 55% from top
+            targetCameraRow = targetRow - Math.floor(visibleRows * 0.55);
+        } else {
+            // Original logic for highest block tracking
+            const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.25);
+            const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.75);
 
-        if (highestBlockRow < topThreshold) {
-            // Blocks moved upward (closer to row 0) - keep them near top third
-            targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
-        } else if (highestBlockRow > bottomThreshold) {
-            // Blocks cascaded downward and are exiting bottom of viewport
-            targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.7);
+            if (targetRow < topThreshold) {
+                // Blocks moved upward - keep them at 30% from top
+                targetCameraRow = targetRow - Math.floor(visibleRows * 0.3);
+            } else if (targetRow > bottomThreshold) {
+                // Blocks cascaded downward - keep them at 70% from top
+                targetCameraRow = targetRow - Math.floor(visibleRows * 0.7);
+            } else {
+                // Within viewport, no adjustment needed
+                return;
+            }
         }
 
-        if (targetCameraRow !== null) {
-            const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-            this.boardScene.updateCameraPosition(clampedCameraRow);
-            this.gameState.cameraRow = clampedCameraRow;
-            console.log(`[Infinity] Camera updated after cascade: highest block at row ${highestBlockRow}, camera → row ${clampedCameraRow}`);
-        }
+        // Clamp and update camera position
+        const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+        this.boardScene.updateCameraPosition(clampedCameraRow);
+        this.gameState.cameraRow = clampedCameraRow;
+
+        const target = clearedLineCenter !== null ? 'cleared lines' : 'highest block';
+        console.log(`[Infinity] Camera updated after cascade: ${target} at row ${Math.floor(targetRow)}, camera → row ${clampedCameraRow}`);
     }
 
     /**
