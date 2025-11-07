@@ -17,6 +17,28 @@ const physicsWarn = (...args) => {
     if (PHYSICS_DEBUG) console.warn(...args);
 };
 
+function waitForAnimationFrame(durationMs) {
+    const raf = typeof window !== 'undefined' ? window.requestAnimationFrame : null;
+    const perfNow = typeof performance !== 'undefined' && performance?.now ? () => performance.now() : () => Date.now();
+
+    if (!raf) {
+        return new Promise((resolve) => setTimeout(resolve, durationMs));
+    }
+
+    return new Promise((resolve) => {
+        const start = perfNow();
+        const tick = (now) => {
+            const elapsed = (typeof now === 'number' ? now : perfNow()) - start;
+            if (elapsed >= durationMs) {
+                resolve();
+            } else {
+                raf(tick);
+            }
+        };
+        raf(tick);
+    });
+}
+
 /**
  * Determines if a specific board position is part of a given piece
  * @param {number} boardX - X coordinate on the board
@@ -125,9 +147,51 @@ export function findConnectedComponents(boardData) {
  * @param {Array<Array<boolean>>} movedArray - 2D array to track which cells moved (optional)
  * @returns {Promise<void>} Resolves when all blocks have settled
  */
-export async function applyGravity(gameState, drawCallback, movedArray = null) {
+export async function applyGravity(
+    gameState,
+    drawCallback,
+    movedArray = null,
+    callbacks = {},
+) {
     const { lockedPieces, boardGrid } = gameState;
     let blocksStillFalling = true;
+
+    // Note: Viewport optimization removed - it was causing stuck pieces
+    // All pieces must be processed for gravity to work correctly
+    // The performance gain wasn't worth the correctness issues
+    let visiblePieces = lockedPieces;
+
+    // Calculate maximum potential fall distance to determine animation speed
+    // For infinity mode with large grids, we need adaptive timing
+    let maxPotentialFall = 0;
+    rebuildBoardGridFromPieces(lockedPieces, boardGrid);
+    visiblePieces.forEach(piece => {
+        // Check how far this piece could potentially fall
+        let fallDistance = 0;
+        for (let y = piece.y + piece.shape.length; y < boardGrid.length; y++) {
+            let hasBlockBelow = false;
+            piece.shape.forEach((row, localY) => {
+                row.forEach((cell, localX) => {
+                    if (cell > 0) {
+                        const boardX = piece.x + localX;
+                        const checkY = y + (piece.shape.length - 1 - localY);
+                        if (checkY < boardGrid.length && boardGrid[checkY] && boardGrid[checkY][boardX] !== null) {
+                            hasBlockBelow = true;
+                        }
+                    }
+                });
+            });
+            if (hasBlockBelow) break;
+            fallDistance++;
+        }
+        maxPotentialFall = Math.max(maxPotentialFall, fallDistance);
+    });
+
+    // Fixed gravity delay - same speed for all game modes
+    // This ensures consistent, snappy cascade feel everywhere
+    const gravityDelay = 24; // ms - fixed delay for consistent speed
+
+    physicsLog(`[Gravity] Max potential fall: ${maxPotentialFall} rows, using fixed ${gravityDelay}ms per step`);
 
     while (blocksStillFalling) {
         blocksStillFalling = false;
@@ -135,9 +199,9 @@ export async function applyGravity(gameState, drawCallback, movedArray = null) {
         const currentBoard = boardGrid;
 
         // Process blocks from bottom to top to prevent double-processing
-        lockedPieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
+        visiblePieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
 
-        for (const piece of lockedPieces) {
+        for (const piece of visiblePieces) {
             let canFall = true;
 
             // Check if this entire block cluster can fall one row
@@ -185,10 +249,20 @@ export async function applyGravity(gameState, drawCallback, movedArray = null) {
             }
         }
 
-        // Smoother visual feedback for falling blocks with faster animation
-        if (blocksStillFalling && drawCallback) {
-            drawCallback();
-            await new Promise((resolve) => setTimeout(resolve, 25)); // Reduced from 50ms for smoother motion
+        // Visual feedback with consistent timing
+        if (blocksStillFalling) {
+            if (drawCallback) {
+                drawCallback();
+            }
+
+            // Update camera to follow falling blocks during cascade
+            callbacks.onGravityStep?.();
+
+            // Use requestAnimationFrame-based timing for smooth, consistent gravity
+            const startTime = performance.now();
+            await waitForAnimationFrame(gravityDelay);
+            const actualDelay = performance.now() - startTime;
+            physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
         }
     }
 
@@ -552,6 +626,11 @@ export async function processPhysics(gameState, callbacks) {
             callbacks.triggerCombo(cascadeCount);
         }
 
+        // Trigger cascade wave visual indicator for cascades 2+
+        if (cascadeCount >= 2 && callbacks.triggerCascadeWave) {
+            callbacks.triggerCascadeWave(cascadeCount);
+        }
+
         // QUADRA CRITICAL: Store moved[][] state for each cleared line
         // This captures which cells had blocks from the current piece (cascade 1)
         // or which cells fell from above (cascades 2+)
@@ -688,10 +767,16 @@ export async function processPhysics(gameState, callbacks) {
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
-        // Speed multiplier: first clear is normal, cascades get 30% faster
-        const speedMultiplier = cascadeCount === 1 ? 1.0 : 0.7;
+        // Progressive speed multiplier: Faster for responsive cascades
+        // Cascade 1: 1.0x (120ms total) - Quick but visible
+        // Cascade 2-4: 0.8x (96ms) - Faster for cascades
+        // Cascade 5-9: 0.6x (72ms) - Quick cascade speed
+        // Cascade 10+: 0.5x (60ms) - Very fast for mega cascades
+        const speedMultiplier = cascadeCount === 1 ? 1.0 :
+                               cascadeCount <= 4 ? 0.8 :
+                               cascadeCount <= 9 ? 0.6 : 0.5;
 
-        // Stage 1: Keep original colors, full opacity - snappier feel
+        // Stage 1: Keep original colors, full opacity - quick flash
         fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
@@ -701,9 +786,9 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 80 * speedMultiplier));
+        await new Promise((resolve) => setTimeout(resolve, 50 * speedMultiplier));
 
-        // Stage 2: Keep original colors, slightly dimmed - reduced timing for smoother flow
+        // Stage 2: Keep original colors, slightly dimmed - smooth transition
         fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
@@ -715,7 +800,7 @@ export async function processPhysics(gameState, callbacks) {
         if (callbacks.draw) callbacks.draw();
         await new Promise((resolve) => setTimeout(resolve, 40 * speedMultiplier));
 
-        // Stage 3: Keep original colors, fade to transparent - quick final fade
+        // Stage 3: Keep original colors, fade to transparent - smooth final fade
         fullLines.forEach((y) => {
             for (let x = 0; x < COLS; x++) {
                 if (markedBoard[y][x]) {
@@ -738,7 +823,7 @@ export async function processPhysics(gameState, callbacks) {
         preGravityBoard = cloneBoardGrid(gameState.boardGrid).map((row) => row.map((cell) => cell !== null));
 
         // Phase 2: Apply gravity to individual blocks and track movement
-        await applyGravity(gameState, callbacks.draw, movedArray);
+        await applyGravity(gameState, callbacks.draw, movedArray, callbacks);
 
         // Phase 3: Recursive cascade - continue the loop to check for new lines
         // The while(true) loop will automatically check for new complete lines
@@ -747,6 +832,11 @@ export async function processPhysics(gameState, callbacks) {
         if (gameState.lockedPieces.length === 0) {
             sendForClean = true;
         }
+    }
+
+    // Notify that cascades have completed and camera may need to update
+    if (cascadeCount > 0 && callbacks.onCascadeComplete) {
+        callbacks.onCascadeComplete(cascadeCount);
     }
 
     // --- Finalize ---

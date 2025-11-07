@@ -27,6 +27,7 @@ export class InfinityHUD {
         this.progressBar = null;
         this.milestonesDisplay = null;
         this.statsDisplay = null;
+        this.cascadeCounter = null;
 
         // Game state reference
         this.gameState = null;
@@ -34,6 +35,10 @@ export class InfinityHUD {
         // Milestones tracking
         this.milestones = [100, 250, 500, 750, 1000];
         this.achievedMilestones = new Set();
+
+        // Cascade tracking
+        this.activeCascadeCount = 0;
+        this.cascadeTimeout = null;
 
         // Initialize
         this._initialize();
@@ -91,6 +96,9 @@ export class InfinityHUD {
 
         // Create stats section
         this._createStatsSection();
+
+        // Create live cascade counter overlay
+        this._createCascadeCounter();
 
         console.log('[InfinityHUD] Initialized');
     }
@@ -329,6 +337,112 @@ export class InfinityHUD {
     }
 
     /**
+     * Create live cascade counter overlay
+     * @private
+     */
+    _createCascadeCounter() {
+        this.cascadeCounter = document.createElement('div');
+        this.cascadeCounter.className = 'cascade-counter-overlay';
+        this.cascadeCounter.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, rgba(255, 100, 100, 0.95), rgba(255, 200, 100, 0.95));
+            border: 3px solid rgba(255, 255, 255, 0.9);
+            border-radius: 16px;
+            padding: 24px 40px;
+            font-family: 'Orbitron', monospace;
+            font-size: 48px;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow:
+                0 0 20px rgba(255, 100, 100, 1.0),
+                0 0 40px rgba(255, 100, 100, 0.8),
+                2px 2px 4px rgba(0, 0, 0, 0.8);
+            box-shadow:
+                0 20px 60px rgba(255, 100, 100, 0.6),
+                inset 0 0 30px rgba(255, 255, 255, 0.3);
+            z-index: 10000;
+            pointer-events: none;
+            display: none;
+            letter-spacing: 4px;
+            animation: cascade-pulse 0.5s ease-in-out infinite alternate;
+        `;
+
+        // Add animation keyframes
+        if (!document.getElementById('cascade-counter-keyframes')) {
+            const style = document.createElement('style');
+            style.id = 'cascade-counter-keyframes';
+            style.textContent = `
+                @keyframes cascade-pulse {
+                    0% { transform: translate(-50%, -50%) scale(0.95); }
+                    100% { transform: translate(-50%, -50%) scale(1.05); }
+                }
+                @keyframes cascade-flash {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                    100% { opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        document.body.appendChild(this.cascadeCounter);
+    }
+
+    /**
+     * Update cascade counter display
+     * @param {number} cascadeCount - Current cascade count
+     */
+    updateCascadeCounter(cascadeCount) {
+        if (!this.cascadeCounter) return;
+
+        this.activeCascadeCount = cascadeCount;
+
+        // Only show for cascades 2+
+        if (cascadeCount >= 2) {
+            this.cascadeCounter.textContent = `CASCADE x${cascadeCount}`;
+            this.cascadeCounter.style.display = 'block';
+
+            // Update colors based on cascade count
+            if (cascadeCount >= 20) {
+                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(255, 50, 255, 0.95), rgba(100, 50, 255, 0.95))';
+                this.cascadeCounter.style.fontSize = '56px';
+            } else if (cascadeCount >= 10) {
+                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(255, 100, 50, 0.95), rgba(255, 200, 50, 0.95))';
+                this.cascadeCounter.style.fontSize = '52px';
+            } else if (cascadeCount >= 5) {
+                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(255, 150, 100, 0.95), rgba(255, 220, 100, 0.95))';
+                this.cascadeCounter.style.fontSize = '48px';
+            } else {
+                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(100, 200, 255, 0.95), rgba(100, 255, 200, 0.95))';
+                this.cascadeCounter.style.fontSize = '48px';
+            }
+
+            // Clear existing timeout
+            if (this.cascadeTimeout) {
+                clearTimeout(this.cascadeTimeout);
+            }
+
+            // Hide after 1.5 seconds of no updates
+            this.cascadeTimeout = setTimeout(() => {
+                this.hideCascadeCounter();
+            }, 1500);
+        }
+    }
+
+    /**
+     * Hide cascade counter
+     */
+    hideCascadeCounter() {
+        if (this.cascadeCounter) {
+            this.cascadeCounter.style.display = 'none';
+            this.activeCascadeCount = 0;
+        }
+    }
+
+    /**
      * Show HUD
      */
     show() {
@@ -529,15 +643,30 @@ export class InfinityHUD {
      * Destroy HUD and clean up
      */
     destroy() {
+        // Clear cascade timeout
+        if (this.cascadeTimeout) {
+            clearTimeout(this.cascadeTimeout);
+        }
+
+        // Remove cascade counter from DOM
+        if (this.cascadeCounter && this.cascadeCounter.parentElement) {
+            this.cascadeCounter.parentElement.removeChild(this.cascadeCounter);
+        }
+
         // Remove from DOM
         if (this.container.parentElement) {
             this.container.parentElement.removeChild(this.container);
         }
 
-        // Remove keyframes style if exists
+        // Remove keyframes styles if exist
         const keyframes = document.getElementById('milestone-keyframes');
         if (keyframes) {
             keyframes.remove();
+        }
+
+        const cascadeKeyframes = document.getElementById('cascade-counter-keyframes');
+        if (cascadeKeyframes) {
+            cascadeKeyframes.remove();
         }
 
         console.log('[InfinityHUD] Destroyed');

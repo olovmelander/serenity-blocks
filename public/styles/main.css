@@ -5156,17 +5156,24 @@ body {
 
         .game-container.single-player-layout.infinity-mode-active {
             flex-direction: row;
-            align-items: flex-start;
+            align-items: stretch;
             justify-content: center;
-            gap: 32px;
-            width: auto;
-            min-width: auto;
-            padding: 12px 0;
+            gap: clamp(24px, 4vw, 56px);
+            width: 100%;
+            min-width: 0;
+            padding: clamp(12px, 2vh, 28px) clamp(20px, 4vw, 72px);
+            box-sizing: border-box;
         }
 
         .single-player-stage.infinity-mode-active {
-            gap: 36px;
-            align-items: flex-start;
+            gap: clamp(24px, 3vw, 48px);
+            align-items: stretch;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            padding: clamp(12px, 2vh, 32px) clamp(10px, 3vw, 48px);
+            min-height: calc(100vh - clamp(120px, 16vh, 200px)); /* leave breathing room at top/bottom */
+            box-sizing: border-box;
         }
 
         #single-player-container.infinity-mode-active .floating-settings-btn {
@@ -5179,6 +5186,9 @@ body {
         /* Infinity HUD - Left side */
         #single-player-container.infinity-mode-active #infinity-hud {
             order: 1;
+            align-self: flex-start;
+            max-height: clamp(320px, 70vh, 640px);
+            overflow: visible;
         }
 
         /* Game board - Center */
@@ -5187,15 +5197,121 @@ body {
             --player-primary: #3b82f6;
             --player-primary-light: #93c5fd;
             --player-glow: rgba(59, 130, 246, 0.35);
+            --board-width: min(clamp(320px, 42vw, 420px), calc(85vh / 2));
+            --board-height: calc(var(--board-width) * 2);
+            flex: 0 1 auto;
+            padding: clamp(6px, 1.2vw, 14px);
+            width: calc(var(--board-width) + clamp(8px, 1.2vw, 20px));
+            max-width: calc(var(--board-width) + clamp(8px, 1.2vw, 20px));
+        }
+
+        #single-player-container.infinity-mode-active .single-player-body {
+            gap: clamp(6px, 1vw, 12px);
+        }
+
+        #single-player-container.infinity-mode-active .single-player-main {
+            gap: clamp(10px, 1.4vw, 18px);
         }
 
         /* Infinity Minimap - Right side */
         #single-player-container.infinity-mode-active #infinity-minimap {
             order: 3;
+            align-self: flex-start;
         }
 
         .single-player-stage.infinity-mode-active .single-player-stats-bar {
             display: none !important;
+        }
+
+        /* === Infinity Pause Trance Overlay === */
+        .trance-overlay-root {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 4500;
+            opacity: 0;
+            transition: opacity 3400ms ease;
+        }
+
+        .trance-overlay-root.trance-overlay-visible {
+            opacity: 1;
+        }
+
+        .trance-overlay-root.trance-overlay-exit {
+            opacity: 0;
+        }
+
+        .trance-overlay-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: min(90vw, 1100px);
+            height: min(90vh, 1100px);
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(255, 234, 188, 0.45) 0%, rgba(255, 205, 140, 0.18) 35%, rgba(255, 170, 110, 0.08) 55%, transparent 72%),
+                radial-gradient(circle, rgba(99, 102, 241, 0.12), transparent 60%);
+            filter: blur(12px);
+            mix-blend-mode: screen;
+            animation: tranceGlowPulse 6s ease-in-out infinite;
+        }
+
+        .trance-overlay-particles {
+            position: absolute;
+            top: -5vh;
+            left: -5vw;
+            width: 110vw;
+            height: 120vh;
+            overflow: hidden;
+            filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.35));
+        }
+
+        .trance-particle {
+            position: absolute;
+            bottom: -15vh;
+            left: var(--left, 50%);
+            width: var(--size, 12px);
+            height: var(--size, 12px);
+            border-radius: 50%;
+            background: radial-gradient(circle, hsla(var(--hue, 42), 85%, 78%, 0.9), hsla(var(--hue, 42), 80%, 52%, 0.05));
+            opacity: 0;
+            animation: tranceFloatUp var(--duration, 12s) linear var(--delay, 0s) infinite;
+            mix-blend-mode: screen;
+            transform: translate3d(-50%, 0, 0);
+        }
+
+        @keyframes tranceGlowPulse {
+            0% {
+                opacity: 0.35;
+                transform: translate(-50%, -50%) scale(0.95);
+            }
+            50% {
+                opacity: 0.6;
+                transform: translate(-50%, -50%) scale(1.05);
+            }
+            100% {
+                opacity: 0.35;
+                transform: translate(-50%, -50%) scale(0.96);
+            }
+        }
+
+        @keyframes tranceFloatUp {
+            0% {
+                opacity: 0;
+                transform: translate3d(-50%, 0, 0) scale(0.6);
+            }
+            10% {
+                opacity: 0.85;
+            }
+            60% {
+                opacity: 0.4;
+            }
+            100% {
+                opacity: 0;
+                transform: translate3d(-50%, -125vh, 0) scale(1.2);
+            }
         }
 
         .single-player-card {
