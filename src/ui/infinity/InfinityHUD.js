@@ -40,6 +40,19 @@ export class InfinityHUD {
         this.activeCascadeCount = 0;
         this.cascadeTimeout = null;
 
+        // PERFORMANCE: Cache values to avoid expensive recalculation
+        // Only update DOM when values actually change
+        this.lastBuildHeight = null;
+        this.lastTopRow = null;
+        this.lastPercentage = null;
+        this.lastLockedPiecesCount = 0;
+        this.lastStats = null;
+
+        // PERFORMANCE: Cache individual stat values to avoid unnecessary DOM updates
+        this.lastScore = null;
+        this.lastBlocks = null;
+        this.lastLines = null;
+
         // Initialize
         this._initialize();
     }
@@ -466,32 +479,49 @@ export class InfinityHUD {
 
     /**
      * Update HUD with current game state
+     * PERFORMANCE OPTIMIZED: Only updates DOM when values actually change
      * @param {Object} gameState - Current game state
      */
     update(gameState) {
+        if (!gameState) return;
         this.gameState = gameState;
 
-        if (!this.gameState) return;
+        // PERFORMANCE: Calculate current values once
+        const buildHeight = calculateBuildHeight(this.gameState);
+        const topRow = calculateTopRow(this.gameState);
+        const lockedPiecesCount = this.gameState.lockedPieces?.length || 0;
 
-        // Update height displays
-        this._updateHeightDisplays();
+        // PERFORMANCE: Only update height displays if values changed
+        if (this.lastBuildHeight !== buildHeight || this.lastTopRow !== topRow) {
+            this.lastBuildHeight = buildHeight;
+            this.lastTopRow = topRow;
+            this._updateHeightDisplays(buildHeight);
+        }
 
-        // Update progress bar
-        this._updateProgressBar();
+        // PERFORMANCE: Only update progress bar if build height changed
+        if (this.lastBuildHeight !== buildHeight) {
+            this._updateProgressBar(buildHeight);
+        }
 
-        // Update milestones
-        this._updateMilestones();
+        // PERFORMANCE: Only update milestones when build height changes
+        if (this.lastBuildHeight !== buildHeight) {
+            this._updateMilestones(buildHeight);
+        }
 
-        // Update statistics
-        this._updateStatistics();
+        // PERFORMANCE: Only update statistics when piece count changes
+        if (this.lastLockedPiecesCount !== lockedPiecesCount) {
+            this.lastLockedPiecesCount = lockedPiecesCount;
+            this._updateStatistics();
+        }
     }
 
     /**
      * Update height displays
+     * PERFORMANCE: Accepts pre-calculated buildHeight to avoid recalculation
      * @private
+     * @param {number} buildHeight - Pre-calculated build height
      */
-    _updateHeightDisplays() {
-        const buildHeight = calculateBuildHeight(this.gameState);
+    _updateHeightDisplays(buildHeight) {
         const maxRows = this.gameState.maxRows || 1000;
 
         // Build height from bottom
@@ -508,10 +538,11 @@ export class InfinityHUD {
 
     /**
      * Update progress bar
+     * PERFORMANCE: Accepts pre-calculated buildHeight to avoid recalculation
      * @private
+     * @param {number} buildHeight - Pre-calculated build height
      */
-    _updateProgressBar() {
-        const buildHeight = calculateBuildHeight(this.gameState);
+    _updateProgressBar(buildHeight) {
         const maxRows = this.gameState.maxRows || 1000;
         const percentage = (buildHeight / maxRows) * 100;
 
@@ -530,10 +561,11 @@ export class InfinityHUD {
 
     /**
      * Update milestone badges
+     * PERFORMANCE: Accepts pre-calculated buildHeight to avoid recalculation
      * @private
+     * @param {number} buildHeight - Pre-calculated build height
      */
-    _updateMilestones() {
-        const buildHeight = calculateBuildHeight(this.gameState);
+    _updateMilestones(buildHeight) {
 
         this.milestones.forEach(milestone => {
             const badge = this.milestonesDisplay.querySelector(`[data-milestone="${milestone}"]`);
@@ -599,28 +631,42 @@ export class InfinityHUD {
 
     /**
      * Update statistics display
+     * PERFORMANCE OPTIMIZED: Only updates DOM when values actually change
      * @private
      */
     _updateStatistics() {
-        // Update blocks placed
+        // PERFORMANCE: Only update blocks if changed
         const blocksElem = document.getElementById('stat-blocks');
         if (blocksElem && this.gameState.infinityStats) {
-            blocksElem.textContent = this.gameState.infinityStats.blocksPlaced.toString();
+            const blocks = this.gameState.infinityStats.blocksPlaced;
+            if (this.lastBlocks !== blocks) {
+                this.lastBlocks = blocks;
+                blocksElem.textContent = blocks.toString();
+            }
         }
 
-        // Update lines cleared
+        // PERFORMANCE: Only update lines if changed
         const linesElem = document.getElementById('stat-lines');
         if (linesElem) {
-            linesElem.textContent = this.gameState.lines.toString();
+            const lines = this.gameState.lines;
+            if (this.lastLines !== lines) {
+                this.lastLines = lines;
+                linesElem.textContent = lines.toString();
+            }
         }
 
-        // Update score
+        // PERFORMANCE CRITICAL: Only call toLocaleString() if score changed
+        // toLocaleString() gets slower as numbers grow!
         const scoreElem = document.getElementById('stat-score');
         if (scoreElem) {
-            scoreElem.textContent = this.gameState.score.toLocaleString();
+            const score = this.gameState.score;
+            if (this.lastScore !== score) {
+                this.lastScore = score;
+                scoreElem.textContent = score.toLocaleString();
+            }
         }
 
-        // Update max combo depth
+        // Update max combo depth (these change rarely, so no caching needed)
         const comboElem = document.getElementById('stat-combo');
         if (comboElem && this.gameState.infinityStats) {
             comboElem.textContent = this.gameState.infinityStats.maxComboDepth.toString();

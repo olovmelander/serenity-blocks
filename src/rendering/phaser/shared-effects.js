@@ -57,6 +57,16 @@ export class SharedEffects {
         this.lastImpactIntensity = 0;
         this.currentComboCount = 0;
 
+        // PERFORMANCE: Track graphics objects and text objects for proper cleanup
+        // Prevents accumulation of orphaned display objects
+        this.activeGraphics = [];
+        this.activeTextObjects = [];
+        this.maxGraphicsObjects = 25; // Limit concurrent graphics objects
+        this.maxTextObjects = 15; // Limit concurrent text objects
+
+        // PERFORMANCE: Track timers for cleanup
+        this.activeTimers = [];
+
         debugLog('[SharedEffects] Initialized for scene:', scene.scene?.key || 'unknown');
     }
 
@@ -162,6 +172,10 @@ export class SharedEffects {
             // Create expanding circle effect using tweens
             const ripple = this.scene.add.graphics();
 
+            // PERFORMANCE NOTE: Don't track ripple graphics because they self-destruct
+            // after 400ms via tween onComplete. Tracking them causes premature cleanup
+            // when activeGraphics limit is reached, making ripples get stuck.
+
             // IMPORTANT: Set the graphics to ignore camera scroll
             // This way we can position it in screen coordinates directly
             ripple.setScrollFactor(0);
@@ -214,6 +228,9 @@ export class SharedEffects {
                 strokeThickness: 4,
             },
         );
+
+        // PERFORMANCE: Track text object for cleanup
+        this._trackText(text);
 
         text.setOrigin(0.5);
         // Text ignores camera scroll - positioned in screen coordinates
@@ -354,12 +371,15 @@ export class SharedEffects {
             }
 
             // The emitter is now the game object to be managed
-            this.scene.time.delayedCall(RIPPLE_PARTICLE_LIFESPAN, () => {
+            const timer = this.scene.time.delayedCall(RIPPLE_PARTICLE_LIFESPAN, () => {
                 if (emitter) {
                     destroyParticleEmitter(emitter);
                     this.activeParticleSystems.delete(emitter);
                 }
             });
+
+            // PERFORMANCE: Track timer for cleanup
+            this._trackTimer(timer);
 
             this.activeParticleSystems.add(emitter);
         });
@@ -840,16 +860,142 @@ export class SharedEffects {
     }
 
     /**
-     * Cleanup all active particle systems
+     * PERFORMANCE: Register a graphics object for tracking
+     * Automatically destroys oldest graphics when limit is reached
+     * @param {Phaser.GameObjects.Graphics} graphics - Graphics object to track
+     */
+    _trackGraphics(graphics) {
+        if (!graphics) return;
+
+        // Remove oldest graphics if we've hit the limit
+        while (this.activeGraphics.length >= this.maxGraphicsObjects) {
+            const old = this.activeGraphics.shift();
+            if (old && !old.scene) { // Check if not already destroyed
+                try {
+                    old.destroy();
+                } catch (e) {
+                    // Already destroyed, ignore
+                }
+            }
+        }
+
+        this.activeGraphics.push(graphics);
+    }
+
+    /**
+     * PERFORMANCE: Register a text object for tracking
+     * Automatically destroys oldest text when limit is reached
+     * @param {Phaser.GameObjects.Text} text - Text object to track
+     */
+    _trackText(text) {
+        if (!text) return;
+
+        // Remove oldest text if we've hit the limit
+        while (this.activeTextObjects.length >= this.maxTextObjects) {
+            const old = this.activeTextObjects.shift();
+            if (old && !old.scene) { // Check if not already destroyed
+                try {
+                    old.destroy();
+                } catch (e) {
+                    // Already destroyed, ignore
+                }
+            }
+        }
+
+        this.activeTextObjects.push(text);
+    }
+
+    /**
+     * PERFORMANCE: Register a timer for tracking and cleanup with size limit
+     * @param {Phaser.Time.TimerEvent} timer - Timer to track
+     */
+    _trackTimer(timer) {
+        if (!timer) return;
+
+        // PERFORMANCE FIX: Add limit to prevent unbounded growth
+        const MAX_TIMERS = 50;
+        if (this.activeTimers.length >= MAX_TIMERS) {
+            // Remove completed timers first
+            this.activeTimers = this.activeTimers.filter(t => t && !t.hasFinished);
+
+            // If still at limit, remove oldest
+            if (this.activeTimers.length >= MAX_TIMERS) {
+                this.activeTimers.shift();
+            }
+        }
+
+        this.activeTimers.push(timer);
+    }
+
+    /**
+     * PERFORMANCE: Clean up destroyed objects from tracking arrays
+     * Call this periodically to prevent memory leaks
+     * @private
+     */
+    _cleanupTrackedObjects() {
+        // Remove destroyed graphics
+        this.activeGraphics = this.activeGraphics.filter(g => g && g.scene);
+
+        // Remove destroyed text
+        this.activeTextObjects = this.activeTextObjects.filter(t => t && t.scene);
+
+        // Remove completed timers
+        this.activeTimers = this.activeTimers.filter(t => t && !t.hasDispatched);
+    }
+
+    /**
+     * Cleanup all active particle systems, graphics, text, and timers
      * Should be called when effects are no longer needed
      */
     cleanup() {
-        debugLog('[SharedEffects] Cleaning up particle systems:', this.activeParticleSystems.size);
+        debugLog('[SharedEffects] Cleaning up all resources:', {
+            particles: this.activeParticleSystems.size,
+            graphics: this.activeGraphics.length,
+            text: this.activeTextObjects.length,
+            timers: this.activeTimers.length
+        });
 
+        // Clean up particle systems
         this.activeParticleSystems.forEach(system => {
             destroyParticleEmitter(system);
         });
         this.activeParticleSystems.clear();
+
+        // PERFORMANCE: Clean up all graphics objects
+        this.activeGraphics.forEach(graphics => {
+            if (graphics && graphics.scene) {
+                try {
+                    graphics.destroy();
+                } catch (e) {
+                    // Already destroyed, ignore
+                }
+            }
+        });
+        this.activeGraphics = [];
+
+        // PERFORMANCE: Clean up all text objects
+        this.activeTextObjects.forEach(text => {
+            if (text && text.scene) {
+                try {
+                    text.destroy();
+                } catch (e) {
+                    // Already destroyed, ignore
+                }
+            }
+        });
+        this.activeTextObjects = [];
+
+        // PERFORMANCE: Cancel all timers
+        this.activeTimers.forEach(timer => {
+            if (timer && !timer.hasDispatched) {
+                try {
+                    timer.remove();
+                } catch (e) {
+                    // Already removed, ignore
+                }
+            }
+        });
+        this.activeTimers = [];
 
         // Reset state
         this.lastImpactIntensity = 0;

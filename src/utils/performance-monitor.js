@@ -558,41 +558,27 @@ export class PerformanceMonitor {
     }
 
     /**
-     * Start automatic overlay updates using RAF (or interval fallback)
+     * Start automatic overlay updates using interval (not RAF to reduce overhead)
+     * PERFORMANCE FIX: Using setInterval instead of RAF to avoid extra RAF loop
      */
     startOverlayUpdates() {
-        if (this.overlayUpdateHandle || this.overlayUpdateInterval) return;
+        if (this.overlayUpdateInterval) return;
 
-        if (typeof window !== 'undefined' && window.requestAnimationFrame) {
-            const tick = () => {
-                if (!this.showOverlay) {
-                    this.overlayUpdateHandle = null;
-                    return;
-                }
-                this.updateOverlay();
-                this.overlayUpdateHandle = window.requestAnimationFrame(tick);
-            };
-            this.overlayUpdateHandle = window.requestAnimationFrame(tick);
-        } else {
-            this.overlayUpdateInterval = setInterval(() => {
-                if (!this.showOverlay) {
-                    this.stopOverlayUpdates();
-                    return;
-                }
-                this.updateOverlay();
-            }, DISPLAY_UPDATE_INTERVAL);
-        }
+        // Use setInterval instead of RAF - overlay doesn't need 60fps updates
+        // Update every 250ms is sufficient for FPS display
+        this.overlayUpdateInterval = setInterval(() => {
+            if (!this.showOverlay) {
+                this.stopOverlayUpdates();
+                return;
+            }
+            this.updateOverlay();
+        }, DISPLAY_UPDATE_INTERVAL);
     }
 
     /**
      * Stop automatic overlay updates
      */
     stopOverlayUpdates() {
-        if (this.overlayUpdateHandle && typeof window !== 'undefined' && window.cancelAnimationFrame) {
-            window.cancelAnimationFrame(this.overlayUpdateHandle);
-        }
-        this.overlayUpdateHandle = null;
-
         if (this.overlayUpdateInterval) {
             clearInterval(this.overlayUpdateInterval);
             this.overlayUpdateInterval = null;

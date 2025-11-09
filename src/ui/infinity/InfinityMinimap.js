@@ -49,6 +49,18 @@ export class InfinityMinimap {
         // Height milestones
         this.milestones = [100, 250, 500, 750, 1000];
 
+        // PERFORMANCE: Dirty flag system to prevent unnecessary redraws
+        // Only render when something actually changed
+        this.lastCameraRow = null;
+        this.lastBuildHeight = null;
+        this.lastTopRow = null;
+        this.lastLockedPiecesCount = 0;
+
+        // PERFORMANCE: Time-based throttling to prevent excessive renders
+        // Minimap doesn't need to update 60 times per second!
+        this.lastUpdateTime = 0;
+        this.updateInterval = 100; // Update every 100ms (10fps max)
+
         // Bind event handlers
         this.handleClick = this._onClick.bind(this);
         this.handleMouseDown = this._onMouseDown.bind(this);
@@ -154,16 +166,49 @@ export class InfinityMinimap {
 
     /**
      * Update minimap with current game state
+     * PERFORMANCE OPTIMIZED: Only renders when state actually changes
      * @param {Object} gameState - Current game state
      * @param {number} cameraRow - Current camera row position
      * @param {number} visibleRows - Number of visible rows in viewport
      */
     update(gameState, cameraRow, visibleRows) {
-        this.gameState = gameState;
-        this.cameraRow = cameraRow;
-        this.visibleRows = visibleRows;
+        if (!gameState) return;
 
-        this.render();
+        // PERFORMANCE CRITICAL: Time-based throttling
+        // Don't even check for changes more than 10 times per second
+        const now = performance.now();
+        if (now - this.lastUpdateTime < this.updateInterval) {
+            return; // Skip this update entirely
+        }
+
+        // PERFORMANCE: Calculate current state values ONLY after throttle check
+        const buildHeight = calculateBuildHeight(gameState);
+        const topRow = calculateTopRow(gameState);
+        const lockedPiecesCount = gameState.lockedPieces?.length || 0;
+
+        // PERFORMANCE: Only render if something actually changed
+        // Note: lockedPiecesCount changes every piece, so we use larger intervals
+        const shouldRender =
+            this.lastCameraRow !== cameraRow ||
+            this.lastBuildHeight !== buildHeight ||
+            this.lastTopRow !== topRow ||
+            this.lastLockedPiecesCount !== lockedPiecesCount ||
+            this.gameState === null; // First render
+
+        if (shouldRender) {
+            this.gameState = gameState;
+            this.cameraRow = cameraRow;
+            this.visibleRows = visibleRows;
+
+            // Cache current values
+            this.lastCameraRow = cameraRow;
+            this.lastBuildHeight = buildHeight;
+            this.lastTopRow = topRow;
+            this.lastLockedPiecesCount = lockedPiecesCount;
+            this.lastUpdateTime = now; // Update timestamp only when we actually render
+
+            this.render();
+        }
     }
 
     /**

@@ -1432,7 +1432,12 @@ export default class BlackHoleTheme extends BaseTheme {
             if (spawn.time <= currentTime) {
                 const budget = this.dynamicParticleBudget || this.maxParticles;
                 if (this.particles.length >= budget) {
-                    remaining.push(spawn);
+                    // PERFORMANCE FIX: Don't accumulate old spawns forever
+                    // If spawn is more than 5 seconds old, drop it instead of keeping it
+                    const age = currentTime - spawn.time;
+                    if (age < 5000) { // Only keep spawns less than 5 seconds old
+                        remaining.push(spawn);
+                    }
                     continue;
                 }
                 const count = spawn.count || 1;
@@ -1456,6 +1461,14 @@ export default class BlackHoleTheme extends BaseTheme {
         if (!factory || typeof factory !== 'function') {
             return;
         }
+
+        // PERFORMANCE FIX: Limit pending spawns to prevent unbounded growth
+        // Drop oldest spawns if queue gets too large
+        const MAX_PENDING_SPAWNS = 200;
+        if (this.pendingParticleSpawns.length >= MAX_PENDING_SPAWNS) {
+            this.pendingParticleSpawns.shift(); // Remove oldest
+        }
+
         this.pendingParticleSpawns.push({ time, factory, options, count });
     }
 

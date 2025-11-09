@@ -27,6 +27,27 @@ const COMBO_COLOR_STEPS = [
     { max: Infinity, color: '#d946ef' }, // Magenta
 ];
 
+// PERFORMANCE: Cache DOM elements and constants for updateStats
+const LEVEL_SPEEDS = [
+    1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60, 50,
+];
+
+const statElements = {
+    score: null,
+    lines: null,
+    level: null,
+    nextLevel: null,
+    speed: null,
+};
+
+let lastStatValues = {
+    score: null,
+    lines: null,
+    level: null,
+    linesUntilNextLevel: null,
+    speedMultiplier: null,
+};
+
 function getComboColor(comboCount) {
     for (const step of COMBO_COLOR_STEPS) {
         if (comboCount <= step.max) {
@@ -777,6 +798,7 @@ export function showLevelUpNotification(level) {
 
 /**
  * Updates the stats display
+ * PERFORMANCE OPTIMIZED: Caches DOM elements and only updates when values change
  * @param {Object} stats - Game statistics:
  *   - score: Current score
  *   - lines: Lines cleared
@@ -790,34 +812,51 @@ export function updateStats(stats) {
         score, lines, level, linesUntilNextLevel, startTime, piecesPlaced,
     } = stats;
 
-    document.getElementById('score').textContent = score;
-    document.getElementById('lines').textContent = lines;
+    // PERFORMANCE: Lazy-load DOM elements (only once)
+    if (!statElements.score) {
+        statElements.score = document.getElementById('score');
+        statElements.lines = document.getElementById('lines');
+        statElements.level = document.getElementById('level');
+        statElements.nextLevel = document.getElementById('next-level');
+        statElements.speed = document.getElementById('speed');
+    }
 
-    const levelEl = document.getElementById('level');
-    levelEl.textContent = level;
-    levelEl.className = 'stat-value';
-    if (level >= 10) levelEl.classList.add('danger');
-    else if (level >= 5) levelEl.classList.add('warning');
+    // PERFORMANCE: Only update if values changed
+    if (lastStatValues.score !== score && statElements.score) {
+        lastStatValues.score = score;
+        statElements.score.textContent = score;
+    }
 
-    document.getElementById('next-level').textContent = linesUntilNextLevel;
+    if (lastStatValues.lines !== lines && statElements.lines) {
+        lastStatValues.lines = lines;
+        statElements.lines.textContent = lines;
+    }
 
-    // Speed multiplier
-    const LEVEL_SPEEDS = [
-        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
-        50,
-    ];
+    // PERFORMANCE: Only update level if changed
+    if (lastStatValues.level !== level && statElements.level) {
+        lastStatValues.level = level;
+        statElements.level.textContent = level;
+        statElements.level.className = 'stat-value';
+        if (level >= 10) statElements.level.classList.add('danger');
+        else if (level >= 5) statElements.level.classList.add('warning');
+    }
+
+    if (lastStatValues.linesUntilNextLevel !== linesUntilNextLevel && statElements.nextLevel) {
+        lastStatValues.linesUntilNextLevel = linesUntilNextLevel;
+        statElements.nextLevel.textContent = linesUntilNextLevel;
+    }
+
+    // PERFORMANCE: Calculate speed using cached constant array
     const baseSpeed = LEVEL_SPEEDS[0];
     const currentSpeed = LEVEL_SPEEDS[Math.min(level - 1, LEVEL_SPEEDS.length - 1)];
     const speedMultiplier = (baseSpeed / currentSpeed).toFixed(1);
 
-    const speedEl = document.getElementById('speed');
-    speedEl.textContent = `${speedMultiplier}x`;
-    speedEl.className = 'stat-value';
-    if (parseFloat(speedMultiplier) >= 20) speedEl.classList.add('danger');
-    else if (parseFloat(speedMultiplier) >= 5) speedEl.classList.add('warning');
-
-    // BPM (Blocks Per Minute)
-    const elapsedMinutes = (Date.now() - startTime) / 60000;
-    const bpm = elapsedMinutes > 0 ? Math.floor((piecesPlaced * 4) / elapsedMinutes) : 0;
-    document.getElementById('bpm').textContent = bpm;
+    if (lastStatValues.speedMultiplier !== speedMultiplier && statElements.speed) {
+        lastStatValues.speedMultiplier = speedMultiplier;
+        statElements.speed.textContent = `${speedMultiplier}x`;
+        statElements.speed.className = 'stat-value';
+        const speedValue = parseFloat(speedMultiplier);
+        if (speedValue >= 20) statElements.speed.classList.add('danger');
+        else if (speedValue >= 5) statElements.speed.classList.add('warning');
+    }
 }
