@@ -241,9 +241,9 @@ export class InfinityMode extends BaseGameMode {
     /**
      * Called when game is paused
      */
-    onPause() {
+    onPause(options = {}) {
         super.onPause();
-        console.log('[Infinity] Game paused');
+        console.log('[Infinity] Game paused', options);
 
         // Sync pause state to gameState
         if (this.gameState) {
@@ -257,11 +257,15 @@ export class InfinityMode extends BaseGameMode {
             console.log('[Infinity] Camera controls enabled - Use arrow keys, Page Up/Down, or mouse wheel to navigate');
         }
 
-        // Start trance state visual effects
-        if (this.boardScene && !this.tranceEffects) {
+        // Start trance state visual effects only if enableTranceState is true (default for 'P' key)
+        // When opening settings menu with Escape, we don't want trance state
+        const shouldEnableTranceState = options.enableTranceState !== false;
+        if (shouldEnableTranceState && this.boardScene && !this.tranceEffects) {
             this.tranceEffects = new TranceStateEffects(this.boardScene);
             this.tranceEffects.start();
             console.log('[Infinity] Trance state effects activated');
+        } else if (!shouldEnableTranceState) {
+            console.log('[Infinity] Trance state skipped (settings menu opened)');
         }
     }
 
