@@ -31,6 +31,7 @@ export class SinglePlayerMode extends BaseGameMode {
         // Performance optimization: Throttle stats updates
         this.lastStatsUpdateTime = 0;
         this.statsUpdateInterval = 250; // Update stats every 250ms instead of every frame (16ms)
+
     }
 
     getModeId() {
@@ -81,9 +82,6 @@ export class SinglePlayerMode extends BaseGameMode {
 
         // Show single player Phaser scene
         this._showSinglePlayerScene();
-
-        // Ensure Phaser canvas is in correct container
-        this._movePhaserToSinglePlayerContainer();
 
         // Set single-player dimensions
         const boardWidth = COLS * BLOCK_SIZE;
@@ -182,7 +180,6 @@ export class SinglePlayerMode extends BaseGameMode {
             this.gameState.isGameOver = true;
         }
 
-        // Stop Phaser scene (triggers shutdown() for cleanup)
         this._stopPhaserBoardScene();
     }
 
@@ -194,7 +191,6 @@ export class SinglePlayerMode extends BaseGameMode {
 
         console.log('[SinglePlayer] Deactivating...');
 
-        // Stop Phaser scene (triggers shutdown() for cleanup)
         this._stopPhaserBoardScene();
 
         // Clean up state
@@ -248,7 +244,7 @@ export class SinglePlayerMode extends BaseGameMode {
             }
 
             // Sync to Phaser scene
-            const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+            const boardScene = this._getBoardScene();
             if (boardScene) {
                 boardScene.syncFromGameState(this.gameState);
             }
@@ -308,7 +304,7 @@ export class SinglePlayerMode extends BaseGameMode {
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
                 const settings = this.deps.settingsManager.get();
-                const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+                const boardScene = this._getBoardScene();
                 if (settings.comboPopupEffect && boardScene) {
                     boardScene.showComboPopup(comboCount);
                     console.log(`[SinglePlayer] Combo popup triggered: ${comboCount}x`);
@@ -316,7 +312,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Trigger cascade wave visual effect
             triggerCascadeWave: (cascadeCount) => {
-                const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+                const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.sharedEffects) {
                     boardScene.sharedEffects.showCascadeWave(cascadeCount);
                     console.log(`[SinglePlayer] Cascade wave ${cascadeCount} triggered`);
@@ -324,7 +320,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Piece lock ripple effect
             onPieceLock: (piece) => {
-                const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+                const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
                     boardScene.createPieceLockRipple(piece);
                 }
@@ -387,20 +383,15 @@ export class SinglePlayerMode extends BaseGameMode {
      * Move Phaser canvas to single player container
      * @private
      */
-    _movePhaserToSinglePlayerContainer() {
-        const phaserCanvas = this.deps.phaserGame?.canvas;
-        const container = document.getElementById('phaser-game-container');
-
-        if (phaserCanvas && container && phaserCanvas.parentElement !== container) {
-            container.appendChild(phaserCanvas);
-        }
-    }
-
     /**
      * Resize Phaser game
      * @private
      */
     _resizePhaserGame(width, height) {
+        if (this.boardHost?.game?.resize) {
+            this.boardHost.game.resize(width, height);
+            return;
+        }
         if (this.deps.phaserGame?.resize) {
             this.deps.phaserGame.resize(width, height);
         }
@@ -416,17 +407,14 @@ export class SinglePlayerMode extends BaseGameMode {
 
         const boardScene = phaserGame.scene.getScene('BoardScene');
         if (boardScene) {
-            // Check if scene is already running
             if (boardScene.scene.isActive()) {
                 console.log('[SinglePlayer] BoardScene already active, restarting...');
                 boardScene.scene.restart();
             } else {
-                // Scene exists but is stopped, start it (triggers create())
                 console.log('[SinglePlayer] Starting stopped BoardScene...');
                 boardScene.scene.start();
             }
         } else {
-            // Scene doesn't exist, start it for the first time
             console.log('[SinglePlayer] Starting BoardScene for first time...');
             phaserGame.scene.start('BoardScene');
         }
@@ -448,8 +436,8 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     _clearPhaserBoard() {
-        const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
-        if (boardScene && boardScene.clearBoard) {
+        const boardScene = this._getBoardScene();
+        if (boardScene?.clearBoard) {
             boardScene.clearBoard();
         }
     }
@@ -459,10 +447,14 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     _applyEffectQuality(quality) {
-        const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
-        if (boardScene && boardScene.setEffectQuality) {
+        const boardScene = this._getBoardScene();
+        if (boardScene?.setEffectQuality) {
             boardScene.setEffectQuality(quality);
         }
+    }
+
+    _getBoardScene() {
+        return this.deps.phaserGame?.scene?.getScene('BoardScene') || null;
     }
 
     /**
@@ -506,16 +498,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
         const boardScene = phaserGame.scene.getScene('BoardScene');
         if (boardScene) {
-            // Reset camera viewport to full canvas
-            if (boardScene.cameras?.main) {
-                const boardWidth = COLS * BLOCK_SIZE;
-                const boardHeight = ROWS * BLOCK_SIZE;
-                boardScene.cameras.main.setViewport(0, 0, boardWidth, boardHeight);
-            }
-
-            boardScene.scene.setVisible(true);
-            // Note: Don't call start() here - scene will be started in onStart()
-            // This method is only for initial activation setup
+            boardScene.scene.setVisible(false);
         }
     }
 }
