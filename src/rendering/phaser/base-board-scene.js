@@ -144,6 +144,42 @@ export function createBaseBoardScene(
 
         }
 
+        /**
+         * Calculate which board rows should be drawn this frame.
+         * Limits rendering work to the active viewport plus a small padding band.
+         */
+        getVisibleRowRange() {
+            const grid = this.gameState?.boardGrid;
+            const totalRows = grid ? grid.length : this.rows + this.hiddenRows;
+            const isInfinityMode = Boolean(this.gameState?.isInfinityMode);
+            const defaultStart = isInfinityMode ? 0 : this.hiddenRows;
+            const clampedDefaultStart = Math.min(Math.max(defaultStart, 0), totalRows);
+
+            if (!this.cameraSettings) {
+                return {
+                    startRow: clampedDefaultStart,
+                    endRow: totalRows,
+                };
+            }
+
+            const topRow = Math.max(
+                0,
+                Math.floor(this.cameraSettings.activeTopRow
+                    ?? this.cameraSettings.currentTopRow
+                    ?? clampedDefaultStart),
+            );
+            const visibleRows = Math.max(1, Math.ceil(this.cameraSettings.visibleRows || this.rows));
+            const padding = Math.max(0, this.cameraSettings.renderPadding ?? 0);
+            const startRow = Math.max(clampedDefaultStart, topRow - padding);
+            let endRow = Math.min(totalRows, topRow + visibleRows + padding);
+
+            if (endRow <= startRow) {
+                endRow = Math.min(totalRows, startRow + visibleRows);
+            }
+
+            return { startRow, endRow };
+        }
+
         setEffectQuality(level) {
             this.effectQuality = normalizeQuality(level);
             this.qualityConfig = getQualityConfig(this.effectQuality);
@@ -278,6 +314,7 @@ export function createBaseBoardScene(
                     bottomPadding: 0,
                     bottomKeepRows: 4,
                     pieceLeadRows: Math.ceil(visibleRows * 0.6), // 60% threshold
+                    renderPadding: 4, // Extra rows to draw above/below the viewport
                     currentTopRow: initialTopRow,
                     targetTopRow: initialTopRow,
                     activeTopRow: initialTopRow,
@@ -443,7 +480,9 @@ export function createBaseBoardScene(
             const grid = this.gameState?.boardGrid;
             if (!grid) return;
 
-            for (let worldY = this.hiddenRows; worldY < grid.length; worldY++) {
+            const { startRow, endRow } = this.getVisibleRowRange();
+
+            for (let worldY = startRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
 
@@ -469,7 +508,9 @@ export function createBaseBoardScene(
             // Very low opacity (0.08) makes it barely visible but helps distinguish pieces
             this.pieceGraphics.lineStyle(0.5, 0x000000, 0.08);
 
-            for (let worldY = this.hiddenRows; worldY < grid.length; worldY++) {
+            const { startRow, endRow } = this.getVisibleRowRange();
+
+            for (let worldY = startRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
 
