@@ -104,12 +104,15 @@ export class ThemeManager {
     /**
      * Load a theme module dynamically
      * @param {string} themeName - Name of theme to load
+     * @param {boolean} silent - Don't log verbose messages (for background preloading)
      * @returns {Promise<BaseTheme>} Theme instance
      */
-    async loadTheme(themeName) {
+    async loadTheme(themeName, silent = false) {
         // Check if already loaded
         if (this.themeInstances.has(themeName)) {
-            console.log(`[ThemeManager] Theme "${themeName}" found in cache`);
+            if (!silent) {
+                console.log(`[ThemeManager] Theme "${themeName}" found in cache`);
+            }
             this.updateLRU(themeName); // Mark as recently used
             return this.themeInstances.get(themeName);
         }
@@ -119,12 +122,14 @@ export class ThemeManager {
         if (!importer) {
             console.error(`Theme "${themeName}" not found in registry`);
             // Fallback to forest theme
-            return this.loadTheme('forest');
+            return this.loadTheme('forest', silent);
         }
 
         try {
-            console.log(`[ThemeManager] Loading theme "${themeName}" from disk`);
-            
+            if (!silent) {
+                console.log(`[ThemeManager] Loading theme "${themeName}" from disk`);
+            }
+
             // Dynamically import the theme module
             const module = await importer();
             const ThemeClass = module.default;
@@ -138,19 +143,74 @@ export class ThemeManager {
             // Cache the instance
             this.themeInstances.set(themeName, themeInstance);
             this.updateLRU(themeName);
-            
+
             // Evict old themes if cache is full
             this.evictOldThemeIfNeeded();
 
-            console.log(`[ThemeManager] Theme "${themeName}" loaded. Cache: ${this.themeInstances.size}/${this.maxCachedThemes}`);
+            if (!silent) {
+                console.log(`[ThemeManager] Theme "${themeName}" loaded. Cache: ${this.themeInstances.size}/${this.maxCachedThemes}`);
+            }
             return themeInstance;
         } catch (error) {
             console.error(`Failed to load theme "${themeName}":`, error);
             // Fallback to forest if not already trying to load it
             if (themeName !== 'forest') {
-                return this.loadTheme('forest');
+                return this.loadTheme('forest', silent);
             }
             throw error;
+        }
+    }
+
+    /**
+     * Preload themes in the background (non-blocking)
+     * @param {string[]} themeNames - Array of theme names to preload
+     * @param {number} delayMs - Delay between preloads (to avoid blocking)
+     * @returns {Promise<void>}
+     */
+    async preloadThemes(themeNames, delayMs = 500) {
+        console.log(`[ThemeManager] Starting background preload of ${themeNames.length} themes`);
+
+        for (const themeName of themeNames) {
+            // Skip if already loaded
+            if (this.themeInstances.has(themeName)) {
+                continue;
+            }
+
+            // Use requestIdleCallback if available, otherwise setTimeout
+            await new Promise((resolve) => {
+                const loadTask = async () => {
+                    try {
+                        await this.loadTheme(themeName, true); // Silent load
+                        console.log(`[ThemeManager] Preloaded: ${themeName}`);
+                    } catch (error) {
+                        console.warn(`[ThemeManager] Failed to preload ${themeName}:`, error);
+                    }
+                    resolve();
+                };
+
+                if (typeof requestIdleCallback !== 'undefined') {
+                    requestIdleCallback(() => loadTask());
+                } else {
+                    setTimeout(() => loadTask(), delayMs);
+                }
+            });
+        }
+
+        console.log(`[ThemeManager] Preload complete. Cache: ${this.themeInstances.size}/${this.maxCachedThemes}`);
+    }
+
+    /**
+     * Preload the next theme in rotation (useful for seamless transitions)
+     * @returns {Promise<void>}
+     */
+    async preloadNextTheme() {
+        const currentIndex = THEMES.indexOf(this.activeThemeName);
+        const nextIndex = (currentIndex + 1) % THEMES.length;
+        const nextTheme = THEMES[nextIndex];
+
+        if (!this.themeInstances.has(nextTheme)) {
+            console.log(`[ThemeManager] Preloading next theme: ${nextTheme}`);
+            await this.loadTheme(nextTheme, true);
         }
     }
 
@@ -217,6 +277,11 @@ export class ThemeManager {
             eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
 
             console.log('[ThemeManager] Theme switch complete:', themeName);
+
+            // Preload next theme in background for seamless transitions
+            this.preloadNextTheme().catch((error) => {
+                console.warn('[ThemeManager] Failed to preload next theme:', error);
+            });
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
         } finally {

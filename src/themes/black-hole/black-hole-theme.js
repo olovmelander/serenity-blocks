@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
 
 export default class BlackHoleTheme extends BaseTheme {
     constructor() {
@@ -175,28 +176,32 @@ export default class BlackHoleTheme extends BaseTheme {
      * Animate stardust particles with black hole gravity
      */
     animateStardust() {
-        if (!this.isActive || !this.ctx) return;
+        const profiling = performanceMonitor?.enabled;
+        if (profiling) performanceMonitor.startSection('theme:black-hole:stardust');
 
-        const ctx = this.ctx;
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-        const now = performance.now();
-        const delta = now - this.lastFrameTime;
-        this.lastFrameTime = now;
-        this.accumulatedFrameTime += delta;
+        try {
+            if (!this.isActive || !this.ctx) return;
 
-        if (this.accumulatedFrameTime >= this.frameInterval * 3) {
-            this.accumulatedFrameTime = this.frameInterval * 2;
-        }
+            const ctx = this.ctx;
+            const width = this.canvas.width;
+            const height = this.canvas.height;
+            const now = performance.now();
+            const delta = now - this.lastFrameTime;
+            this.lastFrameTime = now;
+            this.accumulatedFrameTime += delta;
 
-        if (this.accumulatedFrameTime < this.frameInterval) {
-            this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
-            return;
-        }
-        this.accumulatedFrameTime -= this.frameInterval;
+            if (this.accumulatedFrameTime >= this.frameInterval * 3) {
+                this.accumulatedFrameTime = this.frameInterval * 2;
+            }
 
-        this.processScheduledSpawns(now);
-        ctx.clearRect(0, 0, width, height);
+            if (this.accumulatedFrameTime < this.frameInterval) {
+                this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
+                return;
+            }
+            this.accumulatedFrameTime -= this.frameInterval;
+
+            this.processScheduledSpawns(now);
+            ctx.clearRect(0, 0, width, height);
 
         const particles = this.particles;
         let writeIndex = 0;
@@ -294,7 +299,10 @@ export default class BlackHoleTheme extends BaseTheme {
 
         particles.length = writeIndex;
 
-        this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
+            this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
+        } finally {
+            if (profiling) performanceMonitor.endSection('theme:black-hole:stardust');
+        }
     }
 
     /**
