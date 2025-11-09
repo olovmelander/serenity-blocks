@@ -2498,16 +2498,17 @@ class SerenityBlocks {
         // Check if GameModeManager has a running mode (Serenity, etc.)
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
-            this.gameModeManager.pauseCurrentMode();
 
-            // In Infinity Mode, pause (via 'P' key) enables manual camera controls without opening settings
+            // In Infinity Mode, pause (via 'P' key) enables manual camera controls + trance state without opening settings
             // Escape key should call openSettingsMenu() instead for Infinity Mode
             if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
-                console.log('[Main] Infinity Mode paused - manual camera controls enabled');
+                this.gameModeManager.pauseCurrentMode({ enableTranceState: true });
+                console.log('[Main] Infinity Mode paused - manual camera controls and trance state enabled');
                 return;
             }
 
-            // For other modes, show settings modal
+            // For other modes, pause and show settings modal
+            this.gameModeManager.pauseCurrentMode();
             this.modalManager.show('settings');
             return;
         }
@@ -2529,9 +2530,14 @@ class SerenityBlocks {
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
             if (!currentMode.isPaused) {
-                this.gameModeManager.pauseCurrentMode();
+                // Disable trance state when opening settings menu (Escape key)
+                // Only pause with trance state when using 'P' key
+                const isInfinityMode = currentMode.getModeId && currentMode.getModeId() === 'infinity';
+                this.gameModeManager.pauseCurrentMode({
+                    enableTranceState: false  // No trance state when opening settings
+                });
                 // Also sync pause state for Infinity Mode
-                if (currentMode.getModeId && currentMode.getModeId() === 'infinity' && currentMode.gameState) {
+                if (isInfinityMode && currentMode.gameState) {
                     currentMode.gameState.isPaused = true;
                 }
             }

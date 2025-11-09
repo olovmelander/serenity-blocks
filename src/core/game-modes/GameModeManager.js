@@ -199,15 +199,17 @@ export class GameModeManager {
 
     /**
      * Pause the current running mode
+     * @param {Object} options - Pause options
+     * @param {boolean} options.enableTranceState - Whether to enable trance state effects (Infinity Mode only)
      */
-    pauseCurrentMode() {
+    pauseCurrentMode(options = {}) {
         if (!this.currentMode || !this.currentMode.isRunning) {
             console.warn('[GameModeManager] No running mode to pause');
             return;
         }
 
-        console.log(`[GameModeManager] Pausing mode: ${this.currentModeId}`);
-        this.currentMode.onPause();
+        console.log(`[GameModeManager] Pausing mode: ${this.currentModeId}`, options);
+        this.currentMode.onPause(options);
         this._emitEvent('modePaused', { modeId: this.currentModeId, mode: this.currentMode });
     }
 
