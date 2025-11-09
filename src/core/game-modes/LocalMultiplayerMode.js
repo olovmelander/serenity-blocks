@@ -77,13 +77,24 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log('[LocalMultiplayer] Activating local multiplayer mode...');
 
-        // Show configuration modal instead of immediately setting up
-        if (!this.configModal) {
-            this.configModal = new LocalMatchConfigModal((config) => {
-                this.handleConfigurationComplete(config);
-            });
+        // Reset configuration state on each activation
+        this.matchConfig = null;
+        this.configuredForStart = false;
+
+        // Always create a fresh config modal
+        if (this.configModal) {
+            this.configModal.destroy();
         }
-        
+
+        this.configModal = new LocalMatchConfigModal(
+            (config) => {
+                this.handleConfigurationComplete(config);
+            },
+            () => {
+                this.handleConfigurationCancelled();
+            }
+        );
+
         this.configModal.show();
         console.log('[LocalMultiplayer] Showing configuration modal');
     }
@@ -93,17 +104,49 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async handleConfigurationComplete(config) {
         console.log('[LocalMultiplayer] Configuration received:', config);
-        
+
         this.matchConfig = config;
         this.configuredForStart = true;
-        
+
         // Now setup the UI for the configured number of players
         await this._setupMultiplayerUI();
-        
+
         console.log('[LocalMultiplayer] UI setup complete, starting match...');
-        
+
         // Automatically start the match after configuration
         await this.onStart();
+    }
+
+    /**
+     * Called when configuration modal is cancelled
+     */
+    async handleConfigurationCancelled() {
+        console.log('[LocalMultiplayer] Configuration cancelled, returning to start modal');
+        console.log('[LocalMultiplayer] Current mode state - isActive:', this.isActive, 'isRunning:', this.isRunning);
+
+        // Manually deactivate this mode since we can't access gameModeManager
+        // (gameModeManager is not in deps to avoid circular dependency)
+        console.log('[LocalMultiplayer] Manually resetting mode state...');
+        this.isActive = false;
+        this.isRunning = false;
+        this.isPaused = false;
+
+        // Reset configuration
+        this.matchConfig = null;
+        this.configuredForStart = false;
+
+        // Show intro animation background with logo
+        const { introAnimation } = await import('../../ui/intro-animation.js');
+        if (introAnimation && this.deps.soundManager) {
+            introAnimation.showBackgroundOnly(this.deps.soundManager);
+        }
+
+        // Show start modal
+        if (this.deps.modalManager) {
+            this.deps.modalManager.show('start');
+        }
+
+        console.log('[LocalMultiplayer] handleConfigurationCancelled complete - mode reset');
     }
     
     /**
@@ -195,19 +238,19 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Called when user clicks "Start Game"
      */
     async onStart() {
-        await super.onStart();
-
         console.log('[LocalMultiplayer] Starting game...');
-        
+
         // Check if configuration has been set
         if (!this.configuredForStart || !this.matchConfig) {
-            console.warn('[LocalMultiplayer] Configuration not set, cannot start game');
-            // Show config modal again
-            if (this.configModal) {
-                this.configModal.show();
-            }
+            console.log('[LocalMultiplayer] Configuration not set, waiting for user to configure');
+            // Don't call super.onStart() yet - we're not ready to run
+            // The config modal is already shown from onActivate()
+            // When user completes config, handleConfigurationComplete() will call onStart() again
             return;
         }
+
+        // Now we're ready to actually start the game
+        await super.onStart();
         
         // Hide start modal immediately
         this.deps.modalManager.hideAll();
