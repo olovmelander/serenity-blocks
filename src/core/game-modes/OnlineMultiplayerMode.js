@@ -74,13 +74,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         try {
             // Initialize Steam networking
             await this.initializeSteamNetworking();
-            
+
+            // Always create fresh lobby UI components
+            if (this.lobbyBrowser) {
+                this.lobbyBrowser.destroy();
+            }
+            if (this.matchConfigModal) {
+                this.matchConfigModal.destroy();
+            }
+
             // Initialize lobby UI components
             this.initializeLobbyUI();
-            
+
             // Show lobby browser
             await this.showLobbyBrowser();
-            
+
             console.log('[OnlineMultiplayer] ✅ Mode activated successfully');
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to activate:', error);
@@ -120,11 +128,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         console.log('[OnlineMultiplayer] Initializing lobby UI...');
 
-        // Create lobby browser
+        // Create lobby browser with cancel callback
         this.lobbyBrowser = new LobbyBrowser(
             this.steamNetworking,
             (lobbyId) => this.handleJoinLobby(lobbyId),
-            () => this.showMatchConfigModal()
+            () => this.showMatchConfigModal(),
+            () => this.handleLobbyBrowserCancelled()
         );
 
         // Create match config modal
@@ -145,6 +154,34 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         console.log('[OnlineMultiplayer] Showing lobby browser...');
         await this.lobbyBrowser.show();
+    }
+
+    /**
+     * Called when lobby browser is cancelled
+     */
+    async handleLobbyBrowserCancelled() {
+        console.log('[OnlineMultiplayer] Lobby browser cancelled, returning to start modal');
+        console.log('[OnlineMultiplayer] Current mode state - isActive:', this.isActive, 'isRunning:', this.isRunning);
+
+        // Manually deactivate this mode since we can't access gameModeManager
+        // (gameModeManager is not in deps to avoid circular dependency)
+        console.log('[OnlineMultiplayer] Manually resetting mode state...');
+        this.isActive = false;
+        this.isRunning = false;
+        this.isPaused = false;
+
+        // Show intro animation background with logo
+        const { introAnimation } = await import('../../ui/intro-animation.js');
+        if (introAnimation && this.deps.soundManager) {
+            introAnimation.showBackgroundOnly(this.deps.soundManager);
+        }
+
+        // Show start modal
+        if (this.deps.modalManager) {
+            this.deps.modalManager.show('start');
+        }
+
+        console.log('[OnlineMultiplayer] handleLobbyBrowserCancelled complete - mode reset');
     }
 
     /**
@@ -318,19 +355,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Called when user clicks "Start Game" (or joins lobby)
      */
     async onStart() {
-        await super.onStart();
-
         console.log('[OnlineMultiplayer] Starting online game...');
 
-        // For online multiplayer, the "start" happens through the lobby flow
-        // The user will:
-        // 1. Browse/create/join a lobby (done in onActivate)
-        // 2. Wait in lobby and ready up
-        // 3. Host starts the match (handled by handleMatchStart)
-        
-        // So this method might not be needed for online multiplayer
-        // unless we want to provide a "quick match" feature
-        
+        // For online multiplayer, the game starts through the lobby flow
+        // If onStart is called before lobby selection, just wait for user interaction
+        if (!this.lobbyBrowser) {
+            console.log('[OnlineMultiplayer] Waiting for lobby browser initialization...');
+            return;
+        }
+
+        // Now actually start if we have a lobby
+        await super.onStart();
+
         console.log('[OnlineMultiplayer] Use lobby browser to create/join matches');
     }
 

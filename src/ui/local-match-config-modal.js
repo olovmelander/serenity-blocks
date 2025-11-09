@@ -6,10 +6,11 @@
  */
 
 export class LocalMatchConfigModal {
-  constructor(onStartMatch) {
+  constructor(onStartMatch, onCancel = null) {
     this.onStartMatch = onStartMatch;
+    this.onCancel = onCancel;
     this.container = null;
-    
+
     this.createUI();
   }
   
@@ -135,19 +136,19 @@ export class LocalMatchConfigModal {
     // Close button
     const closeBtn = this.container.querySelector('#close-local-match-config');
     if (closeBtn) {
-      closeBtn.addEventListener('click', () => this.hide());
+      closeBtn.addEventListener('click', () => this.cancel());
     }
-    
+
     // Cancel button
     const cancelBtn = this.container.querySelector('#cancel-local-match');
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => this.hide());
+      cancelBtn.addEventListener('click', () => this.cancel());
     }
-    
+
     // Overlay click to close
     const overlay = this.container.querySelector('.match-config-overlay');
     if (overlay) {
-      overlay.addEventListener('click', () => this.hide());
+      overlay.addEventListener('click', () => this.cancel());
     }
     
     // End condition change handler
@@ -318,11 +319,24 @@ export class LocalMatchConfigModal {
     if (!this.container) {
       return;
     }
-    
+
     this.container.classList.remove('show');
     this.container.classList.add('hidden');
-    
+
     console.log('[LocalMatchConfig] Modal hidden');
+  }
+
+  /**
+   * Cancel the configuration (hide and trigger cancel callback)
+   */
+  async cancel() {
+    this.hide();
+
+    if (this.onCancel) {
+      console.log('[LocalMatchConfig] Triggering cancel callback');
+      await this.onCancel();
+      console.log('[LocalMatchConfig] Cancel callback completed');
+    }
   }
   
   /**

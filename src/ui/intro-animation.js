@@ -1124,7 +1124,7 @@ export class IntroAnimation {
     }
 
     /**
-     * Show only the background animation without the title
+     * Show only the background animation with shrunken logo at top
      * (for returning to start modal from gameplay)
      */
     showBackgroundOnly(soundManager = null) {
@@ -1138,13 +1138,15 @@ export class IntroAnimation {
         }
 
         this.ensureIntroMusic();
-        this.isActive = true;
+        this.isActive = false; // Not active for interaction
         this.hasCompleted = true; // Mark as completed so show() won't work
 
         // Create container
         this.container = document.createElement('div');
         this.container.id = 'intro-animation';
         this.container.classList.add('background-only'); // Add class for background-only mode
+        this.container.style.zIndex = '100';
+        this.container.style.pointerEvents = 'none';
 
         // Create Phaser canvas container
         const phaserCanvas = document.createElement('div');
@@ -1161,6 +1163,21 @@ export class IntroAnimation {
         // Create floating orbs
         const orbs = this.createOrbs();
         this.container.appendChild(orbs);
+
+        // Create title container with shrunken logo
+        const titleContainer = document.createElement('div');
+        titleContainer.className = 'intro-title-container shrink-to-logo';
+
+        // Create title with individual letters
+        const title = this.createAnimatedTitle();
+        titleContainer.appendChild(title);
+
+        // Add shimmer effect
+        const shimmer = document.createElement('div');
+        shimmer.className = 'intro-shimmer';
+        titleContainer.appendChild(shimmer);
+
+        this.container.appendChild(titleContainer);
 
         // Add to DOM
         document.body.appendChild(this.container);

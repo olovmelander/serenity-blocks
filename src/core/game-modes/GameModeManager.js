@@ -134,6 +134,13 @@ export class GameModeManager {
             return;
         }
 
+        // If current mode exists but is not active, clear the reference
+        if (this.currentMode && !this.currentMode.isActive) {
+            console.log(`[GameModeManager] Current mode ${this.currentModeId} is no longer active, clearing reference`);
+            this.currentMode = null;
+            this.currentModeId = null;
+        }
+
         // Deactivate current mode if any
         if (this.currentMode && this.currentMode.isActive) {
             console.log(`[GameModeManager] Deactivating current mode: ${this.currentModeId}`);
