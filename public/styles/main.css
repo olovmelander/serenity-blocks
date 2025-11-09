@@ -10205,6 +10205,264 @@ body {
     }
 }
 
+/* --- Cosmic Noir Theme --- */
+#cosmic-noir-theme {
+    background: radial-gradient(ellipse at center,
+        #1a1a1a 0%,
+        #0d0d0d 30%,
+        #050505 60%,
+        #000000 100%);
+    overflow: hidden;
+    contain: layout style paint;
+}
+
+/* Dark planet silhouette */
+.cosmic-noir-planet {
+    position: absolute;
+    right: 15%;
+    top: 25%;
+    width: 180px;
+    height: 180px;
+    background: radial-gradient(circle at 30% 30%,
+        #0a0a0a 0%,
+        #050505 40%,
+        #000000 100%);
+    border-radius: 50%;
+    box-shadow:
+        inset -15px -15px 40px rgba(0, 0, 0, 0.9),
+        0 0 30px rgba(0, 0, 0, 0.8);
+    animation: cosmic-noir-planet-drift 180s ease-in-out infinite;
+    z-index: 25;
+}
+
+@keyframes cosmic-noir-planet-drift {
+    0% {
+        transform: translate(0, 0);
+    }
+    25% {
+        transform: translate(-30px, 20px);
+    }
+    50% {
+        transform: translate(-15px, -25px);
+    }
+    75% {
+        transform: translate(25px, -10px);
+    }
+    100% {
+        transform: translate(0, 0);
+    }
+}
+
+/* Background stars */
+#cosmic-noir-stars {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.cosmic-noir-star {
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+    animation: cosmic-noir-star-twinkle 4s ease-in-out infinite;
+}
+
+.cosmic-noir-star-bright {
+    animation: cosmic-noir-star-bright-twinkle 3s ease-in-out infinite;
+}
+
+@keyframes cosmic-noir-star-twinkle {
+    0%, 100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes cosmic-noir-star-bright-twinkle {
+    0%, 100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.4);
+    }
+}
+
+/* Galaxy canvas for drifting particles */
+#cosmic-noir-galaxy-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Galaxy drift layers - swirling dust clouds */
+.cosmic-noir-galaxy-drift {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(var(--drift-angle, 0deg));
+    width: 800px;
+    height: 300px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(220, 220, 220, 0.08) 20%,
+        rgba(200, 200, 200, 0.15) 40%,
+        rgba(180, 180, 180, 0.12) 60%,
+        rgba(160, 160, 160, 0.08) 80%,
+        transparent 100%);
+    filter: blur(40px);
+    opacity: 0.6;
+    animation: cosmic-noir-drift-rotation 120s linear infinite;
+    z-index: 8;
+}
+
+@keyframes cosmic-noir-drift-rotation {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+    100% {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* Grain/noise texture overlay */
+.cosmic-noir-grain {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.15"/></svg>');
+    opacity: 0.3;
+    mix-blend-mode: overlay;
+    z-index: 15;
+    pointer-events: none;
+}
+
+/* Pulses on line clear */
+#cosmic-noir-pulses {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.cosmic-noir-pulse {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -50%);
+    width: 300px;
+    height: 300px;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    box-shadow:
+        0 0 20px rgba(255, 255, 255, 0.4),
+        inset 0 0 20px rgba(255, 255, 255, 0.2);
+    animation: cosmic-noir-pulse-expand 2s ease-out forwards;
+}
+
+@keyframes cosmic-noir-pulse-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 1;
+        border-width: 2px;
+    }
+    50% {
+        opacity: 0.7;
+        border-width: 1.5px;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(3.5);
+        opacity: 0;
+        border-width: 0.5px;
+    }
+}
+
+/* Wave effects on combos */
+#cosmic-noir-waves {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    z-index: 18;
+    pointer-events: none;
+}
+
+.cosmic-noir-wave {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    border: 3px solid rgba(240, 240, 240, 0.5);
+    border-radius: 50%;
+    box-shadow:
+        0 0 25px rgba(240, 240, 240, 0.3),
+        inset 0 0 25px rgba(240, 240, 240, 0.2);
+    animation: cosmic-noir-wave-expand 2.5s ease-out forwards;
+}
+
+@keyframes cosmic-noir-wave-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(0.3);
+        opacity: 1;
+        border-width: 3px;
+    }
+    30% {
+        opacity: 0.9;
+        border-width: 2.5px;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(4);
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Bright star glow effects */
+.cosmic-noir-star-glow {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    background: radial-gradient(circle,
+        rgba(255, 255, 255, 0.8) 0%,
+        rgba(240, 240, 240, 0.4) 25%,
+        rgba(220, 220, 220, 0.2) 50%,
+        transparent 75%);
+    border-radius: 50%;
+    filter: blur(3px);
+    animation: cosmic-noir-glow-pulse 6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes cosmic-noir-glow-pulse {
+    0%, 100% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.15);
+    }
+}
+
 /* === PYRESTORM THEME === */
 #pyrestorm-theme {
     background: transparent;
