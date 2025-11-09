@@ -30,7 +30,6 @@ export class InfinityMode extends BaseGameMode {
 
         // Game state
         this.gameState = null;
-        this.animationFrameId = null;
 
         // Minimap component (will be initialized in onStart)
         this.minimap = null;
@@ -225,6 +224,7 @@ export class InfinityMode extends BaseGameMode {
                 targetTopRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
 
                 this.boardScene.updateCameraPosition(targetTopRow);
+                this._updateMinimapView();
                 console.log('[Infinity] Minimap jump: clicked row', centerRow, '→ camera top row:', targetTopRow);
             }
         });
@@ -309,9 +309,9 @@ export class InfinityMode extends BaseGameMode {
         console.log('[Infinity] Stopping game...');
 
         // Cancel game loop
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+        if (this.gameState?.animationId) {
+            cancelAnimationFrame(this.gameState.animationId);
+            this.gameState.animationId = null;
         }
 
         // Hide minimap
@@ -476,76 +476,63 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _startGameLoop() {
+        if (!this.gameState) {
+            console.warn('[Infinity] Cannot start game loop without game state');
+            return;
+        }
+
         console.log('[Infinity] Starting game loop...');
 
         // Performance optimization: Throttle stats updates
-        this.lastStatsUpdateTime = 0;
+        this.lastStatsUpdateTime = performance.now();
         this.statsUpdateInterval = 250; // Update stats every 250ms instead of every frame
 
-        const loop = (currentTime) => {
+        // Ensure no legacy RAF loop is still running
+        if (this.gameState.animationId) {
+            cancelAnimationFrame(this.gameState.animationId);
+            this.gameState.animationId = null;
+        }
+
+        const drawCallback = () => {
             if (!this.isRunning) {
                 return;
             }
 
-            // Sync game state to Phaser scene (even when paused for camera navigation)
-            if (this.boardScene) {
-                this.boardScene.syncFromGameState(this.gameState);
+            this._syncBoardSceneFromState();
+
+            this.gameState.currentTopRow = calculateTopRow(this.gameState);
+            this._maybeExpandGrid();
+
+            if (this.boardScene?.cameraSettings && !this.boardScene.cameraSettings.manualControl) {
+                this._updateCameraPosition();
             }
 
-            // Update minimap (even when paused for navigation)
-            if (this.minimap && this.boardScene && this.boardScene.cameraSettings) {
-                const cameraSettings = this.boardScene.cameraSettings;
-                const cameraCenterRow = typeof cameraSettings.centerRow === 'number'
-                    ? cameraSettings.centerRow
-                    : (cameraSettings.currentY || 0) / 32;
-                const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-                this.minimap.update(this.gameState, cameraCenterRow, visibleRows);
+            this._updateMinimapView();
+
+            if (!this.gameState.isGameOver && checkInfinityGameOver(this.gameState)) {
+                console.log('[Infinity] Game over condition met');
+                this.gameState.isGameOver = true;
+                this._handleGameOver();
             }
-
-            // Skip game logic when paused (but continue loop for rendering/camera)
-            if (!this.isPaused) {
-                // Update current top row tracking
-                this.gameState.currentTopRow = calculateTopRow(this.gameState);
-
-                this._maybeExpandGrid();
-
-                // Update camera to follow building progress (with 60% threshold)
-                if (this.boardScene?.cameraSettings && !this.boardScene.cameraSettings.manualControl) {
-                    this._updateCameraPosition();
-                }
-
-                // Check infinity-specific game over condition
-                if (checkInfinityGameOver(this.gameState)) {
-                    console.log('[Infinity] Game over condition met');
-                    this._handleGameOver();
-                    return;
-                }
-
-                // Run core game loop
-                gameLoop(
-                    currentTime,
-                    this.gameState,
-                    () => {
-                        // Draw callback - Phaser handles rendering
-                        // No canvas fallback needed for infinity mode
-                    },
-                    () => {
-                        // Update stats callback - THROTTLED for performance
-                        if (currentTime - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
-                            this.lastStatsUpdateTime = currentTime;
-                            this._updateStats();
-                        }
-                    },
-                    () => this.deps.soundManager.sfxPlayer.playDrop(),
-                    this.getPhysicsCallbacks()
-                );
-            }
-
-            // Continue loop
-            this.animationFrameId = requestAnimationFrame(loop);
         };
 
-        this.animationFrameId = requestAnimationFrame(loop);
+        const statsCallback = () => {
+            const now = performance.now();
+            if (now - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
+                this.lastStatsUpdateTime = now;
+                this._updateStats();
+            }
+        };
+
+        gameLoop(
+            performance.now(),
+            this.gameState,
+            drawCallback,
+            statsCallback,
+            () => this.deps.soundManager.sfxPlayer.playDrop(),
+            this.getPhysicsCallbacks(),
+        );
+
         console.log('[Infinity] Game loop started');
     }
 
@@ -830,6 +817,26 @@ export class InfinityMode extends BaseGameMode {
         }
     }
 
+    _syncBoardSceneFromState() {
+        if (this.boardScene && this.gameState) {
+            this.boardScene.syncFromGameState(this.gameState);
+        }
+    }
+
+    _updateMinimapView() {
+        if (!this.minimap || !this.boardScene?.cameraSettings) {
+            return;
+        }
+
+        const { cameraSettings } = this.boardScene;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const cameraCenterRow = typeof cameraSettings.centerRow === 'number'
+            ? cameraSettings.centerRow
+            : (cameraSettings.currentTopRow || 0) + visibleRows / 2;
+
+        this.minimap.update(this.gameState, cameraCenterRow, visibleRows);
+    }
+
     /**
      * Handle game over
      * @private
@@ -972,6 +979,7 @@ export class InfinityMode extends BaseGameMode {
                 if (this.gameState) {
                     const topRow = this.gameState.currentTopRow || 0;
                     this.boardScene.updateCameraPosition(topRow);
+                    this._updateMinimapView();
                     event.preventDefault();
                     event.stopPropagation();
                 }
@@ -982,6 +990,7 @@ export class InfinityMode extends BaseGameMode {
                     const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
                     const bottomTopRow = Math.max(0, this.gameState.board.length - visibleRows);
                     this.boardScene.updateCameraPosition(bottomTopRow);
+                    this._updateMinimapView();
                     event.preventDefault();
                     event.stopPropagation();
                 }
@@ -997,6 +1006,7 @@ export class InfinityMode extends BaseGameMode {
 
         if (deltaRows !== 0) {
             this.boardScene.moveCamera(deltaRows);
+            this._updateMinimapView();
         }
     }
 
@@ -1013,6 +1023,7 @@ export class InfinityMode extends BaseGameMode {
         // Scroll down = show lower rows (positive delta)
         const deltaRows = Math.sign(event.deltaY) * 2;
         this.boardScene.moveCamera(deltaRows);
+        this._updateMinimapView();
     }
 
     /**
