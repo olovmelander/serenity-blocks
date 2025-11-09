@@ -1,10 +1,10 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, COLORS,
 } from '../../core/constants.js';
-import { rebuildBoardGridFromPieces } from '../../core/board.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
+import { getGhostLandingY } from '../../core/game.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -606,11 +606,7 @@ export function createBaseBoardScene(
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
 
-            // Calculate ghost position (where piece will land)
-            let ghostY = piece.y;
-            while (this.isValidPosition(piece.x, ghostY + 1, piece.shape)) {
-                ghostY++;
-            }
+            const ghostY = getGhostLandingY(this.gameState);
 
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
@@ -619,17 +615,10 @@ export function createBaseBoardScene(
                         const worldY = ghostY + y;
 
                         if (worldY >= this.hiddenRows) {
-                            // Define the min and max brightness for the pulse
-                            const minAlpha = 0.1; // How dim the pulse gets
-                            const maxAlpha = 0.35; // How bright the pulse gets
-
-                            // Get the current pulse value (0 to 1) for this block's position
+                            const minAlpha = 0.1;
+                            const maxAlpha = 0.35;
                             const pulse = this._getPulseIntensity(worldX, worldY);
-
-                            // Map the pulse value to your desired alpha range
                             const pulsatingAlpha = minAlpha + (maxAlpha - minAlpha) * pulse;
-
-                            // Draw the block with the new pulsating alpha
                             this.drawBlock(worldX, worldY, '#FFFFFF', pulsatingAlpha, true);
                         }
                     }
@@ -769,51 +758,6 @@ export function createBaseBoardScene(
             const POSITION_PHASE_SHIFT = 0.45;
             const phase = timestamp * PULSE_SPEED + (gridX + gridY) * POSITION_PHASE_SHIFT;
             return 0.5 + 0.5 * Math.sin(phase); // Result is a value between 0.0 and 1.0
-        }
-
-        isValidPosition(checkX, checkY, shape) {
-            const boardGrid = this.gameState?.boardGrid;
-            const totalRows = boardGrid?.length ?? (this.rows + this.hiddenRows);
-
-            for (let row = 0; row < shape.length; row++) {
-                for (let col = 0; col < shape[row].length; col++) {
-                    if (shape[row][col] <= 0) continue;
-
-                    const newX = checkX + col;
-                    const newY = checkY + row;
-
-                    if (newX < 0 || newX >= this.cols) {
-                        return false;
-                    }
-
-                    if (newY >= totalRows) {
-                        return false;
-                    }
-
-                    if (newY >= 0) {
-                        if (boardGrid) {
-                            const cell = boardGrid[newY]?.[newX];
-                            if (cell) {
-                                return false;
-                            }
-                        } else if (this.gameState?.lockedPieces) {
-                            for (const locked of this.gameState.lockedPieces) {
-                                for (let ly = 0; ly < locked.shape.length; ly++) {
-                                    for (let lx = 0; lx < locked.shape[ly].length; lx++) {
-                                        if (locked.shape[ly][lx] > 0) {
-                                            if (locked.x + lx === newX && locked.y + ly === newY) {
-                                                return false;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            return true;
         }
 
         lightenColor(color, amount) {

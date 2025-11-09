@@ -129,13 +129,9 @@ export class InfinityMode extends BaseGameMode {
             statsBar.style.display = '';
         }
 
-        // Prepare Phaser scene for single board
-        this._preparePhaserScene();
-
         // Apply Infinity-specific layout classes
         this._applyInfinityLayout(true);
 
-        // Move Phaser canvas into the single player container and size it
         this._movePhaserToSinglePlayerContainer();
         this._resizePhaserGame(COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
 
@@ -166,8 +162,9 @@ export class InfinityMode extends BaseGameMode {
         const stats = getGridStats(this.gameState);
         console.log('[Infinity] Grid stats:', stats);
 
-        // Get board scene reference
+        this._preparePhaserScene();
         this.boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+
         if (this.boardScene) {
             // Sync game state to scene (camera needs this for configuration)
             this.boardScene.syncFromGameState(this.gameState);
@@ -180,7 +177,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Apply effect quality from settings
         const settings = this.deps.settingsManager.get();
-        if (this.boardScene && this.boardScene.setEffectQuality) {
+        if (this.boardScene?.setEffectQuality) {
             this.boardScene.setEffectQuality(settings.effectQuality || 'high');
         }
 
@@ -331,6 +328,8 @@ export class InfinityMode extends BaseGameMode {
         // this._showResultsModal();
 
         console.log('[Infinity] Game stopped');
+
+        this.boardScene = null;
     }
 
     /**
@@ -355,6 +354,8 @@ export class InfinityMode extends BaseGameMode {
             this.heightHUD.destroy();
             this.heightHUD = null;
         }
+
+        this.boardScene = null;
 
         // Clean up trance effects if active
         if (this.tranceEffects) {
@@ -401,35 +402,6 @@ export class InfinityMode extends BaseGameMode {
      * Prepare Phaser scene for single board rendering
      * @private
      */
-    _preparePhaserScene() {
-        const phaserGame = this.deps.phaserGame;
-        if (!phaserGame?.scene) return;
-
-        // Get or create BoardScene
-        this.boardScene = phaserGame.scene.getScene('BoardScene');
-
-        if (this.boardScene) {
-            // Make sure scene is visible and running
-            this.boardScene.scene.setVisible(true);
-            if (!this.boardScene.scene.isActive()) {
-                this.boardScene.scene.resume();
-            }
-
-            console.log('[Infinity] Phaser BoardScene prepared');
-        } else {
-            console.warn('[Infinity] BoardScene not found');
-        }
-
-        // Hide multiplayer scenes
-        ['BoardPanel1', 'BoardPanel2'].forEach((sceneKey) => {
-            const scene = phaserGame.scene.getScene(sceneKey);
-            if (scene) {
-                scene.scene.setVisible(false);
-                scene.scene.stop();
-            }
-        });
-    }
-
     /**
      * Apply or remove Infinity-specific layout styling
      * @param {boolean} enable
@@ -455,10 +427,6 @@ export class InfinityMode extends BaseGameMode {
         }
     }
 
-    /**
-     * Move Phaser canvas to the single player container
-     * @private
-     */
     _movePhaserToSinglePlayerContainer() {
         const phaserCanvas = this.deps.phaserGame?.canvas;
         const container = document.getElementById('phaser-game-container');
@@ -476,6 +444,31 @@ export class InfinityMode extends BaseGameMode {
         if (this.deps.phaserGame?.resize) {
             this.deps.phaserGame.resize(width, height);
         }
+    }
+
+    _preparePhaserScene() {
+        const phaserGame = this.deps.phaserGame;
+        if (!phaserGame?.scene) return;
+
+        this.boardScene = phaserGame.scene.getScene('BoardScene');
+
+        if (this.boardScene) {
+            this.boardScene.scene.setVisible(true);
+            if (!this.boardScene.scene.isActive()) {
+                this.boardScene.scene.resume();
+            }
+            console.log('[Infinity] Phaser BoardScene prepared');
+        } else {
+            console.warn('[Infinity] BoardScene not found');
+        }
+
+        ['BoardPanel1', 'BoardPanel2'].forEach((sceneKey) => {
+            const scene = phaserGame.scene.getScene(sceneKey);
+            if (scene) {
+                scene.scene.setVisible(false);
+                scene.scene.stop();
+            }
+        });
     }
 
     /**
