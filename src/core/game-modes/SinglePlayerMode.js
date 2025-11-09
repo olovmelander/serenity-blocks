@@ -266,7 +266,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 () => {
                     // Update stats callback - THROTTLED for performance
                     // Only update stats every 250ms instead of every frame (16ms)
-                    // This reduces BPM calculations from 60/sec to 4/sec
+                    // This reduces DOM updates from 60/sec to 4/sec
                     if (currentTime - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
                         this.lastStatsUpdateTime = currentTime;
                         updateStats(this.gameState);

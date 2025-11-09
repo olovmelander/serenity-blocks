@@ -7,7 +7,7 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS,
 } from './constants.js';
-import { cloneBoardGrid, rebuildBoardGridFromPieces } from './board.js';
+import { cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid } from './board.js';
 
 const PHYSICS_DEBUG = false;
 const physicsLog = (...args) => {
@@ -142,6 +142,7 @@ export function findConnectedComponents(boardData) {
 /**
  * Applies gravity to blocks after line clears, making them fall independently
  * Uses smooth animation with variable speed based on fall distance
+ * PERFORMANCE OPTIMIZED: Uses incremental grid updates instead of full rebuilds
  * @param {Array<Object>} lockedPieces - Array of locked pieces (modified in place)
  * @param {Function} drawCallback - Function to call for visual updates
  * @param {Array<Array<boolean>>} movedArray - 2D array to track which cells moved (optional)
@@ -161,10 +162,14 @@ export async function applyGravity(
     // The performance gain wasn't worth the correctness issues
     let visiblePieces = lockedPieces;
 
+    // PERFORMANCE: Only rebuild once at the start
+    // The grid is already current from the previous physics phase
+    // We'll use incremental updates during the gravity loop
+    const currentBoard = boardGrid;
+
     // Calculate maximum potential fall distance to determine animation speed
     // For infinity mode with large grids, we need adaptive timing
     let maxPotentialFall = 0;
-    rebuildBoardGridFromPieces(lockedPieces, boardGrid);
     visiblePieces.forEach(piece => {
         // Check how far this piece could potentially fall
         let fallDistance = 0;
@@ -195,8 +200,9 @@ export async function applyGravity(
 
     while (blocksStillFalling) {
         blocksStillFalling = false;
-        rebuildBoardGridFromPieces(lockedPieces, boardGrid);
-        const currentBoard = boardGrid;
+
+        // PERFORMANCE CRITICAL: NO REBUILD HERE!
+        // Grid is kept up-to-date through incremental updates below
 
         // Process blocks from bottom to top to prevent double-processing
         visiblePieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
@@ -244,7 +250,11 @@ export async function applyGravity(
                     });
                 }
 
+                // PERFORMANCE: Use incremental update instead of full rebuild
+                const oldY = piece.y;
                 piece.y++;
+                updatePiecePositionInGrid(piece, oldY, boardGrid);
+
                 blocksStillFalling = true;
             }
         }
@@ -256,6 +266,7 @@ export async function applyGravity(
             }
 
             // Update camera to follow falling blocks during cascade
+            // PERFORMANCE: Throttling will be applied in InfinityMode
             callbacks.onGravityStep?.();
 
             // Use requestAnimationFrame-based timing for smooth, consistent gravity
@@ -266,7 +277,8 @@ export async function applyGravity(
         }
     }
 
-    rebuildBoardGridFromPieces(lockedPieces, boardGrid);
+    // PERFORMANCE: Grid is already up-to-date from incremental updates
+    // No need for final rebuild!
 }
 
 /**

@@ -48,6 +48,108 @@ export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid(
 }
 
 /**
+ * PERFORMANCE: Incremental grid update - removes a piece from the grid without full rebuild
+ * @param {Object} piece - The piece to remove from the grid
+ * @param {Array<Array>} targetGrid - The grid to update
+ */
+export function removePieceFromGrid(piece, targetGrid) {
+    if (!piece || !targetGrid) return;
+
+    const pieceId = piece.pieceId || piece.shapeKey;
+
+    piece.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell > 0) {
+                const boardX = piece.x + x;
+                const boardY = piece.y + y;
+
+                if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
+                    // Only clear if it's actually this piece
+                    if (targetGrid[boardY][boardX] && targetGrid[boardY][boardX].id === pieceId) {
+                        targetGrid[boardY][boardX] = null;
+                    }
+                }
+            }
+        });
+    });
+}
+
+/**
+ * PERFORMANCE: Incremental grid update - adds/updates a piece in the grid without full rebuild
+ * @param {Object} piece - The piece to add to the grid
+ * @param {Array<Array>} targetGrid - The grid to update
+ */
+export function addPieceToGrid(piece, targetGrid) {
+    if (!piece || !targetGrid) return;
+
+    const pieceId = piece.pieceId || piece.shapeKey;
+    const color = piece.color || piece.shapeKey;
+
+    piece.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell > 0) {
+                const boardX = piece.x + x;
+                const boardY = piece.y + y;
+
+                if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
+                    targetGrid[boardY][boardX] = {
+                        color,
+                        id: pieceId,
+                    };
+                }
+            }
+        });
+    });
+}
+
+/**
+ * PERFORMANCE: Incremental grid update - updates a piece's position in the grid
+ * More efficient than remove + add when piece is just moving
+ * @param {Object} piece - The piece to update
+ * @param {number} oldY - Previous Y position
+ * @param {Array<Array>} targetGrid - The grid to update
+ */
+export function updatePiecePositionInGrid(piece, oldY, targetGrid) {
+    if (!piece || !targetGrid || oldY === piece.y) return;
+
+    const pieceId = piece.pieceId || piece.shapeKey;
+    const color = piece.color || piece.shapeKey;
+
+    // Remove from old position
+    piece.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell > 0) {
+                const boardX = piece.x + x;
+                const boardY = oldY + y;
+
+                if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
+                    if (targetGrid[boardY][boardX] && targetGrid[boardY][boardX].id === pieceId) {
+                        targetGrid[boardY][boardX] = null;
+                    }
+                }
+            }
+        });
+    });
+
+    // Add to new position
+    piece.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell > 0) {
+                const boardX = piece.x + x;
+                const boardY = piece.y + y;
+
+                if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
+                    targetGrid[boardY][boardX] = {
+                        color,
+                        id: pieceId,
+                    };
+                }
+            }
+        });
+    });
+}
+
+/**
  * Generate a 2D board representation from locked pieces
  * @param {Array} pieces - Array of locked piece objects
  * @returns {Array} 2D array representing the board state

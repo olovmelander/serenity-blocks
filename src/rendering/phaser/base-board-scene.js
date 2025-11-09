@@ -80,7 +80,11 @@ export function createBaseBoardScene(
             this.effectQuality = 'High';
             this.qualityConfig = getQualityConfig(this.effectQuality);
             this.cameraSettings = null;
-            
+
+            // PERFORMANCE: Periodic cleanup counters to prevent memory leaks
+            this.frameCount = 0;
+            this.cleanupInterval = 60; // Clean up every 1 second at 60fps (increased frequency)
+
             // No caching needed - simple is better
         }
 
@@ -123,6 +127,14 @@ export function createBaseBoardScene(
             performanceMonitor.updateStart();
 
             if (!this.gameState) return;
+
+            // PERFORMANCE: Periodic cleanup to prevent memory leaks
+            // This fixes the time-based FPS degradation issue
+            this.frameCount++;
+            if (this.frameCount >= this.cleanupInterval) {
+                this.frameCount = 0;
+                this._performPeriodicCleanup();
+            }
 
             // Clear ALL graphics layers at the START of each frame (like multiplayer does)
             // This is the CRITICAL optimization that makes multiplayer so fast
@@ -819,12 +831,50 @@ export function createBaseBoardScene(
         }
 
         /**
+         * PERFORMANCE: Periodic cleanup to prevent memory leaks
+         * Called every ~3 seconds to clean up accumulated resources
+         * Fixes time-based FPS degradation issue
+         * @private
+         */
+        _performPeriodicCleanup() {
+            // PERFORMANCE NOTE: Tween cleanup removed - killAll() was killing active tweens
+            // and causing ripple effects to get stuck. Phaser 4 manages tween lifecycle.
+
+            // CRITICAL FIX #1: Clean up tracked objects in SharedEffects
+            if (this.sharedEffects && this.sharedEffects._cleanupTrackedObjects) {
+                try {
+                    this.sharedEffects._cleanupTrackedObjects();
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
+            }
+
+            // CRITICAL FIX #2: Clean up particle systems
+            if (this.sharedEffects && this.sharedEffects.activeParticleSystems) {
+                try {
+                    const particleArray = Array.from(this.sharedEffects.activeParticleSystems);
+                    particleArray.forEach(emitter => {
+                        // Check if emitter is actually dead/stopped
+                        if (emitter && emitter.on === false) {
+                            this.sharedEffects.activeParticleSystems.delete(emitter);
+                        }
+                    });
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
+            }
+        }
+
+        /**
          * Remove listeners on shutdown.
          */
         shutdown() {
             if (this.scale) {
                 this.scale.off('resize');
             }
+
+            // Final cleanup on shutdown
+            this._performPeriodicCleanup();
         }
 
         /**

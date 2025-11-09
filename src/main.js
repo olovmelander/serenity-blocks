@@ -311,6 +311,13 @@ class SerenityBlocks {
             this.frameRateController.setTargetFPS(targetFrameRate || 0);
             this.frameRateController.resetStats();
 
+            // Update Phaser game FPS target if game exists
+            if (this.phaserGame && this.phaserGame.loop) {
+                const actualTarget = targetFrameRate || 60; // Default to 60 if unlimited
+                this.phaserGame.loop.targetFps = actualTarget;
+                console.log(`[FrameRate] Updated Phaser FPS target to ${actualTarget}`);
+            }
+
             if (this.displayManager?.isElectron) {
                 try {
                     const { ipcRenderer } = window.require('electron');
@@ -420,19 +427,25 @@ class SerenityBlocks {
         const config = {
             // Renderer: Phaser 4 is WebGL-only (no Canvas renderer)
             type: PhaserRef.WEBGL,
-            
+
             // Canvas dimensions: 10 blocks × 20 blocks (300×600 px)
             width: singleBoardWidth,
             height: singleBoardHeight,
-            
+
             // Parent DOM container for Phaser canvas
             parent: 'phaser-game-container',
-            
+
             // Transparent canvas to show WebGL theme backgrounds
             transparent: true,
-            
+
             // Disable Phaser audio system (using custom SoundManager)
             audio: { noAudio: true },
+
+            // Frame rate target
+            fps: {
+                target: 60,
+                forceSetTimeOut: false,
+            },
             
             // Register initial scenes (multiplayer scenes added dynamically)
             scene: [BoardScene, BackgroundScene],

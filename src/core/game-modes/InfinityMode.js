@@ -71,6 +71,13 @@ export class InfinityMode extends BaseGameMode {
         this.lastClearedLinesCenter = null; // Center position of cleared lines
         this.lowestFallingBlock = null;     // Track the lowest block that's falling
 
+        // PERFORMANCE: Throttle camera updates during rapid gravity steps
+        // Update camera every N gravity steps instead of every single step
+        this.gravityStepCount = 0;
+        this.cameraUpdateInterval = 3; // Update camera every 3 gravity steps (configurable)
+        this.lastCameraUpdateTime = 0;
+        this.minCameraUpdateInterval = 32; // Minimum 32ms between updates (~30fps camera tracking)
+
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
     }
@@ -750,12 +757,24 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
-                // Use faster lerp speed during cascades to keep up with falling blocks
-                // Camera tracks the action zone where blocks are falling and clearing
-                if (this.boardScene?.cameraSettings) {
+                // PERFORMANCE: Throttle camera updates to reduce overhead during rapid cascades
+                // Only update camera every N steps or after minimum time interval
+                this.gravityStepCount++;
+                const now = performance.now();
+                const timeSinceLastUpdate = now - this.lastCameraUpdateTime;
+
+                // Update if either: enough steps have passed OR enough time has passed
+                const shouldUpdate = (this.gravityStepCount >= this.cameraUpdateInterval) ||
+                                    (timeSinceLastUpdate >= this.minCameraUpdateInterval);
+
+                if (shouldUpdate && this.boardScene?.cameraSettings) {
                     this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
                     // Track the falling blocks and cleared lines to position camera optimally
                     this._updateCameraDuringCascade();
+
+                    // Reset throttle counters
+                    this.gravityStepCount = 0;
+                    this.lastCameraUpdateTime = now;
                 }
             },
             // Update camera after cascade completes
@@ -767,6 +786,10 @@ export class InfinityMode extends BaseGameMode {
                         this.gameState.infinityStats.totalCascades++;
                         console.log(`[Infinity] Cascade completed: count=${cascadeCount}, total cascades=${this.gameState.infinityStats.totalCascades}`);
                     }
+
+                    // PERFORMANCE: Reset camera update throttle counters
+                    this.gravityStepCount = 0;
+                    this.lastCameraUpdateTime = 0;
 
                     // Restore normal camera lerp speed after cascade
                     if (this.boardScene?.cameraSettings) {

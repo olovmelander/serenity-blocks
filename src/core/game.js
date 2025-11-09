@@ -529,6 +529,10 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     }
 }
 
+// SAFETY: Track active RAF loops to detect duplicates
+let activeLoopCount = 0;
+const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
+
 /**
  * Main game loop function
  * @param {number} time - Current timestamp from requestAnimationFrame
@@ -546,6 +550,14 @@ export function gameLoop(
     playDropCallback,
     physicsCallbacks,
 ) {
+    // SAFETY CHECK: Detect duplicate RAF loops
+    activeLoopCount++;
+    if (activeLoopCount > MAX_CONCURRENT_LOOPS) {
+        console.warn(`[PERFORMANCE WARNING] ${activeLoopCount} concurrent game loops detected! Canceling to prevent exponential growth.`);
+        activeLoopCount--;
+        return; // Exit early to prevent loop multiplication
+    }
+
     const monitoring = performanceMonitor && performanceMonitor.enabled;
     if (monitoring) {
         performanceMonitor.updateStart();
@@ -555,46 +567,42 @@ export function gameLoop(
         if (monitoring) {
             performanceMonitor.updateEnd();
         }
+        activeLoopCount--;
         return;
     }
 
-    if (gameState.isPaused) {
+    // PERFORMANCE FIX: Process game logic only when not paused
+    if (!gameState.isPaused) {
+        const delta = time - gameState.lastTime;
+        gameState.lastTime = time;
+
+        // Auto drop
+        if (!gameState.isProcessingPhysics && gameState.currentPiece) {
+            gameState.dropCounter += delta;
+            if (gameState.dropCounter > gameState.dropInterval) {
+            softDrop(gameState, playDropCallback, physicsCallbacks);
+            }
+        }
+
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+            performanceMonitor.renderStart();
+        }
+
+        if (drawCallback) drawCallback();
+        if (monitoring) {
+            performanceMonitor.renderEnd();
+        }
+        if (updateStatsCallback) updateStatsCallback();
+    } else {
+        // When paused, still finish monitoring this frame
         if (monitoring) {
             performanceMonitor.updateEnd();
         }
-        gameState.animationId = requestAnimationFrame((t) => gameLoop(
-            t,
-            gameState,
-            drawCallback,
-            updateStatsCallback,
-            playDropCallback,
-            physicsCallbacks,
-        ));
-        return;
     }
 
-    const delta = time - gameState.lastTime;
-    gameState.lastTime = time;
-
-    // Auto drop
-    if (!gameState.isProcessingPhysics && gameState.currentPiece) {
-        gameState.dropCounter += delta;
-        if (gameState.dropCounter > gameState.dropInterval) {
-        softDrop(gameState, playDropCallback, physicsCallbacks);
-        }
-    }
-
-    if (monitoring) {
-        performanceMonitor.updateEnd();
-        performanceMonitor.renderStart();
-    }
-
-    if (drawCallback) drawCallback();
-    if (monitoring) {
-        performanceMonitor.renderEnd();
-    }
-    if (updateStatsCallback) updateStatsCallback();
-
+    // CRITICAL FIX: Schedule next frame ONCE at the end (not in pause branch)
+    // This prevents duplicate RAF loops from multiplying exponentially
     gameState.animationId = requestAnimationFrame((t) => gameLoop(
         t,
         gameState,
@@ -603,6 +611,9 @@ export function gameLoop(
         playDropCallback,
         physicsCallbacks,
     ));
+
+    // SAFETY: Decrement loop counter after scheduling next frame
+    activeLoopCount--;
 }
 
 /**
