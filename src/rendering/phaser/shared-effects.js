@@ -23,6 +23,21 @@ const CAMERA_SHAKE_BASE_INTENSITY = 0.0025;
 const CAMERA_SHAKE_BASE_DURATION = 120;
 
 /**
+ * Lightweight debug logger for shared effects. Enable via
+ * `window.__SHARED_EFFECTS_DEBUG__ = true` in devtools when needed.
+ */
+const sharedEffectsDebugEnabled = () => (
+    typeof window !== 'undefined' && Boolean(window.__SHARED_EFFECTS_DEBUG__)
+);
+
+const debugLog = (...args) => {
+    if (sharedEffectsDebugEnabled()) {
+        // eslint-disable-next-line no-console
+        console.log(...args);
+    }
+};
+
+/**
  * SharedEffects class - manages all visual effects for a Phaser scene
  *
  * This class is designed to be instantiated by any Phaser scene that wants
@@ -42,7 +57,7 @@ export class SharedEffects {
         this.lastImpactIntensity = 0;
         this.currentComboCount = 0;
 
-        console.log('[SharedEffects] Initialized for scene:', scene.scene?.key || 'unknown');
+        debugLog('[SharedEffects] Initialized for scene:', scene.scene?.key || 'unknown');
     }
 
     /**
@@ -136,7 +151,7 @@ export class SharedEffects {
             centerX /= blockCount;
             centerY /= blockCount;
 
-            console.log('[SharedEffects] Piece lock ripple:', {
+            debugLog('[SharedEffects] Piece lock ripple:', {
                 pieceGridY: piece.y,
                 hiddenRows: this.scene.hiddenRows,
                 screenY: centerY,
@@ -151,7 +166,7 @@ export class SharedEffects {
             // This way we can position it in screen coordinates directly
             ripple.setScrollFactor(0);
 
-            console.log('[SharedEffects] Drawing ripple at screen position:', {x: centerX, y: centerY});
+            debugLog('[SharedEffects] Drawing ripple at screen position:', { x: centerX, y: centerY });
 
             const colorInt = parseInt(piece.color.replace('#', ''), 16);
 
@@ -273,23 +288,23 @@ export class SharedEffects {
             // 20+ lines: Only spawn particles for every 3rd row, triple intensity
             processedRows = clearedRows.filter((_, i) => i % 3 === 0);
             intensityBoost = 2.5;
-            console.log(`[SharedEffects] Mega cascade batching: ${clearedRows.length} → ${processedRows.length} rows (3x sampling)`);
+            debugLog(`[SharedEffects] Mega cascade batching: ${clearedRows.length} → ${processedRows.length} rows (3x sampling)`);
         } else if (clearedRows.length >= 10) {
             // 10-19 lines: Only spawn particles for every 2nd row, double intensity
             processedRows = clearedRows.filter((_, i) => i % 2 === 0);
             intensityBoost = 1.8;
-            console.log(`[SharedEffects] Large cascade batching: ${clearedRows.length} → ${processedRows.length} rows (2x sampling)`);
+            debugLog(`[SharedEffects] Large cascade batching: ${clearedRows.length} → ${processedRows.length} rows (2x sampling)`);
         }
 
         processedRows.forEach((row, index) => {
             const zoneY = (row - this.scene.hiddenRows) * this.scene.blockSize;
 
-            console.log('[SharedEffects] Spawning particles for row', row, {
+            debugLog('[SharedEffects] Spawning particles for row', row, {
                 hiddenRows: this.scene.hiddenRows,
                 blockSize: this.scene.blockSize,
                 calculation: `(${row} - ${this.scene.hiddenRows}) * ${this.scene.blockSize}`,
-                zoneY: zoneY,
-                boardWidth: boardWidth
+                zoneY,
+                boardWidth,
             });
 
             // Use compatibility layer to create particles
@@ -604,7 +619,7 @@ export class SharedEffects {
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const boardHeight = this.scene.rows * this.scene.blockSize;
 
-        console.log(`[SharedEffects] MEGA CASCADE x${cascadeCount}!`);
+        debugLog(`[SharedEffects] MEGA CASCADE x${cascadeCount}!`);
 
         // Screen flash effect - more intense for higher cascades
         const flashGraphics = this.scene.add.graphics();
@@ -829,7 +844,7 @@ export class SharedEffects {
      * Should be called when effects are no longer needed
      */
     cleanup() {
-        console.log('[SharedEffects] Cleaning up particle systems:', this.activeParticleSystems.size);
+        debugLog('[SharedEffects] Cleaning up particle systems:', this.activeParticleSystems.size);
 
         this.activeParticleSystems.forEach(system => {
             destroyParticleEmitter(system);
