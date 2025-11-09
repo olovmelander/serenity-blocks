@@ -10281,6 +10281,7 @@ body {
     width: 100%;
     height: 100%;
     z-index: 6;
+    contain: layout paint;
 }
 
 .neon-dusk-meteor {
@@ -10299,6 +10300,8 @@ body {
     animation: neon-meteor-streak var(--meteor-duration, 3s) linear infinite;
     animation-delay: var(--meteor-delay, 0s);
     opacity: 0;
+    will-change: transform, opacity;
+    pointer-events: none;
 }
 
 @keyframes neon-meteor-streak {
