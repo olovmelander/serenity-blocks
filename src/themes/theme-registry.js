@@ -252,6 +252,12 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'supernova',
+        displayName: 'Supernova',
+        module: './supernova/supernova-theme.js',
+        group: 'cosmic',
+    },
+    {
         id: 'pyrestorm',
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',
