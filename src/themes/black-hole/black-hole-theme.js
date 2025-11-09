@@ -1,5 +1,94 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
+import { normalizeQuality } from '../../utils/quality.js';
+
+const QUALITY_PRESETS = {
+    Ultra: {
+        starCount: 200,  // Reduced from 320
+        initialParticles: 180,  // Reduced from 260
+        maxParticles: 450,  // Reduced from 720
+        minParticles: 250,  // Reduced from 420
+        adaptiveStep: 40,
+        targetFps: 60,
+        renderScale: 0.9,  // Reduced from 1.0
+        effectIntensity: 0.9,  // Reduced from 1.0
+        pulseCoverage: 0.6,  // Reduced from 0.9
+        comboBurstLimit: 40,  // Reduced from 60
+        eruptionLimit: 50,  // Reduced from 80
+        allowEruptions: true,
+        lineEffectCooldown: 100,  // Increased from 80
+        comboEffectCooldown: 180,  // Increased from 140
+        smallBurstLimit: 8,  // Reduced from 10
+        starBurstLimit: 3,  // Reduced from 4
+        trailDetail: 0.7,  // Reduced from 1.0
+        useCanvasStars: false,  // DOM stars for best quality
+        skipPhysicsDistance: 1.8,  // Skip physics beyond 1.8x pull radius
+    },
+    High: {
+        starCount: 150,  // Reduced from 260
+        initialParticles: 140,  // Reduced from 220
+        maxParticles: 320,  // Reduced from 560
+        minParticles: 160,  // Reduced from 280
+        adaptiveStep: 35,
+        targetFps: 60,
+        renderScale: 0.75,  // Reduced from 0.85
+        effectIntensity: 0.7,  // Reduced from 0.85
+        pulseCoverage: 0.5,  // Reduced from 0.7
+        comboBurstLimit: 30,  // Reduced from 45
+        eruptionLimit: 35,  // Reduced from 50
+        allowEruptions: true,
+        lineEffectCooldown: 150,  // Increased from 120
+        comboEffectCooldown: 240,  // Increased from 200
+        smallBurstLimit: 6,  // Reduced from 8
+        starBurstLimit: 3,  // Reduced from 4
+        trailDetail: 0.6,  // Reduced from 0.85
+        useCanvasStars: true,  // Canvas stars for better performance
+        skipPhysicsDistance: 2.0,  // Skip physics beyond 2x pull radius
+    },
+    Medium: {
+        starCount: 100,  // Reduced from 180
+        initialParticles: 100,  // Reduced from 170
+        maxParticles: 200,  // Reduced from 360
+        minParticles: 100,  // Reduced from 180
+        adaptiveStep: 30,
+        targetFps: 48,
+        renderScale: 0.65,  // Reduced from 0.7
+        effectIntensity: 0.5,  // Reduced from 0.6
+        pulseCoverage: 0.3,  // Reduced from 0.45
+        comboBurstLimit: 18,  // Reduced from 28
+        eruptionLimit: 20,  // Reduced from 30
+        allowEruptions: false,  // Disabled for performance
+        lineEffectCooldown: 220,  // Increased from 180
+        comboEffectCooldown: 320,  // Increased from 260
+        smallBurstLimit: 4,  // Reduced from 6
+        starBurstLimit: 2,  // Reduced from 3
+        trailDetail: 0.4,  // Reduced from 0.6
+        useCanvasStars: true,
+        skipPhysicsDistance: 2.2,  // Skip more distant particles
+    },
+    Low: {
+        starCount: 60,  // Reduced from 120
+        initialParticles: 70,  // Reduced from 120
+        maxParticles: 120,  // Reduced from 220
+        minParticles: 70,  // Reduced from 120
+        adaptiveStep: 25,
+        targetFps: 40,
+        renderScale: 0.5,  // Reduced from 0.55
+        effectIntensity: 0.3,  // Reduced from 0.4
+        pulseCoverage: 0.2,  // Reduced from 0.3
+        comboBurstLimit: 10,  // Reduced from 16
+        eruptionLimit: 12,  // Reduced from 18
+        allowEruptions: false,
+        lineEffectCooldown: 300,  // Increased from 260
+        comboEffectCooldown: 400,  // Increased from 350
+        smallBurstLimit: 3,  // Reduced from 4
+        starBurstLimit: 1,  // Reduced from 2
+        trailDetail: 0.2,  // Reduced from 0.45
+        useCanvasStars: true,
+        skipPhysicsDistance: 2.5,  // Skip even more distant particles
+    },
+};
 
 export default class BlackHoleTheme extends BaseTheme {
     constructor() {
@@ -10,27 +99,167 @@ export default class BlackHoleTheme extends BaseTheme {
         this.canvas = null;
         this.ctx = null;
         this.particles = [];
-        this.maxParticles = 650;
         this.particleSpriteCache = new Map();
         this.boundAnimateStardust = this.animateStardust.bind(this);
         this.handleResize = this.handleResize.bind(this);
         this.resizeAttached = false;
+        this.qualityProfile = QUALITY_PRESETS.High;
+        this.effectIntensityMultiplier = this.qualityProfile.effectIntensity;
         this.baseBlackHolePullRadius = 400;
         this.baseBlackHolePullStrength = 0.5;
-        this.blackHolePullRadius = this.baseBlackHolePullRadius;
-        this.blackHolePullStrength = this.baseBlackHolePullStrength;
         this.blackHoleX = 0;
         this.blackHoleY = 0;
         this.pendingParticleSpawns = [];
         this.accumulatedFrameTime = 0;
         this.lastFrameTime = 0;
-        this.frameInterval = 1000 / 60;
+        this.qualityLevel = 'High';
+        this.maxParticles = this.qualityProfile.maxParticles;
+        this.minParticles = this.qualityProfile.minParticles;
+        this.dynamicParticleBudget = this.maxParticles;
+        this.frameInterval = 1000 / this.qualityProfile.targetFps;
+        this.renderScale = this.qualityProfile.renderScale ?? 1;
+        this.trailDetailFactor = this.qualityProfile.trailDetail;
+        this.frameTimeEMA = this.frameInterval;
+        this.lowPowerMode = false;
+        this.lastLineEffectTime = 0;
+        this.lastComboEffectTime = 0;
+        this.particlePool = [];
+        this.blackHolePullRadius = this.baseBlackHolePullRadius * (0.8 + this.effectIntensityMultiplier * 0.4);
+        this.blackHolePullStrength = this.baseBlackHolePullStrength * (0.7 + this.effectIntensityMultiplier * 0.6);
+        // Pre-compute squared radius for faster distance checks
+        this.blackHolePullRadiusSquared = this.blackHolePullRadius * this.blackHolePullRadius;
+        // Spatial partitioning - particles beyond this don't need physics
+        this.physicsSkipDistance = this.qualityProfile.skipPhysicsDistance || 2.0;
+        this.physicsSkipDistanceSquared = Math.pow(this.blackHolePullRadius * this.physicsSkipDistance, 2);
+        // Fast inverse square root lookup table for optimization
+        this.invSqrtLUT = new Float32Array(1024);
+        for (let i = 0; i < 1024; i++) {
+            this.invSqrtLUT[i] = 1 / Math.sqrt(i / 10 + 0.1);
+        }
+        // Frame skip counter for adaptive rendering
+        this.frameSkipCounter = 0;
+        this.trailRenderThrottle = 0;
+    }
+
+    getCurrentQualityLevel() {
+        if (typeof window !== 'undefined' && window.settings?.effectQuality) {
+            return normalizeQuality(window.settings.effectQuality);
+        }
+        return 'High';
+    }
+
+    applyQualityProfile(level) {
+        const normalized = normalizeQuality(level || 'High');
+        const profile = QUALITY_PRESETS[normalized] || QUALITY_PRESETS.High;
+        this.qualityLevel = normalized;
+        this.qualityProfile = profile;
+        this.effectIntensityMultiplier = profile.effectIntensity;
+        this.maxParticles = profile.maxParticles;
+        this.minParticles = profile.minParticles;
+        this.dynamicParticleBudget = profile.maxParticles;
+        this.renderScale = profile.renderScale ?? 1;
+        this.trailDetailFactor = profile.trailDetail;
+        this.lowPowerMode = false;
+        this.frameInterval = 1000 / profile.targetFps;
+        this.frameTimeEMA = this.frameInterval;
+        if (this.particles.length > this.maxParticles) {
+            this.cullParticlesToBudget(this.maxParticles);
+        }
+        this.updateGravityDefaults();
+        this.updateTrailDetailFactor();
+    }
+
+    scaleEffectIntensity(value, fallback = 1) {
+        const scaled = value * this.effectIntensityMultiplier;
+        return Math.max(fallback, scaled);
+    }
+
+    getScaledCount(base, limit, fallback = 1) {
+        const scaled = this.scaleEffectIntensity(base, fallback);
+        return Math.max(fallback, Math.min(limit, Math.round(scaled)));
+    }
+
+    canRunLineEffects() {
+        const now = performance.now();
+        if (now - this.lastLineEffectTime < this.qualityProfile.lineEffectCooldown) {
+            return false;
+        }
+        this.lastLineEffectTime = now;
+        return true;
+    }
+
+    updateGravityDefaults() {
+        this.blackHolePullRadius = this.baseBlackHolePullRadius * (0.8 + this.effectIntensityMultiplier * 0.4);
+        this.blackHolePullStrength = this.baseBlackHolePullStrength * (0.7 + this.effectIntensityMultiplier * 0.6);
+        // Update squared radius for optimized distance checks
+        this.blackHolePullRadiusSquared = this.blackHolePullRadius * this.blackHolePullRadius;
+        // Update spatial partitioning distance
+        this.physicsSkipDistance = this.qualityProfile.skipPhysicsDistance || 2.0;
+        this.physicsSkipDistanceSquared = Math.pow(this.blackHolePullRadius * this.physicsSkipDistance, 2);
+    }
+
+    updateTrailDetailFactor() {
+        const base = this.qualityProfile.trailDetail;
+        this.trailDetailFactor = this.lowPowerMode ? Math.max(0.2, base * 0.5) : base;
+    }
+
+    canRunComboEffects() {
+        const now = performance.now();
+        if (now - this.lastComboEffectTime < this.qualityProfile.comboEffectCooldown) {
+            return false;
+        }
+        this.lastComboEffectTime = now;
+        return true;
+    }
+
+    adjustPerformanceTargets(delta) {
+        if (!delta || !Number.isFinite(delta)) {
+            return;
+        }
+
+        const emaWeight = 0.15;
+        this.frameTimeEMA = (this.frameTimeEMA ?? delta) * (1 - emaWeight) + delta * emaWeight;
+
+        const highThreshold = this.frameInterval * 1.35;
+        const lowThreshold = this.frameInterval * 0.9;
+        const previousLowPower = this.lowPowerMode;
+        let budgetChanged = false;
+
+        if (this.frameTimeEMA > highThreshold && this.dynamicParticleBudget > this.minParticles) {
+            this.dynamicParticleBudget = Math.max(
+                this.minParticles,
+                this.dynamicParticleBudget - this.qualityProfile.adaptiveStep,
+            );
+            budgetChanged = true;
+        } else if (this.frameTimeEMA < lowThreshold && this.dynamicParticleBudget < this.maxParticles) {
+            this.dynamicParticleBudget = Math.min(
+                this.maxParticles,
+                this.dynamicParticleBudget + this.qualityProfile.adaptiveStep,
+            );
+            budgetChanged = true;
+        }
+
+        const lowPowerThreshold = this.minParticles + this.qualityProfile.adaptiveStep;
+        if (this.dynamicParticleBudget <= lowPowerThreshold) {
+            this.lowPowerMode = true;
+        } else if (this.dynamicParticleBudget >= this.maxParticles * 0.9) {
+            this.lowPowerMode = false;
+        }
+        if (previousLowPower !== this.lowPowerMode) {
+            this.updateTrailDetailFactor();
+        }
+
+        if (budgetChanged && this.particles.length > this.dynamicParticleBudget) {
+            this.cullParticlesToBudget(this.dynamicParticleBudget);
+        }
     }
 
     async createScene() {
         console.log('[BlackHole] Creating scene...');
 
         try {
+            this.applyQualityProfile(this.getCurrentQualityLevel());
+
             // Create star field
             this.createStarField();
 
@@ -51,11 +280,134 @@ export default class BlackHoleTheme extends BaseTheme {
      * Create multi-colored star field
      */
     createStarField() {
+        const starCount = this.qualityProfile.starCount;
+        const useCanvas = this.qualityProfile.useCanvasStars;
+
+        if (useCanvas) {
+            // High-performance canvas-based star field
+            this.createCanvasStarField(starCount);
+        } else {
+            // Higher quality DOM-based star field (slower)
+            this.createDOMStarField(starCount);
+        }
+    }
+
+    /**
+     * Create canvas-based star field (high performance)
+     */
+    createCanvasStarField(starCount) {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'stellar-stars-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '5';
+        canvas.style.pointerEvents = 'none';
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+        
+        // Define star color palette
+        const starColors = [
+            'rgba(255, 255, 255, 1)',      // White
+            'rgba(180, 220, 255, 1)',      // Cyan-white
+            'rgba(255, 240, 180, 1)',      // Yellow-white
+            'rgba(255, 200, 140, 1)',      // Orange
+            'rgba(150, 200, 255, 1)',      // Blue
+            'rgba(255, 180, 220, 1)',      // Pink
+            'rgba(200, 180, 255, 1)',      // Purple
+        ];
+
+        // Generate static star data
+        this.canvasStars = [];
+        for (let i = 0; i < starCount; i++) {
+            this.canvasStars.push({
+                x: this.random(0, canvas.width),
+                y: this.random(0, canvas.height),
+                size: this.random(0.5, 2.5),
+                color: starColors[Math.floor(Math.random() * starColors.length)],
+                opacity: this.random(0.5, 1),
+                twinkleSpeed: this.random(0.005, 0.015),
+                twinklePhase: this.random(0, Math.PI * 2),
+                isBright: Math.random() < 0.1
+            });
+        }
+
+        // Store references before first render so helper has dimensions
+        this.starCanvas = canvas;
+        this.starCtx = ctx;
+
+        // Render stars once on canvas
+        this.renderCanvasStars(ctx);
+        
+        const starsContainer = document.getElementById('stellar-stars');
+        if (starsContainer) {
+            starsContainer.appendChild(canvas);
+            this.registerContainer(starsContainer);
+        }
+        
+        // Animate stars with requestAnimationFrame
+        this.animateCanvasStars();
+    }
+
+    /**
+     * Render canvas stars
+     */
+    renderCanvasStars(ctx) {
+        if (!ctx || !this.canvasStars) return;
+        const canvas = this.starCanvas || ctx.canvas;
+        if (!canvas) {
+            return;
+        }
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const now = performance.now() * 0.001; // Convert to seconds
+        
+        for (const star of this.canvasStars) {
+            // Calculate twinkle effect
+            star.twinklePhase += star.twinkleSpeed;
+            const twinkle = 0.5 + 0.5 * Math.sin(star.twinklePhase);
+            const currentOpacity = star.opacity * (0.7 + 0.3 * twinkle);
+            
+            ctx.fillStyle = star.color;
+            ctx.globalAlpha = currentOpacity;
+            
+            if (star.isBright) {
+                // Bright stars with glow
+                ctx.shadowBlur = star.size * 2;
+                ctx.shadowColor = star.color;
+                ctx.fillRect(star.x, star.y, star.size * 1.5, star.size * 1.5);
+                ctx.shadowBlur = 0;
+            } else {
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            }
+        }
+        
+        ctx.globalAlpha = 1;
+    }
+
+    /**
+     * Animate canvas stars
+     */
+    animateCanvasStars() {
+        if (!this.isActive || !this.starCanvas) return;
+        
+        this.renderCanvasStars(this.starCtx);
+        this.starAnimationFrame = requestAnimationFrame(() => this.animateCanvasStars());
+    }
+
+    /**
+     * Create DOM-based star field (higher quality, slower)
+     */
+    createDOMStarField(starCount) {
         const starsContainer = document.getElementById('stellar-stars');
         if (!starsContainer || starsContainer.children.length > 0) return;
 
         const fragment = document.createDocumentFragment();
-        const starCount = 300;
 
         // Define star color palette based on the nebula image
         const starColors = [
@@ -120,18 +472,20 @@ export default class BlackHoleTheme extends BaseTheme {
             return;
         }
 
-        this.ctx = this.canvas.getContext('2d', { alpha: true });
+        this.ctx = this.canvas.getContext('2d', { alpha: true, desynchronized: true });
         this.particles = [];
         this.handleResize();
         if (!this.resizeAttached) {
             window.addEventListener('resize', this.handleResize);
             this.resizeAttached = true;
         }
-        this.blackHolePullRadius = this.baseBlackHolePullRadius;
-        this.blackHolePullStrength = this.baseBlackHolePullStrength;
+        this.updateGravityDefaults();
+        
+        // Pre-compute particle sprites for better performance
+        this.precomputeParticleSprites();
 
         // Create stardust particles being pulled into black hole
-        const particleCount = 250; // Increased for more dramatic effect
+        const particleCount = Math.min(this.qualityProfile.initialParticles, this.dynamicParticleBudget);
         for (let i = 0; i < particleCount; i++) {
             this.addParticle({
                 x: this.random(0, this.canvas.width),
@@ -157,6 +511,27 @@ export default class BlackHoleTheme extends BaseTheme {
      * Get random nebula color
      */
     getNebulaColor() {
+        // Use pre-defined colors that we've already cached sprites for
+        if (!this.nebulaColors) {
+            this.nebulaColors = [
+                { r: 255, g: 100, b: 180 },  // Magenta
+                { r: 80, g: 180, b: 255 },   // Cyan
+                { r: 255, g: 150, b: 80 },   // Orange
+                { r: 180, g: 100, b: 255 },  // Purple
+                { r: 100, g: 220, b: 255 },  // Bright cyan
+                { r: 255, g: 120, b: 200 },  // Hot pink
+                { r: 200, g: 130, b: 255 },  // Violet
+                { r: 255, g: 170, b: 100 },  // Coral
+                { r: 140, g: 230, b: 255 },  // Aqua
+            ];
+        }
+        return this.nebulaColors[Math.floor(Math.random() * this.nebulaColors.length)];
+    }
+
+    /**
+     * Pre-compute particle sprites for all nebula colors
+     */
+    precomputeParticleSprites() {
         const colors = [
             { r: 255, g: 100, b: 180 },  // Magenta
             { r: 80, g: 180, b: 255 },   // Cyan
@@ -168,133 +543,178 @@ export default class BlackHoleTheme extends BaseTheme {
             { r: 255, g: 170, b: 100 },  // Coral
             { r: 140, g: 230, b: 255 },  // Aqua
         ];
-        return colors[Math.floor(Math.random() * colors.length)];
+        
+        // Pre-generate sprites for all colors
+        colors.forEach(color => {
+            this.getParticleSprite(color);
+        });
     }
 
     /**
      * Animate stardust particles with black hole gravity
      */
     animateStardust() {
-        if (!this.isActive || !this.ctx) return;
+        const profiling = performanceMonitor?.enabled;
+        if (profiling) performanceMonitor.startSection('theme:black-hole:stardust');
 
-        const ctx = this.ctx;
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-        const now = performance.now();
-        const delta = now - this.lastFrameTime;
-        this.lastFrameTime = now;
-        this.accumulatedFrameTime += delta;
+        try {
+            if (!this.isActive || !this.ctx) return;
 
-        if (this.accumulatedFrameTime >= this.frameInterval * 3) {
-            this.accumulatedFrameTime = this.frameInterval * 2;
-        }
+            const ctx = this.ctx;
+            const width = this.canvas.width;
+            const height = this.canvas.height;
+            const now = performance.now();
+            const delta = now - this.lastFrameTime;
+            this.lastFrameTime = now;
+            this.accumulatedFrameTime += delta;
+            this.adjustPerformanceTargets(delta);
 
-        if (this.accumulatedFrameTime < this.frameInterval) {
+            if (this.accumulatedFrameTime >= this.frameInterval * 3) {
+                this.accumulatedFrameTime = this.frameInterval * 2;
+            }
+
+            // Adaptive frame skipping for very low FPS scenarios
+            if (this.accumulatedFrameTime < this.frameInterval) {
+                this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
+                return;
+            }
+            
+            // Cap accumulated time to prevent spiral of death
+            const maxFrameSkip = this.frameInterval * 2.5;
+            if (this.accumulatedFrameTime > maxFrameSkip) {
+                this.accumulatedFrameTime = maxFrameSkip;
+            }
+            
+            this.accumulatedFrameTime -= this.frameInterval;
+
+            this.processScheduledSpawns(now);
+            ctx.clearRect(0, 0, width, height);
+
+            const particles = this.particles;
+            let writeIndex = 0;
+
+            // Batch similar operations together and reduce sqrt operations
+            const bhX = this.blackHoleX;
+            const bhY = this.blackHoleY;
+            const bhPullRadius = this.blackHolePullRadius;
+            const bhPullRadiusSq = this.blackHolePullRadiusSquared;
+            const bhPullStrength = this.blackHolePullStrength;
+            const invBhPullRadius = 1 / bhPullRadius;
+            const physicsSkipDistSq = this.physicsSkipDistanceSquared;
+            
+            for (let i = 0; i < particles.length; i++) {
+                const particle = particles[i];
+                if (!particle) {
+                    continue;
+                }
+
+                if (particle.lifetime !== undefined) {
+                    particle.lifetime -= 1;
+                    if (particle.lifetime <= 0) {
+                        this.releaseParticle(particle);
+                        continue;
+                    }
+                    if (particle.lifetime < 30) {
+                        particle.opacity *= 0.95;
+                    }
+                }
+
+                const dx = bhX - particle.x;
+                const dy = bhY - particle.y;
+                const distanceSquared = dx * dx + dy * dy;
+
+                // Spatial partitioning: skip expensive physics for distant particles
+                if (distanceSquared < physicsSkipDistSq) {
+                    // Use squared distance for comparison to avoid sqrt
+                    if (distanceSquared < bhPullRadiusSq && distanceSquared > 25) {
+                        // Fast inverse square root approximation for distance calculation
+                        let distance;
+                        if (distanceSquared < 1024) {
+                            distance = distanceSquared * this.invSqrtLUT[Math.floor(distanceSquared * 10)] / 10;
+                        } else {
+                            distance = Math.sqrt(distanceSquared);
+                        }
+                        
+                        const invDistance = 1 / distance;
+                        const force = bhPullStrength * (bhPullRadius - distance) * invBhPullRadius;
+                        const dirX = dx * invDistance;
+                        const dirY = dy * invDistance;
+
+                        particle.speedX += dirX * force * 0.1;
+                        particle.speedY += dirY * force * 0.1;
+
+                        if (particle.orbitAngle === undefined) {
+                            particle.orbitAngle = Math.atan2(dy, dx);
+                            particle.orbitSpeed = this.random(0.01, 0.03);
+                        }
+
+                        particle.orbitAngle += particle.orbitSpeed * (1 + force);
+                        const tangentX = -dirY;
+                        const tangentY = dirX;
+                        particle.speedX += tangentX * particle.orbitSpeed * 2;
+                        particle.speedY += tangentY * particle.orbitSpeed * 2;
+
+                        particle.speedX *= 0.98;
+                        particle.speedY *= 0.98;
+
+                        if (particle.lifetime === undefined) {
+                            const proximityFactor = 1 - (distance * invBhPullRadius);
+                            particle.opacity = Math.min(0.9, particle.opacity * (1 + proximityFactor * 0.1));
+                        }
+                    }
+                }
+
+                particle.x += particle.speedX;
+                particle.y += particle.speedY;
+
+                // Use squared distance for this check too
+                if (distanceSquared < 3600) { // 60 * 60
+                    if (particle.lifetime !== undefined && !particle.persistent) {
+                        this.releaseParticle(particle);
+                        continue;
+                    }
+
+                    const edge = Math.floor(Math.random() * 4);
+                    if (edge === 0) {
+                        particle.x = this.random(0, width);
+                        particle.y = 0;
+                    } else if (edge === 1) {
+                        particle.x = width;
+                        particle.y = this.random(0, height);
+                    } else if (edge === 2) {
+                        particle.x = this.random(0, width);
+                        particle.y = height;
+                    } else {
+                        particle.x = 0;
+                        particle.y = this.random(0, height);
+                    }
+                    particle.speedX = this.random(-0.5, 0.5);
+                    particle.speedY = this.random(-0.5, 0.5);
+                    particle.opacity = this.random(0.4, 0.9);
+                    particle.color = this.getNebulaColor();
+                }
+
+                if (particle.x < -50) particle.x = width + 50;
+                if (particle.x > width + 50) particle.x = -50;
+                if (particle.y < -50) particle.y = height + 50;
+                if (particle.y > height + 50) particle.y = -50;
+
+                if (particle.pulse === undefined) {
+                    particle.pulse = 0;
+                    particle.pulseSpeed = this.random(0.02, 0.05);
+                }
+                particle.pulse += particle.pulseSpeed;
+
+                this.drawParticle(ctx, particle);
+                particles[writeIndex++] = particle;
+            }
+
+            particles.length = writeIndex;
+
             this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
-            return;
+        } finally {
+            if (profiling) performanceMonitor.endSection('theme:black-hole:stardust');
         }
-        this.accumulatedFrameTime -= this.frameInterval;
-
-        this.processScheduledSpawns(now);
-        ctx.clearRect(0, 0, width, height);
-
-        const particles = this.particles;
-        let writeIndex = 0;
-
-        for (let i = 0; i < particles.length; i++) {
-            const particle = particles[i];
-            if (!particle) {
-                continue;
-            }
-
-            if (particle.lifetime !== undefined) {
-                particle.lifetime -= 1;
-                if (particle.lifetime <= 0) {
-                    continue;
-                }
-                if (particle.lifetime < 30) {
-                    particle.opacity *= 0.95;
-                }
-            }
-
-            const dx = this.blackHoleX - particle.x;
-            const dy = this.blackHoleY - particle.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < this.blackHolePullRadius && distance > 5) {
-                const force = (this.blackHolePullStrength * (this.blackHolePullRadius - distance)) / this.blackHolePullRadius;
-                const dirX = dx / distance;
-                const dirY = dy / distance;
-
-                particle.speedX += dirX * force * 0.1;
-                particle.speedY += dirY * force * 0.1;
-
-                if (particle.orbitAngle === undefined) {
-                    particle.orbitAngle = Math.atan2(dy, dx);
-                    particle.orbitSpeed = this.random(0.01, 0.03);
-                }
-
-                particle.orbitAngle += particle.orbitSpeed * (1 + force);
-                const tangentX = -dirY;
-                const tangentY = dirX;
-                particle.speedX += tangentX * particle.orbitSpeed * 2;
-                particle.speedY += tangentY * particle.orbitSpeed * 2;
-
-                particle.speedX *= 0.98;
-                particle.speedY *= 0.98;
-
-                if (particle.lifetime === undefined) {
-                    const proximityFactor = 1 - (distance / this.blackHolePullRadius);
-                    particle.opacity = Math.min(0.9, particle.opacity * (1 + proximityFactor * 0.1));
-                }
-            }
-
-            particle.x += particle.speedX;
-            particle.y += particle.speedY;
-
-            if (distance < 60) {
-                if (particle.lifetime !== undefined && !particle.persistent) {
-                    continue;
-                }
-
-                const edge = Math.floor(Math.random() * 4);
-                if (edge === 0) {
-                    particle.x = this.random(0, width);
-                    particle.y = 0;
-                } else if (edge === 1) {
-                    particle.x = width;
-                    particle.y = this.random(0, height);
-                } else if (edge === 2) {
-                    particle.x = this.random(0, width);
-                    particle.y = height;
-                } else {
-                    particle.x = 0;
-                    particle.y = this.random(0, height);
-                }
-                particle.speedX = this.random(-0.5, 0.5);
-                particle.speedY = this.random(-0.5, 0.5);
-                particle.opacity = this.random(0.4, 0.9);
-                particle.color = this.getNebulaColor();
-            }
-
-            if (particle.x < -50) particle.x = width + 50;
-            if (particle.x > width + 50) particle.x = -50;
-            if (particle.y < -50) particle.y = height + 50;
-            if (particle.y > height + 50) particle.y = -50;
-
-            if (particle.pulse === undefined) {
-                particle.pulse = 0;
-                particle.pulseSpeed = this.random(0.02, 0.05);
-            }
-            particle.pulse += particle.pulseSpeed;
-
-            this.drawParticle(ctx, particle);
-            particles[writeIndex++] = particle;
-        }
-
-        particles.length = writeIndex;
-
-        this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
     }
 
     /**
@@ -331,23 +751,21 @@ export default class BlackHoleTheme extends BaseTheme {
     onLineClear(lineCount) {
         console.log('[BlackHole] Line clear:', lineCount);
 
-        // Brighten nebula
-        this.brightenNebula(lineCount);
+        const scaledIntensity = this.scaleEffectIntensity(lineCount, 1);
+        const allowFullEffects = this.canRunLineEffects();
 
-        // Create star burst
-        this.createStarBurst(lineCount);
+        if (allowFullEffects) {
+            this.brightenNebula(scaledIntensity);
+            this.createStarBurst(scaledIntensity);
+            this.brightenStars(scaledIntensity);
+        }
 
-        // Brighten stars
-        this.brightenStars(lineCount);
+        this.pulseBlackHole(scaledIntensity);
+        this.surgeGravity(scaledIntensity);
 
-        // Pulse black hole
-        this.pulseBlackHole(lineCount);
-
-        // Increase gravitational pull temporarily
-        this.surgeGravity(lineCount);
-
-        // Create particle burst from black hole
-        this.createBlackHoleParticleBurst(lineCount);
+        if (allowFullEffects) {
+            this.createBlackHoleParticleBurst(scaledIntensity);
+        }
     }
 
     /**
@@ -356,30 +774,25 @@ export default class BlackHoleTheme extends BaseTheme {
     onCombo(comboCount) {
         console.log('[BlackHole] Combo:', comboCount);
 
-        // Intensify nebula
-        this.intensifyNebula(comboCount);
+        const scaledCombo = this.scaleEffectIntensity(comboCount, 1);
+        const allowFullEffects = this.canRunComboEffects();
 
-        // Intensify black hole
-        this.intensifyBlackHole(comboCount);
+        this.intensifyNebula(scaledCombo);
+        this.intensifyBlackHole(scaledCombo);
+        this.surgeGravity(scaledCombo * 2);
+        this.accelerateAccretionDisk(Math.max(1, Math.round(scaledCombo)));
 
-        // Increase gravitational pull based on combo
-        this.surgeGravity(comboCount * 2);
-
-        // Spin accretion disk faster
-        this.accelerateAccretionDisk(comboCount);
-
-        // Create gravitational wave effect for big combos
-        if (comboCount >= 3) {
-            this.createGravitationalWave(comboCount);
+        if (allowFullEffects && scaledCombo >= 3) {
+            this.createGravitationalWave(scaledCombo);
         }
 
-        // Create massive particle eruption for big combos
-        if (comboCount >= 5) {
-            this.createParticleEruption(comboCount);
+        if (allowFullEffects && scaledCombo >= 5 && this.qualityProfile.allowEruptions) {
+            this.createParticleEruption(scaledCombo);
         }
 
-        // Shift nebula colors
-        this.shiftNebulaColors(comboCount);
+        if (allowFullEffects) {
+            this.shiftNebulaColors(scaledCombo);
+        }
     }
 
     /**
@@ -416,7 +829,10 @@ export default class BlackHoleTheme extends BaseTheme {
         const burstContainer = document.getElementById('stellar-bursts');
         if (!burstContainer) return;
 
-        const burstCount = Math.min(intensity, 4);
+        const burstCount = this.getScaledCount(
+            Math.min(intensity, this.qualityProfile.starBurstLimit),
+            this.qualityProfile.starBurstLimit,
+        );
 
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
@@ -441,7 +857,10 @@ export default class BlackHoleTheme extends BaseTheme {
      * Brighten stars
      */
     brightenStars(intensity) {
-        const starsToBrighten = Math.min(Math.floor(intensity * 15), this.stars.length);
+        const starsToBrighten = Math.min(
+            Math.max(1, Math.floor(intensity * 15 * this.effectIntensityMultiplier)),
+            this.stars.length,
+        );
 
         for (let i = 0; i < starsToBrighten; i++) {
             const star = this.stars[Math.floor(Math.random() * this.stars.length)];
@@ -463,17 +882,37 @@ export default class BlackHoleTheme extends BaseTheme {
      * Pulse stardust particles
      */
     pulseStardust(intensity) {
-        this.particles.forEach(particle => {
-            particle.speedX *= 1.5;
-            particle.speedY *= 1.5;
-            particle.opacity = Math.min(particle.opacity * 1.5, 1);
+        const total = this.particles.length;
+        if (!total) return;
 
-            setTimeout(() => {
-                particle.speedX /= 1.5;
-                particle.speedY /= 1.5;
-                particle.opacity /= 1.5;
-            }, 500);
-        });
+        const boost = 1.1 + 0.4 * this.effectIntensityMultiplier;
+        const opacityBoost = 1 + 0.3 * this.effectIntensityMultiplier;
+        let coverage = Math.min(1, this.qualityProfile.pulseCoverage);
+        if (this.lowPowerMode) {
+            coverage = Math.min(coverage, 0.35);
+        }
+        const targetCount = Math.min(total, Math.max(8, Math.round(total * coverage)));
+        const step = Math.max(1, Math.floor(total / targetCount));
+        const affected = [];
+
+        for (let i = 0; i < total && affected.length < targetCount; i += step) {
+            const particle = this.particles[i];
+            if (!particle) continue;
+            particle.speedX *= boost;
+            particle.speedY *= boost;
+            particle.opacity = Math.min(particle.opacity * opacityBoost, 1);
+            affected.push(particle);
+        }
+
+        const revertDelay = 300 + intensity * 80;
+        setTimeout(() => {
+            affected.forEach((particle) => {
+                if (!particle) return;
+                particle.speedX /= boost;
+                particle.speedY /= boost;
+                particle.opacity = Math.max(particle.opacity / opacityBoost, 0.2);
+            });
+        }, revertDelay);
     }
 
     /**
@@ -540,7 +979,8 @@ export default class BlackHoleTheme extends BaseTheme {
      */
     createSmallParticleBurst() {
         // Add a few temporary fast-moving particles
-        for (let i = 0; i < 5; i++) {
+        const count = this.getScaledCount(5, this.qualityProfile.smallBurstLimit);
+        for (let i = 0; i < count; i++) {
             this.addParticle({
                 x: this.canvas.width / 2,
                 y: this.canvas.height / 2,
@@ -673,11 +1113,15 @@ export default class BlackHoleTheme extends BaseTheme {
      * Create particle burst from black hole
      */
     createBlackHoleParticleBurst(intensity) {
-        const burstCount = Math.min(intensity * 15, 60);
+        const burstCount = this.getScaledCount(
+            Math.min(intensity * 10, this.qualityProfile.comboBurstLimit),
+            this.qualityProfile.comboBurstLimit,
+        );
 
+        const speedScale = 0.8 + this.effectIntensityMultiplier * 0.5;
         for (let i = 0; i < burstCount; i++) {
             const angle = (Math.PI * 2 * i) / burstCount;
-            const speed = this.random(2, 5);
+            const speed = this.random(2, 5) * speedScale;
 
             this.addParticle({
                 x: this.blackHoleX,
@@ -697,7 +1141,7 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     /**
-     * Accelerate accretion disk rotation
+     * Accelerate accretion disk rotation - Optimized with requestAnimationFrame
      */
     accelerateAccretionDisk(comboCount) {
         const disk = document.querySelector('.black-hole-accretion-disk');
@@ -706,14 +1150,19 @@ export default class BlackHoleTheme extends BaseTheme {
         // Cancel any existing disk animation
         if (this.diskAnimationTimeout) {
             clearTimeout(this.diskAnimationTimeout);
+            this.diskAnimationTimeout = null;
         }
         if (this.diskSlowdownTimeout) {
             clearTimeout(this.diskSlowdownTimeout);
+            this.diskSlowdownTimeout = null;
         }
 
         const normalDuration = 20; // 20s normal rotation
         const fastDuration = Math.max(5, normalDuration - comboCount * 2);
 
+        // Use will-change to hint browser about animation
+        disk.style.willChange = 'animation-duration';
+        
         // Quick acceleration to fast speed
         disk.style.transition = 'animation-duration 0.3s ease-out';
         disk.style.animationDuration = `${fastDuration}s`;
@@ -727,6 +1176,7 @@ export default class BlackHoleTheme extends BaseTheme {
             // Clear transition after slowdown completes
             this.diskSlowdownTimeout = setTimeout(() => {
                 disk.style.transition = '';
+                disk.style.willChange = 'auto';
                 this.diskAnimationTimeout = null;
                 this.diskSlowdownTimeout = null;
             }, 2000);
@@ -740,7 +1190,11 @@ export default class BlackHoleTheme extends BaseTheme {
         const waveContainer = document.getElementById('stellar-bursts');
         if (!waveContainer) return;
 
-        const waveCount = Math.min(comboCount - 2, 3);
+        const waveCount = Math.min(
+            Math.max(1, Math.floor(comboCount - 2)),
+            3,
+        );
+        if (waveCount <= 0) return;
 
         for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
@@ -765,14 +1219,24 @@ export default class BlackHoleTheme extends BaseTheme {
      * Create massive particle eruption
      */
     createParticleEruption(comboCount) {
-        const eruptionCount = Math.min(comboCount * 20, 100);
+        if (!this.qualityProfile.allowEruptions) {
+            return;
+        }
+        const eruptionCount = this.getScaledCount(
+            Math.min(comboCount * 12, this.qualityProfile.eruptionLimit),
+            this.qualityProfile.eruptionLimit,
+        );
+        if (eruptionCount <= 0) {
+            return;
+        }
         const startTime = performance.now();
+        const spacing = Math.max(8, 18 - this.effectIntensityMultiplier * 8);
 
         for (let i = 0; i < eruptionCount; i++) {
-            const spawnTime = startTime + i * 10;
+            const spawnTime = startTime + i * spacing;
             this.scheduleParticleSpawn(spawnTime, () => {
                 const angle = this.random(0, Math.PI * 2);
-                const speed = this.random(3, 8);
+                const speed = this.random(3, 8) * (0.8 + this.effectIntensityMultiplier * 0.4);
                 const distance = this.random(50, 150);
 
                 return {
@@ -804,35 +1268,73 @@ export default class BlackHoleTheme extends BaseTheme {
 
         const { r, g, b } = particle.color;
         const baseOpacity = isFinite(particle.opacity) ? particle.opacity : 0;
+        
+        // LOD: Skip very dim particles for performance
+        if (baseOpacity < 0.1) {
+            return;
+        }
+        
         const pulse = particle.pulse || 0;
         const pulseOpacity = Math.max(0, Math.min(1, baseOpacity + Math.sin(pulse) * 0.2));
 
-        const speedX = isFinite(particle.speedX) ? particle.speedX : 0;
-        const speedY = isFinite(particle.speedY) ? particle.speedY : 0;
-        const speed = Math.sqrt(speedX * speedX + speedY * speedY);
-        const trailLength = Math.min(speed * 3, 10);
-
-        if (trailLength > 1) {
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${pulseOpacity * 0.3})`;
-            ctx.lineWidth = particle.size * 0.5;
-            ctx.beginPath();
-            ctx.moveTo(particle.x - speedX * trailLength, particle.y - speedY * trailLength);
-            ctx.lineTo(particle.x, particle.y);
-            ctx.stroke();
+        // Calculate distance from black hole for LOD
+        const dx = this.blackHoleX - particle.x;
+        const dy = this.blackHoleY - particle.y;
+        const distSq = dx * dx + dy * dy;
+        const pullRadiusSq = this.blackHolePullRadiusSquared;
+        
+        // LOD: Determine detail level based on distance and size
+        let lodLevel = 0; // 0 = highest detail, 2 = lowest
+        if (distSq > pullRadiusSq * 4) {
+            lodLevel = 2; // Far away - lowest detail
+        } else if (distSq > pullRadiusSq * 2) {
+            lodLevel = 1; // Medium distance - medium detail
         }
-
+        
+        // Draw sprite with LOD-adjusted size
         const sprite = this.getParticleSprite(particle.color);
         if (!sprite) {
             return;
         }
 
-        const drawSize = particle.size * 4;
+        let sizeFactor;
+        if (lodLevel === 2) {
+            sizeFactor = this.lowPowerMode ? 2 : 2.5; // Smallest
+        } else if (lodLevel === 1) {
+            sizeFactor = this.lowPowerMode ? 2.5 : 3; // Medium
+        } else {
+            sizeFactor = this.lowPowerMode ? 3 : 4; // Largest
+        }
+        
+        const drawSize = particle.size * sizeFactor;
         if (drawSize <= 0) {
             return;
         }
         const halfSize = drawSize / 2;
         ctx.globalAlpha = pulseOpacity;
         ctx.drawImage(sprite, particle.x - halfSize, particle.y - halfSize, drawSize, drawSize);
+        
+        // LOD: Only draw trails for high-detail particles (close to black hole)
+        const detailFactor = this.trailDetailFactor ?? 1;
+        if (lodLevel === 0 && detailFactor > 0.2 && (this.trailRenderThrottle++ % 3 === 0)) {
+            const speedX = isFinite(particle.speedX) ? particle.speedX : 0;
+            const speedY = isFinite(particle.speedY) ? particle.speedY : 0;
+            const speedSquared = speedX * speedX + speedY * speedY;
+            
+            // Only draw trails for fast-moving particles (avoid sqrt)
+            if (speedSquared > 4) { // speed > 2
+                const speed = Math.sqrt(speedSquared);
+                const trailLength = Math.min(speed * 3, 10);
+                
+                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${pulseOpacity * 0.3})`;
+                ctx.lineWidth = particle.size * 0.5 * detailFactor;
+                ctx.beginPath();
+                ctx.moveTo(particle.x - speedX * trailLength, particle.y - speedY * trailLength);
+                ctx.lineTo(particle.x, particle.y);
+                ctx.stroke();
+            }
+        }
+        
         ctx.globalAlpha = 1;
     }
 
@@ -841,36 +1343,39 @@ export default class BlackHoleTheme extends BaseTheme {
             return null;
         }
         const key = `${color.r},${color.g},${color.b}`;
-        if (!this.particleSpriteCache.has(key)) {
-            const spriteSize = 64;
-            const offscreen = document.createElement('canvas');
-            offscreen.width = spriteSize;
-            offscreen.height = spriteSize;
-            const spriteCtx = offscreen.getContext('2d', { alpha: true });
-            if (!spriteCtx) {
-                return null;
-            }
-            const gradient = spriteCtx.createRadialGradient(
-                spriteSize / 2,
-                spriteSize / 2,
-                spriteSize / 8,
-                spriteSize / 2,
-                spriteSize / 2,
-                spriteSize / 2
-            );
-            gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 1)`);
-            gradient.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`);
-            gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
-
-            spriteCtx.fillStyle = gradient;
-            spriteCtx.beginPath();
-            spriteCtx.arc(spriteSize / 2, spriteSize / 2, spriteSize / 2, 0, Math.PI * 2);
-            spriteCtx.fill();
-
-            this.particleSpriteCache.set(key, offscreen);
+        
+        // Check cache first
+        const cached = this.particleSpriteCache.get(key);
+        if (cached) {
+            return cached;
         }
+        
+        // Create new sprite with optimized settings
+        const spriteSize = 48; // Reduced from 64 for better performance
+        const offscreen = document.createElement('canvas');
+        offscreen.width = spriteSize;
+        offscreen.height = spriteSize;
+        const spriteCtx = offscreen.getContext('2d', { alpha: true, willReadFrequently: false });
+        if (!spriteCtx) {
+            return null;
+        }
+        
+        const halfSize = spriteSize / 2;
+        const gradient = spriteCtx.createRadialGradient(
+            halfSize, halfSize, spriteSize / 8,
+            halfSize, halfSize, halfSize
+        );
+        gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 1)`);
+        gradient.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`);
+        gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
 
-        return this.particleSpriteCache.get(key);
+        spriteCtx.fillStyle = gradient;
+        spriteCtx.beginPath();
+        spriteCtx.arc(halfSize, halfSize, halfSize, 0, Math.PI * 2);
+        spriteCtx.fill();
+
+        this.particleSpriteCache.set(key, offscreen);
+        return offscreen;
     }
 
     addParticle(particle, options = {}) {
@@ -878,17 +1383,24 @@ export default class BlackHoleTheme extends BaseTheme {
             return;
         }
         const { persistent = false } = options;
-        if (persistent) {
-            particle.persistent = true;
+        const budget = this.dynamicParticleBudget || this.maxParticles;
+        if (this.particles.length >= budget && !persistent) {
+            return;
         }
-        this.particles.push(particle);
-        if (this.particles.length > this.maxParticles) {
-            this.cullParticles();
+        const pooled = this.obtainParticle(particle);
+        if (persistent) {
+            pooled.persistent = true;
+        } else {
+            pooled.persistent = false;
+        }
+        this.particles.push(pooled);
+        if (this.particles.length > budget) {
+            this.cullParticlesToBudget(budget);
         }
     }
 
-    cullParticles() {
-        let excess = this.particles.length - this.maxParticles;
+    cullParticlesToBudget(limit = this.dynamicParticleBudget || this.maxParticles) {
+        let excess = this.particles.length - limit;
         if (excess <= 0) {
             return;
         }
@@ -896,11 +1408,12 @@ export default class BlackHoleTheme extends BaseTheme {
             const candidate = this.particles[i];
             if (candidate && !candidate.persistent) {
                 this.particles.splice(i, 1);
+                this.releaseParticle(candidate);
                 excess--;
             }
         }
-        if (this.particles.length > this.maxParticles) {
-            this.particles.length = this.maxParticles;
+        if (this.particles.length > limit) {
+            this.particles.length = limit;
         }
     }
 
@@ -917,8 +1430,21 @@ export default class BlackHoleTheme extends BaseTheme {
             }
 
             if (spawn.time <= currentTime) {
+                const budget = this.dynamicParticleBudget || this.maxParticles;
+                if (this.particles.length >= budget) {
+                    // PERFORMANCE FIX: Don't accumulate old spawns forever
+                    // If spawn is more than 5 seconds old, drop it instead of keeping it
+                    const age = currentTime - spawn.time;
+                    if (age < 5000) { // Only keep spawns less than 5 seconds old
+                        remaining.push(spawn);
+                    }
+                    continue;
+                }
                 const count = spawn.count || 1;
                 for (let j = 0; j < count; j++) {
+                    if (this.particles.length >= budget) {
+                        break;
+                    }
                     const particle = spawn.factory ? spawn.factory(j, count) : null;
                     if (particle) {
                         this.addParticle(particle, spawn.options);
@@ -935,6 +1461,14 @@ export default class BlackHoleTheme extends BaseTheme {
         if (!factory || typeof factory !== 'function') {
             return;
         }
+
+        // PERFORMANCE FIX: Limit pending spawns to prevent unbounded growth
+        // Drop oldest spawns if queue gets too large
+        const MAX_PENDING_SPAWNS = 200;
+        if (this.pendingParticleSpawns.length >= MAX_PENDING_SPAWNS) {
+            this.pendingParticleSpawns.shift(); // Remove oldest
+        }
+
         this.pendingParticleSpawns.push({ time, factory, options, count });
     }
 
@@ -942,28 +1476,54 @@ export default class BlackHoleTheme extends BaseTheme {
         if (!this.canvas) {
             return;
         }
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        if (this.canvas.width !== width || this.canvas.height !== height) {
-            this.canvas.width = width;
-            this.canvas.height = height;
+        const displayWidth = window.innerWidth;
+        const displayHeight = window.innerHeight;
+        const scaledWidth = Math.max(1, Math.round(displayWidth * (this.renderScale ?? 1)));
+        const scaledHeight = Math.max(1, Math.round(displayHeight * (this.renderScale ?? 1)));
+        if (this.canvas.width !== scaledWidth || this.canvas.height !== scaledHeight) {
+            this.canvas.width = scaledWidth;
+            this.canvas.height = scaledHeight;
             if (this.ctx) {
                 this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             }
         }
-        this.blackHoleX = width * 0.35;
-        this.blackHoleY = height * 0.5;
+        this.canvas.style.width = `${displayWidth}px`;
+        this.canvas.style.height = `${displayHeight}px`;
+        this.blackHoleX = scaledWidth * 0.35;
+        this.blackHoleY = scaledHeight * 0.5;
     }
 
     stop() {
-        // Cancel animation frame
+        // Cancel animation frames
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = null;
         }
+        if (this.starAnimationFrame) {
+            cancelAnimationFrame(this.starAnimationFrame);
+            this.starAnimationFrame = null;
+        }
         if (this.resizeAttached) {
             window.removeEventListener('resize', this.handleResize);
             this.resizeAttached = false;
+        }
+
+        this.particles.forEach((particle) => {
+            if (!particle) return;
+            particle.persistent = false;
+            this.releaseParticle(particle);
+        });
+        this.particles = [];
+        
+        // Clean up canvas stars
+        if (this.canvasStars) {
+            this.canvasStars = null;
+        }
+        if (this.starCanvas) {
+            this.starCanvas = null;
+        }
+        if (this.starCtx) {
+            this.starCtx = null;
         }
 
         // Cancel gravity animation
@@ -1004,4 +1564,33 @@ export default class BlackHoleTheme extends BaseTheme {
 
         super.stop();
     }
+
+    obtainParticle(props) {
+        let particle;
+        if (this.particlePool.length > 0) {
+            particle = this.particlePool.pop();
+            // Reuse existing object, just update properties
+            Object.assign(particle, props);
+        } else {
+            // Create new particle object
+            particle = { ...props };
+        }
+        particle.active = true;
+        return particle;
+    }
+
+    releaseParticle(particle) {
+        if (!particle || particle.persistent) return;
+        
+        // Mark as inactive and return to pool
+        particle.active = false;
+        particle.lifetime = undefined;
+        
+        // Maintain reasonable pool size
+        const poolLimit = Math.min(this.maxParticles * 1.5, 1000);
+        if (this.particlePool.length < poolLimit) {
+            this.particlePool.push(particle);
+        }
+    }
+
 }

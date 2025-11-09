@@ -3,7 +3,10 @@ import { BaseTheme } from '../base-theme.js';
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
         super('neon-dusk');
-        this.meteorInterval = null;
+        this.meteorPool = [];
+        this.meteorsContainer = null;
+        this.meteorAnimationFrame = null;
+        this.lastMeteorFrameTime = 0;
     }
 
     async createScene() {
@@ -11,6 +14,7 @@ export default class NeonDuskTheme extends BaseTheme {
         const starsContainer = document.getElementById('neon-dusk-stars');
         if (starsContainer && starsContainer.children.length === 0) {
             const starCount = 150;
+            const fragment = document.createDocumentFragment();
             for (let i = 0; i < starCount; i++) {
                 const star = document.createElement('div');
                 star.className = 'neon-dusk-star';
@@ -21,8 +25,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 star.style.top = `${Math.random() * 60}%`;
                 star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
                 star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
-                starsContainer.appendChild(star);
+                fragment.appendChild(star);
             }
+            starsContainer.appendChild(fragment);
             this.registerContainer(starsContainer);
         }
 
@@ -30,6 +35,7 @@ export default class NeonDuskTheme extends BaseTheme {
         const cloudsContainer = document.getElementById('neon-dusk-clouds');
         if (cloudsContainer && cloudsContainer.children.length === 0) {
             const cloudCount = 8;
+            const fragment = document.createDocumentFragment();
             for (let i = 0; i < cloudCount; i++) {
                 const cloud = document.createElement('div');
                 cloud.className = 'neon-dusk-cloud';
@@ -37,45 +43,21 @@ export default class NeonDuskTheme extends BaseTheme {
                 const duration = Math.random() * 40 + 60;
                 cloud.style.setProperty('--cloud-duration', `${duration}s`);
                 cloud.style.setProperty('--cloud-delay', `-${Math.random() * duration}s`);
-                cloudsContainer.appendChild(cloud);
+                fragment.appendChild(cloud);
             }
+            cloudsContainer.appendChild(fragment);
             this.registerContainer(cloudsContainer);
         }
 
         // Meteors
         const meteorsContainer = document.getElementById('neon-dusk-meteors');
-        if (meteorsContainer && meteorsContainer.children.length === 0) {
-            const meteorCount = 6;
-
-            // Function to spawn meteors periodically
-            const spawnMeteor = () => {
-                const meteor = document.createElement('div');
-                meteor.className = 'neon-dusk-meteor';
-                meteor.style.left = `${Math.random() * 100}%`;
-                meteor.style.top = `${Math.random() * 60}%`;
-                const duration = Math.random() * 2 + 2;
-                meteor.style.setProperty('--meteor-duration', `${duration}s`);
-                meteor.style.setProperty('--meteor-delay', '0s');
-                meteorsContainer.appendChild(meteor);
-
-                // Remove after animation completes
-                setTimeout(() => {
-                    if (meteor.parentNode) {
-                        meteor.parentNode.removeChild(meteor);
-                    }
-                }, duration * 1000);
-            };
-
-            // Spawn initial meteors
-            for (let i = 0; i < meteorCount; i++) {
-                setTimeout(spawnMeteor, Math.random() * 5000);
+        if (meteorsContainer) {
+            this.meteorsContainer = meteorsContainer;
+            if (this.meteorPool.length === 0 || meteorsContainer.children.length === 0) {
+                this.initializeMeteors(meteorsContainer);
+            } else {
+                this.resumeMeteorPool();
             }
-
-            // Continuously spawn meteors
-            this.meteorInterval = setInterval(() => {
-                spawnMeteor();
-            }, 4000);
-
             this.registerContainer(meteorsContainer);
         }
 
@@ -169,6 +151,7 @@ export default class NeonDuskTheme extends BaseTheme {
         if (particlesContainer && particlesContainer.children.length === 0) {
             const particleCount = 40;
             const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
+            const fragment = document.createDocumentFragment();
 
             for (let i = 0; i < particleCount; i++) {
                 const particle = document.createElement('div');
@@ -180,17 +163,192 @@ export default class NeonDuskTheme extends BaseTheme {
                 particle.style.setProperty('--particle-duration', `${Math.random() * 10 + 15}s`);
                 particle.style.setProperty('--particle-delay', `${Math.random() * 10}s`);
                 particle.style.setProperty('--drift-x', `${Math.random() * 200 - 100}px`);
-                particlesContainer.appendChild(particle);
+                fragment.appendChild(particle);
             }
+            particlesContainer.appendChild(fragment);
             this.registerContainer(particlesContainer);
         }
     }
 
     stop() {
-        if (this.meteorInterval) {
-            clearInterval(this.meteorInterval);
-            this.meteorInterval = null;
-        }
+        this.pauseMeteorPool();
         super.stop();
+    }
+
+    cleanup() {
+        this.teardownMeteorPool();
+        super.cleanup();
+    }
+
+    initializeMeteors(container) {
+        const meteorCount = 6;
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < meteorCount; i++) {
+            const meteor = document.createElement('div');
+            meteor.className = 'neon-dusk-meteor';
+            meteor.style.animation = 'none';
+            meteor.style.left = '0';
+            meteor.style.top = '0';
+            meteor.style.opacity = '0';
+            meteor.style.transform = 'translate3d(-9999px, -9999px, 0) rotate(-45deg)';
+
+            this.meteorPool.push({
+                element: meteor,
+                active: false,
+                elapsed: 0,
+                duration: this.random(2.2, 3.5),
+                delayRemaining: this.random(0.2, 4),
+                startX: 0,
+                startY: 0,
+                distanceX: 0,
+                distanceY: 0,
+            });
+
+            fragment.appendChild(meteor);
+        }
+
+        container.appendChild(fragment);
+        this.startMeteorLoop();
+    }
+
+    resumeMeteorPool() {
+        this.meteorPool.forEach((meteor) => {
+            meteor.active = false;
+            meteor.elapsed = 0;
+            meteor.delayRemaining = this.random(0.3, 3.5);
+            meteor.element.style.opacity = '0';
+            meteor.element.style.transform = 'translate3d(-9999px, -9999px, 0) rotate(-45deg)';
+        });
+        this.startMeteorLoop();
+    }
+
+    pauseMeteorPool() {
+        this.stopMeteorLoop();
+        this.meteorPool.forEach((meteor) => {
+            meteor.active = false;
+            meteor.elapsed = 0;
+            meteor.delayRemaining = this.random(1, 4);
+            meteor.element.style.opacity = '0';
+        });
+    }
+
+    teardownMeteorPool() {
+        this.stopMeteorLoop();
+        if (!this.meteorPool.length) {
+            return;
+        }
+
+        if (this.meteorsContainer) {
+            this.meteorsContainer.textContent = '';
+        }
+
+        this.meteorPool = [];
+        this.meteorsContainer = null;
+    }
+
+    startMeteorLoop() {
+        if (this.meteorAnimationFrame || !this.meteorsContainer) {
+            return;
+        }
+
+        const tick = (timestamp) => {
+            if (!this.meteorAnimationFrame) {
+                return;
+            }
+
+            if (!this.lastMeteorFrameTime) {
+                this.lastMeteorFrameTime = timestamp;
+            }
+
+            const delta = Math.min((timestamp - this.lastMeteorFrameTime) / 1000, 0.1);
+            this.lastMeteorFrameTime = timestamp;
+
+            if (!this.isActive) {
+                this.stopMeteorLoop();
+                return;
+            }
+
+            this.updateMeteors(delta);
+            this.meteorAnimationFrame = requestAnimationFrame(tick);
+        };
+
+        this.lastMeteorFrameTime = 0;
+        this.meteorAnimationFrame = requestAnimationFrame(tick);
+    }
+
+    stopMeteorLoop() {
+        if (this.meteorAnimationFrame) {
+            cancelAnimationFrame(this.meteorAnimationFrame);
+            this.meteorAnimationFrame = null;
+        }
+        this.lastMeteorFrameTime = 0;
+    }
+
+    updateMeteors(delta) {
+        this.meteorPool.forEach((meteor) => {
+            if (!meteor.active) {
+                meteor.delayRemaining -= delta;
+                if (meteor.delayRemaining <= 0) {
+                    this.activateMeteor(meteor);
+                }
+                return;
+            }
+
+            meteor.elapsed += delta;
+            const progress = meteor.elapsed / meteor.duration;
+
+            if (progress >= 1) {
+                this.resetMeteor(meteor);
+                return;
+            }
+
+            const translateX = meteor.startX + meteor.distanceX * progress;
+            const translateY = meteor.startY + meteor.distanceY * progress;
+            meteor.element.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) rotate(-45deg)`;
+            meteor.element.style.opacity = `${this.computeMeteorOpacity(progress)}`;
+        });
+    }
+
+    activateMeteor(meteor) {
+        if (!this.meteorsContainer) {
+            return;
+        }
+
+        const width = this.meteorsContainer.offsetWidth || window.innerWidth;
+        const height = this.meteorsContainer.offsetHeight || window.innerHeight;
+        const startX = this.random(-0.15 * width, width * 0.4);
+        const startY = this.random(0, height * 0.6);
+        const travelDistance = Math.max(width, height) * this.random(0.9, 1.4);
+
+        meteor.active = true;
+        meteor.elapsed = 0;
+        meteor.duration = this.random(2.2, 3.6);
+        meteor.startX = startX;
+        meteor.startY = startY;
+        meteor.distanceX = travelDistance;
+        meteor.distanceY = travelDistance;
+        meteor.element.style.opacity = '0';
+        meteor.element.style.transform = `translate3d(${startX}px, ${startY}px, 0) rotate(-45deg)`;
+    }
+
+    resetMeteor(meteor) {
+        meteor.active = false;
+        meteor.elapsed = 0;
+        meteor.delayRemaining = this.random(1.2, 4.2);
+        meteor.element.style.opacity = '0';
+    }
+
+    computeMeteorOpacity(progress) {
+        if (progress <= 0.1) {
+            return progress / 0.1; // Fade in to 1 by 10%
+        }
+
+        if (progress >= 0.9) {
+            return ((1 - progress) / 0.1) * 0.5; // 90% -> 0.5, 100% -> 0
+        }
+
+        const normalized = (progress - 0.1) / 0.8; // 0 at 10%, 1 at 90%
+        return 1 - normalized * 0.5;
     }
 }

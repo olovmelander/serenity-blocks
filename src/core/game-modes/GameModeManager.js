@@ -134,6 +134,13 @@ export class GameModeManager {
             return;
         }
 
+        // If current mode exists but is not active, clear the reference
+        if (this.currentMode && !this.currentMode.isActive) {
+            console.log(`[GameModeManager] Current mode ${this.currentModeId} is no longer active, clearing reference`);
+            this.currentMode = null;
+            this.currentModeId = null;
+        }
+
         // Deactivate current mode if any
         if (this.currentMode && this.currentMode.isActive) {
             console.log(`[GameModeManager] Deactivating current mode: ${this.currentModeId}`);
@@ -192,15 +199,17 @@ export class GameModeManager {
 
     /**
      * Pause the current running mode
+     * @param {Object} options - Pause options
+     * @param {boolean} options.enableTranceState - Whether to enable trance state effects (Infinity Mode only)
      */
-    pauseCurrentMode() {
+    pauseCurrentMode(options = {}) {
         if (!this.currentMode || !this.currentMode.isRunning) {
             console.warn('[GameModeManager] No running mode to pause');
             return;
         }
 
-        console.log(`[GameModeManager] Pausing mode: ${this.currentModeId}`);
-        this.currentMode.onPause();
+        console.log(`[GameModeManager] Pausing mode: ${this.currentModeId}`, options);
+        this.currentMode.onPause(options);
         this._emitEvent('modePaused', { modeId: this.currentModeId, mode: this.currentMode });
     }
 

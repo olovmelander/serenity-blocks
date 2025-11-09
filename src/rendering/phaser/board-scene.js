@@ -287,7 +287,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         spawnLineClearParticles(clearedRows) {
             if (!clearedRows || clearedRows.length === 0) return;
             if (!this.textures.exists(this.lineClearParticleKey)) return;
-            if (!this.getQualityConfig()?.particles) return;
+
+            // Optimization: Skip if particles disabled or budget exceeded
+            if (!this.shouldCreateParticles()) return;
+
+            // Check budget for line clear particles specifically
+            const budget = this.getParticleBudgetRemaining('lineClear');
+            if (budget <= 0) return;
 
             const intensity = Math.max(1, this.lastImpactIntensity || clearedRows.length);
             // Apply combo multiplier to make effects more dramatic
@@ -387,7 +393,13 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          */
         spawnComboExplosionParticles(comboCount) {
             if (!this.textures.exists(this.lineClearParticleKey)) return;
-            if (!this.getQualityConfig()?.particles) return;
+
+            // Optimization: Skip if particles disabled or budget exceeded
+            if (!this.shouldCreateParticles()) return;
+
+            // Check budget for combo particles specifically
+            const budget = this.getParticleBudgetRemaining('combo');
+            if (budget <= 0) return;
 
             const boardWidth = this.cols * this.blockSize;
             const boardHeight = this.rows * this.blockSize;

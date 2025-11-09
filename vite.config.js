@@ -32,11 +32,45 @@ export default defineConfig({
     // Optimize chunk size for Phaser 4
     rollupOptions: {
       output: {
-        manualChunks: {
-          phaser: ['phaser'],
+        manualChunks(id) {
+          // Split Phaser into its own chunk
+          if (id.includes('node_modules/phaser')) {
+            return 'phaser';
+          }
+
+          // Split themes into individual chunks for lazy loading
+          if (id.includes('src/themes/') && id.includes('-theme.js')) {
+            const themeName = id.split('/').pop().replace('-theme.js', '');
+            return `theme-${themeName}`;
+          }
+
+          // Split game modes into individual chunks
+          if (id.includes('src/core/game-modes/') && id.includes('Mode.js')) {
+            const modeName = id.split('/').pop().replace('.js', '');
+            return `mode-${modeName}`;
+          }
+
+          // Split rendering engines
+          if (id.includes('src/rendering/phaser/')) {
+            return 'rendering-phaser';
+          }
+          if (id.includes('src/rendering/canvas/')) {
+            return 'rendering-canvas';
+          }
+
+          // Group vendor dependencies
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
         },
       },
     },
+    // Increase chunk size warning limit (we know about the large chunks)
+    chunkSizeWarningLimit: 1000,
+    // Compress assets
+    assetsInlineLimit: 4096, // Inline assets smaller than 4kb
+    minify: 'esbuild', // Use esbuild for faster builds (terser is slower but smaller)
+    target: 'es2020', // Modern browsers for better optimization
   },
 
   // Optimize dependencies for faster dev server startup
