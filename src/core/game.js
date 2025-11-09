@@ -39,6 +39,15 @@ function ensureBoardCache(gameState) {
     return gameState.boardCache;
 }
 
+function invalidateGhostCache(gameState) {
+    if (!gameState) return;
+    if (!gameState.ghostCache) {
+        gameState.ghostCache = { piece: null, y: 0 };
+    }
+    gameState.ghostCacheDirty = true;
+    gameState.ghostCache.piece = null;
+}
+
 function isValidPositionCached(gameState, piece, checkX, checkY) {
     if (!piece) return false;
 
@@ -67,6 +76,7 @@ function isValidPositionCached(gameState, piece, checkX, checkY) {
 export function markBoardDirty(gameState) {
     if (gameState) {
         gameState.boardCacheDirty = true;
+        invalidateGhostCache(gameState);
     }
 }
 
@@ -77,12 +87,25 @@ export function canPlacePiece(gameState, piece, checkX, checkY) {
 export function getGhostLandingY(gameState) {
     if (!gameState || !gameState.currentPiece) return 0;
 
+    if (!gameState.ghostCache) {
+        gameState.ghostCache = { piece: null, y: 0 };
+        gameState.ghostCacheDirty = true;
+    }
+
+    if (gameState.ghostCacheDirty === false && gameState.ghostCache.piece === gameState.currentPiece) {
+        return gameState.ghostCache.y;
+    }
+
     const piece = gameState.currentPiece;
     let ghostY = piece.y;
 
     while (canPlacePiece(gameState, piece, piece.x, ghostY + 1)) {
         ghostY++;
     }
+
+    gameState.ghostCache.y = ghostY;
+    gameState.ghostCache.piece = piece;
+    gameState.ghostCacheDirty = false;
 
     return ghostY;
 }
@@ -138,6 +161,8 @@ export class GameState {
         this.board = null;
         this.boardCache = null;
         this.boardCacheDirty = true;
+        this.ghostCache = { piece: null, y: 0 };
+        this.ghostCacheDirty = true;
 
         // Initialize board grid based on mode
         if (this.isInfinityMode) {
@@ -207,6 +232,8 @@ export class GameState {
         this.startTime = Date.now();
         this.boardCache = null;
         this.boardCacheDirty = true;
+        this.ghostCache = { piece: null, y: 0 };
+        this.ghostCacheDirty = true;
         if (this.isInfinityMode) {
             const infinityGrid = createInfinityGrid(COLS, this.initialInfinityRows);
             this.boardGrid = infinityGrid;
@@ -291,6 +318,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     piece.color = COLORS[shapeKey];
 
     gameState.currentPiece = piece;
+    invalidateGhostCache(gameState);
     
     // Reset drop counter for new piece (CRITICAL for gravity!)
     gameState.dropCounter = 0;
@@ -347,6 +375,7 @@ export function move(gameState, dir, playSoundCallback, addTrailCallback) {
 
         gameState.currentPiece.x += dir;
         if (playSoundCallback) playSoundCallback();
+        invalidateGhostCache(gameState);
         return true;
     }
     return false;
@@ -392,6 +421,7 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
         )) {
             gameState.currentPiece.x += kick;
             if (playSoundCallback) playSoundCallback();
+            invalidateGhostCache(gameState);
             return true;
         }
     }
@@ -420,6 +450,7 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks) {
         gameState.currentPiece.y++;
         gameState.score += gameState.level;
         gameState.dropCounter = 0;
+        invalidateGhostCache(gameState);
         return true;
     }
     lockPiece(gameState, playDropCallback, physicsCallbacks);
@@ -439,6 +470,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
         physicsCallbacks.onHardDrop();
     }
 
+    invalidateGhostCache(gameState);
     let distance = 0;
     while (canPlacePiece(
         gameState,
@@ -514,6 +546,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
     piecePool.release(lockedPiece);
     gameState.currentPiece = null;
+    invalidateGhostCache(gameState);
     gameState.dropCounter = 0;
 
     // Start physics processing
@@ -528,6 +561,10 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
         });
     }
 }
+
+// SAFETY: Track active RAF loops to detect duplicates
+let activeLoopCount = 0;
+const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
 
 /**
  * Main game loop function
@@ -546,9 +583,16 @@ export function gameLoop(
     playDropCallback,
     physicsCallbacks,
 ) {
+    // SAFETY CHECK: Detect duplicate RAF loops
+    activeLoopCount++;
+    if (activeLoopCount > MAX_CONCURRENT_LOOPS) {
+        console.warn(`[PERFORMANCE WARNING] ${activeLoopCount} concurrent game loops detected! Canceling to prevent exponential growth.`);
+        activeLoopCount--;
+        return; // Exit early to prevent loop multiplication
+    }
+
     const monitoring = performanceMonitor && performanceMonitor.enabled;
     if (monitoring) {
-        performanceMonitor.frameStart();
         performanceMonitor.updateStart();
     }
 
@@ -556,46 +600,42 @@ export function gameLoop(
         if (monitoring) {
             performanceMonitor.updateEnd();
         }
+        activeLoopCount--;
         return;
     }
 
-    if (gameState.isPaused) {
+    // PERFORMANCE FIX: Process game logic only when not paused
+    if (!gameState.isPaused) {
+        const delta = time - gameState.lastTime;
+        gameState.lastTime = time;
+
+        // Auto drop
+        if (!gameState.isProcessingPhysics && gameState.currentPiece) {
+            gameState.dropCounter += delta;
+            if (gameState.dropCounter > gameState.dropInterval) {
+            softDrop(gameState, playDropCallback, physicsCallbacks);
+            }
+        }
+
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+            performanceMonitor.renderStart();
+        }
+
+        if (drawCallback) drawCallback();
+        if (monitoring) {
+            performanceMonitor.renderEnd();
+        }
+        if (updateStatsCallback) updateStatsCallback();
+    } else {
+        // When paused, still finish monitoring this frame
         if (monitoring) {
             performanceMonitor.updateEnd();
         }
-        gameState.animationId = requestAnimationFrame((t) => gameLoop(
-            t,
-            gameState,
-            drawCallback,
-            updateStatsCallback,
-            playDropCallback,
-            physicsCallbacks,
-        ));
-        return;
     }
 
-    const delta = time - gameState.lastTime;
-    gameState.lastTime = time;
-
-    // Auto drop
-    if (!gameState.isProcessingPhysics && gameState.currentPiece) {
-        gameState.dropCounter += delta;
-        if (gameState.dropCounter > gameState.dropInterval) {
-        softDrop(gameState, playDropCallback, physicsCallbacks);
-        }
-    }
-
-    if (monitoring) {
-        performanceMonitor.updateEnd();
-        performanceMonitor.renderStart();
-    }
-
-    if (drawCallback) drawCallback();
-    if (monitoring) {
-        performanceMonitor.renderEnd();
-    }
-    if (updateStatsCallback) updateStatsCallback();
-
+    // CRITICAL FIX: Schedule next frame ONCE at the end (not in pause branch)
+    // This prevents duplicate RAF loops from multiplying exponentially
     gameState.animationId = requestAnimationFrame((t) => gameLoop(
         t,
         gameState,
@@ -604,6 +644,9 @@ export function gameLoop(
         playDropCallback,
         physicsCallbacks,
     ));
+
+    // SAFETY: Decrement loop counter after scheduling next frame
+    activeLoopCount--;
 }
 
 /**

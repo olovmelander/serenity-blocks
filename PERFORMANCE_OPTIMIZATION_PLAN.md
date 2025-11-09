@@ -1,1967 +1,791 @@
 # Serenity Blocks - Performance Optimization Plan
 
+Based on François's Phaser 3 optimization guide (2025) and comprehensive codebase analysis.
+
+---
+
 ## Executive Summary
 
-This document outlines a comprehensive, phase-by-phase plan to optimize the performance of Serenity Blocks without changing its implementation or visual appearance. The game experiences performance degradation over time, particularly after theme switching or extended gameplay sessions. This plan addresses memory leaks, inefficient resource usage, and other performance bottlenecks.
-
-**Target**: Achieve stable 60 FPS with < 5MB/hour memory growth during extended gameplay sessions.
+This document outlines a structured approach to optimize Serenity Blocks using proven Phaser optimization techniques. The game already implements several advanced optimizations (object pooling, texture caching, quality settings), but there are opportunities to improve performance further, especially for mobile and lower-end devices.
 
 ---
 
-## Quick Reference Guide
+## Current State Analysis
 
-### Critical Issues (Fix First) 🚨
-1. **Event Listener Leaks** → Phase 1 (All subsections)
-   - SerenityHub: ~11 listeners per instance
-   - GestureController: 6 listeners per instance
-   - Renderer: Wi   ndow resize listener
-   - Document: Multiple global listeners
+### ✅ Already Implemented Optimizations
 
-2. **Theme Resource Leaks** → Phase 2.3
-   - WebGL textures not deleted
-   - Particle systems not disposed
-   - GPU memory not freed
+Your game already has **excellent** optimization foundations:
 
-3. **Timer Leaks** → Phase 3.3
-   - setInterval/setTimeout not cleared
-   - Continues running after component destruction
+1. **Object Pooling** - [src/utils/object-pool.js](src/utils/object-pool.js)
+   - Particle pools (100 initial, 500 max)
+   - Garbage entry pools (50 initial, 200 max)
+   - Piece pools (40 initial, 160 max)
+   - Array pools for collision checks
 
-### Phase Overview
-- **Phase 1**: Event Listener Cleanup (HIGH PRIORITY - Week 1)
-- **Phase 2**: Theme System Optimization (HIGH PRIORITY - Week 2)
-- **Phase 3**: Animation & Timer Management (Week 3)
-- **Phase 4**: DOM & Event Optimization (Week 4)
-- **Phase 5**: Asset & Resource Management (Week 5)
-- **Phase 6**: Memory Best Practices (Week 6)
-- **Phase 7**: Monitoring & Debugging Tools (Week 7)
-- **Sprint 8**: Final Validation (Week 8)
+2. **Asset Management** - [src/utils/asset-manager.js](src/utils/asset-manager.js)
+   - LRU cache with 50 asset limit
+   - Deduplication
+   - Memory tracking
+   - Preloading support
 
-### Most Impactful Optimizations
-1. ✅ Fix SerenityHub event listener cleanup → **~75% of memory leak**
-2. ✅ Implement WebGL resource disposal → **GPU memory stability**
-3. ✅ Add timer tracking and cleanup → **CPU usage reduction**
-4. ✅ Throttle high-frequency events → **60-80% CPU reduction**
-5. ✅ Implement asset caching with LRU eviction → **Eliminate duplicate loads**
+3. **Texture Caching** - [src/utils/texture-manager.js](src/utils/texture-manager.js)
+   - WebGL texture caching
+   - Buffer management
+   - Procedural texture generation
 
-### Testing Priority
-1. 🔥 Theme Switch Stress Test (50+ switches)
-2. 🔥 Extended Gameplay Session (3+ hours)
-3. 🔥 Combined Stress Test (all actions)
-4. Hub Toggle Test (100+ opens/closes)
-5. Mode Switching Test (30+ switches)
+4. **Dynamic Quality Settings** - [src/utils/quality.js](src/utils/quality.js)
+   - 4 levels (Low, Medium, High, Ultra)
+   - Adjustable particle counts
+   - Shader complexity control
+   - Camera shake intensity
+
+5. **Performance Monitoring** - [src/utils/performance-monitor.js](src/utils/performance-monitor.js)
+   - FPS tracking
+   - Frame time analysis
+   - Performance warnings
+
+6. **Render Optimization**
+   - Graphics cleared once per frame in BaseBoardScene
+   - Depth-sorted layers (board, piece, effects)
+   - Particle burst pooling
 
 ---
 
-## Problem Analysis
+## Optimization Opportunities (Based on François's Guide)
 
-### Symptoms
-- Game starts smoothly with no lag
-- Performance degrades noticeably after:
-  - Switching themes multiple times (most critical)
-  - Extended gameplay sessions (>30 minutes)
-  - Opening/closing Serenity Hub repeatedly
-  - Mode switching (Serenity Mode ↔ other modes)
-  - Rapid user interactions (clicking, gestures)
-- Memory usage grows continuously instead of stabilizing
-- Frame rate drops from 60 FPS to 30-40 FPS over time
-- Increased garbage collection pauses causing stuttering
+### 🎯 Priority 1: Critical Improvements
 
-### Root Causes Identified
-1. **Event listener accumulation** - Global listeners never removed (PRIMARY ISSUE)
-2. **Missing cleanup methods** - Some UI components lack proper destruction
-3. **Theme resource leakage** - Incomplete theme cleanup on switch (CRITICAL)
-4. **Animation frame leaks** - Potential for animation loops not being cancelled
-5. **DOM element accumulation** - Elements not properly removed from memory
-6. **WebGL context leaks** - GPU resources not being freed on theme switch
-7. **Closure memory retention** - Event handlers holding references to large objects
-8. **Inefficient re-renders** - Unnecessary DOM operations on each frame
-9. **Timer leaks** - setInterval/setTimeout not being cleared
-10. **Asset duplication** - Same resources loaded multiple times without caching
+#### 1.1 Enhanced FPS Counter & Performance Dashboard
+**Current:** Basic performance monitoring exists
+**Improvement:** Add user-facing FPS counter with detailed metrics
 
----
+**Implementation:**
+- **Location:** [src/utils/performance-monitor.js](src/utils/performance-monitor.js)
+- **Actions:**
+  - Add visual FPS display (top-right corner, toggle with F3)
+  - Show memory usage (heap size, object counts)
+  - Display frame time graph (min/max/avg)
+  - Add performance mode indicator (Low/Med/High/Ultra)
+  - Track draw calls per frame (if possible via Phaser 4 API)
 
-## Phase 1: Critical Memory Leak Fixes (High Priority)
+**Benefits:**
+- Real-time performance feedback
+- Easier debugging on different devices
+- User awareness of quality settings impact
 
-### **Objective**: Fix critical event listener leaks that accumulate over time
-
-### Phase 1.1: SerenityHub Event Listener Cleanup
-
-**Issue**: [SerenityHub.js](src/ui/serenity-hub/SerenityHub.js) attaches multiple global event listeners that are never removed.
-
-**Files Affected**:
-- `src/ui/serenity-hub/SerenityHub.js`
-
-**Specific Problems**:
-- Line 88-109: Hub icon event listeners (click, keydown, mouseenter, mouseleave) - attached directly as arrow functions
-- Line 121: Backdrop click listener
-- Line 195: Close button click listener
-- Line 198: Panel click listener
-- Line 213-226: Tab click and keydown listeners
-- Line 229-233: Document-level ESC key listener (global)
-- Line 236-243: Panel mouseenter/mouseleave listeners
-- Line 252-264: Document-level mousemove listener (global) - **CRITICAL LEAK**
-
-**Solution**:
-1. Store all event listeners as class methods (not arrow functions)
-2. Track all bound handlers in a registry
-3. In `destroy()` method (lines 697-734):
-   - Currently only removes `mousemove` listener incorrectly (line 709)
-   - Add proper removal for ALL listeners
-4. Create handler references for:
-   ```javascript
-   this.hubIconClickHandler
-   this.hubIconKeydownHandler
-   this.hubIconMouseEnterHandler
-   this.hubIconMouseLeaveHandler
-   this.backdropClickHandler
-   this.closeBtnClickHandler
-   this.panelClickHandler
-   this.documentKeydownHandler
-   this.documentMouseMoveHandler
-   this.panelMouseEnterHandler
-   this.panelMouseLeaveHandler
-   ```
-
-**Expected Impact**: Prevent ~11 event listeners from accumulating each time Serenity Hub is created/destroyed.
+**Files to Modify:**
+- [src/utils/performance-monitor.js](src/utils/performance-monitor.js)
+- [src/rendering/phaser/ui/index.js](src/rendering/phaser/ui/index.js)
 
 ---
 
-### Phase 1.2: GestureController Event Listener Cleanup
+#### 1.2 Reference Caching for Hot Paths
+**Current:** Some caching exists (grid cache, texture cache)
+**Improvement:** Cache frequently accessed references in critical loops
 
-**Issue**: [GestureController.js](src/ui/serenity-hub/GestureController.js) has a `destroy()` method (lines 285-302) but passes wrong function references when removing listeners.
+**Critical Hot Paths Identified:**
 
-**Files Affected**:
-- `src/ui/serenity-hub/GestureController.js`
-
-**Specific Problems**:
-- Lines 67-74: Event listeners added with inline arrow functions
-- Lines 288-293: `destroy()` tries to remove listeners but passes method references instead of the original bound functions
-- This causes `removeEventListener` to fail silently (different function references)
-
-**Solution**:
-1. In constructor, bind all handler methods and store references:
+1. **Physics Loop** - [src/core/physics.js](src/core/physics.js)
    ```javascript
-   this.handleTouchStartBound = this.handleTouchStart.bind(this);
-   this.handleTouchMoveBound = this.handleTouchMove.bind(this);
-   this.handleTouchEndBound = this.handleTouchEnd.bind(this);
-   this.handleMouseDownBound = this.handleMouseDown.bind(this);
-   this.handleMouseMoveBound = this.handleMouseMove.bind(this);
-   this.handleMouseUpBound = this.handleMouseUp.bind(this);
+   // Current: Recalculates board dimensions repeatedly
+   // Optimize: Cache board bounds
+   const BOARD_HEIGHT = 24;
+   const BOARD_WIDTH = 10;
    ```
 
-2. Use these bound references when adding listeners (lines 67-74)
+2. **Board Rendering** - [src/rendering/phaser/base-board-scene.js](src/rendering/phaser/base-board-scene.js)
+   ```javascript
+   // Cache frequently accessed properties
+   this.cachedBlockSize = BLOCK_SIZE;
+   this.cachedBoardWidth = BOARD_WIDTH;
+   this.cachedBoardHeight = BOARD_HEIGHT;
+   ```
 
-3. Use the SAME bound references when removing in `destroy()` (lines 288-293)
+3. **Garbage Insertion** - [src/core/garbage.js](src/core/garbage.js)
+   ```javascript
+   // Cache color lookups
+   this.garbageColorCache = new Map();
+   ```
 
-**Expected Impact**: Properly clean up 6 event listeners per GestureController instance.
+**Implementation Steps:**
+- Identify functions called >100 times per second
+- Cache DOM references (if any)
+- Cache constant calculations
+- Use local variables for repeated property access
+
+**Files to Modify:**
+- [src/core/physics.js](src/core/physics.js)
+- [src/rendering/phaser/base-board-scene.js](src/rendering/phaser/base-board-scene.js)
+- [src/core/garbage.js](src/core/garbage.js)
 
 ---
 
-### Phase 1.3: Renderer Window Resize Listener Cleanup
+#### 1.3 Game Loop Optimization (Selective Processing)
+**Current:** Update loops process everything every frame
+**Improvement:** Skip unnecessary updates when state hasn't changed
 
-**Issue**: [renderer.js](src/rendering/renderer.js:704) adds window resize listener but never removes it.
+**Strategy:**
 
-**Files Affected**:
-- `src/rendering/renderer.js`
+1. **Board Dirty Flagging** (Already Partially Implemented)
+   - [src/core/game.js](src/core/game.js) has `markBoardDirty()`
+   - **Extend:** Only redraw board graphics when dirty flag is set
+   - **Location:** [src/rendering/phaser/base-board-scene.js](src/rendering/phaser/base-board-scene.js)
 
-**Specific Problems**:
-- Line 704: `window.addEventListener('resize', () => this.resize());` - arrow function, no reference stored
-- No cleanup in `stop()` method (lines 785-793) or elsewhere
+2. **Conditional Particle Updates**
+   - Only update active particle systems
+   - Skip particle updates if no particles alive
+   - **Location:** [src/rendering/phaser/board-scene.js](src/rendering/phaser/board-scene.js)
 
-**Solution**:
-1. Store resize handler as class property:
-   ```javascript
-   this.resizeHandler = this.resize.bind(this);
-   ```
+3. **Background Scene Optimization**
+   - Reduce WebGL background update rate to 30fps (not 60fps)
+   - Users won't notice background running at half rate
+   - **Location:** [src/rendering/phaser/background-scene.js](src/rendering/phaser/background-scene.js)
 
-2. Use stored handler when adding listener (line 704):
-   ```javascript
-   window.addEventListener('resize', this.resizeHandler);
-   ```
+4. **Multiplayer Optimization**
+   - Only process active players (skip game-over boards)
+   - Cache opponent state queries
+   - **Location:** [src/core/multiplayer.js](src/core/multiplayer.js)
 
-3. Add cleanup method or extend `stop()` to remove listener:
-   ```javascript
-   cleanup() {
-       this.stop();
-       window.removeEventListener('resize', this.resizeHandler);
-       // ... other cleanup
-   }
-   ```
+**Implementation:**
+```javascript
+// Example: Conditional board rendering
+update(time, delta) {
+  // Only redraw if board changed
+  if (this.gameState.boardDirty) {
+    this.renderBoard();
+    this.gameState.boardDirty = false;
+  }
 
-4. Ensure cleanup is called when renderer is destroyed
+  // Only update particles if active
+  if (this.activeParticles > 0) {
+    this.updateParticles(delta);
+  }
+}
+```
 
-**Expected Impact**: Remove 1 window resize listener that persists across theme switches.
-
----
-
-### Phase 1.4: Tab Event Listener Cleanup in SerenityHub
-
-**Issue**: Tab buttons in SerenityHub panel have listeners attached but not properly tracked for cleanup.
-
-**Files Affected**:
-- `src/ui/serenity-hub/SerenityHub.js`
-
-**Specific Problems**:
-- Lines 211-226: `querySelectorAll('.hub-tab')` returns NodeList, listeners added to each tab
-- Arrow functions used, no references stored
-- No cleanup when hub is destroyed
-
-**Solution**:
-1. Store tab elements and their handlers:
-   ```javascript
-   this.tabElements = [];
-   this.tabHandlers = new Map();
-   ```
-
-2. Track each tab's click and keydown handlers
-
-3. In `destroy()`, iterate and remove all tab listeners:
-   ```javascript
-   this.tabElements.forEach(tab => {
-       const handlers = this.tabHandlers.get(tab);
-       tab.removeEventListener('click', handlers.click);
-       tab.removeEventListener('keydown', handlers.keydown);
-   });
-   ```
-
-**Expected Impact**: Remove 6 listeners (3 tabs × 2 event types) per SerenityHub lifecycle.
+**Files to Modify:**
+- [src/rendering/phaser/base-board-scene.js](src/rendering/phaser/base-board-scene.js)
+- [src/rendering/phaser/board-scene.js](src/rendering/phaser/board-scene.js)
+- [src/rendering/phaser/background-scene.js](src/rendering/phaser/background-scene.js)
+- [src/core/multiplayer.js](src/core/multiplayer.js)
 
 ---
 
-### Phase 1.5: Tab Instance Cleanup Verification
+### 🎯 Priority 2: Asset Optimization
 
-**Issue**: Tab instances (BreathingTab, MusicTab, ThemesTab) may not always have their `destroy()` methods called.
+#### 2.1 Asset Compression & Format Optimization
+**Current:** Asset management exists, but no compression pipeline
+**Improvement:** Compress assets and use modern formats
 
-**Files Affected**:
-- `src/ui/serenity-hub/SerenityHub.js` (lines 722-731)
-- `src/ui/serenity-hub/MusicTab.js`
-- `src/ui/serenity-hub/BreathingTab.js`
-- `src/ui/serenity-hub/ThemesTab.js`
+**Actions:**
 
-**Current State**:
-- Lines 722-731 in SerenityHub.destroy() call `destroy?.()` on tab instances (optional chaining)
-- MusicTab has a `destroy()` method
-- Need to verify BreathingTab and ThemesTab also have cleanup
+1. **Image Optimization**
+   - Convert PNG → WebP (30-50% smaller, same quality)
+   - Use AVIF where supported (even better compression)
+   - Implement fallback chain: AVIF → WebP → PNG
+   - Compress existing PNG files with tools (pngquant, TinyPNG)
 
-**Solution**:
-1. Audit all tab classes to ensure they have `destroy()` methods
-2. Ensure each tab's `destroy()` removes all event listeners
-3. Make destroy calls non-optional (log warning if missing):
-   ```javascript
-   if (this.breathingTab && typeof this.breathingTab.destroy === 'function') {
-       this.breathingTab.destroy();
-   } else if (this.breathingTab) {
-       console.warn('[SerenityHub] BreathingTab missing destroy method');
-   }
-   ```
+2. **Audio Optimization**
+   - Convert WAV → OGG Vorbis (much smaller)
+   - Use AAC/M4A for music
+   - Reduce sample rates where possible (44.1kHz → 22kHz for SFX)
+   - Implement audio sprites (combine multiple SFX into one file)
 
-**Expected Impact**: Ensure complete cleanup of all tab resources.
+3. **Build Pipeline Integration**
+   - Add compression step to Vite build process
+   - Auto-generate WebP/AVIF versions
+   - Create asset manifest with optimal formats
 
----
+**Implementation:**
+- **Tool:** vite-plugin-imagemin
+- **Config:** [vite.config.js](vite.config.js)
+- **Asset Loader Update:** [src/utils/asset-manager.js](src/utils/asset-manager.js)
 
-## Phase 2: Theme System Optimization (Medium Priority)
-
-### **Objective**: Prevent theme resource leaks and optimize theme switching
-
-### Phase 2.1: Theme Instance Lifecycle Audit
-
-**Issue**: Theme instances are cached in `themeInstances` Map but may not be properly cleaned up.
-
-**Files Affected**:
-- `src/themes/theme-manager.js`
-- `src/themes/base-theme.js`
-
-**Current State**:
-- ThemeManager caches theme instances (line 50-52)
-- `switchTheme()` calls `activeTheme.stop()` (line 123) but NOT `cleanup()`
-- Theme instances remain in cache indefinitely
-- `cleanup()` only called when ThemeManager itself is destroyed (lines 213-228)
-
-**Analysis**:
-- **Good**: Caching prevents re-loading themes
-- **Concern**: If a theme's `stop()` doesn't fully clean up, resources leak
-- **Concern**: No mechanism to prune old/unused themes from cache
-
-**Solution**:
-1. Add theme cache size limit:
-   ```javascript
-   constructor() {
-       this.maxCachedThemes = 5; // Configurable
-       this.themeLRU = []; // Track access order
-   }
-   ```
-
-2. Implement LRU eviction:
-   ```javascript
-   evictOldTheme() {
-       if (this.themeInstances.size > this.maxCachedThemes) {
-           const oldestTheme = this.themeLRU.shift();
-           const instance = this.themeInstances.get(oldestTheme);
-           instance.cleanup();
-           this.themeInstances.delete(oldestTheme);
-       }
-   }
-   ```
-
-3. Update LRU on theme access (in `switchTheme()` and `loadTheme()`)
-
-**Expected Impact**: Limit memory growth from cached theme instances.
+**Files to Create/Modify:**
+- [vite.config.js](vite.config.js)
+- [src/utils/asset-manager.js](src/utils/asset-manager.js)
+- New: `scripts/optimize-assets.js`
 
 ---
 
-### Phase 2.2: Base Theme Cleanup Verification
+#### 2.2 Lazy Loading & Code Splitting
+**Current:** Appears to load all assets upfront
+**Improvement:** Load assets on-demand
 
-**Issue**: Need to ensure all themes properly clean up resources in their `stop()` and `cleanup()` methods.
+**Strategy:**
 
-**Files Affected**:
-- `src/themes/base-theme.js`
-- All theme files extending BaseTheme
+1. **Theme-Based Lazy Loading**
+   - Currently: 45+ themes loaded at startup
+   - **Optimize:** Load only active theme
+   - **Location:** [src/themes/](src/themes/)
+   - Dynamic imports: `const theme = await import(\`./themes/${themeName}\`)`
 
-**Audit Checklist**:
-For each theme, verify `cleanup()` method:
-1. Cancels all animation frames (tracked in `animationIds[]`)
-2. Removes all DOM containers (tracked in `containers[]`)
-3. Clears all WebGL layers (tracked in `webglLayers[]`)
-4. Removes any event listeners added by the theme
-5. Clears any intervals/timeouts
-6. Nullifies references to large objects
+2. **Scene-Based Asset Loading**
+   - Load multiplayer assets only when entering multiplayer mode
+   - Load theme shaders on-demand
+   - **Location:** Scene `preload()` methods
 
-**Solution**:
-1. Create a standardized cleanup template in BaseTheme
-2. Document cleanup requirements for theme authors
-3. Add cleanup verification in development mode:
-   ```javascript
-   cleanup() {
-       // Cancel animations
-       this.animationIds.forEach(id => cancelAnimationFrame(id));
-       this.animationIds = [];
+3. **Audio Lazy Loading**
+   - Load music tracks when theme changes
+   - Preload next theme in background
+   - **Location:** [src/audio/music-loader.js](src/audio/music-loader.js)
 
-       // Remove containers
-       this.containers.forEach(container => {
-           if (container.parentNode) {
-               container.parentNode.removeChild(container);
-           }
-       });
-       this.containers = [];
+4. **Code Splitting**
+   - Split game modes into separate chunks
+   - Split rendering engines (Canvas vs WebGL)
+   - Use Vite's dynamic imports
 
-       // Clear WebGL layers
-       this.webglLayers = [];
+**Implementation:**
+```javascript
+// Example: Dynamic theme loading
+async loadTheme(themeName) {
+  // Unload current theme assets
+  this.unloadCurrentTheme();
 
-       // VERIFICATION (dev mode only)
-       if (process.env.NODE_ENV === 'development') {
-           if (this.animationIds.length > 0) console.warn('Animation IDs not cleared!');
-           if (this.containers.length > 0) console.warn('Containers not cleared!');
-       }
-   }
-   ```
+  // Dynamically import theme module
+  const themeModule = await import(`./themes/${themeName}/${themeName}-theme.js`);
 
-**Expected Impact**: Ensure consistent cleanup across all themes.
+  // Load theme assets
+  await this.assetManager.preload(themeModule.assets);
 
----
+  return themeModule.default;
+}
+```
 
-### Phase 2.3: WebGL Renderer Layer Management
-
-**Issue**: WebGL renderer clears layers on theme load but may not properly dispose of GPU resources.
-
-**Files Affected**:
-- `src/rendering/renderer.js` (lines 863-1563)
-
-**Current State**:
-- Line 866-867: Arrays cleared with `= []`
-- No explicit texture deletion or buffer cleanup
-- GPU resources may not be freed
-
-**Solution**:
-1. Add explicit resource disposal before clearing arrays:
-   ```javascript
-   loadTheme(themeName, themeData = null) {
-       console.log('[WebGLRenderer] loadTheme called:', themeName);
-
-       // Dispose textured quads
-       this.texturedQuads.forEach(quad => {
-           if (quad.texture) {
-               this.gl.deleteTexture(quad.texture);
-           }
-           if (quad.positionBuffer) {
-               this.gl.deleteBuffer(quad.positionBuffer);
-           }
-           if (quad.texcoordBuffer) {
-               this.gl.deleteBuffer(quad.texcoordBuffer);
-           }
-       });
-       this.texturedQuads = [];
-
-       // Dispose particle systems
-       this.particleSystems.forEach(ps => {
-           if (ps.positionBuffer) this.gl.deleteBuffer(ps.positionBuffer);
-           if (ps.sizeBuffer) this.gl.deleteBuffer(ps.sizeBuffer);
-           if (ps.alphaBuffer) this.gl.deleteBuffer(ps.alphaBuffer);
-       });
-       this.particleSystems = [];
-
-       this.stop();
-       // ... continue with theme loading
-   }
-   ```
-
-2. Add `dispose()` methods to TexturedQuad and ParticleSystem classes
-
-**Expected Impact**: Properly free GPU memory on theme switches.
+**Files to Modify:**
+- [src/themes/theme-manager.js](src/themes/theme-manager.js) (if exists)
+- [src/audio/music-loader.js](src/audio/music-loader.js)
+- [vite.config.js](vite.config.js)
 
 ---
 
-## Phase 3: Animation Frame Management (Medium Priority)
+### 🎯 Priority 3: Rendering Optimizations
 
-### **Objective**: Ensure all animation frames are properly cancelled
+#### 3.1 Canvas vs WebGL Testing (François's Key Finding)
+**Current:** Phaser 4 WebGL-only rendering
+**Improvement:** Test Canvas fallback for low-end devices
 
-### Phase 3.1: Animation Frame Registry
+**François's Discovery:**
+> "Switching from WebGL to Canvas boosted performance by 30% on older devices"
 
-**Issue**: Multiple components use `requestAnimationFrame` but tracking could be improved.
+**Caveats for Your Game:**
+- Phaser 4 is WebGL-only (unlike Phaser 3)
+- Your custom WebGL renderer is highly optimized
+- Testing needed to see if Canvas helps mobile
 
-**Files Affected**:
-- `src/themes/base-theme.js`
-- `src/rendering/renderer.js`
-- Game mode files
+**Implementation Strategy:**
 
-**Current State**:
-- BaseTheme tracks animations in `animationIds[]` (good)
-- Renderer tracks `animationFrameId` (good)
-- Need to verify all game modes properly cancel their animation loops
+1. **Create Canvas Renderer Alternative**
+   - Implement pure Canvas2D board renderer
+   - Reuse existing Canvas renderer code: [src/rendering/canvas/](src/rendering/canvas/)
+   - Make renderer swappable at runtime
 
-**Solution**:
-1. Create central animation frame registry (optional, for debugging):
-   ```javascript
-   // utils/animation-frame-registry.js
-   class AnimationFrameRegistry {
-       constructor() {
-           this.frames = new Map(); // id -> source
-       }
+2. **Quality Setting Integration**
+   - Add "Canvas Mode" option in Low quality preset
+   - Auto-detect slow devices (FPS < 30 for 5 seconds)
+   - Prompt user to switch to Canvas mode
 
-       register(id, source) {
-           this.frames.set(id, source);
-       }
+3. **A/B Testing**
+   - Measure performance on various devices
+   - Compare WebGL vs Canvas on mobile
+   - Document findings
 
-       cancel(id) {
-           cancelAnimationFrame(id);
-           this.frames.delete(id);
-       }
+**Files to Modify:**
+- [src/rendering/canvas/](src/rendering/canvas/) - Expand Canvas renderer
+- [src/utils/quality.js](src/utils/quality.js) - Add Canvas mode setting
+- [src/utils/performance-monitor.js](src/utils/performance-monitor.js) - Auto-detection
 
-       cancelAll(source) {
-           for (const [id, frameSource] of this.frames) {
-               if (frameSource === source) {
-                   cancelAnimationFrame(id);
-                   this.frames.delete(id);
-               }
-           }
-       }
-
-       getActiveCount() {
-           return this.frames.size;
-       }
-   }
-   ```
-
-2. Use in development mode to detect leaks
-
-**Expected Impact**: Better visibility into animation frame lifecycle.
+**Testing Devices:**
+- iPhone 8/SE (older iOS devices)
+- Android mid-range (Snapdragon 600 series)
+- Desktop integrated graphics (Intel HD)
 
 ---
 
-### Phase 3.2: Game Mode Animation Cleanup
+#### 3.2 Canvas Size Optimization
+**Current:** Fixed block size (40px), canvas scaled via CSS
+**Improvement:** Dynamically adjust canvas resolution based on quality
 
-**Issue**: Game modes have animation loops that must be properly cancelled.
+**Strategy:**
 
-**Files Affected**:
-- `src/core/game-modes/SinglePlayerMode.js`
-- Other game mode files
+1. **Resolution Scaling**
+   - Ultra: 1.0x (full resolution)
+   - High: 1.0x
+   - Medium: 0.75x (25% fewer pixels)
+   - Low: 0.5x (75% fewer pixels!)
 
-**Current State** (from previous analysis):
-- SinglePlayerMode properly cancels `animationFrameId` in `onStop()` (good)
-- Uses `cleanupHandlers` array for additional cleanup (good pattern)
-
-**Solution**:
-1. Verify all game modes follow this pattern:
+2. **Implementation:**
    ```javascript
-   async onStop() {
-       // Cancel animation frame
-       if (this.animationFrameId) {
-           cancelAnimationFrame(this.animationFrameId);
-           this.animationFrameId = null;
-       }
-
-       // Execute all cleanup handlers
-       this.cleanupHandlers.forEach(fn => fn());
-       this.cleanupHandlers = [];
-   }
-   ```
-
-2. Add verification logging in development mode
-
-**Expected Impact**: Ensure game loops are always stopped when modes change.
-
----
-
-### Phase 3.3: Timer Management (setInterval/setTimeout)
-
-**Issue**: Timers created with `setInterval()` and `setTimeout()` may not be properly cleared.
-
-**Files Affected**:
-- All files using `setInterval` or `setTimeout`
-
-**Solution**:
-1. Create a timer registry for each component:
-   ```javascript
-   class Component {
-       constructor() {
-           this.timers = {
-               intervals: [],
-               timeouts: []
-           };
-       }
-
-       setInterval(callback, delay) {
-           const id = setInterval(callback, delay);
-           this.timers.intervals.push(id);
-           return id;
-       }
-
-       setTimeout(callback, delay) {
-           const id = setTimeout(callback, delay);
-           this.timers.timeouts.push(id);
-           return id;
-       }
-
-       clearAllTimers() {
-           this.timers.intervals.forEach(id => clearInterval(id));
-           this.timers.timeouts.forEach(id => clearTimeout(id));
-           this.timers.intervals = [];
-           this.timers.timeouts = [];
-       }
-
-       destroy() {
-           this.clearAllTimers();
-           // ... other cleanup
-       }
-   }
-   ```
-
-2. Audit codebase for all `setInterval` and `setTimeout` calls
-3. Ensure all are tracked and cleared in component cleanup
-
-**Expected Impact**: Prevent timer leaks that continue running after component destruction.
-
----
-
-## Phase 4: DOM and Style Optimization (Low Priority)
-
-### **Objective**: Reduce unnecessary DOM operations and style recalculations
-
-### Phase 4.1: Minimize Style Thrashing
-
-**Issue**: Frequent style changes can cause layout thrashing.
-
-**Files Affected**:
-- Various UI components
-
-**Solution**:
-1. Batch DOM reads and writes:
-   ```javascript
-   // BAD: Read-Write-Read-Write (causes layout thrashing)
-   element1.style.height = element2.offsetHeight + 'px';
-   element3.style.width = element4.offsetWidth + 'px';
-
-   // GOOD: Read-Read-Write-Write
-   const height = element2.offsetHeight;
-   const width = element4.offsetWidth;
-   element1.style.height = height + 'px';
-   element3.style.width = width + 'px';
-   ```
-
-2. Use `requestAnimationFrame` for batched style updates:
-   ```javascript
-   class StyleBatcher {
-       constructor() {
-           this.pending = [];
-           this.scheduled = false;
-       }
-
-       schedule(fn) {
-           this.pending.push(fn);
-           if (!this.scheduled) {
-               this.scheduled = true;
-               requestAnimationFrame(() => this.flush());
-           }
-       }
-
-       flush() {
-           this.pending.forEach(fn => fn());
-           this.pending = [];
-           this.scheduled = false;
-       }
-   }
-   ```
-
-**Expected Impact**: Reduce layout recalculation overhead.
-
----
-
-### Phase 4.2: CSS Class Toggle Optimization
-
-**Issue**: Frequent class additions/removals can be optimized.
-
-**Solution**:
-1. Use `classList.toggle()` with second parameter:
-   ```javascript
-   // Instead of:
-   if (condition) {
-       element.classList.add('active');
-   } else {
-       element.classList.remove('active');
-   }
-
-   // Use:
-   element.classList.toggle('active', condition);
-   ```
-
-2. Combine multiple class changes:
-   ```javascript
-   // Instead of:
-   element.classList.add('class1');
-   element.classList.add('class2');
-   element.classList.remove('class3');
-
-   // Use:
-   element.className = 'class1 class2 other-existing-class';
-   // Or batch with classList:
-   element.classList.add('class1', 'class2');
-   element.classList.remove('class3');
-   ```
-
-**Expected Impact**: Minor performance improvement in UI updates.
-
----
-
-### Phase 4.3: Event Handler Debouncing and Throttling
-
-**Issue**: High-frequency events (resize, scroll, mousemove) can cause performance issues if handlers run on every event.
-
-**Files Affected**:
-- `src/rendering/renderer.js` (resize handler)
-- `src/ui/serenity-hub/SerenityHub.js` (mousemove handler)
-- Any components with scroll/input handlers
-
-**Solution**:
-1. Create utility functions for debounce and throttle:
-   ```javascript
-   // utils/performance-utils.js
-   export function debounce(func, wait) {
-       let timeout;
-       return function executedFunction(...args) {
-           const later = () => {
-               clearTimeout(timeout);
-               func(...args);
-           };
-           clearTimeout(timeout);
-           timeout = setTimeout(later, wait);
-       };
-   }
-
-   export function throttle(func, limit) {
-       let inThrottle;
-       return function(...args) {
-           if (!inThrottle) {
-               func.apply(this, args);
-               inThrottle = true;
-               setTimeout(() => inThrottle = false, limit);
-           }
-       };
-   }
-   ```
-
-2. Apply throttle to resize handler in renderer:
-   ```javascript
-   // In renderer.js
-   import { throttle } from '../utils/performance-utils.js';
-   
-   constructor() {
-       // Throttle resize to max once every 100ms
-       this.resizeHandler = throttle(this.resize.bind(this), 100);
-   }
-   ```
-
-3. Apply throttle to mousemove in SerenityHub:
-   ```javascript
-   // Throttle mousemove to max once every 16ms (~60fps)
-   this.documentMouseMoveHandler = throttle(this.handleMouseMove.bind(this), 16);
-   ```
-
-**Expected Impact**: Reduce CPU usage during high-frequency events by 60-80%.
-
----
-
-### Phase 4.4: Intersection Observer for Visibility Detection
-
-**Issue**: Manually checking element visibility in scroll handlers is inefficient.
-
-**Solution**:
-1. Use Intersection Observer API for visibility detection:
-   ```javascript
-   class VisibilityManager {
-       constructor() {
-           this.observers = [];
-       }
-
-       observe(element, callback, options = {}) {
-           const observer = new IntersectionObserver((entries) => {
-               entries.forEach(entry => {
-                   callback(entry.isIntersecting, entry);
-               });
-           }, {
-               threshold: options.threshold || 0.1,
-               rootMargin: options.rootMargin || '0px'
-           });
-
-           observer.observe(element);
-           this.observers.push(observer);
-           return observer;
-       }
-
-       cleanup() {
-           this.observers.forEach(observer => observer.disconnect());
-           this.observers = [];
-       }
-   }
-   ```
-
-2. Apply to UI components that need visibility tracking
-3. Disconnect all observers in cleanup methods
-
-**Expected Impact**: More efficient visibility detection, especially with many elements.
-
----
-
-## Phase 5: Asset and Resource Management (Medium Priority)
-
-### **Objective**: Optimize loading, caching, and disposal of game assets
-
-### Phase 5.1: Asset Preloading and Caching Strategy
-
-**Issue**: Assets may be loaded multiple times or loaded synchronously causing frame drops.
-
-**Solution**:
-1. Implement a centralized asset manager:
-   ```javascript
-   // utils/asset-manager.js
-   class AssetManager {
-       constructor() {
-           this.cache = new Map(); // url -> asset
-           this.loading = new Map(); // url -> Promise
-           this.maxCacheSize = 50; // Configurable limit
-           this.cacheOrder = []; // LRU tracking
-       }
-
-       async load(url, type = 'image') {
-           // Return cached asset
-           if (this.cache.has(url)) {
-               this.updateLRU(url);
-               return this.cache.get(url);
-           }
-
-           // Return existing loading promise
-           if (this.loading.has(url)) {
-               return this.loading.get(url);
-           }
-
-           // Start new load
-           const loadPromise = this.loadAsset(url, type);
-           this.loading.set(url, loadPromise);
-
-           try {
-               const asset = await loadPromise;
-               this.cache.set(url, asset);
-               this.cacheOrder.push(url);
-               this.evictIfNeeded();
-               return asset;
-           } finally {
-               this.loading.delete(url);
-           }
-       }
-
-       async loadAsset(url, type) {
-           switch (type) {
-               case 'image':
-                   return this.loadImage(url);
-               case 'audio':
-                   return this.loadAudio(url);
-               case 'json':
-                   return this.loadJSON(url);
-               default:
-                   throw new Error(`Unknown asset type: ${type}`);
-           }
-       }
-
-       loadImage(url) {
-           return new Promise((resolve, reject) => {
-               const img = new Image();
-               img.onload = () => resolve(img);
-               img.onerror = reject;
-               img.src = url;
-           });
-       }
-
-       loadAudio(url) {
-           return new Promise((resolve, reject) => {
-               const audio = new Audio();
-               audio.addEventListener('canplaythrough', () => resolve(audio), { once: true });
-               audio.addEventListener('error', reject, { once: true });
-               audio.src = url;
-           });
-       }
-
-       async loadJSON(url) {
-           const response = await fetch(url);
-           return response.json();
-       }
-
-       updateLRU(url) {
-           const index = this.cacheOrder.indexOf(url);
-           if (index > -1) {
-               this.cacheOrder.splice(index, 1);
-               this.cacheOrder.push(url);
-           }
-       }
-
-       evictIfNeeded() {
-           while (this.cache.size > this.maxCacheSize) {
-               const oldestUrl = this.cacheOrder.shift();
-               const asset = this.cache.get(oldestUrl);
-               
-               // Clean up asset if needed
-               if (asset instanceof HTMLImageElement) {
-                   asset.src = '';
-               } else if (asset instanceof HTMLAudioElement) {
-                   asset.pause();
-                   asset.src = '';
-               }
-               
-               this.cache.delete(oldestUrl);
-           }
-       }
-
-       preload(urls, type = 'image') {
-           return Promise.all(urls.map(url => this.load(url, type)));
-       }
-
-       clear() {
-           this.cache.forEach((asset, url) => {
-               if (asset instanceof HTMLImageElement) {
-                   asset.src = '';
-               } else if (asset instanceof HTMLAudioElement) {
-                   asset.pause();
-                   asset.src = '';
-               }
-           });
-           this.cache.clear();
-           this.loading.clear();
-           this.cacheOrder = [];
-       }
-   }
-
-   export const assetManager = new AssetManager();
-   ```
-
-2. Use asset manager throughout the application
-3. Preload theme assets before switching themes
-
-**Expected Impact**: 
-- Eliminate duplicate asset loads
-- Prevent frame drops during asset loading
-- Reduce memory usage through LRU eviction
-
----
-
-### Phase 5.2: Audio Context Management
-
-**Issue**: Audio contexts and buffers may not be properly cleaned up, causing memory leaks.
-
-**Files Affected**:
-- `src/ui/serenity-hub/MusicTab.js`
-- Any audio-playing components
-
-**Solution**:
-1. Create centralized audio manager:
-   ```javascript
-   class AudioManager {
-       constructor() {
-           this.context = null;
-           this.sources = [];
-           this.buffers = new Map();
-       }
-
-       getContext() {
-           if (!this.context) {
-               this.context = new (window.AudioContext || window.webkitAudioContext)();
-           }
-           return this.context;
-       }
-
-       async loadSound(url) {
-           if (this.buffers.has(url)) {
-               return this.buffers.get(url);
-           }
-
-           const response = await fetch(url);
-           const arrayBuffer = await response.arrayBuffer();
-           const audioBuffer = await this.getContext().decodeAudioData(arrayBuffer);
-           
-           this.buffers.set(url, audioBuffer);
-           return audioBuffer;
-       }
-
-       play(buffer, options = {}) {
-           const context = this.getContext();
-           const source = context.createBufferSource();
-           source.buffer = buffer;
-           
-           const gainNode = context.createGain();
-           gainNode.gain.value = options.volume || 1.0;
-           
-           source.connect(gainNode);
-           gainNode.connect(context.destination);
-           
-           source.start(0);
-           this.sources.push(source);
-           
-           // Auto-cleanup when done
-           source.onended = () => {
-               const index = this.sources.indexOf(source);
-               if (index > -1) this.sources.splice(index, 1);
-           };
-           
-           return source;
-       }
-
-       stopAll() {
-           this.sources.forEach(source => {
-               try {
-                   source.stop();
-               } catch (e) {
-                   // Already stopped
-               }
-           });
-           this.sources = [];
-       }
-
-       async cleanup() {
-           this.stopAll();
-           
-           if (this.context && this.context.state !== 'closed') {
-               await this.context.close();
-           }
-           
-           this.context = null;
-           this.buffers.clear();
-       }
-   }
-   ```
-
-2. Use AudioManager instead of creating new Audio elements
-3. Ensure cleanup is called when switching themes or modes
-
-**Expected Impact**: Prevent audio context leaks and reduce memory usage.
-
----
-
-### Phase 5.3: Image and Texture Disposal
-
-**Issue**: Images and WebGL textures may remain in memory after themes are switched.
-
-**Solution**:
-1. Create texture disposal helper:
-   ```javascript
-   class TextureManager {
-       constructor(gl) {
-           this.gl = gl;
-           this.textures = new Map(); // url -> texture
-       }
-
-       createTexture(image, url) {
-           const gl = this.gl;
-           const texture = gl.createTexture();
-           
-           gl.bindTexture(gl.TEXTURE_2D, texture);
-           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-           
-           if (url) {
-               this.textures.set(url, texture);
-           }
-           
-           return texture;
-       }
-
-       deleteTexture(texture) {
-           if (texture) {
-               this.gl.deleteTexture(texture);
-               
-               // Remove from cache
-               for (const [url, tex] of this.textures) {
-                   if (tex === texture) {
-                       this.textures.delete(url);
-                       break;
-                   }
-               }
-           }
-       }
-
-       deleteAll() {
-           this.textures.forEach(texture => {
-               this.gl.deleteTexture(texture);
-           });
-           this.textures.clear();
-       }
-   }
-   ```
-
-2. Integrate with renderer's loadTheme method
-3. Ensure all textures are deleted before loading new theme
-
-**Expected Impact**: Properly free GPU memory, preventing VRAM leaks.
-
----
-
-## Phase 6: Memory Management Best Practices (Low Priority)
-
-### **Objective**: Implement general memory management improvements
-
-### Phase 6.1: Null Reference Cleanup
-
-**Issue**: Ensure destroyed objects null out their references to allow garbage collection.
-
-**Solution**:
-1. In all `destroy()` / `cleanup()` methods, null out references:
-   ```javascript
-   destroy() {
-       // Remove event listeners
-       this.removeAllListeners();
-
-       // Remove DOM
-       if (this.element && this.element.parentNode) {
-           this.element.parentNode.removeChild(this.element);
-       }
-
-       // Null out references
-       this.element = null;
-       this.callbacks = null;
-       this.dependencies = null;
-       // ... null out all object references
-   }
-   ```
-
-**Expected Impact**: Help garbage collector reclaim memory faster.
-
----
-
-### Phase 6.2: WeakMap/WeakSet for Caches
-
-**Issue**: Some caches might benefit from weak references.
-
-**Solution**:
-1. Identify caches that could use WeakMap:
-   ```javascript
-   // For DOM element -> data mappings
-   this.elementData = new WeakMap(); // GC'd when element removed
-
-   // For object -> metadata mappings
-   this.objectMeta = new WeakMap();
-   ```
-
-2. Apply where appropriate (e.g., theme metadata, element tracking)
-
-**Expected Impact**: Automatic memory cleanup when keys are no longer referenced.
-
----
-
-### Phase 6.3: Event Listener AbortController Pattern
-
-**Issue**: Modern browsers support AbortController for easier listener cleanup.
-
-**Solution**:
-1. Use AbortController for grouped listeners:
-   ```javascript
-   class Component {
-       constructor() {
-           this.abortController = new AbortController();
-       }
-
-       init() {
-           // Add multiple listeners with same signal
-           document.addEventListener('keydown', handler1, { signal: this.abortController.signal });
-           window.addEventListener('resize', handler2, { signal: this.abortController.signal });
-           element.addEventListener('click', handler3, { signal: this.abortController.signal });
-       }
-
-       destroy() {
-           // Remove ALL listeners at once
-           this.abortController.abort();
-       }
-   }
-   ```
-
-2. Apply to SerenityHub and other components with many listeners
-
-**Expected Impact**: Simpler, more reliable listener cleanup.
-
----
-
-## Phase 7: Performance Monitoring and Debugging (Ongoing)
-
-### **Objective**: Add tools to detect and prevent future performance issues
-
-### Phase 7.1: Memory Leak Detection
-
-**Solution**:
-1. Add development-mode memory monitoring:
-   ```javascript
-   // utils/memory-monitor.js
-   class MemoryMonitor {
-       constructor() {
-           this.samples = [];
-           this.interval = null;
-       }
-
-       start() {
-           if (!performance.memory) {
-               console.warn('Performance.memory not available');
-               return;
-           }
-
-           this.interval = setInterval(() => {
-               this.samples.push({
-                   timestamp: Date.now(),
-                   used: performance.memory.usedJSHeapSize,
-                   total: performance.memory.totalJSHeapSize,
-               });
-
-               // Keep last 100 samples
-               if (this.samples.length > 100) {
-                   this.samples.shift();
-               }
-
-               // Detect sustained growth
-               if (this.samples.length >= 10) {
-                   const trend = this.calculateTrend();
-                   if (trend > 1000000) { // Growing by >1MB per sample
-                       console.warn('[MemoryMonitor] Possible memory leak detected', trend);
-                   }
-               }
-           }, 5000); // Sample every 5 seconds
-       }
-
-       calculateTrend() {
-           const n = this.samples.length;
-           const recent = this.samples.slice(-10);
-           const avgRecent = recent.reduce((sum, s) => sum + s.used, 0) / recent.length;
-           const avgOld = this.samples.slice(0, 10).reduce((sum, s) => sum + s.used, 0) / 10;
-           return avgRecent - avgOld;
-       }
-
-       stop() {
-           if (this.interval) {
-               clearInterval(this.interval);
-               this.interval = null;
-           }
-       }
-
-       getReport() {
-           return {
-               samples: this.samples,
-               current: this.samples[this.samples.length - 1],
-               trend: this.calculateTrend(),
-           };
-       }
-   }
-   ```
-
-2. Enable in development settings
-
-**Expected Impact**: Early detection of memory leaks during development.
-
----
-
-### Phase 7.2: Event Listener Audit Tool
-
-**Solution**:
-1. Add listener tracking in development mode:
-   ```javascript
-   // utils/event-listener-tracker.js
-   const originalAddEventListener = EventTarget.prototype.addEventListener;
-   const originalRemoveEventListener = EventTarget.prototype.removeEventListener;
-
-   const listenerRegistry = new Map(); // target -> {event -> [listeners]}
-
-   EventTarget.prototype.addEventListener = function(type, listener, options) {
-       // Track listener
-       if (!listenerRegistry.has(this)) {
-           listenerRegistry.set(this, new Map());
-       }
-       const targetListeners = listenerRegistry.get(this);
-       if (!targetListeners.has(type)) {
-           targetListeners.set(type, []);
-       }
-       targetListeners.get(type).push({
-           listener,
-           stack: new Error().stack, // Capture stack trace
-           timestamp: Date.now(),
-       });
-
-       // Call original
-       return originalAddEventListener.call(this, type, listener, options);
+   // src/utils/quality.js
+   const QUALITY_SETTINGS = {
+     low: { renderScale: 0.5, ... },
+     medium: { renderScale: 0.75, ... },
+     high: { renderScale: 1.0, ... },
+     ultra: { renderScale: 1.0, ... }
    };
-
-   EventTarget.prototype.removeEventListener = function(type, listener, options) {
-       // Track removal
-       if (listenerRegistry.has(this)) {
-           const targetListeners = listenerRegistry.get(this);
-           if (targetListeners.has(type)) {
-               const listeners = targetListeners.get(type);
-               const index = listeners.findIndex(l => l.listener === listener);
-               if (index !== -1) {
-                   listeners.splice(index, 1);
-               }
-           }
-       }
-
-       // Call original
-       return originalRemoveEventListener.call(this, type, listener, options);
-   };
-
-   // Audit function
-   function auditEventListeners() {
-       let total = 0;
-       for (const [target, events] of listenerRegistry) {
-           for (const [event, listeners] of events) {
-               total += listeners.length;
-               if (listeners.length > 5) {
-                   console.warn(`Many listeners on ${target.constructor.name} for ${event}:`, listeners.length);
-               }
-           }
-       }
-       console.log(`[EventListenerAudit] Total listeners: ${total}`);
-       return { total, registry: listenerRegistry };
-   }
    ```
 
-2. Run audit before/after mode switches and theme changes
+3. **Apply to:**
+   - Phaser game canvas
+   - WebGL background renderer
+   - Particle systems
 
-**Expected Impact**: Identify listener leaks during development.
+**Files to Modify:**
+- [src/utils/quality.js](src/utils/quality.js)
+- [src/rendering/renderer.js](src/rendering/renderer.js)
+- Phaser game config initialization
 
 ---
 
-### Phase 7.3: Performance Metrics Dashboard
+#### 3.3 Particle System Optimization
+**Current:** Particle pooling exists, but can be improved
+**Improvement:** More aggressive particle reduction
 
-**Solution**:
-1. Add in-game performance overlay (development mode):
+**Actions:**
+
+1. **Particle Budget Per Quality Level**
    ```javascript
-   class PerformanceOverlay {
-       constructor() {
-           this.overlay = document.createElement('div');
-           this.overlay.style.cssText = `
-               position: fixed;
-               top: 10px;
-               right: 10px;
-               background: rgba(0,0,0,0.8);
-               color: #0f0;
-               font-family: monospace;
-               font-size: 12px;
-               padding: 10px;
-               z-index: 10000;
-               pointer-events: none;
-           `;
-           document.body.appendChild(this.overlay);
+   const PARTICLE_BUDGETS = {
+     low: {
+       maxParticles: 50,
+       lineClears: 5,
+       combos: 10,
+       trails: 0  // Disable trails on Low
+     },
+     medium: {
+       maxParticles: 150,
+       lineClears: 15,
+       combos: 30,
+       trails: 20
+     },
+     high: {
+       maxParticles: 300,
+       lineClears: 30,
+       combos: 60,
+       trails: 50
+     },
+     ultra: {
+       maxParticles: 600,
+       lineClears: 60,
+       combos: 120,
+       trails: 100
+     }
+   };
+   ```
 
-           this.update();
-       }
+2. **Particle Culling**
+   - Kill off-screen particles immediately
+   - Reduce particle lifetime on Low quality
+   - Skip particle updates if invisible
 
-       update() {
-           const stats = {
-               fps: this.calculateFPS(),
-               memory: performance.memory?.usedJSHeapSize || 0,
-               listeners: this.countListeners(),
-               animations: this.countAnimations(),
-           };
+3. **Simplify Particle Effects on Low**
+   - Use simple circles instead of textured sprites
+   - Disable particle rotation/scaling
+   - Reduce blend modes (no ADD mode on Low)
 
-           this.overlay.innerHTML = `
-               FPS: ${stats.fps.toFixed(0)}<br>
-               Memory: ${(stats.memory / 1024 / 1024).toFixed(2)} MB<br>
-               Listeners: ${stats.listeners}<br>
-               Animations: ${stats.animations}
-           `;
+**Files to Modify:**
+- [src/rendering/phaser/board-scene.js](src/rendering/phaser/board-scene.js)
+- [src/utils/quality.js](src/utils/quality.js)
+- [src/utils/object-pool.js](src/utils/object-pool.js)
 
-           requestAnimationFrame(() => this.update());
-       }
+---
 
-       // Implement helper methods...
+### 🎯 Priority 4: Code-Level Optimizations
+
+#### 4.1 Array/Object Allocation Reduction
+**Current:** Array pool exists but underutilized
+**Improvement:** Reduce allocations in hot loops
+
+**Critical Loops to Optimize:**
+
+1. **Physics Gravity Application** - [src/core/physics.js](src/core/physics.js)
+   ```javascript
+   // Current: Creates new arrays every gravity step
+   const connectedComponents = findConnectedComponents(lockedPieces);
+
+   // Optimized: Reuse arrays
+   this.gravityResultsPool = this.gravityResultsPool || [];
+   this.gravityResultsPool.length = 0;
+   findConnectedComponents(lockedPieces, this.gravityResultsPool);
+   ```
+
+2. **Board Grid Rebuilding** - [src/core/game.js](src/core/game.js)
+   ```javascript
+   // Current: Creates new 2D array each rebuild
+   // Optimized: Reuse existing grid, clear cells
+   ```
+
+3. **Collision Detection**
+   ```javascript
+   // Avoid: shape.forEach((row, dy) => row.forEach((cell, dx) => ...))
+   // Use: for loops with cached array.length
+   ```
+
+**Implementation:**
+- Use `for` loops instead of `.forEach()` in hot paths
+- Cache array lengths
+- Reuse temporary arrays via ArrayPool
+- Avoid object spread `{...obj}` in loops
+
+**Files to Modify:**
+- [src/core/physics.js](src/core/physics.js)
+- [src/core/game.js](src/core/game.js)
+- [src/utils/object-pool.js](src/utils/object-pool.js)
+
+---
+
+#### 4.2 Function Call Optimization
+**Current:** Deep call stacks in physics
+**Improvement:** Reduce function overhead
+
+**Actions:**
+
+1. **Inline Hot Functions**
+   - Simple getters/setters in physics loop
+   - Color lookups
+   - Bounds checks
+
+2. **Reduce Indirection**
+   ```javascript
+   // Before
+   const state = this.getPlayerState(player);
+   const opponent = this.getOpponentState(player);
+
+   // After (in hot path)
+   const state = player === 1 ? this.player1 : this.player2;
+   const opponent = player === 1 ? this.player2 : this.player1;
+   ```
+
+3. **Batch Operations**
+   - Process multiple pieces in single pass
+   - Batch DOM updates (if any)
+
+**Files to Modify:**
+- [src/core/multiplayer.js](src/core/multiplayer.js)
+- [src/core/physics.js](src/core/physics.js)
+
+---
+
+#### 4.3 Event System Optimization
+**Current:** Event bus exists
+**Improvement:** Reduce event overhead
+
+**Actions:**
+
+1. **Event Batching**
+   - Batch rapid events (score updates, piece moves)
+   - Flush batch at end of frame
+
+2. **Selective Listeners**
+   - Unsubscribe inactive listeners
+   - Add listener priority/filtering
+
+3. **Direct Callbacks for Critical Paths**
+   - Physics callbacks (already done)
+   - Use direct function calls instead of events for time-critical code
+
+**Files to Modify:**
+- [src/events/event-bus.js](src/events/event-bus.js)
+
+---
+
+### 🎯 Priority 5: Memory Optimization
+
+#### 5.1 Enhanced Object Pooling
+**Current:** Good pooling foundation
+**Improvement:** Expand pools to cover more objects
+
+**New Pools to Add:**
+
+1. **Board Grid Cells Pool**
+   ```javascript
+   // Pool grid cell objects
+   { color: string, id: string, alpha: number }
+   ```
+
+2. **Animation State Pool**
+   - Piece animation objects
+   - Cascade state objects
+
+3. **Geometry Pool**
+   - Temporary collision shapes
+   - Grid coordinate pairs
+
+**Files to Modify:**
+- [src/utils/object-pool.js](src/utils/object-pool.js)
+- [src/core/physics.js](src/core/physics.js)
+
+---
+
+#### 5.2 Memory Leak Prevention
+**Current:** Basic cleanup exists
+**Improvement:** Comprehensive leak detection
+
+**Actions:**
+
+1. **Add Memory Profiler**
+   - Track object counts over time
+   - Detect growing arrays/maps
+   - Alert on memory leaks
+
+2. **Cleanup Audit**
+   - Verify all event listeners removed
+   - Check particle systems destroyed
+   - Ensure textures freed
+
+3. **Weak References**
+   - Use WeakMap for caches (already exists in [src/utils/weak-cache.js](src/utils/weak-cache.js))
+   - Expand to more cache types
+
+**Files to Modify:**
+- [src/utils/performance-monitor.js](src/utils/performance-monitor.js)
+- [src/utils/weak-cache.js](src/utils/weak-cache.js)
+
+---
+
+### 🎯 Priority 6: Theme-Specific Optimizations
+
+#### 6.1 Shader Complexity Reduction
+**Current:** Complex WebGL shaders
+**Improvement:** Simplify shaders on Low quality
+
+**Strategy:**
+
+1. **Shader LOD (Level of Detail)**
+   - Ultra: Full shader effects
+   - High: Reduced samples
+   - Medium: Simple shaders
+   - Low: Solid colors (no shaders)
+
+2. **Conditional Shader Features**
+   ```javascript
+   // Example: Nebula Flow shader
+   if (quality === 'low') {
+     // Use simple gradient instead of flow field
+   } else if (quality === 'medium') {
+     // Reduce octaves in noise function
    }
    ```
 
-**Expected Impact**: Real-time visibility into performance metrics.
+3. **Shader Compilation Cache**
+   - Cache compiled shaders
+   - Avoid recompiling on theme switch
+
+**Files to Modify:**
+- [src/rendering/renderer.js](src/rendering/renderer.js)
+- Theme files with custom shaders
+
+---
+
+#### 6.2 Theme Particle Budget
+**Current:** Each theme has particles
+**Improvement:** Reduce particles per theme on Low
+
+**Implementation:**
+```javascript
+// Theme config
+export const theme = {
+  particles: {
+    ultra: { fireflies: 100, petals: 50 },
+    high: { fireflies: 60, petals: 30 },
+    medium: { fireflies: 30, petals: 15 },
+    low: { fireflies: 10, petals: 5 }
+  }
+};
+```
+
+**Files to Modify:**
+- All theme files in [src/themes/](src/themes/)
+- [src/rendering/renderer.js](src/rendering/renderer.js)
 
 ---
 
 ## Implementation Roadmap
 
-### Sprint 1 (Week 1): Critical Memory Leak Fixes ⚠️ HIGH PRIORITY
-**Goal**: Eliminate event listener accumulation
-- [ ] Phase 1.1: SerenityHub event listener cleanup
-- [ ] Phase 1.2: GestureController cleanup fix
-- [ ] Phase 1.3: Renderer resize listener cleanup
-- [ ] Phase 1.4: Tab event listener cleanup
-- [ ] Phase 1.5: Tab instance cleanup verification
-- [ ] **Testing**: 
-  - Verify no listeners accumulate after 20+ theme switches
-  - Use browser DevTools to check event listener count
-  - Memory heap snapshot comparison (before/after theme switches)
+### Phase 1: Measurement & Infrastructure (Week 1)
+- [ ] Enhance FPS counter with detailed metrics
+- [ ] Add memory profiler
+- [ ] Create performance testing suite
+- [ ] Establish baseline metrics on test devices
 
-### Sprint 2 (Week 2): Theme System & Resource Cleanup ⚠️ HIGH PRIORITY
-**Goal**: Fix theme-related memory leaks
-- [ ] Phase 2.1: Theme instance lifecycle audit (LRU cache implementation)
-- [ ] Phase 2.2: Base theme cleanup verification
-- [ ] Phase 2.3: WebGL renderer layer management (GPU resource disposal)
-- [ ] Phase 5.1: Asset preloading and caching strategy
-- [ ] **Testing**: 
-  - Monitor memory usage during 50+ theme switches
-  - GPU memory monitoring (Chrome: `chrome://gpu`)
-  - Verify theme assets are properly cached and evicted
-
-### Sprint 3 (Week 3): Animation & Timer Management
-**Goal**: Ensure all animations and timers are properly cancelled
-- [ ] Phase 3.1: Animation frame registry (optional debugging tool)
-- [ ] Phase 3.2: Game mode animation cleanup verification
-- [ ] Phase 3.3: Timer management (setInterval/setTimeout tracking)
-- [ ] **Testing**: 
-  - Verify animation frames are cancelled on mode switch
-  - Check for orphaned timers after extended gameplay
-  - Profile with Chrome DevTools Performance tab
-
-### Sprint 4 (Week 4): DOM & Event Optimization
-**Goal**: Reduce unnecessary DOM operations and optimize high-frequency events
-- [ ] Phase 4.1: Minimize style thrashing (batch DOM reads/writes)
-- [ ] Phase 4.2: CSS class toggle optimization
-- [ ] Phase 4.3: Event handler debouncing and throttling
-- [ ] Phase 4.4: Intersection Observer for visibility detection
-- [ ] **Testing**: 
-  - Profile DOM operations during gameplay
-  - Measure FPS during intensive UI interactions
-  - Verify reduced layout recalculations
-
-### Sprint 5 (Week 5): Asset & Resource Management
-**Goal**: Optimize asset loading and disposal
-- [ ] Phase 5.2: Audio context management
-- [ ] Phase 5.3: Image and texture disposal
-- [ ] Integrate AssetManager throughout codebase
-- [ ] **Testing**: 
-  - Verify no duplicate asset loads
-  - Check audio context cleanup
-  - Monitor texture memory usage
-
-### Sprint 6 (Week 6): Memory Best Practices
-**Goal**: Apply memory management patterns
-- [ ] Phase 6.1: Null reference cleanup in all destroy methods
-- [ ] Phase 6.2: WeakMap/WeakSet for appropriate caches
-- [ ] Phase 6.3: AbortController pattern for event listeners
-- [ ] **Testing**: 
-  - Run extended stress tests (2+ hours)
-  - Verify garbage collection is effective
-  - Check for detached DOM nodes
-
-### Sprint 7 (Week 7): Monitoring & Tooling
-**Goal**: Add performance monitoring for ongoing health
-- [ ] Phase 7.1: Memory leak detection tool
-- [ ] Phase 7.2: Event listener audit tool
-- [ ] Phase 7.3: Performance metrics dashboard
-- [ ] Integrate monitoring into development builds
-- [ ] **Testing**: 
-  - Enable monitoring during QA testing
-  - Validate early warning system works
-  - Document how to use monitoring tools
-
-### Sprint 8 (Week 8): Final Validation & Documentation
-**Goal**: Comprehensive testing and optimization verification
-- [ ] Run all success criteria tests
-- [ ] 24-hour continuous gameplay session
-- [ ] Performance regression testing
-- [ ] Update documentation with lessons learned
-- [ ] Create performance best practices guide for developers
-- [ ] **Final Metrics**:
-  - Memory growth < 5MB/hour
-  - Stable event listener count
-  - Consistent 60 FPS
-  - Theme switch < 500ms
-  - GC pauses < 50ms
+**Expected Outcome:** Quantifiable performance data
 
 ---
 
-## Success Criteria
+### Phase 2: Quick Wins (Week 2)
+- [ ] Implement reference caching in hot paths
+- [ ] Add dirty flag checks to rendering loops
+- [ ] Reduce background scene update rate to 30fps
+- [ ] Optimize particle budgets per quality level
+- [ ] Batch array operations in physics
 
-### Performance Targets
-
-| Metric | Target | Measurement Method |
-|--------|--------|-------------------|
-| **Memory Growth** | < 5MB per hour | Chrome DevTools Memory Profiler |
-| **Event Listeners** | No accumulation (stable count) | Event Listener Audit Tool (Phase 7.2) |
-| **Frame Rate** | Consistent 60 FPS | Performance Monitor / FPS counter |
-| **Theme Switch Time** | < 500ms transition | Performance.now() measurements |
-| **GC Pauses** | < 50ms per pause | Chrome DevTools Performance tab |
-| **Initial Load Time** | < 2 seconds | Navigation Timing API |
-| **CPU Usage** | < 30% during gameplay | Browser Task Manager |
-| **GPU Memory** | Stable (no leaks) | `chrome://gpu` monitoring |
-
-### Testing Scenarios
-
-#### 1. **Theme Switch Stress Test** 🔥 CRITICAL
-- **Duration**: 30 minutes
-- **Actions**: Switch themes 50+ times randomly
-- **Measure**: 
-  - Memory before/after (should be within 10MB)
-  - Event listener count (should be constant)
-  - FPS stability
-  - WebGL texture count
-- **Pass Criteria**: Memory returns to baseline after forced GC
-
-#### 2. **Hub Toggle Test**
-- **Duration**: 20 minutes
-- **Actions**: Open/close Serenity Hub 100+ times
-- **Measure**:
-  - Event listeners attached to document/window
-  - DOM node count
-  - Animation frame requests
-- **Pass Criteria**: No leaked listeners or nodes
-
-#### 3. **Extended Gameplay Session** 🔥 CRITICAL
-- **Duration**: 3+ hours continuous play
-- **Actions**: Normal gameplay with occasional theme switches
-- **Measure**:
-  - Memory usage over time (trend analysis)
-  - FPS degradation
-  - GC pause frequency
-  - User experience (subjective smoothness)
-- **Pass Criteria**: No noticeable performance degradation
-
-#### 4. **Mode Switching Test**
-- **Duration**: 15 minutes
-- **Actions**: Switch between game modes 30+ times
-- **Measure**:
-  - Animation frame cleanup
-  - Timer cleanup
-  - Game loop termination
-- **Pass Criteria**: All resources cleaned up on switch
-
-#### 5. **Combined Stress Test** 🔥 CRITICAL
-- **Duration**: 1 hour
-- **Actions**: 
-  - Rapid theme switching
-  - Hub opening/closing
-  - Mode changes
-  - Intensive gameplay
-- **Measure**: All metrics simultaneously
-- **Pass Criteria**: System remains stable under heavy load
-
-#### 6. **Asset Loading Test**
-- **Duration**: 10 minutes
-- **Actions**: Load all themes sequentially, then randomly
-- **Measure**:
-  - Network requests (should use cache)
-  - Asset duplication in memory
-  - Load times
-- **Pass Criteria**: Assets cached properly, no duplicates
-
-#### 7. **Audio Performance Test**
-- **Duration**: 20 minutes
-- **Actions**: Play/stop music, switch themes with audio
-- **Measure**:
-  - Audio context count
-  - Audio buffer cleanup
-  - Audio glitches or stuttering
-- **Pass Criteria**: Single audio context, proper cleanup
+**Expected Outcome:** 10-20% FPS improvement
 
 ---
 
-## Monitoring & Validation Tools
+### Phase 3: Asset Optimization (Week 3)
+- [ ] Set up asset compression pipeline
+- [ ] Convert images to WebP/AVIF
+- [ ] Optimize audio formats
+- [ ] Implement lazy loading for themes
+- [ ] Code splitting for game modes
 
-### Browser DevTools Checklist
-1. **Memory Profiler**:
-   - Take heap snapshots before/after operations
-   - Look for detached DOM nodes
-   - Check for retained event listeners
+**Expected Outcome:** 40-60% faster load times, reduced memory
 
-2. **Performance Profiler**:
-   - Record during theme switches
-   - Identify long-running tasks
-   - Monitor garbage collection frequency
+---
 
-3. **Network Tab**:
-   - Verify themes are cached
-   - No unnecessary re-downloads
+### Phase 4: Rendering Experiments (Week 4)
+- [ ] Implement Canvas fallback renderer
+- [ ] Add resolution scaling per quality level
+- [ ] Test Canvas vs WebGL on mobile devices
+- [ ] Optimize particle effects for Low quality
+- [ ] Shader LOD system
 
-4. **Console**:
-   - Watch for resource leak warnings
-   - Monitor cleanup confirmations
+**Expected Outcome:** 30-50% improvement on low-end devices
 
-### Custom Monitoring
+---
+
+### Phase 5: Memory & Polish (Week 5)
+- [ ] Expand object pooling coverage
+- [ ] Memory leak detection and fixes
+- [ ] Event system optimization
+- [ ] Theme-specific optimizations
+- [ ] Code profiling and micro-optimizations
+
+**Expected Outcome:** Stable memory usage, no leaks
+
+---
+
+## Testing Strategy
+
+### Target Devices
+
+**High Priority:**
+- iPhone SE (2020) - Representative older iOS
+- Samsung Galaxy A52 - Mid-range Android
+- Desktop with Intel HD Graphics - Integrated GPU
+
+**Medium Priority:**
+- iPad Air (2019)
+- Google Pixel 6
+- Desktop with dedicated GPU (baseline)
+
+**Low Priority:**
+- Latest flagship phones (iPhone 15, Galaxy S24)
+
+### Performance Metrics
+
+**Success Criteria:**
+
+| Device Category | Target FPS | Load Time | Memory |
+|----------------|-----------|-----------|--------|
+| High-end Desktop | 144+ fps | <2s | <200MB |
+| Mid-range Desktop | 60 fps | <3s | <300MB |
+| High-end Mobile | 60 fps | <5s | <150MB |
+| Mid-range Mobile | 30-60 fps | <8s | <100MB |
+| Low-end Mobile | 30 fps | <10s | <80MB |
+
+### Benchmark Scenarios
+
+1. **Idle State:** Game paused, no animations
+2. **Normal Gameplay:** Single piece falling, no cascades
+3. **Heavy Cascade:** 8+ combo chain
+4. **Multiplayer:** 2 players, both active
+5. **Theme Transition:** Switching between complex themes
+
+---
+
+## Monitoring & Maintenance
+
+### Performance Budget
+
+Set thresholds and alerts:
+
 ```javascript
-// Add to main.js (development mode)
-if (process.env.NODE_ENV === 'development') {
-    // Log cleanup events
-    window.addEventListener('themeSwitch', () => {
-        console.log('[Perf] Theme switched, heap:', performance.memory?.usedJSHeapSize);
-    });
-
-    // Periodic health check
-    setInterval(() => {
-        const listeners = getEventListenerCount(); // Custom function
-        const animations = getAnimationFrameCount(); // Custom function
-        console.log(`[Perf] Health: ${listeners} listeners, ${animations} animations`);
-    }, 30000); // Every 30 seconds
-}
+const PERFORMANCE_BUDGET = {
+  maxFrameTime: 16.67, // 60fps
+  maxMemory: 200 * 1024 * 1024, // 200MB
+  maxLoadTime: 3000, // 3 seconds
+  maxParticles: 500,
+  maxDrawCalls: 100 // (if measurable)
+};
 ```
 
----
+### Continuous Monitoring
 
-## Risk Assessment
+1. **CI/CD Integration**
+   - Run performance tests on each commit
+   - Block PRs that degrade performance >10%
 
-### Low Risk Changes
-- Event listener cleanup (Phase 1)
-- Animation frame cancellation (Phase 3)
-- Null reference cleanup (Phase 5.1)
+2. **User Analytics** (if applicable)
+   - Track average FPS
+   - Device type distribution
+   - Quality setting usage
 
-### Medium Risk Changes
-- Theme cache eviction (Phase 2.1)
-- WebGL resource disposal (Phase 2.3)
-- Style batching (Phase 4.1)
-
-### High Risk Changes
-- Event listener tracking (Phase 6.2) - could impact performance if not done carefully
-- AbortController migration (Phase 5.3) - ensure browser compatibility
+3. **Regression Testing**
+   - Automated performance benchmarks
+   - Compare against baseline
 
 ---
 
-## Rollback Plan
+## Quick Reference Checklist
 
-If performance degrades after changes:
-1. **Isolate**: Identify which phase caused the regression
-2. **Revert**: Use git to revert specific commits
-3. **Debug**: Add more logging to understand the issue
-4. **Re-implement**: Try alternative approach
+### Before Optimizing Any Feature:
+- [ ] Profile first (measure, don't guess)
+- [ ] Identify bottleneck (CPU, GPU, memory, I/O)
+- [ ] Check if it's in a hot path (>100 calls/second)
+- [ ] Verify improvement with FPS counter
+- [ ] Test on low-end device
+
+### Code Review Performance Checklist:
+- [ ] No object allocations in update loops
+- [ ] Array lengths cached in for loops
+- [ ] Event listeners cleaned up on destroy
+- [ ] Textures/assets freed when unused
+- [ ] Object pools used where appropriate
+- [ ] Dirty flags prevent unnecessary work
 
 ---
 
-## Maintenance Plan
+## Expected Overall Results
 
-### Ongoing Best Practices
-1. **Code Reviews**: Check for event listener cleanup in all new code
-2. **Testing**: Add performance regression tests to CI/CD
-3. **Documentation**: Document cleanup requirements for new features
-4. **Monitoring**: Keep performance overlay in development builds
+Based on François's findings and the current state of Serenity Blocks:
 
-### Quarterly Audits
-- Run full performance test suite
-- Profile with DevTools
-- Review any new memory leaks
-- Update this document with new findings
+### Conservative Estimate:
+- **Desktop:** 5-10% FPS improvement
+- **Mobile (mid-range):** 15-25% FPS improvement
+- **Mobile (low-end):** 30-50% FPS improvement
+- **Load Time:** 40-60% reduction
+- **Memory Usage:** 20-30% reduction
+
+### Aggressive Estimate (with Canvas mode on mobile):
+- **Mobile (low-end):** Up to 100% FPS improvement (30fps → 60fps)
 
 ---
 
 ## Conclusion
 
-This plan addresses the root causes of performance degradation in Serenity Blocks through systematic cleanup of event listeners, proper resource management, and implementation of monitoring tools. By following this phased approach, the game will maintain smooth performance even during extended sessions and frequent theme/mode switching.
-
-**Key Focus Areas**:
-1. Event listener lifecycle management
-2. Theme and WebGL resource cleanup
-3. Animation frame cancellation
-4. Development-time monitoring
-
-**Expected Outcome**: The game should run smoothly indefinitely, with stable memory usage and no performance degradation over time.
-
----
-
-## References
-
-### Files to Modify (Priority Order)
-
-#### 🔴 Critical Priority
-1. **`src/ui/serenity-hub/SerenityHub.js`**
-   - Lines 88-264: Event listener cleanup
-   - Lines 697-734: Enhance destroy() method
-   - Expected Impact: Fix ~75% of memory leaks
-
-2. **`src/ui/serenity-hub/GestureController.js`**
-   - Lines 67-74: Store bound handler references
-   - Lines 285-302: Fix destroy() with correct references
-   - Expected Impact: Fix 6 listener leaks per instance
-
-3. **`src/rendering/renderer.js`**
-   - Line 704: Store resize handler reference
-   - Lines 785-793: Add listener cleanup to stop()
-   - Lines 863-1563: Add WebGL resource disposal in loadTheme()
-   - Expected Impact: Fix GPU memory leaks
-
-#### 🟡 High Priority
-4. **`src/themes/theme-manager.js`**
-   - Lines 50-52: Implement LRU cache
-   - Lines 123: Call cleanup() not just stop()
-   - Lines 213-228: Enhance cleanup method
-   - Expected Impact: Limit theme cache growth
-
-5. **`src/themes/base-theme.js`**
-   - Standardize cleanup() method
-   - Document requirements for theme authors
-   - Expected Impact: Consistent cleanup across all themes
-
-6. **`src/ui/serenity-hub/MusicTab.js`**
-   - Audit audio context usage
-   - Implement proper audio cleanup
-   - Expected Impact: Fix audio memory leaks
-
-#### 🟢 Medium Priority
-7. **`src/ui/serenity-hub/BreathingTab.js`**
-   - Verify destroy() method exists
-   - Add timer cleanup if needed
-
-8. **`src/ui/serenity-hub/ThemesTab.js`**
-   - Verify destroy() method exists
-   - Add event listener cleanup
-
-9. **`src/core/game-modes/SinglePlayerMode.js`**
-   - Verify animation frame cleanup (already good)
-   - Audit for timer usage
-
-10. **All theme files** (aurora, forest, ocean, etc.)
-    - Verify cleanup() implementation
-    - Add verification logging
-
-### New Files to Create
-
-#### Phase 4: Performance Utilities
-- **`src/utils/performance-utils.js`**
-  - debounce() and throttle() functions
-  - Used by: renderer.js, SerenityHub.js
-
-#### Phase 5: Resource Management
-- **`src/utils/asset-manager.js`**
-  - AssetManager class with LRU cache
-  - Used by: theme-manager.js, all themes
-
-- **`src/utils/audio-manager.js`**
-  - AudioManager class
-  - Used by: MusicTab.js, any audio components
-
-- **`src/utils/texture-manager.js`**
-  - TextureManager class
-  - Used by: renderer.js
-
-#### Phase 7: Monitoring Tools (Development Only)
-- **`src/utils/memory-monitor.js`**
-  - MemoryMonitor class
-  - Real-time memory leak detection
-
-- **`src/utils/event-listener-tracker.js`**
-  - Global event listener tracking
-  - Audit function for debugging
-
-- **`src/utils/performance-overlay.js`**
-  - PerformanceOverlay class
-  - In-game FPS/memory display
-
-- **`src/utils/animation-frame-registry.js`**
-  - AnimationFrameRegistry class
-  - Track active animation frames
-
-### Configuration Changes
-- Add `MAX_CACHED_THEMES = 5` to theme-manager.js
-- Add `MAX_CACHED_ASSETS = 50` to asset-manager.js
-- Add `ENABLE_PERFORMANCE_MONITORING = true` for development builds
-
-### Testing Files to Create
-- **`tests/performance/memory-leak-test.js`**
-  - Automated theme switch test
-  - Memory growth detection
-
-- **`tests/performance/event-listener-test.js`**
-  - Track listener count over time
-  - Detect accumulation
-
-- **`tests/performance/fps-stability-test.js`**
-  - Monitor FPS over extended session
-  - Detect degradation
-
----
-
-## Common Pitfalls & Best Practices
-
-### ❌ Pitfalls to Avoid
-
-#### 1. Arrow Functions in Event Listeners
-```javascript
-// BAD - Can't be removed properly
-element.addEventListener('click', () => this.handleClick());
-
-// GOOD - Store reference
-this.clickHandler = this.handleClick.bind(this);
-element.addEventListener('click', this.clickHandler);
-// Later: element.removeEventListener('click', this.clickHandler);
-```
-
-#### 2. Forgetting to Clean Up Timers
-```javascript
-// BAD - Timer keeps running
-setInterval(() => this.update(), 1000);
-
-// GOOD - Track and clear
-this.updateTimer = setInterval(() => this.update(), 1000);
-// Later: clearInterval(this.updateTimer);
-```
-
-#### 3. Not Cancelling Animation Frames
-```javascript
-// BAD - Animation loop continues
-requestAnimationFrame(() => this.animate());
-
-// GOOD - Store ID and cancel
-this.animationId = requestAnimationFrame(() => this.animate());
-// Later: cancelAnimationFrame(this.animationId);
-```
-
-#### 4. Creating New Functions in Loops/Renders
-```javascript
-// BAD - Creates new function each time
-items.forEach(item => {
-    item.addEventListener('click', () => this.handleItem(item));
-});
-
-// GOOD - Reuse or store handler
-this.itemHandlers = new WeakMap();
-items.forEach(item => {
-    const handler = (e) => this.handleItem(item, e);
-    this.itemHandlers.set(item, handler);
-    item.addEventListener('click', handler);
-});
-```
-
-#### 5. Not Disposing WebGL Resources
-```javascript
-// BAD - Texture stays in GPU memory
-const texture = gl.createTexture();
-// ... use texture ...
-texture = null; // Not enough!
-
-// GOOD - Explicitly delete
-const texture = gl.createTexture();
-// ... use texture ...
-gl.deleteTexture(texture);
-texture = null;
-```
-
-#### 6. Circular References Preventing GC
-```javascript
-// BAD - Circular reference
-this.element.component = this;
-this.domElement = this.element;
-
-// GOOD - Use WeakMap or null on cleanup
-this.domElements = new WeakMap();
-this.domElements.set(element, data);
-// OR in destroy():
-this.element.component = null;
-this.domElement = null;
-```
-
-### ✅ Best Practices to Follow
-
-#### 1. Always Implement destroy() or cleanup() Methods
-```javascript
-class Component {
-    constructor() {
-        this.eventHandlers = [];
-        this.timers = [];
-        this.animationFrames = [];
-    }
-
-    destroy() {
-        // Remove all event listeners
-        this.eventHandlers.forEach(({ element, event, handler }) => {
-            element.removeEventListener(event, handler);
-        });
-
-        // Clear all timers
-        this.timers.forEach(id => clearTimeout(id));
-
-        // Cancel animations
-        this.animationFrames.forEach(id => cancelAnimationFrame(id));
-
-        // Null out references
-        this.element = null;
-        this.callbacks = null;
-    }
-}
-```
-
-#### 2. Use AbortController for Multiple Listeners
-```javascript
-class Component {
-    constructor() {
-        this.abortController = new AbortController();
-    }
-
-    init() {
-        const { signal } = this.abortController;
-        
-        window.addEventListener('resize', this.onResize, { signal });
-        document.addEventListener('keydown', this.onKeydown, { signal });
-        element.addEventListener('click', this.onClick, { signal });
-    }
-
-    destroy() {
-        // Removes ALL listeners at once!
-        this.abortController.abort();
-    }
-}
-```
-
-#### 3. Throttle High-Frequency Events
-```javascript
-// For mousemove, scroll, resize, etc.
-this.throttledHandler = throttle(this.expensiveOperation.bind(this), 100);
-window.addEventListener('scroll', this.throttledHandler);
-```
-
-#### 4. Use Passive Event Listeners When Possible
-```javascript
-// For scroll/touch events that don't call preventDefault()
-element.addEventListener('touchstart', handler, { passive: true });
-```
-
-#### 5. Batch DOM Operations
-```javascript
-// BAD - Multiple reflows
-element1.style.width = '100px';
-const height = element2.offsetHeight; // Reflow!
-element3.style.height = '200px';
-const width = element4.offsetWidth; // Reflow!
-
-// GOOD - Read first, then write
-const height = element2.offsetHeight;
-const width = element4.offsetWidth;
-element1.style.width = '100px';
-element3.style.height = '200px';
-```
-
-#### 6. Monitor Performance During Development
-```javascript
-if (process.env.NODE_ENV === 'development') {
-    // Log cleanup events
-    console.log('[Cleanup] Component destroyed');
-    
-    // Verify cleanup
-    if (this.eventHandlers.length > 0) {
-        console.warn('[Memory Leak] Event handlers not cleaned up!');
-    }
-}
-```
-
-#### 7. Use WeakMap for Element-Associated Data
-```javascript
-// Instead of element.myData = {...}
-const elementData = new WeakMap();
-elementData.set(element, { ... });
-
-// Automatically GC'd when element is removed
-```
-
-#### 8. Preload Assets Strategically
-```javascript
-// Preload next theme while current theme is active
-async switchTheme(newTheme) {
-    // Preload in background
-    const assets = await assetManager.preload(newTheme.assets);
-    
-    // Then switch
-    await this.activeTheme.stop();
-    this.activeTheme = newTheme;
-    await newTheme.start(assets);
-}
-```
-
-### 🔍 How to Detect Leaks
-
-#### Chrome DevTools - Memory Profiler
-1. Open DevTools → Memory tab
-2. Take "Heap snapshot" before action
-3. Perform action (e.g., switch theme 3 times)
-4. Force garbage collection (trash icon)
-5. Take another snapshot
-6. Compare snapshots → Look for growing objects
-7. Check for "Detached DOM nodes"
-
-#### Chrome DevTools - Performance Monitor
-1. Open DevTools → More tools → Performance monitor
-2. Watch:
-   - JS heap size (should stabilize)
-   - DOM nodes (shouldn't grow indefinitely)
-   - Event listeners (should stay constant)
-   - Frames per second (should stay at 60)
-
-#### Event Listener Count
-```javascript
-// In console after actions
-getEventListeners(window); // Check window listeners
-getEventListeners(document); // Check document listeners
-```
-
-#### Animation Frame Check
-```javascript
-// Add to development build
-let frameCount = 0;
-const originalRAF = window.requestAnimationFrame;
-window.requestAnimationFrame = function(callback) {
-    frameCount++;
-    console.log('Active animation frames:', frameCount);
-    return originalRAF.call(this, function(...args) {
-        frameCount--;
-        return callback(...args);
-    });
-};
-```
-
----
-
-**Document Version**: 2.0
-**Last Updated**: 2025-10-30
-**Author**: Performance Optimization Team
-**Status**: Ready for Implementation
+Serenity Blocks already has a solid optimization foundation. The key opportunities are:
+
+1. **Lazy loading themes** (biggest load time win)
+2. **Selective loop processing** (dirty flags, conditional updates)
+3. **Canvas fallback for mobile** (experimental, high reward)
+4. **Asset compression** (easy win, big impact)
+5. **Reference caching** (micro-optimizations that add up)
+
+The phased approach allows for incremental improvements with measurable results at each stage. Start with Phase 1 (measurement) to establish baselines, then tackle quick wins in Phase 2 before larger refactors.
 
 ---
 
 ## Additional Resources
 
-### Documentation
-- [MDN: Memory Management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Memory_Management)
-- [Chrome DevTools: Memory Profiler](https://developer.chrome.com/docs/devtools/memory-problems/)
-- [Web.dev: Performance](https://web.dev/performance/)
-- [MDN: AbortController](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
-- [WebGL Best Practices](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices)
+- François's Article: https://franzeus.medium.com/how-i-optimized-my-phaser-3-action-game-in-2025-5a648753f62b
+- Phaser Performance Tips: https://gist.github.com/MarcL/748f29faecc6e3aa679a385bffbdf6fe
+- Phaser 4 Documentation: https://phaser.io/phaser4
+- WebGL Best Practices: https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices
 
-### Tools
-- [Chrome DevTools](https://developer.chrome.com/docs/devtools/)
-- [Firefox Developer Tools](https://firefox-source-docs.mozilla.org/devtools-user/)
-- [Lighthouse Performance Auditing](https://developers.google.com/web/tools/lighthouse)
-- [webpack-bundle-analyzer](https://github.com/webpack-contrib/webpack-bundle-analyzer) - If using Webpack
+---
 
-### Performance Testing
-- Create automated performance regression tests
-- Set up CI/CD pipeline to catch performance issues
-- Monitor real user metrics (RUM) if deployed
+**Document Version:** 1.0
+**Last Updated:** 2025-11-09
+**Author:** Claude (Performance Analysis Agent)

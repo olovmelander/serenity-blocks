@@ -1,9 +1,10 @@
 import {
     COLS, ROWS, HIDDEN_ROWS, BLOCK_SIZE, COLORS,
 } from '../../core/constants.js';
-import { rebuildBoardGridFromPieces } from '../../core/board.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
+import { getGhostLandingY } from '../../core/game.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -79,7 +80,11 @@ export function createBaseBoardScene(
             this.effectQuality = 'High';
             this.qualityConfig = getQualityConfig(this.effectQuality);
             this.cameraSettings = null;
-            
+
+            // PERFORMANCE: Periodic cleanup counters to prevent memory leaks
+            this.frameCount = 0;
+            this.cleanupInterval = 60; // Clean up every 1 second at 60fps (increased frequency)
+
             // No caching needed - simple is better
         }
 
@@ -118,7 +123,18 @@ export function createBaseBoardScene(
          */
         update(time, delta) {
             // eslint-disable-line no-unused-vars
+            // Performance monitoring - mark frame start
+            performanceMonitor.updateStart();
+
             if (!this.gameState) return;
+
+            // PERFORMANCE: Periodic cleanup to prevent memory leaks
+            // This fixes the time-based FPS degradation issue
+            this.frameCount++;
+            if (this.frameCount >= this.cleanupInterval) {
+                this.frameCount = 0;
+                this._performPeriodicCleanup();
+            }
 
             // Clear ALL graphics layers at the START of each frame (like multiplayer does)
             // This is the CRITICAL optimization that makes multiplayer so fast
@@ -127,11 +143,53 @@ export function createBaseBoardScene(
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
 
+                performanceMonitor.updateEnd();
+                performanceMonitor.renderStart();
+
                 // Render game state
                 this.renderGameState();
+
+                performanceMonitor.renderEnd();
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+
+        }
+
+        /**
+         * Calculate which board rows should be drawn this frame.
+         * Limits rendering work to the active viewport plus a small padding band.
+         */
+        getVisibleRowRange() {
+            const grid = this.gameState?.boardGrid;
+            const totalRows = grid ? grid.length : this.rows + this.hiddenRows;
+            const isInfinityMode = Boolean(this.gameState?.isInfinityMode);
+            const defaultStart = isInfinityMode ? 0 : this.hiddenRows;
+            const clampedDefaultStart = Math.min(Math.max(defaultStart, 0), totalRows);
+
+            if (!this.cameraSettings) {
+                return {
+                    startRow: clampedDefaultStart,
+                    endRow: totalRows,
+                };
+            }
+
+            const topRow = Math.max(
+                0,
+                Math.floor(this.cameraSettings.activeTopRow
+                    ?? this.cameraSettings.currentTopRow
+                    ?? clampedDefaultStart),
+            );
+            const visibleRows = Math.max(1, Math.ceil(this.cameraSettings.visibleRows || this.rows));
+            const padding = Math.max(0, this.cameraSettings.renderPadding ?? 0);
+            const startRow = Math.max(clampedDefaultStart, topRow - padding);
+            let endRow = Math.min(totalRows, topRow + visibleRows + padding);
+
+            if (endRow <= startRow) {
+                endRow = Math.min(totalRows, startRow + visibleRows);
+            }
+
+            return { startRow, endRow };
         }
 
         setEffectQuality(level) {
@@ -145,6 +203,43 @@ export function createBaseBoardScene(
 
         getQualityConfig() {
             return this.qualityConfig;
+        }
+
+        /**
+         * Check if we should create particles based on quality settings and current count
+         * Optimization: Skip particle creation if budget exceeded or disabled
+         * @returns {boolean} True if particles should be created
+         */
+        shouldCreateParticles() {
+            // Check if particles are enabled for this quality level
+            if (!this.qualityConfig?.particles) {
+                return false;
+            }
+
+            // Check active particle count against budget
+            if (this.activeParticleSystems) {
+                const budget = this.qualityConfig.particleBudget;
+                if (budget && this.activeParticleSystems.size >= budget.maxTotal) {
+                    return false; // Budget exceeded
+                }
+            }
+
+            return true;
+        }
+
+        /**
+         * Get remaining particle budget for a specific effect type
+         * @param {string} effectType - Type of effect (lineClear, combo, trail, background)
+         * @returns {number} Number of particles available for this effect
+         */
+        getParticleBudgetRemaining(effectType) {
+            const budget = this.qualityConfig?.particleBudget;
+            if (!budget || !this.activeParticleSystems) {
+                return 0;
+            }
+
+            // Return budget for specific effect type
+            return budget[effectType] || 0;
         }
 
         /**
@@ -231,6 +326,7 @@ export function createBaseBoardScene(
                     bottomPadding: 0,
                     bottomKeepRows: 4,
                     pieceLeadRows: Math.ceil(visibleRows * 0.6), // 60% threshold
+                    renderPadding: 4, // Extra rows to draw above/below the viewport
                     currentTopRow: initialTopRow,
                     targetTopRow: initialTopRow,
                     activeTopRow: initialTopRow,
@@ -396,7 +492,9 @@ export function createBaseBoardScene(
             const grid = this.gameState?.boardGrid;
             if (!grid) return;
 
-            for (let worldY = this.hiddenRows; worldY < grid.length; worldY++) {
+            const { startRow, endRow } = this.getVisibleRowRange();
+
+            for (let worldY = startRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
 
@@ -422,7 +520,9 @@ export function createBaseBoardScene(
             // Very low opacity (0.08) makes it barely visible but helps distinguish pieces
             this.pieceGraphics.lineStyle(0.5, 0x000000, 0.08);
 
-            for (let worldY = this.hiddenRows; worldY < grid.length; worldY++) {
+            const { startRow, endRow } = this.getVisibleRowRange();
+
+            for (let worldY = startRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
 
@@ -506,11 +606,7 @@ export function createBaseBoardScene(
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
 
-            // Calculate ghost position (where piece will land)
-            let ghostY = piece.y;
-            while (this.isValidPosition(piece.x, ghostY + 1, piece.shape)) {
-                ghostY++;
-            }
+            const ghostY = getGhostLandingY(this.gameState);
 
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
@@ -519,17 +615,10 @@ export function createBaseBoardScene(
                         const worldY = ghostY + y;
 
                         if (worldY >= this.hiddenRows) {
-                            // Define the min and max brightness for the pulse
-                            const minAlpha = 0.1; // How dim the pulse gets
-                            const maxAlpha = 0.35; // How bright the pulse gets
-
-                            // Get the current pulse value (0 to 1) for this block's position
+                            const minAlpha = 0.1;
+                            const maxAlpha = 0.35;
                             const pulse = this._getPulseIntensity(worldX, worldY);
-
-                            // Map the pulse value to your desired alpha range
                             const pulsatingAlpha = minAlpha + (maxAlpha - minAlpha) * pulse;
-
-                            // Draw the block with the new pulsating alpha
                             this.drawBlock(worldX, worldY, '#FFFFFF', pulsatingAlpha, true);
                         }
                     }
@@ -671,51 +760,6 @@ export function createBaseBoardScene(
             return 0.5 + 0.5 * Math.sin(phase); // Result is a value between 0.0 and 1.0
         }
 
-        isValidPosition(checkX, checkY, shape) {
-            const boardGrid = this.gameState?.boardGrid;
-            const totalRows = boardGrid?.length ?? (this.rows + this.hiddenRows);
-
-            for (let row = 0; row < shape.length; row++) {
-                for (let col = 0; col < shape[row].length; col++) {
-                    if (shape[row][col] <= 0) continue;
-
-                    const newX = checkX + col;
-                    const newY = checkY + row;
-
-                    if (newX < 0 || newX >= this.cols) {
-                        return false;
-                    }
-
-                    if (newY >= totalRows) {
-                        return false;
-                    }
-
-                    if (newY >= 0) {
-                        if (boardGrid) {
-                            const cell = boardGrid[newY]?.[newX];
-                            if (cell) {
-                                return false;
-                            }
-                        } else if (this.gameState?.lockedPieces) {
-                            for (const locked of this.gameState.lockedPieces) {
-                                for (let ly = 0; ly < locked.shape.length; ly++) {
-                                    for (let lx = 0; lx < locked.shape[ly].length; lx++) {
-                                        if (locked.shape[ly][lx] > 0) {
-                                            if (locked.x + lx === newX && locked.y + ly === newY) {
-                                                return false;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            return true;
-        }
-
         lightenColor(color, amount) {
             const r = Math.min(255, ((color >> 16) & 0xff) + amount * 255);
             const g = Math.min(255, ((color >> 8) & 0xff) + amount * 255);
@@ -731,12 +775,50 @@ export function createBaseBoardScene(
         }
 
         /**
+         * PERFORMANCE: Periodic cleanup to prevent memory leaks
+         * Called every ~3 seconds to clean up accumulated resources
+         * Fixes time-based FPS degradation issue
+         * @private
+         */
+        _performPeriodicCleanup() {
+            // PERFORMANCE NOTE: Tween cleanup removed - killAll() was killing active tweens
+            // and causing ripple effects to get stuck. Phaser 4 manages tween lifecycle.
+
+            // CRITICAL FIX #1: Clean up tracked objects in SharedEffects
+            if (this.sharedEffects && this.sharedEffects._cleanupTrackedObjects) {
+                try {
+                    this.sharedEffects._cleanupTrackedObjects();
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
+            }
+
+            // CRITICAL FIX #2: Clean up particle systems
+            if (this.sharedEffects && this.sharedEffects.activeParticleSystems) {
+                try {
+                    const particleArray = Array.from(this.sharedEffects.activeParticleSystems);
+                    particleArray.forEach(emitter => {
+                        // Check if emitter is actually dead/stopped
+                        if (emitter && emitter.on === false) {
+                            this.sharedEffects.activeParticleSystems.delete(emitter);
+                        }
+                    });
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
+            }
+        }
+
+        /**
          * Remove listeners on shutdown.
          */
         shutdown() {
             if (this.scale) {
                 this.scale.off('resize');
             }
+
+            // Final cleanup on shutdown
+            this._performPeriodicCleanup();
         }
 
         /**

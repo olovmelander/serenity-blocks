@@ -30,7 +30,6 @@ export class InfinityMode extends BaseGameMode {
 
         // Game state
         this.gameState = null;
-        this.animationFrameId = null;
 
         // Minimap component (will be initialized in onStart)
         this.minimap = null;
@@ -70,6 +69,13 @@ export class InfinityMode extends BaseGameMode {
         this.lastClearedLines = null;       // Array of cleared line Y coordinates
         this.lastClearedLinesCenter = null; // Center position of cleared lines
         this.lowestFallingBlock = null;     // Track the lowest block that's falling
+
+        // PERFORMANCE: Throttle camera updates during rapid gravity steps
+        // Update camera every N gravity steps instead of every single step
+        this.gravityStepCount = 0;
+        this.cameraUpdateInterval = 3; // Update camera every 3 gravity steps (configurable)
+        this.lastCameraUpdateTime = 0;
+        this.minCameraUpdateInterval = 32; // Minimum 32ms between updates (~30fps camera tracking)
 
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
@@ -122,13 +128,9 @@ export class InfinityMode extends BaseGameMode {
             statsBar.style.display = '';
         }
 
-        // Prepare Phaser scene for single board
-        this._preparePhaserScene();
-
         // Apply Infinity-specific layout classes
         this._applyInfinityLayout(true);
 
-        // Move Phaser canvas into the single player container and size it
         this._movePhaserToSinglePlayerContainer();
         this._resizePhaserGame(COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
 
@@ -159,8 +161,9 @@ export class InfinityMode extends BaseGameMode {
         const stats = getGridStats(this.gameState);
         console.log('[Infinity] Grid stats:', stats);
 
-        // Get board scene reference
+        this._preparePhaserScene();
         this.boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
+
         if (this.boardScene) {
             // Sync game state to scene (camera needs this for configuration)
             this.boardScene.syncFromGameState(this.gameState);
@@ -173,7 +176,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Apply effect quality from settings
         const settings = this.deps.settingsManager.get();
-        if (this.boardScene && this.boardScene.setEffectQuality) {
+        if (this.boardScene?.setEffectQuality) {
             this.boardScene.setEffectQuality(settings.effectQuality || 'high');
         }
 
@@ -221,6 +224,7 @@ export class InfinityMode extends BaseGameMode {
                 targetTopRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
 
                 this.boardScene.updateCameraPosition(targetTopRow);
+                this._updateMinimapView();
                 console.log('[Infinity] Minimap jump: clicked row', centerRow, '→ camera top row:', targetTopRow);
             }
         });
@@ -241,9 +245,9 @@ export class InfinityMode extends BaseGameMode {
     /**
      * Called when game is paused
      */
-    onPause() {
+    onPause(options = {}) {
         super.onPause();
-        console.log('[Infinity] Game paused');
+        console.log('[Infinity] Game paused', options);
 
         // Sync pause state to gameState
         if (this.gameState) {
@@ -257,11 +261,15 @@ export class InfinityMode extends BaseGameMode {
             console.log('[Infinity] Camera controls enabled - Use arrow keys, Page Up/Down, or mouse wheel to navigate');
         }
 
-        // Start trance state visual effects
-        if (this.boardScene && !this.tranceEffects) {
+        // Start trance state visual effects only if enableTranceState is true (default for 'P' key)
+        // When opening settings menu with Escape, we don't want trance state
+        const shouldEnableTranceState = options.enableTranceState !== false;
+        if (shouldEnableTranceState && this.boardScene && !this.tranceEffects) {
             this.tranceEffects = new TranceStateEffects(this.boardScene);
             this.tranceEffects.start();
             console.log('[Infinity] Trance state effects activated');
+        } else if (!shouldEnableTranceState) {
+            console.log('[Infinity] Trance state skipped (settings menu opened)');
         }
     }
 
@@ -301,9 +309,9 @@ export class InfinityMode extends BaseGameMode {
         console.log('[Infinity] Stopping game...');
 
         // Cancel game loop
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+        if (this.gameState?.animationId) {
+            cancelAnimationFrame(this.gameState.animationId);
+            this.gameState.animationId = null;
         }
 
         // Hide minimap
@@ -320,6 +328,8 @@ export class InfinityMode extends BaseGameMode {
         // this._showResultsModal();
 
         console.log('[Infinity] Game stopped');
+
+        this.boardScene = null;
     }
 
     /**
@@ -344,6 +354,8 @@ export class InfinityMode extends BaseGameMode {
             this.heightHUD.destroy();
             this.heightHUD = null;
         }
+
+        this.boardScene = null;
 
         // Clean up trance effects if active
         if (this.tranceEffects) {
@@ -390,35 +402,6 @@ export class InfinityMode extends BaseGameMode {
      * Prepare Phaser scene for single board rendering
      * @private
      */
-    _preparePhaserScene() {
-        const phaserGame = this.deps.phaserGame;
-        if (!phaserGame?.scene) return;
-
-        // Get or create BoardScene
-        this.boardScene = phaserGame.scene.getScene('BoardScene');
-
-        if (this.boardScene) {
-            // Make sure scene is visible and running
-            this.boardScene.scene.setVisible(true);
-            if (!this.boardScene.scene.isActive()) {
-                this.boardScene.scene.resume();
-            }
-
-            console.log('[Infinity] Phaser BoardScene prepared');
-        } else {
-            console.warn('[Infinity] BoardScene not found');
-        }
-
-        // Hide multiplayer scenes
-        ['BoardPanel1', 'BoardPanel2'].forEach((sceneKey) => {
-            const scene = phaserGame.scene.getScene(sceneKey);
-            if (scene) {
-                scene.scene.setVisible(false);
-                scene.scene.stop();
-            }
-        });
-    }
-
     /**
      * Apply or remove Infinity-specific layout styling
      * @param {boolean} enable
@@ -444,10 +427,6 @@ export class InfinityMode extends BaseGameMode {
         }
     }
 
-    /**
-     * Move Phaser canvas to the single player container
-     * @private
-     */
     _movePhaserToSinglePlayerContainer() {
         const phaserCanvas = this.deps.phaserGame?.canvas;
         const container = document.getElementById('phaser-game-container');
@@ -467,81 +446,93 @@ export class InfinityMode extends BaseGameMode {
         }
     }
 
+    _preparePhaserScene() {
+        const phaserGame = this.deps.phaserGame;
+        if (!phaserGame?.scene) return;
+
+        this.boardScene = phaserGame.scene.getScene('BoardScene');
+
+        if (this.boardScene) {
+            this.boardScene.scene.setVisible(true);
+            if (!this.boardScene.scene.isActive()) {
+                this.boardScene.scene.resume();
+            }
+            console.log('[Infinity] Phaser BoardScene prepared');
+        } else {
+            console.warn('[Infinity] BoardScene not found');
+        }
+
+        ['BoardPanel1', 'BoardPanel2'].forEach((sceneKey) => {
+            const scene = phaserGame.scene.getScene(sceneKey);
+            if (scene) {
+                scene.scene.setVisible(false);
+                scene.scene.stop();
+            }
+        });
+    }
+
     /**
      * Start the game loop
      * @private
      */
     _startGameLoop() {
+        if (!this.gameState) {
+            console.warn('[Infinity] Cannot start game loop without game state');
+            return;
+        }
+
         console.log('[Infinity] Starting game loop...');
 
         // Performance optimization: Throttle stats updates
-        this.lastStatsUpdateTime = 0;
+        this.lastStatsUpdateTime = performance.now();
         this.statsUpdateInterval = 250; // Update stats every 250ms instead of every frame
 
-        const loop = (currentTime) => {
+        // Ensure no legacy RAF loop is still running
+        if (this.gameState.animationId) {
+            cancelAnimationFrame(this.gameState.animationId);
+            this.gameState.animationId = null;
+        }
+
+        const drawCallback = () => {
             if (!this.isRunning) {
                 return;
             }
 
-            // Sync game state to Phaser scene (even when paused for camera navigation)
-            if (this.boardScene) {
-                this.boardScene.syncFromGameState(this.gameState);
+            this._syncBoardSceneFromState();
+
+            this.gameState.currentTopRow = calculateTopRow(this.gameState);
+            this._maybeExpandGrid();
+
+            if (this.boardScene?.cameraSettings && !this.boardScene.cameraSettings.manualControl) {
+                this._updateCameraPosition();
             }
 
-            // Update minimap (even when paused for navigation)
-            if (this.minimap && this.boardScene && this.boardScene.cameraSettings) {
-                const cameraSettings = this.boardScene.cameraSettings;
-                const cameraCenterRow = typeof cameraSettings.centerRow === 'number'
-                    ? cameraSettings.centerRow
-                    : (cameraSettings.currentY || 0) / 32;
-                const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-                this.minimap.update(this.gameState, cameraCenterRow, visibleRows);
+            this._updateMinimapView();
+
+            if (!this.gameState.isGameOver && checkInfinityGameOver(this.gameState)) {
+                console.log('[Infinity] Game over condition met');
+                this.gameState.isGameOver = true;
+                this._handleGameOver();
             }
-
-            // Skip game logic when paused (but continue loop for rendering/camera)
-            if (!this.isPaused) {
-                // Update current top row tracking
-                this.gameState.currentTopRow = calculateTopRow(this.gameState);
-
-                this._maybeExpandGrid();
-
-                // Update camera to follow building progress (with 60% threshold)
-                if (this.boardScene?.cameraSettings && !this.boardScene.cameraSettings.manualControl) {
-                    this._updateCameraPosition();
-                }
-
-                // Check infinity-specific game over condition
-                if (checkInfinityGameOver(this.gameState)) {
-                    console.log('[Infinity] Game over condition met');
-                    this._handleGameOver();
-                    return;
-                }
-
-                // Run core game loop
-                gameLoop(
-                    currentTime,
-                    this.gameState,
-                    () => {
-                        // Draw callback - Phaser handles rendering
-                        // No canvas fallback needed for infinity mode
-                    },
-                    () => {
-                        // Update stats callback - THROTTLED for performance
-                        if (currentTime - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
-                            this.lastStatsUpdateTime = currentTime;
-                            this._updateStats();
-                        }
-                    },
-                    () => this.deps.soundManager.sfxPlayer.playDrop(),
-                    this.getPhysicsCallbacks()
-                );
-            }
-
-            // Continue loop
-            this.animationFrameId = requestAnimationFrame(loop);
         };
 
-        this.animationFrameId = requestAnimationFrame(loop);
+        const statsCallback = () => {
+            const now = performance.now();
+            if (now - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
+                this.lastStatsUpdateTime = now;
+                this._updateStats();
+            }
+        };
+
+        gameLoop(
+            performance.now(),
+            this.gameState,
+            drawCallback,
+            statsCallback,
+            () => this.deps.soundManager.sfxPlayer.playDrop(),
+            this.getPhysicsCallbacks(),
+        );
+
         console.log('[Infinity] Game loop started');
     }
 
@@ -746,12 +737,24 @@ export class InfinityMode extends BaseGameMode {
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
-                // Use faster lerp speed during cascades to keep up with falling blocks
-                // Camera tracks the action zone where blocks are falling and clearing
-                if (this.boardScene?.cameraSettings) {
+                // PERFORMANCE: Throttle camera updates to reduce overhead during rapid cascades
+                // Only update camera every N steps or after minimum time interval
+                this.gravityStepCount++;
+                const now = performance.now();
+                const timeSinceLastUpdate = now - this.lastCameraUpdateTime;
+
+                // Update if either: enough steps have passed OR enough time has passed
+                const shouldUpdate = (this.gravityStepCount >= this.cameraUpdateInterval) ||
+                                    (timeSinceLastUpdate >= this.minCameraUpdateInterval);
+
+                if (shouldUpdate && this.boardScene?.cameraSettings) {
                     this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
                     // Track the falling blocks and cleared lines to position camera optimally
                     this._updateCameraDuringCascade();
+
+                    // Reset throttle counters
+                    this.gravityStepCount = 0;
+                    this.lastCameraUpdateTime = now;
                 }
             },
             // Update camera after cascade completes
@@ -763,6 +766,10 @@ export class InfinityMode extends BaseGameMode {
                         this.gameState.infinityStats.totalCascades++;
                         console.log(`[Infinity] Cascade completed: count=${cascadeCount}, total cascades=${this.gameState.infinityStats.totalCascades}`);
                     }
+
+                    // PERFORMANCE: Reset camera update throttle counters
+                    this.gravityStepCount = 0;
+                    this.lastCameraUpdateTime = 0;
 
                     // Restore normal camera lerp speed after cascade
                     if (this.boardScene?.cameraSettings) {
@@ -808,6 +815,26 @@ export class InfinityMode extends BaseGameMode {
         if (this.heightHUD) {
             this.heightHUD.update(this.gameState);
         }
+    }
+
+    _syncBoardSceneFromState() {
+        if (this.boardScene && this.gameState) {
+            this.boardScene.syncFromGameState(this.gameState);
+        }
+    }
+
+    _updateMinimapView() {
+        if (!this.minimap || !this.boardScene?.cameraSettings) {
+            return;
+        }
+
+        const { cameraSettings } = this.boardScene;
+        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
+        const cameraCenterRow = typeof cameraSettings.centerRow === 'number'
+            ? cameraSettings.centerRow
+            : (cameraSettings.currentTopRow || 0) + visibleRows / 2;
+
+        this.minimap.update(this.gameState, cameraCenterRow, visibleRows);
     }
 
     /**
@@ -952,6 +979,7 @@ export class InfinityMode extends BaseGameMode {
                 if (this.gameState) {
                     const topRow = this.gameState.currentTopRow || 0;
                     this.boardScene.updateCameraPosition(topRow);
+                    this._updateMinimapView();
                     event.preventDefault();
                     event.stopPropagation();
                 }
@@ -962,6 +990,7 @@ export class InfinityMode extends BaseGameMode {
                     const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
                     const bottomTopRow = Math.max(0, this.gameState.board.length - visibleRows);
                     this.boardScene.updateCameraPosition(bottomTopRow);
+                    this._updateMinimapView();
                     event.preventDefault();
                     event.stopPropagation();
                 }
@@ -977,6 +1006,7 @@ export class InfinityMode extends BaseGameMode {
 
         if (deltaRows !== 0) {
             this.boardScene.moveCamera(deltaRows);
+            this._updateMinimapView();
         }
     }
 
@@ -993,6 +1023,7 @@ export class InfinityMode extends BaseGameMode {
         // Scroll down = show lower rows (positive delta)
         const deltaRows = Math.sign(event.deltaY) * 2;
         this.boardScene.moveCamera(deltaRows);
+        this._updateMinimapView();
     }
 
     /**

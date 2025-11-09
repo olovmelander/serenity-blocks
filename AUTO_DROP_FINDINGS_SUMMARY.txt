@@ -1,0 +1,193 @@
+================================================================================
+AUTO-DROP HEAVY COMPUTATION FINDINGS - SERENITY BLOCKS
+================================================================================
+
+EXECUTIVE SUMMARY:
+During automatic piece falling in single-player mode, the game performs
+~24,000 collision detection operations per second (at high levels), with the
+primary culprit being ghost piece calculation that happens EVERY FRAME.
+
+================================================================================
+THE PROBLEM IN 3 STEPS:
+================================================================================
+
+1. GHOST PIECE CALCULATED EVERY FRAME (60fps)
+   Location: base-board-scene.js lines 605-638 (drawGhostPiece)
+   
+   while (this.isValidPosition(piece.x, ghostY + 1, piece.shape)) {
+       ghostY++;  // Loops 20+ times to find landing position
+   }
+   
+   = 20-30 collision checks per frame
+   = 1,200-1,800 collision checks per second
+   = Even when piece hasn't moved!
+
+2. COLLISION DETECTION HAS NO CACHING
+   Location: base-board-scene.js lines 774-817 (isValidPosition)
+   
+   - Recalculates ghost position every single frame
+   - No memoization of result
+   - Uses slower approach (grid lookup) vs game logic (cached board)
+   
+3. RENDERING OVERHEAD PER FRAME
+   Location: base-board-scene.js lines 491-638 (renderGameState)
+   
+   Per frame (60fps):
+   - Draw 200+ board cells
+   - Draw 800+ piece boundary edges
+   - Draw 20+ ghost piece cells with pulsation
+   - All while calculating ghost position from scratch
+
+================================================================================
+SPECIFIC CALCULATIONS DURING AUTO-DROP:
+================================================================================
+
+WHEN AUTO-DROP TRIGGERS (Every 50-1000ms depending on level):
+├─ softDrop() called in game loop
+├─ canPlacePiece() checks one position (1 collision check)
+├─ If collision: lockPiece() → marks board dirty → triggers physics
+└─ Piece moves down 1 row
+
+EVERY FRAME (60 times per second):
+├─ renderGameState() called
+├─ drawBoardFromGrid()
+│  └─ 200 cell lookups in grid
+├─ drawLockedPieceOutlines()
+│  └─ 200 cells × 4 neighbor checks = 800 comparisons
+├─ drawGhostPiece()
+│  ├─ Loop: while (isValidPosition(...)) ghostY++
+│  │  └─ 20+ collision detection calls per frame
+│  │     └─ Each checks piece shape against board grid
+│  └─ Draw ghost cells with pulsation math
+└─ Clear graphics layers (every frame)
+
+DUPLICATE COLLISION DETECTION:
+├─ game.js: isValidPositionCached()
+│  └─ Uses: board cache (fast O(1) lookup)
+│  └─ Called: only for gravity/movement
+└─ base-board-scene.js: isValidPosition()
+   └─ Uses: grid lookup or piece iteration (slower)
+   └─ Called: EVERY FRAME for ghost piece
+
+================================================================================
+PERFORMANCE IMPACT BY LEVEL:
+================================================================================
+
+Level 1:  Auto-drop every 1000ms
+          ~ 1,200 ghost calculations per drop
+          = 1,200 collision checks per drop
+          = 72 collision checks per second while idle
+
+Level 10: Auto-drop every 200ms
+          ~ 12,000 ghost calculations per drop
+          = 12,000 collision checks per drop
+          = 60,000 collision checks per second while idle
+
+Level 20: Auto-drop every 50ms
+          ~ 3,000 ghost calculations per drop
+          = 3,000 collision checks per drop
+          = 180,000 collision checks per second
+
+BUT THE RENDERING NEVER STOPS:
+Every level, every second:
+= 60 frames × 20-30 ghost position calculations per frame
+= 1,200-1,800 collision checks from ghost piece alone
++ 200 board cell draws
++ 800 boundary edge checks
+= ~2,000-2,100 operations per second MINIMUM
+
+This explains why the user reports "heavy computation" during idle falling!
+
+================================================================================
+ROOT CAUSE:
+================================================================================
+
+Ghost piece uses UNOPTIMIZED collision detection:
+
+Current approach (SLOW):
+while (isValidPosition(x, y+1, shape)) y++;
+= N iterations where N = distance to landing
+= Each iteration calls isValidPosition()
+= Which checks 4-16 piece cells against board
+= Which might iterate locked pieces if no board grid
+= RESULT: O(N × M) where N=distance, M=board complexity
+
+Better approach (CACHED):
+ghostY = cachedGhostPosition
+Only recalculate when: piece moved OR board changed
+
+The game.js already has getGhostLandingY() that does this efficiently!
+(lines 77-88 of game.js)
+
+================================================================================
+KEY FILES WITH ISSUES:
+================================================================================
+
+1. /src/rendering/phaser/base-board-scene.js
+   - Lines 605-638: drawGhostPiece() calculates every frame
+   - Lines 774-817: isValidPosition() is duplicate and slow
+   - Lines 459-476: renderGameState() calls these every frame
+
+2. /src/core/game.js
+   - Lines 77-88: getGhostLandingY() exists but not used by rendering!
+   - Lines 411-427: softDrop() only checks one position
+   - Lines 29-65: Collision detection properly cached here
+
+3. /src/rendering/phaser/board-scene.js
+   - Inherits from base-board-scene, inherits the problem
+
+================================================================================
+COLLISION DETECTION COMPARISON:
+================================================================================
+
+game.js approach (GOOD):
+function isValidPositionCached(gameState, piece, checkX, checkY) {
+    const boardData = ensureBoardCache(gameState);  // Uses cached grid
+    // Then O(1) lookups: boardData[y][x]
+}
+
+base-board-scene.js approach (SLOW):
+function isValidPosition(checkX, checkY, shape) {
+    // Falls back to iterating ALL locked pieces:
+    for (const locked of this.gameState.lockedPieces) {
+        for (let ly = 0; ly < locked.shape.length; ly++) {
+            for (let lx = 0; lx < locked.shape[ly].length; lx++) {
+                // N^3 worst case!
+            }
+        }
+    }
+}
+
+Solution: Use unified approach with cached board grid
+
+================================================================================
+EVIDENCE FROM CODE:
+================================================================================
+
+Line 462 of base-board-scene.js shows the AWARENESS of the problem:
+// REMOVED: rebuildBoardGridFromPieces() - this was being called 60 times/sec!
+// The board grid is already updated when pieces lock in the game logic.
+
+So they FIXED one problem (board rebuild every frame)
+but LEFT ghost piece calculation (worse problem!)
+
+Stats update throttling was added (250ms throttle in SinglePlayerMode.js)
+but no throttling on GHOST PIECE calculation!
+
+================================================================================
+SUMMARY TABLE:
+================================================================================
+
+Operation                  | Frequency      | Per-Frame Cost | Total/Sec
+---------------------------|----------------|----------------|----------
+Ghost Y calculation loop   | 60 fps × 20+   | 20-30 loops    | 1,200-1,800
+Collision checks (ghost)   | Per loop       | 4-16 cells     | 4,800-28,800
+Board cell draws           | 60 fps         | 200 cells      | 12,000 cells
+Outline boundary checks    | 60 fps         | 800 checks     | 48,000 checks
+Piece outline draws        | 60 fps         | Varies         | Varies
+Auto-drop collision check  | Every 50-1000ms| 1 check        | 1-20/sec
+
+KEY INSIGHT: Ghost piece calculation (1,200-1,800 ops/sec) is ALWAYS happening,
+independent of whether the piece has moved or will move next frame!
+
+================================================================================

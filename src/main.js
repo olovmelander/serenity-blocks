@@ -311,6 +311,13 @@ class SerenityBlocks {
             this.frameRateController.setTargetFPS(targetFrameRate || 0);
             this.frameRateController.resetStats();
 
+            // Update Phaser game FPS target if game exists
+            if (this.phaserGame && this.phaserGame.loop) {
+                const actualTarget = targetFrameRate || 60; // Default to 60 if unlimited
+                this.phaserGame.loop.targetFps = actualTarget;
+                console.log(`[FrameRate] Updated Phaser FPS target to ${actualTarget}`);
+            }
+
             if (this.displayManager?.isElectron) {
                 try {
                     const { ipcRenderer } = window.require('electron');
@@ -420,19 +427,25 @@ class SerenityBlocks {
         const config = {
             // Renderer: Phaser 4 is WebGL-only (no Canvas renderer)
             type: PhaserRef.WEBGL,
-            
+
             // Canvas dimensions: 10 blocks × 20 blocks (300×600 px)
             width: singleBoardWidth,
             height: singleBoardHeight,
-            
+
             // Parent DOM container for Phaser canvas
             parent: 'phaser-game-container',
-            
+
             // Transparent canvas to show WebGL theme backgrounds
             transparent: true,
-            
+
             // Disable Phaser audio system (using custom SoundManager)
             audio: { noAudio: true },
+
+            // Frame rate target
+            fps: {
+                target: 60,
+                forceSetTimeOut: false,
+            },
             
             // Register initial scenes (multiplayer scenes added dynamically)
             scene: [BoardScene, BackgroundScene],
@@ -663,15 +676,26 @@ class SerenityBlocks {
      * Show FPS counter
      */
     showFPSCounter() {
+        // Use enhanced performance monitor instead of legacy FPS counter
+        performanceMonitor.enable();
+        performanceMonitor.showPerformanceOverlay();
+
+        // Update quality mode in performance monitor
+        const settings = this.settingsManager?.settings;
+        if (settings?.graphicsQuality) {
+            performanceMonitor.setQualityMode(settings.graphicsQuality);
+        }
+
+        // Legacy FPS counter (keep for compatibility)
         if (!this.fpsCounter.element) {
             this.fpsCounter.element = document.getElementById('fps-counter');
         }
 
         if (this.fpsCounter.element) {
-            this.fpsCounter.element.classList.remove('hidden');
+            this.fpsCounter.element.classList.add('hidden'); // Hide legacy counter
             this.updateFPSCounter(performance.now());
             this.startFPSMonitor();
-            console.log('[FPS] Counter shown');
+            console.log('[FPS] Enhanced performance monitor shown');
         }
     }
 
@@ -679,6 +703,10 @@ class SerenityBlocks {
      * Hide FPS counter
      */
     hideFPSCounter() {
+        // Hide enhanced performance monitor
+        performanceMonitor.hidePerformanceOverlay();
+
+        // Legacy FPS counter (keep for compatibility)
         if (!this.fpsCounter.element) {
             this.fpsCounter.element = document.getElementById('fps-counter');
         }
@@ -686,7 +714,7 @@ class SerenityBlocks {
         if (this.fpsCounter.element) {
             this.fpsCounter.element.classList.add('hidden');
             this.stopFPSMonitor();
-            console.log('[FPS] Counter hidden');
+            console.log('[FPS] Performance monitor hidden');
         }
     }
 
@@ -2498,16 +2526,17 @@ class SerenityBlocks {
         // Check if GameModeManager has a running mode (Serenity, etc.)
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
-            this.gameModeManager.pauseCurrentMode();
 
-            // In Infinity Mode, pause (via 'P' key) enables manual camera controls without opening settings
+            // In Infinity Mode, pause (via 'P' key) enables manual camera controls + trance state without opening settings
             // Escape key should call openSettingsMenu() instead for Infinity Mode
             if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
-                console.log('[Main] Infinity Mode paused - manual camera controls enabled');
+                this.gameModeManager.pauseCurrentMode({ enableTranceState: true });
+                console.log('[Main] Infinity Mode paused - manual camera controls and trance state enabled');
                 return;
             }
 
-            // For other modes, show settings modal
+            // For other modes, pause and show settings modal
+            this.gameModeManager.pauseCurrentMode();
             this.modalManager.show('settings');
             return;
         }
@@ -2529,9 +2558,14 @@ class SerenityBlocks {
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
             if (!currentMode.isPaused) {
-                this.gameModeManager.pauseCurrentMode();
+                // Disable trance state when opening settings menu (Escape key)
+                // Only pause with trance state when using 'P' key
+                const isInfinityMode = currentMode.getModeId && currentMode.getModeId() === 'infinity';
+                this.gameModeManager.pauseCurrentMode({
+                    enableTranceState: false  // No trance state when opening settings
+                });
                 // Also sync pause state for Infinity Mode
-                if (currentMode.getModeId && currentMode.getModeId() === 'infinity' && currentMode.gameState) {
+                if (isInfinityMode && currentMode.gameState) {
                     currentMode.gameState.isPaused = true;
                 }
             }

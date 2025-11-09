@@ -9,15 +9,16 @@
  */
 
 export class LobbyBrowser {
-  constructor(steamNetworking, onJoinLobby, onCreateLobby) {
+  constructor(steamNetworking, onJoinLobby, onCreateLobby, onCancel = null) {
     this.steam = steamNetworking;
     this.onJoinLobby = onJoinLobby;
     this.onCreateLobby = onCreateLobby;
-    
+    this.onCancel = onCancel;
+
     this.container = null;
     this.refreshInterval = null;
     this.lobbies = [];
-    
+
     this.createUI();
   }
   
@@ -84,16 +85,16 @@ export class LobbyBrowser {
   setupEventListeners() {
     // Close button
     const closeBtn = this.container.querySelector('#close-lobby-browser');
-    closeBtn.addEventListener('click', () => this.hide());
-    
+    closeBtn.addEventListener('click', () => this.cancel());
+
     // Overlay click to close
     const overlay = this.container.querySelector('.lobby-browser-overlay');
-    overlay.addEventListener('click', () => this.hide());
-    
+    overlay.addEventListener('click', () => this.cancel());
+
     // Create match button
     const createBtn = this.container.querySelector('#create-match-btn');
     createBtn.addEventListener('click', () => this.showCreateMatchModal());
-    
+
     // Refresh button
     const refreshBtn = this.container.querySelector('#refresh-lobbies-btn');
     refreshBtn.addEventListener('click', () => this.refresh());
@@ -115,11 +116,24 @@ export class LobbyBrowser {
    */
   hide() {
     this.container.classList.add('hidden');
-    
+
     // Stop auto-refresh
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
       this.refreshInterval = null;
+    }
+  }
+
+  /**
+   * Cancel the lobby browser (hide and trigger cancel callback)
+   */
+  async cancel() {
+    this.hide();
+
+    if (this.onCancel) {
+      console.log('[LobbyBrowser] Triggering cancel callback');
+      await this.onCancel();
+      console.log('[LobbyBrowser] Cancel callback completed');
     }
   }
   
