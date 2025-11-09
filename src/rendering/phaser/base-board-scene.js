@@ -4,6 +4,7 @@ import {
 import { rebuildBoardGridFromPieces } from '../../core/board.js';
 import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -118,6 +119,9 @@ export function createBaseBoardScene(
          */
         update(time, delta) {
             // eslint-disable-line no-unused-vars
+            // Performance monitoring - mark frame start
+            performanceMonitor.updateStart();
+
             if (!this.gameState) return;
 
             // Clear ALL graphics layers at the START of each frame (like multiplayer does)
@@ -127,11 +131,17 @@ export function createBaseBoardScene(
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
 
+                performanceMonitor.updateEnd();
+                performanceMonitor.renderStart();
+
                 // Render game state
                 this.renderGameState();
+
+                performanceMonitor.renderEnd();
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+
         }
 
         setEffectQuality(level) {
@@ -145,6 +155,43 @@ export function createBaseBoardScene(
 
         getQualityConfig() {
             return this.qualityConfig;
+        }
+
+        /**
+         * Check if we should create particles based on quality settings and current count
+         * Optimization: Skip particle creation if budget exceeded or disabled
+         * @returns {boolean} True if particles should be created
+         */
+        shouldCreateParticles() {
+            // Check if particles are enabled for this quality level
+            if (!this.qualityConfig?.particles) {
+                return false;
+            }
+
+            // Check active particle count against budget
+            if (this.activeParticleSystems) {
+                const budget = this.qualityConfig.particleBudget;
+                if (budget && this.activeParticleSystems.size >= budget.maxTotal) {
+                    return false; // Budget exceeded
+                }
+            }
+
+            return true;
+        }
+
+        /**
+         * Get remaining particle budget for a specific effect type
+         * @param {string} effectType - Type of effect (lineClear, combo, trail, background)
+         * @returns {number} Number of particles available for this effect
+         */
+        getParticleBudgetRemaining(effectType) {
+            const budget = this.qualityConfig?.particleBudget;
+            if (!budget || !this.activeParticleSystems) {
+                return 0;
+            }
+
+            // Return budget for specific effect type
+            return budget[effectType] || 0;
         }
 
         /**

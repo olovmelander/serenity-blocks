@@ -663,15 +663,26 @@ class SerenityBlocks {
      * Show FPS counter
      */
     showFPSCounter() {
+        // Use enhanced performance monitor instead of legacy FPS counter
+        performanceMonitor.enable();
+        performanceMonitor.showPerformanceOverlay();
+
+        // Update quality mode in performance monitor
+        const settings = this.settingsManager?.settings;
+        if (settings?.graphicsQuality) {
+            performanceMonitor.setQualityMode(settings.graphicsQuality);
+        }
+
+        // Legacy FPS counter (keep for compatibility)
         if (!this.fpsCounter.element) {
             this.fpsCounter.element = document.getElementById('fps-counter');
         }
 
         if (this.fpsCounter.element) {
-            this.fpsCounter.element.classList.remove('hidden');
+            this.fpsCounter.element.classList.add('hidden'); // Hide legacy counter
             this.updateFPSCounter(performance.now());
             this.startFPSMonitor();
-            console.log('[FPS] Counter shown');
+            console.log('[FPS] Enhanced performance monitor shown');
         }
     }
 
@@ -679,6 +690,10 @@ class SerenityBlocks {
      * Hide FPS counter
      */
     hideFPSCounter() {
+        // Hide enhanced performance monitor
+        performanceMonitor.hidePerformanceOverlay();
+
+        // Legacy FPS counter (keep for compatibility)
         if (!this.fpsCounter.element) {
             this.fpsCounter.element = document.getElementById('fps-counter');
         }
@@ -686,7 +701,7 @@ class SerenityBlocks {
         if (this.fpsCounter.element) {
             this.fpsCounter.element.classList.add('hidden');
             this.stopFPSMonitor();
-            console.log('[FPS] Counter hidden');
+            console.log('[FPS] Performance monitor hidden');
         }
     }
 

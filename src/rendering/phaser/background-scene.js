@@ -37,6 +37,11 @@ export function createBackgroundScene(
             this.webglRenderer = null;
             this.themeManager = null;
             this.effectQuality = 'High';
+
+            // Frame rate throttling for performance (30fps instead of 60fps)
+            this.targetFrameTime = 1000 / 30; // 33.33ms per frame
+            this.lastUpdateTime = 0;
+            this.accumulatedTime = 0;
         }
 
         /**
@@ -103,14 +108,24 @@ export function createBackgroundScene(
         /**
          * Phaser 4 lifecycle: update loop
          * Called every frame, drives WebGL renderer
+         * Throttled to 30fps for performance (backgrounds don't need 60fps)
          */
-        update() {
+        update(time, delta) {
             if (!this.webglRenderer) return;
-            
-            try {
-                this.webglRenderer.renderFrame();
-            } catch (error) {
-                console.error('[BackgroundScene] Error in update loop:', error);
+
+            // Throttle to 30fps - users won't notice background at half rate
+            const currentTime = performance.now();
+            this.accumulatedTime += delta;
+
+            // Only update if enough time has passed (33.33ms for 30fps)
+            if (this.accumulatedTime >= this.targetFrameTime) {
+                try {
+                    this.webglRenderer.renderFrame();
+                    this.lastUpdateTime = currentTime;
+                    this.accumulatedTime = this.accumulatedTime % this.targetFrameTime; // Keep remainder
+                } catch (error) {
+                    console.error('[BackgroundScene] Error in update loop:', error);
+                }
             }
         }
     }

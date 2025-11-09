@@ -548,7 +548,6 @@ export function gameLoop(
 ) {
     const monitoring = performanceMonitor && performanceMonitor.enabled;
     if (monitoring) {
-        performanceMonitor.frameStart();
         performanceMonitor.updateStart();
     }
 

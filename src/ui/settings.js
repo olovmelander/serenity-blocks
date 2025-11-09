@@ -948,6 +948,13 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             settingsManager.update({ graphicsQuality: quality });
             settingsManager.save();
 
+            // Update performance monitor quality mode if it's active
+            if (typeof window !== 'undefined' && window.perfMonitor) {
+                import('../utils/performance-monitor.js').then(({ performanceMonitor }) => {
+                    performanceMonitor.setQualityMode(quality);
+                });
+            }
+
             console.log(`[Settings] Graphics quality changed to: ${quality}`);
         });
     }
