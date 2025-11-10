@@ -9,8 +9,6 @@ export default class RainyWindowTheme extends BaseTheme {
         this.ripples = [];
         this.splashes = [];
         this.lightningBolts = [];
-        this.lightningReflections = [];
-        this.lightningReflectionSegments = [];
         this.mistParticles = [];
         this.resizeHandler = null;
         this.waterSurfaceY = 0;
@@ -20,6 +18,12 @@ export default class RainyWindowTheme extends BaseTheme {
         this.windForce = 0;
         this.targetWindForce = 0;
         this.nextWindChange = Math.random() * 200 + 100;
+        this.maxDrops = 200;
+        this.dropSpawnProbability = 0.45;
+        this.currentDropCap = 70;
+        this.maxRipples = 140;
+        this.glowNoiseSeed = Math.random() * 1000;
+        this.flashDebugCooldown = 0;
     }
 
     async createScene() {
@@ -34,12 +38,9 @@ export default class RainyWindowTheme extends BaseTheme {
         this.drops = [];
         this.ripples = [];
         this.splashes = [];
-        this.lightningReflections = [];
-        this.lightningReflectionSegments = [];
         this.mistParticles = [];
 
-        // Heavier rain - more drops
-        for (let i = 0; i < 250; i++) {
+        for (let i = 0; i < Math.min(this.currentDropCap, 90); i++) {
             this.drops.push(this.createDrop(true));
         }
 
@@ -88,7 +89,7 @@ export default class RainyWindowTheme extends BaseTheme {
     }
 
     createLightningBolt() {
-        const startX = Math.random() * this.canvas.width;
+        const startX = this.canvas.width * (0.15 + Math.random() * 0.7);
         const segments = [];
         let x = startX;
         let y = 0;
@@ -114,41 +115,13 @@ export default class RainyWindowTheme extends BaseTheme {
             y = nextY;
         }
 
-        // Create reflection in water
-        const waterY = this.getWaterY(depth);
-        this.lightningReflections.push({
-            x: startX,
-            y: waterY,
-            opacity: 1.0,
-            life: 1.0,
-            width: Math.random() * 100 + 80,
-            depth: depth,
-        });
-
-        const mirroredSegments = segments
-            .filter((segment) => segment.y1 <= this.waterSurfaceY || segment.y2 <= this.waterSurfaceY)
-            .map((segment) => ({
-                x1: segment.x1,
-                y1: this.waterSurfaceY + Math.abs(this.waterSurfaceY - segment.y1),
-                x2: segment.x2,
-                y2: this.waterSurfaceY + Math.abs(this.waterSurfaceY - segment.y2),
-                depth,
-            }));
-
-        if (mirroredSegments.length) {
-            this.lightningReflectionSegments.push({
-                segments: mirroredSegments,
-                life: 1.0,
-                opacity: 0.35,
-                distortionSeed: Math.random() * 1000,
-            });
-        }
-
         return {
-            segments: segments,
+            segments,
             opacity: 1.0,
             life: 1.0,
             glowIntensity: 1.0,
+            originX: startX,
+            originY: 0,
         };
     }
 
@@ -202,11 +175,10 @@ export default class RainyWindowTheme extends BaseTheme {
     drawWaterSurface() {
         const surfaceHeight = this.canvas.height - this.waterSurfaceY;
 
-        // Draw water body with perspective gradient
         const waterGradient = this.ctx.createLinearGradient(0, this.waterSurfaceY, 0, this.canvas.height);
-        waterGradient.addColorStop(0, 'rgba(25, 30, 40, 0.9)'); // Lighter at horizon
-        waterGradient.addColorStop(0.4, 'rgba(18, 22, 32, 0.95)');
-        waterGradient.addColorStop(1, 'rgba(8, 10, 18, 1)'); // Darker at bottom (closer)
+        waterGradient.addColorStop(0, 'rgba(20, 24, 34, 0.9)');
+        waterGradient.addColorStop(0.5, 'rgba(14, 16, 22, 0.95)');
+        waterGradient.addColorStop(1, 'rgba(6, 7, 12, 1)');
         this.ctx.fillStyle = waterGradient;
         this.ctx.fillRect(0, this.waterSurfaceY, this.canvas.width, surfaceHeight);
 
@@ -259,9 +231,14 @@ export default class RainyWindowTheme extends BaseTheme {
         // Smooth wind transition
         this.windForce += (this.targetWindForce - this.windForce) * 0.02;
 
+        if (this.flashDebugCooldown > 0) {
+            this.flashDebugCooldown -= 1;
+        }
+
         // Lightning timing
         if (this.time >= this.nextLightning) {
-            this.lightningBolts.push(this.createLightningBolt());
+            const bolt = this.createLightningBolt();
+            this.lightningBolts.push(bolt);
             this.lightningFlash = 1.0;
             this.nextLightning = this.time + Math.random() * 400 + 300;
         }
@@ -271,93 +248,23 @@ export default class RainyWindowTheme extends BaseTheme {
             this.lightningFlash -= 0.05;
         }
 
+        const hasLivingBolt = this.lightningBolts.some((bolt) => bolt.life > 0.05);
+        if (!hasLivingBolt) {
+            this.lightningFlash = 0;
+        }
+
         // Dark atmospheric background with depth and lightning flash
-        const flashIntensity = Math.max(0, this.lightningFlash);
+        const flashIntensity = hasLivingBolt ? Math.max(0, this.lightningFlash) : 0;
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
-        const baseR = 8 + flashIntensity * 100;
-        const baseG = 9 + flashIntensity * 110;
-        const baseB = 14 + flashIntensity * 130;
-        skyGradient.addColorStop(0, `rgb(${baseR}, ${baseG}, ${baseB})`);
-        skyGradient.addColorStop(0.5, `rgb(${baseR + 6}, ${baseG + 2}, ${baseB + 4})`);
-        skyGradient.addColorStop(1, `rgb(${baseR + 12}, ${baseG + 7}, ${baseB + 9})`);
+        skyGradient.addColorStop(0, 'rgb(8, 9, 14)');
+        skyGradient.addColorStop(0.5, 'rgb(14, 16, 20)');
+        skyGradient.addColorStop(1, 'rgb(20, 22, 28)');
         this.ctx.fillStyle = skyGradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.waterSurfaceY);
 
         // Draw water surface
         this.drawWaterSurface();
 
-        // Draw and update lightning reflections in water
-        for (let i = this.lightningReflections.length - 1; i >= 0; i--) {
-            const ref = this.lightningReflections[i];
-
-            ref.life -= 0.08;
-            ref.opacity = ref.life * 0.6; // Reflections are more subtle
-
-            if (ref.life <= 0) {
-                this.lightningReflections.splice(i, 1);
-                continue;
-            }
-
-            // Draw vertical reflection with ripple distortion
-            const refGradient = this.ctx.createRadialGradient(
-                ref.x, ref.y, 0,
-                ref.x, ref.y, ref.width
-            );
-            refGradient.addColorStop(0, `rgba(220, 240, 255, ${ref.opacity * 0.4})`);
-            refGradient.addColorStop(0.5, `rgba(180, 220, 255, ${ref.opacity * 0.2})`);
-            refGradient.addColorStop(1, `rgba(140, 200, 240, 0)`);
-
-            // Draw distorted reflection
-            this.ctx.save();
-            this.ctx.globalAlpha = ref.opacity;
-            this.ctx.fillStyle = refGradient;
-
-            // Create wavy reflection shape
-            this.ctx.beginPath();
-            for (let y = 0; y < 100; y += 5) {
-                const waveX = ref.x + Math.sin(y * 0.1 + this.time * 0.1) * 15;
-                const actualY = ref.y + y;
-                const width = ref.width * (1 - y / 150);
-
-                if (y === 0) {
-                    this.ctx.moveTo(waveX - width / 2, actualY);
-                }
-                this.ctx.lineTo(waveX - width / 2, actualY);
-            }
-            for (let y = 100; y >= 0; y -= 5) {
-                const waveX = ref.x + Math.sin(y * 0.1 + this.time * 0.1) * 15;
-                const actualY = ref.y + y;
-                const width = ref.width * (1 - y / 150);
-                this.ctx.lineTo(waveX + width / 2, actualY);
-            }
-            this.ctx.closePath();
-            this.ctx.fill();
-            this.ctx.restore();
-        }
-
-        for (let i = this.lightningReflectionSegments.length - 1; i >= 0; i--) {
-            const reflection = this.lightningReflectionSegments[i];
-            reflection.life -= 0.05;
-            reflection.opacity = Math.max(0, reflection.life * 0.4);
-            if (reflection.life <= 0) {
-                this.lightningReflectionSegments.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.save();
-            this.ctx.globalAlpha = reflection.opacity;
-            reflection.segments.forEach((seg) => {
-                const distortion = Math.sin((seg.y1 + this.time + reflection.distortionSeed) * 0.02) * (10 + seg.depth * 15);
-                const distortion2 = Math.sin((seg.y2 + this.time + reflection.distortionSeed) * 0.02) * (10 + seg.depth * 15);
-                this.ctx.beginPath();
-                this.ctx.moveTo(seg.x1 + distortion, seg.y1);
-                this.ctx.lineTo(seg.x2 + distortion2, seg.y2);
-                this.ctx.strokeStyle = `rgba(180, 210, 255, ${0.15 + seg.depth * 0.1})`;
-                this.ctx.lineWidth = 2 + seg.depth * 2;
-                this.ctx.stroke();
-            });
-            this.ctx.restore();
-        }
 
         // Add atmospheric fog layers
         for (let i = 0; i < 3; i++) {
@@ -370,6 +277,7 @@ export default class RainyWindowTheme extends BaseTheme {
             this.ctx.fillRect(0, fogY - 40, this.canvas.width, 80);
         }
 
+        let hasVisibleBolt = false;
         // Draw and update lightning bolts
         for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
             const bolt = this.lightningBolts[i];
@@ -381,6 +289,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 this.lightningBolts.splice(i, 1);
                 continue;
             }
+            hasVisibleBolt = true;
 
             // Draw each segment with intense glow
             for (const seg of bolt.segments) {
@@ -416,7 +325,9 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         // Spawn new raindrops
-        if (Math.random() > 0.5) {
+        this.currentDropCap += (this.maxDrops - this.currentDropCap) * 0.0025;
+        const spawnChance = this.dropSpawnProbability * (0.6 + this.currentDropCap / this.maxDrops * 0.4) * (1 + Math.abs(this.windForce) * 0.12);
+        if (this.drops.length < this.currentDropCap && Math.random() < spawnChance) {
             this.drops.push(this.createDrop(false));
         }
 
@@ -450,7 +361,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
                 const waveAlpha = ripple.opacity * (1 - j * 0.15) * depthAlpha * waveAmplitude;
                 const flatten = 0.3 + depth * 0.35;
-                const lightningBoost = flashIntensity * 0.3;
+                const lightningBoost = hasLivingBolt ? flashIntensity * 0.3 : 0;
 
                 this.ctx.save();
                 this.ctx.translate(ripple.x, ripple.y);
@@ -574,8 +485,9 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Check if drop hits water surface at its depth
             if (drop.y >= waterY) {
-                // Create ripple and splash effects with depth
-                this.ripples.push(this.createRipple(drop.x, waterY, drop.r, drop.z));
+                if (this.ripples.length < this.maxRipples) {
+                    this.ripples.push(this.createRipple(drop.x, waterY, drop.r, drop.z));
+                }
                 if (Math.random() > 0.5) {
                     this.splashes.push(this.createSplash(drop.x, waterY, drop.z));
                 }
@@ -593,8 +505,8 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         // Limit arrays for performance
-        if (this.ripples.length > 200) {
-            this.ripples = this.ripples.slice(-200);
+        if (this.ripples.length > this.maxRipples) {
+            this.ripples = this.ripples.slice(-this.maxRipples);
         }
         if (this.drops.length > 350) {
             this.drops = this.drops.slice(-350);
@@ -605,8 +517,8 @@ export default class RainyWindowTheme extends BaseTheme {
         if (this.mistParticles.length > 250) {
             this.mistParticles = this.mistParticles.slice(-250);
         }
-        if (this.lightningReflectionSegments.length > 10) {
-            this.lightningReflectionSegments = this.lightningReflectionSegments.slice(-10);
+        if (this.drops.length > this.maxDrops) {
+            this.drops = this.drops.slice(-this.maxDrops);
         }
 
         const animId = requestAnimationFrame(() => this.animate());
