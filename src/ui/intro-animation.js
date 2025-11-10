@@ -190,8 +190,8 @@ export class IntroAnimation {
             const particle = document.createElement('div');
             particle.className = 'intro-particle';
 
-            // Random size with some variation
-            const size = Math.random() * 4 + 1;
+            // Random size with some variation (increased for better visibility)
+            const size = Math.random() * 6 + 2;
             particle.style.width = `${size}px`;
             particle.style.height = `${size}px`;
 
