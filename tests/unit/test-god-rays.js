@@ -1,177 +1,149 @@
-/**
- * Test to verify the sunset god rays CSS optimization
- * Run with: node test-god-rays.js
- */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const fs = require('fs');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '..', '..');
 
-console.log('=== Quadra Sunset God Rays Optimization Test ===\n');
+const cssPath = path.join(repoRoot, 'public/styles/main.css');
+const scriptPath = path.join(repoRoot, 'src/themes/sunset/sunset-theme.js');
 
-// Read the style.css file
-const cssCode = fs.readFileSync('./style.css', 'utf8');
+const cssCode = fs.readFileSync(cssPath, 'utf8');
+const scriptCode = fs.readFileSync(scriptPath, 'utf8');
 
-// Read the script.js file
-const scriptCode = fs.readFileSync('./script.js', 'utf8');
+console.log('=== Serenity Blocks – Sunset God Rays Alignment Test ===\n');
+console.log(`CSS source: ${path.relative(repoRoot, cssPath)}`);
+console.log(`Theme source: ${path.relative(repoRoot, scriptPath)}\n`);
+
+function ensure(condition, successMsg, failureMsg) {
+    if (condition) {
+        console.log(`  ✓ PASS: ${successMsg}`);
+    } else {
+        console.error(`  ✗ FAIL: ${failureMsg}`);
+        process.exit(1);
+    }
+}
+
+// Helper to extract selector blocks for focused checks
+function extractBlock(selector) {
+    const pattern = new RegExp(`${selector}[\\s\\S]*?}`, 'm');
+    const match = cssCode.match(pattern);
+    return match ? match[0] : '';
+}
+
+const godRayContainerBlock = extractBlock('\\.sunset-god-rays');
+const godRayBlock = extractBlock('\\.sunset-god-ray(?!s)');
 
 // Test 1: Verify god rays container CSS exists
 console.log('Test 1: God rays container CSS exists');
-const hasContainerCSS = cssCode.includes('.sunset-god-rays') &&
-                        cssCode.includes('position: absolute') &&
-                        cssCode.includes('animation: sunset-ray-rotation');
-
-if (hasContainerCSS) {
-    console.log('  ✓ PASS: .sunset-god-rays CSS definition found');
-} else {
-    console.log('  ✗ FAIL: .sunset-god-rays CSS definition missing');
-    process.exit(1);
-}
+ensure(
+    godRayContainerBlock.includes('animation: sunset-ray-rotation'),
+    '.sunset-god-rays animation defined',
+    'Missing .sunset-god-rays animation block',
+);
 
 // Test 2: Verify individual god ray CSS exists
 console.log('\nTest 2: Individual god ray CSS exists');
-const hasRayCSS = cssCode.includes('.sunset-god-ray') &&
-                  cssCode.includes('background: linear-gradient') &&
-                  cssCode.includes('transform-origin: top center');
-
-if (hasRayCSS) {
-    console.log('  ✓ PASS: .sunset-god-ray CSS definition found');
-} else {
-    console.log('  ✗ FAIL: .sunset-god-ray CSS definition missing');
-    process.exit(1);
-}
+ensure(
+    godRayBlock.includes('background: linear-gradient'),
+    '.sunset-god-ray gradient defined',
+    'Missing .sunset-god-ray gradient definition',
+);
 
 // Test 3: Verify animation keyframes exist
 console.log('\nTest 3: God ray animation keyframes exist');
-const hasAnimation = cssCode.includes('@keyframes sunset-ray-rotation') &&
-                     cssCode.includes('rotate(-8deg)') &&
-                     cssCode.includes('rotate(8deg)');
-
-if (hasAnimation) {
-    console.log('  ✓ PASS: sunset-ray-rotation keyframes defined');
-} else {
-    console.log('  ✗ FAIL: sunset-ray-rotation keyframes missing');
-    process.exit(1);
-}
+ensure(
+    cssCode.includes('@keyframes sunset-ray-rotation')
+        && cssCode.includes('rotate(-8deg)')
+        && cssCode.includes('rotate(8deg)'),
+    'sunset-ray-rotation keyframes present',
+    'Missing sunset-ray-rotation keyframes',
+);
 
 // Test 4: Verify GPU acceleration hints
 console.log('\nTest 4: GPU acceleration optimization');
-const hasGPUOptimization = cssCode.includes('will-change: transform') &&
-                           cssCode.includes('transform-origin:');
+ensure(
+    godRayBlock.includes('will-change: transform')
+        || godRayBlock.includes('will-change: transform, opacity'),
+    '.sunset-god-ray flagged for GPU acceleration',
+    'God rays should set will-change for GPU acceleration',
+);
 
-if (hasGPUOptimization) {
-    console.log('  ✓ PASS: GPU acceleration hints present (will-change, transform-origin)');
-} else {
-    console.log('  ✗ WARNING: GPU acceleration hints missing (recommended for performance)');
-}
-
-// Test 5: Verify gradient uses rgba (for transparency)
+// Test 5: Verify transparency gradient
 console.log('\nTest 5: Transparency optimization');
-const hasTransparency = cssCode.match(/\.sunset-god-ray[\s\S]*?rgba\(/);
-
-if (hasTransparency) {
-    console.log('  ✓ PASS: God rays use rgba for efficient transparency');
-} else {
-    console.log('  ✗ FAIL: God rays should use rgba for transparency');
-    process.exit(1);
-}
+ensure(
+    /rgba\(\d+,\s*\d+,\s*\d+,\s*0\.\d+/.test(godRayBlock),
+    'God rays use rgba transparency',
+    'God rays should use rgba colors for smooth falloff',
+);
 
 // Test 6: Verify JavaScript creates god rays correctly
 console.log('\nTest 6: JavaScript god ray generation');
-const createsGodRays = scriptCode.includes('sunset-god-rays') &&
-                       scriptCode.includes('sunset-god-ray') &&
-                       scriptCode.match(/for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*30/);
+ensure(
+    scriptCode.includes('sunset-god-rays')
+        && scriptCode.includes('sunset-god-ray')
+        && /for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*30/.test(scriptCode),
+    'Sunset theme still creates 30 god ray elements',
+    'Sunset theme no longer creates expected god rays',
+);
 
-if (createsGodRays) {
-    console.log('  ✓ PASS: JavaScript creates 30 god ray elements');
-} else {
-    console.log('  ✗ FAIL: JavaScript god ray generation missing or incorrect');
-    process.exit(1);
-}
-
-// Test 7: Verify efficient animation approach
+// Test 7: Verify parent animation approach
 console.log('\nTest 7: Animation efficiency');
-const usesParentAnimation = cssCode.match(/\.sunset-god-rays[\s\S]*?animation:/);
-const rayHasNoAnimation = !cssCode.match(/\.sunset-god-ray[\s\S]*?animation:/);
+ensure(
+    godRayContainerBlock.includes('animation: sunset-ray-rotation'),
+    'Parent container handles rotation animation',
+    'Parent container should animate rotation to avoid 30 animations',
+);
 
-if (usesParentAnimation) {
-    console.log('  ✓ PASS: Parent container animated (efficient - 1 animation instead of 30)');
-} else {
-    console.log('  ✗ FAIL: Parent container should be animated, not individual rays');
-    process.exit(1);
-}
+// Test 8: Verify z-index and pointer events for layering
+console.log('\nTest 8: Theme layering & interaction');
+ensure(
+    godRayContainerBlock.includes('z-index: 2')
+        && godRayContainerBlock.includes('pointer-events: none'),
+    'God rays layered above mountains without intercepting events',
+    'God rays should define z-index and pointer-events',
+);
 
-if (rayHasNoAnimation) {
-    console.log('  ✓ PASS: Individual rays not animated (efficient approach)');
-} else {
-    console.log('  ✗ WARNING: Individual rays should not have animations (use parent rotation)');
-}
+// Test 9: Verify container centering
+console.log('\nTest 9: Container alignment with sun');
+ensure(
+    godRayContainerBlock.includes('top: var(--sunset-god-ray-center-y, 50%)')
+        && godRayContainerBlock.includes('left: var(--sunset-god-ray-center-x, 50%)'),
+    'God ray container centers on CSS variables (sun position)',
+    'God ray container does not follow sun center variables',
+);
 
-// Test 8: Verify z-index for proper layering
-console.log('\nTest 8: Theme layering');
-const hasZIndex = cssCode.match(/\.sunset-god-rays[\s\S]*?z-index:\s*2/);
+// Test 10: Verify individual rays pivot from the sun\'s center
+console.log('\nTest 10: Individual ray origin alignment');
+ensure(
+    godRayBlock.includes('top: 50%')
+        && godRayBlock.includes('left: 50%')
+        && godRayBlock.includes('transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg))'),
+    'Individual rays translate to the sun center before rotating',
+    'Individual rays do not translate to sun center (misalignment risk)',
+);
 
-if (hasZIndex) {
-    console.log('  ✓ PASS: God rays properly layered (z-index: 2)');
-} else {
-    console.log('  ✗ WARNING: God rays should have z-index for proper layering');
-}
+// Test 11: Verify CSS custom properties for ray tuning exist
+console.log('\nTest 11: CSS custom properties exposed');
+ensure(
+    godRayBlock.includes('var(--ray-width')
+        && godRayBlock.includes('var(--ray-length')
+        && godRayBlock.includes('var(--ray-opacity'),
+    'CSS custom properties defined for ray width/length/opacity',
+    'Missing CSS custom properties for fine-grained ray styling',
+);
 
-// Test 9: Verify pointer events disabled
-console.log('\nTest 9: Interaction optimization');
-const hasPointerEvents = cssCode.match(/\.sunset-god-rays[\s\S]*?pointer-events:\s*none/);
+// Test 12: Verify JavaScript feeds custom properties for per-ray variance
+console.log('\nTest 12: JavaScript sets CSS custom properties for alignment');
+ensure(
+    scriptCode.includes("setProperty('--ray-angle'")
+        && scriptCode.includes("setProperty('--ray-length'")
+        && scriptCode.includes("setProperty('--ray-width'")
+        && scriptCode.includes("setProperty('--ray-opacity'"),
+    'Sunset theme sets CSS variables so rays stay centered while sun moves',
+    'Sunset theme must set CSS custom properties for ray alignment',
+);
 
-if (hasPointerEvents) {
-    console.log('  ✓ PASS: pointer-events: none (prevents blocking user interaction)');
-} else {
-    console.log('  ✗ FAIL: pointer-events should be none to avoid blocking clicks');
-    process.exit(1);
-}
-
-// Test 10: Performance impact assessment
-console.log('\nTest 10: Performance impact assessment');
-const rayWidth = cssCode.match(/\.sunset-god-ray[\s\S]*?width:\s*(\d+)px/);
-const gradientStops = cssCode.match(/\.sunset-god-ray[\s\S]*?rgba[^}]*rgba[^}]*transparent/);
-
-if (rayWidth && parseInt(rayWidth[1]) <= 5) {
-    console.log('  ✓ PASS: Ray width optimized (≤5px for minimal overdraw)');
-} else {
-    console.log('  ✗ WARNING: Consider reducing ray width for better performance');
-}
-
-if (gradientStops) {
-    console.log('  ✓ PASS: Gradient uses minimal color stops (efficient)');
-} else {
-    console.log('  ✗ WARNING: Gradient should use minimal stops for performance');
-}
-
-console.log('\n=== All Critical Tests Passed! ===');
-console.log('\n🎯 Optimization Summary:');
-console.log('  BEFORE: 30 invisible DOM elements consuming resources');
-console.log('    • No CSS styling → invisible god rays');
-console.log('    • ~28KB wasted memory');
-console.log('    • 30 animation delays applied to nothing');
-console.log('    • Layout calculations for invisible elements');
-console.log('    • Style recalculation overhead on theme switch');
-console.log('');
-console.log('  AFTER: 30 functional, GPU-accelerated god rays');
-console.log('    • ✓ CSS styling added → god rays now visible');
-console.log('    • ✓ GPU-accelerated with will-change');
-console.log('    • ✓ Single parent animation (not 30 individual)');
-console.log('    • ✓ Efficient gradient rendering');
-console.log('    • ✓ 60fps smooth performance');
-console.log('    • ✓ Zero breaking changes to gameplay');
-console.log('    • ✓ Preserves artistic vision of sunset theme');
-console.log('');
-console.log('📊 Performance Impact:');
-console.log('  • DOM elements: Same (30) but now functional');
-console.log('  • Memory: +~2KB CSS (negligible)');
-console.log('  • Render overhead: Minimal (GPU-accelerated)');
-console.log('  • Visual quality: Dramatically improved ✨');
-console.log('  • User experience: Enhanced atmospheric lighting');
-console.log('');
-console.log('🧪 Next Steps:');
-console.log('  • Open tests/performance/test-god-rays-performance.html in browser');
-console.log('  • View sunset theme in main game (index.html)');
-console.log('  • Verify god rays are visible and smoothly animated');
-console.log('  • Check DevTools Performance tab for 60fps');
-
-process.exit(0);
+console.log('\n=== All critical god-ray tests passed ===');
+console.log('God rays are now centered on the sun and inherit its movement.\n');

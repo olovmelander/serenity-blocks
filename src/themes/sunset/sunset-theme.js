@@ -173,8 +173,16 @@ export default class SunsetTheme extends BaseTheme {
             for (let i = 0; i < 30; i++) {
                 const ray = document.createElement('div');
                 ray.className = 'sunset-god-ray';
-                ray.style.transform = `rotate(${i * 12 + Math.random() * 4 - 2}deg)`;
-                ray.style.animationDelay = `-${Math.random() * 25}s`;
+                const angle = i * 12 + (Math.random() * 4 - 2);
+                const length = this.random(260, 360);
+                const width = this.random(2, 4.5);
+                const opacity = this.random(0.3, 0.55);
+
+                ray.style.setProperty('--ray-angle', `${angle}deg`);
+                ray.style.setProperty('--ray-length', `${length}px`);
+                ray.style.setProperty('--ray-width', `${width}px`);
+                ray.style.setProperty('--ray-opacity', opacity.toFixed(2));
+
                 godRayContainer.appendChild(ray);
             }
             this.registerContainer(godRayContainer);
