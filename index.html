@@ -21,6 +21,13 @@
                 <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
                 <feBlend in="SourceGraphic" in2="goo" />
             </filter>
+            <!-- LAVA LAMP: Balanced gooey filter - merges smoothly but allows separation -->
+            <filter id="gooey-lava" colorInterpolationFilters="sRGB">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 17 -7" result="goo" />
+                <feGaussianBlur in="goo" stdDeviation="1.5" result="smoothGoo" />
+                <feComposite in="SourceGraphic" in2="smoothGoo" operator="atop" />
+            </filter>
             <!-- Clip path for multiplayer boards with rounded corners -->
             <clipPath id="multiplayer-clip-path" clipPathUnits="userSpaceOnUse">
                 <!-- Player 1 board: full 300x600 area with 12px rounded corners -->
