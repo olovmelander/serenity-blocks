@@ -1893,37 +1893,73 @@ body {
     position: absolute;
     background-color: rgba(245, 255, 250, 0.85);
     border-radius: 50%;
-    animation: aurora-star-twinkle 8s ease-in-out infinite;
+    box-shadow:
+        0 0 2px 0.5px rgba(245, 255, 250, 0.5),
+        0 0 4px 1px rgba(180, 220, 255, 0.3);
+    animation: aurora-star-twinkle 10s ease-in-out infinite;
     will-change: opacity;
 }
 
 @keyframes aurora-star-twinkle {
-    0%, 100% { opacity: 0.2; }
-    45% { opacity: 0.75; }
-    60% { opacity: 0.45; }
-    80% { opacity: 0.65; }
+    0%, 100% {
+        opacity: var(--base-opacity, 0.5);
+        filter: brightness(1);
+    }
+    20% {
+        opacity: calc(var(--base-opacity, 0.5) * 1.15);
+        filter: brightness(1.1);
+    }
+    40% {
+        opacity: calc(var(--base-opacity, 0.5) * 0.75);
+        filter: brightness(0.9);
+    }
+    60% {
+        opacity: calc(var(--base-opacity, 0.5) * 0.85);
+        filter: brightness(0.95);
+    }
+    80% {
+        opacity: calc(var(--base-opacity, 0.5) * 1.08);
+        filter: brightness(1.05);
+    }
 }
 
 .aurora-veil {
     position: absolute;
-    inset: var(--aurora-inset, 18% -15% auto -15%);
-    width: auto;
-    height: var(--aurora-height, 42vh);
-    background: radial-gradient(ellipse at top,
-        hsla(calc(var(--aurora-hue, 125) - 4), 78%, 66%, 0.0) 10%,
-        hsla(var(--aurora-hue, 125), 86%, 58%, 0.58) 35%,
-        hsla(calc(var(--aurora-hue, 125) + 8), 84%, 56%, 0.74) 55%,
-        hsla(calc(var(--aurora-hue, 125) + 2), 80%, 54%, 0.28) 78%,
-        transparent 100%
-    );
-    opacity: var(--aurora-opacity, 0.36);
-    filter: blur(18px) saturate(105%);
-    border-radius: 50%;
-    transform-origin: 50% 80%;
+    /* ORGANIC: Multi-layer gradient for rich, natural aurora colors */
+    background:
+        radial-gradient(ellipse var(--aurora-ellipse-x, 140%) var(--aurora-ellipse-y, 100%) at 48% 45%,
+            hsla(calc(var(--aurora-hue, 125) - 15), 75%, 65%, 0) 0%,
+            hsla(calc(var(--aurora-hue, 125) - 8), 88%, 68%, 0.15) 12%,
+            hsla(calc(var(--aurora-hue, 125) - 3), 92%, 66%, 0.45) 22%,
+            hsla(var(--aurora-hue, 125), 95%, 64%, 0.75) 32%,
+            hsla(calc(var(--aurora-hue, 125) + 5), 93%, 60%, 0.85) 40%,
+            hsla(calc(var(--aurora-hue, 125) + 10), 90%, 58%, 0.72) 50%,
+            hsla(calc(var(--aurora-hue, 125) + 8), 87%, 56%, 0.55) 62%,
+            hsla(calc(var(--aurora-hue, 125) + 15), 82%, 52%, 0.32) 74%,
+            hsla(calc(var(--aurora-hue, 125) + 20), 78%, 50%, 0.15) 85%,
+            hsla(calc(var(--aurora-hue, 125) + 22), 72%, 48%, 0.05) 93%,
+            transparent 100%
+        ),
+        radial-gradient(ellipse calc(var(--aurora-ellipse-x, 140%) * 0.7) calc(var(--aurora-ellipse-y, 100%) * 1.2) at 52% 55%,
+            hsla(calc(var(--aurora-hue, 125) + 18), 85%, 62%, 0.3) 0%,
+            hsla(calc(var(--aurora-hue, 125) + 12), 80%, 58%, 0.2) 40%,
+            transparent 70%
+        );
+    opacity: 0;
+    /* SUBTLE: Ultra-soft blur for seamless, ethereal blending */
+    filter: blur(50px) saturate(80%) brightness(0.8);
+    /* ORGANIC: Irregular border-radius for natural, flowing shapes */
+    border-radius: var(--aurora-shape, 45% 55% 52% 48% / 48% 58% 42% 52%);
+    transform: scale(0.95);
+    transform-origin: 50% 50%;
     mix-blend-mode: screen;
+    will-change: opacity, filter, transform;
     animation:
-        aurora-wave var(--aurora-duration, 18s) ease-in-out infinite alternate,
-        aurora-glow var(--aurora-glow, 9s) ease-in-out infinite alternate;
+        aurora-fade-in 4.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards,
+        aurora-wave var(--aurora-duration, 18s) cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate,
+        aurora-glow var(--aurora-glow, 9s) cubic-bezier(0.4, 0, 0.6, 1) infinite alternate,
+        aurora-ripple calc(var(--aurora-duration, 18s) * 0.7) ease-in-out infinite,
+        aurora-morph calc(var(--aurora-duration, 18s) * 1.3) cubic-bezier(0.42, 0, 0.58, 1) infinite;
 }
 .aurora-veil::before {
     display: none;
@@ -1962,31 +1998,182 @@ body {
     }
 }
 
-@keyframes aurora-wave {
+/* SMOOTH: Ultra-gradual fade-in to prevent any popping */
+@keyframes aurora-fade-in {
     0% {
-        transform: translate3d(calc(var(--aurora-offset, -4%) * -1), 0, 0)
-            rotate(calc(var(--aurora-tilt, 2deg) * 0.5));
+        opacity: 0;
+        filter: blur(50px) saturate(80%) brightness(0.8);
+        transform: scale(0.95);
     }
-    50% {
-        transform: translate3d(0, calc(var(--aurora-rise, -4%) / 2), 0)
-            rotate(calc(var(--aurora-tilt, 2deg) * -0.4));
+    30% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.2);
+        filter: blur(48px) saturate(90%) brightness(0.85);
+        transform: scale(0.97);
+    }
+    60% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.5);
+        filter: blur(42px) saturate(105%) brightness(0.92);
+        transform: scale(0.99);
     }
     100% {
-        transform: translate3d(var(--aurora-offset, -4%), var(--aurora-rise, -4%), 0)
-            rotate(calc(var(--aurora-tilt, 2deg) * -0.7));
+        opacity: var(--aurora-opacity, 0.36);
+        filter: blur(35px) saturate(120%) brightness(1);
+        transform: scale(1);
     }
 }
 
+/* FLUID: Ultra-smooth aurora movement with seamless, subtle transitions */
+@keyframes aurora-wave {
+    0% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * -1 + var(--aurora-drift, 0%) * 0),
+                calc(var(--aurora-rise-var, 0%) * 0.1),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * 0.6))
+            scale(calc(var(--aurora-scale-start, 1) * 0.97));
+    }
+    16% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * -0.6 + var(--aurora-drift, 0%) * 0.2),
+                calc(var(--aurora-rise, -4%) * 0.2 + var(--aurora-rise-var, 0%) * 0.3),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * 0.3))
+            scale(calc(var(--aurora-scale-start, 1) * 0.99));
+    }
+    33% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * -0.15 + var(--aurora-drift, 0%) * 0.45),
+                calc(var(--aurora-rise, -4%) * 0.4 + var(--aurora-rise-var, 0%) * 0.55),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * 0))
+            scale(calc(var(--aurora-scale-start, 1) * 1.02));
+    }
+    50% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 0.35 + var(--aurora-drift, 0%) * 0.7),
+                calc(var(--aurora-rise, -4%) * 0.6 + var(--aurora-rise-var, 0%) * 0.75),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -0.4))
+            scale(calc(var(--aurora-scale-mid, 1) * 1.05));
+    }
+    66% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 0.7 + var(--aurora-drift, 0%) * 0.88),
+                calc(var(--aurora-rise, -4%) * 0.8 + var(--aurora-rise-var, 0%) * 0.9),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -0.75))
+            scale(calc(var(--aurora-scale-mid, 1) * 1.04));
+    }
+    83% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 0.9 + var(--aurora-drift, 0%) * 0.97),
+                calc(var(--aurora-rise, -4%) * 0.92 + var(--aurora-rise-var, 0%) * 0.98),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -1))
+            scale(calc(var(--aurora-scale-end, 1) * 1.01));
+    }
+    100% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 1 + var(--aurora-drift, 0%) * 1),
+                calc(var(--aurora-rise, -4%) * 1 + var(--aurora-rise-var, 0%) * 1),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -1.1))
+            scale(calc(var(--aurora-scale-end, 1) * 0.98));
+    }
+}
+
+/* SUBTLE: Gentle aurora glow with minimal, seamless fade */
 @keyframes aurora-glow {
-    0% { opacity: calc(var(--aurora-opacity, 0.36) * 0.8); filter: blur(16px); }
-    50% { opacity: calc(var(--aurora-opacity, 0.36) * 1.05); filter: blur(22px); }
-    100% { opacity: calc(var(--aurora-opacity, 0.36) * 0.85); filter: blur(18px); }
+    0% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.75);
+        filter: blur(26px) saturate(115%) brightness(0.96);
+    }
+    25% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.95);
+        filter: blur(29px) saturate(125%) brightness(1.08);
+    }
+    50% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 1.1);
+        filter: blur(32px) saturate(132%) brightness(1.15);
+    }
+    75% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.92);
+        filter: blur(30px) saturate(122%) brightness(1.04);
+    }
+    100% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.8);
+        filter: blur(27px) saturate(118%) brightness(0.98);
+    }
+}
+
+/* SUBTLE: Gentle ripple effect with minimal shimmer variation */
+@keyframes aurora-ripple {
+    0% {
+        filter: blur(30px) saturate(125%) brightness(1) contrast(102%);
+    }
+    20% {
+        filter: blur(32px) saturate(128%) brightness(1.04) contrast(103%);
+    }
+    40% {
+        filter: blur(29px) saturate(123%) brightness(0.98) contrast(101%);
+    }
+    60% {
+        filter: blur(31px) saturate(127%) brightness(1.02) contrast(103%);
+    }
+    80% {
+        filter: blur(30px) saturate(125%) brightness(0.99) contrast(102%);
+    }
+    100% {
+        filter: blur(30px) saturate(125%) brightness(1) contrast(102%);
+    }
 }
 
 @keyframes aurora-horizon-pulse {
     0% { opacity: 0.25; transform: translateY(0); }
     50% { opacity: 0.4; transform: translateY(-1.5%); }
     100% { opacity: 0.28; transform: translateY(0); }
+}
+
+/* ORGANIC: Flowing shape morphing for natural aurora forms */
+@keyframes aurora-morph {
+    0% {
+        border-radius: 45% 55% 52% 48% / 48% 58% 42% 52%;
+    }
+    14% {
+        border-radius: 52% 48% 45% 55% / 55% 42% 58% 45%;
+    }
+    28% {
+        border-radius: 48% 52% 58% 42% / 42% 55% 45% 58%;
+    }
+    42% {
+        border-radius: 55% 45% 48% 52% / 58% 48% 52% 42%;
+    }
+    57% {
+        border-radius: 42% 58% 55% 45% / 52% 45% 55% 48%;
+    }
+    71% {
+        border-radius: 58% 42% 48% 52% / 45% 52% 48% 55%;
+    }
+    85% {
+        border-radius: 48% 52% 55% 45% / 52% 48% 58% 42%;
+    }
+    100% {
+        border-radius: 45% 55% 52% 48% / 48% 58% 42% 52%;
+    }
 }
 
 /* Aurora Reactive Effects */
@@ -2027,13 +2214,14 @@ body {
 
 .shooting-star {
     position: absolute;
-    width: 2px;
-    height: 2px;
-    background: white;
+    width: 3px;
+    height: 3px;
+    background: rgba(255, 255, 255, 1);
     border-radius: 50%;
-    box-shadow: 
-        0 0 4px 2px rgba(255, 255, 255, 0.8),
-        0 0 8px 4px rgba(150, 200, 255, 0.6);
+    box-shadow:
+        0 0 6px 3px rgba(255, 255, 255, 0.9),
+        0 0 12px 6px rgba(180, 220, 255, 0.7),
+        0 0 20px 8px rgba(150, 200, 255, 0.4);
     animation: shooting-star-trail 1s ease-out forwards;
     pointer-events: none;
     z-index: 15;
@@ -2049,8 +2237,10 @@ body {
     background: linear-gradient(
         var(--shooting-angle, -45deg),
         rgba(255, 255, 255, 0) 0%,
-        rgba(255, 255, 255, 0.6) 40%,
-        rgba(255, 255, 255, 0.9) 100%
+        rgba(255, 255, 255, 0.4) 20%,
+        rgba(255, 255, 255, 0.7) 50%,
+        rgba(255, 255, 255, 0.9) 80%,
+        rgba(255, 255, 255, 1) 100%
     );
     transform-origin: left center;
     animation: shooting-star-trail-length 1s ease-out forwards;
@@ -2060,13 +2250,19 @@ body {
     0% {
         opacity: 0;
         transform: translate(0, 0) rotate(var(--shooting-angle, -45deg));
+        filter: brightness(0.5);
     }
-    10% {
+    5% {
         opacity: 1;
+        filter: brightness(1.5);
+    }
+    15% {
+        filter: brightness(1.2);
     }
     100% {
         opacity: 0;
-        transform: translate(200px, 200px) rotate(var(--shooting-angle, -45deg));
+        transform: translate(250px, 250px) rotate(var(--shooting-angle, -45deg));
+        filter: brightness(0.8);
     }
 }
 
@@ -2074,8 +2270,8 @@ body {
     0% {
         width: 0;
     }
-    30% {
-        width: 100px;
+    25% {
+        width: 120px;
     }
     100% {
         width: 0;
