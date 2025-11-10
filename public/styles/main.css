@@ -902,12 +902,26 @@ body {
     position: absolute;
     width: 400px;
     height: 400px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background: radial-gradient(circle, rgba(255,255,240,0.3) 0%, rgba(255,255,220,0.1) 30%, transparent 60%);
     border-radius: 50%;
     pointer-events: none;
     mix-blend-mode: screen;
-    animation: flare-follow 180s ease-in-out infinite;
+    opacity: 0;
+    animation: lens-flare-visibility 180s ease-in-out infinite;
     z-index: 3;
+}
+
+@keyframes lens-flare-visibility {
+    0% { opacity: 0; }
+    6% { opacity: 0.3; }
+    12% { opacity: 0.6; }
+    20% { opacity: 1; }
+    64% { opacity: 1; }
+    70% { opacity: 0.3; }
+    76%, 100% { opacity: 0; }
 }
 
 .sunset-sunflares {
@@ -919,6 +933,7 @@ body {
     transform: translate(-50%, -50%);
     pointer-events: none;
     z-index: -1;
+    opacity: 0;
     animation: sunflares-visibility 180s ease-in-out infinite;
 }
 
@@ -951,59 +966,50 @@ body {
     }
 }
 
-@keyframes flare-follow {
-    0%, 76%, 100% { 
-        left: 10%; bottom: -10%; 
-        opacity: 0; 
-        transform: scale(0.5);
-    }
-    12% { 
-        left: 25%; bottom: 20%; 
-        opacity: 0.6; 
-        transform: scale(0.8);
-    }
-    36% { 
-        left: 70%; bottom: 80%; 
-        opacity: 1; 
-        transform: scale(1.2);
-    }
-    58% { 
-        left: 92%; bottom: 30%; 
-        opacity: 0.8; 
-        transform: scale(1);
-    }
-    70% {
-        left: 97%; bottom: -5%;
-        opacity: 0.3;
-        transform: scale(0.6);
-    }
-}
 
 .sunset-god-rays {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 600px;
-    height: 600px;
+    top: var(--sunset-god-ray-center-y, 50%);
+    left: var(--sunset-god-ray-center-x, 50%);
+    width: clamp(520px, 46vw, 760px);
+    height: clamp(520px, 46vw, 760px);
     transform-origin: center;
     transform: translate(-50%, -50%);
-    animation: sunset-ray-rotation 60s ease-in-out infinite alternate;
+    opacity: 0;
+    animation: sunset-ray-rotation 60s ease-in-out infinite alternate,
+               sunset-god-rays-visibility 180s ease-in-out infinite;
     pointer-events: none;
     z-index: 2;
 }
 
+@keyframes sunset-god-rays-visibility {
+    0% { opacity: 0; }
+    6% { opacity: 0.2; }
+    12% { opacity: 0.6; }
+    20% { opacity: 0.8; }
+    64% { opacity: 0.8; }
+    70% { opacity: 0.3; }
+    76%, 100% { opacity: 0; }
+}
+
 .sunset-god-ray {
     position: absolute;
-    top: 0;
+    top: 50%;
     left: 50%;
-    width: 3px;
-    height: 100%;
-    background: linear-gradient(to bottom,
-        rgba(255, 220, 150, 0.25) 0%,
-        rgba(255, 200, 130, 0.15) 40%,
-        transparent 70%);
+    width: var(--ray-width, 4px);
+    height: var(--ray-length, 320px);
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 230, 180, 0.4) 0%,
+        rgba(255, 180, 120, 0.18) 55%,
+        rgba(255, 150, 90, 0) 100%
+    );
     transform-origin: top center;
-    will-change: transform;
+    transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg));
+    opacity: var(--ray-opacity, 0.45);
+    filter: blur(0.5px);
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
 }
 
 @keyframes sunset-ray-rotation {
