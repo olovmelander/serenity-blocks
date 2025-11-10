@@ -271,6 +271,11 @@ export class InfinityMode extends BaseGameMode {
         } else if (!shouldEnableTranceState) {
             console.log('[Infinity] Trance state skipped (settings menu opened)');
         }
+
+        // Trigger minimap pause highlight effect
+        if (this.minimap) {
+            this.minimap.onPause();
+        }
     }
 
     /**
@@ -297,6 +302,11 @@ export class InfinityMode extends BaseGameMode {
         if (this.boardScene) {
             this.boardScene.disableManualCameraControl();
             this._removeCameraControls();
+        }
+
+        // Trigger minimap unpause effect
+        if (this.minimap) {
+            this.minimap.onUnpause();
         }
     }
 

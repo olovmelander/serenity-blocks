@@ -46,6 +46,10 @@ export class InfinityMinimap {
         this.isDragging = false;
         this.isHovering = false;
 
+        // Mouse position for cursor glow effect
+        this.mouseX = 50; // Center by default (percentage)
+        this.mouseY = 50;
+
         // Height milestones
         this.milestones = [100, 250, 500, 750, 1000];
 
@@ -118,9 +122,69 @@ export class InfinityMinimap {
         this.ctx = this.canvas.getContext('2d');
         this.container.appendChild(this.canvas);
 
-        // Add hover style for enhanced interactivity
+        // Add animations and hover styles
         const hoverStyle = document.createElement('style');
         hoverStyle.textContent = `
+            /* Slide-in animation from right with spring effect */
+            @keyframes minimapSlideIn {
+                0% {
+                    transform: translateX(120%) scale(0.95);
+                    opacity: 0;
+                }
+                60% {
+                    transform: translateX(-8px) scale(1.02);
+                    opacity: 1;
+                }
+                100% {
+                    transform: translateX(0) scale(1);
+                    opacity: 0.8;
+                }
+            }
+
+            /* Slide-out animation */
+            @keyframes minimapSlideOut {
+                0% {
+                    transform: translateX(0) scale(1);
+                    opacity: 0.8;
+                }
+                100% {
+                    transform: translateX(120%) scale(0.95);
+                    opacity: 0;
+                }
+            }
+
+            /* Activation pulse ripple effect */
+            @keyframes activationPulse {
+                0% {
+                    box-shadow:
+                        0 14px 40px rgba(10, 16, 30, 0.5),
+                        inset 0 0 24px rgba(60, 255, 200, 0.2),
+                        0 0 0 0 rgba(100, 255, 200, 0.7);
+                }
+                50% {
+                    box-shadow:
+                        0 14px 40px rgba(10, 16, 30, 0.5),
+                        inset 0 0 40px rgba(60, 255, 200, 0.6),
+                        0 0 30px 15px rgba(100, 255, 200, 0);
+                }
+                100% {
+                    box-shadow:
+                        0 14px 40px rgba(10, 16, 30, 0.5),
+                        inset 0 0 24px rgba(60, 255, 200, 0.2),
+                        0 0 0 0 rgba(100, 255, 200, 0);
+                }
+            }
+
+            /* Enhanced border pulse for active state */
+            @keyframes borderPulseActive {
+                0%, 100% {
+                    border-color: rgba(100, 255, 200, 0.5);
+                }
+                50% {
+                    border-color: rgba(100, 255, 200, 0.8);
+                }
+            }
+
             .infinity-minimap:hover {
                 opacity: 1 !important;
                 transform: scale(1.02) !important;
@@ -133,6 +197,17 @@ export class InfinityMinimap {
 
             .infinity-minimap:active {
                 transform: scale(0.98) !important;
+            }
+
+            /* Active state while minimap is visible */
+            .infinity-minimap.active {
+                animation: borderPulseActive 3s ease-in-out infinite;
+            }
+
+            /* Enhanced title glow when active */
+            .infinity-minimap.active .minimap-title {
+                color: rgba(100, 255, 200, 0.9) !important;
+                text-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
             }
         `;
         document.head.appendChild(hoverStyle);
@@ -163,11 +238,15 @@ export class InfinityMinimap {
         this.canvas.addEventListener('mouseenter', this.handleMouseEnter);
         this.canvas.addEventListener('mouseleave', this.handleMouseLeave);
 
+        // Add container-level mousemove for cursor glow effect
+        this.container.addEventListener('mousemove', this._onContainerMouseMove.bind(this));
+        this.container.addEventListener('mouseleave', this._onContainerMouseLeave.bind(this));
+
         console.log('[InfinityMinimap] Initialized');
     }
 
     /**
-     * Show minimap
+     * Show minimap (always visible, no entrance animation)
      */
     show() {
         const panel = document.getElementById('single-player-container');
@@ -176,16 +255,93 @@ export class InfinityMinimap {
             panel.appendChild(this.container);
         }
 
+        // Simply show without animation
         this.container.style.display = 'block';
+        this.container.style.transform = 'translateX(0) scale(1)';
+        this.container.style.opacity = '0.8';
+
         console.log('[InfinityMinimap] Shown');
     }
 
     /**
-     * Hide minimap
+     * Hide minimap with animated exit
      */
     hide() {
-        this.container.style.display = 'none';
-        console.log('[InfinityMinimap] Hidden');
+        // Remove active class
+        this.container.classList.remove('active');
+
+        // Apply slide-out animation
+        this.container.style.animation = 'minimapSlideOut 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards';
+
+        // Trigger activation pulse on close
+        this._triggerActivationPulse();
+
+        // Actually hide after animation completes
+        setTimeout(() => {
+            this.container.style.display = 'none';
+            this.container.style.animation = 'none';
+        }, 400);
+
+        console.log('[InfinityMinimap] Hidden with animation');
+    }
+
+    /**
+     * Trigger activation pulse effect
+     * @private
+     */
+    _triggerActivationPulse() {
+        // Temporarily remove the active class to allow the pulse to trigger
+        const wasActive = this.container.classList.contains('active');
+        if (wasActive) {
+            this.container.classList.remove('active');
+        }
+
+        // Force a reflow to ensure the animation restarts
+        void this.container.offsetWidth;
+
+        // Apply the activation pulse
+        this.container.style.animation = 'activationPulse 0.6s ease-out';
+
+        // After the pulse completes, restore active state if needed
+        setTimeout(() => {
+            this.container.style.animation = '';
+            if (wasActive) {
+                this.container.classList.add('active');
+            }
+        }, 600);
+    }
+
+    /**
+     * Trigger pause highlight effect (called when game is paused)
+     * Makes the minimap visually react to indicate it's now interactive
+     */
+    onPause() {
+        // Trigger immediate activation pulse for instant feedback
+        this._triggerActivationPulse();
+
+        // Add active class for continuous pulse (will be restored after pulse animation)
+        // The _triggerActivationPulse will handle adding it back after the pulse
+        setTimeout(() => {
+            this.container.classList.add('active');
+        }, 650); // Slightly after pulse completes
+
+        console.log('[InfinityMinimap] Pause highlight activated');
+    }
+
+    /**
+     * Trigger unpause effect (called when game resumes)
+     * Subtle farewell animation
+     */
+    onUnpause() {
+        // Trigger pulse before removing active class
+        this._triggerActivationPulse();
+
+        // Remove active class (stops continuous pulse) - will be handled by _triggerActivationPulse
+        setTimeout(() => {
+            this.container.classList.remove('active');
+        }, 650);
+
+        console.log('[InfinityMinimap] Unpause effect triggered');
     }
 
     /**
@@ -256,6 +412,9 @@ export class InfinityMinimap {
         // Draw subtle background texture
         this._drawBackgroundTexture(ctx, width, height);
 
+        // Draw animated scanline effect
+        this._drawScanlineEffect(ctx, width, height);
+
         const totalRows = this.gameState.board.length;
         const pixelsPerRow = height / totalRows;
 
@@ -304,6 +463,37 @@ export class InfinityMinimap {
                 ctx.arc(x, y, dotSize, 0, Math.PI * 2);
                 ctx.fill();
             }
+        }
+    }
+
+    /**
+     * Draw animated scanline effect (futuristic radar sweep)
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} width - Canvas width
+     * @param {number} height - Canvas height
+     */
+    _drawScanlineEffect(ctx, width, height) {
+        const time = Date.now() / 1000;
+
+        // Moving scanline that sweeps vertically
+        const scanlineY = ((time * 60) % height); // Sweeps every ~6.5 seconds at 388px height
+
+        // Create gradient for the moving scanline
+        const gradient = ctx.createLinearGradient(0, scanlineY - 40, 0, scanlineY + 40);
+        gradient.addColorStop(0, 'rgba(100, 255, 200, 0)');
+        gradient.addColorStop(0.4, 'rgba(100, 255, 200, 0.12)');
+        gradient.addColorStop(0.5, 'rgba(100, 255, 200, 0.18)');
+        gradient.addColorStop(0.6, 'rgba(100, 255, 200, 0.12)');
+        gradient.addColorStop(1, 'rgba(100, 255, 200, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, scanlineY - 40, width, 80);
+
+        // Static scanlines (CRT effect)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        for (let y = 0; y < height; y += 4) {
+            ctx.fillRect(0, y, width, 2);
         }
     }
 
@@ -629,6 +819,37 @@ export class InfinityMinimap {
         this.isHovering = false;
         this.isDragging = false;
         this.canvas.style.opacity = '0.8';
+    }
+
+    /**
+     * Handle container mouse move for cursor tracking glow
+     * @private
+     */
+    _onContainerMouseMove(event) {
+        if (!this.isHovering) return;
+
+        const rect = this.container.getBoundingClientRect();
+        this.mouseX = ((event.clientX - rect.left) / rect.width) * 100;
+        this.mouseY = ((event.clientY - rect.top) / rect.height) * 100;
+
+        // Update background with radial gradient at cursor position
+        this.container.style.background = `
+            radial-gradient(circle 120px at ${this.mouseX}% ${this.mouseY}%,
+                rgba(100, 255, 200, 0.18) 0%,
+                rgba(60, 255, 200, 0.08) 40%,
+                transparent 100%),
+            linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92))
+        `;
+    }
+
+    /**
+     * Handle container mouse leave for cursor tracking glow
+     * @private
+     */
+    _onContainerMouseLeave() {
+        // Reset to default gradient
+        this.container.style.background =
+            'linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92))';
     }
 
     /**
