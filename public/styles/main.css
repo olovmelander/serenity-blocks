@@ -20,6 +20,7 @@ body {
 :root {
     --lock-ripple-border-color: rgba(100, 200, 255, 0.8);
     --lock-ripple-shadow-color: rgba(100, 200, 255, 0.6);
+    --global-sunset-flare-strength: 1;
 }
 
 /* --- Background Container --- */
@@ -657,46 +658,182 @@ body {
 /* --- Sunset Theme --- */
 #sunset-theme {
     overflow: hidden;
-    background: linear-gradient(to top, #89cff0, #2980b9); /* Fallback */
+    background: linear-gradient(to top, #203246, #3b5a85);
+    --sunset-solar-x: 50%;
+    --sunset-solar-y: 50%;
+    --sunset-solar-altitude: 0.6;
+    --sunset-solar-intensity: 0.8;
+    --sunset-god-ray-center-x: 50%;
+    --sunset-god-ray-center-y: 50%;
+    --sunset-ray-scale: 1;
+    --sunset-ray-opacity: 1;
+    --sunset-ray-flicker: 1;
+    --sunset-flare-strength: var(--global-sunset-flare-strength, 1);
+    --sunset-flare-cap: 1;
+    --sunset-sun-core-alpha: 0.85;
+    --sunset-star-alpha: 0;
+    --sunset-star-twinkle-speed: 1;
+    --sunset-cloud-warmth: 0deg;
+    --sunset-cloud-brightness: 1;
+    --sunset-cloud-highlight: 0.35;
+    --sunset-heat-haze-strength: 0;
+    --sunset-noise-alpha: 0.2;
+    --sunset-night-veil-alpha: 0;
+    --sunset-cirrus-opacity: 0.15;
+    --sunset-sky-desaturate: 1;
+    --sunset-mountain-hue: 0deg;
+    --sunset-mountain-brightness: 0.8;
+}
+
+#sunset-theme.sunset-minimal .sunset-clouds,
+#sunset-theme.sunset-minimal #dust-motes,
+#sunset-theme.sunset-minimal .sunset-god-rays,
+#sunset-theme.sunset-minimal .sunset-heat-haze,
+#sunset-theme.sunset-minimal .sunset-sunflares,
+#sunset-theme.sunset-minimal .sunset-lens-stack,
+#sunset-theme.sunset-minimal .lens-flare {
+    display: none !important;
+}
+
+#sunset-theme.sunset-minimal .mountain-silhouette {
+    filter: saturate(0.85);
+}
+
+#sunset-theme.sunset-minimal.sunset-night-only .sunset-solar-gradient,
+#sunset-theme.sunset-minimal.sunset-night-only .sunset-night-veil {
+    opacity: 0.2;
+}
+
+#sunset-theme.sunset-minimal.sunset-night-only .sun {
+    opacity: 0;
+}
+
+/* EXTREME PERFORMANCE: Disable expensive CSS operations that cause FPS drops during daylight */
+#sunset-theme .sunset-sunflare {
+    animation: none !important; /* Disable sunflare-pulse animation - runs every 3s */
+    transform: translate(-50%, -50%) !important; /* Static position, no pulsing */
+}
+
+#sunset-theme .sun {
+    filter: saturate(var(--sunset-sky-desaturate, 1)) !important; /* Remove blur filter - very expensive */
+    box-shadow: none !important; /* Remove box-shadow for better performance */
+}
+
+#sunset-theme .sunset-sun-core {
+    mix-blend-mode: normal !important; /* Remove expensive screen blend mode */
+}
+
+#sunset-theme .sunset-god-rays {
+    display: none !important; /* Completely hide god rays - they cause FPS drop in daylight */
 }
 
 .sun-and-sky {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    /* A single, very tall gradient containing the entire day-night cycle.
-       We animate the background-position to smoothly scroll through it. */
-    background: linear-gradient(to bottom,
-        /* Dawn */      #191970, #6a5acd, #ff6a88, #ff9a56,
-        /* Sunrise */   #87ceeb, #ff9a56, #ffd89b,
-        /* Morning */   #a29bfe, #74b9ff, #ffeaa7,
-        /* Noon */      #74b9ff, #ffffff,
-        /* Afternoon */ #fdcb6e, #ffeaa7, #74b9ff,
-        /* Sunset */    #ff7675, #fab1a0, #fd79a8, #6c5ce7,
-        /* Dusk */      #ff6348, #341f97, #fd79a8,
-        /* Twilight */  #5f27cd, #2c3e50, #130f40,
-        /* Night */     #1e272e, #16213e, #0c0a1a,
-        /* Deep Night */#0a0a1a, #000000,
-        /* Pre-dawn */  #191970, #5f27cd, #2c3e50,
-        /* Loop back to Dawn */ #191970, #6a5acd, #ff6a88, #ff9a56
+    background: linear-gradient(
+        180deg,
+        #0f1022 0%,
+        #271a43 10%,
+        #ff7c6b 22%,
+        #ffd46f 32%,
+        #88d6ff 42%,
+        #77c5ff 55%,
+        #ffa76a 65%,
+        #7a2f63 75%,
+        #1e1c35 90%,
+        #0a0a1a 100%
     );
-    background-size: 100% 800%; /* Adjust size based on gradient length */
+    background-size: 100% 900%;
     animation: sky-color-cycle 180s ease-in-out infinite;
     z-index: 1;
+    overflow: hidden;
+}
+
+.sunset-solar-gradient,
+.sunset-noise-layer,
+.sunset-night-veil,
+.sunset-cirrus-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.sunset-solar-gradient {
+    background: radial-gradient(circle at var(--sunset-solar-x, 50%) var(--sunset-solar-y, 50%),
+        rgba(255, 218, 120, 0.4),
+        rgba(255, 140, 95, 0.25) 25%,
+        rgba(45, 30, 66, 0.1) 55%,
+        transparent 70%
+    );
+    mix-blend-mode: screen;
+    opacity: calc(0.35 + var(--sunset-solar-intensity, 0.7) * 0.35);
+    animation: solar-gradient-flow 180s ease-in-out infinite;
+}
+
+.sunset-noise-layer {
+    background-image:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) 2px, transparent 2px, transparent 4px),
+        repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.04) 0, rgba(0, 0, 0, 0.04) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: soft-light;
+    opacity: var(--sunset-noise-alpha, 0.2);
+    animation: sunset-noise-drift 120s linear infinite;
+}
+
+.sunset-night-veil {
+    background: radial-gradient(circle at 40% 20%, rgba(116, 212, 255, 0.35), transparent 50%),
+        radial-gradient(circle at 70% 10%, rgba(190, 133, 255, 0.25), transparent 60%);
+    mix-blend-mode: screen;
+    opacity: var(--sunset-night-veil-alpha, 0);
+    transform: translate3d(0, 0, 0);
+    animation: sunset-night-veil-flow 140s ease-in-out infinite;
+}
+
+.sunset-cirrus-layer {
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0.08), transparent 65%);
+    filter: blur(22px);
+    opacity: var(--sunset-cirrus-opacity, 0.15);
+    animation: sunset-cirrus-drift 110s linear infinite;
+}
+
+@keyframes solar-gradient-flow {
+    0% { transform: scale(1) translate3d(0, 0, 0); }
+    50% { transform: scale(1.15) translate3d(2%, -2%, 0); }
+    100% { transform: scale(1) translate3d(0, 0, 0); }
+}
+
+@keyframes sunset-noise-drift {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-5%, -5%, 0); }
+}
+
+@keyframes sunset-night-veil-flow {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-6%, 2%, 0) scale(1.05); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes sunset-cirrus-drift {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(15%, -5%, 0); }
 }
 
 @keyframes sky-color-cycle {
     0% {
         background-position: 0% 0%;
-        filter: brightness(0.6) saturate(1.2);
+        filter: brightness(0.5) saturate(1.2);
     }
     8% { /* Sunrise */
         background-position: 0% 10%;
-        filter: brightness(0.9) saturate(1.3);
+        filter: brightness(0.8) saturate(1.35);
     }
     16% { /* Morning */
         background-position: 0% 20%;
-        filter: brightness(1) saturate(1);
+        filter: brightness(1) saturate(1.05);
     }
     24% { /* Mid-morning */
         background-position: 0% 30%;
@@ -704,15 +841,15 @@ body {
     }
     32% { /* Noon */
         background-position: 0% 40%;
-        filter: brightness(1.2) saturate(0.8);
+        filter: brightness(1.15) saturate(0.85);
     }
     44% { /* Afternoon */
         background-position: 0% 50%;
-        filter: brightness(1.1) saturate(1);
+        filter: brightness(1.05) saturate(1);
     }
     52% { /* Late afternoon / Golden hour */
         background-position: 0% 60%;
-        filter: brightness(1) saturate(1.3);
+        filter: brightness(0.95) saturate(1.35);
     }
     60% { /* Sunset */
         background-position: 0% 70%;
@@ -728,7 +865,7 @@ body {
     }
     84% { /* Night */
         background-position: 0% 90%;
-        filter: brightness(0.3) saturate(0.8);
+        filter: brightness(0.35) saturate(0.85);
     }
     92% { /* Deep night */
         background-position: 0% 95%;
@@ -744,11 +881,158 @@ body {
     position: absolute;
     width: 120px;
     height: 120px;
-    background: radial-gradient(circle, #fff 0%, #ffe5b4 40%, #ffb347 100%);
+    background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,228,181,0.7) 55%, rgba(255,143,80,0.4) 100%);
     border-radius: 50%;
-    filter: blur(2px);
+    filter: blur(1.2px) saturate(var(--sunset-sky-desaturate, 1));
+    box-shadow: 0 0 60px rgba(255, 190, 120, 0.35);
+    opacity: var(--sunset-sun-core-alpha, 0.85);
     animation: sun-journey 180s ease-in-out infinite;
     z-index: 2;
+    overflow: visible;
+}
+
+.sunset-sun-core {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+.sunset-sun-core canvas {
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none;
+}
+
+.sunset-lens-stack {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 260%;
+    height: 260%;
+    transform: translate(-50%, -50%) scale(var(--sunset-flare-scale, 1));
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: calc(var(--sunset-flare-alpha, 0.7) * var(--sunset-flare-strength, 1) * var(--sunset-flare-cap, 1));
+    z-index: 3;
+}
+
+.sunset-lens-halo,
+.sunset-lens-hex,
+.sunset-lens-streak,
+.sunset-lens-ghost,
+.sunset-lens-spikes,
+.sunset-lens-bokeh {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+.sunset-lens-halo {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 230, 150, 0.4) 0%, rgba(255, 180, 100, 0.15) 60%, transparent 100%);
+    filter: blur(18px);
+}
+
+.sunset-lens-hex {
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 210, 130, 0.15) 65%, transparent 100%);
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    transform: translate(-50%, -50%) rotate(12deg);
+    opacity: 0.7;
+    filter: drop-shadow(0 0 12px rgba(255, 221, 170, 0.4));
+}
+
+.sunset-lens-streak {
+    width: 220%;
+    height: 30%;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 234, 195, 0.2) 35%, rgba(255, 200, 150, 0.4) 50%, rgba(255, 180, 120, 0.2) 65%, transparent 100%);
+    filter: blur(6px);
+    opacity: 0.85;
+}
+
+.sunset-lens-ghost {
+    width: 320%;
+    height: 320%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15), rgba(255, 200, 120, 0.05) 65%, transparent 100%);
+    opacity: var(--sunset-ghost-alpha, 0.3);
+    transform: translate(-50%, -50%) scale(var(--sunset-ghost-scale, 1.1));
+    filter: blur(20px);
+}
+
+.sunset-lens-ghost::after {
+    content: '';
+    position: absolute;
+    inset: 15%;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 230, 200, 0.2);
+}
+
+.sunset-lens-spikes {
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%) rotate(12deg);
+    opacity: var(--sunset-spike-alpha, 0.4);
+    filter: blur(1px);
+}
+
+.sunset-lens-spikes::before,
+.sunset-lens-spikes::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 260%;
+    height: 6px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 220, 170, 0.6) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+}
+
+.sunset-lens-spikes::after {
+    width: 6px;
+    height: 260%;
+    background: linear-gradient(180deg, transparent 0%, rgba(255, 220, 170, 0.6) 50%, transparent 100%);
+}
+
+.sunset-lens-bokeh {
+    width: 200%;
+    height: 200%;
+    opacity: var(--sunset-bokeh-alpha, 0.4);
+    mix-blend-mode: screen;
+    transform: translate(-50%, -50%);
+}
+
+.sunset-lens-bokeh::before,
+.sunset-lens-bokeh::after {
+    content: '';
+    position: absolute;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(255, 200, 140, 0.08) 70%, transparent 100%);
+    filter: blur(4px);
+}
+
+.sunset-lens-bokeh::before {
+    top: calc(50% - var(--sunset-bokeh-offset, 40px));
+    left: calc(50% + var(--sunset-bokeh-offset, 40px));
+}
+
+.sunset-lens-bokeh::after {
+    top: calc(50% + var(--sunset-bokeh-offset, 40px));
+    left: calc(50% - var(--sunset-bokeh-offset, 40px));
 }
 
 @keyframes sun-journey {
@@ -909,7 +1193,7 @@ body {
     border-radius: 50%;
     pointer-events: none;
     mix-blend-mode: screen;
-    opacity: 0;
+    opacity: calc(0.6 * var(--sunset-flare-strength, 1) * var(--sunset-flare-cap, 1));
     animation: lens-flare-visibility 180s ease-in-out infinite;
     z-index: 3;
 }
@@ -933,7 +1217,7 @@ body {
     transform: translate(-50%, -50%);
     pointer-events: none;
     z-index: -1;
-    opacity: 0;
+    opacity: calc(var(--sunset-flare-strength, 1) * 0.9 * var(--sunset-flare-cap, 1));
     animation: sunflares-visibility 180s ease-in-out infinite;
 }
 
@@ -955,6 +1239,65 @@ body {
     mix-blend-mode: screen;
     pointer-events: none;
     animation: sunflare-pulse 3s ease-in-out infinite;
+}
+
+.sunset-clouds canvas {
+    filter: hue-rotate(var(--sunset-cloud-warmth, 0deg))
+        brightness(var(--sunset-cloud-brightness, 1))
+        saturate(1.1)
+        drop-shadow(0 0 25px rgba(255, 220, 160, var(--sunset-cloud-highlight, 0.35)));
+    mix-blend-mode: screen;
+    opacity: calc(0.55 + var(--sunset-solar-intensity, 0.5) * 0.45);
+    transition: filter 1.2s ease, opacity 1.2s ease;
+}
+
+.mountain-silhouette canvas {
+    filter: hue-rotate(var(--sunset-mountain-hue, 0deg))
+        brightness(var(--sunset-mountain-brightness, 0.8));
+    transition: filter 1.4s ease;
+}
+
+.sunset-heat-haze {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 35%;
+    pointer-events: none;
+    background: linear-gradient(0deg, rgba(255, 191, 125, 0.35), rgba(255, 191, 125, 0));
+    opacity: clamp(0, calc(var(--sunset-heat-haze-strength, 0) * 0.7), 0.35);
+    mix-blend-mode: screen;
+    animation: sunset-haze-flow 18s ease-in-out infinite;
+    z-index: 3;
+}
+
+.sunset-heat-haze::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 200%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.05) 0,
+        rgba(255, 255, 255, 0.05) 4px,
+        transparent 4px,
+        transparent 8px
+    );
+    opacity: 0.3;
+    animation: sunset-haze-ripple 12s linear infinite;
+}
+
+@keyframes sunset-haze-flow {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-2%, 2%, 0) scale(1.05); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes sunset-haze-ripple {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-10%, -10%, 0); }
 }
 
 @keyframes sunflare-pulse {
@@ -980,6 +1323,8 @@ body {
                sunset-god-rays-visibility 180s ease-in-out infinite;
     pointer-events: none;
     z-index: 2;
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 24px rgba(255, 214, 170, 0.25));
 }
 
 @keyframes sunset-god-rays-visibility {
@@ -997,7 +1342,7 @@ body {
     top: 50%;
     left: 50%;
     width: var(--ray-width, 4px);
-    height: var(--ray-length, 320px);
+    height: calc(var(--ray-length, 320px) * var(--sunset-ray-scale, 1));
     background: linear-gradient(
         to bottom,
         rgba(255, 230, 180, 0.4) 0%,
@@ -1006,10 +1351,14 @@ body {
     );
     transform-origin: top center;
     transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg));
-    opacity: var(--ray-opacity, 0.45);
+    opacity: calc(var(--ray-opacity, 0.45) * var(--sunset-ray-opacity, 1) * var(--sunset-ray-flicker, 1));
     filter: blur(0.5px);
     mix-blend-mode: screen;
     will-change: transform, opacity;
+}
+
+.sunset-dust-particle {
+    transition: background 1.2s ease, box-shadow 1.2s ease;
 }
 
 @keyframes sunset-ray-rotation {
@@ -1024,19 +1373,54 @@ body {
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 2;
-    opacity: 0;
-    animation: sunset-stars-visibility 180s linear infinite;
+    z-index: 14;
+    opacity: var(--sunset-star-alpha, 0);
+    mix-blend-mode: normal;
+    transition: opacity 1.4s ease;
+    overflow: hidden;
+    animation: sunset-stars-fallback 190s ease-in-out infinite;
 }
 
-@keyframes sunset-stars-visibility {
-    0%, 76% {
-        opacity: 0;
+#sunset-theme[data-solar-stage] .sunset-stars {
+    animation: none;
+}
+
+/* REMOVED: .sunset-star-noise - No longer using noise layer */
+
+/* REMOVED: .sunset-star-canvas - No longer using canvas rendering */
+
+/* SIMPLIFIED: Clean star rendering like galaxy theme - just white circles with simple twinkle */
+.sunset-star {
+    position: absolute;
+    background-color: white;
+    border-radius: 50%;
+    animation: sunset-star-twinkle 3s ease-in-out infinite;
+    pointer-events: none;
+}
+
+/* REMOVED: All pseudo-element glints (::before, ::after) */
+/* REMOVED: .sunset-star--distant and .sunset-star--bright variants */
+
+@keyframes sunset-star-twinkle {
+    0%, 100% {
+        opacity: 0.5;
     }
-    84% {
+    50% {
         opacity: 1;
     }
-    92% {
+}
+
+@keyframes sunset-stars-fallback {
+    0%, 58% {
+        opacity: 0;
+    }
+    64% {
+        opacity: 0.25;
+    }
+    72% {
+        opacity: 0.75;
+    }
+    80%, 90% {
         opacity: 1;
     }
     100% {
@@ -1044,23 +1428,54 @@ body {
     }
 }
 
-.sunset-star {
+.sunset-shooting-star {
     position: absolute;
-    background: white;
-    border-radius: 50%;
-    box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
-    animation: sunset-star-twinkle 2s ease-in-out infinite;
+    width: 140px;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8));
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    mix-blend-mode: screen;
+    z-index: 2;
+    opacity: 0;
+    animation: sunset-shooting-star 2.8s ease-out forwards;
 }
 
-@keyframes sunset-star-twinkle {
-    0%, 100% {
-        opacity: 0.3;
-        transform: scale(1);
+@keyframes sunset-shooting-star {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(-15deg);
+        opacity: 0;
     }
-    50% {
+    10% {
         opacity: 1;
-        transform: scale(1.3);
     }
+    100% {
+        transform: translate3d(50vw, 20vh, 0) rotate(-15deg);
+        opacity: 0;
+    }
+}
+
+.sunset-bird-flock {
+    position: absolute;
+    top: 25%;
+    left: -10%;
+    display: flex;
+    gap: 14px;
+    animation: sunset-bird-flock 35s linear forwards;
+    opacity: 0.7;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 4;
+}
+
+.sunset-bird.silhouette svg path {
+    stroke: rgba(0, 0, 0, 0.55);
+}
+
+@keyframes sunset-bird-flock {
+    0% { transform: translate3d(0, 0, 0); opacity: 0; }
+    5% { opacity: 0.6; }
+    90% { opacity: 0.6; }
+    100% { transform: translate3d(130vw, -25vh, 0); opacity: 0; }
 }
 
 /* --- Mountain Theme --- */

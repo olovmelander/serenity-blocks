@@ -177,6 +177,16 @@ function setPieceLockRippleCss(colorHex) {
     );
 }
 
+function applySunsetFlarePreference(intensitySetting) {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    const root = document.documentElement;
+    const strength = intensitySetting === 'reduced' ? 0.45 : 1;
+    root.style.setProperty('--global-sunset-flare-strength', strength);
+}
+
 /**
  * Main application class that orchestrates all systems
  */
@@ -1011,6 +1021,7 @@ class SerenityBlocks {
         this.settingsManager.load(); // Load from localStorage
         const currentSettings = this.settingsManager.get();
         setPieceLockRippleCss(currentSettings.pieceLockRippleColor);
+        applySunsetFlarePreference(currentSettings.sunsetFlareIntensity);
 
         // Display manager (Phase 1)
         this.displayManager = new DisplayManager();
@@ -1053,6 +1064,9 @@ class SerenityBlocks {
 
         // Theme manager
         this.themeManager = new ThemeManager(this.webglRenderer);
+        if (this.themeManager?.suspendThemes) {
+            this.themeManager.suspendThemes();
+        }
 
         // Set cross-references between managers
         this.soundManager.settingsManager = this.settingsManager;
@@ -1265,6 +1279,13 @@ class SerenityBlocks {
         };
         window.addEventListener('startGameWithMode', startGameWithModeHandler);
 
+        const startModalShownHandler = (event) => {
+            if (event?.detail?.modalName === 'start' && this.themeManager?.suspendThemes) {
+                this.themeManager.suspendThemes();
+            }
+        };
+        window.addEventListener('modalShown', startModalShownHandler);
+
         // REMOVED: "Press any key" auto-start mechanism
         // Now using explicit "START GAME" button for better UX
         // No game modes start automatically - user must explicitly click start button
@@ -1275,6 +1296,7 @@ class SerenityBlocks {
             window.removeEventListener('settingsChanged', settingsHandler);
             window.removeEventListener('startGameWithMode', startGameWithModeHandler);
             window.removeEventListener('gameModeChanged', gameModeHandler);
+            window.removeEventListener('modalShown', startModalShownHandler);
         });
     }
 
@@ -2195,6 +2217,10 @@ class SerenityBlocks {
 
         if (changes.pieceLockRippleColor) {
             setPieceLockRippleCss(settings.pieceLockRippleColor);
+        }
+
+        if (changes.sunsetFlareIntensity !== undefined) {
+            applySunsetFlarePreference(settings.sunsetFlareIntensity);
         }
 
         // Handle gamepad binding changes

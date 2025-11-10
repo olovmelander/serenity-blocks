@@ -32,6 +32,10 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.add('visible');
+            if (modalName === 'start') {
+                document.body.classList.add('start-modal-open');
+            }
+            window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName } }));
             
             // Enable menu navigation when modal opens
             if (this.gamepadController && modalName !== 'gameOver') {
@@ -48,6 +52,10 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.remove('visible');
+            if (modalName === 'start') {
+                document.body.classList.remove('start-modal-open');
+            }
+            window.dispatchEvent(new CustomEvent('modalHidden', { detail: { modalName } }));
             
             // Disable menu navigation when modal closes
             if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
