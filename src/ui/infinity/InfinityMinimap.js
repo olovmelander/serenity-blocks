@@ -57,9 +57,9 @@ export class InfinityMinimap {
         this.lastLockedPiecesCount = 0;
 
         // PERFORMANCE: Time-based throttling to prevent excessive renders
-        // Minimap doesn't need to update 60 times per second!
+        // Note: Using 16ms (~60fps) to support smooth pulsing animation
         this.lastUpdateTime = 0;
-        this.updateInterval = 100; // Update every 100ms (10fps max)
+        this.updateInterval = 16; // Update every ~16ms for smooth animations
 
         // Bind event handlers
         this.handleClick = this._onClick.bind(this);
@@ -97,6 +97,9 @@ export class InfinityMinimap {
             margin-top: 0;
             display: none;
             box-sizing: border-box;
+            opacity: 0.8;
+            transform-origin: top right;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         `;
 
         // Create canvas
@@ -109,10 +112,30 @@ export class InfinityMinimap {
             margin: 12px auto 0 auto;
             border-radius: 10px;
             background: rgba(10, 18, 40, 0.85);
+            transition: opacity 0.3s ease;
         `;
 
         this.ctx = this.canvas.getContext('2d');
         this.container.appendChild(this.canvas);
+
+        // Add hover style for enhanced interactivity
+        const hoverStyle = document.createElement('style');
+        hoverStyle.textContent = `
+            .infinity-minimap:hover {
+                opacity: 1 !important;
+                transform: scale(1.02) !important;
+                border-color: rgba(100, 255, 200, 0.65) !important;
+                box-shadow:
+                    0 18px 50px rgba(10, 16, 30, 0.7),
+                    inset 0 0 32px rgba(60, 255, 200, 0.35),
+                    0 0 40px rgba(100, 255, 200, 0.2) !important;
+            }
+
+            .infinity-minimap:active {
+                transform: scale(0.98) !important;
+            }
+        `;
+        document.head.appendChild(hoverStyle);
 
         // Create title label
         const title = document.createElement('div');
@@ -128,6 +151,7 @@ export class InfinityMinimap {
             letter-spacing: 1px;
             margin-bottom: 12px;
             text-transform: uppercase;
+            transition: color 0.3s ease, opacity 0.3s ease;
         `;
         this.container.appendChild(title);
 
@@ -187,13 +211,14 @@ export class InfinityMinimap {
         const lockedPiecesCount = gameState.lockedPieces?.length || 0;
 
         // PERFORMANCE: Only render if something actually changed
-        // Note: lockedPiecesCount changes every piece, so we use larger intervals
+        // Note: Always render to support pulsing animation, but throttled by updateInterval
         const shouldRender =
             this.lastCameraRow !== cameraRow ||
             this.lastBuildHeight !== buildHeight ||
             this.lastTopRow !== topRow ||
             this.lastLockedPiecesCount !== lockedPiecesCount ||
-            this.gameState === null; // First render
+            this.gameState === null || // First render
+            true; // Always render for smooth animations (throttled by updateInterval)
 
         if (shouldRender) {
             this.gameState = gameState;
@@ -228,8 +253,22 @@ export class InfinityMinimap {
         ctx.fillStyle = 'rgba(20, 20, 30, 0.8)';
         ctx.fillRect(0, 0, width, height);
 
+        // Draw subtle background texture
+        this._drawBackgroundTexture(ctx, width, height);
+
         const totalRows = this.gameState.board.length;
         const pixelsPerRow = height / totalRows;
+
+        // Update border color based on progress
+        const topRow = calculateTopRow(this.gameState);
+        const borderColor = this._getBorderColor(topRow);
+        const glowColor = this._getBorderGlowColor(topRow);
+
+        this.container.style.borderColor = borderColor;
+        this.container.style.boxShadow = `
+            0 14px 40px rgba(10, 16, 30, 0.5),
+            inset 0 0 24px ${glowColor}
+        `;
 
         // Draw height milestones
         this._drawMilestones(ctx, width, height, totalRows, pixelsPerRow);
@@ -245,6 +284,107 @@ export class InfinityMinimap {
 
         // Draw top row indicator
         this._drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow);
+    }
+
+    /**
+     * Draw subtle background texture (dot grid pattern)
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} width - Canvas width
+     * @param {number} height - Canvas height
+     */
+    _drawBackgroundTexture(ctx, width, height) {
+        ctx.fillStyle = 'rgba(100, 255, 200, 0.08)';
+        const dotSpacing = 12;
+        const dotSize = 1;
+
+        for (let x = dotSpacing; x < width; x += dotSpacing) {
+            for (let y = dotSpacing; y < height; y += dotSpacing) {
+                ctx.beginPath();
+                ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+    /**
+     * Calculate border color based on current progress
+     * @private
+     * @param {number} topRow - Current top row (0 = goal, 1000 = start)
+     * @returns {string} RGB color string
+     */
+    _getBorderColor(topRow) {
+        // Invert so higher achievement = higher value
+        const progress = (1000 - topRow) / 1000; // 0.0 to 1.0
+
+        // Define color stops
+        const colors = [
+            { pos: 0.00, color: [100, 255, 200] }, // Cyan-green (start)
+            { pos: 0.25, color: [50, 255, 150] },  // Green
+            { pos: 0.50, color: [200, 255, 100] }, // Yellow-green
+            { pos: 0.75, color: [255, 200, 50] },  // Orange-yellow
+            { pos: 1.00, color: [255, 150, 50] }   // Orange (near goal)
+        ];
+
+        // Find surrounding color stops
+        let lower = colors[0];
+        let upper = colors[colors.length - 1];
+
+        for (let i = 0; i < colors.length - 1; i++) {
+            if (progress >= colors[i].pos && progress <= colors[i + 1].pos) {
+                lower = colors[i];
+                upper = colors[i + 1];
+                break;
+            }
+        }
+
+        // Interpolate between color stops
+        const range = upper.pos - lower.pos;
+        const rangeProgress = range === 0 ? 0 : (progress - lower.pos) / range;
+
+        const r = Math.round(lower.color[0] + (upper.color[0] - lower.color[0]) * rangeProgress);
+        const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * rangeProgress);
+        const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * rangeProgress);
+
+        return `rgba(${r}, ${g}, ${b}, 0.5)`;
+    }
+
+    /**
+     * Get brighter version for glow effect
+     * @private
+     * @param {number} topRow - Current top row (0 = goal, 1000 = start)
+     * @returns {string} RGB color string
+     */
+    _getBorderGlowColor(topRow) {
+        const progress = (1000 - topRow) / 1000;
+
+        const colors = [
+            { pos: 0.00, color: [100, 255, 200] },
+            { pos: 0.25, color: [50, 255, 150] },
+            { pos: 0.50, color: [200, 255, 100] },
+            { pos: 0.75, color: [255, 200, 50] },
+            { pos: 1.00, color: [255, 150, 50] }
+        ];
+
+        let lower = colors[0];
+        let upper = colors[colors.length - 1];
+
+        for (let i = 0; i < colors.length - 1; i++) {
+            if (progress >= colors[i].pos && progress <= colors[i + 1].pos) {
+                lower = colors[i];
+                upper = colors[i + 1];
+                break;
+            }
+        }
+
+        const range = upper.pos - lower.pos;
+        const rangeProgress = range === 0 ? 0 : (progress - lower.pos) / range;
+
+        const r = Math.round(lower.color[0] + (upper.color[0] - lower.color[0]) * rangeProgress);
+        const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * rangeProgress);
+        const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * rangeProgress);
+
+        return `rgba(${r}, ${g}, ${b}, 0.25)`;
     }
 
     /**
@@ -381,10 +521,19 @@ export class InfinityMinimap {
         ctx.fillStyle = 'rgba(0, 255, 0, 0.15)'; // Subtle green tint
         ctx.fillRect(0, viewportY, width, viewportHeight);
 
-        // Draw viewport border (bright green)
-        ctx.strokeStyle = '#00ff00';
+        // Draw viewport border with pulsing glow effect
+        const time = Date.now() / 1000;
+        const pulse = Math.sin(time * Math.PI) * 0.3 + 0.7; // Oscillates 0.7-1.0
+
+        ctx.strokeStyle = `rgba(0, 255, 0, ${pulse})`;
         ctx.lineWidth = 2;
+        ctx.shadowBlur = 8 + (pulse * 8); // 8-16px blur
+        ctx.shadowColor = `rgba(0, 255, 0, ${pulse * 0.8})`;
         ctx.strokeRect(0, viewportY, width, viewportHeight);
+
+        // Reset shadow for other drawing operations
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
 
         // Draw scroll arrow indicator
         this._drawScrollArrow(ctx, width, viewportY + viewportHeight / 2);
