@@ -791,6 +791,29 @@ export class InfinityMode extends BaseGameMode {
                     () => this._handleGameOver()
                 );
             },
+            // Handle combo finalization (no garbage in infinity mode, but track combo stats)
+            onGarbageReady: (summary) => {
+                // Even though garbage is disabled in infinity mode, this callback is used
+                // to finalize combo tracking and update stats
+                if (this.gameState.infinityStats && summary) {
+                    const { depth, complexity } = summary;
+
+                    // Update max combo depth
+                    if (depth > this.gameState.infinityStats.maxComboDepth) {
+                        this.gameState.infinityStats.maxComboDepth = depth;
+                        console.log(`[Infinity] New max combo depth: ${depth} lines`);
+                    }
+
+                    // Update max combo complexity (cascade count)
+                    if (complexity > this.gameState.infinityStats.maxComboComplexity) {
+                        this.gameState.infinityStats.maxComboComplexity = complexity;
+                        console.log(`[Infinity] New max combo complexity: ${complexity} stages`);
+                    }
+
+                    // Log combo summary
+                    console.log(`[Infinity] Combo finished: ${depth} lines across ${complexity} cascades`);
+                }
+            },
         };
 
         return this.physicsCallbacks;
