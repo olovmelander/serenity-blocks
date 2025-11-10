@@ -4978,56 +4978,85 @@ body {
 #electric-veins {
     width: 100%;
     height: 100%;
-    filter: url(#gooey-blobs) brightness(1.2) saturate(1.5);
+    /* LAVA LAMP EFFECT: Optimized gooey filter creates blob merging when veins overlap */
+    filter: url(#gooey-lava) brightness(1.2) saturate(1.5);
+    /* OPTIMIZATION: CSS containment for performance */
+    contain: layout style paint;
 }
 
 .electric-vein {
     position: absolute;
-    border-radius: 50%;
-    background: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00);
+    /* LAVA LAMP: Highly irregular organic blob shape */
+    border-radius: 38% 62% 58% 42% / 45% 70% 30% 55%;
+    background: linear-gradient(135deg, #00ffff, #ff00ff, #ffff00);
+    /* LAVA LAMP: Soft edges for smooth merging */
+    filter: blur(1px);
     animation:
         move-vein 30s ease-in-out infinite alternate,
         pulse-vein 6s ease-in-out infinite alternate,
-        cycle-vein-color 20s linear infinite alternate;
+        cycle-vein-color 20s linear infinite alternate,
+        morph-blob 10s ease-in-out infinite;
     /* OPTIMIZATION: Force GPU compositing for better performance */
     will-change: transform, filter;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    /* OPTIMIZATION: Improved compositing */
+    contain: layout style paint;
+    transform-style: preserve-3d;
 }
 
 @keyframes move-vein {
     from {
         /* OPTIMIZATION: Use translate3d instead of translate for GPU acceleration */
         transform: translate3d(var(--x-start), var(--y-start), 0) rotate(0deg) scale(var(--scale-start));
-        border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
-    }
-    50% {
-        border-radius: 60% 40% 30% 70% / 50% 60% 50% 40%;
     }
     to {
         /* OPTIMIZATION: Use translate3d instead of translate for GPU acceleration */
         transform: translate3d(var(--x-end), var(--y-end), 0) rotate(360deg) scale(var(--scale-end));
-        border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+    }
+}
+
+/* LAVA LAMP: Organic blob morphing with dramatic shape changes */
+@keyframes morph-blob {
+    0% {
+        border-radius: 38% 62% 58% 42% / 45% 70% 30% 55%;
+    }
+    20% {
+        border-radius: 55% 45% 35% 65% / 62% 38% 68% 32%;
+    }
+    40% {
+        border-radius: 42% 58% 68% 32% / 35% 65% 40% 60%;
+    }
+    60% {
+        border-radius: 65% 35% 45% 55% / 58% 42% 72% 28%;
+    }
+    80% {
+        border-radius: 48% 52% 72% 28% / 68% 32% 45% 55%;
+    }
+    100% {
+        border-radius: 38% 62% 58% 42% / 45% 70% 30% 55%;
     }
 }
 
 @keyframes pulse-vein {
     from {
-        /* OPTIMIZATION: Reduced blur radius from 80px to 50px for better performance */
+        /* OPTIMIZATION: Reduced from 4 layers to 2 layers for better performance */
         box-shadow:
-            0 0 10px #0ff, 0 0 20px #0ff,
-            0 0 30px #f0f, 0 0 50px #f0f;
+            0 0 15px #0ff,
+            0 0 35px #f0f;
     }
     to {
-        /* OPTIMIZATION: Reduced blur radius from 80px to 50px for better performance */
+        /* OPTIMIZATION: Reduced from 4 layers to 2 layers for better performance */
         box-shadow:
-            0 0 20px #0ff, 0 0 40px #0ff,
-            0 0 50px #f0f, 0 0 50px #f0f;
+            0 0 25px #0ff,
+            0 0 45px #f0f;
     }
 }
 
 @keyframes cycle-vein-color {
+    /* OPTIMIZATION: Reduced hue rotation range for smoother rendering */
     from { filter: hue-rotate(var(--hue-start)); }
+    50% { filter: hue-rotate(calc((var(--hue-start) + var(--hue-end)) / 2)); }
     to { filter: hue-rotate(var(--hue-end)); }
 }
 
@@ -5036,19 +5065,25 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: -1; /* Behind the veins */
+    /* OPTIMIZATION: CSS containment for performance */
+    contain: layout style paint;
 }
 
 .electric-particle {
     position: absolute;
     background-color: #ccddff;
     border-radius: 50%;
-    box-shadow: 0 0 5px #ccddff, 0 0 10px #ccddff;
+    /* OPTIMIZATION: Simplified box-shadow to single layer */
+    box-shadow: 0 0 8px #ccddff;
     animation: drift-electric-particle 15s ease-in-out infinite alternate;
     opacity: 0;
     /* OPTIMIZATION: Force GPU compositing for better performance */
     will-change: transform, opacity;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    /* OPTIMIZATION: Improved compositing */
+    contain: layout style paint;
+    transform-style: preserve-3d;
 }
 
 @keyframes drift-electric-particle {
