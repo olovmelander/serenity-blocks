@@ -10463,6 +10463,184 @@ body {
     }
 }
 
+/* === NIMBUS VEIL THEME === */
+#nimbus-veil-theme {
+    background: radial-gradient(ellipse at center,
+        #1a1a1a 0%,
+        #0f0f0f 30%,
+        #080808 60%,
+        #000000 100%);
+    overflow: hidden;
+}
+
+/* Cloud Canvas Layer */
+#nimbus-veil-cloud-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* Subtle Mist Overlay */
+.nimbus-veil-mist-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at 30% 40%,
+        rgba(255, 255, 255, 0.03) 0%,
+        rgba(255, 255, 255, 0.01) 30%,
+        transparent 60%);
+    pointer-events: none;
+    z-index: 1;
+    animation: nimbus-veil-mist-drift 20s ease-in-out infinite alternate;
+}
+
+@keyframes nimbus-veil-mist-drift {
+    0% {
+        background-position: 0% 0%;
+        opacity: 0.6;
+    }
+    50% {
+        background-position: 50% 50%;
+        opacity: 0.8;
+    }
+    100% {
+        background-position: 100% 100%;
+        opacity: 0.6;
+    }
+}
+
+/* Pulse Container */
+#nimbus-veil-pulses {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px;
+    height: 100px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Pulse Effect - Expanding Cloud Ring */
+.nimbus-veil-pulse {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.4),
+                inset 0 0 20px rgba(255, 255, 255, 0.2);
+    animation: nimbus-veil-pulse-expand 2.5s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes nimbus-veil-pulse-expand {
+    0% {
+        width: 50px;
+        height: 50px;
+        opacity: 1;
+        border-width: 2px;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.6),
+                    inset 0 0 20px rgba(255, 255, 255, 0.3);
+    }
+    50% {
+        opacity: 0.8;
+        border-width: 1.5px;
+        box-shadow: 0 0 40px rgba(255, 255, 255, 0.5),
+                    inset 0 0 30px rgba(255, 255, 255, 0.25);
+    }
+    100% {
+        width: 400px;
+        height: 400px;
+        opacity: 0;
+        border-width: 0.5px;
+        box-shadow: 0 0 60px rgba(255, 255, 255, 0.3),
+                    inset 0 0 40px rgba(255, 255, 255, 0.15);
+    }
+}
+
+/* Wave Container */
+#nimbus-veil-waves {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px;
+    height: 100px;
+    pointer-events: none;
+    z-index: 9;
+}
+
+/* Wave Effect - Expanding Cloud Wave */
+.nimbus-veil-wave {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    border: 3px solid rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.5),
+                inset 0 0 30px rgba(255, 255, 255, 0.3);
+    animation: nimbus-veil-wave-expand 3s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes nimbus-veil-wave-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(0.3);
+        opacity: 1;
+        border-width: 3px;
+        box-shadow: 0 0 30px rgba(255, 255, 255, 0.7),
+                    inset 0 0 30px rgba(255, 255, 255, 0.4);
+    }
+    30% {
+        opacity: 0.95;
+        border-width: 2.5px;
+        box-shadow: 0 0 50px rgba(255, 255, 255, 0.6),
+                    inset 0 0 40px rgba(255, 255, 255, 0.35);
+    }
+    70% {
+        opacity: 0.5;
+        border-width: 1.5px;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(4.5);
+        opacity: 0;
+        border-width: 0.5px;
+        box-shadow: 0 0 80px rgba(255, 255, 255, 0.3),
+                    inset 0 0 50px rgba(255, 255, 255, 0.2);
+    }
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+    #nimbus-veil-cloud-canvas {
+        /* Reduce particle count on mobile via JS */
+    }
+
+    @keyframes nimbus-veil-pulse-expand {
+        100% {
+            width: 300px;
+            height: 300px;
+        }
+    }
+
+    @keyframes nimbus-veil-wave-expand {
+        100% {
+            transform: translate(-50%, -50%) scale(3.5);
+        }
+    }
+}
+
 /* === PYRESTORM THEME === */
 #pyrestorm-theme {
     background: transparent;
