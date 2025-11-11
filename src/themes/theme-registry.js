@@ -174,12 +174,6 @@ export const THEME_REGISTRY = [
         group: 'abstract',
     },
     {
-        id: 'lantern-festival',
-        displayName: 'Lantern Festival',
-        module: './lantern-festival/lantern-festival-theme.js',
-        group: 'urban',
-    },
-    {
         id: 'crystal-cave',
         displayName: 'Crystal Cave',
         module: './crystal-cave/crystal-cave-theme.js',
@@ -189,24 +183,6 @@ export const THEME_REGISTRY = [
         id: 'candlelit-monastery',
         displayName: 'Candlelit Monastery',
         module: './candlelit-monastery/candlelit-monastery-theme.js',
-        group: 'meditation',
-    },
-    {
-        id: 'cherry-blossom-garden',
-        displayName: 'Cherry Blossom Garden',
-        module: './cherry-blossom-garden/cherry-blossom-garden-theme.js',
-        group: 'biomes',
-    },
-    {
-        id: 'floating-islands',
-        displayName: 'Floating Islands',
-        module: './floating-islands/floating-islands-theme.js',
-        group: 'fantasy',
-    },
-    {
-        id: 'meditation-temple',
-        displayName: 'Meditation Temple',
-        module: './meditation-temple/meditation-temple-theme.js',
         group: 'meditation',
     },
     {

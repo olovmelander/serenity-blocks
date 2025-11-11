@@ -979,78 +979,6 @@ export class WebGLRenderer {
         this.particleSystems = [];
         this.stop();
 
-        const setupParticles = (islandData) => {
-            if (themeName === 'floating-islands') {
-                const upwardWaterfallConfig = {
-                    behavior: 'upward-waterfall',
-                    speed: 1.5,
-                    minSize: 2.0,
-                    maxSize: 5.0,
-                    minAlpha: 0.3,
-                    maxAlpha: 0.8,
-                    lifetime: 400,
-                    zIndex: -0.4,
-                    color: [0.39, 0.71, 0.98], // #64b5f6
-                    islandData,
-                };
-                this.particleSystems.push(new ParticleSystem(this.gl, 300, upwardWaterfallConfig));
-
-                const amethystConfig = {
-                    behavior: 'spiraling-debris',
-                    minSize: 4.0,
-                    maxSize: 9.0,
-                    minAlpha: 0.8,
-                    maxAlpha: 1.0,
-                    lifetime: Infinity,
-                    zIndex: -0.2,
-                    color: [0.73, 0.41, 0.78], // #ba68c8
-                    islandData,
-                };
-                this.particleSystems.push(new ParticleSystem(this.gl, 20, amethystConfig));
-
-                const roseQuartzConfig = {
-                    behavior: 'spiraling-debris',
-                    minSize: 3.0,
-                    maxSize: 7.0,
-                    minAlpha: 0.8,
-                    maxAlpha: 1.0,
-                    lifetime: Infinity,
-                    zIndex: -0.2,
-                    color: [0.97, 0.73, 0.82], // #f8bbd0
-                    islandData,
-                };
-                this.particleSystems.push(new ParticleSystem(this.gl, 25, roseQuartzConfig));
-
-                const anomalyConfig = {
-                    behavior: 'spiraling-debris',
-                    minSize: 1.5,
-                    maxSize: 3.0,
-                    minAlpha: 0.5,
-                    maxAlpha: 0.9,
-                    lifetime: Infinity,
-                    zIndex: -0.3,
-                    color: [1.0, 0.8, 0.5], // #ffcc80
-                    islandData,
-                };
-                this.particleSystems.push(new ParticleSystem(this.gl, 40, anomalyConfig));
-            }
-            this.start();
-        };
-
-        if (themeName === 'floating-islands') {
-            // The island data is populated asynchronously, so we need to wait for it.
-            // A simple timeout will work for this context.
-            setTimeout(() => {
-                if (themeData && themeData.length > 0) {
-                    setupParticles(themeData);
-                } else {
-                    // Retry if the data isn't ready yet
-                    setTimeout(() => setupParticles(themeData), 100);
-                }
-            }, 50);
-            return;
-        }
-
         if (themeName === 'himalayan-peak') {
             // Sparkling snow particles with golden highlights
             const snowConfig = {
@@ -1189,64 +1117,6 @@ export class WebGLRenderer {
             this.particleSystems.push(new ParticleSystem(this.gl, 40, sporeConfig));
 
             this.start();
-        } else if (themeName === 'meditation-temple') {
-            // Enhanced incense smoke
-            const smokeConfig = {
-                behavior: 'incense-smoke',
-                speed: 1.0,
-                minSize: 2.0,
-                maxSize: 18.0,
-                minAlpha: 0.0,
-                maxAlpha: 0.2,
-                lifetime: 1200,
-                zIndex: -0.1,
-                color: [0.85, 0.8, 0.9], // Slight purple tint
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 25, smokeConfig));
-
-            // Fireflies
-            const fireflyConfig = {
-                behavior: 'firefly',
-                speed: 0.3,
-                minSize: 3.0,
-                maxSize: 6.0,
-                minAlpha: 0.4,
-                maxAlpha: 1.0,
-                lifetime: Infinity,
-                zIndex: -0.3,
-                color: [1.0, 0.95, 0.6], // Warm golden glow
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 40, fireflyConfig));
-
-            // Floating cherry blossom petals
-            const petalConfig = {
-                behavior: 'petal',
-                speed: 0.4,
-                minSize: 3.0,
-                maxSize: 7.0,
-                minAlpha: 0.5,
-                maxAlpha: 0.9,
-                lifetime: 2500,
-                zIndex: -0.2,
-                color: [1.0, 0.85, 0.9], // Soft pink
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 50, petalConfig));
-
-            // Mystical light orbs
-            const orbConfig = {
-                behavior: 'firefly',
-                speed: 0.15,
-                minSize: 4.0,
-                maxSize: 8.0,
-                minAlpha: 0.3,
-                maxAlpha: 0.7,
-                lifetime: Infinity,
-                zIndex: -0.4,
-                color: [0.7, 0.6, 1.0], // Soft purple/blue
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 20, orbConfig));
-
-            this.start();
         } else if (themeName === 'crystal-cave') {
             const shardConfig = {
                 speed: 0.8,
@@ -1363,55 +1233,6 @@ export class WebGLRenderer {
                 color: [0.5, 0.9, 1.0], // Cyan/magical
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 25, wispConfig));
-
-            this.start();
-        } else if (themeName === 'cherry-blossom-garden') {
-            // Create 3 layers of petals for depth
-            const petalLayers = [
-                {
-                    // Far layer
-                    behavior: 'petal',
-                    speed: 0.6,
-                    minSize: 4.0,
-                    maxSize: 8.0,
-                    minAlpha: 0.6,
-                    maxAlpha: 0.8,
-                    lifetime: 1800, // ~30 seconds
-                    zIndex: -0.5,
-                    color: [1.0, 0.8, 0.85],
-                    count: 60,
-                },
-                {
-                    // Mid layer
-                    behavior: 'petal',
-                    speed: 0.8,
-                    minSize: 6.0,
-                    maxSize: 12.0,
-                    minAlpha: 0.8,
-                    maxAlpha: 1.0,
-                    lifetime: 1500, // ~25 seconds
-                    zIndex: -0.3,
-                    color: [1.0, 0.85, 0.9],
-                    count: 80,
-                },
-                {
-                    // Near layer
-                    behavior: 'petal',
-                    speed: 1.0,
-                    minSize: 8.0,
-                    maxSize: 15.0,
-                    minAlpha: 0.9,
-                    maxAlpha: 1.0,
-                    lifetime: 1200, // ~20 seconds
-                    zIndex: -0.1,
-                    color: [1.0, 0.9, 0.95],
-                    count: 60,
-                },
-            ];
-
-            petalLayers.forEach((config) => {
-                this.particleSystems.push(new ParticleSystem(this.gl, config.count, config));
-            });
 
             this.start();
         } else if (themeName === 'wolfhour') {

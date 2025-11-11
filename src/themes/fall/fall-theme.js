@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 export default class FallTheme extends BaseTheme {
     constructor() {
@@ -20,9 +21,17 @@ export default class FallTheme extends BaseTheme {
 
         // Event-based effects
         this.comboCount = 0;
+        this.comboMultiplier = 1.0;
+        this.comboDecay = 0;
         this.comboHueShift = 0;
+        this.currentSaturation = 100;
+        this.currentBrightness = 100;
         this.lineClears = [];
         this.pieceLockEffects = [];
+        this.leafBurstParticles = [];
+        this.fireRings = [];
+        this.emberBursts = [];
+        this.fireflies = [];
 
         // Resize handler
         this.resizeHandler = null;
@@ -33,6 +42,9 @@ export default class FallTheme extends BaseTheme {
         // DOM-driven leaf physics
         this.leafParticles = [];
         this.lastFrameTime = 0;
+
+        // Event bus unsubscribers
+        this.eventUnsubscribers = [];
     }
 
     async createScene() {
@@ -188,6 +200,11 @@ export default class FallTheme extends BaseTheme {
         // Initialize ember particles
         for (let i = 0; i < this.maxEmbers; i++) {
             this.embers.push(this.createEmber());
+        }
+
+        // Initialize fireflies (gentle floating glowing particles)
+        for (let i = 0; i < 15; i++) {
+            this.fireflies.push(this.createFirefly());
         }
 
         // Set up event listeners for game events
@@ -386,70 +403,251 @@ export default class FallTheme extends BaseTheme {
         ember.hue = Math.random() * 30 + 10;
     }
 
-    setupEventListeners() {
-        // Listen for game events
-        window.addEventListener('LINE_CLEAR', (e) => this.onLineClear(e));
-        window.addEventListener('COMBO', (e) => this.onCombo(e));
-        window.addEventListener('PIECE_LOCK', (e) => this.onPieceLock(e));
+    createFirefly() {
+        return {
+            x: Math.random() * this.canvas.width,
+            y: Math.random() * this.canvas.height,
+            baseX: Math.random() * this.canvas.width,
+            baseY: Math.random() * this.canvas.height,
+            vx: (Math.random() - 0.5) * 0.4,
+            vy: (Math.random() - 0.5) * 0.4,
+            wander: Math.random() * Math.PI * 2,
+            wanderSpeed: Math.random() * 0.02 + 0.01,
+            wanderRadius: Math.random() * 25 + 15,
+            size: Math.random() * 1.5 + 1,
+            glow: Math.random() * Math.PI * 2,
+            glowSpeed: Math.random() * 0.05 + 0.03,
+            opacity: Math.random() * 0.6 + 0.4,
+            hue: Math.random() * 20 + 40, // Yellow-green range
+            pulsePhase: Math.random() * Math.PI * 2,
+            pulseSpeed: Math.random() * 0.04 + 0.02,
+        };
     }
 
-    onLineClear(event) {
-        // Create burst effect at cleared line position
-        const detail = event.detail || {};
-        const y = detail.y || this.canvas.height / 2;
+    setupEventListeners() {
+        // Clean up old listeners first
+        this.teardownEventListeners();
 
-        // Spawn burst of embers
-        for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * Math.PI * 2;
-            const speed = Math.random() * 2 + 1;
+        // Listen for game events via event bus
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (!this.shouldProcessComboEffects()) return;
+            this.handleLineClear(data);
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (!this.shouldProcessComboEffects()) return;
+            this.handleCombo(data);
+        });
+
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            if (!this.shouldProcessComboEffects()) return;
+            this.handlePieceLock(data);
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    teardownEventListeners() {
+        if (!this.eventUnsubscribers.length) {
+            return;
+        }
+
+        this.eventUnsubscribers.forEach((unsubscribe) => {
+            try {
+                unsubscribe?.();
+            } catch (error) {
+                console.error('[FallTheme] Failed to remove event listener', error);
+            }
+        });
+
+        this.eventUnsubscribers = [];
+    }
+
+    shouldProcessComboEffects() {
+        if (!this.isActive) return false;
+        if (typeof window === 'undefined') return true;
+        const settings = window.settings;
+        return settings?.backgroundComboEffects === true;
+    }
+
+    normalizeEventPayload(payload = {}) {
+        if (payload && typeof payload === 'object' && 'detail' in payload && payload.detail) {
+            return payload.detail;
+        }
+        return payload || {};
+    }
+
+    handleLineClear(eventPayload) {
+        const detail = this.normalizeEventPayload(eventPayload);
+        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
+
+        console.log(`[FallTheme] Line clear event: ${lineCount} lines`, detail);
+        this.onLineClear(lineCount);
+    }
+
+    handleCombo(eventPayload) {
+        const detail = this.normalizeEventPayload(eventPayload);
+        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
+
+        console.log(`[FallTheme] Combo event: ${comboCount}`, detail);
+        this.onCombo(comboCount);
+    }
+
+    handlePieceLock(eventPayload) {
+        const detail = this.normalizeEventPayload(eventPayload);
+        this.onPieceLock(detail);
+    }
+
+    onLineClear(lineCount) {
+        console.log(`[FallTheme] Processing line clear: ${lineCount} lines`);
+
+        // Increase combo multiplier
+        this.comboMultiplier = Math.min(1 + this.comboCount * 0.2, 2.5);
+        this.comboDecay = 300; // 5 seconds at 60fps
+
+        // Create massive leaf burst effect - leaves swirl up and outward
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+
+        // Spawn swirling leaves (more for more lines cleared)
+        const leafBurstCount = Math.min(lineCount * 15 + this.comboCount * 10, 100);
+        for (let i = 0; i < leafBurstCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 4 + 2 + lineCount;
+            const distance = Math.random() * 50;
+
+            this.leafBurstParticles.push({
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 2, // Upward bias
+                rotation: Math.random() * 360,
+                rotationSpeed: (Math.random() - 0.5) * 20,
+                size: Math.random() * 8 + 4,
+                life: 1.0,
+                opacity: Math.random() * 0.8 + 0.4,
+                hue: Math.random() * 60, // Autumn colors (orange-red range)
+                gravity: 0.15,
+                swirl: Math.random() * Math.PI * 2,
+                swirlSpeed: (Math.random() - 0.5) * 0.3,
+            });
+        }
+
+        // Create expanding fire ring for big line clears
+        if (lineCount >= 2) {
+            this.fireRings.push({
+                x: centerX,
+                y: centerY,
+                radius: 0,
+                maxRadius: 150 + lineCount * 50,
+                expansion: 3 + lineCount,
+                opacity: 1.0,
+                life: 1.0,
+                thickness: 4 + lineCount * 2,
+                hue: 20 + Math.random() * 20, // Orange to red
+            });
+        }
+
+        // Massive ember burst - upward explosion
+        const emberCount = lineCount * 12 + this.comboCount * 8;
+        for (let i = 0; i < emberCount; i++) {
+            const angle = (Math.random() - 0.5) * Math.PI; // Upward cone
+            const speed = Math.random() * 5 + 3 + lineCount;
             this.embers.push({
-                x: this.canvas.width / 2,
+                x: centerX + (Math.random() - 0.5) * 100,
+                y: centerY,
+                vx: Math.cos(angle) * speed * 0.5,
+                vy: Math.sin(angle) * speed - 3, // Strong upward force
+                life: 1.0,
+                size: Math.random() * 4 + 2,
+                opacity: 1.0,
+                twinkle: Math.random() * Math.PI * 2,
+                twinkleSpeed: Math.random() * 0.08 + 0.04,
+                hue: Math.random() * 30 + 10, // Yellow-orange-red
+                isBurst: true,
+                gravity: -0.05, // Slight upward drift
+            });
+        }
+
+        // Trigger strong wind gust based on line count
+        const gustBonus = lineCount * 3 + this.comboCount * 2;
+        this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (1.5 + gustBonus * 0.5);
+
+        // Keep ember count reasonable
+        if (this.embers.length > this.maxEmbers * 4) {
+            this.embers = this.embers.slice(-this.maxEmbers * 4);
+        }
+    }
+
+    onCombo(comboCount) {
+        this.comboCount = comboCount;
+        console.log(`[FallTheme] Combo multiplier: ${this.comboMultiplier}x`);
+
+        // Progressive color shift based on combo - shift toward golden/amber tones
+        const maxHueShift = -30; // Shift toward golden yellow (negative = counter-clockwise on hue wheel)
+        const maxSaturation = 50; // Moderate saturation boost for richness
+        const maxBrightness = 25; // Gentle brightness increase
+
+        this.comboHueShift = Math.max(comboCount * -5, maxHueShift); // Gentle shift toward gold
+        this.currentSaturation = 100 + Math.min(comboCount * 8, maxSaturation);
+        this.currentBrightness = 100 + Math.min(comboCount * 4, maxBrightness);
+
+        const themeContainer = document.getElementById('fall-theme');
+        if (themeContainer) {
+            themeContainer.style.filter = `hue-rotate(${this.comboHueShift}deg) saturate(${this.currentSaturation}%) brightness(${this.currentBrightness}%)`;
+        }
+
+        // Create ember burst spiral for high combos
+        if (comboCount >= 5) {
+            const centerX = this.canvas.width / 2;
+            const centerY = this.canvas.height / 2;
+
+            this.emberBursts.push({
+                x: centerX,
+                y: centerY,
+                particles: [],
+                angle: 0,
+                radius: 0,
+                maxRadius: 200 + comboCount * 30,
+                spinSpeed: 0.2,
+                expansionRate: 4,
+                life: 1.0,
+                direction: Math.random() < 0.5 ? 1 : -1,
+            });
+        }
+
+        // Spawn extra fireflies on big combos
+        if (comboCount >= 3) {
+            for (let i = 0; i < Math.min(comboCount * 2, 10); i++) {
+                this.fireflies.push(this.createFirefly());
+            }
+        }
+    }
+
+    onPieceLock(detail) {
+        // Create small ember puff at lock position
+        const x = detail.x ?? this.canvas.width / 2;
+        const y = detail.y ?? this.canvas.height / 2;
+
+        // Small burst of embers
+        for (let i = 0; i < 3; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 1.5 + 0.5;
+            this.embers.push({
+                x: x,
                 y: y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed - 1,
                 life: 1.0,
-                size: Math.random() * 3 + 2,
-                opacity: 1.0,
+                size: Math.random() * 2 + 1,
+                opacity: 0.6,
                 twinkle: 0,
-                twinkleSpeed: 0.05,
-                hue: Math.random() * 20 + 10,
+                twinkleSpeed: 0.04,
+                hue: Math.random() * 25 + 15,
                 isBurst: true,
+                gravity: 0,
             });
         }
-
-        // Keep ember count reasonable
-        if (this.embers.length > this.maxEmbers * 2) {
-            this.embers = this.embers.slice(-this.maxEmbers * 2);
-        }
-    }
-
-    onCombo(event) {
-        const detail = event.detail || {};
-        this.comboCount = detail.combo || 0;
-
-        // Progressive color shift based on combo
-        const maxHueShift = 40; // Orange to red
-        const maxSaturation = 75;
-        const maxBrightness = 30;
-
-        this.comboHueShift = Math.min(this.comboCount * 8, maxHueShift);
-        const saturation = 100 + Math.min(this.comboCount * 12, maxSaturation);
-        const brightness = 100 + Math.min(this.comboCount * 6, maxBrightness);
-
-        const themeContainer = document.getElementById('fall-theme');
-        if (themeContainer) {
-            themeContainer.style.filter = `hue-rotate(${this.comboHueShift}deg) saturate(${saturation}%) brightness(${brightness}%)`;
-        }
-    }
-
-    onPieceLock(event) {
-        // Subtle ripple effect - just track for potential use
-        const detail = event.detail || {};
-        this.pieceLockEffects.push({
-            x: detail.x || this.canvas.width / 2,
-            y: detail.y || this.canvas.height / 2,
-            life: 1.0,
-        });
     }
 
     animate(timestamp) {
@@ -469,9 +667,35 @@ export default class FallTheme extends BaseTheme {
 
         this.time += 1;
 
-        // Enhanced wind physics with smooth transitions
+        // Decay combo multiplier
+        if (this.comboDecay > 0) {
+            this.comboDecay -= 1;
+            if (this.comboDecay === 0) {
+                this.comboMultiplier = 1.0;
+            }
+        }
+
+        // Smoothly return colors to normal (5 second decay)
+        const colorDecaySpeed = 0.03; // Slower return for 5 second duration
+        this.comboHueShift += (0 - this.comboHueShift) * colorDecaySpeed;
+        this.currentSaturation += (100 - this.currentSaturation) * colorDecaySpeed;
+        this.currentBrightness += (100 - this.currentBrightness) * colorDecaySpeed;
+
+        // Update theme filter with smooth interpolation
+        const themeContainer = document.getElementById('fall-theme');
+        if (themeContainer && (Math.abs(this.comboHueShift) > 0.5 || Math.abs(this.currentSaturation - 100) > 0.5 || Math.abs(this.currentBrightness - 100) > 0.5)) {
+            themeContainer.style.filter = `hue-rotate(${this.comboHueShift}deg) saturate(${this.currentSaturation}%) brightness(${this.currentBrightness}%)`;
+        } else if (themeContainer && Math.abs(this.comboHueShift) <= 0.5) {
+            // Fully reset when close enough
+            themeContainer.style.filter = '';
+            this.comboHueShift = 0;
+            this.currentSaturation = 100;
+            this.currentBrightness = 100;
+        }
+
+        // Enhanced wind physics with smooth transitions (boosted by combos)
         if (this.time >= this.nextWindChange) {
-            this.targetWindForce = (Math.random() - 0.5) * 1.5;
+            this.targetWindForce = (Math.random() - 0.5) * 1.5 * this.comboMultiplier;
             this.nextWindChange = this.time + Math.random() * 300 + 200;
         }
 
@@ -486,6 +710,205 @@ export default class FallTheme extends BaseTheme {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Draw and update fire rings
+        for (let i = this.fireRings.length - 1; i >= 0; i--) {
+            const ring = this.fireRings[i];
+
+            ring.radius += ring.expansion;
+            ring.life -= 0.01;
+            ring.opacity = ring.life;
+
+            if (ring.life <= 0 || ring.radius > ring.maxRadius) {
+                this.fireRings.splice(i, 1);
+                continue;
+            }
+
+            // Draw glowing expanding ring
+            this.ctx.beginPath();
+            this.ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+            this.ctx.strokeStyle = `hsla(${ring.hue}, 100%, 65%, ${ring.opacity * 0.6})`;
+            this.ctx.lineWidth = ring.thickness;
+            this.ctx.stroke();
+
+            // Inner glow
+            this.ctx.beginPath();
+            this.ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+            this.ctx.strokeStyle = `hsla(${ring.hue + 10}, 100%, 75%, ${ring.opacity * 0.4})`;
+            this.ctx.lineWidth = ring.thickness * 0.5;
+            this.ctx.stroke();
+        }
+
+        // Draw and update ember burst spirals
+        for (let i = this.emberBursts.length - 1; i >= 0; i--) {
+            const burst = this.emberBursts[i];
+
+            burst.angle += burst.spinSpeed * burst.direction;
+            burst.radius += burst.expansionRate;
+            burst.life -= 0.008;
+
+            // Spawn particles along the spiral
+            if (Math.random() < 0.6 && burst.radius < burst.maxRadius) {
+                const particleAngle = burst.angle + Math.random() * Math.PI * 0.4;
+                const particleRadius = burst.radius + Math.random() * 30;
+                burst.particles.push({
+                    x: burst.x + Math.cos(particleAngle) * particleRadius,
+                    y: burst.y + Math.sin(particleAngle) * particleRadius,
+                    size: Math.random() * 3 + 1.5,
+                    opacity: Math.random() * 0.9 + 0.3,
+                    vx: Math.cos(particleAngle) * 2,
+                    vy: Math.sin(particleAngle) * 2 - 1.5,
+                    life: 1.0,
+                    hue: Math.random() * 30 + 15,
+                });
+            }
+
+            // Update and draw burst particles
+            for (let j = burst.particles.length - 1; j >= 0; j--) {
+                const p = burst.particles[j];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.015;
+                p.opacity = p.life;
+
+                if (p.life <= 0) {
+                    burst.particles.splice(j, 1);
+                    continue;
+                }
+
+                // Draw glowing particle
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+                this.ctx.fillStyle = `hsla(${p.hue}, 100%, 60%, ${p.opacity * 0.3})`;
+                this.ctx.fill();
+
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.opacity})`;
+                this.ctx.fill();
+            }
+
+            if (burst.life <= 0 || burst.radius > burst.maxRadius) {
+                this.emberBursts.splice(i, 1);
+            }
+        }
+
+        // Draw and update leaf burst particles
+        for (let i = this.leafBurstParticles.length - 1; i >= 0; i--) {
+            const leaf = this.leafBurstParticles[i];
+
+            // Physics
+            leaf.x += leaf.vx + this.windForce * 0.8;
+            leaf.y += leaf.vy;
+            leaf.vy += leaf.gravity;
+            leaf.vx *= 0.98; // Air resistance
+
+            // Swirling motion
+            leaf.swirl += leaf.swirlSpeed;
+            leaf.x += Math.cos(leaf.swirl) * 2;
+            leaf.y += Math.sin(leaf.swirl) * 2;
+
+            leaf.rotation += leaf.rotationSpeed;
+            leaf.life -= 0.012;
+            leaf.opacity = leaf.life * 0.9;
+
+            if (leaf.life <= 0 || leaf.y > this.canvas.height + 100) {
+                this.leafBurstParticles.splice(i, 1);
+                continue;
+            }
+
+            // Draw stylized leaf
+            this.ctx.save();
+            this.ctx.translate(leaf.x, leaf.y);
+            this.ctx.rotate(leaf.rotation * Math.PI / 180);
+            this.ctx.globalAlpha = leaf.opacity;
+
+            // Leaf shape (teardrop)
+            this.ctx.fillStyle = `hsl(${leaf.hue}, 80%, 50%)`;
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, -leaf.size);
+            this.ctx.quadraticCurveTo(leaf.size * 0.5, 0, 0, leaf.size);
+            this.ctx.quadraticCurveTo(-leaf.size * 0.5, 0, 0, -leaf.size);
+            this.ctx.fill();
+
+            // Highlight
+            this.ctx.fillStyle = `hsl(${leaf.hue + 10}, 90%, 65%)`;
+            this.ctx.beginPath();
+            this.ctx.arc(-leaf.size * 0.2, -leaf.size * 0.3, leaf.size * 0.3, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = 1;
+            this.ctx.restore();
+        }
+
+        // Update and draw fireflies
+        for (let i = this.fireflies.length - 1; i >= 0; i--) {
+            const firefly = this.fireflies[i];
+
+            // Gentle wandering motion
+            firefly.wander += firefly.wanderSpeed;
+            firefly.baseX += firefly.vx;
+            firefly.baseY += firefly.vy;
+
+            // Wandering offset
+            const wanderX = Math.cos(firefly.wander) * firefly.wanderRadius;
+            const wanderY = Math.sin(firefly.wander * 0.7) * firefly.wanderRadius;
+
+            firefly.x = firefly.baseX + wanderX;
+            firefly.y = firefly.baseY + wanderY;
+
+            // Pulsing glow
+            firefly.pulsePhase += firefly.pulseSpeed;
+            firefly.glow += firefly.glowSpeed;
+
+            // Wrap around screen
+            if (firefly.baseX < -50) {
+                firefly.baseX = this.canvas.width + 50;
+            } else if (firefly.baseX > this.canvas.width + 50) {
+                firefly.baseX = -50;
+            }
+
+            if (firefly.baseY < -50) {
+                firefly.baseY = this.canvas.height + 50;
+            } else if (firefly.baseY > this.canvas.height + 50) {
+                firefly.baseY = -50;
+            }
+
+            // Draw firefly with gentle pulsing glow
+            const pulseEffect = Math.sin(firefly.pulsePhase) * 0.4 + 0.6; // 0.2 to 1.0
+            const glowEffect = Math.sin(firefly.glow) * 0.3 + 0.7;
+            const alpha = firefly.opacity * pulseEffect;
+
+            // Soft outer glow
+            this.ctx.beginPath();
+            this.ctx.arc(firefly.x, firefly.y, firefly.size * 6, 0, Math.PI * 2);
+            const gradient = this.ctx.createRadialGradient(
+                firefly.x, firefly.y, 0,
+                firefly.x, firefly.y, firefly.size * 6
+            );
+            gradient.addColorStop(0, `hsla(${firefly.hue}, 100%, 70%, ${alpha * 0.4})`);
+            gradient.addColorStop(0.5, `hsla(${firefly.hue}, 100%, 65%, ${alpha * 0.2})`);
+            gradient.addColorStop(1, `hsla(${firefly.hue}, 100%, 60%, 0)`);
+            this.ctx.fillStyle = gradient;
+            this.ctx.fill();
+
+            // Medium glow
+            this.ctx.beginPath();
+            this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 75%, ${alpha * 0.5})`;
+            this.ctx.fill();
+
+            // Bright core with twinkle
+            this.ctx.beginPath();
+            this.ctx.arc(firefly.x, firefly.y, firefly.size * glowEffect, 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 85%, ${alpha})`;
+            this.ctx.fill();
+        }
+
+        // Limit firefly count (remove extras after combos)
+        if (this.fireflies.length > 20) {
+            this.fireflies = this.fireflies.slice(0, 20);
+        }
+
         // Update and draw embers
         for (let i = this.embers.length - 1; i >= 0; i--) {
             const ember = this.embers[i];
@@ -493,6 +916,12 @@ export default class FallTheme extends BaseTheme {
             // Update position with wind influence
             ember.x += ember.vx + this.windForce * 0.5;
             ember.y += ember.vy;
+
+            // Apply gravity if it exists
+            if (ember.gravity !== undefined) {
+                ember.vy += ember.gravity;
+            }
+
             ember.twinkle += ember.twinkleSpeed;
 
             // Sway motion
@@ -545,10 +974,8 @@ export default class FallTheme extends BaseTheme {
             this.resizeHandler = null;
         }
 
-        // Remove event listeners
-        window.removeEventListener('LINE_CLEAR', (e) => this.onLineClear(e));
-        window.removeEventListener('COMBO', (e) => this.onCombo(e));
-        window.removeEventListener('PIECE_LOCK', (e) => this.onPieceLock(e));
+        // Remove event bus listeners
+        this.teardownEventListeners();
 
         // Reset combo filter
         const themeContainer = document.getElementById('fall-theme');
@@ -556,8 +983,20 @@ export default class FallTheme extends BaseTheme {
             themeContainer.style.filter = '';
         }
 
+        // Clean up particles
         this.leafParticles = [];
+        this.leafBurstParticles = [];
+        this.fireRings = [];
+        this.emberBursts = [];
+        this.embers = [];
+        this.fireflies = [];
         this.lastFrameTime = 0;
+        this.comboMultiplier = 1.0;
+        this.comboDecay = 0;
+        this.comboCount = 0;
+        this.comboHueShift = 0;
+        this.currentSaturation = 100;
+        this.currentBrightness = 100;
 
         super.stop();
     }

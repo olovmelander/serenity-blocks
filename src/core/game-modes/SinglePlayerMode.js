@@ -13,6 +13,7 @@ import {
 } from '../constants.js';
 import { draw, updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * SinglePlayerMode - Classic single-player Tetris experience
@@ -301,13 +302,21 @@ export class SinglePlayerMode extends BaseGameMode {
         return {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: () => {
+            onLineClear: (lineCount) => {
                 this.deps.soundManager.sfxPlayer.playLineClear();
+
+                // Emit event for theme reactions
+                console.log('[SinglePlayer] Emitting LINE_CLEAR event, count:', lineCount);
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
+                // Emit event for theme reactions
+                console.log('[SinglePlayer] Emitting COMBO event, comboCount:', comboCount);
+                eventBus.emit(EVENTS.COMBO, { comboCount });
+
                 const settings = this.deps.settingsManager.get();
                 const boardScene = this._getBoardScene();
                 if (settings.comboPopupEffect && boardScene) {
@@ -325,6 +334,9 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Piece lock ripple effect
             onPieceLock: (piece) => {
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
                     boardScene.createPieceLockRipple(piece);

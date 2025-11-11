@@ -7,6 +7,7 @@ import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { TranceStateEffects } from '../../rendering/phaser/trance-state-effects.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -629,9 +630,13 @@ export class InfinityMode extends BaseGameMode {
         this.physicsCallbacks = {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: () => {
+            onLineClear: (lineCount) => {
                 // Play sound effects
                 this.deps.soundManager.sfxPlayer.playLineClear();
+
+                // Emit event for theme reactions
+                console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
 
                 // Track combo stats for infinity mode
                 if (this.gameState.infinityStats && this.gameState.comboState) {
@@ -667,6 +672,10 @@ export class InfinityMode extends BaseGameMode {
             },
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
+                // Emit event for theme reactions
+                console.log('[Infinity] Emitting COMBO event, comboCount:', comboCount);
+                eventBus.emit(EVENTS.COMBO, { comboCount });
+
                 const settings = this.deps.settingsManager.get();
                 if (settings.comboPopupEffect && this.boardScene) {
                     this.boardScene.showComboPopup(comboCount);
@@ -708,20 +717,29 @@ export class InfinityMode extends BaseGameMode {
                     this.boardScene.playLineClearImpact(lineCount);
                 }
             },
-            // Background pulse effect (not used in infinity mode but included for compatibility)
-            triggerBackgroundPulse: (_lineCount) => {
-                // Could add background effects in the future
+            // Background pulse effect
+            triggerBackgroundPulse: (lineCount) => {
+                const boardScene = this.boardScene;
+                if (boardScene && boardScene.triggerBackgroundPulse) {
+                    boardScene.triggerBackgroundPulse(lineCount);
+                }
             },
-            // Score addition animation (could add floating score text)
-            onScoreAdd: (_points) => {
-                // Could add floating score text effect in the future
+            // Score addition animation
+            onScoreAdd: (points) => {
+                const boardScene = this.boardScene;
+                if (boardScene && boardScene.showScorePopup) {
+                    boardScene.showScorePopup(points);
+                }
             },
-            // Background update (not used in infinity mode)
+            // Background update (keep level-based themes disabled for infinity mode)
             updateBackground: (_level) => {
                 // Infinity mode doesn't change backgrounds by level
             },
             // Piece lock ripple effect
             onPieceLock: (piece) => {
+                // Emit event for theme reactions
+                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+
                 if (this.boardScene && this.boardScene.createPieceLockRipple) {
                     this.boardScene.createPieceLockRipple(piece);
                 }
