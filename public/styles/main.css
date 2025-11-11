@@ -5471,6 +5471,7 @@ body {
     width: 100%; height: 100%;
     z-index: 2;
     pointer-events: none;
+    contain: layout style paint;
 }
 
 .ice-temple-star {
@@ -5479,11 +5480,12 @@ body {
     border-radius: 50%;
     animation: ice-star-twinkle var(--twinkle-duration) ease-in-out infinite;
     animation-delay: var(--twinkle-delay);
+    will-change: opacity, transform;
 }
 
 @keyframes ice-star-twinkle {
-    0%, 100% { opacity: var(--min-opacity); transform: scale(0.85); }
-    50% { opacity: var(--max-opacity); transform: scale(1.08); }
+    0%, 100% { opacity: var(--min-opacity); transform: scale3d(0.85, 0.85, 1); }
+    50% { opacity: var(--max-opacity); transform: scale3d(1.08, 1.08, 1); }
 }
 
 /* Layer 2: Aurora Borealis */
@@ -5503,18 +5505,20 @@ body {
     width: 30%;
     height: 70%;
     background: radial-gradient(ellipse at top, var(--aurora-color) 0%, transparent 60%);
-    filter: blur(40px);
+    filter: blur(18px);
     animation: ice-aurora-wave var(--aurora-duration) ease-in-out infinite;
     animation-delay: var(--aurora-delay);
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 @keyframes ice-aurora-wave {
     0%, 100% {
-        transform: translateY(0) scaleY(1);
+        transform: translate3d(0, 0, 0) scaleY(1);
         opacity: 0.55;
     }
     50% {
-        transform: translateY(-6%) scaleY(1.08);
+        transform: translate3d(0, -6%, 0) scaleY(1.08);
         opacity: 0.95;
     }
 }
@@ -5528,8 +5532,10 @@ body {
     pointer-events: none;
     background-repeat: repeat-x;
     background-position: bottom center;
-    filter: drop-shadow(0 -12px 45px rgba(6, 32, 52, 0.55));
+    filter: drop-shadow(0 -8px 30px rgba(6, 32, 52, 0.45));
     animation: icefield-pan 55s linear infinite;
+    will-change: background-position;
+    transform: translateZ(0);
 }
 
 #ice-temple-icefield::before {
@@ -5583,12 +5589,14 @@ body {
     transform-origin: top center;
     transform: rotate(var(--crack-rotate));
     background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(196, 234, 255, var(--crack-glow)) 45%, rgba(255, 255, 255, 0));
-    filter: drop-shadow(0 0 9px rgba(180, 210, 255, 0.4));
+    box-shadow: 0 0 8px rgba(180, 210, 255, 0.35);
     opacity: 0.75;
     animation: ice-crack-pulse 6s ease-in-out infinite;
     animation-delay: var(--crack-delay);
     overflow: hidden;
     isolation: isolate;
+    will-change: opacity;
+    transform: rotate(var(--crack-rotate)) translateZ(0);
 }
 
 .ice-temple-crack::before {
@@ -5598,7 +5606,6 @@ body {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(230, 250, 255, 0.4) 40%, rgba(120, 190, 255, 0.15) 65%, rgba(255, 255, 255, 0) 100%);
     background-size: 100% 220%;
     mix-blend-mode: screen;
-    filter: drop-shadow(0 0 10px rgba(160, 220, 255, 0.4));
     animation: ice-crack-glint var(--crack-glint-duration, 5s) ease-in-out infinite;
     animation-delay: var(--crack-phase, 0s);
     opacity: 0;
@@ -5618,8 +5625,8 @@ body {
 }
 
 @keyframes ice-crack-pulse {
-    0%, 100% { opacity: 0.5; filter: drop-shadow(0 0 6px rgba(140, 200, 255, 0.25)); }
-    50% { opacity: 0.95; filter: drop-shadow(0 0 14px rgba(200, 240, 255, 0.55)); }
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.95; }
 }
 
 @keyframes ice-crack-glint {
@@ -5656,11 +5663,12 @@ body {
     border-radius: 50%;
     background:
         radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(180, 225, 255, 0.2) 40%, rgba(80, 140, 200, 0.04) 70%, transparent 100%);
-    filter: blur(12px);
+    filter: blur(8px);
     animation: ice-frost-haze var(--haze-duration) ease-in-out infinite;
     animation-delay: var(--haze-delay);
     transform: translate3d(0, 0, 0) scale(var(--haze-scale));
     opacity: var(--haze-opacity, 0.2);
+    will-change: transform, opacity;
 }
 
 @keyframes ice-frost-haze {
@@ -5694,10 +5702,11 @@ body {
     width: 200%;
     height: 100%;
     background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.18) 0%, transparent 55%);
-    filter: blur(70px);
+    filter: blur(35px);
     animation: ice-mist-drift var(--mist-duration) linear infinite;
     animation-delay: var(--mist-delay);
     mix-blend-mode: screen;
+    will-change: transform;
 }
 
 .ice-temple-mist-layer[data-layer="back"] {
@@ -5706,13 +5715,13 @@ body {
 }
 
 .ice-temple-mist-layer[data-layer="front"] {
-    filter: blur(90px);
+    filter: blur(45px);
 }
 
 @keyframes ice-mist-drift {
-    0% { transform: translateX(-35%) translateY(0); }
-    50% { transform: translateX(-5%) translateY(-2%); }
-    100% { transform: translateX(-35%) translateY(0); }
+    0% { transform: translate3d(-35%, 0, 0); }
+    50% { transform: translate3d(-5%, -2%, 0); }
+    100% { transform: translate3d(-35%, 0, 0); }
 }
 
 /* Layer 7: Snowfall */
@@ -5722,6 +5731,7 @@ body {
     width: 100%; height: 100%;
     z-index: 8;
     pointer-events: none;
+    contain: layout style paint;
 }
 
 .ice-temple-snowflake {
@@ -5734,7 +5744,8 @@ body {
     animation-delay: var(--fall-delay);
     opacity: var(--snow-opacity);
     transform: scale(var(--snow-scale));
-    filter: drop-shadow(0 0 6px rgba(160, 200, 255, 0.4));
+    box-shadow: 0 0 5px rgba(160, 200, 255, 0.35);
+    will-change: transform, opacity;
 }
 
 @keyframes ice-snowfall {
@@ -5775,6 +5786,7 @@ body {
         ice-refraction-rotate var(--ray-rotation-duration) linear infinite,
         ice-refraction-pulse var(--ray-pulse-duration) ease-in-out infinite;
     animation-delay: var(--ray-delay);
+    will-change: transform, opacity;
 }
 
 @keyframes ice-refraction-rotate {
