@@ -1975,43 +1975,84 @@ body {
 
 /* --- Fall Theme --- */
 #fall-theme {
-    background: linear-gradient(to top, #a26e49, #c88c53, #f7b267);
+    background: linear-gradient(to bottom, #000000, #0a0a0a 50%, #000000);
     overflow: hidden;
 }
 .fall-bg {
     position: absolute; width: 100%; height: 100%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="f"><feGaussianBlur stdDeviation="3"/></filter><rect width="100" height="100" fill="%238d5524"/><g filter="url(%23f)"><circle cx="20" cy="80" r="30" fill="%23c86b53"/><circle cx="80" cy="70" r="40" fill="%23a26e49"/><circle cx="50" cy="30" r="25" fill="%23f7b267"/></g></svg>');
-    background-size: cover;
-    filter: blur(5px);
-    transform: scale(1.1);
+    background:
+        radial-gradient(ellipse at 30% 30%, rgba(20, 10, 5, 0.4) 0%, transparent 40%),
+        radial-gradient(ellipse at 70% 60%, rgba(15, 8, 3, 0.3) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(10, 5, 0, 0.2) 0%, transparent 60%),
+        #000000;
     z-index: 1;
 }
 .fall-leaves-layer {
     position: absolute; top: 0; left: 0;
     width: 100%; height: 100%;
 }
-#fall-leaves-back { z-index: 2; transform: scale(0.7); filter: blur(1px) brightness(0.9); }
-#fall-leaves-mid { z-index: 4; }
-#fall-leaves-front { z-index: 6; transform: scale(1.3); filter: blur(0) brightness(1.1); }
+#fall-leaves-back {
+    z-index: 2;
+    transform: scale(0.7) translateZ(0);
+    filter: blur(1px) brightness(0.85);
+    will-change: transform;
+}
+#fall-leaves-mid {
+    z-index: 4;
+    filter: drop-shadow(0 0 6px rgba(255, 140, 0, 0.5));
+    will-change: transform;
+    transform: translateZ(0);
+}
+#fall-leaves-front {
+    z-index: 6;
+    transform: scale(1.3) translateZ(0);
+    filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.6)) brightness(1.1);
+    will-change: transform;
+}
 
 .leaf {
     position: absolute;
     background-size: contain;
     background-repeat: no-repeat;
     animation: fall-leaf-gust linear infinite;
+    /* Static filter - MUCH faster than animating filters */
+    filter: drop-shadow(0 0 5px rgba(255, 120, 0, 0.6));
+    /* GPU acceleration hints */
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 @keyframes fall-leaf-gust {
-    0% { transform: translate(var(--x-start), -10vh) rotate(var(--r-start)); opacity: 1; }
-    20% { transform: translate(calc(var(--x-start) + var(--x-gust1)), 20vh) rotate(calc(var(--r-start) + 200deg)); }
-    40% { transform: translate(calc(var(--x-start) + var(--x-gust2)), 40vh) rotate(calc(var(--r-start) + 400deg)); }
-    60% { transform: translate(calc(var(--x-start) + var(--x-gust3)), 60vh) rotate(calc(var(--r-start) + 600deg)); }
-    80% { transform: translate(calc(var(--x-start) + var(--x-gust4)), 80vh) rotate(calc(var(--r-start) + 800deg)); }
-    100% { transform: translate(var(--x-end), 110vh) rotate(var(--r-end)); opacity: 0; }
+    /* PERFORMANCE: Only animate transform and opacity - never animate filters! */
+    0% {
+        transform: translate(var(--x-start), -10vh) rotate(var(--r-start)) translateZ(0);
+        opacity: 1;
+    }
+    20% {
+        transform: translate(calc(var(--x-start) + var(--x-gust1)), 20vh) rotate(calc(var(--r-start) + 200deg)) translateZ(0);
+        opacity: 1;
+    }
+    40% {
+        transform: translate(calc(var(--x-start) + var(--x-gust2)), 40vh) rotate(calc(var(--r-start) + 400deg)) translateZ(0);
+        opacity: 1;
+    }
+    60% {
+        transform: translate(calc(var(--x-start) + var(--x-gust3)), 60vh) rotate(calc(var(--r-start) + 600deg)) translateZ(0);
+        opacity: 1;
+    }
+    80% {
+        transform: translate(calc(var(--x-start) + var(--x-gust4)), 80vh) rotate(calc(var(--r-start) + 800deg)) translateZ(0);
+        opacity: 0.9;
+    }
+    100% {
+        transform: translate(var(--x-end), 110vh) rotate(var(--r-end)) translateZ(0);
+        opacity: 0;
+    }
 }
 .ground-leaves {
     position: absolute;
     bottom: 0; left: 0;
-    width: 100%; height: 5%;
+    width: 100%; height: 8%;
     z-index: 5;
     pointer-events: none;
 }
@@ -2020,33 +2061,84 @@ body {
     background-size: contain;
     background-repeat: no-repeat;
     animation: rustle-leaf ease-in-out infinite alternate;
+    /* Static filter for performance - simplified to single drop-shadow */
+    filter: drop-shadow(0 0 4px rgba(255, 120, 0, 0.5));
+    /* GPU acceleration */
+    will-change: transform;
+    transform: translateZ(0);
 }
 @keyframes rustle-leaf {
-    from { transform: rotate(var(--r1)) translateX(-2px); }
-    to { transform: rotate(var(--r2)) translateX(2px); }
+    /* PERFORMANCE: Only animate transform */
+    from {
+        transform: rotate(var(--r1)) translateX(-2px) translateZ(0);
+    }
+    to {
+        transform: rotate(var(--r2)) translateX(2px) translateZ(0);
+    }
 }
 
 .fall-wind-particle {
     position: absolute;
-    width: 80px;
-    height: 2px;
-    background: linear-gradient(to right, rgba(255, 255, 220, 0.15), transparent);
+    width: 120px;
+    height: 1px;
+    background: linear-gradient(to right,
+        rgba(255, 140, 0, 0.2),
+        rgba(255, 100, 0, 0.1),
+        transparent);
     border-radius: 2px;
     animation: wind-gust-fall linear infinite;
     z-index: 3; /* Between back and mid leaves */
+    /* Simplified shadow for performance */
+    box-shadow: 0 0 2px rgba(255, 120, 0, 0.2);
+    /* GPU acceleration */
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 @keyframes wind-gust-fall {
     0% {
-        transform: translateX(-100px) scaleX(0.5);
+        transform: translateX(-100px) scaleX(0.5) translateZ(0);
         opacity: 0;
     }
     10%, 80% {
+        opacity: 0.3;
+    }
+    100% {
+        transform: translateX(110vw) scaleX(1.5) translateZ(0);
+        opacity: 0;
+    }
+}
+
+/* Atmospheric depth fog for Fall theme */
+#fall-theme::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse at 20% 40%, rgba(40, 20, 5, 0.12) 0%, transparent 35%),
+        radial-gradient(ellipse at 80% 70%, rgba(30, 15, 3, 0.1) 0%, transparent 40%);
+    z-index: 7;
+    pointer-events: none;
+    animation: fall-fog-drift 20s ease-in-out infinite alternate;
+    /* GPU acceleration */
+    will-change: transform, opacity;
+    transform: translateZ(0);
+}
+
+@keyframes fall-fog-drift {
+    0% {
+        transform: translateX(0) translateY(0) translateZ(0);
+        opacity: 0.5;
+    }
+    50% {
         opacity: 0.7;
     }
     100% {
-        transform: translateX(110vw) scaleX(1.5);
-        opacity: 0;
+        transform: translateX(2%) translateY(1%) translateZ(0);
+        opacity: 0.5;
     }
 }
 

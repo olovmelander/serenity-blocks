@@ -6,19 +6,31 @@ export default class FallTheme extends BaseTheme {
     }
 
     async createScene() {
-        // Define leaf shapes and colors
+        // Define leaf shapes and colors - more vibrant, glowing autumn palette
         const leafShapes = [
             'M15 0 C0 5, 5 25, 15 30 C25 25, 30 5, 15 0 Z', // Simple teardrop
             'M15 0 L17 10 L30 12 L18 18 L22 30 L15 25 L8 30 L12 18 L0 12 L13 10 Z', // Maple-like
             'M15 0 C 0 10, 0 20, 5 30 C 10 25, 20 25, 25 30 C 30 20, 30 10, 15 0 Z', // Oak-like
         ];
-        const leafColors = ['#d44d2d', '#f7a156', '#a26e49', '#6d4c3c'];
+        // Brilliant, glowing autumn colors - oranges, reds, and golden yellows
+        const leafColors = [
+            '#ff5722', // Vibrant red-orange
+            '#ff9100', // Brilliant orange
+            '#ffb300', // Golden amber
+            '#ff6f00', // Deep vibrant orange
+            '#ff8a50', // Peachy orange
+            '#ffa726', // Warm orange
+            '#fb8c00', // Rich orange
+            '#f4511e', // Red-orange
+            '#ff7043', // Coral orange
+            '#ffab40', // Light golden orange
+        ];
 
-        // Multi-layered falling leaves
+        // Multi-layered falling leaves - optimized counts for performance
         const leafLayers = [
             {
                 container: document.getElementById('fall-leaves-back'),
-                count: 20,
+                count: 22, // Optimized for performance while keeping visual richness
                 minSize: 15,
                 maxSize: 25,
                 minDuration: 15,
@@ -26,7 +38,7 @@ export default class FallTheme extends BaseTheme {
             },
             {
                 container: document.getElementById('fall-leaves-mid'),
-                count: 15,
+                count: 16, // Optimized for performance
                 minSize: 20,
                 maxSize: 35,
                 minDuration: 10,
@@ -34,7 +46,7 @@ export default class FallTheme extends BaseTheme {
             },
             {
                 container: document.getElementById('fall-leaves-front'),
-                count: 10,
+                count: 12, // Optimized for performance
                 minSize: 25,
                 maxSize: 45,
                 minDuration: 7,
@@ -71,11 +83,11 @@ export default class FallTheme extends BaseTheme {
             }
         });
 
-        // Dynamic Ground leaves
+        // Dynamic Ground leaves - optimized count for performance
         const groundContainer = document.querySelector('.ground-leaves');
         if (groundContainer && groundContainer.children.length === 0) {
             groundContainer.style.backgroundImage = '';
-            for (let i = 0; i < 80; i++) {
+            for (let i = 0; i < 70; i++) { // Optimized from 120 for better FPS
                 const leaf = document.createElement('div');
                 leaf.className = 'ground-leaf';
                 const shape = leafShapes[Math.floor(Math.random() * leafShapes.length)];
