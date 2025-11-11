@@ -5521,7 +5521,7 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: 1;
-    background: linear-gradient(to bottom, #050b17 0%, #081426 45%, #0f2139 70%, #102c46 100%);
+    background: linear-gradient(to bottom, #050b17 0%, #0a1d32 60%, #0e2a42 100%);
 }
 
 /* Layer 1: Stars */
@@ -5592,6 +5592,34 @@ body {
     animation: icefield-pan 55s linear infinite;
 }
 
+#ice-temple-icefield::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(116, 185, 255, 0.6) 15%,
+        rgba(137, 217, 255, 0.8) 30%,
+        rgba(255, 255, 255, 0.9) 50%,
+        rgba(137, 217, 255, 0.8) 70%,
+        rgba(116, 185, 255, 0.6) 85%,
+        transparent 100%
+    );
+    box-shadow:
+        0 0 8px rgba(137, 217, 255, 0.7),
+        0 0 15px rgba(116, 185, 255, 0.5),
+        0 -2px 25px rgba(137, 217, 255, 0.3);
+    animation: horizon-shimmer 8s ease-in-out infinite;
+}
+
+@keyframes horizon-shimmer {
+    0%, 100% { opacity: 0.7; transform: scaleX(1); }
+    50% { opacity: 1; transform: scaleX(1.02); }
+}
+
 @keyframes icefield-pan {
     from { background-position: 0 100%; }
     to { background-position: -600px 100%; }
@@ -5619,6 +5647,21 @@ body {
     opacity: 0.75;
     animation: ice-crack-pulse 6s ease-in-out infinite;
     animation-delay: var(--crack-delay);
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.ice-temple-crack::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(230, 250, 255, 0.4) 40%, rgba(120, 190, 255, 0.15) 65%, rgba(255, 255, 255, 0) 100%);
+    background-size: 100% 220%;
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 10px rgba(160, 220, 255, 0.4));
+    animation: ice-crack-glint var(--crack-glint-duration, 5s) ease-in-out infinite;
+    animation-delay: var(--crack-phase, 0s);
+    opacity: 0;
 }
 
 .ice-temple-crack.branching::after {
@@ -5639,7 +5682,25 @@ body {
     50% { opacity: 0.95; filter: drop-shadow(0 0 14px rgba(200, 240, 255, 0.55)); }
 }
 
-/* Layer 5: Floating Ice Shards */
+@keyframes ice-crack-glint {
+    0% {
+        background-position: 0 -120%;
+        opacity: 0;
+    }
+    35% {
+        opacity: 0.7;
+    }
+    55% {
+        background-position: 0 20%;
+        opacity: 0.9;
+    }
+    100% {
+        background-position: 0 140%;
+        opacity: 0;
+    }
+}
+
+/* Layer 5: Frost Haze */
 #ice-temple-ice-shards {
     position: absolute;
     top: 0; left: 0;
@@ -5647,54 +5708,33 @@ body {
     z-index: 6;
     pointer-events: none;
     overflow: hidden;
+    mix-blend-mode: screen;
 }
 
-.ice-temple-shard {
+.ice-temple-frost-haze {
     position: absolute;
-    width: 20px;
-    height: 60px;
-    transform-origin: center;
-    animation: ice-shard-float var(--shard-duration) ease-in-out infinite;
-    animation-delay: var(--shard-delay);
-    opacity: 0;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(180, 225, 255, 0.2) 40%, rgba(80, 140, 200, 0.04) 70%, transparent 100%);
+    filter: blur(12px);
+    animation: ice-frost-haze var(--haze-duration) ease-in-out infinite;
+    animation-delay: var(--haze-delay);
+    transform: translate3d(0, 0, 0) scale(var(--haze-scale));
+    opacity: var(--haze-opacity, 0.2);
 }
 
-.ice-temple-shard::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(160deg, rgba(255, 255, 255, 0.85), rgba(163, 213, 255, 0.15));
-    border-radius: 8px 8px 3px 3px;
-    box-shadow: 0 0 14px rgba(160, 210, 255, 0.45);
-    transform: scale(var(--shard-scale)) skewY(-6deg);
-}
-
-.ice-temple-shard[data-layer="mid"] {
-    filter: blur(1px);
-}
-
-.ice-temple-shard[data-layer="front"] {
-    filter: drop-shadow(0 0 12px rgba(160, 230, 255, 0.5));
-}
-
-@keyframes ice-shard-float {
+@keyframes ice-frost-haze {
     0% {
-        transform: translate3d(0, 20vh, 0) rotate(0deg) scale(var(--shard-scale));
-        opacity: 0;
+        transform: translate3d(0, 0, 0) scale(var(--haze-scale));
+        opacity: var(--haze-opacity, 0.2);
     }
-    15% {
-        opacity: 0.85;
-    }
-    60% {
-        transform: translate3d(calc(var(--shard-drift-x) * 0.6), calc(var(--shard-drift-y) * -0.3), 0)
-            rotate(calc(var(--shard-tilt) * 0.6))
-            scale(calc(var(--shard-scale) * 1.05));
+    45% {
+        transform: translate3d(var(--haze-drift-x), var(--haze-drift-y), 0) scale(calc(var(--haze-scale) * 1.08));
+        opacity: calc(var(--haze-opacity, 0.2) + 0.06);
     }
     100% {
-        transform: translate3d(calc(var(--shard-drift-x) * 1.1), calc(var(--shard-drift-y) * -1), 0)
-            rotate(var(--shard-tilt))
-            scale(var(--shard-scale));
-        opacity: 0;
+        transform: translate3d(0, 0, 0) scale(var(--haze-scale));
+        opacity: var(--haze-opacity, 0.2);
     }
 }
 

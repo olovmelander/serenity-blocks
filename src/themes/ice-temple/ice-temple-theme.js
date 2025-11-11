@@ -19,6 +19,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.createAurora();
         this.createIceField();
         this.createCrackNetwork();
+        this.createFrostHaze();
         this.createMistLayers();
         this.createSnowfall();
         this.createRefractions();
@@ -81,9 +82,8 @@ export default class IceTempleTheme extends BaseTheme {
             const ctx = canvas.getContext('2d');
 
             const baseGradient = ctx.createLinearGradient(0, 0, 0, height);
-            baseGradient.addColorStop(0, '#061628');
-            baseGradient.addColorStop(0.35, '#0f2d48');
-            baseGradient.addColorStop(0.75, '#13435f');
+            baseGradient.addColorStop(0, '#0a1f35');
+            baseGradient.addColorStop(0.4, '#0e3352');
             baseGradient.addColorStop(1, '#15526c');
             ctx.fillStyle = baseGradient;
             ctx.fillRect(0, 0, width, height);
@@ -111,13 +111,6 @@ export default class IceTempleTheme extends BaseTheme {
                 ctx.arc(Math.random() * width, height * (0.25 + Math.random() * 0.75), radius, 0, Math.PI * 2);
                 ctx.fill();
             }
-
-            // Add horizon glow
-            const glowGradient = ctx.createLinearGradient(0, height * 0.35, 0, height);
-            glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = glowGradient;
-            ctx.fillRect(0, height * 0.35, width, height * 0.65);
 
             const dataURL = `url(${canvas.toDataURL('image/png')})`;
             iceTempleCache.set(cacheKey, {
@@ -147,12 +140,40 @@ export default class IceTempleTheme extends BaseTheme {
             crack.style.setProperty('--crack-rotate', `${-40 + rng() * 80}deg`);
             crack.style.setProperty('--crack-delay', `${rng() * 6}s`);
             crack.style.setProperty('--crack-glow', `${0.3 + rng() * 0.4}`);
+            const glintDuration = 4.5 + rng() * 3.5;
+            crack.style.setProperty('--crack-glint-duration', `${glintDuration}s`);
+            crack.style.setProperty('--crack-phase', `-${rng() * glintDuration}s`);
             if (rng() > 0.6) {
                 crack.classList.add('branching');
                 crack.style.setProperty('--branch-rotate', `${-35 + rng() * 70}deg`);
                 crack.style.setProperty('--branch-length', `${12 + rng() * 20}vh`);
             }
             container.appendChild(crack);
+        }
+    }
+
+    createFrostHaze() {
+        const container = this.getContainer('ice-temple-ice-shards');
+        if (!container || container.children.length) return;
+
+        const rng = this.seededRandom(17777);
+        const spriteCount = 24;
+        for (let i = 0; i < spriteCount; i++) {
+            const haze = document.createElement('div');
+            haze.className = 'ice-temple-frost-haze';
+            const size = 60 + rng() * 120;
+            haze.style.width = `${size}px`;
+            haze.style.height = `${size}px`;
+            haze.style.left = `${rng() * 100}%`;
+            haze.style.top = `${rng() * 100}%`;
+            const duration = 18 + rng() * 14;
+            haze.style.setProperty('--haze-duration', `${duration}s`);
+            haze.style.setProperty('--haze-delay', `-${rng() * duration}s`);
+            haze.style.setProperty('--haze-drift-x', `${rng() * 20 - 10}vw`);
+            haze.style.setProperty('--haze-drift-y', `${rng() * 12 - 6}vh`);
+            haze.style.setProperty('--haze-scale', `${0.6 + rng() * 0.6}`);
+            haze.style.setProperty('--haze-opacity', `${0.12 + rng() * 0.25}`);
+            container.appendChild(haze);
         }
     }
 
