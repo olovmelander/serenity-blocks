@@ -17,12 +17,60 @@ export default class RainyWindowTheme extends BaseTheme {
         this.windForce = 0;
         this.targetWindForce = 0;
         this.nextWindChange = Math.random() * 200 + 100;
-        this.maxDrops = 200;
+        this.maxDrops = 180; // Reduced by 10% for better performance
         this.dropSpawnProbability = 0.45;
-        this.currentDropCap = 70;
-        this.maxRipples = 140;
+        this.currentDropCap = 63; // Reduced by 10% for better performance
+        this.maxRipples = 120;
         this.lightningFlashIntensity = 0;
         this.lightningRipples = [];
+        this.gustIntensity = 0;
+        this.nextGust = Math.random() * 200 + 100;
+        this.gustDuration = 0;
+
+        // Performance optimization: Cache static data to avoid recreation every frame
+        this.colorSchemes = {
+            'lightning': {
+                base: { r: 140, g: 180, b: 255 },
+                highlight: { r: 200, g: 230, b: 255 },
+                accent: { r: 230, g: 245, b: 255 }
+            },
+            'splash': {
+                base: { r: 160, g: 200, b: 235 },
+                highlight: { r: 200, g: 230, b: 250 },
+                accent: { r: 220, g: 240, b: 255 }
+            },
+            'strong': {
+                base: { r: 140, g: 175, b: 220 },
+                highlight: { r: 180, g: 210, b: 245 },
+                accent: { r: 200, g: 225, b: 255 }
+            },
+            'gentle': {
+                base: { r: 120, g: 155, b: 190 },
+                highlight: { r: 160, g: 195, b: 230 },
+                accent: { r: 180, g: 210, b: 240 }
+            },
+            'normal': {
+                base: { r: 125, g: 160, b: 200 },
+                highlight: { r: 165, g: 195, b: 230 },
+                accent: { r: 185, g: 210, b: 240 }
+            }
+        };
+
+        this.ringConfigs = {
+            'lightning': { count: 5, spacing: 12, pattern: 'electric' },
+            'splash': { count: 4, spacing: 15, pattern: 'burst' },
+            'strong': { count: 6, spacing: 8, pattern: 'wave' },
+            'gentle': { count: 5, spacing: 12, pattern: 'smooth' },
+            'normal': { count: 5, spacing: 10, pattern: 'standard' }
+        };
+
+        this.fadeRates = {
+            'lightning': 0.003,
+            'splash': 0.008,
+            'strong': 0.005,
+            'gentle': 0.006,
+            'normal': 0.007
+        };
     }
 
     async createScene() {
@@ -52,6 +100,23 @@ export default class RainyWindowTheme extends BaseTheme {
         this.canvas.height = window.innerHeight;
         // Water surface starts at 60% down the screen
         this.waterSurfaceY = this.canvas.height * 0.6;
+
+        // Performance optimization: Pre-create gradients that don't change
+        this.baseSkyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
+        this.baseSkyGradient.addColorStop(0, 'rgb(8, 9, 14)');
+        this.baseSkyGradient.addColorStop(0.5, 'rgb(14, 16, 20)');
+        this.baseSkyGradient.addColorStop(1, 'rgb(20, 22, 28)');
+
+        // Cache fog gradients (3 layers)
+        this.fogGradients = [];
+        for (let i = 0; i < 3; i++) {
+            const fogY = this.waterSurfaceY - (i * 100) - 50;
+            const fogGradient = this.ctx.createLinearGradient(0, fogY - 40, 0, fogY + 40);
+            fogGradient.addColorStop(0, 'rgba(30, 40, 50, 0)');
+            fogGradient.addColorStop(0.5, `rgba(30, 40, 50, ${0.03 + i * 0.01})`);
+            fogGradient.addColorStop(1, 'rgba(30, 40, 50, 0)');
+            this.fogGradients.push({ gradient: fogGradient, y: fogY });
+        }
     }
 
     createDrop(isInitial) {
@@ -70,36 +135,82 @@ export default class RainyWindowTheme extends BaseTheme {
         };
     }
 
-    createRipple(x, y, dropSize, depth) {
+    createRipple(x, y, dropSize, depth, isLightning = false) {
         // Scale ripple size based on depth (smaller = farther away)
         const depthScale = 0.3 + depth * 0.7;
+
+        // Create variety in ripple types with distinct visual styles
+        let rippleType, style;
+        if (isLightning) {
+            rippleType = 'lightning';
+            style = 'electric'; // Electric burst pattern
+        } else {
+            const rand = Math.random();
+            if (rand < 0.2) {
+                rippleType = 'splash';
+                style = 'burst'; // Fast expanding burst
+            } else if (rand < 0.4) {
+                rippleType = 'strong';
+                style = 'wave'; // Multiple wave rings
+            } else if (rand < 0.6) {
+                rippleType = 'gentle';
+                style = 'smooth'; // Smooth expanding circle
+            } else {
+                rippleType = 'normal';
+                style = 'ripple'; // Standard ripple
+            }
+        }
+
+        const sizeMultiplier = {
+            'splash': 1.8,
+            'strong': 1.4,
+            'gentle': 0.8,
+            'normal': 1.0,
+            'lightning': 2.0
+        }[rippleType];
+
+        const speedMultiplier = {
+            'splash': 1.5,
+            'strong': 1.0,
+            'gentle': 0.7,
+            'normal': 1.0,
+            'lightning': 1.2
+        }[rippleType];
+
         return {
             x: x,
             y: y,
             radius: 0,
-            maxRadius: (dropSize * 10 + Math.random() * 30 + 40) * depthScale,
-            opacity: 1.0,
-            speed: (Math.random() * 0.8 + 0.6) * depthScale,
-            lineWidth: (Math.random() * 2 + 1.5) * depthScale,
+            maxRadius: (dropSize * 10 + Math.random() * 30 + 40) * depthScale * sizeMultiplier,
+            opacity: rippleType === 'splash' ? 1.5 : (rippleType === 'strong' ? 1.2 : 1.0),
+            speed: (Math.random() * 0.8 + 0.6) * depthScale * speedMultiplier,
+            lineWidth: (Math.random() * 2 + 1.5) * depthScale * (rippleType === 'splash' ? 1.5 : rippleType === 'strong' ? 1.3 : 1.0),
             depth: depth,
-            phase: 0, // For wave animation
-            frequency: Math.random() * 0.1 + 0.05, // Wave oscillation
+            phase: 0,
+            frequency: Math.random() * 0.1 + 0.05,
+            isLightning: isLightning,
+            shimmer: Math.random() * Math.PI * 2,
+            rippleType: rippleType,
+            style: style,
+            pulseSpeed: Math.random() * 0.05 + 0.03,
+            rotation: Math.random() * Math.PI * 2, // Random rotation for variety
         };
     }
 
     createLightningBolt() {
         const startX = this.canvas.width * (0.15 + Math.random() * 0.7);
-        const segments = [];
+        const mainSegs = [];
+        const branchSegs = [];
         let x = startX;
         let y = 0;
         const targetY = this.waterSurfaceY + Math.random() * 100;
         const depth = Math.random();
 
-        // Main bolt
+        // Main bolt - separate segments by type for performance
         while (y < targetY) {
             const nextY = y + Math.random() * 30 + 20;
             const nextX = x + (Math.random() - 0.5) * 40;
-            segments.push({ x1: x, y1: y, x2: nextX, y2: nextY });
+            mainSegs.push({ x1: x, y1: y, x2: nextX, y2: nextY });
 
             // Random branches
             if (Math.random() > 0.7) {
@@ -107,7 +218,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 const branchAngle = (Math.random() - 0.5) * Math.PI * 0.6;
                 const bx = nextX + Math.cos(branchAngle) * branchLength;
                 const by = nextY + Math.sin(branchAngle) * branchLength;
-                segments.push({ x1: nextX, y1: nextY, x2: bx, y2: by, isBranch: true });
+                branchSegs.push({ x1: nextX, y1: nextY, x2: bx, y2: by });
             }
 
             x = nextX;
@@ -115,7 +226,8 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         return {
-            segments,
+            mainSegs,
+            branchSegs,
             opacity: 1.0,
             life: 1.0,
             glowIntensity: 1.0,
@@ -224,14 +336,34 @@ export default class RainyWindowTheme extends BaseTheme {
 
         this.time += 1;
 
-        // Dynamic wind system
+        // Dynamic wind system with gusts (slower, less erratic)
         if (this.time >= this.nextWindChange) {
-            this.targetWindForce = (Math.random() - 0.5) * 3; // Wind from -1.5 to 1.5
-            this.nextWindChange = this.time + Math.random() * 200 + 150;
+            this.targetWindForce = (Math.random() - 0.5) * 2; // Wind from -1 to 1 (reduced from 3)
+            this.nextWindChange = this.time + Math.random() * 400 + 300; // Longer intervals
         }
 
-        // Smooth wind transition
-        this.windForce += (this.targetWindForce - this.windForce) * 0.02;
+        // Wind gust system
+        if (this.time >= this.nextGust && this.gustDuration <= 0) {
+            // Trigger a random wind gust
+            const gustStrength = Math.random() * 1.5 + 1; // 1 to 2.5 (reduced from 3)
+            const gustDirection = Math.random() < 0.5 ? -1 : 1;
+            this.targetWindForce = gustDirection * gustStrength;
+            this.gustIntensity = 1.0;
+            this.gustDuration = Math.random() * 40 + 30; // 30-70 frames
+            this.nextGust = this.time + Math.random() * 400 + 300; // Less frequent
+        }
+
+        // Fade gust intensity
+        if (this.gustDuration > 0) {
+            this.gustDuration -= 1;
+            this.gustIntensity = Math.max(0, this.gustDuration / 50);
+        } else {
+            this.gustIntensity = 0;
+        }
+
+        // Smooth wind transition (slower transitions)
+        const windTransitionSpeed = this.gustIntensity > 0 ? 0.05 : 0.015; // Slower than before
+        this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
 
         // Lightning timing
         if (this.time >= this.nextLightning) {
@@ -241,15 +373,22 @@ export default class RainyWindowTheme extends BaseTheme {
             // Set flash intensity for atmospheric effect
             this.lightningFlashIntensity = 0.25;
 
-            // Create ripples on water when lightning strikes
+            // Trigger wind gust with lightning
+            const gustStrength = Math.random() * 2.5 + 2; // 2 to 4.5 (stronger than random gusts)
+            const gustDirection = Math.random() < 0.5 ? -1 : 1;
+            this.targetWindForce = gustDirection * gustStrength;
+            this.gustIntensity = 1.0;
+            this.gustDuration = Math.random() * 50 + 40; // 40-90 frames (longer than random gusts)
+
+            // Create ripples on water when lightning strikes (reduced for performance)
             const waterY = this.getWaterY(bolt.depth);
-            const numRipples = 4 + Math.floor(Math.random() * 3);
+            const numRipples = 2 + Math.floor(Math.random() * 2); // Reduced from 4-7 to 2-3
             for (let i = 0; i < numRipples; i++) {
                 this.lightningRipples.push({
-                    x: bolt.impactX + (Math.random() - 0.5) * 100,
+                    x: bolt.impactX + (Math.random() - 0.5) * 80,
                     y: waterY,
                     depth: bolt.depth,
-                    size: 8 + Math.random() * 6,
+                    size: 9 + Math.random() * 7, // Slightly larger to compensate for fewer ripples
                     delay: i * 3,
                     spawned: false
                 });
@@ -269,35 +408,37 @@ export default class RainyWindowTheme extends BaseTheme {
             lr.delay -= 1;
             if (lr.delay <= 0 && !lr.spawned) {
                 if (this.ripples.length < this.maxRipples) {
-                    this.ripples.push(this.createRipple(lr.x, lr.y, lr.size, lr.depth));
+                    this.ripples.push(this.createRipple(lr.x, lr.y, lr.size, lr.depth, true));
                 }
                 lr.spawned = true;
                 this.lightningRipples.splice(i, 1);
             }
         }
 
-        // Dark atmospheric background with lightning flash
-        const flashBoost = Math.floor(this.lightningFlashIntensity * 30);
-        const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
-        skyGradient.addColorStop(0, `rgb(${8 + flashBoost}, ${9 + flashBoost}, ${14 + flashBoost})`);
-        skyGradient.addColorStop(0.5, `rgb(${14 + flashBoost}, ${16 + flashBoost}, ${20 + flashBoost})`);
-        skyGradient.addColorStop(1, `rgb(${20 + flashBoost}, ${22 + flashBoost}, ${28 + flashBoost})`);
-        this.ctx.fillStyle = skyGradient;
+        // Dark atmospheric background with lightning flash (optimized)
+        if (this.lightningFlashIntensity > 0) {
+            // Only create new gradient if there's a lightning flash
+            const flashBoost = Math.floor(this.lightningFlashIntensity * 30);
+            const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
+            skyGradient.addColorStop(0, `rgb(${8 + flashBoost}, ${9 + flashBoost}, ${14 + flashBoost})`);
+            skyGradient.addColorStop(0.5, `rgb(${14 + flashBoost}, ${16 + flashBoost}, ${20 + flashBoost})`);
+            skyGradient.addColorStop(1, `rgb(${20 + flashBoost}, ${22 + flashBoost}, ${28 + flashBoost})`);
+            this.ctx.fillStyle = skyGradient;
+        } else {
+            // Use cached gradient when no flash
+            this.ctx.fillStyle = this.baseSkyGradient;
+        }
         this.ctx.fillRect(0, 0, this.canvas.width, this.waterSurfaceY);
 
         // Draw water surface
         this.drawWaterSurface();
 
 
-        // Add atmospheric fog layers
+        // Add atmospheric fog layers (use cached gradients)
         for (let i = 0; i < 3; i++) {
-            const fogY = this.waterSurfaceY - (i * 100) - 50;
-            const fogGradient = this.ctx.createLinearGradient(0, fogY - 40, 0, fogY + 40);
-            fogGradient.addColorStop(0, 'rgba(30, 40, 50, 0)');
-            fogGradient.addColorStop(0.5, `rgba(30, 40, 50, ${0.03 + i * 0.01})`);
-            fogGradient.addColorStop(1, 'rgba(30, 40, 50, 0)');
-            this.ctx.fillStyle = fogGradient;
-            this.ctx.fillRect(0, fogY - 40, this.canvas.width, 80);
+            const fog = this.fogGradients[i];
+            this.ctx.fillStyle = fog.gradient;
+            this.ctx.fillRect(0, fog.y - 40, this.canvas.width, 80);
         }
 
         // Draw and update lightning bolts
@@ -312,62 +453,128 @@ export default class RainyWindowTheme extends BaseTheme {
                 continue;
             }
 
-            // Draw each segment with flashy glow
-            for (const seg of bolt.segments) {
-                const thickness = seg.isBranch ? 1.5 : 3;
+            // Draw segments with batched rendering for better performance
+            // Segments are already separated by type during creation
+            this.ctx.lineCap = 'round';
 
-                // Wide atmospheric glow
+            // Draw main segments (thickness = 3) - all layers
+            if (bolt.mainSegs.length > 0) {
+                const mainSegs = bolt.mainSegs;
+                // Layer 1: Wide atmospheric glow
                 this.ctx.beginPath();
-                this.ctx.moveTo(seg.x1, seg.y1);
-                this.ctx.lineTo(seg.x2, seg.y2);
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
                 this.ctx.strokeStyle = `rgba(120, 150, 200, ${bolt.opacity * 0.12})`;
-                this.ctx.lineWidth = thickness * 12;
-                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = 3 * 12;
                 this.ctx.stroke();
 
-                // Extended outer glow
+                // Layer 2: Extended outer glow
                 this.ctx.beginPath();
-                this.ctx.moveTo(seg.x1, seg.y1);
-                this.ctx.lineTo(seg.x2, seg.y2);
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
                 this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.25})`;
-                this.ctx.lineWidth = thickness * 8;
-                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = 3 * 8;
                 this.ctx.stroke();
 
-                // Outer glow
+                // Layer 3: Outer glow
                 this.ctx.beginPath();
-                this.ctx.moveTo(seg.x1, seg.y1);
-                this.ctx.lineTo(seg.x2, seg.y2);
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
                 this.ctx.strokeStyle = `rgba(180, 200, 235, ${bolt.opacity * 0.4})`;
-                this.ctx.lineWidth = thickness * 5;
-                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = 3 * 5;
                 this.ctx.stroke();
 
-                // Middle glow
+                // Layer 4: Middle glow
                 this.ctx.beginPath();
-                this.ctx.moveTo(seg.x1, seg.y1);
-                this.ctx.lineTo(seg.x2, seg.y2);
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
                 this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
-                this.ctx.lineWidth = thickness * 2.5;
-                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = 3 * 2.5;
                 this.ctx.stroke();
 
-                // Core (very bright)
+                // Layer 5: Core
                 this.ctx.beginPath();
-                this.ctx.moveTo(seg.x1, seg.y1);
-                this.ctx.lineTo(seg.x2, seg.y2);
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
                 this.ctx.strokeStyle = `rgba(240, 245, 255, ${bolt.opacity})`;
-                this.ctx.lineWidth = thickness;
-                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = 3;
+                this.ctx.stroke();
+            }
+
+            // Draw branch segments (thickness = 1.5) - all layers
+            if (bolt.branchSegs.length > 0) {
+                const branchSegs = bolt.branchSegs;
+                // Layer 1: Wide atmospheric glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(120, 150, 200, ${bolt.opacity * 0.12})`;
+                this.ctx.lineWidth = 1.5 * 12;
+                this.ctx.stroke();
+
+                // Layer 2: Extended outer glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.25})`;
+                this.ctx.lineWidth = 1.5 * 8;
+                this.ctx.stroke();
+
+                // Layer 3: Outer glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(180, 200, 235, ${bolt.opacity * 0.4})`;
+                this.ctx.lineWidth = 1.5 * 5;
+                this.ctx.stroke();
+
+                // Layer 4: Middle glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
+                this.ctx.lineWidth = 1.5 * 2.5;
+                this.ctx.stroke();
+
+                // Layer 5: Core
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(240, 245, 255, ${bolt.opacity})`;
+                this.ctx.lineWidth = 1.5;
                 this.ctx.stroke();
             }
         }
 
-        // Spawn new raindrops
+        // Spawn new raindrops (affected by wind gusts)
         this.currentDropCap += (this.maxDrops - this.currentDropCap) * 0.0025;
-        const spawnChance = this.dropSpawnProbability * (0.6 + this.currentDropCap / this.maxDrops * 0.4) * (1 + Math.abs(this.windForce) * 0.12);
+        const gustSpawnBoost = 1 + this.gustIntensity * 0.3; // Spawn more drops during gusts
+        const spawnChance = this.dropSpawnProbability * (0.6 + this.currentDropCap / this.maxDrops * 0.4) * (1 + Math.abs(this.windForce) * 0.12) * gustSpawnBoost;
         if (this.drops.length < this.currentDropCap && Math.random() < spawnChance) {
-            this.drops.push(this.createDrop(false));
+            const newDrop = this.createDrop(false);
+            // Offset spawn position based on wind (rain comes from angle during gusts)
+            newDrop.x += this.windForce * 50 * this.gustIntensity;
+            this.drops.push(newDrop);
         }
 
         // Draw and update ripples on water surface with depth
@@ -376,7 +583,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
             ripple.radius += ripple.speed;
             ripple.phase += ripple.frequency;
-            ripple.opacity -= 0.006;
+            ripple.shimmer += ripple.pulseSpeed;
+
+            // Use cached fade rates
+            ripple.opacity -= this.fadeRates[ripple.rippleType];
 
             if (ripple.opacity <= 0 || ripple.radius >= ripple.maxRadius) {
                 this.ripples.splice(i, 1);
@@ -391,39 +601,137 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Realistic ripple wave pattern with oscillation
             const waveAmplitude = Math.sin(ripple.phase) * 0.3 + 0.7;
+            const shimmerEffect = Math.sin(ripple.shimmer) * 0.4 + 0.6;
+            const pulseEffect = Math.sin(ripple.shimmer * 1.5) * 0.2 + 0.8;
 
-            // Draw primary ripple with multiple wave rings aligned to water plane
-            for (let j = 0; j < 5; j++) {
-                const waveOffset = j * 8 * (0.3 + depth * 0.7);
+            // Use cached color schemes and ring configs
+            const colors = this.colorSchemes[ripple.rippleType];
+            const config = this.ringConfigs[ripple.rippleType];
+
+            // Render based on ripple pattern/style
+            for (let j = 0; j < config.count; j++) {
+                const waveOffset = j * config.spacing * (0.3 + depth * 0.7);
                 const offsetRadius = ripple.radius - waveOffset;
                 if (offsetRadius <= 0) continue;
 
-                const waveAlpha = ripple.opacity * (1 - j * 0.15) * depthAlpha * waveAmplitude;
+                const waveAlpha = ripple.opacity * (1 - j * 0.13) * depthAlpha * waveAmplitude * pulseEffect;
                 const flatten = 0.3 + depth * 0.35;
 
                 this.ctx.save();
                 this.ctx.translate(ripple.x, ripple.y);
                 this.ctx.scale(1, flatten);
-                this.ctx.rotate(Math.sin(ripple.phase + j) * 0.02);
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
-                this.ctx.strokeStyle = `rgba(140, 170, 200, ${waveAlpha * 0.4})`;
-                this.ctx.lineWidth = (ripple.lineWidth + 1) * (1 - j * 0.12);
-                this.ctx.stroke();
 
-                if (j < 3) {
+                // Different rotation patterns for each style
+                if (config.pattern === 'electric') {
+                    this.ctx.rotate(ripple.rotation + Math.sin(ripple.phase * 2 + j) * 0.1);
+                } else if (config.pattern === 'burst') {
+                    this.ctx.rotate(ripple.rotation + j * 0.3);
+                } else if (config.pattern === 'wave') {
+                    this.ctx.rotate(Math.sin(ripple.phase + j * 0.5) * 0.05);
+                } else {
+                    this.ctx.rotate(Math.sin(ripple.phase + j) * 0.02);
+                }
+
+                // Pattern-specific rendering
+                if (config.pattern === 'electric') {
+                    // Lightning: Optimized electric look with 2 layers (reduced from 3)
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
-                    const nearColor = [180, 210, 240];
-                    const farColor = [120, 140, 160];
-                    const r = farColor[0] + (nearColor[0] - farColor[0]) * depth;
-                    const g = farColor[1] + (nearColor[1] - farColor[1]) * depth;
-                    const b = farColor[2] + (nearColor[2] - farColor[2]) * depth;
-
-                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
-                    this.ctx.lineWidth = ripple.lineWidth * (1 - j * 0.2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r - 10}, ${colors.base.g - 10}, ${colors.base.b}, ${waveAlpha * 0.4})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 3) * (1 - j * 0.1);
                     this.ctx.stroke();
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.highlight.r + (colors.accent.r - colors.highlight.r) * shimmerEffect * 0.5;
+                    const g = colors.highlight.g + (colors.accent.g - colors.highlight.g) * shimmerEffect * 0.5;
+                    const b = colors.highlight.b + (colors.accent.b - colors.highlight.b) * shimmerEffect * 0.5;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
+                    this.ctx.lineWidth = ripple.lineWidth * 1.3 * (1 - j * 0.12);
+                    this.ctx.stroke()
+
+                } else if (config.pattern === 'burst') {
+                    // Splash: Fast, bold rings with high contrast
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r}, ${colors.base.g}, ${colors.base.b}, ${waveAlpha * 0.6})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 2) * (1 - j * 0.2);
+                    this.ctx.stroke();
+
+                    // Bold main ring
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.base.r + (colors.highlight.r - colors.base.r) * pulseEffect;
+                    const g = colors.base.g + (colors.highlight.g - colors.base.g) * pulseEffect;
+                    const b = colors.base.b + (colors.highlight.b - colors.base.b) * pulseEffect;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
+                    this.ctx.lineWidth = ripple.lineWidth * 1.5 * (1 - j * 0.22);
+                    this.ctx.stroke();
+
+                } else if (config.pattern === 'wave') {
+                    // Strong: Multiple layered waves with medium intensity
+                    if (j < 3) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = `rgba(${colors.base.r - 15}, ${colors.base.g - 15}, ${colors.base.b - 10}, ${waveAlpha * 0.25})`;
+                        this.ctx.lineWidth = (ripple.lineWidth + 2.5) * (1 - j * 0.1);
+                        this.ctx.stroke();
+                    }
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.base.r + (colors.highlight.r - colors.base.r) * depth * shimmerEffect;
+                    const g = colors.base.g + (colors.highlight.g - colors.base.g) * depth * shimmerEffect;
+                    const b = colors.base.b + (colors.highlight.b - colors.base.b) * depth * shimmerEffect;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.75})`;
+                    this.ctx.lineWidth = ripple.lineWidth * (1 - j * 0.15);
+                    this.ctx.stroke();
+
+                    if (j < 4) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = `rgba(${colors.highlight.r}, ${colors.highlight.g}, ${colors.highlight.b}, ${waveAlpha * 0.5})`;
+                        this.ctx.lineWidth = ripple.lineWidth * 0.6 * (1 - j * 0.2);
+                        this.ctx.stroke();
+                    }
+
+                } else if (config.pattern === 'smooth') {
+                    // Gentle: Soft, blended rings with low intensity
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r}, ${colors.base.g}, ${colors.base.b}, ${waveAlpha * 0.35})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 1.5) * (1 - j * 0.14);
+                    this.ctx.stroke();
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.base.r + (colors.highlight.r - colors.base.r) * shimmerEffect * 0.5;
+                    const g = colors.base.g + (colors.highlight.g - colors.base.g) * shimmerEffect * 0.5;
+                    const b = colors.base.b + (colors.highlight.b - colors.base.b) * shimmerEffect * 0.5;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.6})`;
+                    this.ctx.lineWidth = ripple.lineWidth * 0.8 * (1 - j * 0.16);
+                    this.ctx.stroke();
+
+                } else {
+                    // Standard: Balanced medium ripples
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r}, ${colors.base.g}, ${colors.base.b}, ${waveAlpha * 0.4})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 1) * (1 - j * 0.12);
+                    this.ctx.stroke();
+
+                    if (j < 4) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                        const r = colors.base.r + (colors.highlight.r - colors.base.r) * depth * shimmerEffect;
+                        const g = colors.base.g + (colors.highlight.g - colors.base.g) * depth * shimmerEffect;
+                        const b = colors.base.b + (colors.highlight.b - colors.base.b) * depth * shimmerEffect;
+                        this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.7})`;
+                        this.ctx.lineWidth = ripple.lineWidth * (1 - j * 0.18);
+                        this.ctx.stroke();
+                    }
                 }
+
                 this.ctx.restore();
             }
         }
@@ -487,8 +795,11 @@ export default class RainyWindowTheme extends BaseTheme {
             // Scale drop based on depth for perspective
             const depthScale = 0.4 + drop.z * 0.6;
             const scaledR = drop.r * depthScale;
-            const scaledLength = drop.length * depthScale * (1 + Math.abs(this.windForce) * 0.1);
-            const streakSkew = this.windForce * 3;
+            // Length increases dramatically during gusts
+            const gustLengthMultiplier = 1 + this.gustIntensity * 0.4;
+            const scaledLength = drop.length * depthScale * (1 + Math.abs(this.windForce) * 0.1) * gustLengthMultiplier;
+            // More dramatic skew during gusts
+            const streakSkew = this.windForce * (3 + this.gustIntensity * 2);
 
             // Only draw if above water
             if (drop.y < waterY) {
