@@ -21,6 +21,8 @@ export default class RainyWindowTheme extends BaseTheme {
         this.dropSpawnProbability = 0.45;
         this.currentDropCap = 70;
         this.maxRipples = 140;
+        this.lightningFlashIntensity = 0;
+        this.lightningRipples = [];
     }
 
     async createScene() {
@@ -119,6 +121,9 @@ export default class RainyWindowTheme extends BaseTheme {
             glowIntensity: 1.0,
             originX: startX,
             originY: 0,
+            impactX: x,  // Final x position where bolt ends
+            impactY: y,  // Final y position where bolt ends
+            depth: depth,
         };
     }
 
@@ -232,14 +237,51 @@ export default class RainyWindowTheme extends BaseTheme {
         if (this.time >= this.nextLightning) {
             const bolt = this.createLightningBolt();
             this.lightningBolts.push(bolt);
+
+            // Set flash intensity for atmospheric effect
+            this.lightningFlashIntensity = 0.25;
+
+            // Create ripples on water when lightning strikes
+            const waterY = this.getWaterY(bolt.depth);
+            const numRipples = 4 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < numRipples; i++) {
+                this.lightningRipples.push({
+                    x: bolt.impactX + (Math.random() - 0.5) * 100,
+                    y: waterY,
+                    depth: bolt.depth,
+                    size: 8 + Math.random() * 6,
+                    delay: i * 3,
+                    spawned: false
+                });
+            }
+
             this.nextLightning = this.time + Math.random() * 400 + 300;
         }
 
-        // Dark atmospheric background
+        // Fade lightning flash
+        if (this.lightningFlashIntensity > 0) {
+            this.lightningFlashIntensity -= 0.02;
+        }
+
+        // Spawn lightning ripples with delay
+        for (let i = this.lightningRipples.length - 1; i >= 0; i--) {
+            const lr = this.lightningRipples[i];
+            lr.delay -= 1;
+            if (lr.delay <= 0 && !lr.spawned) {
+                if (this.ripples.length < this.maxRipples) {
+                    this.ripples.push(this.createRipple(lr.x, lr.y, lr.size, lr.depth));
+                }
+                lr.spawned = true;
+                this.lightningRipples.splice(i, 1);
+            }
+        }
+
+        // Dark atmospheric background with lightning flash
+        const flashBoost = Math.floor(this.lightningFlashIntensity * 30);
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
-        skyGradient.addColorStop(0, 'rgb(8, 9, 14)');
-        skyGradient.addColorStop(0.5, 'rgb(14, 16, 20)');
-        skyGradient.addColorStop(1, 'rgb(20, 22, 28)');
+        skyGradient.addColorStop(0, `rgb(${8 + flashBoost}, ${9 + flashBoost}, ${14 + flashBoost})`);
+        skyGradient.addColorStop(0.5, `rgb(${14 + flashBoost}, ${16 + flashBoost}, ${20 + flashBoost})`);
+        skyGradient.addColorStop(1, `rgb(${20 + flashBoost}, ${22 + flashBoost}, ${28 + flashBoost})`);
         this.ctx.fillStyle = skyGradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.waterSurfaceY);
 
@@ -270,16 +312,34 @@ export default class RainyWindowTheme extends BaseTheme {
                 continue;
             }
 
-            // Draw each segment with subtle glow
+            // Draw each segment with flashy glow
             for (const seg of bolt.segments) {
                 const thickness = seg.isBranch ? 1.5 : 3;
 
-                // Outer glow (subtle)
+                // Wide atmospheric glow
                 this.ctx.beginPath();
                 this.ctx.moveTo(seg.x1, seg.y1);
                 this.ctx.lineTo(seg.x2, seg.y2);
-                this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.1})`;
-                this.ctx.lineWidth = thickness * 4;
+                this.ctx.strokeStyle = `rgba(120, 150, 200, ${bolt.opacity * 0.12})`;
+                this.ctx.lineWidth = thickness * 12;
+                this.ctx.lineCap = 'round';
+                this.ctx.stroke();
+
+                // Extended outer glow
+                this.ctx.beginPath();
+                this.ctx.moveTo(seg.x1, seg.y1);
+                this.ctx.lineTo(seg.x2, seg.y2);
+                this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.25})`;
+                this.ctx.lineWidth = thickness * 8;
+                this.ctx.lineCap = 'round';
+                this.ctx.stroke();
+
+                // Outer glow
+                this.ctx.beginPath();
+                this.ctx.moveTo(seg.x1, seg.y1);
+                this.ctx.lineTo(seg.x2, seg.y2);
+                this.ctx.strokeStyle = `rgba(180, 200, 235, ${bolt.opacity * 0.4})`;
+                this.ctx.lineWidth = thickness * 5;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
 
@@ -287,16 +347,16 @@ export default class RainyWindowTheme extends BaseTheme {
                 this.ctx.beginPath();
                 this.ctx.moveTo(seg.x1, seg.y1);
                 this.ctx.lineTo(seg.x2, seg.y2);
-                this.ctx.strokeStyle = `rgba(180, 200, 230, ${bolt.opacity * 0.3})`;
-                this.ctx.lineWidth = thickness * 2;
+                this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
+                this.ctx.lineWidth = thickness * 2.5;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
 
-                // Core (less bright)
+                // Core (very bright)
                 this.ctx.beginPath();
                 this.ctx.moveTo(seg.x1, seg.y1);
                 this.ctx.lineTo(seg.x2, seg.y2);
-                this.ctx.strokeStyle = `rgba(220, 230, 245, ${bolt.opacity * 0.8})`;
+                this.ctx.strokeStyle = `rgba(240, 245, 255, ${bolt.opacity})`;
                 this.ctx.lineWidth = thickness;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
