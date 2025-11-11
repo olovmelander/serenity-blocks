@@ -20,6 +20,7 @@ body {
 :root {
     --lock-ripple-border-color: rgba(100, 200, 255, 0.8);
     --lock-ripple-shadow-color: rgba(100, 200, 255, 0.6);
+    --global-sunset-flare-strength: 1;
 }
 
 /* --- Background Container --- */
@@ -657,46 +658,182 @@ body {
 /* --- Sunset Theme --- */
 #sunset-theme {
     overflow: hidden;
-    background: linear-gradient(to top, #89cff0, #2980b9); /* Fallback */
+    background: linear-gradient(to top, #203246, #3b5a85);
+    --sunset-solar-x: 50%;
+    --sunset-solar-y: 50%;
+    --sunset-solar-altitude: 0.6;
+    --sunset-solar-intensity: 0.8;
+    --sunset-god-ray-center-x: 50%;
+    --sunset-god-ray-center-y: 50%;
+    --sunset-ray-scale: 1;
+    --sunset-ray-opacity: 1;
+    --sunset-ray-flicker: 1;
+    --sunset-flare-strength: var(--global-sunset-flare-strength, 1);
+    --sunset-flare-cap: 1;
+    --sunset-sun-core-alpha: 0.85;
+    --sunset-star-alpha: 0;
+    --sunset-star-twinkle-speed: 1;
+    --sunset-cloud-warmth: 0deg;
+    --sunset-cloud-brightness: 1;
+    --sunset-cloud-highlight: 0.35;
+    --sunset-heat-haze-strength: 0;
+    --sunset-noise-alpha: 0.2;
+    --sunset-night-veil-alpha: 0;
+    --sunset-cirrus-opacity: 0.15;
+    --sunset-sky-desaturate: 1;
+    --sunset-mountain-hue: 0deg;
+    --sunset-mountain-brightness: 0.8;
+}
+
+#sunset-theme.sunset-minimal .sunset-clouds,
+#sunset-theme.sunset-minimal #dust-motes,
+#sunset-theme.sunset-minimal .sunset-god-rays,
+#sunset-theme.sunset-minimal .sunset-heat-haze,
+#sunset-theme.sunset-minimal .sunset-sunflares,
+#sunset-theme.sunset-minimal .sunset-lens-stack,
+#sunset-theme.sunset-minimal .lens-flare {
+    display: none !important;
+}
+
+#sunset-theme.sunset-minimal .mountain-silhouette {
+    filter: saturate(0.85);
+}
+
+#sunset-theme.sunset-minimal.sunset-night-only .sunset-solar-gradient,
+#sunset-theme.sunset-minimal.sunset-night-only .sunset-night-veil {
+    opacity: 0.2;
+}
+
+#sunset-theme.sunset-minimal.sunset-night-only .sun {
+    opacity: 0;
+}
+
+/* EXTREME PERFORMANCE: Disable expensive CSS operations that cause FPS drops during daylight */
+#sunset-theme .sunset-sunflare {
+    animation: none !important; /* Disable sunflare-pulse animation - runs every 3s */
+    transform: translate(-50%, -50%) !important; /* Static position, no pulsing */
+}
+
+#sunset-theme .sun {
+    filter: saturate(var(--sunset-sky-desaturate, 1)) !important; /* Remove blur filter - very expensive */
+    box-shadow: none !important; /* Remove box-shadow for better performance */
+}
+
+#sunset-theme .sunset-sun-core {
+    mix-blend-mode: normal !important; /* Remove expensive screen blend mode */
+}
+
+#sunset-theme .sunset-god-rays {
+    display: none !important; /* Completely hide god rays - they cause FPS drop in daylight */
 }
 
 .sun-and-sky {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    /* A single, very tall gradient containing the entire day-night cycle.
-       We animate the background-position to smoothly scroll through it. */
-    background: linear-gradient(to bottom,
-        /* Dawn */      #191970, #6a5acd, #ff6a88, #ff9a56,
-        /* Sunrise */   #87ceeb, #ff9a56, #ffd89b,
-        /* Morning */   #a29bfe, #74b9ff, #ffeaa7,
-        /* Noon */      #74b9ff, #ffffff,
-        /* Afternoon */ #fdcb6e, #ffeaa7, #74b9ff,
-        /* Sunset */    #ff7675, #fab1a0, #fd79a8, #6c5ce7,
-        /* Dusk */      #ff6348, #341f97, #fd79a8,
-        /* Twilight */  #5f27cd, #2c3e50, #130f40,
-        /* Night */     #1e272e, #16213e, #0c0a1a,
-        /* Deep Night */#0a0a1a, #000000,
-        /* Pre-dawn */  #191970, #5f27cd, #2c3e50,
-        /* Loop back to Dawn */ #191970, #6a5acd, #ff6a88, #ff9a56
+    background: linear-gradient(
+        180deg,
+        #0f1022 0%,
+        #271a43 10%,
+        #ff7c6b 22%,
+        #ffd46f 32%,
+        #88d6ff 42%,
+        #77c5ff 55%,
+        #ffa76a 65%,
+        #7a2f63 75%,
+        #1e1c35 90%,
+        #0a0a1a 100%
     );
-    background-size: 100% 800%; /* Adjust size based on gradient length */
+    background-size: 100% 900%;
     animation: sky-color-cycle 180s ease-in-out infinite;
     z-index: 1;
+    overflow: hidden;
+}
+
+.sunset-solar-gradient,
+.sunset-noise-layer,
+.sunset-night-veil,
+.sunset-cirrus-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.sunset-solar-gradient {
+    background: radial-gradient(circle at var(--sunset-solar-x, 50%) var(--sunset-solar-y, 50%),
+        rgba(255, 218, 120, 0.4),
+        rgba(255, 140, 95, 0.25) 25%,
+        rgba(45, 30, 66, 0.1) 55%,
+        transparent 70%
+    );
+    mix-blend-mode: screen;
+    opacity: calc(0.35 + var(--sunset-solar-intensity, 0.7) * 0.35);
+    animation: solar-gradient-flow 180s ease-in-out infinite;
+}
+
+.sunset-noise-layer {
+    background-image:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) 2px, transparent 2px, transparent 4px),
+        repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.04) 0, rgba(0, 0, 0, 0.04) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: soft-light;
+    opacity: var(--sunset-noise-alpha, 0.2);
+    animation: sunset-noise-drift 120s linear infinite;
+}
+
+.sunset-night-veil {
+    background: radial-gradient(circle at 40% 20%, rgba(116, 212, 255, 0.35), transparent 50%),
+        radial-gradient(circle at 70% 10%, rgba(190, 133, 255, 0.25), transparent 60%);
+    mix-blend-mode: screen;
+    opacity: var(--sunset-night-veil-alpha, 0);
+    transform: translate3d(0, 0, 0);
+    animation: sunset-night-veil-flow 140s ease-in-out infinite;
+}
+
+.sunset-cirrus-layer {
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0.08), transparent 65%);
+    filter: blur(22px);
+    opacity: var(--sunset-cirrus-opacity, 0.15);
+    animation: sunset-cirrus-drift 110s linear infinite;
+}
+
+@keyframes solar-gradient-flow {
+    0% { transform: scale(1) translate3d(0, 0, 0); }
+    50% { transform: scale(1.15) translate3d(2%, -2%, 0); }
+    100% { transform: scale(1) translate3d(0, 0, 0); }
+}
+
+@keyframes sunset-noise-drift {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-5%, -5%, 0); }
+}
+
+@keyframes sunset-night-veil-flow {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-6%, 2%, 0) scale(1.05); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes sunset-cirrus-drift {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(15%, -5%, 0); }
 }
 
 @keyframes sky-color-cycle {
     0% {
         background-position: 0% 0%;
-        filter: brightness(0.6) saturate(1.2);
+        filter: brightness(0.5) saturate(1.2);
     }
     8% { /* Sunrise */
         background-position: 0% 10%;
-        filter: brightness(0.9) saturate(1.3);
+        filter: brightness(0.8) saturate(1.35);
     }
     16% { /* Morning */
         background-position: 0% 20%;
-        filter: brightness(1) saturate(1);
+        filter: brightness(1) saturate(1.05);
     }
     24% { /* Mid-morning */
         background-position: 0% 30%;
@@ -704,15 +841,15 @@ body {
     }
     32% { /* Noon */
         background-position: 0% 40%;
-        filter: brightness(1.2) saturate(0.8);
+        filter: brightness(1.15) saturate(0.85);
     }
     44% { /* Afternoon */
         background-position: 0% 50%;
-        filter: brightness(1.1) saturate(1);
+        filter: brightness(1.05) saturate(1);
     }
     52% { /* Late afternoon / Golden hour */
         background-position: 0% 60%;
-        filter: brightness(1) saturate(1.3);
+        filter: brightness(0.95) saturate(1.35);
     }
     60% { /* Sunset */
         background-position: 0% 70%;
@@ -728,7 +865,7 @@ body {
     }
     84% { /* Night */
         background-position: 0% 90%;
-        filter: brightness(0.3) saturate(0.8);
+        filter: brightness(0.35) saturate(0.85);
     }
     92% { /* Deep night */
         background-position: 0% 95%;
@@ -744,11 +881,158 @@ body {
     position: absolute;
     width: 120px;
     height: 120px;
-    background: radial-gradient(circle, #fff 0%, #ffe5b4 40%, #ffb347 100%);
+    background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,228,181,0.7) 55%, rgba(255,143,80,0.4) 100%);
     border-radius: 50%;
-    filter: blur(2px);
+    filter: blur(1.2px) saturate(var(--sunset-sky-desaturate, 1));
+    box-shadow: 0 0 60px rgba(255, 190, 120, 0.35);
+    opacity: var(--sunset-sun-core-alpha, 0.85);
     animation: sun-journey 180s ease-in-out infinite;
     z-index: 2;
+    overflow: visible;
+}
+
+.sunset-sun-core {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+.sunset-sun-core canvas {
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none;
+}
+
+.sunset-lens-stack {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 260%;
+    height: 260%;
+    transform: translate(-50%, -50%) scale(var(--sunset-flare-scale, 1));
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: calc(var(--sunset-flare-alpha, 0.7) * var(--sunset-flare-strength, 1) * var(--sunset-flare-cap, 1));
+    z-index: 3;
+}
+
+.sunset-lens-halo,
+.sunset-lens-hex,
+.sunset-lens-streak,
+.sunset-lens-ghost,
+.sunset-lens-spikes,
+.sunset-lens-bokeh {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+.sunset-lens-halo {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 230, 150, 0.4) 0%, rgba(255, 180, 100, 0.15) 60%, transparent 100%);
+    filter: blur(18px);
+}
+
+.sunset-lens-hex {
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 210, 130, 0.15) 65%, transparent 100%);
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    transform: translate(-50%, -50%) rotate(12deg);
+    opacity: 0.7;
+    filter: drop-shadow(0 0 12px rgba(255, 221, 170, 0.4));
+}
+
+.sunset-lens-streak {
+    width: 220%;
+    height: 30%;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 234, 195, 0.2) 35%, rgba(255, 200, 150, 0.4) 50%, rgba(255, 180, 120, 0.2) 65%, transparent 100%);
+    filter: blur(6px);
+    opacity: 0.85;
+}
+
+.sunset-lens-ghost {
+    width: 320%;
+    height: 320%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15), rgba(255, 200, 120, 0.05) 65%, transparent 100%);
+    opacity: var(--sunset-ghost-alpha, 0.3);
+    transform: translate(-50%, -50%) scale(var(--sunset-ghost-scale, 1.1));
+    filter: blur(20px);
+}
+
+.sunset-lens-ghost::after {
+    content: '';
+    position: absolute;
+    inset: 15%;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 230, 200, 0.2);
+}
+
+.sunset-lens-spikes {
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%) rotate(12deg);
+    opacity: var(--sunset-spike-alpha, 0.4);
+    filter: blur(1px);
+}
+
+.sunset-lens-spikes::before,
+.sunset-lens-spikes::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 260%;
+    height: 6px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 220, 170, 0.6) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+}
+
+.sunset-lens-spikes::after {
+    width: 6px;
+    height: 260%;
+    background: linear-gradient(180deg, transparent 0%, rgba(255, 220, 170, 0.6) 50%, transparent 100%);
+}
+
+.sunset-lens-bokeh {
+    width: 200%;
+    height: 200%;
+    opacity: var(--sunset-bokeh-alpha, 0.4);
+    mix-blend-mode: screen;
+    transform: translate(-50%, -50%);
+}
+
+.sunset-lens-bokeh::before,
+.sunset-lens-bokeh::after {
+    content: '';
+    position: absolute;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(255, 200, 140, 0.08) 70%, transparent 100%);
+    filter: blur(4px);
+}
+
+.sunset-lens-bokeh::before {
+    top: calc(50% - var(--sunset-bokeh-offset, 40px));
+    left: calc(50% + var(--sunset-bokeh-offset, 40px));
+}
+
+.sunset-lens-bokeh::after {
+    top: calc(50% + var(--sunset-bokeh-offset, 40px));
+    left: calc(50% - var(--sunset-bokeh-offset, 40px));
 }
 
 @keyframes sun-journey {
@@ -902,12 +1186,26 @@ body {
     position: absolute;
     width: 400px;
     height: 400px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background: radial-gradient(circle, rgba(255,255,240,0.3) 0%, rgba(255,255,220,0.1) 30%, transparent 60%);
     border-radius: 50%;
     pointer-events: none;
     mix-blend-mode: screen;
-    animation: flare-follow 180s ease-in-out infinite;
+    opacity: calc(0.6 * var(--sunset-flare-strength, 1) * var(--sunset-flare-cap, 1));
+    animation: lens-flare-visibility 180s ease-in-out infinite;
     z-index: 3;
+}
+
+@keyframes lens-flare-visibility {
+    0% { opacity: 0; }
+    6% { opacity: 0.3; }
+    12% { opacity: 0.6; }
+    20% { opacity: 1; }
+    64% { opacity: 1; }
+    70% { opacity: 0.3; }
+    76%, 100% { opacity: 0; }
 }
 
 .sunset-sunflares {
@@ -919,6 +1217,7 @@ body {
     transform: translate(-50%, -50%);
     pointer-events: none;
     z-index: -1;
+    opacity: calc(var(--sunset-flare-strength, 1) * 0.9 * var(--sunset-flare-cap, 1));
     animation: sunflares-visibility 180s ease-in-out infinite;
 }
 
@@ -942,6 +1241,65 @@ body {
     animation: sunflare-pulse 3s ease-in-out infinite;
 }
 
+.sunset-clouds canvas {
+    filter: hue-rotate(var(--sunset-cloud-warmth, 0deg))
+        brightness(var(--sunset-cloud-brightness, 1))
+        saturate(1.1)
+        drop-shadow(0 0 25px rgba(255, 220, 160, var(--sunset-cloud-highlight, 0.35)));
+    mix-blend-mode: screen;
+    opacity: calc(0.55 + var(--sunset-solar-intensity, 0.5) * 0.45);
+    transition: filter 1.2s ease, opacity 1.2s ease;
+}
+
+.mountain-silhouette canvas {
+    filter: hue-rotate(var(--sunset-mountain-hue, 0deg))
+        brightness(var(--sunset-mountain-brightness, 0.8));
+    transition: filter 1.4s ease;
+}
+
+.sunset-heat-haze {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 35%;
+    pointer-events: none;
+    background: linear-gradient(0deg, rgba(255, 191, 125, 0.35), rgba(255, 191, 125, 0));
+    opacity: clamp(0, calc(var(--sunset-heat-haze-strength, 0) * 0.7), 0.35);
+    mix-blend-mode: screen;
+    animation: sunset-haze-flow 18s ease-in-out infinite;
+    z-index: 3;
+}
+
+.sunset-heat-haze::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 200%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.05) 0,
+        rgba(255, 255, 255, 0.05) 4px,
+        transparent 4px,
+        transparent 8px
+    );
+    opacity: 0.3;
+    animation: sunset-haze-ripple 12s linear infinite;
+}
+
+@keyframes sunset-haze-flow {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-2%, 2%, 0) scale(1.05); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes sunset-haze-ripple {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-10%, -10%, 0); }
+}
+
 @keyframes sunflare-pulse {
     0%, 100% {
         transform: translate(-50%, -50%) scale(1);
@@ -951,59 +1309,56 @@ body {
     }
 }
 
-@keyframes flare-follow {
-    0%, 76%, 100% { 
-        left: 10%; bottom: -10%; 
-        opacity: 0; 
-        transform: scale(0.5);
-    }
-    12% { 
-        left: 25%; bottom: 20%; 
-        opacity: 0.6; 
-        transform: scale(0.8);
-    }
-    36% { 
-        left: 70%; bottom: 80%; 
-        opacity: 1; 
-        transform: scale(1.2);
-    }
-    58% { 
-        left: 92%; bottom: 30%; 
-        opacity: 0.8; 
-        transform: scale(1);
-    }
-    70% {
-        left: 97%; bottom: -5%;
-        opacity: 0.3;
-        transform: scale(0.6);
-    }
-}
 
 .sunset-god-rays {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 600px;
-    height: 600px;
+    top: var(--sunset-god-ray-center-y, 50%);
+    left: var(--sunset-god-ray-center-x, 50%);
+    width: clamp(520px, 46vw, 760px);
+    height: clamp(520px, 46vw, 760px);
     transform-origin: center;
     transform: translate(-50%, -50%);
-    animation: sunset-ray-rotation 60s ease-in-out infinite alternate;
+    opacity: 0;
+    animation: sunset-ray-rotation 60s ease-in-out infinite alternate,
+               sunset-god-rays-visibility 180s ease-in-out infinite;
     pointer-events: none;
     z-index: 2;
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 24px rgba(255, 214, 170, 0.25));
+}
+
+@keyframes sunset-god-rays-visibility {
+    0% { opacity: 0; }
+    6% { opacity: 0.2; }
+    12% { opacity: 0.6; }
+    20% { opacity: 0.8; }
+    64% { opacity: 0.8; }
+    70% { opacity: 0.3; }
+    76%, 100% { opacity: 0; }
 }
 
 .sunset-god-ray {
     position: absolute;
-    top: 0;
+    top: 50%;
     left: 50%;
-    width: 3px;
-    height: 100%;
-    background: linear-gradient(to bottom,
-        rgba(255, 220, 150, 0.25) 0%,
-        rgba(255, 200, 130, 0.15) 40%,
-        transparent 70%);
+    width: var(--ray-width, 4px);
+    height: calc(var(--ray-length, 320px) * var(--sunset-ray-scale, 1));
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 230, 180, 0.4) 0%,
+        rgba(255, 180, 120, 0.18) 55%,
+        rgba(255, 150, 90, 0) 100%
+    );
     transform-origin: top center;
-    will-change: transform;
+    transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg));
+    opacity: calc(var(--ray-opacity, 0.45) * var(--sunset-ray-opacity, 1) * var(--sunset-ray-flicker, 1));
+    filter: blur(0.5px);
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
+}
+
+.sunset-dust-particle {
+    transition: background 1.2s ease, box-shadow 1.2s ease;
 }
 
 @keyframes sunset-ray-rotation {
@@ -1018,19 +1373,54 @@ body {
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 2;
-    opacity: 0;
-    animation: sunset-stars-visibility 180s linear infinite;
+    z-index: 14;
+    opacity: var(--sunset-star-alpha, 0);
+    mix-blend-mode: normal;
+    transition: opacity 1.4s ease;
+    overflow: hidden;
+    animation: sunset-stars-fallback 190s ease-in-out infinite;
 }
 
-@keyframes sunset-stars-visibility {
-    0%, 76% {
-        opacity: 0;
+#sunset-theme[data-solar-stage] .sunset-stars {
+    animation: none;
+}
+
+/* REMOVED: .sunset-star-noise - No longer using noise layer */
+
+/* REMOVED: .sunset-star-canvas - No longer using canvas rendering */
+
+/* SIMPLIFIED: Clean star rendering like galaxy theme - just white circles with simple twinkle */
+.sunset-star {
+    position: absolute;
+    background-color: white;
+    border-radius: 50%;
+    animation: sunset-star-twinkle 3s ease-in-out infinite;
+    pointer-events: none;
+}
+
+/* REMOVED: All pseudo-element glints (::before, ::after) */
+/* REMOVED: .sunset-star--distant and .sunset-star--bright variants */
+
+@keyframes sunset-star-twinkle {
+    0%, 100% {
+        opacity: 0.5;
     }
-    84% {
+    50% {
         opacity: 1;
     }
-    92% {
+}
+
+@keyframes sunset-stars-fallback {
+    0%, 58% {
+        opacity: 0;
+    }
+    64% {
+        opacity: 0.25;
+    }
+    72% {
+        opacity: 0.75;
+    }
+    80%, 90% {
         opacity: 1;
     }
     100% {
@@ -1038,23 +1428,54 @@ body {
     }
 }
 
-.sunset-star {
+.sunset-shooting-star {
     position: absolute;
-    background: white;
-    border-radius: 50%;
-    box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
-    animation: sunset-star-twinkle 2s ease-in-out infinite;
+    width: 140px;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8));
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    mix-blend-mode: screen;
+    z-index: 2;
+    opacity: 0;
+    animation: sunset-shooting-star 2.8s ease-out forwards;
 }
 
-@keyframes sunset-star-twinkle {
-    0%, 100% {
-        opacity: 0.3;
-        transform: scale(1);
+@keyframes sunset-shooting-star {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(-15deg);
+        opacity: 0;
     }
-    50% {
+    10% {
         opacity: 1;
-        transform: scale(1.3);
     }
+    100% {
+        transform: translate3d(50vw, 20vh, 0) rotate(-15deg);
+        opacity: 0;
+    }
+}
+
+.sunset-bird-flock {
+    position: absolute;
+    top: 25%;
+    left: -10%;
+    display: flex;
+    gap: 14px;
+    animation: sunset-bird-flock 35s linear forwards;
+    opacity: 0.7;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 4;
+}
+
+.sunset-bird.silhouette svg path {
+    stroke: rgba(0, 0, 0, 0.55);
+}
+
+@keyframes sunset-bird-flock {
+    0% { transform: translate3d(0, 0, 0); opacity: 0; }
+    5% { opacity: 0.6; }
+    90% { opacity: 0.6; }
+    100% { transform: translate3d(130vw, -25vh, 0); opacity: 0; }
 }
 
 /* --- Mountain Theme --- */
@@ -1479,119 +1900,72 @@ body {
 
 /* --- Winter Theme --- */
 #winter-theme {
-    background: linear-gradient(to top, #e0e8f0, #a0b0c0, #607080);
+    background: radial-gradient(ellipse at center, #0a0d14 0%, #050810 100%);
     overflow: hidden;
 }
-.snowflakes-layer {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-}
-#snowflakes-back { z-index: 1; transform: scale(0.6); filter: blur(3px) brightness(0.7); }
-#snowflakes-mid { z-index: 3; transform: scale(0.8); filter: blur(1px); }
-#snowflakes-front { z-index: 5; transform: scale(1.1); filter: brightness(1.1); }
 
-.snowflake {
+#winter-canvas {
     position: absolute;
-    background-color: white;
-    border-radius: 50%;
-    animation: fall-snow-swirl linear infinite;
-}
-@keyframes fall-snow-swirl {
-     0% {
-        transform: translateY(-10vh) translateX(var(--x-start)) rotate(0deg);
-        opacity: 0;
-    }
-    10% {
-        opacity: 1;
-    }
-    90% {
-        opacity: 1;
-    }
-     100% {
-        transform: translateY(110vh) translateX(var(--x-end)) rotate(var(--r-end));
-        opacity: 0;
-    }
-}
-
-.window-pane {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    z-index: 10;
-}
-.frost-overlay {
-    width: 100%; height: 100%;
-    background: radial-gradient(circle, transparent 60%, rgba(255,255,255,0.1));
-    box-shadow: inset 0 0 80px rgba(230,240,255,0.3);
-}
-.ice-crystal {
-    position: absolute;
-    width: 120px; height: 120px;
-    background-color: rgba(255, 255, 255, 0.7);
-    box-shadow: 0 0 20px white, 0 0 35px white;
-    animation: form-crystal 30s ease-out infinite;
-    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-    filter: blur(0.5px);
-}
-
-@keyframes form-crystal {
-    0% {
-        transform: scale(0) rotate(0deg);
-        opacity: 0;
-    }
-    10% {
-        opacity: 0.8;
-    }
-    80% {
-        transform: scale(1) rotate(72deg);
-        opacity: 0.8;
-    }
-    100% {
-        transform: scale(1.1) rotate(90deg);
-        opacity: 0;
-    }
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
 }
 
 /* --- Fall Theme --- */
 #fall-theme {
-    background: linear-gradient(to top, #a26e49, #c88c53, #f7b267);
+    background: linear-gradient(to bottom, #000000, #0a0a0a 50%, #000000);
     overflow: hidden;
 }
 .fall-bg {
     position: absolute; width: 100%; height: 100%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="f"><feGaussianBlur stdDeviation="3"/></filter><rect width="100" height="100" fill="%238d5524"/><g filter="url(%23f)"><circle cx="20" cy="80" r="30" fill="%23c86b53"/><circle cx="80" cy="70" r="40" fill="%23a26e49"/><circle cx="50" cy="30" r="25" fill="%23f7b267"/></g></svg>');
-    background-size: cover;
-    filter: blur(5px);
-    transform: scale(1.1);
-    z-index: 1;
+    background:
+        radial-gradient(ellipse at 30% 30%, rgba(20, 10, 5, 0.4) 0%, transparent 40%),
+        radial-gradient(ellipse at 70% 60%, rgba(15, 8, 3, 0.3) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(10, 5, 0, 0.2) 0%, transparent 60%),
+        #000000;
+    z-index: 0;
 }
 .fall-leaves-layer {
     position: absolute; top: 0; left: 0;
     width: 100%; height: 100%;
 }
-#fall-leaves-back { z-index: 2; transform: scale(0.7); filter: blur(1px) brightness(0.9); }
-#fall-leaves-mid { z-index: 4; }
-#fall-leaves-front { z-index: 6; transform: scale(1.3); filter: blur(0) brightness(1.1); }
+#fall-leaves-back {
+    z-index: 3;
+    transform: scale(0.7) translateZ(0);
+    filter: blur(1px) brightness(0.85);
+    will-change: transform;
+}
+#fall-leaves-mid {
+    z-index: 5;
+    filter: drop-shadow(0 0 6px rgba(255, 140, 0, 0.5));
+    will-change: transform;
+    transform: translateZ(0);
+}
+#fall-leaves-front {
+    z-index: 10;
+    transform: scale(1.3) translateZ(0);
+    filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.6)) brightness(1.1);
+    will-change: transform;
+}
 
 .leaf {
     position: absolute;
     background-size: contain;
     background-repeat: no-repeat;
-    animation: fall-leaf-gust linear infinite;
-}
-@keyframes fall-leaf-gust {
-    0% { transform: translate(var(--x-start), -10vh) rotate(var(--r-start)); opacity: 1; }
-    20% { transform: translate(calc(var(--x-start) + var(--x-gust1)), 20vh) rotate(calc(var(--r-start) + 200deg)); }
-    40% { transform: translate(calc(var(--x-start) + var(--x-gust2)), 40vh) rotate(calc(var(--r-start) + 400deg)); }
-    60% { transform: translate(calc(var(--x-start) + var(--x-gust3)), 60vh) rotate(calc(var(--r-start) + 600deg)); }
-    80% { transform: translate(calc(var(--x-start) + var(--x-gust4)), 80vh) rotate(calc(var(--r-start) + 800deg)); }
-    100% { transform: translate(var(--x-end), 110vh) rotate(var(--r-end)); opacity: 0; }
+    /* Static filter - MUCH faster than animating filters */
+    filter: drop-shadow(0 0 5px rgba(255, 120, 0, 0.6));
+    /* GPU acceleration hints */
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 .ground-leaves {
     position: absolute;
     bottom: 0; left: 0;
-    width: 100%; height: 5%;
-    z-index: 5;
+    width: 100%; height: 8%;
+    z-index: 15;
     pointer-events: none;
 }
 .ground-leaf {
@@ -1599,33 +1973,228 @@ body {
     background-size: contain;
     background-repeat: no-repeat;
     animation: rustle-leaf ease-in-out infinite alternate;
+    /* Static filter for performance - simplified to single drop-shadow */
+    filter: drop-shadow(0 0 4px rgba(255, 120, 0, 0.5));
+    /* GPU acceleration */
+    will-change: transform;
+    transform: translateZ(0);
 }
 @keyframes rustle-leaf {
-    from { transform: rotate(var(--r1)) translateX(-2px); }
-    to { transform: rotate(var(--r2)) translateX(2px); }
+    /* PERFORMANCE: Only animate transform */
+    from {
+        transform: rotate(var(--r1)) translateX(-2px) translateZ(0);
+    }
+    to {
+        transform: rotate(var(--r2)) translateX(2px) translateZ(0);
+    }
 }
 
 .fall-wind-particle {
     position: absolute;
-    width: 80px;
-    height: 2px;
-    background: linear-gradient(to right, rgba(255, 255, 220, 0.15), transparent);
+    width: 120px;
+    height: 1px;
+    background: linear-gradient(to right,
+        rgba(255, 140, 0, 0.2),
+        rgba(255, 100, 0, 0.1),
+        transparent);
     border-radius: 2px;
     animation: wind-gust-fall linear infinite;
-    z-index: 3; /* Between back and mid leaves */
+    z-index: 4; /* Between back and mid leaves */
+    /* Simplified shadow for performance */
+    box-shadow: 0 0 2px rgba(255, 120, 0, 0.2);
+    /* GPU acceleration */
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 @keyframes wind-gust-fall {
     0% {
-        transform: translateX(-100px) scaleX(0.5);
+        transform: translateX(-100px) scaleX(0.5) translateZ(0);
         opacity: 0;
     }
     10%, 80% {
+        opacity: 0.3;
+    }
+    100% {
+        transform: translateX(110vw) scaleX(1.5) translateZ(0);
+        opacity: 0;
+    }
+}
+
+/* Tree branches container - BEHIND everything except background */
+#fall-tree-branches {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Atmospheric light rays - Behind leaves but above background */
+.fall-light-rays {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* Canvas for Fall theme effects - ABOVE leaves for embers */
+#fall-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.fall-light-rays::before,
+.fall-light-rays::after {
+    content: '';
+    position: absolute;
+    width: 150px;
+    height: 100%;
+    background: linear-gradient(to bottom,
+        rgba(255, 200, 120, 0) 0%,
+        rgba(255, 200, 120, 0.12) 15%,
+        rgba(255, 180, 100, 0.18) 40%,
+        rgba(255, 200, 120, 0.15) 60%,
+        rgba(255, 200, 120, 0.1) 80%,
+        rgba(255, 200, 120, 0) 100%);
+    transform: skewX(-15deg);
+    animation: light-ray-drift 40s ease-in-out infinite alternate;
+    box-shadow: 0 0 40px rgba(255, 200, 120, 0.1);
+}
+
+.fall-light-rays::before {
+    left: 15%;
+    animation-delay: 0s;
+}
+
+.fall-light-rays::after {
+    left: 75%;
+    animation-delay: -20s;
+}
+
+@keyframes light-ray-drift {
+    0% {
+        transform: skewX(-15deg) translateX(-5%);
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        transform: skewX(-15deg) translateX(5%);
+        opacity: 0.3;
+    }
+}
+
+/* Ground mist */
+.fall-ground-mist {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 25%;
+    z-index: 12;
+    pointer-events: none;
+    background: linear-gradient(to top,
+        rgba(255, 140, 60, 0.15) 0%,
+        rgba(255, 120, 40, 0.1) 40%,
+        rgba(255, 140, 60, 0.05) 70%,
+        transparent 100%);
+    animation: ground-mist-drift 35s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+}
+
+@keyframes ground-mist-drift {
+    0% {
+        transform: translateX(-3%) translateZ(0);
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateX(3%) translateZ(0);
+        opacity: 0.6;
+    }
+}
+
+/* Hero leaves with enhanced glow */
+.hero-leaf {
+    filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.9))
+            drop-shadow(0 0 4px rgba(255, 180, 60, 0.7))
+            drop-shadow(0 0 2px rgba(255, 200, 100, 0.5)) !important;
+    animation: hero-leaf-pulse 3s ease-in-out infinite;
+}
+
+@keyframes hero-leaf-pulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.9))
+                drop-shadow(0 0 4px rgba(255, 180, 60, 0.7))
+                drop-shadow(0 0 2px rgba(255, 200, 100, 0.5));
+    }
+    50% {
+        filter: drop-shadow(0 0 10px rgba(255, 140, 0, 1.0))
+                drop-shadow(0 0 5px rgba(255, 180, 60, 0.8))
+                drop-shadow(0 0 3px rgba(255, 200, 100, 0.6));
+    }
+}
+
+/* Depth-based visual variation */
+#fall-leaves-back .leaf {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 3px rgba(255, 120, 0, 0.4)) saturate(70%) brightness(0.85);
+}
+
+#fall-leaves-mid .leaf {
+    filter: drop-shadow(0 0 5px rgba(255, 120, 0, 0.6));
+}
+
+#fall-leaves-front .leaf {
+    filter: drop-shadow(0 0 7px rgba(255, 140, 0, 0.8)) saturate(115%) brightness(1.1);
+}
+
+/* Atmospheric depth fog for Fall theme */
+#fall-theme::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse at 20% 40%, rgba(40, 20, 5, 0.12) 0%, transparent 35%),
+        radial-gradient(ellipse at 80% 70%, rgba(30, 15, 3, 0.1) 0%, transparent 40%);
+    z-index: 25;
+    pointer-events: none;
+    animation: fall-fog-drift 20s ease-in-out infinite alternate;
+    /* GPU acceleration */
+    will-change: transform, opacity;
+    transform: translateZ(0);
+}
+
+@keyframes fall-fog-drift {
+    0% {
+        transform: translateX(0) translateY(0) translateZ(0);
+        opacity: 0.5;
+    }
+    50% {
         opacity: 0.7;
     }
     100% {
-        transform: translateX(110vw) scaleX(1.5);
-        opacity: 0;
+        transform: translateX(2%) translateY(1%) translateZ(0);
+        opacity: 0.5;
     }
 }
 
@@ -1893,37 +2462,73 @@ body {
     position: absolute;
     background-color: rgba(245, 255, 250, 0.85);
     border-radius: 50%;
-    animation: aurora-star-twinkle 8s ease-in-out infinite;
+    box-shadow:
+        0 0 2px 0.5px rgba(245, 255, 250, 0.5),
+        0 0 4px 1px rgba(180, 220, 255, 0.3);
+    animation: aurora-star-twinkle 10s ease-in-out infinite;
     will-change: opacity;
 }
 
 @keyframes aurora-star-twinkle {
-    0%, 100% { opacity: 0.2; }
-    45% { opacity: 0.75; }
-    60% { opacity: 0.45; }
-    80% { opacity: 0.65; }
+    0%, 100% {
+        opacity: var(--base-opacity, 0.5);
+        filter: brightness(1);
+    }
+    20% {
+        opacity: calc(var(--base-opacity, 0.5) * 1.15);
+        filter: brightness(1.1);
+    }
+    40% {
+        opacity: calc(var(--base-opacity, 0.5) * 0.75);
+        filter: brightness(0.9);
+    }
+    60% {
+        opacity: calc(var(--base-opacity, 0.5) * 0.85);
+        filter: brightness(0.95);
+    }
+    80% {
+        opacity: calc(var(--base-opacity, 0.5) * 1.08);
+        filter: brightness(1.05);
+    }
 }
 
 .aurora-veil {
     position: absolute;
-    inset: var(--aurora-inset, 18% -15% auto -15%);
-    width: auto;
-    height: var(--aurora-height, 42vh);
-    background: radial-gradient(ellipse at top,
-        hsla(calc(var(--aurora-hue, 125) - 4), 78%, 66%, 0.0) 10%,
-        hsla(var(--aurora-hue, 125), 86%, 58%, 0.58) 35%,
-        hsla(calc(var(--aurora-hue, 125) + 8), 84%, 56%, 0.74) 55%,
-        hsla(calc(var(--aurora-hue, 125) + 2), 80%, 54%, 0.28) 78%,
-        transparent 100%
-    );
-    opacity: var(--aurora-opacity, 0.36);
-    filter: blur(18px) saturate(105%);
-    border-radius: 50%;
-    transform-origin: 50% 80%;
+    /* ORGANIC: Multi-layer gradient for rich, natural aurora colors */
+    background:
+        radial-gradient(ellipse var(--aurora-ellipse-x, 140%) var(--aurora-ellipse-y, 100%) at 48% 45%,
+            hsla(calc(var(--aurora-hue, 125) - 15), 75%, 65%, 0) 0%,
+            hsla(calc(var(--aurora-hue, 125) - 8), 88%, 68%, 0.15) 12%,
+            hsla(calc(var(--aurora-hue, 125) - 3), 92%, 66%, 0.45) 22%,
+            hsla(var(--aurora-hue, 125), 95%, 64%, 0.75) 32%,
+            hsla(calc(var(--aurora-hue, 125) + 5), 93%, 60%, 0.85) 40%,
+            hsla(calc(var(--aurora-hue, 125) + 10), 90%, 58%, 0.72) 50%,
+            hsla(calc(var(--aurora-hue, 125) + 8), 87%, 56%, 0.55) 62%,
+            hsla(calc(var(--aurora-hue, 125) + 15), 82%, 52%, 0.32) 74%,
+            hsla(calc(var(--aurora-hue, 125) + 20), 78%, 50%, 0.15) 85%,
+            hsla(calc(var(--aurora-hue, 125) + 22), 72%, 48%, 0.05) 93%,
+            transparent 100%
+        ),
+        radial-gradient(ellipse calc(var(--aurora-ellipse-x, 140%) * 0.7) calc(var(--aurora-ellipse-y, 100%) * 1.2) at 52% 55%,
+            hsla(calc(var(--aurora-hue, 125) + 18), 85%, 62%, 0.3) 0%,
+            hsla(calc(var(--aurora-hue, 125) + 12), 80%, 58%, 0.2) 40%,
+            transparent 70%
+        );
+    opacity: 0;
+    /* SUBTLE: Ultra-soft blur for seamless, ethereal blending */
+    filter: blur(50px) saturate(80%) brightness(0.8);
+    /* ORGANIC: Irregular border-radius for natural, flowing shapes */
+    border-radius: var(--aurora-shape, 45% 55% 52% 48% / 48% 58% 42% 52%);
+    transform: scale(0.95);
+    transform-origin: 50% 50%;
     mix-blend-mode: screen;
+    will-change: opacity, filter, transform;
     animation:
-        aurora-wave var(--aurora-duration, 18s) ease-in-out infinite alternate,
-        aurora-glow var(--aurora-glow, 9s) ease-in-out infinite alternate;
+        aurora-fade-in 4.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards,
+        aurora-wave var(--aurora-duration, 18s) cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate,
+        aurora-glow var(--aurora-glow, 9s) cubic-bezier(0.4, 0, 0.6, 1) infinite alternate,
+        aurora-ripple calc(var(--aurora-duration, 18s) * 0.7) ease-in-out infinite,
+        aurora-morph calc(var(--aurora-duration, 18s) * 1.3) cubic-bezier(0.42, 0, 0.58, 1) infinite;
 }
 .aurora-veil::before {
     display: none;
@@ -1962,31 +2567,182 @@ body {
     }
 }
 
-@keyframes aurora-wave {
+/* SMOOTH: Ultra-gradual fade-in to prevent any popping */
+@keyframes aurora-fade-in {
     0% {
-        transform: translate3d(calc(var(--aurora-offset, -4%) * -1), 0, 0)
-            rotate(calc(var(--aurora-tilt, 2deg) * 0.5));
+        opacity: 0;
+        filter: blur(50px) saturate(80%) brightness(0.8);
+        transform: scale(0.95);
     }
-    50% {
-        transform: translate3d(0, calc(var(--aurora-rise, -4%) / 2), 0)
-            rotate(calc(var(--aurora-tilt, 2deg) * -0.4));
+    30% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.2);
+        filter: blur(48px) saturate(90%) brightness(0.85);
+        transform: scale(0.97);
+    }
+    60% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.5);
+        filter: blur(42px) saturate(105%) brightness(0.92);
+        transform: scale(0.99);
     }
     100% {
-        transform: translate3d(var(--aurora-offset, -4%), var(--aurora-rise, -4%), 0)
-            rotate(calc(var(--aurora-tilt, 2deg) * -0.7));
+        opacity: var(--aurora-opacity, 0.36);
+        filter: blur(35px) saturate(120%) brightness(1);
+        transform: scale(1);
     }
 }
 
+/* FLUID: Ultra-smooth aurora movement with seamless, subtle transitions */
+@keyframes aurora-wave {
+    0% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * -1 + var(--aurora-drift, 0%) * 0),
+                calc(var(--aurora-rise-var, 0%) * 0.1),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * 0.6))
+            scale(calc(var(--aurora-scale-start, 1) * 0.97));
+    }
+    16% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * -0.6 + var(--aurora-drift, 0%) * 0.2),
+                calc(var(--aurora-rise, -4%) * 0.2 + var(--aurora-rise-var, 0%) * 0.3),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * 0.3))
+            scale(calc(var(--aurora-scale-start, 1) * 0.99));
+    }
+    33% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * -0.15 + var(--aurora-drift, 0%) * 0.45),
+                calc(var(--aurora-rise, -4%) * 0.4 + var(--aurora-rise-var, 0%) * 0.55),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * 0))
+            scale(calc(var(--aurora-scale-start, 1) * 1.02));
+    }
+    50% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 0.35 + var(--aurora-drift, 0%) * 0.7),
+                calc(var(--aurora-rise, -4%) * 0.6 + var(--aurora-rise-var, 0%) * 0.75),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -0.4))
+            scale(calc(var(--aurora-scale-mid, 1) * 1.05));
+    }
+    66% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 0.7 + var(--aurora-drift, 0%) * 0.88),
+                calc(var(--aurora-rise, -4%) * 0.8 + var(--aurora-rise-var, 0%) * 0.9),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -0.75))
+            scale(calc(var(--aurora-scale-mid, 1) * 1.04));
+    }
+    83% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 0.9 + var(--aurora-drift, 0%) * 0.97),
+                calc(var(--aurora-rise, -4%) * 0.92 + var(--aurora-rise-var, 0%) * 0.98),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -1))
+            scale(calc(var(--aurora-scale-end, 1) * 1.01));
+    }
+    100% {
+        transform:
+            translate3d(
+                calc(var(--aurora-offset, -4%) * 1 + var(--aurora-drift, 0%) * 1),
+                calc(var(--aurora-rise, -4%) * 1 + var(--aurora-rise-var, 0%) * 1),
+                0
+            )
+            rotate(calc(var(--aurora-base-rotation, 0deg) + var(--aurora-tilt, 2deg) * -1.1))
+            scale(calc(var(--aurora-scale-end, 1) * 0.98));
+    }
+}
+
+/* SUBTLE: Gentle aurora glow with minimal, seamless fade */
 @keyframes aurora-glow {
-    0% { opacity: calc(var(--aurora-opacity, 0.36) * 0.8); filter: blur(16px); }
-    50% { opacity: calc(var(--aurora-opacity, 0.36) * 1.05); filter: blur(22px); }
-    100% { opacity: calc(var(--aurora-opacity, 0.36) * 0.85); filter: blur(18px); }
+    0% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.75);
+        filter: blur(26px) saturate(115%) brightness(0.96);
+    }
+    25% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.95);
+        filter: blur(29px) saturate(125%) brightness(1.08);
+    }
+    50% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 1.1);
+        filter: blur(32px) saturate(132%) brightness(1.15);
+    }
+    75% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.92);
+        filter: blur(30px) saturate(122%) brightness(1.04);
+    }
+    100% {
+        opacity: calc(var(--aurora-opacity, 0.36) * 0.8);
+        filter: blur(27px) saturate(118%) brightness(0.98);
+    }
+}
+
+/* SUBTLE: Gentle ripple effect with minimal shimmer variation */
+@keyframes aurora-ripple {
+    0% {
+        filter: blur(30px) saturate(125%) brightness(1) contrast(102%);
+    }
+    20% {
+        filter: blur(32px) saturate(128%) brightness(1.04) contrast(103%);
+    }
+    40% {
+        filter: blur(29px) saturate(123%) brightness(0.98) contrast(101%);
+    }
+    60% {
+        filter: blur(31px) saturate(127%) brightness(1.02) contrast(103%);
+    }
+    80% {
+        filter: blur(30px) saturate(125%) brightness(0.99) contrast(102%);
+    }
+    100% {
+        filter: blur(30px) saturate(125%) brightness(1) contrast(102%);
+    }
 }
 
 @keyframes aurora-horizon-pulse {
     0% { opacity: 0.25; transform: translateY(0); }
     50% { opacity: 0.4; transform: translateY(-1.5%); }
     100% { opacity: 0.28; transform: translateY(0); }
+}
+
+/* ORGANIC: Flowing shape morphing for natural aurora forms */
+@keyframes aurora-morph {
+    0% {
+        border-radius: 45% 55% 52% 48% / 48% 58% 42% 52%;
+    }
+    14% {
+        border-radius: 52% 48% 45% 55% / 55% 42% 58% 45%;
+    }
+    28% {
+        border-radius: 48% 52% 58% 42% / 42% 55% 45% 58%;
+    }
+    42% {
+        border-radius: 55% 45% 48% 52% / 58% 48% 52% 42%;
+    }
+    57% {
+        border-radius: 42% 58% 55% 45% / 52% 45% 55% 48%;
+    }
+    71% {
+        border-radius: 58% 42% 48% 52% / 45% 52% 48% 55%;
+    }
+    85% {
+        border-radius: 48% 52% 55% 45% / 52% 48% 58% 42%;
+    }
+    100% {
+        border-radius: 45% 55% 52% 48% / 48% 58% 42% 52%;
+    }
 }
 
 /* Aurora Reactive Effects */
@@ -2027,13 +2783,14 @@ body {
 
 .shooting-star {
     position: absolute;
-    width: 2px;
-    height: 2px;
-    background: white;
+    width: 3px;
+    height: 3px;
+    background: rgba(255, 255, 255, 1);
     border-radius: 50%;
-    box-shadow: 
-        0 0 4px 2px rgba(255, 255, 255, 0.8),
-        0 0 8px 4px rgba(150, 200, 255, 0.6);
+    box-shadow:
+        0 0 6px 3px rgba(255, 255, 255, 0.9),
+        0 0 12px 6px rgba(180, 220, 255, 0.7),
+        0 0 20px 8px rgba(150, 200, 255, 0.4);
     animation: shooting-star-trail 1s ease-out forwards;
     pointer-events: none;
     z-index: 15;
@@ -2049,8 +2806,10 @@ body {
     background: linear-gradient(
         var(--shooting-angle, -45deg),
         rgba(255, 255, 255, 0) 0%,
-        rgba(255, 255, 255, 0.6) 40%,
-        rgba(255, 255, 255, 0.9) 100%
+        rgba(255, 255, 255, 0.4) 20%,
+        rgba(255, 255, 255, 0.7) 50%,
+        rgba(255, 255, 255, 0.9) 80%,
+        rgba(255, 255, 255, 1) 100%
     );
     transform-origin: left center;
     animation: shooting-star-trail-length 1s ease-out forwards;
@@ -2060,13 +2819,19 @@ body {
     0% {
         opacity: 0;
         transform: translate(0, 0) rotate(var(--shooting-angle, -45deg));
+        filter: brightness(0.5);
     }
-    10% {
+    5% {
         opacity: 1;
+        filter: brightness(1.5);
+    }
+    15% {
+        filter: brightness(1.2);
     }
     100% {
         opacity: 0;
-        transform: translate(200px, 200px) rotate(var(--shooting-angle, -45deg));
+        transform: translate(250px, 250px) rotate(var(--shooting-angle, -45deg));
+        filter: brightness(0.8);
     }
 }
 
@@ -2074,8 +2839,8 @@ body {
     0% {
         width: 0;
     }
-    30% {
-        width: 100px;
+    25% {
+        width: 120px;
     }
     100% {
         width: 0;
@@ -2157,17 +2922,14 @@ body {
 
 /* --- Rainy Window Theme --- */
 #rainy-window-theme {
-    background-color: #2c3e50;
+    background: linear-gradient(to bottom, #0a0e14 0%, #12171f 40%, #1a1f28 100%);
     overflow: hidden;
 }
 .rainy-bg {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><filter id="g"><feGaussianBlur stdDeviation="5"/></filter><g filter="url(%23g)"><rect x="0" y="400" width="800" height="200" fill="%2334495e"/><path d="M 100 400 L 150 200 L 200 400 Z" fill="%232c3e50"/><path d="M 300 400 L 320 300 L 340 400 Z" fill="%232c3e50"/><path d="M 500 400 L 550 100 L 600 400 Z" fill="%232c3e50"/></g></svg>');
-    background-size: cover;
-    filter: blur(4px);
-    transform: scale(1.05);
+    background: linear-gradient(to bottom, #0a0e14 0%, #12171f 40%, #1a1f28 100%);
     z-index: 1;
 }
 #rain-canvas {
@@ -2184,7 +2946,7 @@ body {
     opacity: 0;
     z-index: 3;
     pointer-events: none;
-    animation: flash-lightning 10s linear infinite;
+    /* Lightning flash animation disabled */
 }
 @keyframes flash-lightning {
     0% { opacity: 0; }
@@ -4687,7 +5449,9 @@ body {
 
 /* --- Ice Temple Theme (Frostborn Sanctum) --- */
 #ice-temple-theme {
-    background: linear-gradient(to bottom, #0a1628, #1a2e4a);
+    background:
+        radial-gradient(circle at 50% 20%, rgba(68, 117, 155, 0.35), transparent 60%),
+        #061120;
     overflow: hidden;
 }
 
@@ -4697,7 +5461,7 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: 1;
-    background: linear-gradient(to bottom, #0a1628, #1a2e4a);
+    background: linear-gradient(to bottom, #050b17 0%, #0a1d32 60%, #0e2a42 100%);
 }
 
 /* Layer 1: Stars */
@@ -4711,15 +5475,15 @@ body {
 
 .ice-temple-star {
     position: absolute;
-    background: white;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 70%);
     border-radius: 50%;
     animation: ice-star-twinkle var(--twinkle-duration) ease-in-out infinite;
     animation-delay: var(--twinkle-delay);
 }
 
 @keyframes ice-star-twinkle {
-    0%, 100% { opacity: var(--min-opacity); }
-    50% { opacity: var(--max-opacity); }
+    0%, 100% { opacity: var(--min-opacity); transform: scale(0.85); }
+    50% { opacity: var(--max-opacity); transform: scale(1.08); }
 }
 
 /* Layer 2: Aurora Borealis */
@@ -4729,7 +5493,7 @@ body {
     width: 100%; height: 100%;
     z-index: 3;
     mix-blend-mode: screen;
-    opacity: 0.8;
+    opacity: 0.85;
     pointer-events: none;
 }
 
@@ -4747,23 +5511,171 @@ body {
 @keyframes ice-aurora-wave {
     0%, 100% {
         transform: translateY(0) scaleY(1);
-        opacity: 0.6;
+        opacity: 0.55;
     }
     50% {
-        transform: translateY(-5%) scaleY(1.1);
-        opacity: 0.9;
+        transform: translateY(-6%) scaleY(1.08);
+        opacity: 0.95;
     }
 }
 
-/* Layer 3: Distant Mountains */
-#ice-temple-mountains-distant {
+/* Layer 3: Ice Field */
+#ice-temple-icefield {
     position: absolute;
     bottom: 0; left: 0;
-    width: 100%; height: 60%;
+    width: 100%; height: 65%;
     z-index: 4;
-    background-repeat: repeat-x;
-    background-position: bottom;
     pointer-events: none;
+    background-repeat: repeat-x;
+    background-position: bottom center;
+    filter: drop-shadow(0 -12px 45px rgba(6, 32, 52, 0.55));
+    animation: icefield-pan 55s linear infinite;
+}
+
+#ice-temple-icefield::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(116, 185, 255, 0.6) 15%,
+        rgba(137, 217, 255, 0.8) 30%,
+        rgba(255, 255, 255, 0.9) 50%,
+        rgba(137, 217, 255, 0.8) 70%,
+        rgba(116, 185, 255, 0.6) 85%,
+        transparent 100%
+    );
+    box-shadow:
+        0 0 8px rgba(137, 217, 255, 0.7),
+        0 0 15px rgba(116, 185, 255, 0.5),
+        0 -2px 25px rgba(137, 217, 255, 0.3);
+    animation: horizon-shimmer 8s ease-in-out infinite;
+}
+
+@keyframes horizon-shimmer {
+    0%, 100% { opacity: 0.7; transform: scaleX(1); }
+    50% { opacity: 1; transform: scaleX(1.02); }
+}
+
+@keyframes icefield-pan {
+    from { background-position: 0 100%; }
+    to { background-position: -600px 100%; }
+}
+
+/* Layer 4: Crack Network */
+#ice-temple-cracks {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 70%;
+    z-index: 5;
+    pointer-events: none;
+    overflow: hidden;
+    mix-blend-mode: screen;
+}
+
+.ice-temple-crack {
+    position: absolute;
+    width: var(--crack-thickness);
+    height: var(--crack-length);
+    transform-origin: top center;
+    transform: rotate(var(--crack-rotate));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(196, 234, 255, var(--crack-glow)) 45%, rgba(255, 255, 255, 0));
+    filter: drop-shadow(0 0 9px rgba(180, 210, 255, 0.4));
+    opacity: 0.75;
+    animation: ice-crack-pulse 6s ease-in-out infinite;
+    animation-delay: var(--crack-delay);
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.ice-temple-crack::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(230, 250, 255, 0.4) 40%, rgba(120, 190, 255, 0.15) 65%, rgba(255, 255, 255, 0) 100%);
+    background-size: 100% 220%;
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 10px rgba(160, 220, 255, 0.4));
+    animation: ice-crack-glint var(--crack-glint-duration, 5s) ease-in-out infinite;
+    animation-delay: var(--crack-phase, 0s);
+    opacity: 0;
+}
+
+.ice-temple-crack.branching::after {
+    content: '';
+    position: absolute;
+    top: 30%;
+    left: 0;
+    width: var(--crack-thickness);
+    height: var(--branch-length);
+    transform-origin: top center;
+    transform: translateY(-4px) rotate(var(--branch-rotate));
+    background: inherit;
+    opacity: 0.7;
+}
+
+@keyframes ice-crack-pulse {
+    0%, 100% { opacity: 0.5; filter: drop-shadow(0 0 6px rgba(140, 200, 255, 0.25)); }
+    50% { opacity: 0.95; filter: drop-shadow(0 0 14px rgba(200, 240, 255, 0.55)); }
+}
+
+@keyframes ice-crack-glint {
+    0% {
+        background-position: 0 -120%;
+        opacity: 0;
+    }
+    35% {
+        opacity: 0.7;
+    }
+    55% {
+        background-position: 0 20%;
+        opacity: 0.9;
+    }
+    100% {
+        background-position: 0 140%;
+        opacity: 0;
+    }
+}
+
+/* Layer 5: Frost Haze */
+#ice-temple-ice-shards {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 6;
+    pointer-events: none;
+    overflow: hidden;
+    mix-blend-mode: screen;
+}
+
+.ice-temple-frost-haze {
+    position: absolute;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(180, 225, 255, 0.2) 40%, rgba(80, 140, 200, 0.04) 70%, transparent 100%);
+    filter: blur(12px);
+    animation: ice-frost-haze var(--haze-duration) ease-in-out infinite;
+    animation-delay: var(--haze-delay);
+    transform: translate3d(0, 0, 0) scale(var(--haze-scale));
+    opacity: var(--haze-opacity, 0.2);
+}
+
+@keyframes ice-frost-haze {
+    0% {
+        transform: translate3d(0, 0, 0) scale(var(--haze-scale));
+        opacity: var(--haze-opacity, 0.2);
+    }
+    45% {
+        transform: translate3d(var(--haze-drift-x), var(--haze-drift-y), 0) scale(calc(var(--haze-scale) * 1.08));
+        opacity: calc(var(--haze-opacity, 0.2) + 0.06);
+    }
+    100% {
+        transform: translate3d(0, 0, 0) scale(var(--haze-scale));
+        opacity: var(--haze-opacity, 0.2);
+    }
 }
 
 /* Layer 6: Frozen Mist */
@@ -4771,7 +5683,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 5;
+    z-index: 7;
     pointer-events: none;
     overflow: hidden;
 }
@@ -4781,15 +5693,26 @@ body {
     top: 0;
     width: 200%;
     height: 100%;
-    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
-    filter: blur(60px);
+    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.18) 0%, transparent 55%);
+    filter: blur(70px);
     animation: ice-mist-drift var(--mist-duration) linear infinite;
     animation-delay: var(--mist-delay);
+    mix-blend-mode: screen;
+}
+
+.ice-temple-mist-layer[data-layer="back"] {
+    transform: translateZ(0) scaleY(1.1);
+    opacity: 0.1;
+}
+
+.ice-temple-mist-layer[data-layer="front"] {
+    filter: blur(90px);
 }
 
 @keyframes ice-mist-drift {
-    from { transform: translateX(-50%); }
-    to { transform: translateX(0%); }
+    0% { transform: translateX(-35%) translateY(0); }
+    50% { transform: translateX(-5%) translateY(-2%); }
+    100% { transform: translateX(-35%) translateY(0); }
 }
 
 /* Layer 7: Snowfall */
@@ -4797,7 +5720,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 6;
+    z-index: 8;
     pointer-events: none;
 }
 
@@ -4806,23 +5729,28 @@ body {
     top: -10px;
     background: white;
     border-radius: 50%;
-    opacity: 0.8;
+    transform-origin: center;
     animation: ice-snowfall var(--fall-duration) linear infinite;
     animation-delay: var(--fall-delay);
+    opacity: var(--snow-opacity);
+    transform: scale(var(--snow-scale));
+    filter: drop-shadow(0 0 6px rgba(160, 200, 255, 0.4));
 }
 
 @keyframes ice-snowfall {
     0% {
-        transform: translateY(0) translateX(0);
-        opacity: 0.8;
+        transform: translate3d(0, -5vh, 0) scale(var(--snow-scale));
+        opacity: 0;
     }
-    50% {
-        transform: translateY(50vh) translateX(var(--sway-amount));
-        opacity: 0.9;
+    40% {
+        opacity: calc(var(--snow-opacity) + 0.2);
+    }
+    60% {
+        transform: translate3d(var(--sway-amount), 50vh, 0) scale(calc(var(--snow-scale) * 1.05));
     }
     100% {
-        transform: translateY(100vh) translateX(0);
-        opacity: 0.5;
+        transform: translate3d(calc(var(--sway-amount) * 0.3), 105vh, 0) scale(var(--snow-scale));
+        opacity: 0;
     }
 }
 
@@ -4831,7 +5759,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 7;
+    z-index: 9;
     mix-blend-mode: screen;
     pointer-events: none;
 }
@@ -4839,7 +5767,7 @@ body {
 .ice-refraction-ray {
     position: absolute;
     width: 2px;
-    height: 120px;
+    height: 140px;
     background: linear-gradient(to bottom, transparent, var(--ray-color), transparent);
     filter: blur(1px);
     transform: rotate(var(--ray-angle));
@@ -4978,56 +5906,85 @@ body {
 #electric-veins {
     width: 100%;
     height: 100%;
-    filter: url(#gooey-blobs) brightness(1.2) saturate(1.5);
+    /* LAVA LAMP EFFECT: Optimized gooey filter creates blob merging when veins overlap */
+    filter: url(#gooey-lava) brightness(1.2) saturate(1.5);
+    /* OPTIMIZATION: CSS containment for performance */
+    contain: layout style paint;
 }
 
 .electric-vein {
     position: absolute;
-    border-radius: 50%;
-    background: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00);
+    /* LAVA LAMP: Highly irregular organic blob shape */
+    border-radius: 38% 62% 58% 42% / 45% 70% 30% 55%;
+    background: linear-gradient(135deg, #00ffff, #ff00ff, #ffff00);
+    /* LAVA LAMP: Soft edges for smooth merging */
+    filter: blur(1px);
     animation:
         move-vein 30s ease-in-out infinite alternate,
         pulse-vein 6s ease-in-out infinite alternate,
-        cycle-vein-color 20s linear infinite alternate;
+        cycle-vein-color 20s linear infinite alternate,
+        morph-blob 10s ease-in-out infinite;
     /* OPTIMIZATION: Force GPU compositing for better performance */
     will-change: transform, filter;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    /* OPTIMIZATION: Improved compositing */
+    contain: layout style paint;
+    transform-style: preserve-3d;
 }
 
 @keyframes move-vein {
     from {
         /* OPTIMIZATION: Use translate3d instead of translate for GPU acceleration */
         transform: translate3d(var(--x-start), var(--y-start), 0) rotate(0deg) scale(var(--scale-start));
-        border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
-    }
-    50% {
-        border-radius: 60% 40% 30% 70% / 50% 60% 50% 40%;
     }
     to {
         /* OPTIMIZATION: Use translate3d instead of translate for GPU acceleration */
         transform: translate3d(var(--x-end), var(--y-end), 0) rotate(360deg) scale(var(--scale-end));
-        border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+    }
+}
+
+/* LAVA LAMP: Organic blob morphing with dramatic shape changes */
+@keyframes morph-blob {
+    0% {
+        border-radius: 38% 62% 58% 42% / 45% 70% 30% 55%;
+    }
+    20% {
+        border-radius: 55% 45% 35% 65% / 62% 38% 68% 32%;
+    }
+    40% {
+        border-radius: 42% 58% 68% 32% / 35% 65% 40% 60%;
+    }
+    60% {
+        border-radius: 65% 35% 45% 55% / 58% 42% 72% 28%;
+    }
+    80% {
+        border-radius: 48% 52% 72% 28% / 68% 32% 45% 55%;
+    }
+    100% {
+        border-radius: 38% 62% 58% 42% / 45% 70% 30% 55%;
     }
 }
 
 @keyframes pulse-vein {
     from {
-        /* OPTIMIZATION: Reduced blur radius from 80px to 50px for better performance */
+        /* OPTIMIZATION: Reduced from 4 layers to 2 layers for better performance */
         box-shadow:
-            0 0 10px #0ff, 0 0 20px #0ff,
-            0 0 30px #f0f, 0 0 50px #f0f;
+            0 0 15px #0ff,
+            0 0 35px #f0f;
     }
     to {
-        /* OPTIMIZATION: Reduced blur radius from 80px to 50px for better performance */
+        /* OPTIMIZATION: Reduced from 4 layers to 2 layers for better performance */
         box-shadow:
-            0 0 20px #0ff, 0 0 40px #0ff,
-            0 0 50px #f0f, 0 0 50px #f0f;
+            0 0 25px #0ff,
+            0 0 45px #f0f;
     }
 }
 
 @keyframes cycle-vein-color {
+    /* OPTIMIZATION: Reduced hue rotation range for smoother rendering */
     from { filter: hue-rotate(var(--hue-start)); }
+    50% { filter: hue-rotate(calc((var(--hue-start) + var(--hue-end)) / 2)); }
     to { filter: hue-rotate(var(--hue-end)); }
 }
 
@@ -5036,19 +5993,25 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: -1; /* Behind the veins */
+    /* OPTIMIZATION: CSS containment for performance */
+    contain: layout style paint;
 }
 
 .electric-particle {
     position: absolute;
     background-color: #ccddff;
     border-radius: 50%;
-    box-shadow: 0 0 5px #ccddff, 0 0 10px #ccddff;
+    /* OPTIMIZATION: Simplified box-shadow to single layer */
+    box-shadow: 0 0 8px #ccddff;
     animation: drift-electric-particle 15s ease-in-out infinite alternate;
     opacity: 0;
     /* OPTIMIZATION: Force GPU compositing for better performance */
     will-change: transform, opacity;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    /* OPTIMIZATION: Improved compositing */
+    contain: layout style paint;
+    transform-style: preserve-3d;
 }
 
 @keyframes drift-electric-particle {
@@ -10460,6 +11423,184 @@ body {
     50% {
         opacity: 0.8;
         transform: scale(1.15);
+    }
+}
+
+/* === NIMBUS VEIL THEME === */
+#nimbus-veil-theme {
+    background: radial-gradient(ellipse at center,
+        #1a1a1a 0%,
+        #0f0f0f 30%,
+        #080808 60%,
+        #000000 100%);
+    overflow: hidden;
+}
+
+/* Cloud Canvas Layer */
+#nimbus-veil-cloud-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* Subtle Mist Overlay */
+.nimbus-veil-mist-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at 30% 40%,
+        rgba(255, 255, 255, 0.03) 0%,
+        rgba(255, 255, 255, 0.01) 30%,
+        transparent 60%);
+    pointer-events: none;
+    z-index: 1;
+    animation: nimbus-veil-mist-drift 20s ease-in-out infinite alternate;
+}
+
+@keyframes nimbus-veil-mist-drift {
+    0% {
+        background-position: 0% 0%;
+        opacity: 0.6;
+    }
+    50% {
+        background-position: 50% 50%;
+        opacity: 0.8;
+    }
+    100% {
+        background-position: 100% 100%;
+        opacity: 0.6;
+    }
+}
+
+/* Pulse Container */
+#nimbus-veil-pulses {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px;
+    height: 100px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Pulse Effect - Expanding Cloud Ring */
+.nimbus-veil-pulse {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.4),
+                inset 0 0 20px rgba(255, 255, 255, 0.2);
+    animation: nimbus-veil-pulse-expand 2.5s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes nimbus-veil-pulse-expand {
+    0% {
+        width: 50px;
+        height: 50px;
+        opacity: 1;
+        border-width: 2px;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.6),
+                    inset 0 0 20px rgba(255, 255, 255, 0.3);
+    }
+    50% {
+        opacity: 0.8;
+        border-width: 1.5px;
+        box-shadow: 0 0 40px rgba(255, 255, 255, 0.5),
+                    inset 0 0 30px rgba(255, 255, 255, 0.25);
+    }
+    100% {
+        width: 400px;
+        height: 400px;
+        opacity: 0;
+        border-width: 0.5px;
+        box-shadow: 0 0 60px rgba(255, 255, 255, 0.3),
+                    inset 0 0 40px rgba(255, 255, 255, 0.15);
+    }
+}
+
+/* Wave Container */
+#nimbus-veil-waves {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px;
+    height: 100px;
+    pointer-events: none;
+    z-index: 9;
+}
+
+/* Wave Effect - Expanding Cloud Wave */
+.nimbus-veil-wave {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    border: 3px solid rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.5),
+                inset 0 0 30px rgba(255, 255, 255, 0.3);
+    animation: nimbus-veil-wave-expand 3s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes nimbus-veil-wave-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(0.3);
+        opacity: 1;
+        border-width: 3px;
+        box-shadow: 0 0 30px rgba(255, 255, 255, 0.7),
+                    inset 0 0 30px rgba(255, 255, 255, 0.4);
+    }
+    30% {
+        opacity: 0.95;
+        border-width: 2.5px;
+        box-shadow: 0 0 50px rgba(255, 255, 255, 0.6),
+                    inset 0 0 40px rgba(255, 255, 255, 0.35);
+    }
+    70% {
+        opacity: 0.5;
+        border-width: 1.5px;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(4.5);
+        opacity: 0;
+        border-width: 0.5px;
+        box-shadow: 0 0 80px rgba(255, 255, 255, 0.3),
+                    inset 0 0 50px rgba(255, 255, 255, 0.2);
+    }
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+    #nimbus-veil-cloud-canvas {
+        /* Reduce particle count on mobile via JS */
+    }
+
+    @keyframes nimbus-veil-pulse-expand {
+        100% {
+            width: 300px;
+            height: 300px;
+        }
+    }
+
+    @keyframes nimbus-veil-wave-expand {
+        100% {
+            transform: translate(-50%, -50%) scale(3.5);
+        }
     }
 }
 

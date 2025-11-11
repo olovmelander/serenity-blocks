@@ -6,7 +6,71 @@ export default class RainyWindowTheme extends BaseTheme {
         this.canvas = null;
         this.ctx = null;
         this.drops = [];
+        this.ripples = [];
+        this.splashes = [];
+        this.lightningBolts = [];
+        this.mistParticles = [];
         this.resizeHandler = null;
+        this.waterSurfaceY = 0;
+        this.time = 0;
+        this.nextLightning = Math.random() * 300 + 200;
+        this.windForce = 0;
+        this.targetWindForce = 0;
+        this.nextWindChange = Math.random() * 200 + 100;
+        this.maxDrops = 180; // Reduced by 10% for better performance
+        this.dropSpawnProbability = 0.45;
+        this.currentDropCap = 63; // Reduced by 10% for better performance
+        this.maxRipples = 120;
+        this.lightningFlashIntensity = 0;
+        this.lightningRipples = [];
+        this.gustIntensity = 0;
+        this.nextGust = Math.random() * 200 + 100;
+        this.gustDuration = 0;
+
+        // Performance optimization: Cache static data to avoid recreation every frame
+        this.colorSchemes = {
+            'lightning': {
+                base: { r: 140, g: 180, b: 255 },
+                highlight: { r: 200, g: 230, b: 255 },
+                accent: { r: 230, g: 245, b: 255 }
+            },
+            'splash': {
+                base: { r: 160, g: 200, b: 235 },
+                highlight: { r: 200, g: 230, b: 250 },
+                accent: { r: 220, g: 240, b: 255 }
+            },
+            'strong': {
+                base: { r: 140, g: 175, b: 220 },
+                highlight: { r: 180, g: 210, b: 245 },
+                accent: { r: 200, g: 225, b: 255 }
+            },
+            'gentle': {
+                base: { r: 120, g: 155, b: 190 },
+                highlight: { r: 160, g: 195, b: 230 },
+                accent: { r: 180, g: 210, b: 240 }
+            },
+            'normal': {
+                base: { r: 125, g: 160, b: 200 },
+                highlight: { r: 165, g: 195, b: 230 },
+                accent: { r: 185, g: 210, b: 240 }
+            }
+        };
+
+        this.ringConfigs = {
+            'lightning': { count: 5, spacing: 12, pattern: 'electric' },
+            'splash': { count: 4, spacing: 15, pattern: 'burst' },
+            'strong': { count: 6, spacing: 8, pattern: 'wave' },
+            'gentle': { count: 5, spacing: 12, pattern: 'smooth' },
+            'normal': { count: 5, spacing: 10, pattern: 'standard' }
+        };
+
+        this.fadeRates = {
+            'lightning': 0.003,
+            'splash': 0.008,
+            'strong': 0.005,
+            'gentle': 0.006,
+            'normal': 0.007
+        };
     }
 
     async createScene() {
@@ -19,7 +83,11 @@ export default class RainyWindowTheme extends BaseTheme {
         this.resizeCanvas();
 
         this.drops = [];
-        for (let i = 0; i < 150; i++) {
+        this.ripples = [];
+        this.splashes = [];
+        this.mistParticles = [];
+
+        for (let i = 0; i < Math.min(this.currentDropCap, 90); i++) {
             this.drops.push(this.createDrop(true));
         }
 
@@ -30,16 +98,235 @@ export default class RainyWindowTheme extends BaseTheme {
         if (!this.canvas) return;
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        // Water surface starts at 60% down the screen
+        this.waterSurfaceY = this.canvas.height * 0.6;
+
+        // Performance optimization: Pre-create gradients that don't change
+        this.baseSkyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
+        this.baseSkyGradient.addColorStop(0, 'rgb(8, 9, 14)');
+        this.baseSkyGradient.addColorStop(0.5, 'rgb(14, 16, 20)');
+        this.baseSkyGradient.addColorStop(1, 'rgb(20, 22, 28)');
+
+        // Cache fog gradients (3 layers)
+        this.fogGradients = [];
+        for (let i = 0; i < 3; i++) {
+            const fogY = this.waterSurfaceY - (i * 100) - 50;
+            const fogGradient = this.ctx.createLinearGradient(0, fogY - 40, 0, fogY + 40);
+            fogGradient.addColorStop(0, 'rgba(30, 40, 50, 0)');
+            fogGradient.addColorStop(0.5, `rgba(30, 40, 50, ${0.03 + i * 0.01})`);
+            fogGradient.addColorStop(1, 'rgba(30, 40, 50, 0)');
+            this.fogGradients.push({ gradient: fogGradient, y: fogY });
+        }
     }
 
     createDrop(isInitial) {
+        const maxY = isInitial ? this.waterSurfaceY : -50;
+        const length = Math.random() * 15 + 10;
         return {
             x: Math.random() * this.canvas.width,
-            y: isInitial ? Math.random() * this.canvas.height : -50,
-            r: Math.random() * 1.5 + 1,
-            vy: Math.random() * 3 + 2,
-            isStreaking: false,
+            y: isInitial ? Math.random() * maxY : -Math.random() * 100,
+            z: Math.random(), // Depth: 0 (far) to 1 (near)
+            r: Math.random() * 1.8 + 1.2,
+            vy: Math.random() * 6 + 5,
+            vx: Math.random() * 0.5 - 0.25,
+            opacity: Math.random() * 0.5 + 0.4,
+            length,
+            baseLength: length,
         };
+    }
+
+    createRipple(x, y, dropSize, depth, isLightning = false) {
+        // Scale ripple size based on depth (smaller = farther away)
+        const depthScale = 0.3 + depth * 0.7;
+
+        // Create variety in ripple types with distinct visual styles
+        let rippleType, style;
+        if (isLightning) {
+            rippleType = 'lightning';
+            style = 'electric'; // Electric burst pattern
+        } else {
+            const rand = Math.random();
+            if (rand < 0.2) {
+                rippleType = 'splash';
+                style = 'burst'; // Fast expanding burst
+            } else if (rand < 0.4) {
+                rippleType = 'strong';
+                style = 'wave'; // Multiple wave rings
+            } else if (rand < 0.6) {
+                rippleType = 'gentle';
+                style = 'smooth'; // Smooth expanding circle
+            } else {
+                rippleType = 'normal';
+                style = 'ripple'; // Standard ripple
+            }
+        }
+
+        const sizeMultiplier = {
+            'splash': 1.8,
+            'strong': 1.4,
+            'gentle': 0.8,
+            'normal': 1.0,
+            'lightning': 2.0
+        }[rippleType];
+
+        const speedMultiplier = {
+            'splash': 1.5,
+            'strong': 1.0,
+            'gentle': 0.7,
+            'normal': 1.0,
+            'lightning': 1.2
+        }[rippleType];
+
+        return {
+            x: x,
+            y: y,
+            radius: 0,
+            maxRadius: (dropSize * 10 + Math.random() * 30 + 40) * depthScale * sizeMultiplier,
+            opacity: rippleType === 'splash' ? 1.5 : (rippleType === 'strong' ? 1.2 : 1.0),
+            speed: (Math.random() * 0.8 + 0.6) * depthScale * speedMultiplier,
+            lineWidth: (Math.random() * 2 + 1.5) * depthScale * (rippleType === 'splash' ? 1.5 : rippleType === 'strong' ? 1.3 : 1.0),
+            depth: depth,
+            phase: 0,
+            frequency: Math.random() * 0.1 + 0.05,
+            isLightning: isLightning,
+            shimmer: Math.random() * Math.PI * 2,
+            rippleType: rippleType,
+            style: style,
+            pulseSpeed: Math.random() * 0.05 + 0.03,
+            rotation: Math.random() * Math.PI * 2, // Random rotation for variety
+        };
+    }
+
+    createLightningBolt() {
+        const startX = this.canvas.width * (0.15 + Math.random() * 0.7);
+        const mainSegs = [];
+        const branchSegs = [];
+        let x = startX;
+        let y = 0;
+        const targetY = this.waterSurfaceY + Math.random() * 100;
+        const depth = Math.random();
+
+        // Main bolt - separate segments by type for performance
+        while (y < targetY) {
+            const nextY = y + Math.random() * 30 + 20;
+            const nextX = x + (Math.random() - 0.5) * 40;
+            mainSegs.push({ x1: x, y1: y, x2: nextX, y2: nextY });
+
+            // Random branches
+            if (Math.random() > 0.7) {
+                const branchLength = Math.random() * 100 + 50;
+                const branchAngle = (Math.random() - 0.5) * Math.PI * 0.6;
+                const bx = nextX + Math.cos(branchAngle) * branchLength;
+                const by = nextY + Math.sin(branchAngle) * branchLength;
+                branchSegs.push({ x1: nextX, y1: nextY, x2: bx, y2: by });
+            }
+
+            x = nextX;
+            y = nextY;
+        }
+
+        return {
+            mainSegs,
+            branchSegs,
+            opacity: 1.0,
+            life: 1.0,
+            glowIntensity: 1.0,
+            originX: startX,
+            originY: 0,
+            impactX: x,  // Final x position where bolt ends
+            impactY: y,  // Final y position where bolt ends
+            depth: depth,
+        };
+    }
+
+    createMist(x, y, depth) {
+        const particles = [];
+        const count = Math.floor(Math.random() * 6) + 4;
+        const depthScale = 0.3 + depth * 0.7;
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 1.5 + 0.5;
+            particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed * depthScale,
+                vy: -Math.random() * 2 - 1, // Upward drift
+                life: 1.0,
+                size: (Math.random() * 3 + 2) * depthScale,
+                opacity: Math.random() * 0.3 + 0.2,
+            });
+        }
+        return particles;
+    }
+
+    createSplash(x, y, depth) {
+        const particles = [];
+        const count = Math.floor(Math.random() * 4) + 3;
+        const depthScale = 0.3 + depth * 0.7;
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI / 2) + (Math.random() - 0.5) * Math.PI * 0.8;
+            const speed = (Math.random() * 3 + 2) * depthScale;
+            particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed * -1,
+                life: 1.0,
+                size: (Math.random() * 2 + 1) * depthScale,
+            });
+        }
+        return particles;
+    }
+
+    // Calculate Y position on water surface based on depth
+    getWaterY(depth) {
+        // Creates perspective: far (depth=0) appears higher, near (depth=1) appears lower
+        const perspectiveRange = this.canvas.height * 0.3;
+        return this.waterSurfaceY + (depth * perspectiveRange);
+    }
+
+    drawWaterSurface() {
+        const surfaceHeight = this.canvas.height - this.waterSurfaceY;
+
+        const waterGradient = this.ctx.createLinearGradient(0, this.waterSurfaceY, 0, this.canvas.height);
+        waterGradient.addColorStop(0, 'rgba(20, 24, 34, 0.9)');
+        waterGradient.addColorStop(0.5, 'rgba(14, 16, 22, 0.95)');
+        waterGradient.addColorStop(1, 'rgba(6, 7, 12, 1)');
+        this.ctx.fillStyle = waterGradient;
+        this.ctx.fillRect(0, this.waterSurfaceY, this.canvas.width, surfaceHeight);
+
+        // Draw perspective grid lines for depth perception
+        this.ctx.strokeStyle = 'rgba(60, 75, 90, 0.08)';
+        this.ctx.lineWidth = 1;
+        for (let i = 0; i <= 10; i++) {
+            const depth = i / 10;
+            const y = this.getWaterY(depth);
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(this.canvas.width, y);
+            this.ctx.stroke();
+        }
+
+        // Draw subtle water surface line with animation at horizon
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, this.waterSurfaceY);
+
+        for (let x = 0; x < this.canvas.width; x += 20) {
+            const wave = Math.sin((x + this.time) * 0.01) * 1.5;
+            this.ctx.lineTo(x, this.waterSurfaceY + wave);
+        }
+
+        this.ctx.strokeStyle = 'rgba(100, 120, 140, 0.4)';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Add atmospheric perspective fog
+        const fogGradient = this.ctx.createLinearGradient(0, this.waterSurfaceY, 0, this.waterSurfaceY + 150);
+        fogGradient.addColorStop(0, 'rgba(40, 50, 60, 0.2)');
+        fogGradient.addColorStop(1, 'rgba(40, 50, 60, 0)');
+        this.ctx.fillStyle = fogGradient;
+        this.ctx.fillRect(0, this.waterSurfaceY, this.canvas.width, 150);
     }
 
     animate() {
@@ -47,51 +334,542 @@ export default class RainyWindowTheme extends BaseTheme {
             return;
         }
 
-        const streakStyle = 'rgba(220, 230, 255, 0.3)';
-        const dropStyle = 'rgba(220, 230, 255, 0.6)';
+        this.time += 1;
 
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        if (Math.random() > 0.8) this.drops.push(this.createDrop(false));
+        // Dynamic wind system with gusts (slower, less erratic)
+        if (this.time >= this.nextWindChange) {
+            this.targetWindForce = (Math.random() - 0.5) * 2; // Wind from -1 to 1 (reduced from 3)
+            this.nextWindChange = this.time + Math.random() * 400 + 300; // Longer intervals
+        }
 
-        for (let i = this.drops.length - 1; i >= 0; i--) {
-            const drop = this.drops[i];
-            if (drop.r > 3.5) drop.isStreaking = true;
-            drop.y += drop.vy;
-            if (drop.isStreaking) {
-                this.ctx.beginPath();
-                this.ctx.moveTo(drop.x, drop.y - drop.r * 4);
-                this.ctx.lineTo(drop.x, drop.y);
-                this.ctx.strokeStyle = streakStyle;
-                this.ctx.lineWidth = drop.r * 0.6;
-                this.ctx.stroke();
+        // Wind gust system
+        if (this.time >= this.nextGust && this.gustDuration <= 0) {
+            // Trigger a random wind gust
+            const gustStrength = Math.random() * 1.5 + 1; // 1 to 2.5 (reduced from 3)
+            const gustDirection = Math.random() < 0.5 ? -1 : 1;
+            this.targetWindForce = gustDirection * gustStrength;
+            this.gustIntensity = 1.0;
+            this.gustDuration = Math.random() * 40 + 30; // 30-70 frames
+            this.nextGust = this.time + Math.random() * 400 + 300; // Less frequent
+        }
+
+        // Fade gust intensity
+        if (this.gustDuration > 0) {
+            this.gustDuration -= 1;
+            this.gustIntensity = Math.max(0, this.gustDuration / 50);
+        } else {
+            this.gustIntensity = 0;
+        }
+
+        // Smooth wind transition (slower transitions)
+        const windTransitionSpeed = this.gustIntensity > 0 ? 0.05 : 0.015; // Slower than before
+        this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
+
+        // Lightning timing
+        if (this.time >= this.nextLightning) {
+            const bolt = this.createLightningBolt();
+            this.lightningBolts.push(bolt);
+
+            // Set flash intensity for atmospheric effect
+            this.lightningFlashIntensity = 0.25;
+
+            // Trigger wind gust with lightning
+            const gustStrength = Math.random() * 2.5 + 2; // 2 to 4.5 (stronger than random gusts)
+            const gustDirection = Math.random() < 0.5 ? -1 : 1;
+            this.targetWindForce = gustDirection * gustStrength;
+            this.gustIntensity = 1.0;
+            this.gustDuration = Math.random() * 50 + 40; // 40-90 frames (longer than random gusts)
+
+            // Create ripples on water when lightning strikes (reduced for performance)
+            const waterY = this.getWaterY(bolt.depth);
+            const numRipples = 2 + Math.floor(Math.random() * 2); // Reduced from 4-7 to 2-3
+            for (let i = 0; i < numRipples; i++) {
+                this.lightningRipples.push({
+                    x: bolt.impactX + (Math.random() - 0.5) * 80,
+                    y: waterY,
+                    depth: bolt.depth,
+                    size: 9 + Math.random() * 7, // Slightly larger to compensate for fewer ripples
+                    delay: i * 3,
+                    spawned: false
+                });
             }
-            this.ctx.beginPath();
-            this.ctx.arc(drop.x, drop.y, drop.r, 0, Math.PI * 2);
-            this.ctx.fillStyle = dropStyle;
-            this.ctx.fill();
 
-            // Optimized collision detection
-            for (let j = i - 1; j >= 0; j--) {
-                const other = this.drops[j];
-                const dx = drop.x - other.x;
-                const dy = drop.y - other.y;
-                const distanceSq = dx * dx + dy * dy;
-                const combinedRadius = drop.r + other.r;
-                const combinedRadiusSq = combinedRadius * combinedRadius;
+            this.nextLightning = this.time + Math.random() * 400 + 300;
+        }
 
-                if (distanceSq < combinedRadiusSq) {
-                    drop.r = Math.min(Math.sqrt(drop.r * drop.r + other.r * other.r), 15);
-                    this.drops[j] = this.drops[this.drops.length - 1];
-                    this.drops.pop();
-                    i--;
-                    break;
+        // Fade lightning flash
+        if (this.lightningFlashIntensity > 0) {
+            this.lightningFlashIntensity -= 0.02;
+        }
+
+        // Spawn lightning ripples with delay
+        for (let i = this.lightningRipples.length - 1; i >= 0; i--) {
+            const lr = this.lightningRipples[i];
+            lr.delay -= 1;
+            if (lr.delay <= 0 && !lr.spawned) {
+                if (this.ripples.length < this.maxRipples) {
+                    this.ripples.push(this.createRipple(lr.x, lr.y, lr.size, lr.depth, true));
                 }
-            }
-            if (drop.y > this.canvas.height + 50) {
-                this.drops[i] = this.drops[this.drops.length - 1];
-                this.drops.pop();
+                lr.spawned = true;
+                this.lightningRipples.splice(i, 1);
             }
         }
+
+        // Dark atmospheric background with lightning flash (optimized)
+        if (this.lightningFlashIntensity > 0) {
+            // Only create new gradient if there's a lightning flash
+            const flashBoost = Math.floor(this.lightningFlashIntensity * 30);
+            const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
+            skyGradient.addColorStop(0, `rgb(${8 + flashBoost}, ${9 + flashBoost}, ${14 + flashBoost})`);
+            skyGradient.addColorStop(0.5, `rgb(${14 + flashBoost}, ${16 + flashBoost}, ${20 + flashBoost})`);
+            skyGradient.addColorStop(1, `rgb(${20 + flashBoost}, ${22 + flashBoost}, ${28 + flashBoost})`);
+            this.ctx.fillStyle = skyGradient;
+        } else {
+            // Use cached gradient when no flash
+            this.ctx.fillStyle = this.baseSkyGradient;
+        }
+        this.ctx.fillRect(0, 0, this.canvas.width, this.waterSurfaceY);
+
+        // Draw water surface
+        this.drawWaterSurface();
+
+
+        // Add atmospheric fog layers (use cached gradients)
+        for (let i = 0; i < 3; i++) {
+            const fog = this.fogGradients[i];
+            this.ctx.fillStyle = fog.gradient;
+            this.ctx.fillRect(0, fog.y - 40, this.canvas.width, 80);
+        }
+
+        // Draw and update lightning bolts
+        for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
+            const bolt = this.lightningBolts[i];
+
+            bolt.life -= 0.08;
+            bolt.opacity = bolt.life;
+
+            if (bolt.life <= 0) {
+                this.lightningBolts.splice(i, 1);
+                continue;
+            }
+
+            // Draw segments with batched rendering for better performance
+            // Segments are already separated by type during creation
+            this.ctx.lineCap = 'round';
+
+            // Draw main segments (thickness = 3) - all layers
+            if (bolt.mainSegs.length > 0) {
+                const mainSegs = bolt.mainSegs;
+                // Layer 1: Wide atmospheric glow
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(120, 150, 200, ${bolt.opacity * 0.12})`;
+                this.ctx.lineWidth = 3 * 12;
+                this.ctx.stroke();
+
+                // Layer 2: Extended outer glow
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.25})`;
+                this.ctx.lineWidth = 3 * 8;
+                this.ctx.stroke();
+
+                // Layer 3: Outer glow
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(180, 200, 235, ${bolt.opacity * 0.4})`;
+                this.ctx.lineWidth = 3 * 5;
+                this.ctx.stroke();
+
+                // Layer 4: Middle glow
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
+                this.ctx.lineWidth = 3 * 2.5;
+                this.ctx.stroke();
+
+                // Layer 5: Core
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(240, 245, 255, ${bolt.opacity})`;
+                this.ctx.lineWidth = 3;
+                this.ctx.stroke();
+            }
+
+            // Draw branch segments (thickness = 1.5) - all layers
+            if (bolt.branchSegs.length > 0) {
+                const branchSegs = bolt.branchSegs;
+                // Layer 1: Wide atmospheric glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(120, 150, 200, ${bolt.opacity * 0.12})`;
+                this.ctx.lineWidth = 1.5 * 12;
+                this.ctx.stroke();
+
+                // Layer 2: Extended outer glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.25})`;
+                this.ctx.lineWidth = 1.5 * 8;
+                this.ctx.stroke();
+
+                // Layer 3: Outer glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(180, 200, 235, ${bolt.opacity * 0.4})`;
+                this.ctx.lineWidth = 1.5 * 5;
+                this.ctx.stroke();
+
+                // Layer 4: Middle glow
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
+                this.ctx.lineWidth = 1.5 * 2.5;
+                this.ctx.stroke();
+
+                // Layer 5: Core
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(240, 245, 255, ${bolt.opacity})`;
+                this.ctx.lineWidth = 1.5;
+                this.ctx.stroke();
+            }
+        }
+
+        // Spawn new raindrops (affected by wind gusts)
+        this.currentDropCap += (this.maxDrops - this.currentDropCap) * 0.0025;
+        const gustSpawnBoost = 1 + this.gustIntensity * 0.3; // Spawn more drops during gusts
+        const spawnChance = this.dropSpawnProbability * (0.6 + this.currentDropCap / this.maxDrops * 0.4) * (1 + Math.abs(this.windForce) * 0.12) * gustSpawnBoost;
+        if (this.drops.length < this.currentDropCap && Math.random() < spawnChance) {
+            const newDrop = this.createDrop(false);
+            // Offset spawn position based on wind (rain comes from angle during gusts)
+            newDrop.x += this.windForce * 50 * this.gustIntensity;
+            this.drops.push(newDrop);
+        }
+
+        // Draw and update ripples on water surface with depth
+        for (let i = this.ripples.length - 1; i >= 0; i--) {
+            const ripple = this.ripples[i];
+
+            ripple.radius += ripple.speed;
+            ripple.phase += ripple.frequency;
+            ripple.shimmer += ripple.pulseSpeed;
+
+            // Use cached fade rates
+            ripple.opacity -= this.fadeRates[ripple.rippleType];
+
+            if (ripple.opacity <= 0 || ripple.radius >= ripple.maxRadius) {
+                this.ripples.splice(i, 1);
+                continue;
+            }
+
+            // Apply depth-based effects
+            const depth = ripple.depth;
+            const depthAlpha = 0.4 + depth * 0.6;
+
+            ripple.y = this.getWaterY(depth);
+
+            // Realistic ripple wave pattern with oscillation
+            const waveAmplitude = Math.sin(ripple.phase) * 0.3 + 0.7;
+            const shimmerEffect = Math.sin(ripple.shimmer) * 0.4 + 0.6;
+            const pulseEffect = Math.sin(ripple.shimmer * 1.5) * 0.2 + 0.8;
+
+            // Use cached color schemes and ring configs
+            const colors = this.colorSchemes[ripple.rippleType];
+            const config = this.ringConfigs[ripple.rippleType];
+
+            // Render based on ripple pattern/style
+            for (let j = 0; j < config.count; j++) {
+                const waveOffset = j * config.spacing * (0.3 + depth * 0.7);
+                const offsetRadius = ripple.radius - waveOffset;
+                if (offsetRadius <= 0) continue;
+
+                const waveAlpha = ripple.opacity * (1 - j * 0.13) * depthAlpha * waveAmplitude * pulseEffect;
+                const flatten = 0.3 + depth * 0.35;
+
+                this.ctx.save();
+                this.ctx.translate(ripple.x, ripple.y);
+                this.ctx.scale(1, flatten);
+
+                // Different rotation patterns for each style
+                if (config.pattern === 'electric') {
+                    this.ctx.rotate(ripple.rotation + Math.sin(ripple.phase * 2 + j) * 0.1);
+                } else if (config.pattern === 'burst') {
+                    this.ctx.rotate(ripple.rotation + j * 0.3);
+                } else if (config.pattern === 'wave') {
+                    this.ctx.rotate(Math.sin(ripple.phase + j * 0.5) * 0.05);
+                } else {
+                    this.ctx.rotate(Math.sin(ripple.phase + j) * 0.02);
+                }
+
+                // Pattern-specific rendering
+                if (config.pattern === 'electric') {
+                    // Lightning: Optimized electric look with 2 layers (reduced from 3)
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r - 10}, ${colors.base.g - 10}, ${colors.base.b}, ${waveAlpha * 0.4})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 3) * (1 - j * 0.1);
+                    this.ctx.stroke();
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.highlight.r + (colors.accent.r - colors.highlight.r) * shimmerEffect * 0.5;
+                    const g = colors.highlight.g + (colors.accent.g - colors.highlight.g) * shimmerEffect * 0.5;
+                    const b = colors.highlight.b + (colors.accent.b - colors.highlight.b) * shimmerEffect * 0.5;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
+                    this.ctx.lineWidth = ripple.lineWidth * 1.3 * (1 - j * 0.12);
+                    this.ctx.stroke()
+
+                } else if (config.pattern === 'burst') {
+                    // Splash: Fast, bold rings with high contrast
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r}, ${colors.base.g}, ${colors.base.b}, ${waveAlpha * 0.6})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 2) * (1 - j * 0.2);
+                    this.ctx.stroke();
+
+                    // Bold main ring
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.base.r + (colors.highlight.r - colors.base.r) * pulseEffect;
+                    const g = colors.base.g + (colors.highlight.g - colors.base.g) * pulseEffect;
+                    const b = colors.base.b + (colors.highlight.b - colors.base.b) * pulseEffect;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
+                    this.ctx.lineWidth = ripple.lineWidth * 1.5 * (1 - j * 0.22);
+                    this.ctx.stroke();
+
+                } else if (config.pattern === 'wave') {
+                    // Strong: Multiple layered waves with medium intensity
+                    if (j < 3) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = `rgba(${colors.base.r - 15}, ${colors.base.g - 15}, ${colors.base.b - 10}, ${waveAlpha * 0.25})`;
+                        this.ctx.lineWidth = (ripple.lineWidth + 2.5) * (1 - j * 0.1);
+                        this.ctx.stroke();
+                    }
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.base.r + (colors.highlight.r - colors.base.r) * depth * shimmerEffect;
+                    const g = colors.base.g + (colors.highlight.g - colors.base.g) * depth * shimmerEffect;
+                    const b = colors.base.b + (colors.highlight.b - colors.base.b) * depth * shimmerEffect;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.75})`;
+                    this.ctx.lineWidth = ripple.lineWidth * (1 - j * 0.15);
+                    this.ctx.stroke();
+
+                    if (j < 4) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = `rgba(${colors.highlight.r}, ${colors.highlight.g}, ${colors.highlight.b}, ${waveAlpha * 0.5})`;
+                        this.ctx.lineWidth = ripple.lineWidth * 0.6 * (1 - j * 0.2);
+                        this.ctx.stroke();
+                    }
+
+                } else if (config.pattern === 'smooth') {
+                    // Gentle: Soft, blended rings with low intensity
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r}, ${colors.base.g}, ${colors.base.b}, ${waveAlpha * 0.35})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 1.5) * (1 - j * 0.14);
+                    this.ctx.stroke();
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    const r = colors.base.r + (colors.highlight.r - colors.base.r) * shimmerEffect * 0.5;
+                    const g = colors.base.g + (colors.highlight.g - colors.base.g) * shimmerEffect * 0.5;
+                    const b = colors.base.b + (colors.highlight.b - colors.base.b) * shimmerEffect * 0.5;
+                    this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.6})`;
+                    this.ctx.lineWidth = ripple.lineWidth * 0.8 * (1 - j * 0.16);
+                    this.ctx.stroke();
+
+                } else {
+                    // Standard: Balanced medium ripples
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(${colors.base.r}, ${colors.base.g}, ${colors.base.b}, ${waveAlpha * 0.4})`;
+                    this.ctx.lineWidth = (ripple.lineWidth + 1) * (1 - j * 0.12);
+                    this.ctx.stroke();
+
+                    if (j < 4) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
+                        const r = colors.base.r + (colors.highlight.r - colors.base.r) * depth * shimmerEffect;
+                        const g = colors.base.g + (colors.highlight.g - colors.base.g) * depth * shimmerEffect;
+                        const b = colors.base.b + (colors.highlight.b - colors.base.b) * depth * shimmerEffect;
+                        this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.7})`;
+                        this.ctx.lineWidth = ripple.lineWidth * (1 - j * 0.18);
+                        this.ctx.stroke();
+                    }
+                }
+
+                this.ctx.restore();
+            }
+        }
+
+        // Update and draw splash particles
+        for (let i = this.splashes.length - 1; i >= 0; i--) {
+            const particles = this.splashes[i];
+            let allDead = true;
+
+            for (let j = particles.length - 1; j >= 0; j--) {
+                const p = particles[j];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.3; // Gravity
+                p.life -= 0.04;
+
+                if (p.life > 0) {
+                    allDead = false;
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = `rgba(200, 220, 240, ${p.life * 0.8})`;
+                    this.ctx.fill();
+                }
+            }
+
+            if (allDead) {
+                this.splashes.splice(i, 1);
+            }
+        }
+
+        for (let i = this.mistParticles.length - 1; i >= 0; i--) {
+            const particle = this.mistParticles[i];
+            particle.x += particle.vx + this.windForce * 0.05;
+            particle.y += particle.vy;
+            particle.vy += 0.01;
+            particle.life -= 0.02;
+            particle.opacity = Math.max(0, particle.opacity - 0.01);
+
+            if (particle.life <= 0) {
+                this.mistParticles.splice(i, 1);
+                continue;
+            }
+
+            this.ctx.beginPath();
+            this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            this.ctx.fillStyle = `rgba(200, 220, 240, ${particle.opacity})`;
+            this.ctx.fill();
+        }
+
+        // Draw and update raindrops
+        for (let i = this.drops.length - 1; i >= 0; i--) {
+            const drop = this.drops[i];
+            const windInfluence = this.windForce * (0.15 + drop.z * 0.25);
+            drop.vx += (windInfluence - drop.vx) * 0.02;
+            drop.y += drop.vy;
+            drop.x += drop.vx;
+
+            // Calculate water surface Y at this drop's depth
+            const waterY = this.getWaterY(drop.z);
+
+            // Scale drop based on depth for perspective
+            const depthScale = 0.4 + drop.z * 0.6;
+            const scaledR = drop.r * depthScale;
+            // Length increases dramatically during gusts
+            const gustLengthMultiplier = 1 + this.gustIntensity * 0.4;
+            const scaledLength = drop.length * depthScale * (1 + Math.abs(this.windForce) * 0.1) * gustLengthMultiplier;
+            // More dramatic skew during gusts
+            const streakSkew = this.windForce * (3 + this.gustIntensity * 2);
+
+            // Only draw if above water
+            if (drop.y < waterY) {
+                // Draw motion blur streak
+                const gradient = this.ctx.createLinearGradient(
+                    drop.x, drop.y - scaledLength,
+                    drop.x, drop.y
+                );
+                gradient.addColorStop(0, `rgba(200, 220, 240, 0)`);
+                gradient.addColorStop(0.3, `rgba(210, 230, 250, ${drop.opacity * 0.3})`);
+                gradient.addColorStop(1, `rgba(220, 235, 255, ${drop.opacity * 0.7})`);
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(drop.x - streakSkew, drop.y - scaledLength);
+                this.ctx.lineTo(drop.x, drop.y);
+                this.ctx.strokeStyle = gradient;
+                this.ctx.lineWidth = scaledR * 0.6;
+                this.ctx.lineCap = 'round';
+                this.ctx.stroke();
+
+                // Draw drop head with glow
+                this.ctx.beginPath();
+                this.ctx.arc(drop.x, drop.y, scaledR * 1.5, 0, Math.PI * 2);
+                this.ctx.fillStyle = `rgba(220, 235, 255, ${drop.opacity * 0.2})`;
+                this.ctx.fill();
+
+                this.ctx.beginPath();
+                this.ctx.arc(drop.x, drop.y, scaledR, 0, Math.PI * 2);
+                this.ctx.fillStyle = `rgba(230, 240, 255, ${drop.opacity})`;
+                this.ctx.fill();
+            }
+
+            // Check if drop hits water surface at its depth
+            if (drop.y >= waterY) {
+                if (this.ripples.length < this.maxRipples) {
+                    this.ripples.push(this.createRipple(drop.x, waterY, drop.r, drop.z));
+                }
+                if (Math.random() > 0.5) {
+                    this.splashes.push(this.createSplash(drop.x, waterY, drop.z));
+                }
+                if (Math.random() > 0.3) {
+                    this.mistParticles.push(...this.createMist(drop.x, waterY - 3, drop.z));
+                }
+                this.drops.splice(i, 1);
+                continue;
+            }
+
+            // Remove drops that go off screen horizontally
+            if (drop.x < -50 || drop.x > this.canvas.width + 50) {
+                this.drops.splice(i, 1);
+            }
+        }
+
+        // Limit arrays for performance
+        if (this.ripples.length > this.maxRipples) {
+            this.ripples = this.ripples.slice(-this.maxRipples);
+        }
+        if (this.drops.length > 350) {
+            this.drops = this.drops.slice(-350);
+        }
+        if (this.splashes.length > 50) {
+            this.splashes = this.splashes.slice(-50);
+        }
+        if (this.mistParticles.length > 250) {
+            this.mistParticles = this.mistParticles.slice(-250);
+        }
+        if (this.drops.length > this.maxDrops) {
+            this.drops = this.drops.slice(-this.maxDrops);
+        }
+
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
     }

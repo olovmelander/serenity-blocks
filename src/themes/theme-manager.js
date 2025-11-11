@@ -20,6 +20,9 @@ export class ThemeManager {
         this.themeRegistry = new Map(); // Map theme names to lazy importers
         this.randomThemeInterval = null;
         this.isTransitioning = false;
+        this.themesSuspended = true;
+        this.pendingThemeName = null;
+        this.pendingThemeInstance = null;
 
         // LRU cache management
         this.maxCachedThemes = 5; // Limit cache size to prevent memory growth
@@ -259,34 +262,85 @@ export class ThemeManager {
                 }
             }
 
-            // Start new theme (pass resource managers for efficient asset loading)
-            console.log('[ThemeManager] Starting new theme with renderer:', this.webglRenderer);
-            await newTheme.start(this.webglRenderer, {
-                assetManager: this.assetManager,
-                audioManager: this.audioManager
-            });
-
-            // Update active theme
-            this.activeTheme = newTheme;
+            this.pendingThemeInstance = newTheme;
+            this.pendingThemeName = themeName;
             this.activeThemeName = themeName;
-            
-            // Update LRU to mark this theme as active/recent
-            this.updateLRU(themeName);
 
-            // Dispatch theme change event
-            eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
-
-            console.log('[ThemeManager] Theme switch complete:', themeName);
-
-            // Preload next theme in background for seamless transitions
-            this.preloadNextTheme().catch((error) => {
-                console.warn('[ThemeManager] Failed to preload next theme:', error);
-            });
+            if (this.themesSuspended) {
+                console.log('[ThemeManager] Theme activation deferred (themes are suspended)');
+                this.activeThemeName = themeName;
+            } else {
+                await this.activateThemeInstance(newTheme, themeName);
+            }
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
         } finally {
             this.isTransitioning = false;
         }
+    }
+
+    async activateThemeInstance(themeInstance, themeName) {
+        if (!themeInstance) return;
+
+        if (this.activeTheme && this.activeTheme !== themeInstance) {
+            console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
+            this.activeTheme.stop();
+        }
+
+        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
+            console.log('[ThemeManager] Cleaning up renderer resources');
+            this.webglRenderer.cleanup();
+        }
+
+        console.log('[ThemeManager] Starting new theme with renderer:', this.webglRenderer);
+        await themeInstance.start(this.webglRenderer, {
+            assetManager: this.assetManager,
+            audioManager: this.audioManager,
+        });
+
+        this.activeTheme = themeInstance;
+        this.activeThemeName = themeName;
+        this.pendingThemeInstance = null;
+        this.pendingThemeName = null;
+        this.updateLRU(themeName);
+        this.themesSuspended = false;
+
+        eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
+        console.log('[ThemeManager] Theme switch complete:', themeName);
+
+        this.preloadNextTheme().catch((error) => {
+            console.warn('[ThemeManager] Failed to preload next theme:', error);
+        });
+    }
+
+    suspendThemes() {
+        if (this.activeTheme) {
+            console.log('[ThemeManager] Suspending active theme:', this.activeThemeName);
+            this.activeTheme.stop();
+            this.pendingThemeInstance = this.activeTheme;
+            this.pendingThemeName = this.activeThemeName;
+            this.activeTheme = null;
+        }
+
+        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
+            this.webglRenderer.cleanup();
+        }
+
+        this.themesSuspended = true;
+    }
+
+    async resumeThemes() {
+        if (!this.themesSuspended) {
+            return;
+        }
+        const themeName = this.pendingThemeName || this.activeThemeName;
+        const themeInstance = this.pendingThemeInstance || (themeName ? this.themeInstances.get(themeName) : null);
+        if (!themeName || !themeInstance) {
+            console.warn('[ThemeManager] No theme queued to resume');
+            this.themesSuspended = false;
+            return;
+        }
+        await this.activateThemeInstance(themeInstance, themeName);
     }
 
     /**

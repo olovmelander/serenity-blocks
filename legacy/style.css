@@ -813,10 +813,10 @@ body {
 
 .sunset-god-rays {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 600px;
-    height: 600px;
+    top: var(--sunset-god-ray-center-y, 50%);
+    left: var(--sunset-god-ray-center-x, 50%);
+    width: clamp(520px, 46vw, 760px);
+    height: clamp(520px, 46vw, 760px);
     transform-origin: center;
     transform: translate(-50%, -50%);
     animation: sunset-ray-rotation 60s ease-in-out infinite alternate;
@@ -826,16 +826,22 @@ body {
 
 .sunset-god-ray {
     position: absolute;
-    top: 0;
+    top: 50%;
     left: 50%;
-    width: 3px;
-    height: 100%;
-    background: linear-gradient(to bottom,
-        rgba(255, 220, 150, 0.25) 0%,
-        rgba(255, 200, 130, 0.15) 40%,
-        transparent 70%);
+    width: var(--ray-width, 4px);
+    height: var(--ray-length, 320px);
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 230, 180, 0.4) 0%,
+        rgba(255, 180, 120, 0.18) 55%,
+        rgba(255, 150, 90, 0) 100%
+    );
     transform-origin: top center;
-    will-change: transform;
+    transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg));
+    opacity: var(--ray-opacity, 0.45);
+    filter: blur(0.5px);
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
 }
 
 @keyframes sunset-ray-rotation {

@@ -24,19 +24,44 @@ export default class AuroraTheme extends BaseTheme {
             console.log('[Aurora] Stars container found:', !!starsContainer);
             if (starsContainer && starsContainer.children.length === 0) {
                 const fragment = document.createDocumentFragment();
-                const starCount = 48;
+                // ENHANCED: More stars for richer starfield
+                const starCount = 150;
                 for (let i = 0; i < starCount; i++) {
                     const star = document.createElement('div');
                     star.className = 'aurora-star';
-                    const size = this.random(0.6, 1.2);
+
+                    // ENHANCED: Varied star sizes for depth perception
+                    const starType = Math.random();
+                    let size, opacity, twinkleSpeed;
+
+                    if (starType < 0.6) {
+                        // Distant stars (60%) - small and dim
+                        size = this.random(0.8, 1.4);
+                        opacity = this.random(0.2, 0.5);
+                        twinkleSpeed = this.random(6, 10);
+                    } else if (starType < 0.9) {
+                        // Mid-distance stars (30%) - medium
+                        size = this.random(1.4, 2);
+                        opacity = this.random(0.4, 0.7);
+                        twinkleSpeed = this.random(5, 8);
+                    } else {
+                        // Close bright stars (10%) - large and bright
+                        size = this.random(2, 3);
+                        opacity = this.random(0.6, 0.9);
+                        twinkleSpeed = this.random(4, 7);
+                    }
+
                     star.style.width = `${size}px`;
                     star.style.height = `${size}px`;
                     star.style.left = `${this.random(0, 100)}%`;
-                    star.style.top = `${this.random(0, 100)}%`;
-                    star.style.opacity = `${this.random(0.3, 0.8).toFixed(2)}`;
-                    star.style.animationDelay = `${this.random(0, 8)}s`;
+                    star.style.top = `${this.random(0, 70)}%`; // ENHANCED: Stars mostly in upper 70%
+                    star.style.setProperty('--base-opacity', opacity.toFixed(2));
+                    star.style.opacity = opacity.toFixed(2);
+                    star.style.animationDuration = `${twinkleSpeed}s`;
+                    star.style.animationDelay = `${this.random(0, twinkleSpeed)}s`;
+
                     fragment.appendChild(star);
-                    this.stars.push(star); // Store reference for reactive effects
+                    this.stars.push(star);
                 }
                 starsContainer.appendChild(fragment);
                 this.registerContainer(starsContainer);
@@ -320,39 +345,124 @@ export default class AuroraTheme extends BaseTheme {
         const veilContainer = this.getContainer('aurora-veil-container');
         if (!veilContainer || veilContainer.children.length > 0) return;
 
-        const layerCount = 2;
+        // ENHANCED: More layers for depth and complexity
+        const layerCount = 5;
         const fragment = document.createDocumentFragment();
+
         for (let i = 0; i < layerCount; i++) {
             const veil = document.createElement('div');
             veil.className = 'aurora-veil';
 
-            const hue = this.random(120, 140);
-            const duration = this.random(18, 24);
-            const glow = this.random(7, 9);
-            const shift = this.random(3, 8);
-            const rise = this.random(-6, -3);
-            const tilt = this.random(-3, 3);
-            const opacity = this.random(0.25, 0.38);
-            const height = this.random(40, 48);
-            const top = this.random(22, 32);
-            const leftOffset = this.random(-4, 4);
+            // ENHANCED: Varied hues for color variety (green to purple range)
+            const hue = this.random(110, 170); // Wider range: green -> cyan -> blue -> purple
+
+            // ENHANCED: Slower, more organic movement
+            const duration = this.random(25, 40); // Slower than before
+            const glow = this.random(10, 15); // Slower glow pulse
+
+            // ALIGNED: More horizontal curtains for natural aurora feel, with occasional gentle diagonal
+            const orientationType = Math.random();
+            let orientation, height, width, top, left, right;
+
+            if (orientationType < 0.85) {
+                // Horizontal curtains (85%) - primary aurora curtains flow across screen
+                orientation = 'horizontal';
+                // SUBTLE: Smaller heights for less screen coverage
+                height = this.random(25 + i * 3, 40 + i * 3);
+                top = 20 + i * 6; // Adjusted vertical spacing
+                left = this.random(-20, -12);
+                right = this.random(-20, -12);
+
+                // Subtle diagonal tilt for natural variation (±15° max)
+                veil.style.setProperty('--aurora-base-rotation', `${this.random(-8, 8)}deg`);
+            } else {
+                // Gentle diagonal curtains (15%) - adds variety without chaos
+                orientation = 'diagonal';
+                width = this.random(35, 55);
+                height = this.random(25, 40);
+                left = this.random(15, 45);
+                top = this.random(20, 45);
+
+                // Gentle rotation for diagonal appearance (±25° max)
+                veil.style.setProperty('--aurora-base-rotation', `${this.random(-20, 20)}deg`);
+            }
+
+            // ALIGNED: Coordinated movement patterns for fluid, cohesive flow
+            // Alternate flow direction by layer for visual rhythm
+            const flowDirection = i % 2 === 0 ? 1 : -1;
+            const shift = this.random(15, 22) * flowDirection;
+            // Layers rise together with subtle variation
+            const rise = this.random(-12, -8);
+            const riseVariation = this.random(-5, 5);
+            // Gentler tilt synchronized with flow direction
+            const tilt = this.random(6, 10) * flowDirection;
+            const drift = this.random(-8, 8);
+
+            // FLUID: Very subtle scale variation for seamless flow
+            const scaleStart = this.random(0.92, 1.05);
+            const scaleEnd = this.random(0.95, 1.08);
+            const scaleMid = this.random(1.0, 1.12);
+
+            // ORGANIC: More varied ellipse shapes for natural aurora forms
+            const ellipseX = this.random(90, 160);
+            const ellipseY = this.random(85, 125);
+
+            // ORGANIC: Unique border-radius for each curtain's organic shape
+            const shape1 = this.random(38, 62);
+            const shape2 = 100 - shape1;
+            const shape3 = this.random(42, 58);
+            const shape4 = 100 - shape3;
+            const shape5 = this.random(40, 60);
+            const shape6 = 100 - shape5;
+            const shape7 = this.random(38, 62);
+            const shape8 = 100 - shape7;
+            const organicShape = `${shape1}% ${shape2}% ${shape3}% ${shape4}% / ${shape5}% ${shape6}% ${shape7}% ${shape8}%`;
+
+            // SUBTLE: Reduced opacity for softer, more ethereal aurora
+            const baseOpacity = 0.12 + (i * 0.04);
+            const opacity = this.random(baseOpacity, baseOpacity + 0.1);
 
             veil.style.setProperty('--aurora-hue', hue.toFixed(1));
             veil.style.setProperty('--aurora-duration', `${duration.toFixed(2)}s`);
             veil.style.setProperty('--aurora-glow', `${glow.toFixed(2)}s`);
             veil.style.setProperty('--aurora-offset', `${shift.toFixed(2)}%`);
             veil.style.setProperty('--aurora-rise', `${rise.toFixed(2)}%`);
+            veil.style.setProperty('--aurora-rise-var', `${riseVariation.toFixed(2)}%`);
             veil.style.setProperty('--aurora-tilt', `${tilt.toFixed(2)}deg`);
+            veil.style.setProperty('--aurora-drift', `${drift.toFixed(2)}%`);
             veil.style.setProperty('--aurora-opacity', opacity.toFixed(2));
-            veil.style.setProperty('--aurora-height', `${height.toFixed(2)}vh`);
-            const insetTop = top.toFixed(2);
-            const insetLeft = (-15 + leftOffset).toFixed(2);
-            veil.style.setProperty(
-                '--aurora-inset',
-                `${insetTop}% ${insetLeft}% auto ${insetLeft}%`,
-            );
+            veil.style.setProperty('--aurora-scale-start', scaleStart.toFixed(2));
+            veil.style.setProperty('--aurora-scale-end', scaleEnd.toFixed(2));
+            veil.style.setProperty('--aurora-scale-mid', scaleMid.toFixed(2));
+            veil.style.setProperty('--aurora-ellipse-x', `${ellipseX.toFixed(0)}%`);
+            veil.style.setProperty('--aurora-ellipse-y', `${ellipseY.toFixed(0)}%`);
+            veil.style.setProperty('--aurora-shape', organicShape);
+
+            // ALIGNED: Position based on orientation type
+            if (orientation === 'horizontal') {
+                veil.style.top = `${top}%`;
+                veil.style.left = `${left}%`;
+                veil.style.right = `${right}%`;
+                veil.style.height = `${height}vh`;
+                veil.style.width = 'auto';
+            } else {
+                // Diagonal curtains
+                veil.style.left = `${left}%`;
+                veil.style.top = `${top}%`;
+                veil.style.width = `${width}vw`;
+                veil.style.height = `${height}vh`;
+            }
+
             veil.style.zIndex = `${2 + i}`;
-            veil.style.animationDelay = `${this.random(0, 4).toFixed(2)}s`;
+            // SMOOTH: Staggered fade-in for each layer, with animations starting mid-cycle
+            const fadeDelay = i * 0.3; // 0s, 0.3s, 0.6s, 0.9s, 1.2s for smooth cascade
+            // Start animations mid-cycle with negative delays to prevent synchronized start
+            const waveDelay = -this.random(0, duration);
+            const glowDelay = -this.random(0, glow);
+            const rippleDelay = -this.random(0, duration * 0.7);
+            const morphDelay = -this.random(0, duration * 1.3);
+
+            veil.style.animationDelay = `${fadeDelay}s, ${waveDelay.toFixed(2)}s, ${glowDelay.toFixed(2)}s, ${rippleDelay.toFixed(2)}s, ${morphDelay.toFixed(2)}s`;
 
             fragment.appendChild(veil);
         }
