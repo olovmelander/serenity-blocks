@@ -9,9 +9,9 @@ export default class WinterTheme extends BaseTheme {
         this.snowParticles = [];
         this.windForce = 0;
         this.targetWindForce = 0;
-        this.nextWindChange = 0;
+        this.nextWindChange = 600; // Start calm, first wind change after 10 seconds
         this.gustIntensity = 0;
-        this.nextGust = 0;
+        this.nextGust = 1800; // Start calm, first gust after 30 seconds
         this.gustDuration = 0;
         this.time = 0;
         this.maxParticles = 800; // Reduced from 1200
@@ -23,7 +23,7 @@ export default class WinterTheme extends BaseTheme {
         this.cameraShake = { x: 0, y: 0, intensity: 0 };
         this.distortionWaves = [];
         this.flashIntensity = 0;
-        this.nextFlash = 0;
+        this.nextFlash = 3600; // Start calm, first flash after 60 seconds
 
         // Gameplay integration
         this.comboMultiplier = 1.0;
@@ -303,8 +303,8 @@ export default class WinterTheme extends BaseTheme {
             }
         }
 
-        // Flash effect
-        this.flashIntensity = Math.min(0.15 + lineCount * 0.05, 0.4);
+        // Flash effect (nearly invisible for comfort)
+        this.flashIntensity = Math.min(0.003 + lineCount * 0.001, 0.01);
     }
 
     createIceBurstParticle(x, y, lineCount) {
@@ -542,10 +542,7 @@ export default class WinterTheme extends BaseTheme {
                     this.spiralSystems.push(spiral);
                 }
 
-                // Add distortion waves (reduced count)
-                for (let i = 0; i < 3; i++) { // Reduced from 5
-                    this.distortionWaves.push(this.createDistortionWave());
-                }
+                // Distortion waves disabled - vertical pillar flashes removed for comfort
             }
         }
 
@@ -571,13 +568,13 @@ export default class WinterTheme extends BaseTheme {
         const windTransitionSpeed = this.gustIntensity > 0 ? 0.12 : 0.03;
         this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
 
-        // Random atmospheric flashes during extreme winds
-        if (this.time >= this.nextFlash && Math.abs(this.windForce) > 8) {
-            this.flashIntensity = 0.15;
-            this.nextFlash = this.time + Math.random() * 200 + 100;
+        // Random atmospheric flashes during extreme winds (barely visible for comfort)
+        if (this.time >= this.nextFlash && Math.abs(this.windForce) > 14) { // Only during very extreme winds (increased threshold)
+            this.flashIntensity = 0.001; // Barely visible flash (reduced from 0.003)
+            this.nextFlash = this.time + Math.random() * 600 + 300; // More frequent (every 5-15 seconds at 60fps)
         }
         if (this.flashIntensity > 0) {
-            this.flashIntensity *= 0.85;
+            this.flashIntensity *= 0.9; // Faster decay (was 0.85)
         }
 
         // Apply camera shake
@@ -586,8 +583,8 @@ export default class WinterTheme extends BaseTheme {
 
         // Dark atmospheric background with dynamic lighting (combo affects brightness)
         const comboBoost = Math.floor((this.comboMultiplier - 1) * 20);
-        const flashBoost = Math.floor(this.flashIntensity * 40);
-        const gustBoost = Math.floor(this.gustIntensity * 15);
+        const flashBoost = Math.floor(this.flashIntensity * 5); // Reduced from 15 to 5
+        const gustBoost = Math.floor(this.gustIntensity * 10); // Reduced from 15 to 10
 
         // Use cached gradients
         this.ctx.fillStyle = this.getCachedBackgroundGradient(comboBoost, flashBoost, gustBoost);
@@ -609,36 +606,46 @@ export default class WinterTheme extends BaseTheme {
                 continue;
             }
 
-            const pulseOpacity = lightning.opacity * (0.7 + Math.sin(lightning.pulsePhase) * 0.3);
+            const pulseOpacity = lightning.opacity * (0.3 + Math.sin(lightning.pulsePhase) * 0.15);
 
+            // Optimized: Draw all segments in batch with single stroke per layer
+            this.ctx.lineCap = 'round';
+
+            // Outer glow layer
+            this.ctx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.15})`;
+            this.ctx.lineWidth = 6;
+            this.ctx.beginPath();
             for (const branch of lightning.branches) {
                 for (const segment of branch) {
-                    // Outer glow
-                    this.ctx.beginPath();
                     this.ctx.moveTo(segment.x1, segment.y1);
                     this.ctx.lineTo(segment.x2, segment.y2);
-                    this.ctx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.3})`;
-                    this.ctx.lineWidth = 8;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.stroke();
-
-                    // Middle glow
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                    this.ctx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity * 0.6})`;
-                    this.ctx.lineWidth = 4;
-                    this.ctx.stroke();
-
-                    // Core
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                    this.ctx.strokeStyle = `rgba(230, 245, 255, ${pulseOpacity})`;
-                    this.ctx.lineWidth = 2;
-                    this.ctx.stroke();
                 }
             }
+            this.ctx.stroke();
+
+            // Middle glow layer
+            this.ctx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity * 0.3})`;
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
+
+            // Core layer
+            this.ctx.strokeStyle = `rgba(230, 245, 255, ${pulseOpacity * 0.5})`;
+            this.ctx.lineWidth = 1.5;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
         }
 
         // Draw and update combo vortexes
@@ -680,19 +687,15 @@ export default class WinterTheme extends BaseTheme {
                     continue;
                 }
 
-                const sparkleEffect = Math.sin(p.sparkle) * 0.3 + 0.7;
+                const sparkleEffect = Math.sin(p.sparkle) * 0.15 + 0.35;
 
-                // Simplified glow using shadow blur
-                this.ctx.shadowBlur = p.size * 4;
-                this.ctx.shadowColor = `rgba(200, 230, 255, ${p.opacity * 0.6 * sparkleEffect})`;
-
-                // Core
+                // Optimized: No shadow blur for better performance
+                this.ctx.globalAlpha = p.opacity * sparkleEffect * 0.5;
+                this.ctx.fillStyle = 'rgba(240, 250, 255, 1)';
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgba(240, 250, 255, ${p.opacity * sparkleEffect})`;
                 this.ctx.fill();
-
-                this.ctx.shadowBlur = 0; // Reset
+                this.ctx.globalAlpha = 1;
             }
 
             if (vortex.life <= 0 || vortex.radius > vortex.maxRadius) {
@@ -713,62 +716,41 @@ export default class WinterTheme extends BaseTheme {
             particle.opacity = particle.life * 0.9;
             particle.sparkle += 0.15;
 
-            if (particle.life <= 0 || particle.y > canvasHeight) {
+            if (particle.life <= 0 || particle.y > this.canvas.height) {
                 this.releaseParticle('ice', particle);
                 this.iceBurstParticles.splice(i, 1);
                 continue;
             }
 
-            const sparkleIntensity = Math.sin(particle.sparkle) * 0.4 + 0.6;
+            const sparkleIntensity = Math.sin(particle.sparkle) * 0.2 + 0.3;
 
             this.ctx.save();
             this.ctx.translate(particle.x, particle.y);
             this.ctx.rotate(particle.rotation);
 
-            // Simplified glow using shadow instead of gradient
-            this.ctx.shadowBlur = particle.size * 3 * particle.glowIntensity;
-            this.ctx.shadowColor = `rgba(200, 230, 255, ${particle.opacity * 0.6 * sparkleIntensity})`;
+            // Optimized: No shadow blur for better performance
+            this.ctx.globalAlpha = particle.opacity * sparkleIntensity * 0.5;
 
             // Ice shard shape
+            this.ctx.fillStyle = 'rgba(220, 240, 255, 1)';
             this.ctx.beginPath();
             this.ctx.moveTo(0, -particle.size);
             this.ctx.lineTo(particle.size * 0.5, particle.size * 0.5);
             this.ctx.lineTo(-particle.size * 0.5, particle.size * 0.5);
             this.ctx.closePath();
-            this.ctx.fillStyle = `rgba(220, 240, 255, ${particle.opacity * sparkleIntensity})`;
             this.ctx.fill();
 
             // Highlight
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.beginPath();
             this.ctx.arc(-particle.size * 0.2, -particle.size * 0.3, particle.size * 0.3, 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity * 0.8 * sparkleIntensity})`;
             this.ctx.fill();
 
-            this.ctx.shadowBlur = 0; // Reset
+            this.ctx.globalAlpha = 1;
             this.ctx.restore();
         }
 
-        // Draw and update distortion waves
-        for (let i = this.distortionWaves.length - 1; i >= 0; i--) {
-            const wave = this.distortionWaves[i];
-            wave.y += wave.speed;
-            wave.life -= 0.01;
-
-            if (wave.life <= 0 || wave.y > this.canvas.height) {
-                this.distortionWaves.splice(i, 1);
-                continue;
-            }
-
-            const waveGradient = this.ctx.createLinearGradient(
-                wave.x - wave.width / 2, wave.y,
-                wave.x + wave.width / 2, wave.y
-            );
-            waveGradient.addColorStop(0, 'rgba(200, 215, 235, 0)');
-            waveGradient.addColorStop(0.5, `rgba(220, 230, 245, ${wave.opacity * wave.life})`);
-            waveGradient.addColorStop(1, 'rgba(200, 215, 235, 0)');
-            this.ctx.fillStyle = waveGradient;
-            this.ctx.fillRect(wave.x - wave.width / 2, 0, wave.width, this.canvas.height);
-        }
+        // Distortion waves (vertical pillars) disabled for comfort - removed rendering code
 
         // Draw and update ground snow
         for (let i = this.groundSnow.length - 1; i >= 0; i--) {
@@ -947,52 +929,45 @@ export default class WinterTheme extends BaseTheme {
                 continue;
             }
 
-            // Optimize: Skip trail rendering for far particles (depth < 0.3)
-            if (particle.z > 0.3) {
-                // Draw motion trail (batch rendering)
-                this.ctx.fillStyle = 'rgba(180, 195, 220, 0.6)'; // Base trail color
-                for (let j = 1; j < particle.trail.length; j += 2) { // Skip every other trail point
-                    const trailPoint = particle.trail[j];
-                    const trailOpacity = particle.opacity * (1 - j / particle.trail.length) * 0.6;
-                    const trailSize = particle.size * (1 - j / particle.trail.length * 0.5);
-
-                    this.ctx.globalAlpha = trailOpacity;
-                    this.ctx.beginPath();
-                    this.ctx.arc(trailPoint.x, trailPoint.y, trailSize, 0, Math.PI * 2);
-                    this.ctx.fill();
+            // Optimize: Skip trail rendering for far particles and reduce trail complexity
+            if (particle.z > 0.5 && particle.trail.length > 2) { // Only render trails for very near particles
+                // Draw simplified trail using line instead of circles (much faster)
+                this.ctx.globalAlpha = particle.opacity * 0.3;
+                this.ctx.strokeStyle = 'rgba(180, 195, 220, 1)';
+                this.ctx.lineWidth = particle.size * 0.5;
+                this.ctx.lineCap = 'round';
+                this.ctx.beginPath();
+                this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
+                for (let j = 2; j < particle.trail.length; j += 3) { // Skip more points
+                    this.ctx.lineTo(particle.trail[j].x, particle.trail[j].y);
                 }
+                this.ctx.stroke();
                 this.ctx.globalAlpha = 1;
             }
 
-            // Draw main particle with rotation
+            // Draw main particle with rotation (optimized - no shadow blur)
             this.ctx.save();
             this.ctx.translate(particle.x, particle.y);
             this.ctx.rotate(particle.rotation);
 
-            // Simplified glow for better performance (only for near particles)
-            if (particle.z > 0.4) {
-                const glowSize = particle.size * 3;
-                this.ctx.shadowBlur = glowSize;
-                this.ctx.shadowColor = `rgba(225, 235, 250, ${particle.opacity * 0.4})`;
-            }
-
             // Main particle (elongated for wind streak effect)
             const streakLength = 1 + Math.abs(this.windForce) * 0.4 * particle.z;
+            this.ctx.globalAlpha = particle.opacity;
+            this.ctx.fillStyle = 'rgba(240, 245, 255, 1)';
             this.ctx.beginPath();
             this.ctx.ellipse(0, 0, particle.size, particle.size * streakLength,
                            Math.atan2(particle.vy, particle.vx), 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(240, 245, 255, ${particle.opacity})`;
             this.ctx.fill();
 
-            // Highlight (only for near particles)
-            if (particle.z > 0.5) {
+            // Highlight (only for very near particles to save performance)
+            if (particle.z > 0.6) {
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
                 this.ctx.beginPath();
                 this.ctx.arc(-particle.size * 0.2, -particle.size * 0.2, particle.size * 0.5, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity * 0.7})`;
                 this.ctx.fill();
             }
 
-            this.ctx.shadowBlur = 0; // Reset shadow
+            this.ctx.globalAlpha = 1;
             this.ctx.restore();
         }
 
