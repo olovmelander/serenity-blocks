@@ -21,6 +21,13 @@
                 <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
                 <feBlend in="SourceGraphic" in2="goo" />
             </filter>
+            <!-- LAVA LAMP: Balanced gooey filter - merges smoothly but allows separation -->
+            <filter id="gooey-lava" colorInterpolationFilters="sRGB">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 17 -7" result="goo" />
+                <feGaussianBlur in="goo" stdDeviation="1.5" result="smoothGoo" />
+                <feComposite in="SourceGraphic" in2="smoothGoo" operator="atop" />
+            </filter>
             <!-- Clip path for multiplayer boards with rounded corners -->
             <clipPath id="multiplayer-clip-path" clipPathUnits="userSpaceOnUse">
                 <!-- Player 1 board: full 300x600 area with 12px rounded corners -->
@@ -57,10 +64,10 @@
         <div id="sunset-theme" class="theme-container">
             <div class="sun-and-sky">
                 <div class="sun">
+                    <div class="sunset-god-rays"></div>
                     <div id="sunset-sunflares" class="sunset-sunflares"></div>
+                    <div class="lens-flare"></div>
                 </div>
-                <div class="lens-flare"></div>
-                <div class="sunset-god-rays"></div>
             </div>
             <div id="sunset-clouds-back" class="sunset-clouds"></div>
             <div id="sunset-clouds-mid" class="sunset-clouds"></div>
@@ -95,22 +102,19 @@
             <div id="petals"></div>
         </div>
         <div id="winter-theme" class="theme-container">
-            <div class="wind-overlay"></div>
-            <div id="snowflakes-back" class="snowflakes-layer"></div>
-            <div id="snowflakes-mid" class="snowflakes-layer"></div>
-            <div id="snowflakes-front" class="snowflakes-layer"></div>
-            <div class="window-pane">
-                <div class="frost-overlay"></div>
-                <div class="ice-crystals"></div>
-            </div>
+            <canvas id="winter-canvas"></canvas>
         </div>
         <div id="fall-theme" class="theme-container">
             <div class="fall-bg"></div>
+            <div id="fall-tree-branches"></div>
+            <div id="fall-light-rays" class="fall-light-rays"></div>
+            <canvas id="fall-canvas"></canvas>
             <div id="fall-wind-particles"></div>
             <div id="fall-leaves-back" class="fall-leaves-layer"></div>
             <div id="fall-leaves-mid" class="fall-leaves-layer"></div>
             <div id="fall-leaves-front" class="fall-leaves-layer"></div>
             <div class="ground-leaves"></div>
+            <div id="fall-ground-mist" class="fall-ground-mist"></div>
         </div>
         <div id="summer-theme" class="theme-container">
             <div class="summer-sky"></div>
@@ -328,7 +332,9 @@
             <div id="ice-temple-sky"></div>
             <div id="ice-temple-stars"></div>
             <div id="ice-temple-aurora"></div>
-            <div id="ice-temple-mountains-distant"></div>
+            <div id="ice-temple-icefield"></div>
+            <div id="ice-temple-cracks"></div>
+            <div id="ice-temple-ice-shards"></div>
             <div id="ice-temple-mist"></div>
             <div id="ice-temple-snow"></div>
             <div id="ice-temple-refractions"></div>
@@ -492,6 +498,12 @@
             <div class="cosmic-noir-grain"></div>
             <div id="cosmic-noir-pulses"></div>
             <div id="cosmic-noir-waves"></div>
+        </div>
+        <div id="nimbus-veil-theme" class="theme-container">
+            <canvas id="nimbus-veil-cloud-canvas"></canvas>
+            <div class="nimbus-veil-mist-overlay"></div>
+            <div id="nimbus-veil-pulses"></div>
+            <div id="nimbus-veil-waves"></div>
         </div>
     </div>
 
@@ -1027,6 +1039,13 @@
                             <select id="background-combo-effects" class="setting-select">
                                 <option value="true">On</option>
                                 <option value="false">Off</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="sunset-flare-intensity">Sunset Lens Flare Intensity:</label>
+                            <select id="sunset-flare-intensity" class="setting-select">
+                                <option value="full">Full</option>
+                                <option value="reduced">Reduced</option>
                             </select>
                         </div>
                     </div>

@@ -46,6 +46,10 @@ export class InfinityMinimap {
         this.isDragging = false;
         this.isHovering = false;
 
+        // Mouse position for cursor glow effect
+        this.mouseX = 50; // Center by default (percentage)
+        this.mouseY = 50;
+
         // Height milestones
         this.milestones = [100, 250, 500, 750, 1000];
 
@@ -57,9 +61,9 @@ export class InfinityMinimap {
         this.lastLockedPiecesCount = 0;
 
         // PERFORMANCE: Time-based throttling to prevent excessive renders
-        // Minimap doesn't need to update 60 times per second!
+        // Note: Using 16ms (~60fps) to support smooth pulsing animation
         this.lastUpdateTime = 0;
-        this.updateInterval = 100; // Update every 100ms (10fps max)
+        this.updateInterval = 16; // Update every ~16ms for smooth animations
 
         // Bind event handlers
         this.handleClick = this._onClick.bind(this);
@@ -97,6 +101,9 @@ export class InfinityMinimap {
             margin-top: 0;
             display: none;
             box-sizing: border-box;
+            opacity: 0.8;
+            transform-origin: top right;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         `;
 
         // Create canvas
@@ -109,10 +116,101 @@ export class InfinityMinimap {
             margin: 12px auto 0 auto;
             border-radius: 10px;
             background: rgba(10, 18, 40, 0.85);
+            transition: opacity 0.3s ease;
         `;
 
         this.ctx = this.canvas.getContext('2d');
         this.container.appendChild(this.canvas);
+
+        // Add animations and hover styles
+        const hoverStyle = document.createElement('style');
+        hoverStyle.textContent = `
+            /* Slide-in animation from right with spring effect */
+            @keyframes minimapSlideIn {
+                0% {
+                    transform: translateX(120%) scale(0.95);
+                    opacity: 0;
+                }
+                60% {
+                    transform: translateX(-8px) scale(1.02);
+                    opacity: 1;
+                }
+                100% {
+                    transform: translateX(0) scale(1);
+                    opacity: 0.8;
+                }
+            }
+
+            /* Slide-out animation */
+            @keyframes minimapSlideOut {
+                0% {
+                    transform: translateX(0) scale(1);
+                    opacity: 0.8;
+                }
+                100% {
+                    transform: translateX(120%) scale(0.95);
+                    opacity: 0;
+                }
+            }
+
+            /* Activation pulse ripple effect */
+            @keyframes activationPulse {
+                0% {
+                    box-shadow:
+                        0 14px 40px rgba(10, 16, 30, 0.5),
+                        inset 0 0 24px rgba(60, 255, 200, 0.2),
+                        0 0 0 0 rgba(100, 255, 200, 0.7);
+                }
+                50% {
+                    box-shadow:
+                        0 14px 40px rgba(10, 16, 30, 0.5),
+                        inset 0 0 40px rgba(60, 255, 200, 0.6),
+                        0 0 30px 15px rgba(100, 255, 200, 0);
+                }
+                100% {
+                    box-shadow:
+                        0 14px 40px rgba(10, 16, 30, 0.5),
+                        inset 0 0 24px rgba(60, 255, 200, 0.2),
+                        0 0 0 0 rgba(100, 255, 200, 0);
+                }
+            }
+
+            /* Enhanced border pulse for active state */
+            @keyframes borderPulseActive {
+                0%, 100% {
+                    border-color: rgba(100, 255, 200, 0.5);
+                }
+                50% {
+                    border-color: rgba(100, 255, 200, 0.8);
+                }
+            }
+
+            .infinity-minimap:hover {
+                opacity: 1 !important;
+                transform: scale(1.02) !important;
+                border-color: rgba(100, 255, 200, 0.65) !important;
+                box-shadow:
+                    0 18px 50px rgba(10, 16, 30, 0.7),
+                    inset 0 0 32px rgba(60, 255, 200, 0.35),
+                    0 0 40px rgba(100, 255, 200, 0.2) !important;
+            }
+
+            .infinity-minimap:active {
+                transform: scale(0.98) !important;
+            }
+
+            /* Active state while minimap is visible */
+            .infinity-minimap.active {
+                animation: borderPulseActive 3s ease-in-out infinite;
+            }
+
+            /* Enhanced title glow when active */
+            .infinity-minimap.active .minimap-title {
+                color: rgba(100, 255, 200, 0.9) !important;
+                text-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
+            }
+        `;
+        document.head.appendChild(hoverStyle);
 
         // Create title label
         const title = document.createElement('div');
@@ -128,6 +226,7 @@ export class InfinityMinimap {
             letter-spacing: 1px;
             margin-bottom: 12px;
             text-transform: uppercase;
+            transition: color 0.3s ease, opacity 0.3s ease;
         `;
         this.container.appendChild(title);
 
@@ -139,11 +238,15 @@ export class InfinityMinimap {
         this.canvas.addEventListener('mouseenter', this.handleMouseEnter);
         this.canvas.addEventListener('mouseleave', this.handleMouseLeave);
 
+        // Add container-level mousemove for cursor glow effect
+        this.container.addEventListener('mousemove', this._onContainerMouseMove.bind(this));
+        this.container.addEventListener('mouseleave', this._onContainerMouseLeave.bind(this));
+
         console.log('[InfinityMinimap] Initialized');
     }
 
     /**
-     * Show minimap
+     * Show minimap (always visible, no entrance animation)
      */
     show() {
         const panel = document.getElementById('single-player-container');
@@ -152,16 +255,93 @@ export class InfinityMinimap {
             panel.appendChild(this.container);
         }
 
+        // Simply show without animation
         this.container.style.display = 'block';
+        this.container.style.transform = 'translateX(0) scale(1)';
+        this.container.style.opacity = '0.8';
+
         console.log('[InfinityMinimap] Shown');
     }
 
     /**
-     * Hide minimap
+     * Hide minimap with animated exit
      */
     hide() {
-        this.container.style.display = 'none';
-        console.log('[InfinityMinimap] Hidden');
+        // Remove active class
+        this.container.classList.remove('active');
+
+        // Apply slide-out animation
+        this.container.style.animation = 'minimapSlideOut 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards';
+
+        // Trigger activation pulse on close
+        this._triggerActivationPulse();
+
+        // Actually hide after animation completes
+        setTimeout(() => {
+            this.container.style.display = 'none';
+            this.container.style.animation = 'none';
+        }, 400);
+
+        console.log('[InfinityMinimap] Hidden with animation');
+    }
+
+    /**
+     * Trigger activation pulse effect
+     * @private
+     */
+    _triggerActivationPulse() {
+        // Temporarily remove the active class to allow the pulse to trigger
+        const wasActive = this.container.classList.contains('active');
+        if (wasActive) {
+            this.container.classList.remove('active');
+        }
+
+        // Force a reflow to ensure the animation restarts
+        void this.container.offsetWidth;
+
+        // Apply the activation pulse
+        this.container.style.animation = 'activationPulse 0.6s ease-out';
+
+        // After the pulse completes, restore active state if needed
+        setTimeout(() => {
+            this.container.style.animation = '';
+            if (wasActive) {
+                this.container.classList.add('active');
+            }
+        }, 600);
+    }
+
+    /**
+     * Trigger pause highlight effect (called when game is paused)
+     * Makes the minimap visually react to indicate it's now interactive
+     */
+    onPause() {
+        // Trigger immediate activation pulse for instant feedback
+        this._triggerActivationPulse();
+
+        // Add active class for continuous pulse (will be restored after pulse animation)
+        // The _triggerActivationPulse will handle adding it back after the pulse
+        setTimeout(() => {
+            this.container.classList.add('active');
+        }, 650); // Slightly after pulse completes
+
+        console.log('[InfinityMinimap] Pause highlight activated');
+    }
+
+    /**
+     * Trigger unpause effect (called when game resumes)
+     * Subtle farewell animation
+     */
+    onUnpause() {
+        // Trigger pulse before removing active class
+        this._triggerActivationPulse();
+
+        // Remove active class (stops continuous pulse) - will be handled by _triggerActivationPulse
+        setTimeout(() => {
+            this.container.classList.remove('active');
+        }, 650);
+
+        console.log('[InfinityMinimap] Unpause effect triggered');
     }
 
     /**
@@ -187,13 +367,14 @@ export class InfinityMinimap {
         const lockedPiecesCount = gameState.lockedPieces?.length || 0;
 
         // PERFORMANCE: Only render if something actually changed
-        // Note: lockedPiecesCount changes every piece, so we use larger intervals
+        // Note: Always render to support pulsing animation, but throttled by updateInterval
         const shouldRender =
             this.lastCameraRow !== cameraRow ||
             this.lastBuildHeight !== buildHeight ||
             this.lastTopRow !== topRow ||
             this.lastLockedPiecesCount !== lockedPiecesCount ||
-            this.gameState === null; // First render
+            this.gameState === null || // First render
+            true; // Always render for smooth animations (throttled by updateInterval)
 
         if (shouldRender) {
             this.gameState = gameState;
@@ -228,8 +409,25 @@ export class InfinityMinimap {
         ctx.fillStyle = 'rgba(20, 20, 30, 0.8)';
         ctx.fillRect(0, 0, width, height);
 
+        // Draw subtle background texture
+        this._drawBackgroundTexture(ctx, width, height);
+
+        // Draw animated scanline effect
+        this._drawScanlineEffect(ctx, width, height);
+
         const totalRows = this.gameState.board.length;
         const pixelsPerRow = height / totalRows;
+
+        // Update border color based on progress
+        const topRow = calculateTopRow(this.gameState);
+        const borderColor = this._getBorderColor(topRow);
+        const glowColor = this._getBorderGlowColor(topRow);
+
+        this.container.style.borderColor = borderColor;
+        this.container.style.boxShadow = `
+            0 14px 40px rgba(10, 16, 30, 0.5),
+            inset 0 0 24px ${glowColor}
+        `;
 
         // Draw height milestones
         this._drawMilestones(ctx, width, height, totalRows, pixelsPerRow);
@@ -245,6 +443,138 @@ export class InfinityMinimap {
 
         // Draw top row indicator
         this._drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow);
+    }
+
+    /**
+     * Draw subtle background texture (dot grid pattern)
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} width - Canvas width
+     * @param {number} height - Canvas height
+     */
+    _drawBackgroundTexture(ctx, width, height) {
+        ctx.fillStyle = 'rgba(100, 255, 200, 0.08)';
+        const dotSpacing = 12;
+        const dotSize = 1;
+
+        for (let x = dotSpacing; x < width; x += dotSpacing) {
+            for (let y = dotSpacing; y < height; y += dotSpacing) {
+                ctx.beginPath();
+                ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+    /**
+     * Draw animated scanline effect (futuristic radar sweep)
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} width - Canvas width
+     * @param {number} height - Canvas height
+     */
+    _drawScanlineEffect(ctx, width, height) {
+        const time = Date.now() / 1000;
+
+        // Moving scanline that sweeps vertically
+        const scanlineY = ((time * 60) % height); // Sweeps every ~6.5 seconds at 388px height
+
+        // Create gradient for the moving scanline
+        const gradient = ctx.createLinearGradient(0, scanlineY - 40, 0, scanlineY + 40);
+        gradient.addColorStop(0, 'rgba(100, 255, 200, 0)');
+        gradient.addColorStop(0.4, 'rgba(100, 255, 200, 0.12)');
+        gradient.addColorStop(0.5, 'rgba(100, 255, 200, 0.18)');
+        gradient.addColorStop(0.6, 'rgba(100, 255, 200, 0.12)');
+        gradient.addColorStop(1, 'rgba(100, 255, 200, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, scanlineY - 40, width, 80);
+
+        // Static scanlines (CRT effect)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        for (let y = 0; y < height; y += 4) {
+            ctx.fillRect(0, y, width, 2);
+        }
+    }
+
+    /**
+     * Calculate border color based on current progress
+     * @private
+     * @param {number} topRow - Current top row (0 = goal, 1000 = start)
+     * @returns {string} RGB color string
+     */
+    _getBorderColor(topRow) {
+        // Invert so higher achievement = higher value
+        const progress = (1000 - topRow) / 1000; // 0.0 to 1.0
+
+        // Define color stops
+        const colors = [
+            { pos: 0.00, color: [100, 255, 200] }, // Cyan-green (start)
+            { pos: 0.25, color: [50, 255, 150] },  // Green
+            { pos: 0.50, color: [200, 255, 100] }, // Yellow-green
+            { pos: 0.75, color: [255, 200, 50] },  // Orange-yellow
+            { pos: 1.00, color: [255, 150, 50] }   // Orange (near goal)
+        ];
+
+        // Find surrounding color stops
+        let lower = colors[0];
+        let upper = colors[colors.length - 1];
+
+        for (let i = 0; i < colors.length - 1; i++) {
+            if (progress >= colors[i].pos && progress <= colors[i + 1].pos) {
+                lower = colors[i];
+                upper = colors[i + 1];
+                break;
+            }
+        }
+
+        // Interpolate between color stops
+        const range = upper.pos - lower.pos;
+        const rangeProgress = range === 0 ? 0 : (progress - lower.pos) / range;
+
+        const r = Math.round(lower.color[0] + (upper.color[0] - lower.color[0]) * rangeProgress);
+        const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * rangeProgress);
+        const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * rangeProgress);
+
+        return `rgba(${r}, ${g}, ${b}, 0.5)`;
+    }
+
+    /**
+     * Get brighter version for glow effect
+     * @private
+     * @param {number} topRow - Current top row (0 = goal, 1000 = start)
+     * @returns {string} RGB color string
+     */
+    _getBorderGlowColor(topRow) {
+        const progress = (1000 - topRow) / 1000;
+
+        const colors = [
+            { pos: 0.00, color: [100, 255, 200] },
+            { pos: 0.25, color: [50, 255, 150] },
+            { pos: 0.50, color: [200, 255, 100] },
+            { pos: 0.75, color: [255, 200, 50] },
+            { pos: 1.00, color: [255, 150, 50] }
+        ];
+
+        let lower = colors[0];
+        let upper = colors[colors.length - 1];
+
+        for (let i = 0; i < colors.length - 1; i++) {
+            if (progress >= colors[i].pos && progress <= colors[i + 1].pos) {
+                lower = colors[i];
+                upper = colors[i + 1];
+                break;
+            }
+        }
+
+        const range = upper.pos - lower.pos;
+        const rangeProgress = range === 0 ? 0 : (progress - lower.pos) / range;
+
+        const r = Math.round(lower.color[0] + (upper.color[0] - lower.color[0]) * rangeProgress);
+        const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * rangeProgress);
+        const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * rangeProgress);
+
+        return `rgba(${r}, ${g}, ${b}, 0.25)`;
     }
 
     /**
@@ -381,10 +711,19 @@ export class InfinityMinimap {
         ctx.fillStyle = 'rgba(0, 255, 0, 0.15)'; // Subtle green tint
         ctx.fillRect(0, viewportY, width, viewportHeight);
 
-        // Draw viewport border (bright green)
-        ctx.strokeStyle = '#00ff00';
+        // Draw viewport border with pulsing glow effect
+        const time = Date.now() / 1000;
+        const pulse = Math.sin(time * Math.PI) * 0.3 + 0.7; // Oscillates 0.7-1.0
+
+        ctx.strokeStyle = `rgba(0, 255, 0, ${pulse})`;
         ctx.lineWidth = 2;
+        ctx.shadowBlur = 8 + (pulse * 8); // 8-16px blur
+        ctx.shadowColor = `rgba(0, 255, 0, ${pulse * 0.8})`;
         ctx.strokeRect(0, viewportY, width, viewportHeight);
+
+        // Reset shadow for other drawing operations
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
 
         // Draw scroll arrow indicator
         this._drawScrollArrow(ctx, width, viewportY + viewportHeight / 2);
@@ -480,6 +819,37 @@ export class InfinityMinimap {
         this.isHovering = false;
         this.isDragging = false;
         this.canvas.style.opacity = '0.8';
+    }
+
+    /**
+     * Handle container mouse move for cursor tracking glow
+     * @private
+     */
+    _onContainerMouseMove(event) {
+        if (!this.isHovering) return;
+
+        const rect = this.container.getBoundingClientRect();
+        this.mouseX = ((event.clientX - rect.left) / rect.width) * 100;
+        this.mouseY = ((event.clientY - rect.top) / rect.height) * 100;
+
+        // Update background with radial gradient at cursor position
+        this.container.style.background = `
+            radial-gradient(circle 120px at ${this.mouseX}% ${this.mouseY}%,
+                rgba(100, 255, 200, 0.18) 0%,
+                rgba(60, 255, 200, 0.08) 40%,
+                transparent 100%),
+            linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92))
+        `;
+    }
+
+    /**
+     * Handle container mouse leave for cursor tracking glow
+     * @private
+     */
+    _onContainerMouseLeave() {
+        // Reset to default gradient
+        this.container.style.background =
+            'linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92))';
     }
 
     /**

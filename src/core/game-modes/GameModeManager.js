@@ -45,6 +45,10 @@ export class GameModeManager {
         this._registerModes();
 
         console.log('[GameModeManager] Initialized with modes:', Array.from(this.modes.keys()));
+
+        if (this.deps?.themeManager?.suspendThemes) {
+            this.deps.themeManager.suspendThemes();
+        }
     }
 
     /**
@@ -189,6 +193,9 @@ export class GameModeManager {
                 this.deps.soundManager.resumeThemeLinkedMusic(true);
             }
             await this.currentMode.onStart();
+            if (this.deps?.themeManager?.resumeThemes) {
+                await this.deps.themeManager.resumeThemes();
+            }
             this._emitEvent('modeStarted', { modeId: this.currentModeId, mode: this.currentMode });
             console.log(`[GameModeManager] Mode ${this.currentModeId} started successfully`);
         } catch (error) {
@@ -246,6 +253,9 @@ export class GameModeManager {
 
         try {
             await this.currentMode.onStop();
+            if (this.deps?.themeManager?.suspendThemes) {
+                this.deps.themeManager.suspendThemes();
+            }
             this._emitEvent('modeStopped', { modeId: this.currentModeId, mode: this.currentMode });
             console.log(`[GameModeManager] Mode ${this.currentModeId} stopped successfully`);
         } catch (error) {

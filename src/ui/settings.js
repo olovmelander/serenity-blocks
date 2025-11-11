@@ -24,6 +24,7 @@ const DEFAULT_CONFIG = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
+    sunsetFlareIntensity: 'full',
     controlScheme: 'Keyboard',
     gamepadEnabled: true,
     gamepadDeadzone: 0.25,
@@ -814,6 +815,15 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         backgroundComboEffectsSelect.addEventListener('change', (e) => {
             const enabled = e.target.value === 'true';
             settingsManager.update({ backgroundComboEffects: enabled });
+            settingsManager.save();
+        });
+    }
+
+    const sunsetFlareSelect = document.getElementById('sunset-flare-intensity');
+    if (sunsetFlareSelect) {
+        sunsetFlareSelect.value = settings.sunsetFlareIntensity || 'full';
+        sunsetFlareSelect.addEventListener('change', (e) => {
+            settingsManager.update({ sunsetFlareIntensity: e.target.value });
             settingsManager.save();
         });
     }

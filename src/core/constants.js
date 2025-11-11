@@ -213,6 +213,7 @@ export const DEFAULT_SETTINGS = {
     lineClearEffects: true,
     backgroundComboEffects: true,
     effectQuality: 'High',
+    sunsetFlareIntensity: 'full',
 
     // Serenity Mode settings
     breathingGuideEnabled: false,

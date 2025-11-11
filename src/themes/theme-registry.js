@@ -264,6 +264,12 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'nimbus-veil',
+        displayName: 'Nimbus Veil',
+        module: './nimbus-veil/nimbus-veil-theme.js',
+        group: 'atmospheric',
+    },
+    {
         id: 'pyrestorm',
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',
