@@ -13,7 +13,6 @@ export default class RainyWindowTheme extends BaseTheme {
         this.resizeHandler = null;
         this.waterSurfaceY = 0;
         this.time = 0;
-        this.lightningFlash = 0;
         this.nextLightning = Math.random() * 300 + 200;
         this.windForce = 0;
         this.targetWindForce = 0;
@@ -22,8 +21,6 @@ export default class RainyWindowTheme extends BaseTheme {
         this.dropSpawnProbability = 0.45;
         this.currentDropCap = 70;
         this.maxRipples = 140;
-        this.glowNoiseSeed = Math.random() * 1000;
-        this.flashDebugCooldown = 0;
     }
 
     async createScene() {
@@ -231,30 +228,14 @@ export default class RainyWindowTheme extends BaseTheme {
         // Smooth wind transition
         this.windForce += (this.targetWindForce - this.windForce) * 0.02;
 
-        if (this.flashDebugCooldown > 0) {
-            this.flashDebugCooldown -= 1;
-        }
-
         // Lightning timing
         if (this.time >= this.nextLightning) {
             const bolt = this.createLightningBolt();
             this.lightningBolts.push(bolt);
-            this.lightningFlash = 1.0;
             this.nextLightning = this.time + Math.random() * 400 + 300;
         }
 
-        // Fade lightning flash
-        if (this.lightningFlash > 0) {
-            this.lightningFlash -= 0.05;
-        }
-
-        const hasLivingBolt = this.lightningBolts.some((bolt) => bolt.life > 0.05);
-        if (!hasLivingBolt) {
-            this.lightningFlash = 0;
-        }
-
-        // Dark atmospheric background with depth and lightning flash
-        const flashIntensity = hasLivingBolt ? Math.max(0, this.lightningFlash) : 0;
+        // Dark atmospheric background
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.waterSurfaceY);
         skyGradient.addColorStop(0, 'rgb(8, 9, 14)');
         skyGradient.addColorStop(0.5, 'rgb(14, 16, 20)');
@@ -277,7 +258,6 @@ export default class RainyWindowTheme extends BaseTheme {
             this.ctx.fillRect(0, fogY - 40, this.canvas.width, 80);
         }
 
-        let hasVisibleBolt = false;
         // Draw and update lightning bolts
         for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
             const bolt = this.lightningBolts[i];
@@ -289,18 +269,17 @@ export default class RainyWindowTheme extends BaseTheme {
                 this.lightningBolts.splice(i, 1);
                 continue;
             }
-            hasVisibleBolt = true;
 
-            // Draw each segment with intense glow
+            // Draw each segment with subtle glow
             for (const seg of bolt.segments) {
                 const thickness = seg.isBranch ? 1.5 : 3;
 
-                // Outer glow (wide)
+                // Outer glow (subtle)
                 this.ctx.beginPath();
                 this.ctx.moveTo(seg.x1, seg.y1);
                 this.ctx.lineTo(seg.x2, seg.y2);
-                this.ctx.strokeStyle = `rgba(180, 220, 255, ${bolt.opacity * 0.3})`;
-                this.ctx.lineWidth = thickness * 8;
+                this.ctx.strokeStyle = `rgba(150, 180, 220, ${bolt.opacity * 0.1})`;
+                this.ctx.lineWidth = thickness * 4;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
 
@@ -308,16 +287,16 @@ export default class RainyWindowTheme extends BaseTheme {
                 this.ctx.beginPath();
                 this.ctx.moveTo(seg.x1, seg.y1);
                 this.ctx.lineTo(seg.x2, seg.y2);
-                this.ctx.strokeStyle = `rgba(220, 240, 255, ${bolt.opacity * 0.6})`;
-                this.ctx.lineWidth = thickness * 4;
+                this.ctx.strokeStyle = `rgba(180, 200, 230, ${bolt.opacity * 0.3})`;
+                this.ctx.lineWidth = thickness * 2;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
 
-                // Core (bright white)
+                // Core (less bright)
                 this.ctx.beginPath();
                 this.ctx.moveTo(seg.x1, seg.y1);
                 this.ctx.lineTo(seg.x2, seg.y2);
-                this.ctx.strokeStyle = `rgba(255, 255, 255, ${bolt.opacity})`;
+                this.ctx.strokeStyle = `rgba(220, 230, 245, ${bolt.opacity * 0.8})`;
                 this.ctx.lineWidth = thickness;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
@@ -361,7 +340,6 @@ export default class RainyWindowTheme extends BaseTheme {
 
                 const waveAlpha = ripple.opacity * (1 - j * 0.15) * depthAlpha * waveAmplitude;
                 const flatten = 0.3 + depth * 0.35;
-                const lightningBoost = hasLivingBolt ? flashIntensity * 0.3 : 0;
 
                 this.ctx.save();
                 this.ctx.translate(ripple.x, ripple.y);
@@ -369,7 +347,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 this.ctx.rotate(Math.sin(ripple.phase + j) * 0.02);
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
-                this.ctx.strokeStyle = `rgba(${140 + lightningBoost * 100}, ${170 + lightningBoost * 100}, ${200 + lightningBoost * 100}, ${waveAlpha * 0.4})`;
+                this.ctx.strokeStyle = `rgba(140, 170, 200, ${waveAlpha * 0.4})`;
                 this.ctx.lineWidth = (ripple.lineWidth + 1) * (1 - j * 0.12);
                 this.ctx.stroke();
 
@@ -378,9 +356,9 @@ export default class RainyWindowTheme extends BaseTheme {
                     this.ctx.arc(0, 0, offsetRadius, 0, Math.PI * 2);
                     const nearColor = [180, 210, 240];
                     const farColor = [120, 140, 160];
-                    const r = farColor[0] + (nearColor[0] - farColor[0]) * depth + lightningBoost * 50;
-                    const g = farColor[1] + (nearColor[1] - farColor[1]) * depth + lightningBoost * 50;
-                    const b = farColor[2] + (nearColor[2] - farColor[2]) * depth + lightningBoost * 50;
+                    const r = farColor[0] + (nearColor[0] - farColor[0]) * depth;
+                    const g = farColor[1] + (nearColor[1] - farColor[1]) * depth;
+                    const b = farColor[2] + (nearColor[2] - farColor[2]) * depth;
 
                     this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
                     this.ctx.lineWidth = ripple.lineWidth * (1 - j * 0.2);
