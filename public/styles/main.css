@@ -5509,7 +5509,9 @@ body {
 
 /* --- Ice Temple Theme (Frostborn Sanctum) --- */
 #ice-temple-theme {
-    background: linear-gradient(to bottom, #0a1628, #1a2e4a);
+    background:
+        radial-gradient(circle at 50% 20%, rgba(68, 117, 155, 0.35), transparent 60%),
+        #061120;
     overflow: hidden;
 }
 
@@ -5519,7 +5521,7 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: 1;
-    background: linear-gradient(to bottom, #0a1628, #1a2e4a);
+    background: linear-gradient(to bottom, #050b17 0%, #081426 45%, #0f2139 70%, #102c46 100%);
 }
 
 /* Layer 1: Stars */
@@ -5533,15 +5535,15 @@ body {
 
 .ice-temple-star {
     position: absolute;
-    background: white;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 70%);
     border-radius: 50%;
     animation: ice-star-twinkle var(--twinkle-duration) ease-in-out infinite;
     animation-delay: var(--twinkle-delay);
 }
 
 @keyframes ice-star-twinkle {
-    0%, 100% { opacity: var(--min-opacity); }
-    50% { opacity: var(--max-opacity); }
+    0%, 100% { opacity: var(--min-opacity); transform: scale(0.85); }
+    50% { opacity: var(--max-opacity); transform: scale(1.08); }
 }
 
 /* Layer 2: Aurora Borealis */
@@ -5551,7 +5553,7 @@ body {
     width: 100%; height: 100%;
     z-index: 3;
     mix-blend-mode: screen;
-    opacity: 0.8;
+    opacity: 0.85;
     pointer-events: none;
 }
 
@@ -5569,23 +5571,131 @@ body {
 @keyframes ice-aurora-wave {
     0%, 100% {
         transform: translateY(0) scaleY(1);
-        opacity: 0.6;
+        opacity: 0.55;
     }
     50% {
-        transform: translateY(-5%) scaleY(1.1);
-        opacity: 0.9;
+        transform: translateY(-6%) scaleY(1.08);
+        opacity: 0.95;
     }
 }
 
-/* Layer 3: Distant Mountains */
-#ice-temple-mountains-distant {
+/* Layer 3: Ice Field */
+#ice-temple-icefield {
     position: absolute;
     bottom: 0; left: 0;
-    width: 100%; height: 60%;
+    width: 100%; height: 65%;
     z-index: 4;
-    background-repeat: repeat-x;
-    background-position: bottom;
     pointer-events: none;
+    background-repeat: repeat-x;
+    background-position: bottom center;
+    filter: drop-shadow(0 -12px 45px rgba(6, 32, 52, 0.55));
+    animation: icefield-pan 55s linear infinite;
+}
+
+@keyframes icefield-pan {
+    from { background-position: 0 100%; }
+    to { background-position: -600px 100%; }
+}
+
+/* Layer 4: Crack Network */
+#ice-temple-cracks {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 70%;
+    z-index: 5;
+    pointer-events: none;
+    overflow: hidden;
+    mix-blend-mode: screen;
+}
+
+.ice-temple-crack {
+    position: absolute;
+    width: var(--crack-thickness);
+    height: var(--crack-length);
+    transform-origin: top center;
+    transform: rotate(var(--crack-rotate));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(196, 234, 255, var(--crack-glow)) 45%, rgba(255, 255, 255, 0));
+    filter: drop-shadow(0 0 9px rgba(180, 210, 255, 0.4));
+    opacity: 0.75;
+    animation: ice-crack-pulse 6s ease-in-out infinite;
+    animation-delay: var(--crack-delay);
+}
+
+.ice-temple-crack.branching::after {
+    content: '';
+    position: absolute;
+    top: 30%;
+    left: 0;
+    width: var(--crack-thickness);
+    height: var(--branch-length);
+    transform-origin: top center;
+    transform: translateY(-4px) rotate(var(--branch-rotate));
+    background: inherit;
+    opacity: 0.7;
+}
+
+@keyframes ice-crack-pulse {
+    0%, 100% { opacity: 0.5; filter: drop-shadow(0 0 6px rgba(140, 200, 255, 0.25)); }
+    50% { opacity: 0.95; filter: drop-shadow(0 0 14px rgba(200, 240, 255, 0.55)); }
+}
+
+/* Layer 5: Floating Ice Shards */
+#ice-temple-ice-shards {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 6;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.ice-temple-shard {
+    position: absolute;
+    width: 20px;
+    height: 60px;
+    transform-origin: center;
+    animation: ice-shard-float var(--shard-duration) ease-in-out infinite;
+    animation-delay: var(--shard-delay);
+    opacity: 0;
+}
+
+.ice-temple-shard::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.85), rgba(163, 213, 255, 0.15));
+    border-radius: 8px 8px 3px 3px;
+    box-shadow: 0 0 14px rgba(160, 210, 255, 0.45);
+    transform: scale(var(--shard-scale)) skewY(-6deg);
+}
+
+.ice-temple-shard[data-layer="mid"] {
+    filter: blur(1px);
+}
+
+.ice-temple-shard[data-layer="front"] {
+    filter: drop-shadow(0 0 12px rgba(160, 230, 255, 0.5));
+}
+
+@keyframes ice-shard-float {
+    0% {
+        transform: translate3d(0, 20vh, 0) rotate(0deg) scale(var(--shard-scale));
+        opacity: 0;
+    }
+    15% {
+        opacity: 0.85;
+    }
+    60% {
+        transform: translate3d(calc(var(--shard-drift-x) * 0.6), calc(var(--shard-drift-y) * -0.3), 0)
+            rotate(calc(var(--shard-tilt) * 0.6))
+            scale(calc(var(--shard-scale) * 1.05));
+    }
+    100% {
+        transform: translate3d(calc(var(--shard-drift-x) * 1.1), calc(var(--shard-drift-y) * -1), 0)
+            rotate(var(--shard-tilt))
+            scale(var(--shard-scale));
+        opacity: 0;
+    }
 }
 
 /* Layer 6: Frozen Mist */
@@ -5593,7 +5703,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 5;
+    z-index: 7;
     pointer-events: none;
     overflow: hidden;
 }
@@ -5603,15 +5713,26 @@ body {
     top: 0;
     width: 200%;
     height: 100%;
-    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
-    filter: blur(60px);
+    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.18) 0%, transparent 55%);
+    filter: blur(70px);
     animation: ice-mist-drift var(--mist-duration) linear infinite;
     animation-delay: var(--mist-delay);
+    mix-blend-mode: screen;
+}
+
+.ice-temple-mist-layer[data-layer="back"] {
+    transform: translateZ(0) scaleY(1.1);
+    opacity: 0.1;
+}
+
+.ice-temple-mist-layer[data-layer="front"] {
+    filter: blur(90px);
 }
 
 @keyframes ice-mist-drift {
-    from { transform: translateX(-50%); }
-    to { transform: translateX(0%); }
+    0% { transform: translateX(-35%) translateY(0); }
+    50% { transform: translateX(-5%) translateY(-2%); }
+    100% { transform: translateX(-35%) translateY(0); }
 }
 
 /* Layer 7: Snowfall */
@@ -5619,7 +5740,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 6;
+    z-index: 8;
     pointer-events: none;
 }
 
@@ -5628,23 +5749,28 @@ body {
     top: -10px;
     background: white;
     border-radius: 50%;
-    opacity: 0.8;
+    transform-origin: center;
     animation: ice-snowfall var(--fall-duration) linear infinite;
     animation-delay: var(--fall-delay);
+    opacity: var(--snow-opacity);
+    transform: scale(var(--snow-scale));
+    filter: drop-shadow(0 0 6px rgba(160, 200, 255, 0.4));
 }
 
 @keyframes ice-snowfall {
     0% {
-        transform: translateY(0) translateX(0);
-        opacity: 0.8;
+        transform: translate3d(0, -5vh, 0) scale(var(--snow-scale));
+        opacity: 0;
     }
-    50% {
-        transform: translateY(50vh) translateX(var(--sway-amount));
-        opacity: 0.9;
+    40% {
+        opacity: calc(var(--snow-opacity) + 0.2);
+    }
+    60% {
+        transform: translate3d(var(--sway-amount), 50vh, 0) scale(calc(var(--snow-scale) * 1.05));
     }
     100% {
-        transform: translateY(100vh) translateX(0);
-        opacity: 0.5;
+        transform: translate3d(calc(var(--sway-amount) * 0.3), 105vh, 0) scale(var(--snow-scale));
+        opacity: 0;
     }
 }
 
@@ -5653,7 +5779,7 @@ body {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    z-index: 7;
+    z-index: 9;
     mix-blend-mode: screen;
     pointer-events: none;
 }
@@ -5661,7 +5787,7 @@ body {
 .ice-refraction-ray {
     position: absolute;
     width: 2px;
-    height: 120px;
+    height: 140px;
     background: linear-gradient(to bottom, transparent, var(--ray-color), transparent);
     filter: blur(1px);
     transform: rotate(var(--ray-angle));
