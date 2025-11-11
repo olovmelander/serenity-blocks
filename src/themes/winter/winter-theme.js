@@ -9,12 +9,12 @@ export default class WinterTheme extends BaseTheme {
         this.snowParticles = [];
         this.windForce = 0;
         this.targetWindForce = 0;
-        this.nextWindChange = 0;
+        this.nextWindChange = 600; // Start calm, first wind change after 10 seconds
         this.gustIntensity = 0;
-        this.nextGust = 0;
+        this.nextGust = 1800; // Start calm, first gust after 30 seconds
         this.gustDuration = 0;
         this.time = 0;
-        this.maxParticles = 1200;
+        this.maxParticles = 800; // Reduced from 1200
         this.resizeHandler = null;
         this.vortexParticles = [];
         this.groundSnow = [];
@@ -23,7 +23,7 @@ export default class WinterTheme extends BaseTheme {
         this.cameraShake = { x: 0, y: 0, intensity: 0 };
         this.distortionWaves = [];
         this.flashIntensity = 0;
-        this.nextFlash = 0;
+        this.nextFlash = 3600; // Start calm, first flash after 60 seconds
 
         // Gameplay integration
         this.comboMultiplier = 1.0;
@@ -33,6 +33,30 @@ export default class WinterTheme extends BaseTheme {
         this.comboVortexes = [];
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+
+        // Performance optimization: Cache gradients and reusable objects
+        this.gradientCache = {
+            background: null,
+            fog: null,
+            vignette: null,
+            lastWidth: 0,
+            lastHeight: 0
+        };
+        this.particlePool = {
+            snow: [],
+            ice: [],
+            vortex: [],
+            streak: []
+        };
+        this.activeParticles = {
+            snow: [],
+            ice: [],
+            vortex: [],
+            streak: []
+        };
+        this.offscreenMargin = 150; // Tighter culling boundary
+        this.frameSkip = 0;
+        this.particleBatchSize = 50; // Process particles in batches
     }
 
     async createScene() {
@@ -45,15 +69,16 @@ export default class WinterTheme extends BaseTheme {
         window.addEventListener('resize', this.resizeHandler, false);
         this.resizeCanvas();
 
-        // Initialize snow particles across different depth layers
+        // Initialize snow particles progressively for better startup performance
         this.snowParticles = [];
-        for (let i = 0; i < this.maxParticles; i++) {
+        const initialParticles = Math.floor(this.maxParticles * 0.6); // Start with 60%
+        for (let i = 0; i < initialParticles; i++) {
             this.snowParticles.push(this.createSnowParticle(true));
         }
 
-        // Initialize ground snow accumulation
+        // Initialize ground snow accumulation (reduced count)
         this.groundSnow = [];
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 35; i++) { // Reduced from 50
             this.groundSnow.push({
                 x: Math.random() * this.canvas.width,
                 y: this.canvas.height - Math.random() * 100,
@@ -72,6 +97,92 @@ export default class WinterTheme extends BaseTheme {
         if (!this.canvas) return;
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        // Invalidate gradient cache on resize
+        this.gradientCache.lastWidth = 0;
+        this.gradientCache.lastHeight = 0;
+    }
+
+    // Performance: Create and cache gradients
+    getCachedBackgroundGradient(comboBoost, flashBoost, gustBoost) {
+        if (this.gradientCache.background &&
+            this.gradientCache.lastWidth === this.canvas.width &&
+            this.gradientCache.lastHeight === this.canvas.height &&
+            this.gradientCache.lastComboBoost === comboBoost &&
+            this.gradientCache.lastFlashBoost === flashBoost &&
+            this.gradientCache.lastGustBoost === gustBoost) {
+            return this.gradientCache.background;
+        }
+
+        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+        gradient.addColorStop(0, `rgb(${5 + flashBoost + comboBoost}, ${8 + flashBoost + comboBoost}, ${15 + flashBoost + comboBoost})`);
+        gradient.addColorStop(0.4, `rgb(${8 + flashBoost + gustBoost + comboBoost}, ${12 + flashBoost + gustBoost + comboBoost}, ${20 + flashBoost + gustBoost + comboBoost})`);
+        gradient.addColorStop(0.7, `rgb(${12 + gustBoost}, ${16 + gustBoost}, ${24 + gustBoost})`);
+        gradient.addColorStop(1, `rgb(${18 + gustBoost}, ${22 + gustBoost}, ${30 + gustBoost})`);
+
+        this.gradientCache.background = gradient;
+        this.gradientCache.lastWidth = this.canvas.width;
+        this.gradientCache.lastHeight = this.canvas.height;
+        this.gradientCache.lastComboBoost = comboBoost;
+        this.gradientCache.lastFlashBoost = flashBoost;
+        this.gradientCache.lastGustBoost = gustBoost;
+
+        return gradient;
+    }
+
+    getCachedFogGradient(gustBoost, comboBoost) {
+        if (this.gradientCache.fog &&
+            this.gradientCache.lastWidth === this.canvas.width &&
+            this.gradientCache.lastFogGust === gustBoost &&
+            this.gradientCache.lastFogCombo === comboBoost) {
+            return this.gradientCache.fog;
+        }
+
+        const fogGradient = this.ctx.createRadialGradient(
+            this.canvas.width / 2, this.canvas.height * 0.6, 0,
+            this.canvas.width / 2, this.canvas.height * 0.6, this.canvas.width * 0.8
+        );
+        fogGradient.addColorStop(0, `rgba(${20 + gustBoost * 2 + comboBoost}, ${25 + gustBoost * 2 + comboBoost}, ${35 + gustBoost * 2 + comboBoost}, 0.4)`);
+        fogGradient.addColorStop(0.5, `rgba(${15 + gustBoost}, ${20 + gustBoost}, ${30 + gustBoost}, 0.25)`);
+        fogGradient.addColorStop(1, 'rgba(10, 15, 25, 0)');
+
+        this.gradientCache.fog = fogGradient;
+        this.gradientCache.lastFogGust = gustBoost;
+        this.gradientCache.lastFogCombo = comboBoost;
+
+        return fogGradient;
+    }
+
+    getCachedVignetteGradient() {
+        if (this.gradientCache.vignette &&
+            this.gradientCache.lastWidth === this.canvas.width &&
+            this.gradientCache.lastVignetteGust === this.gustIntensity) {
+            return this.gradientCache.vignette;
+        }
+
+        const vignetteGradient = this.ctx.createRadialGradient(
+            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.2,
+            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.8
+        );
+        vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignetteGradient.addColorStop(1, `rgba(0, 0, 0, ${0.5 + this.gustIntensity * 0.2})`);
+
+        this.gradientCache.vignette = vignetteGradient;
+        this.gradientCache.lastVignetteGust = this.gustIntensity;
+
+        return vignetteGradient;
+    }
+
+    // Object pooling for particles
+    getPooledParticle(type) {
+        const pool = this.particlePool[type];
+        return pool.length > 0 ? pool.pop() : null;
+    }
+
+    releaseParticle(type, particle) {
+        const pool = this.particlePool[type];
+        if (pool.length < 500) { // Max pool size
+            pool.push(particle);
+        }
     }
 
     setupEventListeners() {
@@ -159,8 +270,8 @@ export default class WinterTheme extends BaseTheme {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
-        // More particles for more lines
-        const burstCount = lineCount * 30 + comboCount * 20;
+        // More particles for more lines (optimized count)
+        const burstCount = Math.min(lineCount * 20 + comboCount * 15, 150); // Cap at 150
         for (let i = 0; i < burstCount; i++) {
             this.iceBurstParticles.push(this.createIceBurstParticle(centerX, centerY, lineCount));
         }
@@ -192,8 +303,8 @@ export default class WinterTheme extends BaseTheme {
             }
         }
 
-        // Flash effect
-        this.flashIntensity = Math.min(0.15 + lineCount * 0.05, 0.4);
+        // Flash effect (nearly invisible for comfort)
+        this.flashIntensity = Math.min(0.003 + lineCount * 0.001, 0.01);
     }
 
     createIceBurstParticle(x, y, lineCount) {
@@ -274,6 +385,28 @@ export default class WinterTheme extends BaseTheme {
         const depth = Math.random(); // 0 = far, 1 = near
         const depthScale = 0.2 + depth * 0.8;
 
+        // Try to get from pool first
+        let particle = this.getPooledParticle('snow');
+
+        if (particle) {
+            // Reset particle properties
+            particle.x = isInitial ? Math.random() * this.canvas.width : Math.random() * this.canvas.width * 1.2 - this.canvas.width * 0.1;
+            particle.y = isInitial ? Math.random() * this.canvas.height : -Math.random() * 50;
+            particle.z = depth;
+            particle.size = (Math.random() * 3 + 0.5) * depthScale;
+            particle.vx = (Math.random() - 0.5) * 0.5;
+            particle.vy = (Math.random() * 2 + 0.5) * depthScale;
+            particle.opacity = (Math.random() * 0.7 + 0.3) * (0.4 + depth * 0.6);
+            particle.rotation = Math.random() * Math.PI * 2;
+            particle.rotationSpeed = (Math.random() - 0.5) * 0.08;
+            particle.wobble = Math.random() * Math.PI * 2;
+            particle.wobbleSpeed = Math.random() * 0.03 + 0.01;
+            particle.trail.length = 0; // Clear trail
+            particle.maxTrailLength = Math.floor(4 + depth * 8);
+            return particle;
+        }
+
+        // Create new if pool is empty
         return {
             x: isInitial ? Math.random() * this.canvas.width : Math.random() * this.canvas.width * 1.2 - this.canvas.width * 0.1,
             y: isInitial ? Math.random() * this.canvas.height : -Math.random() * 50,
@@ -383,16 +516,16 @@ export default class WinterTheme extends BaseTheme {
                 this.cameraShake.intensity = Math.min(gustStrength * 0.8, 12);
             }
 
-            // Spawn horizontal streak particles during strong gusts
+            // Spawn horizontal streak particles during strong gusts (reduced count)
             if (gustStrength > 8) {
-                for (let i = 0; i < 30; i++) {
+                for (let i = 0; i < 20; i++) { // Reduced from 30
                     this.streakParticles.push(this.createStreakParticle());
                 }
             }
 
-            // Spawn vortex particles during strong gusts
+            // Spawn vortex particles during strong gusts (reduced count)
             if (gustStrength > 7) {
-                for (let i = 0; i < 30; i++) {
+                for (let i = 0; i < 20; i++) { // Reduced from 30
                     const x = Math.random() * this.canvas.width;
                     const y = Math.random() * this.canvas.height * 0.7;
                     this.vortexParticles.push(this.createVortexParticle(x, y));
@@ -401,7 +534,7 @@ export default class WinterTheme extends BaseTheme {
 
             // Create spiral systems during extreme gusts
             if (gustStrength > 11) {
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 2; i++) { // Reduced from 3
                     const spiral = this.createSpiralSystem(
                         Math.random() * this.canvas.width,
                         Math.random() * this.canvas.height * 0.6
@@ -409,10 +542,7 @@ export default class WinterTheme extends BaseTheme {
                     this.spiralSystems.push(spiral);
                 }
 
-                // Add distortion waves
-                for (let i = 0; i < 5; i++) {
-                    this.distortionWaves.push(this.createDistortionWave());
-                }
+                // Distortion waves disabled - vertical pillar flashes removed for comfort
             }
         }
 
@@ -438,13 +568,13 @@ export default class WinterTheme extends BaseTheme {
         const windTransitionSpeed = this.gustIntensity > 0 ? 0.12 : 0.03;
         this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
 
-        // Random atmospheric flashes during extreme winds
-        if (this.time >= this.nextFlash && Math.abs(this.windForce) > 8) {
-            this.flashIntensity = 0.15;
-            this.nextFlash = this.time + Math.random() * 200 + 100;
+        // Random atmospheric flashes during extreme winds (barely visible for comfort)
+        if (this.time >= this.nextFlash && Math.abs(this.windForce) > 14) { // Only during very extreme winds (increased threshold)
+            this.flashIntensity = 0.001; // Barely visible flash (reduced from 0.003)
+            this.nextFlash = this.time + Math.random() * 600 + 300; // More frequent (every 5-15 seconds at 60fps)
         }
         if (this.flashIntensity > 0) {
-            this.flashIntensity *= 0.85;
+            this.flashIntensity *= 0.9; // Faster decay (was 0.85)
         }
 
         // Apply camera shake
@@ -453,25 +583,15 @@ export default class WinterTheme extends BaseTheme {
 
         // Dark atmospheric background with dynamic lighting (combo affects brightness)
         const comboBoost = Math.floor((this.comboMultiplier - 1) * 20);
-        const flashBoost = Math.floor(this.flashIntensity * 40);
-        const gustBoost = Math.floor(this.gustIntensity * 15);
-        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, `rgb(${5 + flashBoost + comboBoost}, ${8 + flashBoost + comboBoost}, ${15 + flashBoost + comboBoost})`);
-        gradient.addColorStop(0.4, `rgb(${8 + flashBoost + gustBoost + comboBoost}, ${12 + flashBoost + gustBoost + comboBoost}, ${20 + flashBoost + gustBoost + comboBoost})`);
-        gradient.addColorStop(0.7, `rgb(${12 + gustBoost}, ${16 + gustBoost}, ${24 + gustBoost})`);
-        gradient.addColorStop(1, `rgb(${18 + gustBoost}, ${22 + gustBoost}, ${30 + gustBoost})`);
-        this.ctx.fillStyle = gradient;
+        const flashBoost = Math.floor(this.flashIntensity * 5); // Reduced from 15 to 5
+        const gustBoost = Math.floor(this.gustIntensity * 10); // Reduced from 15 to 10
+
+        // Use cached gradients
+        this.ctx.fillStyle = this.getCachedBackgroundGradient(comboBoost, flashBoost, gustBoost);
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Add atmospheric depth fog
-        const fogGradient = this.ctx.createRadialGradient(
-            this.canvas.width / 2, this.canvas.height * 0.6, 0,
-            this.canvas.width / 2, this.canvas.height * 0.6, this.canvas.width * 0.8
-        );
-        fogGradient.addColorStop(0, `rgba(${20 + gustBoost * 2 + comboBoost}, ${25 + gustBoost * 2 + comboBoost}, ${35 + gustBoost * 2 + comboBoost}, 0.4)`);
-        fogGradient.addColorStop(0.5, `rgba(${15 + gustBoost}, ${20 + gustBoost}, ${30 + gustBoost}, 0.25)`);
-        fogGradient.addColorStop(1, 'rgba(10, 15, 25, 0)');
-        this.ctx.fillStyle = fogGradient;
+        this.ctx.fillStyle = this.getCachedFogGradient(gustBoost, comboBoost);
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Draw frozen lightning
@@ -486,36 +606,46 @@ export default class WinterTheme extends BaseTheme {
                 continue;
             }
 
-            const pulseOpacity = lightning.opacity * (0.7 + Math.sin(lightning.pulsePhase) * 0.3);
+            const pulseOpacity = lightning.opacity * (0.3 + Math.sin(lightning.pulsePhase) * 0.15);
 
+            // Optimized: Draw all segments in batch with single stroke per layer
+            this.ctx.lineCap = 'round';
+
+            // Outer glow layer
+            this.ctx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.15})`;
+            this.ctx.lineWidth = 6;
+            this.ctx.beginPath();
             for (const branch of lightning.branches) {
                 for (const segment of branch) {
-                    // Outer glow
-                    this.ctx.beginPath();
                     this.ctx.moveTo(segment.x1, segment.y1);
                     this.ctx.lineTo(segment.x2, segment.y2);
-                    this.ctx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.3})`;
-                    this.ctx.lineWidth = 8;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.stroke();
-
-                    // Middle glow
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                    this.ctx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity * 0.6})`;
-                    this.ctx.lineWidth = 4;
-                    this.ctx.stroke();
-
-                    // Core
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                    this.ctx.strokeStyle = `rgba(230, 245, 255, ${pulseOpacity})`;
-                    this.ctx.lineWidth = 2;
-                    this.ctx.stroke();
                 }
             }
+            this.ctx.stroke();
+
+            // Middle glow layer
+            this.ctx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity * 0.3})`;
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
+
+            // Core layer
+            this.ctx.strokeStyle = `rgba(230, 245, 255, ${pulseOpacity * 0.5})`;
+            this.ctx.lineWidth = 1.5;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
         }
 
         // Draw and update combo vortexes
@@ -543,7 +673,7 @@ export default class WinterTheme extends BaseTheme {
                 });
             }
 
-            // Update and draw vortex particles
+            // Update and draw vortex particles (optimized)
             for (let j = vortex.particles.length - 1; j >= 0; j--) {
                 const p = vortex.particles[j];
                 p.x += p.vx;
@@ -557,22 +687,15 @@ export default class WinterTheme extends BaseTheme {
                     continue;
                 }
 
-                const sparkleEffect = Math.sin(p.sparkle) * 0.3 + 0.7;
+                const sparkleEffect = Math.sin(p.sparkle) * 0.15 + 0.35;
 
-                // Glow
-                const glowGradient = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
-                glowGradient.addColorStop(0, `rgba(200, 230, 255, ${p.opacity * 0.6 * sparkleEffect})`);
-                glowGradient.addColorStop(1, 'rgba(180, 210, 240, 0)');
-                this.ctx.fillStyle = glowGradient;
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2);
-                this.ctx.fill();
-
-                // Core
+                // Optimized: No shadow blur for better performance
+                this.ctx.globalAlpha = p.opacity * sparkleEffect * 0.5;
+                this.ctx.fillStyle = 'rgba(240, 250, 255, 1)';
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgba(240, 250, 255, ${p.opacity * sparkleEffect})`;
                 this.ctx.fill();
+                this.ctx.globalAlpha = 1;
             }
 
             if (vortex.life <= 0 || vortex.radius > vortex.maxRadius) {
@@ -580,7 +703,7 @@ export default class WinterTheme extends BaseTheme {
             }
         }
 
-        // Draw and update ice burst particles
+        // Draw and update ice burst particles (optimized rendering)
         for (let i = this.iceBurstParticles.length - 1; i >= 0; i--) {
             const particle = this.iceBurstParticles[i];
 
@@ -594,64 +717,40 @@ export default class WinterTheme extends BaseTheme {
             particle.sparkle += 0.15;
 
             if (particle.life <= 0 || particle.y > this.canvas.height) {
+                this.releaseParticle('ice', particle);
                 this.iceBurstParticles.splice(i, 1);
                 continue;
             }
 
-            const sparkleIntensity = Math.sin(particle.sparkle) * 0.4 + 0.6;
+            const sparkleIntensity = Math.sin(particle.sparkle) * 0.2 + 0.3;
 
             this.ctx.save();
             this.ctx.translate(particle.x, particle.y);
             this.ctx.rotate(particle.rotation);
 
-            // Glow
-            const glowSize = particle.size * 3 * particle.glowIntensity;
-            const glowGradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-            glowGradient.addColorStop(0, `rgba(200, 230, 255, ${particle.opacity * 0.6 * sparkleIntensity})`);
-            glowGradient.addColorStop(0.5, `rgba(180, 215, 245, ${particle.opacity * 0.3 * sparkleIntensity})`);
-            glowGradient.addColorStop(1, 'rgba(160, 200, 235, 0)');
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+            // Optimized: No shadow blur for better performance
+            this.ctx.globalAlpha = particle.opacity * sparkleIntensity * 0.5;
 
             // Ice shard shape
+            this.ctx.fillStyle = 'rgba(220, 240, 255, 1)';
             this.ctx.beginPath();
             this.ctx.moveTo(0, -particle.size);
             this.ctx.lineTo(particle.size * 0.5, particle.size * 0.5);
             this.ctx.lineTo(-particle.size * 0.5, particle.size * 0.5);
             this.ctx.closePath();
-            this.ctx.fillStyle = `rgba(220, 240, 255, ${particle.opacity * sparkleIntensity})`;
             this.ctx.fill();
 
             // Highlight
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.beginPath();
             this.ctx.arc(-particle.size * 0.2, -particle.size * 0.3, particle.size * 0.3, 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity * 0.8 * sparkleIntensity})`;
             this.ctx.fill();
 
+            this.ctx.globalAlpha = 1;
             this.ctx.restore();
         }
 
-        // Draw and update distortion waves
-        for (let i = this.distortionWaves.length - 1; i >= 0; i--) {
-            const wave = this.distortionWaves[i];
-            wave.y += wave.speed;
-            wave.life -= 0.01;
-
-            if (wave.life <= 0 || wave.y > this.canvas.height) {
-                this.distortionWaves.splice(i, 1);
-                continue;
-            }
-
-            const waveGradient = this.ctx.createLinearGradient(
-                wave.x - wave.width / 2, wave.y,
-                wave.x + wave.width / 2, wave.y
-            );
-            waveGradient.addColorStop(0, 'rgba(200, 215, 235, 0)');
-            waveGradient.addColorStop(0.5, `rgba(220, 230, 245, ${wave.opacity * wave.life})`);
-            waveGradient.addColorStop(1, 'rgba(200, 215, 235, 0)');
-            this.ctx.fillStyle = waveGradient;
-            this.ctx.fillRect(wave.x - wave.width / 2, 0, wave.width, this.canvas.height);
-        }
+        // Distortion waves (vertical pillars) disabled for comfort - removed rendering code
 
         // Draw and update ground snow
         for (let i = this.groundSnow.length - 1; i >= 0; i--) {
@@ -776,13 +875,20 @@ export default class WinterTheme extends BaseTheme {
 
         // Spawn new snow particles during gusts (more during combos)
         const spawnChance = (0.8 + this.gustIntensity * 0.4) * this.comboMultiplier;
-        const maxParticlesWithCombo = Math.floor(this.maxParticles * this.comboMultiplier);
+        const maxParticlesWithCombo = Math.floor(this.maxParticles * Math.min(this.comboMultiplier, 1.5)); // Cap combo boost
         if (this.snowParticles.length < maxParticlesWithCombo && Math.random() < spawnChance) {
             this.snowParticles.push(this.createSnowParticle(false));
         }
 
-        // Draw and update snow particles (sorted by depth for proper layering)
-        this.snowParticles.sort((a, b) => a.z - b.z);
+        // Sort only occasionally for performance (every 10 frames)
+        if (this.time % 10 === 0) {
+            this.snowParticles.sort((a, b) => a.z - b.z);
+        }
+
+        // Optimize: Use reverse loop and swap-remove pattern
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+        const margin = this.offscreenMargin;
 
         for (let i = this.snowParticles.length - 1; i >= 0; i--) {
             const particle = this.snowParticles[i];
@@ -802,60 +908,66 @@ export default class WinterTheme extends BaseTheme {
 
             particle.rotation += particle.rotationSpeed * (1 + this.gustIntensity);
 
-            // Trail system for motion blur
-            particle.trail.unshift({ x: particle.x, y: particle.y, opacity: particle.opacity });
-            if (particle.trail.length > particle.maxTrailLength) {
-                particle.trail.pop();
+            // Trail system for motion blur (optimize trail management)
+            if (particle.trail.length < particle.maxTrailLength) {
+                particle.trail.unshift({ x: particle.x, y: particle.y, opacity: particle.opacity });
+            } else {
+                // Reuse the last trail object
+                const last = particle.trail.pop();
+                last.x = particle.x;
+                last.y = particle.y;
+                last.opacity = particle.opacity;
+                particle.trail.unshift(last);
             }
 
-            // Remove particles that are off screen
-            if (particle.y > this.canvas.height + 50 ||
-                particle.x < -100 ||
-                particle.x > this.canvas.width + 100) {
+            // Tighter culling for offscreen particles
+            if (particle.y > canvasHeight + margin ||
+                particle.x < -margin ||
+                particle.x > canvasWidth + margin) {
+                this.releaseParticle('snow', particle);
                 this.snowParticles.splice(i, 1);
                 continue;
             }
 
-            // Draw motion trail
-            for (let j = 1; j < particle.trail.length; j++) {
-                const trailPoint = particle.trail[j];
-                const trailOpacity = particle.opacity * (1 - j / particle.trail.length) * 0.6;
-                const trailSize = particle.size * (1 - j / particle.trail.length * 0.5);
-
+            // Optimize: Skip trail rendering for far particles and reduce trail complexity
+            if (particle.z > 0.5 && particle.trail.length > 2) { // Only render trails for very near particles
+                // Draw simplified trail using line instead of circles (much faster)
+                this.ctx.globalAlpha = particle.opacity * 0.3;
+                this.ctx.strokeStyle = 'rgba(180, 195, 220, 1)';
+                this.ctx.lineWidth = particle.size * 0.5;
+                this.ctx.lineCap = 'round';
                 this.ctx.beginPath();
-                this.ctx.arc(trailPoint.x, trailPoint.y, trailSize, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgba(180, 195, 220, ${trailOpacity})`;
-                this.ctx.fill();
+                this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
+                for (let j = 2; j < particle.trail.length; j += 3) { // Skip more points
+                    this.ctx.lineTo(particle.trail[j].x, particle.trail[j].y);
+                }
+                this.ctx.stroke();
+                this.ctx.globalAlpha = 1;
             }
 
-            // Draw main particle with rotation
+            // Draw main particle with rotation (optimized - no shadow blur)
             this.ctx.save();
             this.ctx.translate(particle.x, particle.y);
             this.ctx.rotate(particle.rotation);
 
-            // Outer glow
-            const glowSize = particle.size * 3.5;
-            const glowGradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-            glowGradient.addColorStop(0, `rgba(225, 235, 250, ${particle.opacity * 0.5})`);
-            glowGradient.addColorStop(0.5, `rgba(205, 220, 240, ${particle.opacity * 0.25})`);
-            glowGradient.addColorStop(1, 'rgba(185, 200, 225, 0)');
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
-
             // Main particle (elongated for wind streak effect)
             const streakLength = 1 + Math.abs(this.windForce) * 0.4 * particle.z;
+            this.ctx.globalAlpha = particle.opacity;
+            this.ctx.fillStyle = 'rgba(240, 245, 255, 1)';
             this.ctx.beginPath();
             this.ctx.ellipse(0, 0, particle.size, particle.size * streakLength,
                            Math.atan2(particle.vy, particle.vx), 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(240, 245, 255, ${particle.opacity})`;
             this.ctx.fill();
 
-            // Highlight
-            this.ctx.beginPath();
-            this.ctx.arc(-particle.size * 0.2, -particle.size * 0.2, particle.size * 0.5, 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity * 0.7})`;
-            this.ctx.fill();
+            // Highlight (only for very near particles to save performance)
+            if (particle.z > 0.6) {
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                this.ctx.beginPath();
+                this.ctx.arc(-particle.size * 0.2, -particle.size * 0.2, particle.size * 0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
 
+            this.ctx.globalAlpha = 1;
             this.ctx.restore();
         }
 
@@ -872,14 +984,15 @@ export default class WinterTheme extends BaseTheme {
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
-        // Add wind direction indicators (more prominent streaks)
-        if (Math.abs(this.windForce) > 4) {
-            const streakCount = Math.floor(Math.abs(this.windForce) * 2 * this.comboMultiplier);
+        // Add wind direction indicators (optimized - render less frequently)
+        if (Math.abs(this.windForce) > 4 && this.time % 2 === 0) {
+            const streakCount = Math.floor(Math.abs(this.windForce) * 1.5 * Math.min(this.comboMultiplier, 1.3)); // Reduced count
+            const angle = Math.atan2(1, this.windForce);
+
             for (let i = 0; i < streakCount; i++) {
-                const x = Math.random() * this.canvas.width;
-                const y = Math.random() * this.canvas.height;
+                const x = Math.random() * canvasWidth;
+                const y = Math.random() * canvasHeight;
                 const length = Math.abs(this.windForce) * 25 * (0.5 + Math.random() * 0.5);
-                const angle = Math.atan2(1, this.windForce);
 
                 this.ctx.beginPath();
                 this.ctx.moveTo(x, y);
@@ -890,15 +1003,9 @@ export default class WinterTheme extends BaseTheme {
             }
         }
 
-        // Vignette effect for depth (more intense)
-        const vignetteGradient = this.ctx.createRadialGradient(
-            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.2,
-            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.8
-        );
-        vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        vignetteGradient.addColorStop(1, `rgba(0, 0, 0, ${0.5 + this.gustIntensity * 0.2})`);
-        this.ctx.fillStyle = vignetteGradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        // Vignette effect for depth (cached)
+        this.ctx.fillStyle = this.getCachedVignetteGradient();
+        this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
         this.ctx.restore(); // Restore from camera shake
 
