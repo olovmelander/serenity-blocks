@@ -1985,26 +1985,26 @@ body {
         radial-gradient(ellipse at 70% 60%, rgba(15, 8, 3, 0.3) 0%, transparent 50%),
         radial-gradient(ellipse at 50% 80%, rgba(10, 5, 0, 0.2) 0%, transparent 60%),
         #000000;
-    z-index: 1;
+    z-index: 0;
 }
 .fall-leaves-layer {
     position: absolute; top: 0; left: 0;
     width: 100%; height: 100%;
 }
 #fall-leaves-back {
-    z-index: 2;
+    z-index: 3;
     transform: scale(0.7) translateZ(0);
     filter: blur(1px) brightness(0.85);
     will-change: transform;
 }
 #fall-leaves-mid {
-    z-index: 4;
+    z-index: 5;
     filter: drop-shadow(0 0 6px rgba(255, 140, 0, 0.5));
     will-change: transform;
     transform: translateZ(0);
 }
 #fall-leaves-front {
-    z-index: 6;
+    z-index: 10;
     transform: scale(1.3) translateZ(0);
     filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.6)) brightness(1.1);
     will-change: transform;
@@ -2014,7 +2014,6 @@ body {
     position: absolute;
     background-size: contain;
     background-repeat: no-repeat;
-    animation: fall-leaf-gust linear infinite;
     /* Static filter - MUCH faster than animating filters */
     filter: drop-shadow(0 0 5px rgba(255, 120, 0, 0.6));
     /* GPU acceleration hints */
@@ -2022,38 +2021,11 @@ body {
     transform: translateZ(0);
     backface-visibility: hidden;
 }
-@keyframes fall-leaf-gust {
-    /* PERFORMANCE: Only animate transform and opacity - never animate filters! */
-    0% {
-        transform: translate(var(--x-start), -10vh) rotate(var(--r-start)) translateZ(0);
-        opacity: 1;
-    }
-    20% {
-        transform: translate(calc(var(--x-start) + var(--x-gust1)), 20vh) rotate(calc(var(--r-start) + 200deg)) translateZ(0);
-        opacity: 1;
-    }
-    40% {
-        transform: translate(calc(var(--x-start) + var(--x-gust2)), 40vh) rotate(calc(var(--r-start) + 400deg)) translateZ(0);
-        opacity: 1;
-    }
-    60% {
-        transform: translate(calc(var(--x-start) + var(--x-gust3)), 60vh) rotate(calc(var(--r-start) + 600deg)) translateZ(0);
-        opacity: 1;
-    }
-    80% {
-        transform: translate(calc(var(--x-start) + var(--x-gust4)), 80vh) rotate(calc(var(--r-start) + 800deg)) translateZ(0);
-        opacity: 0.9;
-    }
-    100% {
-        transform: translate(var(--x-end), 110vh) rotate(var(--r-end)) translateZ(0);
-        opacity: 0;
-    }
-}
 .ground-leaves {
     position: absolute;
     bottom: 0; left: 0;
     width: 100%; height: 8%;
-    z-index: 5;
+    z-index: 15;
     pointer-events: none;
 }
 .ground-leaf {
@@ -2087,7 +2059,7 @@ body {
         transparent);
     border-radius: 2px;
     animation: wind-gust-fall linear infinite;
-    z-index: 3; /* Between back and mid leaves */
+    z-index: 4; /* Between back and mid leaves */
     /* Simplified shadow for performance */
     box-shadow: 0 0 2px rgba(255, 120, 0, 0.2);
     /* GPU acceleration */
@@ -2109,6 +2081,150 @@ body {
     }
 }
 
+/* Tree branches container - BEHIND everything except background */
+#fall-tree-branches {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Atmospheric light rays - Behind leaves but above background */
+.fall-light-rays {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* Canvas for Fall theme effects - ABOVE leaves for embers */
+#fall-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.fall-light-rays::before,
+.fall-light-rays::after {
+    content: '';
+    position: absolute;
+    width: 150px;
+    height: 100%;
+    background: linear-gradient(to bottom,
+        rgba(255, 200, 120, 0) 0%,
+        rgba(255, 200, 120, 0.12) 15%,
+        rgba(255, 180, 100, 0.18) 40%,
+        rgba(255, 200, 120, 0.15) 60%,
+        rgba(255, 200, 120, 0.1) 80%,
+        rgba(255, 200, 120, 0) 100%);
+    transform: skewX(-15deg);
+    animation: light-ray-drift 40s ease-in-out infinite alternate;
+    box-shadow: 0 0 40px rgba(255, 200, 120, 0.1);
+}
+
+.fall-light-rays::before {
+    left: 15%;
+    animation-delay: 0s;
+}
+
+.fall-light-rays::after {
+    left: 75%;
+    animation-delay: -20s;
+}
+
+@keyframes light-ray-drift {
+    0% {
+        transform: skewX(-15deg) translateX(-5%);
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        transform: skewX(-15deg) translateX(5%);
+        opacity: 0.3;
+    }
+}
+
+/* Ground mist */
+.fall-ground-mist {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 25%;
+    z-index: 12;
+    pointer-events: none;
+    background: linear-gradient(to top,
+        rgba(255, 140, 60, 0.15) 0%,
+        rgba(255, 120, 40, 0.1) 40%,
+        rgba(255, 140, 60, 0.05) 70%,
+        transparent 100%);
+    animation: ground-mist-drift 35s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+}
+
+@keyframes ground-mist-drift {
+    0% {
+        transform: translateX(-3%) translateZ(0);
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateX(3%) translateZ(0);
+        opacity: 0.6;
+    }
+}
+
+/* Hero leaves with enhanced glow */
+.hero-leaf {
+    filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.9))
+            drop-shadow(0 0 4px rgba(255, 180, 60, 0.7))
+            drop-shadow(0 0 2px rgba(255, 200, 100, 0.5)) !important;
+    animation: hero-leaf-pulse 3s ease-in-out infinite;
+}
+
+@keyframes hero-leaf-pulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.9))
+                drop-shadow(0 0 4px rgba(255, 180, 60, 0.7))
+                drop-shadow(0 0 2px rgba(255, 200, 100, 0.5));
+    }
+    50% {
+        filter: drop-shadow(0 0 10px rgba(255, 140, 0, 1.0))
+                drop-shadow(0 0 5px rgba(255, 180, 60, 0.8))
+                drop-shadow(0 0 3px rgba(255, 200, 100, 0.6));
+    }
+}
+
+/* Depth-based visual variation */
+#fall-leaves-back .leaf {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 3px rgba(255, 120, 0, 0.4)) saturate(70%) brightness(0.85);
+}
+
+#fall-leaves-mid .leaf {
+    filter: drop-shadow(0 0 5px rgba(255, 120, 0, 0.6));
+}
+
+#fall-leaves-front .leaf {
+    filter: drop-shadow(0 0 7px rgba(255, 140, 0, 0.8)) saturate(115%) brightness(1.1);
+}
+
 /* Atmospheric depth fog for Fall theme */
 #fall-theme::before {
     content: '';
@@ -2120,7 +2236,7 @@ body {
     background:
         radial-gradient(ellipse at 20% 40%, rgba(40, 20, 5, 0.12) 0%, transparent 35%),
         radial-gradient(ellipse at 80% 70%, rgba(30, 15, 3, 0.1) 0%, transparent 40%);
-    z-index: 7;
+    z-index: 25;
     pointer-events: none;
     animation: fall-fog-drift 20s ease-in-out infinite alternate;
     /* GPU acceleration */
