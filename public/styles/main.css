@@ -2798,7 +2798,7 @@ body {
     opacity: 0;
     z-index: 3;
     pointer-events: none;
-    animation: flash-lightning 10s linear infinite;
+    /* Lightning flash animation disabled */
 }
 @keyframes flash-lightning {
     0% { opacity: 0; }
