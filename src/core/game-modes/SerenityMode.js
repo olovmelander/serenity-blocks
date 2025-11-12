@@ -68,8 +68,17 @@ export class SerenityMode extends BaseGameMode {
 
         console.log('[Serenity] Starting Serenity mode...');
 
-        // Initialize Serenity Hub
-        this.serenityHub = new SerenityHub(this);
+        // Check if there's a global Serenity Hub (created by main.js)
+        // If not, create mode-specific instance (fallback for testing)
+        if (window.app && window.app.serenityHub) {
+            console.log('[Serenity] Using global Serenity Hub instance');
+            this.serenityHub = window.app.serenityHub;
+            // Update the wrapper to point to this mode for breathing controls
+            this.serenityHub.serenityMode = this;
+        } else {
+            console.log('[Serenity] Creating mode-specific Serenity Hub instance');
+            this.serenityHub = new SerenityHub(this);
+        }
         console.log('[Serenity] Serenity Hub initialized');
 
         // Ensure gamepad controller is enabled for Serenity Mode

@@ -47,10 +47,10 @@
   height: 60px;
   cursor: pointer;
   z-index: 1000;
-  opacity: 0;
-  transform: scale(0.9);
+  opacity: 1;
+  transform: scale(1);
   transition: all var(--hub-transition-normal);
-  pointer-events: none;
+  pointer-events: all;
 }
 
 .serenity-hub-icon.visible {

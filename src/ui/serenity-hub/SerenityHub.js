@@ -38,10 +38,14 @@ export class SerenityHub {
     // Gamepad support (uses global gamepadController from main app)
     this.gamepadCallbacks = null;
 
+    // Pause/resume callbacks (set by main.js for pausing game in certain modes)
+    this.onPauseCallback = null;
+    this.onResumeCallback = null;
+
     // AbortController for easy event listener cleanup (Phase 6.3)
     // All event listeners use this signal - single abort() removes them all!
     this.abortController = new AbortController();
-    
+
     // Track tab elements and their handlers separately (dynamic tabs)
     this.tabElements = [];
     this.tabAbortControllers = new Map(); // Per-tab AbortControllers
@@ -67,50 +71,62 @@ export class SerenityHub {
 
   /**
    * Create the floating hub icon (top-right corner)
+   * If icon already exists in DOM (from index.html), use it instead of creating new one
    */
   createHubIcon() {
-    this.hubIcon = document.createElement('div');
-    this.hubIcon.id = 'serenity-hub-icon';
-    this.hubIcon.className = 'serenity-hub-icon';
-    this.hubIcon.setAttribute('role', 'button');
-    this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
-    this.hubIcon.setAttribute('tabindex', '0');
+    // Check if icon already exists in the DOM (added via index.html)
+    this.hubIcon = document.getElementById('serenity-hub-icon');
 
-    this.hubIcon.innerHTML = `
-      <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-        <!-- Lotus flower icon -->
-        <g class="lotus">
-          <!-- Center circle -->
-          <circle cx="50" cy="60" r="8" fill="currentColor" opacity="0.9"/>
+    if (!this.hubIcon) {
+      // Create icon dynamically if it doesn't exist
+      this.hubIcon = document.createElement('div');
+      this.hubIcon.id = 'serenity-hub-icon';
+      this.hubIcon.className = 'serenity-hub-icon visible';
+      this.hubIcon.setAttribute('role', 'button');
+      this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
+      this.hubIcon.setAttribute('tabindex', '0');
 
-          <!-- Petals -->
-          <path d="M 50 45 Q 35 50 30 65 Q 35 60 50 60" fill="currentColor" opacity="0.7"/>
-          <path d="M 50 45 Q 65 50 70 65 Q 65 60 50 60" fill="currentColor" opacity="0.7"/>
-          <path d="M 50 60 Q 40 70 35 80 Q 42 72 50 70" fill="currentColor" opacity="0.6"/>
-          <path d="M 50 60 Q 60 70 65 80 Q 58 72 50 70" fill="currentColor" opacity="0.6"/>
-          <path d="M 50 60 Q 45 75 40 85 Q 45 77 50 75" fill="currentColor" opacity="0.5"/>
-          <path d="M 50 60 Q 55 75 60 85 Q 55 77 50 75" fill="currentColor" opacity="0.5"/>
-        </g>
-      </svg>
-      <div class="hub-icon-glow"></div>
-      <div class="hub-icon-pulse"></div>
-    `;
+      this.hubIcon.innerHTML = `
+        <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <!-- Lotus flower icon -->
+          <g class="lotus">
+            <!-- Center circle -->
+            <circle cx="50" cy="60" r="8" fill="currentColor" opacity="0.9"/>
+
+            <!-- Petals -->
+            <path d="M 50 45 Q 35 50 30 65 Q 35 60 50 60" fill="currentColor" opacity="0.7"/>
+            <path d="M 50 45 Q 65 50 70 65 Q 65 60 50 60" fill="currentColor" opacity="0.7"/>
+            <path d="M 50 60 Q 40 70 35 80 Q 42 72 50 70" fill="currentColor" opacity="0.6"/>
+            <path d="M 50 60 Q 60 70 65 80 Q 58 72 50 70" fill="currentColor" opacity="0.6"/>
+            <path d="M 50 60 Q 45 75 40 85 Q 45 77 50 75" fill="currentColor" opacity="0.5"/>
+            <path d="M 50 60 Q 55 75 60 85 Q 55 77 50 75" fill="currentColor" opacity="0.5"/>
+          </g>
+        </svg>
+        <div class="hub-icon-glow"></div>
+        <div class="hub-icon-pulse"></div>
+      `;
+
+      document.body.appendChild(this.hubIcon);
+    }
+
+    // Ensure it's visible
+    this.hubIcon.classList.add('visible');
 
     // Store bound handler references
     this.hubIconClickHandler = () => this.toggle();
-    
+
     this.hubIconKeydownHandler = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         this.toggle();
       }
     };
-    
+
     this.hubIconMouseEnterHandler = () => {
       this.isMouseOverHub = true;
       this.cancelAutoHide();
     };
-    
+
     this.hubIconMouseLeaveHandler = () => {
       this.isMouseOverHub = false;
       if (!this.isOpen) {
@@ -124,8 +140,6 @@ export class SerenityHub {
     this.hubIcon.addEventListener('keydown', this.hubIconKeydownHandler, { signal });
     this.hubIcon.addEventListener('mouseenter', this.hubIconMouseEnterHandler, { signal });
     this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
-
-    document.body.appendChild(this.hubIcon);
   }
 
   /**
@@ -377,18 +391,20 @@ export class SerenityHub {
 
   /**
    * Start auto-hide timer for icon and settings button
+   * DISABLED: Icon is now always visible everywhere
    */
   startAutoHide() {
-    this.cancelAutoHide();
-
-    if (!this.isOpen && !this.isMouseOverHub && !this.isMouseOverSettings) {
-      this.hideTimeout = setTimeout(() => {
-        this.hubIcon.classList.remove('visible');
-        if (this.settingsBtn) {
-          this.settingsBtn.classList.remove('visible');
-        }
-      }, this.hideDelay);
-    }
+    // Auto-hide disabled - icon is now always visible
+    // this.cancelAutoHide();
+    //
+    // if (!this.isOpen && !this.isMouseOverHub && !this.isMouseOverSettings) {
+    //   this.hideTimeout = setTimeout(() => {
+    //     this.hubIcon.classList.remove('visible');
+    //     if (this.settingsBtn) {
+    //       this.settingsBtn.classList.remove('visible');
+    //     }
+    //   }, this.hideDelay);
+    // }
   }
 
   /**
@@ -484,12 +500,25 @@ export class SerenityHub {
   }
 
   /**
+   * Set pause/resume callbacks (called by main.js)
+   */
+  setPauseResumeCallbacks(onPause, onResume) {
+    this.onPauseCallback = onPause;
+    this.onResumeCallback = onResume;
+  }
+
+  /**
    * Show the hub panel
    */
   show() {
     if (this.isOpen) return;
 
     this.isOpen = true;
+
+    // Pause game if callback is set (for single player, local MP, infinity mode)
+    if (this.onPauseCallback) {
+      this.onPauseCallback();
+    }
 
     // Show backdrop and panel
     this.backdrop.classList.add('visible');
@@ -527,6 +556,11 @@ export class SerenityHub {
     // Update icon state
     this.hubIcon.classList.remove('active');
     this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
+
+    // Resume game if callback is set (for single player, local MP, infinity mode)
+    if (this.onResumeCallback) {
+      this.onResumeCallback();
+    }
 
     // Restart auto-hide
     this.startAutoHide();
@@ -829,11 +863,10 @@ export class SerenityHub {
     // Clear tab tracking
     this.tabElements = [];
 
-    // Remove DOM elements
-    if (this.hubIcon) {
-      this.hubIcon.remove();
-      this.hubIcon = null;
-    }
+    // Remove DOM elements (but keep hubIcon since it's permanent in index.html)
+    // Don't remove hubIcon - it's a permanent element now
+    // Just clear the reference and let event listeners be cleaned up by AbortController
+    this.hubIcon = null;
     if (this.settingsBtn) {
       this.settingsBtn.remove();
       this.settingsBtn = null;
