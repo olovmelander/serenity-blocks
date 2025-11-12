@@ -465,8 +465,12 @@ export class InfinityMode extends BaseGameMode {
 
         if (this.boardScene) {
             this.boardScene.scene.setVisible(true);
-            if (!this.boardScene.scene.isActive()) {
-                this.boardScene.scene.resume();
+            if (this.boardScene.scene.isActive()) {
+                console.log('[Infinity] BoardScene already active, restarting...');
+                this.boardScene.scene.restart();
+            } else {
+                console.log('[Infinity] Starting stopped BoardScene...');
+                this.boardScene.scene.start();
             }
             console.log('[Infinity] Phaser BoardScene prepared');
         } else {

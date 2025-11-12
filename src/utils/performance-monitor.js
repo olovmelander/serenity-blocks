@@ -500,7 +500,7 @@ export class PerformanceMonitor {
         overlay.style.cssText = `
             position: fixed;
             top: 15px;
-            right: 15px;
+            left: 15px;
             background: rgba(0, 0, 0, 0.9);
             color: #0f0;
             font-family: 'Courier New', monospace;

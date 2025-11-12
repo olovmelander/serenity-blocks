@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 export default class RainyWindowTheme extends BaseTheme {
     constructor() {
@@ -26,6 +27,16 @@ export default class RainyWindowTheme extends BaseTheme {
         this.gustIntensity = 0;
         this.nextGust = Math.random() * 200 + 100;
         this.gustDuration = 0;
+
+        // Gameplay effects
+        this.comboMultiplier = 1.0;
+        this.comboDecay = 0;
+        this.rainBurstDrops = [];
+        this.thunderStrikes = [];
+        this.waterExplosions = [];
+        this.comboRainCurtains = [];
+        this.eventUnsubscribers = [];
+        this.pendingComboCount = 0;
 
         // Performance optimization: Cache static data to avoid recreation every frame
         this.colorSchemes = {
@@ -91,7 +102,121 @@ export default class RainyWindowTheme extends BaseTheme {
             this.drops.push(this.createDrop(true));
         }
 
+        this.setupEventListeners();
         this.animate();
+    }
+
+    setupEventListeners() {
+        this.teardownEventListeners();
+
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (!this.shouldProcessComboEffects()) return;
+            this.handleLineClear(data);
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (!this.shouldProcessComboEffects()) return;
+            this.handleCombo(data);
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+    }
+
+    teardownEventListeners() {
+        if (!this.eventUnsubscribers.length) return;
+
+        this.eventUnsubscribers.forEach((unsubscribe) => {
+            try {
+                unsubscribe?.();
+            } catch (error) {
+                console.error('[RainyWindowTheme] Failed to remove event listener', error);
+            }
+        });
+
+        this.eventUnsubscribers = [];
+    }
+
+    shouldProcessComboEffects() {
+        if (!this.isActive) return false;
+        if (typeof window === 'undefined') return true;
+        const settings = window.settings;
+        return settings?.backgroundComboEffects === true;
+    }
+
+    normalizeEventPayload(payload = {}) {
+        if (payload && typeof payload === 'object' && 'detail' in payload && payload.detail) {
+            return payload.detail;
+        }
+        return payload || {};
+    }
+
+    handleLineClear(eventPayload) {
+        const detail = this.normalizeEventPayload(eventPayload);
+        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
+        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
+
+        if (!comboCount && this.pendingComboCount > 0) {
+            comboCount = this.pendingComboCount;
+            this.pendingComboCount = 0;
+        }
+
+        this.onLineClear(lineCount, comboCount);
+    }
+
+    handleCombo(eventPayload) {
+        const detail = this.normalizeEventPayload(eventPayload);
+        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
+
+        if (comboCount > 0) {
+            this.pendingComboCount = comboCount;
+        }
+    }
+
+    onLineClear(lineCount, comboCount) {
+        // Increase combo multiplier
+        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
+        this.comboDecay = 180; // 3 seconds at 60fps
+
+        // Create rain burst - intense rain from line clears
+        const burstCount = Math.min(lineCount * 15 + comboCount * 10, 100);
+        for (let i = 0; i < burstCount; i++) {
+            this.rainBurstDrops.push(this.createRainBurstDrop(lineCount));
+        }
+
+        // Trigger wind gust and rain intensity
+        const gustBonus = lineCount * 1.5 + comboCount * 2;
+        this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (4 + gustBonus);
+        this.gustIntensity = Math.min(0.4 + lineCount * 0.15, 1.0);
+        this.gustDuration = 30 + lineCount * 15;
+
+        // Increase drop spawn rate temporarily
+        this.currentDropCap = Math.min(this.currentDropCap + lineCount * 10, this.maxDrops);
+
+        // Create water explosion on water surface
+        const explosionCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
+        for (let i = 0; i < explosionCount; i++) {
+            const x = Math.random() * this.canvas.width;
+            const depth = Math.random();
+            this.waterExplosions.push(this.createWaterExplosion(x, this.getWaterY(depth), depth, lineCount));
+        }
+
+        // Thunder strikes for combos
+        if (comboCount >= 3) {
+            this.createComboThunderStrike(comboCount);
+        }
+
+        // Rain curtains for big combos
+        if (comboCount >= 5) {
+            const curtainCount = Math.min(Math.floor(comboCount / 3), 3);
+            for (let i = 0; i < curtainCount; i++) {
+                this.comboRainCurtains.push(this.createRainCurtain());
+            }
+        }
+
+        // Flash effect for big line clears
+        if (lineCount >= 3) {
+            this.lightningFlashIntensity = Math.min(0.15 + lineCount * 0.05, 0.35);
+        }
     }
 
     resizeCanvas() {
@@ -279,6 +404,109 @@ export default class RainyWindowTheme extends BaseTheme {
         return particles;
     }
 
+    createRainBurstDrop(lineCount) {
+        const depth = Math.random();
+        const depthScale = 0.4 + depth * 0.6;
+        const intensity = 1 + lineCount * 0.3;
+
+        return {
+            x: Math.random() * this.canvas.width,
+            y: -Math.random() * 200 - 50,
+            z: depth,
+            r: (Math.random() * 2 + 1.5) * depthScale * intensity,
+            vy: (Math.random() * 8 + 10) * depthScale * intensity,
+            vx: (Math.random() - 0.5) * 2,
+            opacity: Math.random() * 0.6 + 0.5,
+            length: (Math.random() * 20 + 15) * intensity,
+            baseLength: (Math.random() * 20 + 15) * intensity,
+            life: 1.0,
+            glow: Math.random() * 0.5 + 0.5,
+        };
+    }
+
+    createComboThunderStrike(comboCount) {
+        const bolt = this.createLightningBolt();
+        bolt.intensity = Math.min(comboCount * 0.2, 1.5);
+        bolt.glowIntensity = Math.min(comboCount * 0.3, 2.0);
+        this.thunderStrikes.push(bolt);
+
+        // Flash intensity based on combo
+        this.lightningFlashIntensity = Math.min(0.2 + comboCount * 0.05, 0.4);
+
+        // Create multiple ripples
+        const waterY = this.getWaterY(bolt.depth);
+        const numRipples = Math.min(3 + comboCount, 8);
+        for (let i = 0; i < numRipples; i++) {
+            this.lightningRipples.push({
+                x: bolt.impactX + (Math.random() - 0.5) * 100,
+                y: waterY,
+                depth: bolt.depth,
+                size: 12 + Math.random() * 10,
+                delay: i * 2,
+                spawned: false
+            });
+        }
+    }
+
+    createWaterExplosion(x, y, depth, lineCount) {
+        const particles = [];
+        const count = Math.min(20 + lineCount * 5, 40);
+        const depthScale = 0.3 + depth * 0.7;
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (Math.random() * 8 + 4) * depthScale;
+            particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - Math.random() * 3,
+                size: (Math.random() * 3 + 2) * depthScale,
+                opacity: Math.random() * 0.8 + 0.4,
+                life: 1.0,
+                gravity: 0.25,
+                glow: Math.random() * 0.6 + 0.4,
+            });
+        }
+
+        return {
+            x: x,
+            y: y,
+            depth: depth,
+            particles: particles,
+            ripplePhase: 0,
+            life: 1.0,
+        };
+    }
+
+    createRainCurtain() {
+        const x = Math.random() * this.canvas.width;
+        const width = Math.random() * 150 + 100;
+        const drops = [];
+        const dropCount = Math.floor(width / 8);
+
+        for (let i = 0; i < dropCount; i++) {
+            const offsetX = (i / dropCount) * width - width / 2;
+            drops.push({
+                x: x + offsetX,
+                y: -Math.random() * 100,
+                vy: Math.random() * 12 + 15,
+                length: Math.random() * 25 + 20,
+                size: Math.random() * 2.5 + 1.5,
+                opacity: Math.random() * 0.7 + 0.5,
+                delay: Math.random() * 20,
+            });
+        }
+
+        return {
+            x: x,
+            width: width,
+            drops: drops,
+            life: 1.0,
+            intensity: 1.0,
+        };
+    }
+
     // Calculate Y position on water surface based on depth
     getWaterY(depth) {
         // Creates perspective: far (depth=0) appears higher, near (depth=1) appears lower
@@ -335,6 +563,14 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         this.time += 1;
+
+        // Decay combo multiplier
+        if (this.comboDecay > 0) {
+            this.comboDecay -= 1;
+            if (this.comboDecay === 0) {
+                this.comboMultiplier = 1.0;
+            }
+        }
 
         // Dynamic wind system with gusts (slower, less erratic)
         if (this.time >= this.nextWindChange) {
@@ -566,7 +802,266 @@ export default class RainyWindowTheme extends BaseTheme {
             }
         }
 
-        // Spawn new raindrops (affected by wind gusts)
+        // Draw and update combo thunder strikes
+        for (let i = this.thunderStrikes.length - 1; i >= 0; i--) {
+            const bolt = this.thunderStrikes[i];
+
+            bolt.life -= 0.1;
+            bolt.opacity = bolt.life * bolt.intensity;
+
+            if (bolt.life <= 0) {
+                this.thunderStrikes.splice(i, 1);
+                continue;
+            }
+
+            this.ctx.lineCap = 'round';
+
+            // Enhanced rendering for combo thunder
+            if (bolt.mainSegs.length > 0) {
+                const mainSegs = bolt.mainSegs;
+
+                // Extra wide atmospheric glow
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(140, 170, 220, ${bolt.opacity * 0.15 * bolt.glowIntensity})`;
+                this.ctx.lineWidth = 3 * 16;
+                this.ctx.stroke();
+
+                // Wide glow
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(160, 190, 240, ${bolt.opacity * 0.3 * bolt.glowIntensity})`;
+                this.ctx.lineWidth = 3 * 10;
+                this.ctx.stroke();
+
+                // Middle layers (same as regular lightning)
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(180, 200, 235, ${bolt.opacity * 0.4})`;
+                this.ctx.lineWidth = 3 * 5;
+                this.ctx.stroke();
+
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
+                this.ctx.lineWidth = 3 * 2.5;
+                this.ctx.stroke();
+
+                // Bright core
+                this.ctx.beginPath();
+                for (const seg of mainSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(245, 250, 255, ${bolt.opacity * bolt.intensity})`;
+                this.ctx.lineWidth = 3.5;
+                this.ctx.stroke();
+            }
+
+            // Draw branch segments
+            if (bolt.branchSegs.length > 0) {
+                const branchSegs = bolt.branchSegs;
+
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(140, 170, 220, ${bolt.opacity * 0.15 * bolt.glowIntensity})`;
+                this.ctx.lineWidth = 1.5 * 14;
+                this.ctx.stroke();
+
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(200, 220, 245, ${bolt.opacity * 0.6})`;
+                this.ctx.lineWidth = 1.5 * 2.5;
+                this.ctx.stroke();
+
+                this.ctx.beginPath();
+                for (const seg of branchSegs) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.strokeStyle = `rgba(240, 250, 255, ${bolt.opacity * bolt.intensity})`;
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+        }
+
+        // Draw and update water explosions
+        for (let i = this.waterExplosions.length - 1; i >= 0; i--) {
+            const explosion = this.waterExplosions[i];
+
+            explosion.life -= 0.02;
+            explosion.ripplePhase += 0.15;
+
+            if (explosion.life <= 0) {
+                this.waterExplosions.splice(i, 1);
+                continue;
+            }
+
+            // Update and draw particles
+            for (let j = explosion.particles.length - 1; j >= 0; j--) {
+                const p = explosion.particles[j];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += p.gravity;
+                p.vx *= 0.98;
+                p.life -= 0.025;
+                p.opacity = p.life * 0.9;
+
+                if (p.life <= 0 || p.y > this.canvas.height) {
+                    explosion.particles.splice(j, 1);
+                    continue;
+                }
+
+                // Draw glowing water particle
+                this.ctx.globalAlpha = p.opacity * p.glow;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size * 1.5, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(180, 210, 240, 0.4)';
+                this.ctx.fill();
+
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(220, 240, 255, 1)';
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1;
+            }
+        }
+
+        // Draw and update rain curtains
+        for (let i = this.comboRainCurtains.length - 1; i >= 0; i--) {
+            const curtain = this.comboRainCurtains[i];
+
+            curtain.life -= 0.008;
+            curtain.intensity = curtain.life;
+
+            if (curtain.life <= 0) {
+                this.comboRainCurtains.splice(i, 1);
+                continue;
+            }
+
+            // Update and draw curtain drops
+            for (const drop of curtain.drops) {
+                if (drop.delay > 0) {
+                    drop.delay -= 1;
+                    continue;
+                }
+
+                drop.y += drop.vy * curtain.intensity;
+
+                const waterY = this.getWaterY(0.5);
+                if (drop.y < waterY) {
+                    const gradient = this.ctx.createLinearGradient(
+                        drop.x, drop.y - drop.length,
+                        drop.x, drop.y
+                    );
+                    gradient.addColorStop(0, 'rgba(200, 230, 255, 0)');
+                    gradient.addColorStop(0.5, `rgba(220, 240, 255, ${drop.opacity * curtain.intensity * 0.5})`);
+                    gradient.addColorStop(1, `rgba(230, 245, 255, ${drop.opacity * curtain.intensity})`);
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(drop.x, drop.y - drop.length);
+                    this.ctx.lineTo(drop.x, drop.y);
+                    this.ctx.strokeStyle = gradient;
+                    this.ctx.lineWidth = drop.size;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.stroke();
+
+                    // Glowing drop head
+                    this.ctx.globalAlpha = drop.opacity * curtain.intensity * 0.7;
+                    this.ctx.beginPath();
+                    this.ctx.arc(drop.x, drop.y, drop.size * 1.5, 0, Math.PI * 2);
+                    this.ctx.fillStyle = 'rgba(240, 250, 255, 1)';
+                    this.ctx.fill();
+                    this.ctx.globalAlpha = 1;
+                }
+
+                // Create ripple when hitting water
+                if (drop.y >= waterY && this.ripples.length < this.maxRipples) {
+                    this.ripples.push(this.createRipple(drop.x, waterY, drop.size, 0.5, false));
+                    drop.y = waterY + 100; // Move off screen
+                }
+            }
+        }
+
+        // Draw and update rain burst drops
+        for (let i = this.rainBurstDrops.length - 1; i >= 0; i--) {
+            const drop = this.rainBurstDrops[i];
+
+            const windInfluence = this.windForce * (0.15 + drop.z * 0.25);
+            drop.vx += (windInfluence - drop.vx) * 0.02;
+            drop.y += drop.vy * this.comboMultiplier;
+            drop.x += drop.vx;
+            drop.life -= 0.015;
+
+            const waterY = this.getWaterY(drop.z);
+
+            if (drop.life <= 0 || drop.y >= waterY) {
+                if (drop.y >= waterY && this.ripples.length < this.maxRipples) {
+                    this.ripples.push(this.createRipple(drop.x, waterY, drop.r, drop.z));
+                    if (Math.random() > 0.6) {
+                        this.splashes.push(this.createSplash(drop.x, waterY, drop.z));
+                    }
+                }
+                this.rainBurstDrops.splice(i, 1);
+                continue;
+            }
+
+            if (drop.y < waterY) {
+                const depthScale = 0.4 + drop.z * 0.6;
+                const scaledR = drop.r * depthScale;
+                const scaledLength = drop.length * depthScale;
+
+                // Enhanced glowing rain drop
+                const gradient = this.ctx.createLinearGradient(
+                    drop.x, drop.y - scaledLength,
+                    drop.x, drop.y
+                );
+                gradient.addColorStop(0, 'rgba(200, 230, 255, 0)');
+                gradient.addColorStop(0.4, `rgba(220, 240, 255, ${drop.opacity * 0.5 * drop.glow})`);
+                gradient.addColorStop(1, `rgba(240, 250, 255, ${drop.opacity * drop.glow})`);
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(drop.x, drop.y - scaledLength);
+                this.ctx.lineTo(drop.x, drop.y);
+                this.ctx.strokeStyle = gradient;
+                this.ctx.lineWidth = scaledR * 0.7;
+                this.ctx.lineCap = 'round';
+                this.ctx.stroke();
+
+                // Bright glowing head
+                this.ctx.globalAlpha = drop.opacity * drop.glow * 0.6;
+                this.ctx.beginPath();
+                this.ctx.arc(drop.x, drop.y, scaledR * 2, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(220, 240, 255, 0.5)';
+                this.ctx.fill();
+
+                this.ctx.beginPath();
+                this.ctx.arc(drop.x, drop.y, scaledR, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(245, 250, 255, 1)';
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1;
+            }
+        }
+
+        // Spawn new raindrops (affected by wind gusts and combos)
         this.currentDropCap += (this.maxDrops - this.currentDropCap) * 0.0025;
         const gustSpawnBoost = 1 + this.gustIntensity * 0.3; // Spawn more drops during gusts
         const spawnChance = this.dropSpawnProbability * (0.6 + this.currentDropCap / this.maxDrops * 0.4) * (1 + Math.abs(this.windForce) * 0.12) * gustSpawnBoost;
@@ -879,6 +1374,10 @@ export default class RainyWindowTheme extends BaseTheme {
             window.removeEventListener('resize', this.resizeHandler);
             this.resizeHandler = null;
         }
+
+        this.teardownEventListeners();
+        this.pendingComboCount = 0;
+
         super.stop();
     }
 }

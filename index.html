@@ -86,21 +86,6 @@
             <div class="mountain-fog"></div>
             <div id="mountain-range-front" class="mountain-range"></div>
         </div>
-        <div id="zen-theme" class="theme-container">
-            <div class="zen-gradient-bg"></div>
-            <div class="zen-mist-layer" id="zen-mist-back"></div>
-            <div class="zen-light-rays"></div>
-            <div id="zen-bamboo-container"></div>
-            <div class="raked-sand"></div>
-            <div id="zen-stones-container"></div>
-            <div class="zen-mist-layer" id="zen-mist-mid"></div>
-            <div class="water-feature">
-                <div class="zen-ripple"></div>
-            </div>
-            <div id="zen-lanterns-container"></div>
-            <div class="zen-mist-layer" id="zen-mist-front"></div>
-            <div id="petals"></div>
-        </div>
         <div id="winter-theme" class="theme-container">
             <canvas id="winter-canvas"></canvas>
         </div>
@@ -215,18 +200,6 @@
             <div id="desert-dunes-front" class="desert-dunes"></div>
             <div id="desert-flora"></div>
         </div>
-        <div id="bamboo-grove-theme" class="theme-container">
-            <div class="bamboo-sky"></div>
-            <div id="bamboo-grove-back" class="bamboo-grove"></div>
-            <div id="bamboo-sun-dapples"></div>
-            <div id="bamboo-grove-mid" class="bamboo-grove"></div>
-            <div id="bamboo-leaves"></div>
-            <div id="bamboo-fauna"></div>
-            <div id="bamboo-grove-front" class="bamboo-grove"></div>
-            <div id="bamboo-path"></div>
-            <div id="bamboo-lantern"></div>
-            <div class="bamboo-mist"></div>
-        </div>
         <div id="misty-lake-theme" class="theme-container">
             <div class="misty-sky"></div>
             <div id="misty-clouds"></div>
@@ -260,12 +233,6 @@
             <div id="crystal-cave-pools"></div>
             <div id="crystal-cave-moss"></div>
             <div id="crystal-cave-glow-clusters"></div>
-        </div>
-        <div id="candlelit-monastery-theme" class="theme-container">
-            <div id="monastery-shadows"></div>
-            <div id="monastery-stained-glass-light"></div>
-            <div id="monastery-candles"></div>
-            <div id="monastery-benches"></div>
         </div>
         <div id="moonlit-greenhouse-theme" class="theme-container">
             <div id="greenhouse-sky"></div>
@@ -754,6 +721,27 @@
             </svg>
         </button>
     </div>
+
+    <!-- Serenity Hub Icon - Outside modal so it's always visible -->
+    <div id="serenity-hub-icon" class="serenity-hub-icon visible" role="button" aria-label="Open Serenity Hub" tabindex="0">
+        <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <!-- Lotus flower icon -->
+            <g class="lotus">
+                <!-- Center circle -->
+                <circle cx="50" cy="60" r="8" fill="currentColor" opacity="0.9"></circle>
+
+                <!-- Petals -->
+                <path d="M 50 45 Q 35 50 30 65 Q 35 60 50 60" fill="currentColor" opacity="0.7"></path>
+                <path d="M 50 45 Q 65 50 70 65 Q 65 60 50 60" fill="currentColor" opacity="0.7"></path>
+                <path d="M 50 60 Q 40 70 35 80 Q 42 72 50 70" fill="currentColor" opacity="0.6"></path>
+                <path d="M 50 60 Q 60 70 65 80 Q 58 72 50 70" fill="currentColor" opacity="0.6"></path>
+                <path d="M 50 60 Q 45 75 40 85 Q 45 77 50 75" fill="currentColor" opacity="0.5"></path>
+                <path d="M 50 60 Q 55 75 60 85 Q 55 77 50 75" fill="currentColor" opacity="0.5"></path>
+            </g>
+        </svg>
+        <div class="hub-icon-glow"></div>
+        <div class="hub-icon-pulse"></div>
+    </div>
     <div id="game-over-modal" class="modal">
         <div class="modal-content">
             <h1>The cycle ends.</h1>
@@ -926,7 +914,6 @@
                                 <option value="ocean">Ocean</option>
                                 <option value="sunset">Sunset</option>
                                 <option value="mountain">Mountain</option>
-                                <option value="zen">Zen</option>
                                 <option value="winter">Winter</option>
                                 <option value="fall">Fall</option>
                                 <option value="summer">Summer</option>
@@ -943,12 +930,10 @@
                                 <option value="geode">Geode</option>
                                 <option value="bioluminescence">Bioluminescence</option>
                                 <option value="desert-oasis">Desert Oasis</option>
-                                <option value="bamboo-grove">Bamboo Grove</option>
                                 <option value="misty-lake">Misty Mountain Lake</option>
                                 <option value="waves">Waves</option>
                                 <option value="fluid-dreams">Fluid Dreams</option>
                                 <option value="crystal-cave">Crystal Cave</option>
-                                <option value="candlelit-monastery">Candlelit Monastery</option>
                                 <option value="moonlit-greenhouse">Moonlit Greenhouse</option>
                                 <option value="ice-temple">Ice Temple</option>
                                 <option value="himalayan-peak">Himalayan Peak</option>
