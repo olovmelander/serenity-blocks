@@ -1,6 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { GAME_MODES } from '../constants.js';
 import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * SerenityMode - A peaceful, non-interactive mode featuring only background visuals,
@@ -24,9 +25,22 @@ export class SerenityMode extends BaseGameMode {
         this.keyboardOverlayTimeout = null;
         this.breathingIndicatorActive = false;
 
+        // Interactive effects state
+        this.lastInteractionTime = 0;
+        this.interactionCooldown = 300; // ms between interactions
+        this.comboCounter = 0;
+        this.comboResetTimeout = null;
+        this.comboResetDelay = 2000; // Reset combo after 2 seconds of no interaction
+        this.maxComboClicks = 12; // Max clicks before cooldown
+        this.comboCooldownActive = false;
+        this.comboCooldownDuration = 8000; // 8 second cooldown after max combo
+
         // Event handlers (bound methods for proper cleanup)
         this.handleKeyPress = this._onKeyPress.bind(this);
         this.handleMouseMove = this._onMouseMove.bind(this);
+        this.handleClick = this._onInteraction.bind(this);
+        this.handleTouch = this._onInteraction.bind(this);
+        this.handleGamepadButton = this._onGamepadButton.bind(this);
 
         // Serenity Hub instance
         this.serenityHub = null;
@@ -97,6 +111,9 @@ export class SerenityMode extends BaseGameMode {
 
         // Setup cursor auto-hide
         this._setupCursorAutoHide();
+
+        // Setup interactive effects (click/tap to trigger effects)
+        this._setupInteractiveEffects();
 
         // Show keyboard shortcuts overlay briefly
         this._showKeyboardShortcuts();
@@ -186,6 +203,10 @@ export class SerenityMode extends BaseGameMode {
         if (this.keyboardOverlayTimeout) {
             clearTimeout(this.keyboardOverlayTimeout);
             this.keyboardOverlayTimeout = null;
+        }
+        if (this.comboResetTimeout) {
+            clearTimeout(this.comboResetTimeout);
+            this.comboResetTimeout = null;
         }
 
         // Restore UI
@@ -541,6 +562,7 @@ export class SerenityMode extends BaseGameMode {
             overlay.innerHTML = `
                 <div class="shortcuts-content">
                     <h3>Serenity Mode Controls</h3>
+                    <div class="shortcut"><kbd>Click/Tap</kbd> Trigger Theme Effects</div>
                     <div class="shortcut"><kbd>H</kbd> Open Serenity Hub</div>
                     <div class="shortcut"><kbd>M</kbd> Next Music Track</div>
                     <div class="shortcut"><kbd>B</kbd> Random Theme</div>
@@ -688,5 +710,234 @@ export class SerenityMode extends BaseGameMode {
         setTimeout(() => {
             notification.classList.remove('visible');
         }, 2000);
+    }
+
+    // ===== Interactive Effects Methods =====
+
+    /**
+     * Setup interactive effects (mouse, touch, gamepad)
+     * @private
+     */
+    _setupInteractiveEffects() {
+        // Mouse click listener
+        document.addEventListener('click', this.handleClick);
+        this.cleanupHandlers.push(() => {
+            document.removeEventListener('click', this.handleClick);
+        });
+
+        // Touch listener
+        document.addEventListener('touchstart', this.handleTouch, { passive: true });
+        this.cleanupHandlers.push(() => {
+            document.removeEventListener('touchstart', this.handleTouch);
+        });
+
+        // Gamepad button polling (if gamepad is connected)
+        if (this.deps.gamepadController) {
+            this.gamepadPollInterval = setInterval(this.handleGamepadButton, 100);
+            this.cleanupHandlers.push(() => {
+                if (this.gamepadPollInterval) {
+                    clearInterval(this.gamepadPollInterval);
+                    this.gamepadPollInterval = null;
+                }
+            });
+        }
+
+        console.log('[Serenity] Interactive effects enabled - Click, tap, or press gamepad buttons to trigger theme effects');
+    }
+
+    /**
+     * Handle interaction (click or touch)
+     * @private
+     */
+    _onInteraction(event) {
+        if (!this.isRunning) return;
+
+        // Don't trigger if clicking on UI elements
+        const target = event.target;
+        if (target && (
+            target.closest('.serenity-hub') ||
+            target.closest('.serenity-notification') ||
+            target.closest('.serenity-shortcuts-overlay') ||
+            target.closest('#settings-modal') ||
+            target.closest('.breathing-indicator')
+        )) {
+            return;
+        }
+
+        // Check if combo cooldown is active
+        if (this.comboCooldownActive) {
+            // Show red ripple to indicate cooldown
+            if (event) {
+                let clickX = window.innerWidth / 2;
+                let clickY = window.innerHeight / 2;
+                if (event.type === 'click') {
+                    clickX = event.clientX;
+                    clickY = event.clientY;
+                } else if (event.type === 'touchstart' && event.touches.length > 0) {
+                    clickX = event.touches[0].clientX;
+                    clickY = event.touches[0].clientY;
+                }
+                this._showClickRipple(clickX, clickY, true); // true = cooldown mode
+            }
+            return;
+        }
+
+        // Cooldown check to prevent spam
+        const now = Date.now();
+        if (now - this.lastInteractionTime < this.interactionCooldown) {
+            return;
+        }
+        this.lastInteractionTime = now;
+
+        // Trigger effects
+        this._triggerInteractionEffect(event);
+    }
+
+    /**
+     * Handle gamepad button press
+     * @private
+     */
+    _onGamepadButton() {
+        if (!this.isRunning) return;
+        if (!this.deps.gamepadController) return;
+
+        const gamepad = this.deps.gamepadController.getGamepad();
+        if (!gamepad) return;
+
+        // Check if any button is pressed (except D-pad and special buttons)
+        // A button (index 0), B button (index 1), X button (index 2), Y button (index 3)
+        // Shoulder buttons L1/R1 (index 4, 5), L2/R2 (index 6, 7)
+        const actionButtons = [0, 1, 2, 3, 4, 5, 6, 7];
+
+        for (const buttonIndex of actionButtons) {
+            const button = gamepad.buttons[buttonIndex];
+            if (button && button.pressed) {
+                // Check if this is a new press (not held down)
+                const buttonKey = `gamepad_button_${buttonIndex}`;
+                if (!this[buttonKey]) {
+                    this[buttonKey] = true;
+                    this._triggerInteractionEffect(null, buttonIndex);
+                }
+            } else {
+                const buttonKey = `gamepad_button_${buttonIndex}`;
+                this[buttonKey] = false;
+            }
+        }
+    }
+
+    /**
+     * Trigger interaction effect
+     * @private
+     */
+    _triggerInteractionEffect(event, gamepadButton = null) {
+        // Increment combo counter
+        this.comboCounter++;
+
+        // Check if max combo reached
+        if (this.comboCounter >= this.maxComboClicks) {
+            this._activateMaxComboCooldown();
+        }
+
+        // Reset combo timeout
+        if (this.comboResetTimeout) {
+            clearTimeout(this.comboResetTimeout);
+        }
+        this.comboResetTimeout = setTimeout(() => {
+            this.comboCounter = 0;
+        }, this.comboResetDelay);
+
+        // Determine effect intensity based on combo
+        // 1-2 clicks: single line clear
+        // 3-4 clicks: double line clear
+        // 5-6 clicks: triple line clear
+        // 7+ clicks: quad line clear
+        const lineCount = Math.min(Math.floor((this.comboCounter + 1) / 2), 4);
+        const comboCount = Math.max(0, this.comboCounter - 1);
+
+        // Get click position for visual feedback
+        let clickX = window.innerWidth / 2;
+        let clickY = window.innerHeight / 2;
+
+        if (event) {
+            if (event.type === 'click') {
+                clickX = event.clientX;
+                clickY = event.clientY;
+            } else if (event.type === 'touchstart' && event.touches.length > 0) {
+                clickX = event.touches[0].clientX;
+                clickY = event.touches[0].clientY;
+            }
+        }
+
+        // Show visual feedback at click location
+        this._showClickRipple(clickX, clickY);
+
+        // Emit LINE_CLEAR event
+        eventBus.emit(EVENTS.LINE_CLEAR, {
+            lineCount,
+            comboCount,
+            source: 'serenity-interaction',
+            position: { x: clickX, y: clickY }
+        });
+
+        // If combo >= 2, also emit COMBO event
+        if (comboCount >= 2) {
+            eventBus.emit(EVENTS.COMBO, {
+                comboCount,
+                source: 'serenity-interaction',
+                position: { x: clickX, y: clickY }
+            });
+        }
+
+        // Log interaction
+        const source = gamepadButton !== null ? `Gamepad Button ${gamepadButton}` : 'Click/Tap';
+        console.log(`[Serenity] Interaction: ${source}, Lines: ${lineCount}, Combo: ${comboCount}`);
+
+        // Show combo notification for significant combos
+        if (comboCount >= 3 && comboCount % 3 === 0) {
+            this._showNotification(`${comboCount}x Combo!`);
+        }
+    }
+
+    /**
+     * Activate max combo cooldown
+     * @private
+     */
+    _activateMaxComboCooldown() {
+        this.comboCooldownActive = true;
+        this.comboCounter = 0;
+
+        // Clear any existing combo reset timeout
+        if (this.comboResetTimeout) {
+            clearTimeout(this.comboResetTimeout);
+            this.comboResetTimeout = null;
+        }
+
+        // Show notification
+        this._showNotification('Max Combo! Cooling down...');
+        console.log(`[Serenity] Max combo (${this.maxComboClicks}) reached - ${this.comboCooldownDuration}ms cooldown activated`);
+
+        // Deactivate after cooldown period
+        setTimeout(() => {
+            this.comboCooldownActive = false;
+            this._showNotification('Ready!');
+            console.log('[Serenity] Combo cooldown complete - interactions enabled');
+        }, this.comboCooldownDuration);
+    }
+
+    /**
+     * Show click ripple effect
+     * @private
+     */
+    _showClickRipple(x, y, isCooldown = false) {
+        const ripple = document.createElement('div');
+        ripple.className = isCooldown ? 'serenity-click-ripple cooldown' : 'serenity-click-ripple';
+        ripple.style.left = `${x}px`;
+        ripple.style.top = `${y}px`;
+        document.body.appendChild(ripple);
+
+        // Remove after animation completes
+        setTimeout(() => {
+            ripple.remove();
+        }, 1000);
     }
 }
