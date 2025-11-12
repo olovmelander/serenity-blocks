@@ -37,6 +37,10 @@ export default class GeodeTheme extends BaseTheme {
 
         // Cached gradients
         this.cachedGradients = {};
+
+        // Event tracking
+        this.eventUnsubscribers = [];
+        this.pendingComboCount = 0;
     }
 
     async createScene() {
@@ -66,6 +70,20 @@ export default class GeodeTheme extends BaseTheme {
         // CRITICAL: Set canvas size BEFORE creating elements
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+
+        // Clear all existing scene elements to prevent duplicates
+        this.crystalClusters = [];
+        this.caveWalls = [];
+        this.stalactites = [];
+        this.stalagmites = [];
+        this.caveFloor = [];
+        this.rockFormations = [];
+        this.dustParticles = [];
+        this.lightRays = [];
+        this.ambientGlows = [];
+        this.mist = [];
+        this.energyPulses = [];
+        this.crystalResonance = [];
 
         this.cacheGradients();
 
@@ -379,8 +397,21 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     setupEventListeners() {
-        eventBus.on(EVENTS.LINE_CLEAR, this.onLineClear.bind(this));
-        eventBus.on(EVENTS.COMBO, this.onCombo.bind(this));
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handleLineClear(data);
+            }
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handleCombo(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
 
         window.addEventListener('resize', () => {
             if (!this.canvas) return;
@@ -388,6 +419,30 @@ export default class GeodeTheme extends BaseTheme {
             this.canvas.height = window.innerHeight;
             this.cacheGradients();
         });
+    }
+
+    handleLineClear(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
+        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
+
+        if (!comboCount && this.pendingComboCount > 0) {
+            comboCount = this.pendingComboCount;
+            this.pendingComboCount = 0;
+        }
+
+        this.onLineClear(lineCount, comboCount);
+    }
+
+    handleCombo(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
+
+        if (comboCount > 0) {
+            this.pendingComboCount = comboCount;
+        }
+
+        this.onCombo(comboCount);
     }
 
     onLineClear(lineCount) {
@@ -1036,6 +1091,11 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     stop() {
+        // Unsubscribe from events
+        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers = [];
+        this.pendingComboCount = 0;
+
         super.stop();
         this.animationTime = 0;
         this.pulseIntensity = 0;

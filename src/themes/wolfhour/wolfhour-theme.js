@@ -40,6 +40,10 @@ export default class WolfhourTheme extends BaseTheme {
         // Animation
         this.animationTime = 0;
         this.animationFrameId = null;
+
+        // Event tracking
+        this.eventUnsubscribers = [];
+        this.pendingComboCount = 0;
     }
 
     async init() {
@@ -344,80 +348,159 @@ export default class WolfhourTheme extends BaseTheme {
             }
         };
         window.addEventListener('resize', resizeHandler);
+
+        // TEST: Add visual test to verify canvas is working
+        console.log('[Wolfhour] Drawing test rectangle on canvas...');
+        this.effectCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        this.effectCtx.fillRect(100, 100, 200, 100);
+        setTimeout(() => {
+            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
+        }, 2000);
+
+        // TEST: Trigger a fake line clear after 3 seconds to test effects
+        setTimeout(() => {
+            console.log('[Wolfhour] 🧪 TEST: Manually triggering effects...');
+            this.onLineClear(4);
+            this.onCombo(3);
+        }, 3000);
     }
 
     setupGameplayEvents() {
-        eventBus.on(EVENTS.LINE_CLEAR, this.onLineClear.bind(this));
-        eventBus.on(EVENTS.COMBO, this.onCombo.bind(this));
-        console.log('[Wolfhour] Gameplay events registered');
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            console.log('[Wolfhour] LINE_CLEAR event received. Settings:', settings);
+            console.log('[Wolfhour] backgroundComboEffects:', settings?.backgroundComboEffects);
+            console.log('[Wolfhour] isActive:', this.isActive);
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                console.log('[Wolfhour] ✅ Calling handleLineClear');
+                this.handleLineClear(data);
+            } else {
+                console.log('[Wolfhour] ❌ Skipping effects (not active or effects disabled)');
+            }
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            console.log('[Wolfhour] COMBO event received. Settings:', settings);
+            console.log('[Wolfhour] backgroundComboEffects:', settings?.backgroundComboEffects);
+            console.log('[Wolfhour] isActive:', this.isActive);
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                console.log('[Wolfhour] ✅ Calling handleCombo');
+                this.handleCombo(data);
+            } else {
+                console.log('[Wolfhour] ❌ Skipping effects (not active or effects disabled)');
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        console.log('[Wolfhour] Gameplay events registered with settings check');
+    }
+
+    handleLineClear(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
+        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
+
+        console.log('[Wolfhour] handleLineClear - lineCount:', lineCount, 'comboCount:', comboCount);
+
+        if (!comboCount && this.pendingComboCount > 0) {
+            comboCount = this.pendingComboCount;
+            this.pendingComboCount = 0;
+        }
+
+        this.onLineClear(lineCount, comboCount);
+    }
+
+    handleCombo(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
+
+        console.log('[Wolfhour] handleCombo - comboCount:', comboCount);
+
+        if (comboCount > 0) {
+            this.pendingComboCount = comboCount;
+        }
+
+        this.onCombo(comboCount);
     }
 
     onLineClear(lineCount) {
-        console.log('[Wolfhour] Line clear:', lineCount);
+        console.log('[Wolfhour] ✨ LINE CLEAR EVENT:', lineCount, 'lines');
 
         if (!this.effectCanvas || !this.effectCtx) {
-            console.warn('[Wolfhour] Effect canvas not ready');
+            console.error('[Wolfhour] ❌ Effect canvas not ready! Canvas:', this.effectCanvas, 'Ctx:', this.effectCtx);
             return;
         }
+
+        console.log('[Wolfhour] Canvas ready, creating effects...');
 
         // Increase cosmic energy
         this.cosmicEnergy = Math.min(this.cosmicEnergy + lineCount * 0.2, 1.5);
 
+        // Always create at least some effects for testing
+        const burstCount = Math.max(lineCount * 3, 5);
+        console.log('[Wolfhour] Creating', burstCount, 'star bursts');
+
         // Create star bursts from cleared lines
-        for (let i = 0; i < lineCount * 3; i++) {
+        for (let i = 0; i < burstCount; i++) {
             this.createStarBurst();
         }
 
         // Trigger shooting stars
-        for (let i = 0; i < lineCount; i++) {
+        for (let i = 0; i < Math.max(lineCount, 2); i++) {
             this.triggerShootingStar();
         }
 
         // Intensify nebula glow
         this.intensifyNebula(lineCount);
 
-        console.log('[Wolfhour] Star bursts:', this.starBursts.length);
+        console.log('[Wolfhour] ✅ Effects created! Star bursts array length:', this.starBursts.length);
+        console.log('[Wolfhour] First burst:', this.starBursts[0]);
     }
 
     onCombo(comboCount) {
-        console.log('[Wolfhour] Combo:', comboCount);
+        console.log('[Wolfhour] 🔥 COMBO EVENT:', comboCount);
 
         if (!this.effectCanvas || !this.effectCtx) {
-            console.warn('[Wolfhour] Effect canvas not ready');
+            console.error('[Wolfhour] ❌ Effect canvas not ready for combo!');
             return;
         }
 
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.wolfhourPower = Math.min(this.wolfhourPower + comboCount * 0.15, 2.0);
 
-        // Create cosmic waves that ripple across sky
-        if (comboCount >= 2) {
-            for (let i = 0; i < Math.min(comboCount, 4); i++) {
-                this.createCosmicWave();
-            }
+        // Always create some effects even for low combos (for testing)
+        const waveCount = Math.max(Math.min(comboCount, 4), 2);
+        console.log('[Wolfhour] Creating', waveCount, 'cosmic waves');
+        for (let i = 0; i < waveCount; i++) {
+            this.createCosmicWave();
         }
 
         // Create celestial beams from the heavens
         if (comboCount >= 3) {
-            for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
+            const beamCount = Math.min(comboCount - 2, 3);
+            console.log('[Wolfhour] Creating', beamCount, 'celestial beams');
+            for (let i = 0; i < beamCount; i++) {
                 this.createCelestialBeam();
             }
         }
 
         // Pulse the moon
         if (comboCount >= 4) {
+            console.log('[Wolfhour] Creating moon pulse');
             this.createMoonPulse(comboCount);
         }
 
         // Draw constellation lines between stars
         if (comboCount >= 5) {
+            console.log('[Wolfhour] Creating constellation lines');
             this.createConstellationLines(comboCount);
         }
 
         // Make all stars twinkle more intensely
         this.intensifyStars(comboCount);
 
-        console.log('[Wolfhour] Effects created - Waves:', this.cosmicWaves.length, 'Beams:', this.celestialBeams.length);
+        console.log('[Wolfhour] ✅ Combo effects created - Waves:', this.cosmicWaves.length, 'Beams:', this.celestialBeams.length, 'Pulses:', this.moonGlowPulses.length);
     }
 
     createStarBurst() {
@@ -622,6 +705,10 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     drawStarBursts() {
+        if (this.starBursts.length > 0 && this.animationTime % 60 < 1) {
+            console.log('[Wolfhour] Drawing', this.starBursts.length, 'star bursts');
+        }
+
         for (let i = this.starBursts.length - 1; i >= 0; i--) {
             const burst = this.starBursts[i];
 
@@ -788,6 +875,11 @@ export default class WolfhourTheme extends BaseTheme {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
+
+        // Unsubscribe from events
+        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers = [];
+        this.pendingComboCount = 0;
 
         // Clear all effect arrays
         this.starBursts = [];
