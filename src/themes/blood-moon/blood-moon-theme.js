@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 export default class BloodMoonTheme extends BaseTheme {
     constructor() {
@@ -20,6 +21,17 @@ export default class BloodMoonTheme extends BaseTheme {
         this.craterData = [];
         this.moonGlowIntensity = 1.0;
         this.glowPulse = 0;
+
+        // Gameplay effects
+        this.bloodBurstParticles = [];
+        this.crimsonLightning = [];
+        this.bloodWaves = [];
+        this.moonPulseIntensity = 0;
+        this.comboMultiplier = 1.0;
+        this.eventUnsubscribers = [];
+        this.pendingComboCount = 0;
+        this.soulOrbs = [];
+        this.bloodVortexes = [];
     }
 
     async createScene() {
@@ -43,6 +55,9 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Initialize crater data for the moon
         this.createCraterData();
+
+        // Setup gameplay event listeners
+        this.setupEventListeners();
 
         this.animate();
     }
@@ -235,6 +250,190 @@ export default class BloodMoonTheme extends BaseTheme {
         }
     }
 
+    setupEventListeners() {
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handleLineClear(data);
+            }
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handleCombo(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+    }
+
+    handleLineClear(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
+        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
+
+        if (!comboCount && this.pendingComboCount > 0) {
+            comboCount = this.pendingComboCount;
+            this.pendingComboCount = 0;
+        }
+
+        this.onLineClear(lineCount, comboCount);
+    }
+
+    handleCombo(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
+
+        if (comboCount > 0) {
+            this.pendingComboCount = comboCount;
+        }
+    }
+
+    onLineClear(lineCount, comboCount) {
+        // Update combo multiplier
+        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
+
+        // Moon pulse intensity based on combo
+        this.moonPulseIntensity = Math.min(0.5 + comboCount * 0.15, 1.5);
+
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+
+        // Blood burst particles from center
+        const burstCount = Math.min(lineCount * 25 + comboCount * 20, 200);
+        for (let i = 0; i < burstCount; i++) {
+            this.bloodBurstParticles.push(this.createBloodBurstParticle(centerX, centerY, lineCount));
+        }
+
+        // Crimson lightning for big combos
+        if (comboCount >= 4) {
+            this.createCrimsonLightning(centerX, centerY, comboCount);
+        }
+
+        // Blood waves rippling from moon
+        if (lineCount >= 2) {
+            this.createBloodWaves(lineCount, comboCount);
+        }
+
+        // Soul orbs rising for combos
+        if (comboCount >= 2) {
+            const orbCount = Math.min(comboCount * 3, 15);
+            for (let i = 0; i < orbCount; i++) {
+                this.soulOrbs.push(this.createSoulOrb());
+            }
+        }
+
+        // Blood vortexes for massive combos
+        if (comboCount >= 7) {
+            for (let i = 0; i < Math.floor(comboCount / 4); i++) {
+                this.bloodVortexes.push(this.createBloodVortex());
+            }
+        }
+    }
+
+    createBloodBurstParticle(x, y, lineCount) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 12 + 6 + lineCount * 2;
+
+        return {
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: Math.random() * 5 + 2,
+            opacity: Math.random() * 0.9 + 0.4,
+            life: 1.0,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.2,
+            color: Math.random() > 0.5 ? 'blood' : 'dark',
+            sparkle: Math.random() * Math.PI * 2,
+            trail: []
+        };
+    }
+
+    createCrimsonLightning(x, y, comboCount) {
+        const branches = [];
+        const numBranches = Math.floor(comboCount / 2) + 3;
+
+        for (let i = 0; i < numBranches; i++) {
+            const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.5;
+            const segments = [];
+            let currentX = x;
+            let currentY = y;
+
+            for (let j = 0; j < 10; j++) {
+                const length = Math.random() * 100 + 60;
+                const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.9) * length;
+                const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.9) * length;
+
+                segments.push({
+                    x1: currentX,
+                    y1: currentY,
+                    x2: nextX,
+                    y2: nextY
+                });
+
+                currentX = nextX;
+                currentY = nextY;
+            }
+
+            branches.push(segments);
+        }
+
+        this.crimsonLightning.push({
+            branches: branches,
+            opacity: 1.0,
+            life: 1.0,
+            pulsePhase: 0
+        });
+    }
+
+    createBloodWaves(lineCount, comboCount) {
+        const waveCount = Math.min(lineCount + comboCount, 6);
+
+        for (let i = 0; i < waveCount; i++) {
+            this.bloodWaves.push({
+                radius: 0,
+                maxRadius: 300 + comboCount * 50,
+                opacity: 0.8,
+                life: 1.0,
+                speed: 4 + comboCount * 0.5,
+                delay: i * 0.15,
+                started: false
+            });
+        }
+    }
+
+    createSoulOrb() {
+        return {
+            x: Math.random() * this.canvas.width,
+            y: this.canvas.height + 50,
+            vx: (Math.random() - 0.5) * 2,
+            vy: -(Math.random() * 3 + 2),
+            size: Math.random() * 8 + 4,
+            opacity: Math.random() * 0.7 + 0.4,
+            life: 1.0,
+            pulsePhase: Math.random() * Math.PI * 2,
+            glowIntensity: Math.random() * 0.5 + 0.5
+        };
+    }
+
+    createBloodVortex() {
+        return {
+            x: Math.random() * this.canvas.width,
+            y: Math.random() * this.canvas.height * 0.6,
+            particles: [],
+            angle: 0,
+            radius: 0,
+            maxRadius: Math.random() * 250 + 200,
+            spinSpeed: 0.12,
+            expansionRate: 3,
+            life: 1.0,
+            direction: Math.random() < 0.5 ? 1 : -1
+        };
+    }
+
     calculateMoonPosition() {
         // Update moon position with ultra-slow drifting motion across entire screen
         // Use very slow sine/cosine waves with different periods for natural movement
@@ -263,8 +462,14 @@ export default class BloodMoonTheme extends BaseTheme {
     drawMoon(moonPos) {
         this.moonRotation += 0.0001;
 
-        // Update glow pulse - stronger and more dramatic
-        this.glowPulse = Math.sin(this.time * 0.002) * 0.35 + 0.85; // Increased pulse range
+        // Decay moon pulse intensity
+        if (this.moonPulseIntensity > 0) {
+            this.moonPulseIntensity *= 0.95;
+        }
+
+        // Update glow pulse - stronger and more dramatic, enhanced by gameplay
+        const basePulse = Math.sin(this.time * 0.002) * 0.35 + 0.85;
+        this.glowPulse = basePulse * (1 + this.moonPulseIntensity * 0.5); // Increased pulse range
 
         this.ctx.save();
         this.ctx.translate(moonPos.x, moonPos.y);
@@ -428,6 +633,233 @@ export default class BloodMoonTheme extends BaseTheme {
         this.drawBackground();
         this.drawNebulaClouds();
         this.drawStars(moonPos.x, moonPos.y);
+
+        // Draw blood waves emanating from moon
+        for (let i = this.bloodWaves.length - 1; i >= 0; i--) {
+            const wave = this.bloodWaves[i];
+
+            wave.delay -= 0.016;
+            if (wave.delay <= 0 && !wave.started) {
+                wave.started = true;
+            }
+
+            if (!wave.started) continue;
+
+            wave.radius += wave.speed;
+            wave.life -= 0.01;
+            wave.opacity = wave.life * 0.6;
+
+            if (wave.life <= 0 || wave.radius > wave.maxRadius) {
+                this.bloodWaves.splice(i, 1);
+                continue;
+            }
+
+            // Draw pulsing blood wave rings
+            for (let j = 0; j < 3; j++) {
+                const offsetRadius = wave.radius - j * 20;
+                if (offsetRadius <= 0) continue;
+
+                this.ctx.beginPath();
+                this.ctx.arc(moonPos.x, moonPos.y, offsetRadius, 0, Math.PI * 2);
+                this.ctx.strokeStyle = `rgba(200, 30, 50, ${wave.opacity * (1 - j * 0.3)})`;
+                this.ctx.lineWidth = 3 + j;
+                this.ctx.stroke();
+            }
+        }
+
+        // Draw crimson lightning
+        for (let i = this.crimsonLightning.length - 1; i >= 0; i--) {
+            const lightning = this.crimsonLightning[i];
+            lightning.life -= 0.02;
+            lightning.opacity = lightning.life;
+            lightning.pulsePhase += 0.15;
+
+            if (lightning.life <= 0) {
+                this.crimsonLightning.splice(i, 1);
+                continue;
+            }
+
+            const pulseOpacity = lightning.opacity * (0.4 + Math.sin(lightning.pulsePhase) * 0.2);
+
+            this.ctx.lineCap = 'round';
+
+            // Outer glow
+            this.ctx.strokeStyle = `rgba(200, 40, 60, ${pulseOpacity * 0.2})`;
+            this.ctx.lineWidth = 8;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
+
+            // Middle layer
+            this.ctx.strokeStyle = `rgba(220, 50, 70, ${pulseOpacity * 0.4})`;
+            this.ctx.lineWidth = 4;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
+
+            // Core
+            this.ctx.strokeStyle = `rgba(255, 80, 100, ${pulseOpacity * 0.7})`;
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            for (const branch of lightning.branches) {
+                for (const segment of branch) {
+                    this.ctx.moveTo(segment.x1, segment.y1);
+                    this.ctx.lineTo(segment.x2, segment.y2);
+                }
+            }
+            this.ctx.stroke();
+        }
+
+        // Draw blood burst particles
+        for (let i = this.bloodBurstParticles.length - 1; i >= 0; i--) {
+            const p = this.bloodBurstParticles[i];
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.2; // Gravity
+            p.vx *= 0.98;
+            p.rotation += p.rotationSpeed;
+            p.life -= 0.015;
+            p.opacity = p.life * 0.9;
+            p.sparkle += 0.2;
+
+            if (p.life <= 0 || p.y > this.canvas.height) {
+                this.bloodBurstParticles.splice(i, 1);
+                continue;
+            }
+
+            const sparkle = Math.sin(p.sparkle) * 0.3 + 0.7;
+
+            this.ctx.save();
+            this.ctx.translate(p.x, p.y);
+            this.ctx.rotate(p.rotation);
+            this.ctx.globalAlpha = p.opacity * sparkle;
+
+            // Blood-red particle
+            if (p.color === 'blood') {
+                this.ctx.fillStyle = 'rgba(200, 30, 50, 1)';
+            } else {
+                this.ctx.fillStyle = 'rgba(100, 15, 25, 1)';
+            }
+
+            // Draw droplet shape
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, -p.size);
+            this.ctx.bezierCurveTo(p.size * 0.5, -p.size * 0.5, p.size * 0.5, p.size * 0.5, 0, p.size);
+            this.ctx.bezierCurveTo(-p.size * 0.5, p.size * 0.5, -p.size * 0.5, -p.size * 0.5, 0, -p.size);
+            this.ctx.fill();
+
+            // Highlight
+            this.ctx.fillStyle = 'rgba(255, 100, 120, 0.6)';
+            this.ctx.beginPath();
+            this.ctx.arc(-p.size * 0.2, -p.size * 0.3, p.size * 0.3, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = 1;
+            this.ctx.restore();
+        }
+
+        // Draw soul orbs
+        for (let i = this.soulOrbs.length - 1; i >= 0; i--) {
+            const orb = this.soulOrbs[i];
+
+            orb.x += orb.vx;
+            orb.y += orb.vy;
+            orb.vx *= 0.99;
+            orb.vy *= 0.98;
+            orb.life -= 0.008;
+            orb.opacity = orb.life * 0.8;
+            orb.pulsePhase += 0.1;
+
+            if (orb.life <= 0 || orb.y < -50) {
+                this.soulOrbs.splice(i, 1);
+                continue;
+            }
+
+            const pulse = Math.sin(orb.pulsePhase) * 0.3 + 0.7;
+
+            // Outer glow
+            const outerGrad = this.ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.size * 2);
+            outerGrad.addColorStop(0, `rgba(180, 50, 70, ${orb.opacity * pulse * 0.4})`);
+            outerGrad.addColorStop(0.5, `rgba(150, 30, 50, ${orb.opacity * pulse * 0.2})`);
+            outerGrad.addColorStop(1, 'rgba(100, 20, 30, 0)');
+
+            this.ctx.fillStyle = outerGrad;
+            this.ctx.beginPath();
+            this.ctx.arc(orb.x, orb.y, orb.size * 2, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Core
+            const coreGrad = this.ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.size);
+            coreGrad.addColorStop(0, `rgba(255, 100, 120, ${orb.opacity * pulse})`);
+            coreGrad.addColorStop(0.6, `rgba(220, 60, 80, ${orb.opacity * pulse * 0.7})`);
+            coreGrad.addColorStop(1, `rgba(180, 40, 60, ${orb.opacity * pulse * 0.3})`);
+
+            this.ctx.fillStyle = coreGrad;
+            this.ctx.beginPath();
+            this.ctx.arc(orb.x, orb.y, orb.size, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+
+        // Draw blood vortexes
+        for (let i = this.bloodVortexes.length - 1; i >= 0; i--) {
+            const vortex = this.bloodVortexes[i];
+
+            vortex.angle += vortex.spinSpeed * vortex.direction;
+            vortex.radius += vortex.expansionRate;
+            vortex.life -= 0.006;
+
+            // Spawn vortex particles
+            if (Math.random() < 0.6 && vortex.radius < vortex.maxRadius) {
+                const particleAngle = vortex.angle + Math.random() * Math.PI * 0.4;
+                const particleRadius = vortex.radius + Math.random() * 50;
+                vortex.particles.push({
+                    x: vortex.x + Math.cos(particleAngle) * particleRadius,
+                    y: vortex.y + Math.sin(particleAngle) * particleRadius,
+                    size: Math.random() * 4 + 2,
+                    opacity: Math.random() * 0.9 + 0.3,
+                    vx: Math.cos(particleAngle) * 2,
+                    vy: Math.sin(particleAngle) * 2,
+                    life: 1.0
+                });
+            }
+
+            // Update vortex particles
+            for (let j = vortex.particles.length - 1; j >= 0; j--) {
+                const p = vortex.particles[j];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.opacity = p.life * vortex.life * 0.8;
+
+                if (p.life <= 0) {
+                    vortex.particles.splice(j, 1);
+                    continue;
+                }
+
+                this.ctx.globalAlpha = p.opacity;
+                this.ctx.fillStyle = 'rgba(220, 50, 70, 1)';
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1;
+            }
+
+            if (vortex.life <= 0 || vortex.radius > vortex.maxRadius) {
+                this.bloodVortexes.splice(i, 1);
+            }
+        }
+
         this.drawMoon(moonPos);
 
         const animId = requestAnimationFrame(() => this.animate());
@@ -439,6 +871,21 @@ export default class BloodMoonTheme extends BaseTheme {
             window.removeEventListener('resize', this.resizeHandler);
             this.resizeHandler = null;
         }
+
+        // Unsubscribe from events
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // Clear gameplay effects
+        this.bloodBurstParticles = [];
+        this.crimsonLightning = [];
+        this.bloodWaves = [];
+        this.soulOrbs = [];
+        this.bloodVortexes = [];
+        this.moonPulseIntensity = 0;
+        this.comboMultiplier = 1.0;
+        this.pendingComboCount = 0;
+
         super.stop();
     }
 }
