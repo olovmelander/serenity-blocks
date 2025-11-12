@@ -263,6 +263,12 @@ export const THEME_REGISTRY = [
         module: './stillwater/stillwater-theme.js',
         group: 'biomes',
     },
+    {
+        id: 'blood-moon',
+        displayName: 'Blood Moon',
+        module: './blood-moon/blood-moon-theme.js',
+        group: 'cosmic',
+    },
 ];
 
 const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
