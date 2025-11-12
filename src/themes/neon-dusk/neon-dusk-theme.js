@@ -9,6 +9,14 @@ export default class NeonDuskTheme extends BaseTheme {
         this.meteorAnimationFrame = null;
         this.lastMeteorFrameTime = 0;
 
+        // Performance limits
+        this.MAX_PARTICLES = 180;
+        this.MAX_ARCS = 6;
+        this.MAX_SCANLINES = 12;
+        this.MAX_RINGS = 8;
+        this.MAX_VORTEXES = 3;
+        this.MAX_GLITCHES = 15;
+
         // Gameplay effects
         this.neonBurstParticles = [];
         this.electricArcs = [];
@@ -276,10 +284,16 @@ export default class NeonDuskTheme extends BaseTheme {
     createNeonBurst(lineCount) {
         if (!this.effectsCanvas) return;
 
+        // Enforce particle limit
+        if (this.neonBurstParticles.length >= this.MAX_PARTICLES) {
+            // Remove oldest particles
+            this.neonBurstParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
+        }
+
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
         const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00', '#ff0088'];
-        const burstCount = Math.min(lineCount * 30 + this.comboMultiplier * 25, 250);
+        const burstCount = Math.min(lineCount * 20 + this.comboMultiplier * 15, this.MAX_PARTICLES);
 
         for (let i = 0; i < burstCount; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -303,9 +317,12 @@ export default class NeonDuskTheme extends BaseTheme {
     createElectricArcs(comboCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit arcs
+        if (this.electricArcs.length >= this.MAX_ARCS) return;
+
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
-        const arcCount = Math.min(comboCount, 8);
+        const arcCount = Math.min(Math.floor(comboCount / 2), this.MAX_ARCS - this.electricArcs.length);
         const colors = ['#00ffff', '#ff00ff', '#00ff88'];
 
         for (let i = 0; i < arcCount; i++) {
@@ -323,7 +340,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 life: 1.0,
                 maxLife: 0.4 + Math.random() * 0.3,
                 color,
-                segments: this.generateArcSegments(startX, startY, endX, endY, 8),
+                segments: this.generateArcSegments(startX, startY, endX, endY, 6),
                 width: Math.random() * 3 + 2,
             });
         }
@@ -348,10 +365,14 @@ export default class NeonDuskTheme extends BaseTheme {
     createDigitalScanLines(lineCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit scan lines
+        if (this.digitalScanLines.length >= this.MAX_SCANLINES) return;
+
         const height = this.effectsCanvas.height;
         const colors = ['#00ffff', '#ff00ff', '#00ff88'];
+        const scanCount = Math.min(lineCount * 2, this.MAX_SCANLINES - this.digitalScanLines.length);
 
-        for (let i = 0; i < lineCount * 2; i++) {
+        for (let i = 0; i < scanCount; i++) {
             const color = colors[Math.floor(Math.random() * colors.length)];
             this.digitalScanLines.push({
                 y: Math.random() * height,
@@ -368,11 +389,15 @@ export default class NeonDuskTheme extends BaseTheme {
     createHologramRings(lineCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit rings
+        if (this.hologramRings.length >= this.MAX_RINGS) return;
+
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
         const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00'];
+        const ringCount = Math.min(lineCount, this.MAX_RINGS - this.hologramRings.length);
 
-        for (let i = 0; i < lineCount; i++) {
+        for (let i = 0; i < ringCount; i++) {
             const color = colors[Math.floor(Math.random() * colors.length)];
             this.hologramRings.push({
                 x: centerX,
@@ -390,11 +415,15 @@ export default class NeonDuskTheme extends BaseTheme {
     createGlitchPulse(comboCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit glitch pulses
+        if (this.glitchPulses.length >= this.MAX_GLITCHES) return;
+
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
         const colors = ['#00ffff', '#ff00ff', '#ffff00'];
+        const glitchCount = Math.min(comboCount * 2, this.MAX_GLITCHES - this.glitchPulses.length);
 
-        for (let i = 0; i < Math.min(comboCount * 3, 15); i++) {
+        for (let i = 0; i < glitchCount; i++) {
             const color = colors[Math.floor(Math.random() * colors.length)];
             this.glitchPulses.push({
                 x: Math.random() * width,
@@ -412,14 +441,18 @@ export default class NeonDuskTheme extends BaseTheme {
     createCyberVortex(comboCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit vortexes
+        if (this.cyberVortexes.length >= this.MAX_VORTEXES) return;
+
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
         const colors = ['#00ffff', '#ff00ff', '#00ff88'];
+        const vortexCount = Math.min(Math.floor(comboCount / 4), this.MAX_VORTEXES - this.cyberVortexes.length);
 
-        for (let i = 0; i < Math.min(comboCount, 3); i++) {
+        for (let i = 0; i < vortexCount; i++) {
             const color = colors[i % colors.length];
             const particles = [];
-            const particleCount = 80;
+            const particleCount = 60; // Reduced from 80
 
             for (let j = 0; j < particleCount; j++) {
                 const angle = (j / particleCount) * Math.PI * 2;

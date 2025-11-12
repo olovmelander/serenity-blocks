@@ -22,6 +22,13 @@ export default class BloodMoonTheme extends BaseTheme {
         this.moonGlowIntensity = 1.0;
         this.glowPulse = 0;
 
+        // Performance limits
+        this.MAX_PARTICLES = 150;
+        this.MAX_LIGHTNING = 3;
+        this.MAX_WAVES = 6;
+        this.MAX_ORBS = 15;
+        this.MAX_VORTEXES = 3;
+
         // Gameplay effects
         this.bloodBurstParticles = [];
         this.crimsonLightning = [];
@@ -300,33 +307,40 @@ export default class BloodMoonTheme extends BaseTheme {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
-        // Blood burst particles from center
-        const burstCount = Math.min(lineCount * 25 + comboCount * 20, 200);
+        // Blood burst particles from center - reduced for performance
+        // Enforce particle limit
+        if (this.bloodBurstParticles.length >= this.MAX_PARTICLES) {
+            // Remove oldest particles
+            this.bloodBurstParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
+        }
+
+        const burstCount = Math.min(lineCount * 15 + comboCount * 10, this.MAX_PARTICLES);
         for (let i = 0; i < burstCount; i++) {
             this.bloodBurstParticles.push(this.createBloodBurstParticle(centerX, centerY, lineCount));
         }
 
-        // Crimson lightning for big combos
-        if (comboCount >= 4) {
+        // Crimson lightning for big combos - limit instances
+        if (comboCount >= 4 && this.crimsonLightning.length < this.MAX_LIGHTNING) {
             this.createCrimsonLightning(centerX, centerY, comboCount);
         }
 
-        // Blood waves rippling from moon
-        if (lineCount >= 2) {
+        // Blood waves rippling from moon - limit waves
+        if (lineCount >= 2 && this.bloodWaves.length < this.MAX_WAVES) {
             this.createBloodWaves(lineCount, comboCount);
         }
 
-        // Soul orbs rising for combos
-        if (comboCount >= 2) {
-            const orbCount = Math.min(comboCount * 3, 15);
+        // Soul orbs rising for combos - limit orbs
+        if (comboCount >= 2 && this.soulOrbs.length < this.MAX_ORBS) {
+            const orbCount = Math.min(comboCount * 2, this.MAX_ORBS - this.soulOrbs.length);
             for (let i = 0; i < orbCount; i++) {
                 this.soulOrbs.push(this.createSoulOrb());
             }
         }
 
-        // Blood vortexes for massive combos
-        if (comboCount >= 7) {
-            for (let i = 0; i < Math.floor(comboCount / 4); i++) {
+        // Blood vortexes for massive combos - limit vortexes
+        if (comboCount >= 7 && this.bloodVortexes.length < this.MAX_VORTEXES) {
+            const vortexCount = Math.min(Math.floor(comboCount / 5), this.MAX_VORTEXES - this.bloodVortexes.length);
+            for (let i = 0; i < vortexCount; i++) {
                 this.bloodVortexes.push(this.createBloodVortex());
             }
         }
@@ -354,7 +368,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
     createCrimsonLightning(x, y, comboCount) {
         const branches = [];
-        const numBranches = Math.floor(comboCount / 2) + 3;
+        const numBranches = Math.min(Math.floor(comboCount / 3) + 3, 8); // Reduced and capped
 
         for (let i = 0; i < numBranches; i++) {
             const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.5;
@@ -362,7 +376,8 @@ export default class BloodMoonTheme extends BaseTheme {
             let currentX = x;
             let currentY = y;
 
-            for (let j = 0; j < 10; j++) {
+            // Reduced segments from 10 to 7
+            for (let j = 0; j < 7; j++) {
                 const length = Math.random() * 100 + 60;
                 const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.9) * length;
                 const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.9) * length;
@@ -390,7 +405,7 @@ export default class BloodMoonTheme extends BaseTheme {
     }
 
     createBloodWaves(lineCount, comboCount) {
-        const waveCount = Math.min(lineCount + comboCount, 6);
+        const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), this.MAX_WAVES - this.bloodWaves.length);
 
         for (let i = 0; i < waveCount; i++) {
             this.bloodWaves.push({
@@ -819,8 +834,8 @@ export default class BloodMoonTheme extends BaseTheme {
             vortex.radius += vortex.expansionRate;
             vortex.life -= 0.006;
 
-            // Spawn vortex particles
-            if (Math.random() < 0.6 && vortex.radius < vortex.maxRadius) {
+            // Spawn vortex particles - reduced spawn rate for performance
+            if (Math.random() < 0.4 && vortex.radius < vortex.maxRadius && vortex.particles.length < 40) {
                 const particleAngle = vortex.angle + Math.random() * Math.PI * 0.4;
                 const particleRadius = vortex.radius + Math.random() * 50;
                 vortex.particles.push({

@@ -27,6 +27,18 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.effectsAnimationFrame = null;
         this.lastEffectsFrameTime = 0;
         this.eventUnsubscribers = [];
+
+        // Store references to DOM blobs
+        this.domBlobs = [];
+        this.blobPulses = new Map();
+
+        // Performance limits - more aggressive
+        this.MAX_PARTICLES = 80;
+        this.MAX_WAVES = 4;
+        this.MAX_RIPPLES = 6;
+        this.MAX_STREAMS = 3;
+        this.MAX_BURSTS = 1;
+        this.MAX_BLOBS = 1;
     }
 
     async init() {
@@ -55,6 +67,10 @@ export default class FluidDreamsTheme extends BaseTheme {
 
                 blob.style.animationDelay = `-${Math.random() * 10}s, -${Math.random() * 15}s, -${Math.random() * 20}s`;
                 blobContainer.appendChild(blob);
+
+                // Store reference to blob
+                this.domBlobs.push(blob);
+                this.blobPulses.set(blob, { intensity: 0, lastPulse: 0 });
             }
         }
 
@@ -175,6 +191,9 @@ export default class FluidDreamsTheme extends BaseTheme {
         if (lineCount >= 3) {
             this.createFluidStreams(lineCount);
         }
+
+        // Pulse DOM blobs on line clear
+        this.pulseDOMBlobs(lineCount * 0.3);
     }
 
     handleCombo(data) {
@@ -192,10 +211,90 @@ export default class FluidDreamsTheme extends BaseTheme {
         if (comboCount >= 6) {
             this.createMorphBlob(comboCount);
         }
+
+        // Strong pulse on combos
+        this.pulseDOMBlobs(comboCount * 0.4 + 0.5);
+
+        // Connect effects to blobs
+        if (comboCount >= 3) {
+            this.createBlobConnectionEffects(comboCount);
+        }
+    }
+
+    pulseDOMBlobs(intensity) {
+        // Pulse all DOM blobs
+        this.domBlobs.forEach((blob) => {
+            const pulseData = this.blobPulses.get(blob);
+            if (pulseData) {
+                pulseData.intensity = Math.min(pulseData.intensity + intensity, 2.0);
+                pulseData.lastPulse = Date.now();
+
+                // Apply transform scale pulse
+                const currentScale = 1 + pulseData.intensity * 0.3;
+                blob.style.transform = `scale(${currentScale})`;
+                blob.style.filter = `brightness(${1 + pulseData.intensity * 0.4}) saturate(${1 + pulseData.intensity * 0.5})`;
+            }
+        });
+    }
+
+    createBlobConnectionEffects(comboCount) {
+        if (!this.effectsCanvas || this.domBlobs.length < 2 || this.fluidStreams.length >= this.MAX_STREAMS) return;
+
+        // Reduced connection count
+        const connectionCount = Math.min(Math.floor(comboCount / 2), this.MAX_STREAMS - this.fluidStreams.length);
+        for (let i = 0; i < connectionCount; i++) {
+            const blob1 = this.domBlobs[Math.floor(Math.random() * this.domBlobs.length)];
+            const blob2 = this.domBlobs[Math.floor(Math.random() * this.domBlobs.length)];
+
+            if (blob1 === blob2) continue;
+
+            // Get blob positions
+            const rect1 = blob1.getBoundingClientRect();
+            const rect2 = blob2.getBoundingClientRect();
+            const canvasRect = this.effectsCanvas.getBoundingClientRect();
+
+            const x1 = rect1.left + rect1.width / 2 - canvasRect.left;
+            const y1 = rect1.top + rect1.height / 2 - canvasRect.top;
+            const x2 = rect2.left + rect2.width / 2 - canvasRect.left;
+            const y2 = rect2.top + rect2.height / 2 - canvasRect.top;
+
+            // Create flowing stream between blobs - reduced segments
+            const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+            const points = [];
+            const segments = Math.min(Math.floor(distance / 30), 15); // Fewer segments
+
+            for (let j = 0; j <= segments; j++) {
+                const t = j / segments;
+                const perpAngle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
+                const waveOffset = Math.sin(t * Math.PI * 3) * 30;
+
+                points.push({
+                    x: x1 + (x2 - x1) * t + Math.cos(perpAngle) * waveOffset,
+                    y: y1 + (y2 - y1) * t + Math.sin(perpAngle) * waveOffset,
+                });
+            }
+
+            this.fluidStreams.push({
+                points,
+                life: 1.0,
+                maxLife: 1.5 + Math.random() * 0.5,
+                hue: Math.random() * 360,
+                width: Math.random() * 10 + 6,
+                flowOffset: 0,
+                flowSpeed: Math.random() * 0.15 + 0.1,
+                particleEmit: true,
+            });
+        }
     }
 
     createLiquidSplash(lineCount) {
         if (!this.effectsCanvas) return;
+
+        // Enforce particle limit
+        if (this.liquidSplashes.length >= this.MAX_PARTICLES) {
+            // Remove oldest particles
+            this.liquidSplashes.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
+        }
 
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
@@ -206,9 +305,12 @@ export default class FluidDreamsTheme extends BaseTheme {
             { h: 180, s: 70, l: 65 }, // Aqua
         ];
 
-        const particleCount = Math.min(lineCount * 35 + this.comboMultiplier * 30, 300);
+        // Reduced particle count for performance
+        const particleCount = Math.min(lineCount * 12 + this.comboMultiplier * 8, this.MAX_PARTICLES);
 
-        for (let i = 0; i < particleCount; i++) {
+        // Spawn some particles from center
+        const centerParticles = Math.floor(particleCount * 0.6);
+        for (let i = 0; i < centerParticles; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = (Math.random() * 4 + 3) * this.comboMultiplier;
             const color = colors[Math.floor(Math.random() * colors.length)];
@@ -227,15 +329,54 @@ export default class FluidDreamsTheme extends BaseTheme {
                 trail: [],
             });
         }
+
+        // Spawn remaining particles from blob positions
+        const blobParticles = particleCount - centerParticles;
+        if (this.domBlobs.length > 0 && blobParticles > 0) {
+            const particlesPerBlob = Math.ceil(blobParticles / this.domBlobs.length);
+
+            this.domBlobs.forEach((blob) => {
+                const rect = blob.getBoundingClientRect();
+                const canvasRect = this.effectsCanvas.getBoundingClientRect();
+                const blobX = rect.left + rect.width / 2 - canvasRect.left;
+                const blobY = rect.top + rect.height / 2 - canvasRect.top;
+
+                for (let i = 0; i < particlesPerBlob; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = (Math.random() * 3 + 2) * this.comboMultiplier;
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+
+                    this.liquidSplashes.push({
+                        x: blobX,
+                        y: blobY,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        life: 1.0,
+                        maxLife: Math.random() * 0.9 + 0.7,
+                        size: Math.random() * 8 + 3,
+                        color,
+                        viscosity: Math.random() * 0.15 + 0.85,
+                        shimmer: Math.random() * Math.PI * 2,
+                        trail: [],
+                    });
+                }
+            });
+        }
     }
 
     createIridescenceWave(comboCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit waves
+        if (this.iridescenceWaves.length >= this.MAX_WAVES) return;
+
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
+        const waveCount = Math.min(comboCount, this.MAX_WAVES - this.iridescenceWaves.length);
 
-        for (let i = 0; i < Math.min(comboCount * 2, 10); i++) {
+        // Half waves from random positions
+        const randomWaves = Math.floor(waveCount / 2);
+        for (let i = 0; i < randomWaves; i++) {
             this.iridescenceWaves.push({
                 x: Math.random() * width,
                 y: Math.random() * height,
@@ -248,15 +389,43 @@ export default class FluidDreamsTheme extends BaseTheme {
                 rotation: 0,
             });
         }
+
+        // Half waves from blob positions
+        const blobWaves = waveCount - randomWaves;
+        if (this.domBlobs.length > 0) {
+            for (let i = 0; i < blobWaves; i++) {
+                const blob = this.domBlobs[Math.floor(Math.random() * this.domBlobs.length)];
+                const rect = blob.getBoundingClientRect();
+                const canvasRect = this.effectsCanvas.getBoundingClientRect();
+                const blobX = rect.left + rect.width / 2 - canvasRect.left;
+                const blobY = rect.top + rect.height / 2 - canvasRect.top;
+
+                this.iridescenceWaves.push({
+                    x: blobX,
+                    y: blobY,
+                    radius: 0,
+                    maxRadius: Math.random() * 400 + 300,
+                    life: 1.0,
+                    maxLife: 1.5 + Math.random() * 0.8,
+                    hueOffset: Math.random() * 360,
+                    rotationSpeed: (Math.random() - 0.5) * 0.05,
+                    rotation: 0,
+                });
+            }
+        }
     }
 
     createDreamRipples(lineCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit ripples
+        if (this.dreamRipples.length >= this.MAX_RIPPLES) return;
+
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
 
-        for (let i = 0; i < lineCount * 3; i++) {
+        const rippleCount = Math.min(lineCount * 2, this.MAX_RIPPLES - this.dreamRipples.length);
+        for (let i = 0; i < rippleCount; i++) {
             this.dreamRipples.push({
                 x: centerX + (Math.random() - 0.5) * 200,
                 y: centerY + (Math.random() - 0.5) * 200,
@@ -275,10 +444,14 @@ export default class FluidDreamsTheme extends BaseTheme {
     createFluidStreams(lineCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit streams
+        if (this.fluidStreams.length >= this.MAX_STREAMS) return;
+
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
 
-        for (let i = 0; i < Math.min(lineCount * 2, 12); i++) {
+        const streamCount = Math.min(lineCount, this.MAX_STREAMS - this.fluidStreams.length);
+        for (let i = 0; i < streamCount; i++) {
             const startX = Math.random() * width;
             const startY = Math.random() * height;
             const angle = Math.random() * Math.PI * 2;
@@ -310,10 +483,13 @@ export default class FluidDreamsTheme extends BaseTheme {
     createPrismBurst(comboCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit prism bursts
+        if (this.prismBursts.length >= this.MAX_BURSTS) return;
+
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
 
-        const rayCount = Math.min(comboCount * 4, 24);
+        const rayCount = Math.min(comboCount * 2, 12); // Reduced from *3, 18 to *2, 12
         const rays = [];
 
         for (let i = 0; i < rayCount; i++) {
@@ -342,10 +518,14 @@ export default class FluidDreamsTheme extends BaseTheme {
     createMorphBlob(comboCount) {
         if (!this.effectsCanvas) return;
 
+        // Limit morph blobs
+        if (this.morphBlobs.length >= this.MAX_BLOBS) return;
+
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
 
-        for (let i = 0; i < Math.min(Math.floor(comboCount / 3), 3); i++) {
+        const blobCount = Math.min(Math.floor(comboCount / 4), this.MAX_BLOBS - this.morphBlobs.length);
+        for (let i = 0; i < blobCount; i++) {
             const points = [];
             const numPoints = 8;
             const baseRadius = Math.random() * 80 + 60;
@@ -411,6 +591,45 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     updateEffects(delta) {
+        // Update blob pulses
+        const now = Date.now();
+        this.domBlobs.forEach((blob) => {
+            const pulseData = this.blobPulses.get(blob);
+            if (pulseData && pulseData.intensity > 0) {
+                // Decay intensity over time
+                const timeSincePulse = (now - pulseData.lastPulse) / 1000;
+                pulseData.intensity = Math.max(0, pulseData.intensity - delta * 0.8);
+
+                // Update blob visual
+                const currentScale = 1 + pulseData.intensity * 0.3;
+                blob.style.transform = `scale(${currentScale})`;
+                blob.style.filter = `brightness(${1 + pulseData.intensity * 0.4}) saturate(${1 + pulseData.intensity * 0.5})`;
+
+                // Create ripples from pulsing blobs - reduced rate
+                if (pulseData.intensity > 0.8 && Math.random() > 0.95 && this.dreamRipples.length < this.MAX_RIPPLES) {
+                    const rect = blob.getBoundingClientRect();
+                    const canvasRect = this.effectsCanvas?.getBoundingClientRect();
+                    if (canvasRect) {
+                        const blobX = rect.left + rect.width / 2 - canvasRect.left;
+                        const blobY = rect.top + rect.height / 2 - canvasRect.top;
+
+                        this.dreamRipples.push({
+                            x: blobX,
+                            y: blobY,
+                            radius: 0,
+                            maxRadius: Math.random() * 150 + 100,
+                            life: 1.0,
+                            maxLife: 0.8 + Math.random() * 0.4,
+                            hue: Math.random() * 360,
+                            frequency: Math.random() * 6 + 4,
+                            amplitude: Math.random() * 10 + 5,
+                            phase: Math.random() * Math.PI * 2,
+                        });
+                    }
+                }
+            }
+        });
+
         // Update liquid splashes
         for (let i = this.liquidSplashes.length - 1; i >= 0; i--) {
             const p = this.liquidSplashes[i];
@@ -510,7 +729,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
-        // Render dream ripples
+        // Render dream ripples - optimized with fewer points
         this.dreamRipples.forEach((ripple) => {
             const alpha = ripple.life * 0.6;
             ctx.strokeStyle = `hsla(${ripple.hue}, 70%, 65%, ${alpha})`;
@@ -518,9 +737,9 @@ export default class FluidDreamsTheme extends BaseTheme {
             ctx.shadowBlur = 20;
             ctx.shadowColor = `hsl(${ripple.hue}, 70%, 65%)`;
 
-            // Draw wavy ripple
+            // Draw wavy ripple - reduced angle step from 0.1 to 0.15 for better performance
             ctx.beginPath();
-            for (let angle = 0; angle <= Math.PI * 2; angle += 0.1) {
+            for (let angle = 0; angle <= Math.PI * 2; angle += 0.15) {
                 const wave = Math.sin(angle * ripple.frequency + ripple.phase) * ripple.amplitude;
                 const r = ripple.radius + wave;
                 const x = ripple.x + Math.cos(angle) * r;
@@ -535,20 +754,20 @@ export default class FluidDreamsTheme extends BaseTheme {
             ctx.stroke();
         });
 
-        // Render iridescence waves
+        // Render iridescence waves - reduced from 4 to 3 rings for performance
         this.iridescenceWaves.forEach((wave) => {
             const alpha = wave.life * 0.5;
             ctx.save();
             ctx.translate(wave.x, wave.y);
             ctx.rotate(wave.rotation);
 
-            // Multiple colored rings
-            for (let ring = 0; ring < 4; ring++) {
-                const hue = (wave.hueOffset + ring * 90) % 360;
-                const radius = wave.radius + ring * 15;
-                ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${alpha * (1 - ring * 0.2)})`;
+            // Multiple colored rings - reduced to 3 rings
+            for (let ring = 0; ring < 3; ring++) {
+                const hue = (wave.hueOffset + ring * 120) % 360;
+                const radius = wave.radius + ring * 20;
+                ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${alpha * (1 - ring * 0.25)})`;
                 ctx.lineWidth = 4;
-                ctx.shadowBlur = 25;
+                ctx.shadowBlur = 20; // Reduced from 25
                 ctx.shadowColor = `hsl(${hue}, 80%, 70%)`;
                 ctx.beginPath();
                 ctx.arc(0, 0, radius, 0, Math.PI * 2);
@@ -558,11 +777,11 @@ export default class FluidDreamsTheme extends BaseTheme {
             ctx.restore();
         });
 
-        // Render fluid streams
+        // Render fluid streams - optimized gradient
         this.fluidStreams.forEach((stream) => {
             const alpha = stream.life * 0.7;
 
-            // Create gradient along path
+            // Create gradient along path - reduced color stops from 6 to 3
             const gradient = ctx.createLinearGradient(
                 stream.points[0].x,
                 stream.points[0].y,
@@ -570,9 +789,9 @@ export default class FluidDreamsTheme extends BaseTheme {
                 stream.points[stream.points.length - 1].y
             );
 
-            for (let i = 0; i <= 5; i++) {
-                const hue = (stream.hue + i * 60) % 360;
-                gradient.addColorStop(i / 5, `hsl(${hue}, 75%, 65%)`);
+            for (let i = 0; i <= 2; i++) {
+                const hue = (stream.hue + i * 120) % 360;
+                gradient.addColorStop(i / 2, `hsl(${hue}, 75%, 65%)`);
             }
 
             ctx.strokeStyle = gradient;
@@ -580,7 +799,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             ctx.lineWidth = stream.width;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = 15; // Reduced from 20
             ctx.shadowColor = `hsl(${stream.hue}, 75%, 65%)`;
 
             ctx.beginPath();
@@ -729,6 +948,14 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.fluidStreams = [];
         this.prismBursts = [];
         this.morphBlobs = [];
+
+        // Reset blob styles
+        this.domBlobs.forEach((blob) => {
+            blob.style.transform = '';
+            blob.style.filter = '';
+        });
+        this.domBlobs = [];
+        this.blobPulses.clear();
 
         // Stop animation loop
         this.stopEffectsLoop();
