@@ -48,12 +48,6 @@ export const THEME_REGISTRY = [
         group: 'biomes',
     },
     {
-        id: 'zen',
-        displayName: 'Zen Garden',
-        module: './zen/zen-theme.js',
-        group: 'biomes',
-    },
-    {
         id: 'winter',
         displayName: 'Winter',
         module: './winter/winter-theme.js',
@@ -150,12 +144,6 @@ export const THEME_REGISTRY = [
         group: 'biomes',
     },
     {
-        id: 'bamboo-grove',
-        displayName: 'Bamboo Grove',
-        module: './bamboo-grove/bamboo-grove-theme.js',
-        group: 'biomes',
-    },
-    {
         id: 'misty-lake',
         displayName: 'Misty Lake',
         module: './misty-lake/misty-lake-theme.js',
@@ -178,12 +166,6 @@ export const THEME_REGISTRY = [
         displayName: 'Crystal Cave',
         module: './crystal-cave/crystal-cave-theme.js',
         group: 'cosmic',
-    },
-    {
-        id: 'candlelit-monastery',
-        displayName: 'Candlelit Monastery',
-        module: './candlelit-monastery/candlelit-monastery-theme.js',
-        group: 'meditation',
     },
     {
         id: 'moonlit-greenhouse',
