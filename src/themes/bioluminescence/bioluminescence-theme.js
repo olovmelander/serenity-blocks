@@ -12,6 +12,9 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Background elements
         this.glowingPlants = []; // Various bioluminescent plants
         this.crystalFormations = []; // Glowing crystal clusters
+        this.groundMushrooms = []; // Traditional mushroom shapes at ground level
+        this.biolumRocks = []; // Glowing rocks and stones
+        this.groundGlow = []; // Ground-level glow patches
         this.fireflies = [];
         this.spores = [];
         this.ambientGlows = []; // Floating ambient light spots
@@ -82,6 +85,9 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.cacheGradients();
 
         // Initialize scene elements (NOW canvas has proper dimensions)
+        this.createGroundGlow();
+        this.createBiolumRocks();
+        this.createGroundMushrooms();
         this.createGlowingPlants();
         this.createCrystalFormations();
         this.createLuminousVines();
@@ -117,6 +123,82 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.cachedGradients.background.addColorStop(0.4, '#061518');
         this.cachedGradients.background.addColorStop(0.7, '#040d12');
         this.cachedGradients.background.addColorStop(1, '#020508');
+    }
+
+    createGroundGlow() {
+        // Create glowing patches on the ground for ambient lighting
+        const glowCount = 20;
+        for (let i = 0; i < glowCount; i++) {
+            this.groundGlow.push({
+                x: Math.random() * this.canvas.width,
+                y: this.canvas.height - Math.random() * 100,
+                radiusX: Math.random() * 100 + 80,
+                radiusY: Math.random() * 40 + 30,
+                opacity: Math.random() * 0.15 + 0.08,
+                pulseSpeed: Math.random() * 0.008 + 0.004,
+                pulsePhase: Math.random() * Math.PI * 2,
+                hue: Math.random() * 40 + 165
+            });
+        }
+    }
+
+    createBiolumRocks() {
+        // Create glowing rocks scattered on the ground
+        const rockCount = 25;
+        for (let i = 0; i < rockCount; i++) {
+            const size = Math.random() * 30 + 20;
+            this.biolumRocks.push({
+                x: Math.random() * this.canvas.width,
+                y: this.canvas.height - Math.random() * 60,
+                width: size,
+                height: size * (0.5 + Math.random() * 0.4),
+                glowIntensity: Math.random() * 0.6 + 0.4,
+                pulseSpeed: Math.random() * 0.015 + 0.008,
+                pulsePhase: Math.random() * Math.PI * 2,
+                hue: Math.random() * 40 + 170,
+                shape: Math.random() > 0.5 ? 'rounded' : 'angular',
+                layer: Math.random()
+            });
+        }
+        this.biolumRocks.sort((a, b) => a.layer - b.layer);
+    }
+
+    createGroundMushrooms() {
+        // Create traditional mushroom shapes with better silhouettes
+        const mushroomCount = 20;
+        for (let i = 0; i < mushroomCount; i++) {
+            const size = Math.random() * 60 + 40;
+            this.groundMushrooms.push({
+                x: Math.random() * this.canvas.width,
+                y: this.canvas.height,
+                capWidth: size * (1 + Math.random() * 0.5),
+                capHeight: size * 0.4,
+                stemWidth: size * 0.25,
+                stemHeight: size * 0.6,
+                glowIntensity: Math.random() * 0.7 + 0.3,
+                pulseSpeed: Math.random() * 0.018 + 0.01,
+                pulsePhase: Math.random() * Math.PI * 2,
+                tiltAngle: (Math.random() - 0.5) * 0.2,
+                hue: Math.random() * 50 + 160,
+                capShape: Math.random() > 0.5 ? 'dome' : 'flat', // Different cap styles
+                hasGills: Math.random() > 0.5,
+                spotCount: Math.floor(Math.random() * 6) + 3,
+                spots: [],
+                layer: Math.random()
+            });
+
+            // Create spots on cap
+            const mushroom = this.groundMushrooms[this.groundMushrooms.length - 1];
+            for (let j = 0; j < mushroom.spotCount; j++) {
+                mushroom.spots.push({
+                    offsetX: (Math.random() - 0.5) * mushroom.capWidth * 0.6,
+                    offsetY: (Math.random() - 0.5) * mushroom.capHeight * 0.4,
+                    size: Math.random() * 6 + 3,
+                    intensity: Math.random() * 0.6 + 0.4
+                });
+            }
+        }
+        this.groundMushrooms.sort((a, b) => a.layer - b.layer);
     }
 
     createGlowingPlants() {
@@ -384,6 +466,16 @@ export default class BioluminescenceTheme extends BaseTheme {
             plant.glowIntensity = Math.min(plant.glowIntensity + 0.4 + comboCount * 0.1, 2.5);
         });
 
+        // Make ground mushrooms glow brighter
+        this.groundMushrooms.forEach(mushroom => {
+            mushroom.glowIntensity = Math.min(mushroom.glowIntensity + 0.5 + comboCount * 0.15, 3.0);
+        });
+
+        // Make rocks pulse
+        this.biolumRocks.forEach(rock => {
+            rock.glowIntensity = Math.min(rock.glowIntensity + 0.3 + comboCount * 0.1, 2.0);
+        });
+
         // Make crystals shine brighter
         this.crystalFormations.forEach(formation => {
             formation.crystals.forEach(crystal => {
@@ -393,7 +485,7 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Spawn bioluminescent reaction particles around plants
         if (comboCount >= 2) {
-            this.createBioReactionParticles(lineCount, comboCount);
+            this.createBioReactionParticles(comboCount);
         }
     }
 
@@ -455,7 +547,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         };
     }
 
-    createBioReactionParticles(lineCount, comboCount) {
+    createBioReactionParticles(comboCount) {
         // Create glowing particles that emit from random plants
         const plantCount = Math.min(this.glowingPlants.length, 5 + comboCount);
 
@@ -536,6 +628,230 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.ctx.beginPath();
             this.ctx.arc(x, y, glow.size, 0, Math.PI * 2);
             this.ctx.fill();
+        }
+    }
+
+    drawGroundGlow() {
+        for (const glow of this.groundGlow) {
+            glow.pulsePhase += glow.pulseSpeed;
+            const pulse = Math.sin(glow.pulsePhase) * 0.3 + 0.7;
+
+            // Create elliptical gradient for ground patches
+            this.ctx.save();
+            this.ctx.translate(glow.x, glow.y);
+
+            const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, glow.radiusX);
+            gradient.addColorStop(0, `hsla(${glow.hue}, 100%, 60%, ${glow.opacity * pulse * (1 + this.pulseIntensity * 0.2)})`);
+            gradient.addColorStop(0.5, `hsla(${glow.hue}, 90%, 50%, ${glow.opacity * pulse * 0.5})`);
+            gradient.addColorStop(1, 'rgba(0, 150, 120, 0)');
+
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.ellipse(0, 0, glow.radiusX, glow.radiusY, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.restore();
+        }
+    }
+
+    drawBiolumRocks() {
+        for (const rock of this.biolumRocks) {
+            rock.pulsePhase += rock.pulseSpeed;
+            const pulse = Math.sin(rock.pulsePhase) * 0.3 + 0.7;
+
+            // Decay intense glow
+            if (rock.glowIntensity > 0.6) {
+                rock.glowIntensity *= 0.988;
+            }
+
+            const glowMult = rock.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
+
+            this.ctx.save();
+            this.ctx.translate(rock.x, rock.y);
+
+            // Draw glow around rock
+            const glowGradient = this.ctx.createRadialGradient(0, -rock.height / 2, 0, 0, -rock.height / 2, rock.width * 2);
+            glowGradient.addColorStop(0, `hsla(${rock.hue}, 100%, 65%, ${0.4 * glowMult})`);
+            glowGradient.addColorStop(0.5, `hsla(${rock.hue}, 90%, 55%, ${0.2 * glowMult})`);
+            glowGradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+
+            this.ctx.fillStyle = glowGradient;
+            this.ctx.beginPath();
+            this.ctx.arc(0, -rock.height / 2, rock.width * 2, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Draw rock body
+            if (rock.shape === 'rounded') {
+                // Smooth rounded rock
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, -rock.height / 2, rock.width / 2, rock.height / 2, 0, 0, Math.PI * 2);
+
+                const rockGradient = this.ctx.createRadialGradient(-rock.width * 0.2, -rock.height * 0.7, rock.width * 0.1, 0, -rock.height / 2, rock.width / 2);
+                rockGradient.addColorStop(0, `hsla(${rock.hue}, 90%, 60%, ${0.8 + glowMult * 0.15})`);
+                rockGradient.addColorStop(0.5, `hsla(${rock.hue}, 80%, 50%, 0.7)`);
+                rockGradient.addColorStop(1, `hsla(${rock.hue}, 70%, 40%, 0.6)`);
+
+                this.ctx.fillStyle = rockGradient;
+                this.ctx.fill();
+            } else {
+                // Angular crystal-like rock
+                this.ctx.beginPath();
+                this.ctx.moveTo(-rock.width / 2, 0);
+                this.ctx.lineTo(-rock.width * 0.3, -rock.height * 0.8);
+                this.ctx.lineTo(0, -rock.height);
+                this.ctx.lineTo(rock.width * 0.3, -rock.height * 0.7);
+                this.ctx.lineTo(rock.width / 2, -rock.height * 0.2);
+                this.ctx.lineTo(rock.width * 0.3, 0);
+                this.ctx.closePath();
+
+                const rockGradient = this.ctx.createLinearGradient(0, 0, 0, -rock.height);
+                rockGradient.addColorStop(0, `hsla(${rock.hue}, 75%, 45%, 0.7)`);
+                rockGradient.addColorStop(0.5, `hsla(${rock.hue}, 85%, 55%, ${0.75 + glowMult * 0.15})`);
+                rockGradient.addColorStop(1, `hsla(${rock.hue}, 95%, 65%, ${0.85 + glowMult * 0.1})`);
+
+                this.ctx.fillStyle = rockGradient;
+                this.ctx.fill();
+
+                // Add edges highlight
+                this.ctx.strokeStyle = `hsla(${rock.hue}, 100%, 75%, ${0.5 * glowMult})`;
+                this.ctx.lineWidth = 1.5;
+                this.ctx.stroke();
+            }
+
+            this.ctx.restore();
+        }
+    }
+
+    drawGroundMushrooms() {
+        for (const mushroom of this.groundMushrooms) {
+            mushroom.pulsePhase += mushroom.pulseSpeed;
+            const pulse = Math.sin(mushroom.pulsePhase) * 0.3 + 0.7;
+
+            // Decay intense glow
+            if (mushroom.glowIntensity > 0.7) {
+                mushroom.glowIntensity *= 0.985;
+            }
+
+            const glowMult = mushroom.glowIntensity * pulse * (1 + this.pulseIntensity * 0.35);
+
+            this.ctx.save();
+            this.ctx.translate(mushroom.x, mushroom.y);
+            this.ctx.rotate(mushroom.tiltAngle);
+
+            // Draw main glow aura
+            const auraGradient = this.ctx.createRadialGradient(0, -mushroom.stemHeight - mushroom.capHeight / 2, 0, 0, -mushroom.stemHeight - mushroom.capHeight / 2, mushroom.capWidth * 1.2);
+            auraGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 70%, ${0.5 * glowMult})`);
+            auraGradient.addColorStop(0.5, `hsla(${mushroom.hue}, 90%, 60%, ${0.25 * glowMult})`);
+            auraGradient.addColorStop(1, 'rgba(100, 220, 200, 0)');
+
+            this.ctx.fillStyle = auraGradient;
+            this.ctx.beginPath();
+            this.ctx.arc(0, -mushroom.stemHeight - mushroom.capHeight / 2, mushroom.capWidth * 1.2, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Draw stem
+            const stemGradient = this.ctx.createLinearGradient(-mushroom.stemWidth / 2, 0, mushroom.stemWidth / 2, 0);
+            stemGradient.addColorStop(0, `hsla(${mushroom.hue}, 60%, 35%, 0.7)`);
+            stemGradient.addColorStop(0.5, `hsla(${mushroom.hue}, 65%, 40%, 0.8)`);
+            stemGradient.addColorStop(1, `hsla(${mushroom.hue}, 60%, 35%, 0.7)`);
+
+            this.ctx.fillStyle = stemGradient;
+            this.ctx.beginPath();
+            this.ctx.moveTo(-mushroom.stemWidth / 2, 0);
+            this.ctx.lineTo(-mushroom.stemWidth / 2 * 0.8, -mushroom.stemHeight);
+            this.ctx.lineTo(mushroom.stemWidth / 2 * 0.8, -mushroom.stemHeight);
+            this.ctx.lineTo(mushroom.stemWidth / 2, 0);
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            // Stem glow
+            const stemGlow = this.ctx.createRadialGradient(0, -mushroom.stemHeight / 2, 0, 0, -mushroom.stemHeight / 2, mushroom.stemWidth * 1.5);
+            stemGlow.addColorStop(0, `hsla(${mushroom.hue}, 90%, 60%, ${0.15 * glowMult})`);
+            stemGlow.addColorStop(1, 'rgba(100, 200, 180, 0)');
+
+            this.ctx.fillStyle = stemGlow;
+            this.ctx.fillRect(-mushroom.stemWidth, -mushroom.stemHeight, mushroom.stemWidth * 2, mushroom.stemHeight);
+
+            // Draw mushroom cap
+            const capY = -mushroom.stemHeight;
+
+            this.ctx.beginPath();
+            if (mushroom.capShape === 'dome') {
+                // Rounded dome cap
+                this.ctx.ellipse(0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2, mushroom.capHeight, 0, 0, Math.PI, true);
+                this.ctx.lineTo(-mushroom.capWidth / 2 * 0.9, capY);
+                this.ctx.quadraticCurveTo(-mushroom.capWidth / 2 * 0.7, capY + 5, -mushroom.capWidth / 2 * 0.4, capY + 3);
+                this.ctx.lineTo(mushroom.capWidth / 2 * 0.4, capY + 3);
+                this.ctx.quadraticCurveTo(mushroom.capWidth / 2 * 0.7, capY + 5, mushroom.capWidth / 2 * 0.9, capY);
+                this.ctx.closePath();
+            } else {
+                // Flatter, wider cap
+                this.ctx.moveTo(-mushroom.capWidth / 2, capY);
+                this.ctx.quadraticCurveTo(-mushroom.capWidth / 2, capY - mushroom.capHeight * 1.2, 0, capY - mushroom.capHeight);
+                this.ctx.quadraticCurveTo(mushroom.capWidth / 2, capY - mushroom.capHeight * 1.2, mushroom.capWidth / 2, capY);
+                this.ctx.lineTo(mushroom.capWidth / 2 * 0.8, capY + 2);
+                this.ctx.quadraticCurveTo(mushroom.capWidth / 2 * 0.6, capY + 4, mushroom.capWidth / 2 * 0.3, capY + 2);
+                this.ctx.lineTo(-mushroom.capWidth / 2 * 0.3, capY + 2);
+                this.ctx.quadraticCurveTo(-mushroom.capWidth / 2 * 0.6, capY + 4, -mushroom.capWidth / 2 * 0.8, capY + 2);
+                this.ctx.closePath();
+            }
+
+            // Cap gradient
+            const capGradient = this.ctx.createRadialGradient(
+                -mushroom.capWidth * 0.2, capY - mushroom.capHeight * 0.7, mushroom.capWidth * 0.1,
+                0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2
+            );
+            capGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 70%, ${0.9 + glowMult * 0.1})`);
+            capGradient.addColorStop(0.4, `hsla(${mushroom.hue}, 90%, 60%, ${0.85 + glowMult * 0.1})`);
+            capGradient.addColorStop(0.7, `hsla(${mushroom.hue}, 80%, 50%, 0.75)`);
+            capGradient.addColorStop(1, `hsla(${mushroom.hue}, 70%, 40%, 0.65)`);
+
+            this.ctx.fillStyle = capGradient;
+            this.ctx.fill();
+
+            // Draw gills underneath if applicable
+            if (mushroom.hasGills) {
+                this.ctx.strokeStyle = `hsla(${mushroom.hue}, 70%, 35%, 0.4)`;
+                this.ctx.lineWidth = 1;
+                for (let i = -mushroom.capWidth / 2 * 0.7; i < mushroom.capWidth / 2 * 0.7; i += 4) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(i, capY);
+                    this.ctx.lineTo(i * 0.8, capY + 3);
+                    this.ctx.stroke();
+                }
+            }
+
+            // Draw glowing spots on cap
+            for (const spot of mushroom.spots) {
+                const spotX = spot.offsetX;
+                const spotY = capY - mushroom.capHeight * 0.5 + spot.offsetY;
+
+                const spotGradient = this.ctx.createRadialGradient(spotX, spotY, 0, spotX, spotY, spot.size);
+                spotGradient.addColorStop(0, `hsla(${mushroom.hue + 20}, 100%, 80%, ${0.9 * spot.intensity * glowMult})`);
+                spotGradient.addColorStop(0.5, `hsla(${mushroom.hue + 15}, 100%, 75%, ${0.6 * spot.intensity * glowMult})`);
+                spotGradient.addColorStop(1, 'rgba(200, 255, 240, 0)');
+
+                this.ctx.fillStyle = spotGradient;
+                this.ctx.beginPath();
+                this.ctx.arc(spotX, spotY, spot.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            // Rim highlight for 3D depth
+            const rimGradient = this.ctx.createRadialGradient(
+                -mushroom.capWidth * 0.25, capY - mushroom.capHeight * 0.7, 0,
+                0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2
+            );
+            rimGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 85%, ${0.4 * glowMult})`);
+            rimGradient.addColorStop(0.3, `hsla(${mushroom.hue}, 100%, 75%, ${0.2 * glowMult})`);
+            rimGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            this.ctx.fillStyle = rimGradient;
+            this.ctx.beginPath();
+            this.ctx.ellipse(0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2, mushroom.capHeight, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.restore();
         }
     }
 
@@ -1029,6 +1345,9 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Clear and draw (back to front layering)
         this.drawBackground();
         this.drawAmbientGlows();
+        this.drawGroundGlow();
+        this.drawBiolumRocks();
+        this.drawGroundMushrooms();
         this.drawLuminousVines();
         this.drawCrystalFormations();
         this.drawGlowingPlants();
