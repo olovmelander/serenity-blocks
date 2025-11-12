@@ -310,10 +310,7 @@ export default class WolfhourTheme extends BaseTheme {
 
     setupEffectsCanvas() {
         const themeContainer = document.getElementById('wolfhour-theme');
-        if (!themeContainer) {
-            console.warn('[Wolfhour] Theme container not found');
-            return;
-        }
+        if (!themeContainer) return;
 
         // Create or get canvas for effects
         this.effectCanvas = document.getElementById('wolfhour-effects-canvas');
@@ -328,7 +325,6 @@ export default class WolfhourTheme extends BaseTheme {
             this.effectCanvas.style.pointerEvents = 'none';
             this.effectCanvas.style.zIndex = '10';
             themeContainer.appendChild(this.effectCanvas);
-            console.log('[Wolfhour] Effects canvas created');
         }
 
         this.effectCanvas.width = window.innerWidth;
@@ -338,8 +334,6 @@ export default class WolfhourTheme extends BaseTheme {
             desynchronized: true,
         });
 
-        console.log('[Wolfhour] Canvas size:', this.effectCanvas.width, 'x', this.effectCanvas.height);
-
         // Handle resize
         const resizeHandler = () => {
             if (this.effectCanvas) {
@@ -348,60 +342,30 @@ export default class WolfhourTheme extends BaseTheme {
             }
         };
         window.addEventListener('resize', resizeHandler);
-
-        // TEST: Add visual test to verify canvas is working
-        console.log('[Wolfhour] Drawing test rectangle on canvas...');
-        this.effectCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-        this.effectCtx.fillRect(100, 100, 200, 100);
-        setTimeout(() => {
-            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
-        }, 2000);
-
-        // TEST: Trigger a fake line clear after 3 seconds to test effects
-        setTimeout(() => {
-            console.log('[Wolfhour] 🧪 TEST: Manually triggering effects...');
-            this.onLineClear(4);
-            this.onCombo(3);
-        }, 3000);
     }
 
     setupGameplayEvents() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            console.log('[Wolfhour] LINE_CLEAR event received. Settings:', settings);
-            console.log('[Wolfhour] backgroundComboEffects:', settings?.backgroundComboEffects);
-            console.log('[Wolfhour] isActive:', this.isActive);
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                console.log('[Wolfhour] ✅ Calling handleLineClear');
                 this.handleLineClear(data);
-            } else {
-                console.log('[Wolfhour] ❌ Skipping effects (not active or effects disabled)');
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            console.log('[Wolfhour] COMBO event received. Settings:', settings);
-            console.log('[Wolfhour] backgroundComboEffects:', settings?.backgroundComboEffects);
-            console.log('[Wolfhour] isActive:', this.isActive);
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                console.log('[Wolfhour] ✅ Calling handleCombo');
                 this.handleCombo(data);
-            } else {
-                console.log('[Wolfhour] ❌ Skipping effects (not active or effects disabled)');
             }
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
-        console.log('[Wolfhour] Gameplay events registered with settings check');
     }
 
     handleLineClear(eventPayload) {
         const detail = eventPayload?.detail || eventPayload || {};
         const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
         let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
-
-        console.log('[Wolfhour] handleLineClear - lineCount:', lineCount, 'comboCount:', comboCount);
 
         if (!comboCount && this.pendingComboCount > 0) {
             comboCount = this.pendingComboCount;
@@ -415,8 +379,6 @@ export default class WolfhourTheme extends BaseTheme {
         const detail = eventPayload?.detail || eventPayload || {};
         const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
 
-        console.log('[Wolfhour] handleCombo - comboCount:', comboCount);
-
         if (comboCount > 0) {
             this.pendingComboCount = comboCount;
         }
@@ -425,82 +387,63 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     onLineClear(lineCount) {
-        console.log('[Wolfhour] ✨ LINE CLEAR EVENT:', lineCount, 'lines');
-
-        if (!this.effectCanvas || !this.effectCtx) {
-            console.error('[Wolfhour] ❌ Effect canvas not ready! Canvas:', this.effectCanvas, 'Ctx:', this.effectCtx);
-            return;
-        }
-
-        console.log('[Wolfhour] Canvas ready, creating effects...');
+        if (!this.effectCanvas || !this.effectCtx) return;
 
         // Increase cosmic energy
         this.cosmicEnergy = Math.min(this.cosmicEnergy + lineCount * 0.2, 1.5);
 
-        // Always create at least some effects for testing
-        const burstCount = Math.max(lineCount * 3, 5);
-        console.log('[Wolfhour] Creating', burstCount, 'star bursts');
+        // Optimized burst count (reduced from lineCount * 3)
+        const burstCount = Math.min(lineCount * 2, 6);
 
         // Create star bursts from cleared lines
         for (let i = 0; i < burstCount; i++) {
             this.createStarBurst();
         }
 
-        // Trigger shooting stars
-        for (let i = 0; i < Math.max(lineCount, 2); i++) {
+        // Trigger shooting stars (reduced)
+        const shootingStarCount = Math.min(lineCount, 2);
+        for (let i = 0; i < shootingStarCount; i++) {
             this.triggerShootingStar();
         }
 
         // Intensify nebula glow
         this.intensifyNebula(lineCount);
-
-        console.log('[Wolfhour] ✅ Effects created! Star bursts array length:', this.starBursts.length);
-        console.log('[Wolfhour] First burst:', this.starBursts[0]);
     }
 
     onCombo(comboCount) {
-        console.log('[Wolfhour] 🔥 COMBO EVENT:', comboCount);
-
-        if (!this.effectCanvas || !this.effectCtx) {
-            console.error('[Wolfhour] ❌ Effect canvas not ready for combo!');
-            return;
-        }
+        if (!this.effectCanvas || !this.effectCtx) return;
 
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.wolfhourPower = Math.min(this.wolfhourPower + comboCount * 0.15, 2.0);
 
-        // Always create some effects even for low combos (for testing)
-        const waveCount = Math.max(Math.min(comboCount, 4), 2);
-        console.log('[Wolfhour] Creating', waveCount, 'cosmic waves');
-        for (let i = 0; i < waveCount; i++) {
-            this.createCosmicWave();
+        // Optimized wave count (only trigger at combo 2+)
+        if (comboCount >= 2) {
+            const waveCount = Math.min(Math.floor(comboCount / 2), 3);
+            for (let i = 0; i < waveCount; i++) {
+                this.createCosmicWave();
+            }
         }
 
-        // Create celestial beams from the heavens
-        if (comboCount >= 3) {
-            const beamCount = Math.min(comboCount - 2, 3);
-            console.log('[Wolfhour] Creating', beamCount, 'celestial beams');
+        // Create celestial beams from the heavens (higher threshold)
+        if (comboCount >= 4) {
+            const beamCount = Math.min(Math.floor(comboCount / 2) - 1, 2);
             for (let i = 0; i < beamCount; i++) {
                 this.createCelestialBeam();
             }
         }
 
         // Pulse the moon
-        if (comboCount >= 4) {
-            console.log('[Wolfhour] Creating moon pulse');
+        if (comboCount >= 5) {
             this.createMoonPulse(comboCount);
         }
 
-        // Draw constellation lines between stars
-        if (comboCount >= 5) {
-            console.log('[Wolfhour] Creating constellation lines');
+        // Draw constellation lines between stars (optimized count)
+        if (comboCount >= 6) {
             this.createConstellationLines(comboCount);
         }
 
         // Make all stars twinkle more intensely
         this.intensifyStars(comboCount);
-
-        console.log('[Wolfhour] ✅ Combo effects created - Waves:', this.cosmicWaves.length, 'Beams:', this.celestialBeams.length, 'Pulses:', this.moonGlowPulses.length);
     }
 
     createStarBurst() {
@@ -520,16 +463,16 @@ export default class WolfhourTheme extends BaseTheme {
         const particles = [];
         for (let i = 0; i < count; i++) {
             const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
-            const speed = Math.random() * 3 + 2;
+            const speed = Math.random() * 4 + 3;
 
             particles.push({
                 x: cx,
                 y: cy,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                size: Math.random() * 3 + 1,
+                size: Math.random() * 4 + 2,
                 hue: Math.random() * 60 + 180, // Cyan to blue
-                brightness: Math.random() * 30 + 70,
+                brightness: Math.random() * 40 + 60,
             });
         }
         return particles;
@@ -583,11 +526,12 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     createConstellationLines(comboCount) {
-        // Connect random stars with mystical lines
+        // Connect random stars with mystical lines (optimized)
         const stars = document.querySelectorAll('.wolfhour-star');
         if (stars.length < 2) return;
 
-        const lineCount = Math.min(comboCount * 2, 15);
+        // Reduced line count for performance
+        const lineCount = Math.min(comboCount, 8);
         const starArray = Array.from(stars);
 
         for (let i = 0; i < lineCount; i++) {
@@ -599,14 +543,21 @@ export default class WolfhourTheme extends BaseTheme {
             const rect1 = star1.getBoundingClientRect();
             const rect2 = star2.getBoundingClientRect();
 
+            // Calculate distance - skip if stars are too far apart (performance)
+            const dx = (rect2.left - rect1.left);
+            const dy = (rect2.top - rect1.top);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 400) continue; // Skip distant connections
+
             this.constellationLines.push({
                 x1: rect1.left + rect1.width / 2,
                 y1: rect1.top + rect1.height / 2,
                 x2: rect2.left + rect2.width / 2,
                 y2: rect2.top + rect2.height / 2,
-                opacity: 0.6,
+                opacity: 0.7,
                 life: 1.0,
-                decay: 0.01,
+                decay: 0.012,
                 hue: Math.random() * 40 + 180,
             });
         }
@@ -700,15 +651,10 @@ export default class WolfhourTheme extends BaseTheme {
             this.animationFrameId = requestAnimationFrame(animate);
         };
 
-        console.log('[Wolfhour] Starting animation loop');
         animate();
     }
 
     drawStarBursts() {
-        if (this.starBursts.length > 0 && this.animationTime % 60 < 1) {
-            console.log('[Wolfhour] Drawing', this.starBursts.length, 'star bursts');
-        }
-
         for (let i = this.starBursts.length - 1; i >= 0; i--) {
             const burst = this.starBursts[i];
 
@@ -723,18 +669,31 @@ export default class WolfhourTheme extends BaseTheme {
             burst.particles.forEach((p) => {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.1; // Gravity
+                p.vy += 0.12; // Slightly more gravity
 
-                const opacity = burst.life * 0.8;
+                const opacity = burst.life * 0.9;
+                const currentSize = p.size * burst.life;
 
+                // Draw main particle with improved gradient
+                const gradient = this.effectCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, currentSize);
+                gradient.addColorStop(0, `hsla(${p.hue}, 90%, ${p.brightness + 20}%, ${opacity})`);
+                gradient.addColorStop(0.5, `hsla(${p.hue}, 85%, ${p.brightness}%, ${opacity * 0.7})`);
+                gradient.addColorStop(1, `hsla(${p.hue}, 70%, ${p.brightness - 10}%, 0)`);
+
+                this.effectCtx.fillStyle = gradient;
                 this.effectCtx.beginPath();
-                this.effectCtx.arc(p.x, p.y, p.size * burst.life, 0, Math.PI * 2);
-                this.effectCtx.fillStyle = `hsla(${p.hue}, 80%, ${p.brightness}%, ${opacity})`;
+                this.effectCtx.arc(p.x, p.y, currentSize * 1.5, 0, Math.PI * 2);
                 this.effectCtx.fill();
 
-                // Add glow
-                this.effectCtx.shadowBlur = 15 * burst.life;
-                this.effectCtx.shadowColor = `hsla(${p.hue}, 80%, ${p.brightness}%, ${opacity * 0.8})`;
+                // Add subtle glow
+                this.effectCtx.shadowBlur = 20 * burst.life;
+                this.effectCtx.shadowColor = `hsla(${p.hue}, 90%, ${p.brightness}%, ${opacity * 0.5})`;
+
+                // Draw bright core
+                this.effectCtx.fillStyle = `hsla(${p.hue}, 100%, 95%, ${opacity})`;
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(p.x, p.y, currentSize * 0.4, 0, Math.PI * 2);
+                this.effectCtx.fill();
             });
 
             this.effectCtx.shadowBlur = 0;
@@ -753,17 +712,37 @@ export default class WolfhourTheme extends BaseTheme {
                 continue;
             }
 
-            // Draw expanding ring with gradient
-            const gradient = this.effectCtx.createRadialGradient(wave.x, wave.y, wave.radius - 5, wave.x, wave.y, wave.radius + 5);
-            gradient.addColorStop(0, `hsla(${wave.hue}, 70%, 60%, 0)`);
-            gradient.addColorStop(0.5, `hsla(${wave.hue}, 80%, 70%, ${wave.opacity})`);
-            gradient.addColorStop(1, `hsla(${wave.hue}, 70%, 60%, 0)`);
+            // Draw multiple concentric rings for depth
+            const ringCount = 3;
+            for (let j = 0; j < ringCount; j++) {
+                const offset = j * 8;
+                const currentRadius = wave.radius + offset;
+                const ringOpacity = wave.opacity * (1 - j * 0.25);
 
-            this.effectCtx.strokeStyle = gradient;
-            this.effectCtx.lineWidth = wave.thickness;
-            this.effectCtx.beginPath();
-            this.effectCtx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
-            this.effectCtx.stroke();
+                // Draw expanding ring with gradient
+                const innerRadius = Math.max(0, currentRadius - 6);
+                const outerRadius = currentRadius + 6;
+
+                const gradient = this.effectCtx.createRadialGradient(wave.x, wave.y, innerRadius, wave.x, wave.y, outerRadius);
+                gradient.addColorStop(0, `hsla(${wave.hue}, 70%, 60%, 0)`);
+                gradient.addColorStop(0.4, `hsla(${wave.hue}, 85%, 75%, ${ringOpacity * 0.6})`);
+                gradient.addColorStop(0.6, `hsla(${wave.hue}, 90%, 80%, ${ringOpacity})`);
+                gradient.addColorStop(1, `hsla(${wave.hue}, 70%, 60%, 0)`);
+
+                this.effectCtx.strokeStyle = gradient;
+                this.effectCtx.lineWidth = wave.thickness;
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(wave.x, wave.y, currentRadius, 0, Math.PI * 2);
+                this.effectCtx.stroke();
+
+                // Add glow to outer ring only
+                if (j === 0) {
+                    this.effectCtx.shadowBlur = 25;
+                    this.effectCtx.shadowColor = `hsla(${wave.hue}, 90%, 80%, ${ringOpacity * 0.6})`;
+                    this.effectCtx.stroke();
+                    this.effectCtx.shadowBlur = 0;
+                }
+            }
         }
     }
 
@@ -784,18 +763,37 @@ export default class WolfhourTheme extends BaseTheme {
 
             const opacity = beam.opacity * beam.life;
 
-            // Draw beam with gradient
+            // Draw outer glow first
+            const glowGradient = this.effectCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
+            glowGradient.addColorStop(0, `hsla(${beam.hue}, 90%, 85%, ${opacity * 0.4})`);
+            glowGradient.addColorStop(0.2, `hsla(${beam.hue}, 80%, 75%, ${opacity * 0.3})`);
+            glowGradient.addColorStop(1, `hsla(${beam.hue}, 60%, 50%, 0)`);
+
+            this.effectCtx.fillStyle = glowGradient;
+            this.effectCtx.fillRect(beam.x - beam.width, beam.y, beam.width * 2, beam.length);
+
+            // Draw main beam with gradient
             const gradient = this.effectCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
-            gradient.addColorStop(0, `hsla(${beam.hue}, 80%, 80%, ${opacity})`);
-            gradient.addColorStop(0.3, `hsla(${beam.hue}, 70%, 70%, ${opacity * 0.8})`);
+            gradient.addColorStop(0, `hsla(${beam.hue}, 95%, 90%, ${opacity})`);
+            gradient.addColorStop(0.15, `hsla(${beam.hue}, 85%, 80%, ${opacity * 0.9})`);
+            gradient.addColorStop(0.5, `hsla(${beam.hue}, 75%, 70%, ${opacity * 0.6})`);
             gradient.addColorStop(1, `hsla(${beam.hue}, 60%, 50%, 0)`);
 
             this.effectCtx.fillStyle = gradient;
             this.effectCtx.fillRect(beam.x - beam.width / 2, beam.y, beam.width, beam.length);
 
-            // Add glow
-            this.effectCtx.shadowBlur = 30;
-            this.effectCtx.shadowColor = `hsla(${beam.hue}, 80%, 70%, ${opacity * 0.6})`;
+            // Add bright core
+            const coreGradient = this.effectCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length * 0.3);
+            coreGradient.addColorStop(0, `hsla(${beam.hue}, 100%, 95%, ${opacity * 0.9})`);
+            coreGradient.addColorStop(1, `hsla(${beam.hue}, 90%, 85%, 0)`);
+
+            this.effectCtx.fillStyle = coreGradient;
+            this.effectCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.3);
+
+            // Add subtle shadow blur
+            this.effectCtx.shadowBlur = 35;
+            this.effectCtx.shadowColor = `hsla(${beam.hue}, 90%, 80%, ${opacity * 0.4})`;
+            this.effectCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.1);
         }
 
         this.effectCtx.shadowBlur = 0;
@@ -813,23 +811,53 @@ export default class WolfhourTheme extends BaseTheme {
                 continue;
             }
 
-            // Draw soft expanding glow
+            // Draw outer ethereal glow
+            const outerGradient = this.effectCtx.createRadialGradient(
+                pulse.x,
+                pulse.y,
+                pulse.radius - 30,
+                pulse.x,
+                pulse.y,
+                pulse.radius + 40,
+            );
+            outerGradient.addColorStop(0, `hsla(${pulse.hue}, 70%, 85%, 0)`);
+            outerGradient.addColorStop(0.3, `hsla(${pulse.hue}, 80%, 90%, ${pulse.opacity * 0.3})`);
+            outerGradient.addColorStop(0.7, `hsla(${pulse.hue}, 75%, 85%, ${pulse.opacity * 0.5})`);
+            outerGradient.addColorStop(1, `hsla(${pulse.hue}, 60%, 80%, 0)`);
+
+            this.effectCtx.fillStyle = outerGradient;
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(pulse.x, pulse.y, pulse.radius + 20, 0, Math.PI * 2);
+            this.effectCtx.fill();
+
+            // Draw main pulse ring
             const gradient = this.effectCtx.createRadialGradient(
                 pulse.x,
                 pulse.y,
-                pulse.radius - 20,
+                pulse.radius - 15,
                 pulse.x,
                 pulse.y,
-                pulse.radius + 20,
+                pulse.radius + 15,
             );
-            gradient.addColorStop(0, `hsla(${pulse.hue}, 60%, 80%, 0)`);
-            gradient.addColorStop(0.5, `hsla(${pulse.hue}, 70%, 85%, ${pulse.opacity})`);
-            gradient.addColorStop(1, `hsla(${pulse.hue}, 60%, 80%, 0)`);
+            gradient.addColorStop(0, `hsla(${pulse.hue}, 70%, 85%, 0)`);
+            gradient.addColorStop(0.4, `hsla(${pulse.hue}, 85%, 92%, ${pulse.opacity * 0.8})`);
+            gradient.addColorStop(0.6, `hsla(${pulse.hue}, 85%, 90%, ${pulse.opacity})`);
+            gradient.addColorStop(1, `hsla(${pulse.hue}, 70%, 85%, 0)`);
 
             this.effectCtx.fillStyle = gradient;
             this.effectCtx.beginPath();
             this.effectCtx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
             this.effectCtx.fill();
+
+            // Add bright inner ring
+            this.effectCtx.shadowBlur = 30;
+            this.effectCtx.shadowColor = `hsla(${pulse.hue}, 90%, 95%, ${pulse.opacity * 0.6})`;
+            this.effectCtx.strokeStyle = `hsla(${pulse.hue}, 95%, 95%, ${pulse.opacity})`;
+            this.effectCtx.lineWidth = 2;
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
+            this.effectCtx.stroke();
+            this.effectCtx.shadowBlur = 0;
         }
     }
 
@@ -846,18 +874,41 @@ export default class WolfhourTheme extends BaseTheme {
 
             const opacity = line.opacity * line.life;
 
-            // Draw mystical connecting line
-            this.effectCtx.strokeStyle = `hsla(${line.hue}, 70%, 70%, ${opacity})`;
-            this.effectCtx.lineWidth = 2;
+            // Draw outer glow line
+            this.effectCtx.strokeStyle = `hsla(${line.hue}, 80%, 80%, ${opacity * 0.3})`;
+            this.effectCtx.lineWidth = 5;
             this.effectCtx.beginPath();
             this.effectCtx.moveTo(line.x1, line.y1);
             this.effectCtx.lineTo(line.x2, line.y2);
             this.effectCtx.stroke();
 
-            // Add glow to line
-            this.effectCtx.shadowBlur = 8;
-            this.effectCtx.shadowColor = `hsla(${line.hue}, 80%, 80%, ${opacity * 0.6})`;
+            // Draw main mystical connecting line
+            this.effectCtx.strokeStyle = `hsla(${line.hue}, 85%, 80%, ${opacity * 0.7})`;
+            this.effectCtx.lineWidth = 2.5;
+            this.effectCtx.beginPath();
+            this.effectCtx.moveTo(line.x1, line.y1);
+            this.effectCtx.lineTo(line.x2, line.y2);
             this.effectCtx.stroke();
+
+            // Draw bright core line
+            this.effectCtx.strokeStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
+            this.effectCtx.lineWidth = 1;
+            this.effectCtx.shadowBlur = 12;
+            this.effectCtx.shadowColor = `hsla(${line.hue}, 90%, 85%, ${opacity * 0.8})`;
+            this.effectCtx.beginPath();
+            this.effectCtx.moveTo(line.x1, line.y1);
+            this.effectCtx.lineTo(line.x2, line.y2);
+            this.effectCtx.stroke();
+
+            // Draw star connection points
+            this.effectCtx.shadowBlur = 15;
+            this.effectCtx.fillStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(line.x1, line.y1, 3, 0, Math.PI * 2);
+            this.effectCtx.fill();
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(line.x2, line.y2, 3, 0, Math.PI * 2);
+            this.effectCtx.fill();
         }
 
         this.effectCtx.shadowBlur = 0;

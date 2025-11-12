@@ -260,8 +260,9 @@ export function closeSettingsModal(modalManager) {
  * Sets up UI button listeners
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} callbacks - Callback functions
+ * @param {Object} gameModeManager - Optional game mode manager for Serenity Hub icon
  */
-export function setupModalUI(modalManager, callbacks) {
+export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
     const {
         onSettingsOpen,
         onSettingsClose,
@@ -298,6 +299,10 @@ export function setupModalUI(modalManager, callbacks) {
             if (onSettingsOpen) onSettingsOpen();
         });
     }
+
+    // Serenity Hub icon - The global SerenityHub instance (created in main.js)
+    // handles the click event, so no additional handler needed here.
+    // The icon's click listener is set up by SerenityHub.createHubIcon().
 
     // Close settings button
     const closeSettingsBtn = document.getElementById('close-settings');
