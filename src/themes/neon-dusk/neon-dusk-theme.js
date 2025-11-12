@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
@@ -7,6 +8,18 @@ export default class NeonDuskTheme extends BaseTheme {
         this.meteorsContainer = null;
         this.meteorAnimationFrame = null;
         this.lastMeteorFrameTime = 0;
+
+        // Gameplay effects
+        this.neonBurstParticles = [];
+        this.electricArcs = [];
+        this.digitalScanLines = [];
+        this.hologramRings = [];
+        this.cyberVortexes = [];
+        this.glitchPulses = [];
+        this.comboMultiplier = 1.0;
+        this.effectsAnimationFrame = null;
+        this.lastEffectsFrameTime = 0;
+        this.eventUnsubscribers = [];
     }
 
     async createScene() {
@@ -168,16 +181,509 @@ export default class NeonDuskTheme extends BaseTheme {
             particlesContainer.appendChild(fragment);
             this.registerContainer(particlesContainer);
         }
+
+        // Setup gameplay effects
+        this.setupGameplayEffects();
+    }
+
+    setupGameplayEffects() {
+        // Create canvas for gameplay effects
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        let canvas = document.getElementById('neon-dusk-effects-canvas');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.id = 'neon-dusk-effects-canvas';
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.style.pointerEvents = 'none';
+            canvas.style.zIndex = '100';
+            themeContainer.appendChild(canvas);
+        }
+
+        this.effectsCanvas = canvas;
+        this.effectsCtx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+
+        // Size canvas
+        const resizeCanvas = () => {
+            if (!this.effectsCanvas) return;
+            const rect = themeContainer.getBoundingClientRect();
+            this.effectsCanvas.width = rect.width;
+            this.effectsCanvas.height = rect.height;
+        };
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Setup event listeners
+        this.setupEventListeners();
+
+        // Start effects animation loop
+        this.startEffectsLoop();
+    }
+
+    setupEventListeners() {
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handleLineClear(data);
+            }
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handleCombo(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+    }
+
+    handleLineClear(data) {
+        const { lineCount } = data;
+        this.createNeonBurst(lineCount);
+
+        if (lineCount >= 2) {
+            this.createDigitalScanLines(lineCount);
+        }
+
+        if (lineCount >= 3) {
+            this.createHologramRings(lineCount);
+        }
+    }
+
+    handleCombo(data) {
+        const { comboCount } = data;
+        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.5);
+
+        if (comboCount >= 2) {
+            this.createGlitchPulse(comboCount);
+        }
+
+        if (comboCount >= 4) {
+            this.createElectricArcs(comboCount);
+        }
+
+        if (comboCount >= 7) {
+            this.createCyberVortex(comboCount);
+        }
+    }
+
+    createNeonBurst(lineCount) {
+        if (!this.effectsCanvas) return;
+
+        const centerX = this.effectsCanvas.width / 2;
+        const centerY = this.effectsCanvas.height / 2;
+        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00', '#ff0088'];
+        const burstCount = Math.min(lineCount * 30 + this.comboMultiplier * 25, 250);
+
+        for (let i = 0; i < burstCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (Math.random() * 3 + 2) * this.comboMultiplier;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            this.neonBurstParticles.push({
+                x: centerX,
+                y: centerY,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 1.0,
+                maxLife: Math.random() * 0.8 + 0.6,
+                size: Math.random() * 4 + 2,
+                color,
+                glow: Math.random() * 15 + 10,
+            });
+        }
+    }
+
+    createElectricArcs(comboCount) {
+        if (!this.effectsCanvas) return;
+
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+        const arcCount = Math.min(comboCount, 8);
+        const colors = ['#00ffff', '#ff00ff', '#00ff88'];
+
+        for (let i = 0; i < arcCount; i++) {
+            const startX = Math.random() * width;
+            const startY = Math.random() * height;
+            const endX = Math.random() * width;
+            const endY = Math.random() * height;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            this.electricArcs.push({
+                startX,
+                startY,
+                endX,
+                endY,
+                life: 1.0,
+                maxLife: 0.4 + Math.random() * 0.3,
+                color,
+                segments: this.generateArcSegments(startX, startY, endX, endY, 8),
+                width: Math.random() * 3 + 2,
+            });
+        }
+    }
+
+    generateArcSegments(x1, y1, x2, y2, count) {
+        const segments = [{ x: x1, y: y1 }];
+        const dx = (x2 - x1) / count;
+        const dy = (y2 - y1) / count;
+
+        for (let i = 1; i < count; i++) {
+            const deviation = (Math.random() - 0.5) * 40;
+            segments.push({
+                x: x1 + dx * i + deviation,
+                y: y1 + dy * i + deviation,
+            });
+        }
+        segments.push({ x: x2, y: y2 });
+        return segments;
+    }
+
+    createDigitalScanLines(lineCount) {
+        if (!this.effectsCanvas) return;
+
+        const height = this.effectsCanvas.height;
+        const colors = ['#00ffff', '#ff00ff', '#00ff88'];
+
+        for (let i = 0; i < lineCount * 2; i++) {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            this.digitalScanLines.push({
+                y: Math.random() * height,
+                life: 1.0,
+                maxLife: 0.8 + Math.random() * 0.4,
+                speed: (Math.random() * 200 + 150) * (Math.random() > 0.5 ? 1 : -1),
+                height: Math.random() * 3 + 1,
+                color,
+                opacity: Math.random() * 0.4 + 0.6,
+            });
+        }
+    }
+
+    createHologramRings(lineCount) {
+        if (!this.effectsCanvas) return;
+
+        const centerX = this.effectsCanvas.width / 2;
+        const centerY = this.effectsCanvas.height / 2;
+        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00'];
+
+        for (let i = 0; i < lineCount; i++) {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            this.hologramRings.push({
+                x: centerX,
+                y: centerY,
+                radius: 10,
+                maxRadius: Math.random() * 300 + 250,
+                life: 1.0,
+                maxLife: 1.2 + Math.random() * 0.5,
+                color,
+                width: Math.random() * 3 + 2,
+            });
+        }
+    }
+
+    createGlitchPulse(comboCount) {
+        if (!this.effectsCanvas) return;
+
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+        const colors = ['#00ffff', '#ff00ff', '#ffff00'];
+
+        for (let i = 0; i < Math.min(comboCount * 3, 15); i++) {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            this.glitchPulses.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                width: Math.random() * 100 + 50,
+                height: Math.random() * 20 + 10,
+                life: 1.0,
+                maxLife: 0.3 + Math.random() * 0.2,
+                color,
+                offsetX: (Math.random() - 0.5) * 20,
+            });
+        }
+    }
+
+    createCyberVortex(comboCount) {
+        if (!this.effectsCanvas) return;
+
+        const centerX = this.effectsCanvas.width / 2;
+        const centerY = this.effectsCanvas.height / 2;
+        const colors = ['#00ffff', '#ff00ff', '#00ff88'];
+
+        for (let i = 0; i < Math.min(comboCount, 3); i++) {
+            const color = colors[i % colors.length];
+            const particles = [];
+            const particleCount = 80;
+
+            for (let j = 0; j < particleCount; j++) {
+                const angle = (j / particleCount) * Math.PI * 2;
+                const radius = 60 + Math.random() * 40;
+                particles.push({
+                    angle,
+                    radius,
+                    angularSpeed: Math.random() * 0.1 + 0.15,
+                    radiusSpeed: Math.random() * 2 + 1,
+                });
+            }
+
+            this.cyberVortexes.push({
+                x: centerX + (Math.random() - 0.5) * 200,
+                y: centerY + (Math.random() - 0.5) * 200,
+                life: 1.0,
+                maxLife: 2.0 + Math.random() * 0.5,
+                color,
+                particles,
+            });
+        }
+    }
+
+    startEffectsLoop() {
+        if (this.effectsAnimationFrame) return;
+
+        const tick = (timestamp) => {
+            if (!this.effectsAnimationFrame || !this.isActive) {
+                return;
+            }
+
+            if (!this.lastEffectsFrameTime) {
+                this.lastEffectsFrameTime = timestamp;
+            }
+
+            const delta = Math.min((timestamp - this.lastEffectsFrameTime) / 1000, 0.1);
+            this.lastEffectsFrameTime = timestamp;
+
+            this.updateEffects(delta);
+            this.renderEffects();
+
+            this.effectsAnimationFrame = requestAnimationFrame(tick);
+        };
+
+        this.lastEffectsFrameTime = 0;
+        this.effectsAnimationFrame = requestAnimationFrame(tick);
+    }
+
+    stopEffectsLoop() {
+        if (this.effectsAnimationFrame) {
+            cancelAnimationFrame(this.effectsAnimationFrame);
+            this.effectsAnimationFrame = null;
+        }
+        this.lastEffectsFrameTime = 0;
+    }
+
+    updateEffects(delta) {
+        // Update neon burst particles
+        for (let i = this.neonBurstParticles.length - 1; i >= 0; i--) {
+            const p = this.neonBurstParticles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.15; // Gravity
+            p.life -= delta / p.maxLife;
+
+            if (p.life <= 0) {
+                this.neonBurstParticles.splice(i, 1);
+            }
+        }
+
+        // Update electric arcs
+        for (let i = this.electricArcs.length - 1; i >= 0; i--) {
+            const arc = this.electricArcs[i];
+            arc.life -= delta / arc.maxLife;
+
+            // Regenerate segments for flickering effect
+            if (Math.random() > 0.7) {
+                arc.segments = this.generateArcSegments(
+                    arc.startX,
+                    arc.startY,
+                    arc.endX,
+                    arc.endY,
+                    8
+                );
+            }
+
+            if (arc.life <= 0) {
+                this.electricArcs.splice(i, 1);
+            }
+        }
+
+        // Update digital scan lines
+        for (let i = this.digitalScanLines.length - 1; i >= 0; i--) {
+            const line = this.digitalScanLines[i];
+            line.y += line.speed * delta;
+            line.life -= delta / line.maxLife;
+
+            if (line.life <= 0) {
+                this.digitalScanLines.splice(i, 1);
+            }
+        }
+
+        // Update hologram rings
+        for (let i = this.hologramRings.length - 1; i >= 0; i--) {
+            const ring = this.hologramRings[i];
+            ring.radius += (ring.maxRadius / ring.maxLife) * delta;
+            ring.life -= delta / ring.maxLife;
+
+            if (ring.life <= 0) {
+                this.hologramRings.splice(i, 1);
+            }
+        }
+
+        // Update glitch pulses
+        for (let i = this.glitchPulses.length - 1; i >= 0; i--) {
+            const pulse = this.glitchPulses[i];
+            pulse.life -= delta / pulse.maxLife;
+            pulse.offsetX = (Math.random() - 0.5) * 20;
+
+            if (pulse.life <= 0) {
+                this.glitchPulses.splice(i, 1);
+            }
+        }
+
+        // Update cyber vortexes
+        for (let i = this.cyberVortexes.length - 1; i >= 0; i--) {
+            const vortex = this.cyberVortexes[i];
+            vortex.life -= delta / vortex.maxLife;
+
+            vortex.particles.forEach((p) => {
+                p.angle += p.angularSpeed * delta;
+                p.radius += p.radiusSpeed * delta;
+            });
+
+            if (vortex.life <= 0) {
+                this.cyberVortexes.splice(i, 1);
+            }
+        }
+    }
+
+    renderEffects() {
+        if (!this.effectsCanvas || !this.effectsCtx) return;
+
+        const ctx = this.effectsCtx;
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+
+        // Render digital scan lines
+        this.digitalScanLines.forEach((line) => {
+            const alpha = line.life * line.opacity;
+            ctx.strokeStyle = `${line.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.lineWidth = line.height;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = line.color;
+            ctx.beginPath();
+            ctx.moveTo(0, line.y);
+            ctx.lineTo(width, line.y);
+            ctx.stroke();
+        });
+
+        // Render hologram rings
+        this.hologramRings.forEach((ring) => {
+            const alpha = ring.life;
+            ctx.strokeStyle = `${ring.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.lineWidth = ring.width;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = ring.color;
+            ctx.beginPath();
+            ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+
+        // Render neon burst particles
+        this.neonBurstParticles.forEach((p) => {
+            const alpha = p.life;
+            ctx.fillStyle = `${p.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.shadowBlur = p.glow;
+            ctx.shadowColor = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Render electric arcs
+        this.electricArcs.forEach((arc) => {
+            const alpha = arc.life;
+            ctx.strokeStyle = `${arc.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.lineWidth = arc.width;
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = arc.color;
+            ctx.beginPath();
+            ctx.moveTo(arc.segments[0].x, arc.segments[0].y);
+            for (let i = 1; i < arc.segments.length; i++) {
+                ctx.lineTo(arc.segments[i].x, arc.segments[i].y);
+            }
+            ctx.stroke();
+        });
+
+        // Render glitch pulses
+        this.glitchPulses.forEach((pulse) => {
+            const alpha = pulse.life * 0.7;
+            ctx.fillStyle = `${pulse.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = pulse.color;
+            ctx.fillRect(pulse.x + pulse.offsetX, pulse.y, pulse.width, pulse.height);
+        });
+
+        // Render cyber vortexes
+        this.cyberVortexes.forEach((vortex) => {
+            const alpha = vortex.life;
+            ctx.fillStyle = `${vortex.color}${Math.floor(alpha * 200).toString(16).padStart(2, '0')}`;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = vortex.color;
+
+            vortex.particles.forEach((p) => {
+                const x = vortex.x + Math.cos(p.angle) * p.radius;
+                const y = vortex.y + Math.sin(p.angle) * p.radius;
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        });
+
+        // Reset shadow
+        ctx.shadowBlur = 0;
     }
 
     stop() {
         this.pauseMeteorPool();
+        this.stopEffectsLoop();
         super.stop();
     }
 
     cleanup() {
         this.teardownMeteorPool();
+        this.cleanupEffects();
         super.cleanup();
+    }
+
+    cleanupEffects() {
+        // Unsubscribe from events
+        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers = [];
+
+        // Clear effect arrays
+        this.neonBurstParticles = [];
+        this.electricArcs = [];
+        this.digitalScanLines = [];
+        this.hologramRings = [];
+        this.cyberVortexes = [];
+        this.glitchPulses = [];
+
+        // Stop animation loop
+        this.stopEffectsLoop();
+
+        // Remove canvas
+        if (this.effectsCanvas) {
+            this.effectsCanvas.remove();
+            this.effectsCanvas = null;
+            this.effectsCtx = null;
+        }
     }
 
     initializeMeteors(container) {
