@@ -1140,18 +1140,6 @@ export class WebGLRenderer {
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 100, dustConfig));
             this.start();
-        } else if (themeName === 'candlelit-monastery') {
-            const smokeConfig = {
-                speed: 0.5,
-                minSize: 2.0,
-                maxSize: 10.0,
-                minAlpha: 0.1,
-                maxAlpha: 0.3,
-                lifetime: 1800,
-                zIndex: -0.5, // In front of archways
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 15, smokeConfig));
-            this.start();
         } else if (themeName === 'forest') {
             // Magical spores floating slowly
             const sporeConfig = {

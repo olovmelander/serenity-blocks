@@ -75,6 +75,7 @@ import { GamepadController } from './ui/gamepad-controller.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
+import { SerenityHub } from './ui/serenity-hub/SerenityHub.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -212,6 +213,7 @@ class SerenityBlocks {
         this.multiplayerBoardScenes = [];
         this.gameModeUI = null;
         this.gameModeManager = null; // NEW: Central game mode orchestrator
+        this.serenityHub = null; // Global Serenity Hub (accessible from all modes)
         this.displayManager = null; // Phase 1: Display management
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.cleanupHandlers = [];
@@ -1121,8 +1123,71 @@ class SerenityBlocks {
 
         console.log('✅ All managers initialized');
 
+        // Initialize global Serenity Hub (accessible from all game modes)
+        this.initializeGlobalSerenityHub();
+
         // this.startBackgroundScene(); // Moved to end of init
         this.applyEffectQuality(this.settingsManager.get().effectQuality);
+    }
+
+    /**
+     * Initialize global Serenity Hub (works in all game modes)
+     */
+    initializeGlobalSerenityHub() {
+        console.log('[Main] Initializing global Serenity Hub...');
+
+        // Create a minimal wrapper object that provides the deps SerenityHub needs
+        const hubWrapper = {
+            deps: {
+                soundManager: this.soundManager,
+                themeManager: this.themeManager,
+                settingsManager: this.settingsManager,
+                gamepadController: this.gamepadController,
+            },
+            // Provide stub methods for Serenity Mode-specific features
+            _toggleBreathingIndicator: () => {
+                console.log('[SerenityHub] Breathing indicator only available in Serenity Mode');
+            },
+            _randomTheme: () => {
+                this.switchToRandomTheme();
+            },
+            _toggleFullscreen: () => {
+                toggleFullScreen();
+            },
+        };
+
+        this.serenityHub = new SerenityHub(hubWrapper);
+
+        // Set pause/resume callbacks - only pause for single player, local MP, and infinity
+        this.serenityHub.setPauseResumeCallbacks(
+            () => {
+                // Only pause if in a pausable mode
+                const currentMode = this.gameModeManager?.getCurrentModeId();
+                const pausableModes = ['single', 'local-multiplayer', 'infinity'];
+
+                if (pausableModes.includes(currentMode)) {
+                    console.log('[SerenityHub] Pausing game for mode:', currentMode);
+                    // Use pauseGameOnly to avoid opening settings modal
+                    this.pauseGameOnly();
+                } else {
+                    console.log('[SerenityHub] Not pausing - mode does not require pause:', currentMode);
+                }
+            },
+            () => {
+                // Only resume if in a pausable mode
+                const currentMode = this.gameModeManager?.getCurrentModeId();
+                const pausableModes = ['single', 'local-multiplayer', 'infinity'];
+
+                if (pausableModes.includes(currentMode)) {
+                    console.log('[SerenityHub] Resuming game for mode:', currentMode);
+                    this.resumeGame();
+                } else {
+                    console.log('[SerenityHub] Not resuming - mode does not require resume:', currentMode);
+                }
+            }
+        );
+
+        console.log('✅ Global Serenity Hub initialized');
     }
 
     /**
@@ -1304,7 +1369,7 @@ class SerenityBlocks {
      * Setup UI buttons and interactions
      */
     setupUI() {
-        // Setup modal UI with callbacks
+        // Setup modal UI with callbacks (pass gameModeManager for Serenity Hub icon)
         setupModalUI(this.modalManager, {
             onSettingsOpen: () => {
                 this.pauseGame();
@@ -1327,7 +1392,7 @@ class SerenityBlocks {
             onRandomTheme: () => {
                 this.switchToRandomTheme();
             },
-        });
+        }, this.gameModeManager);
 
         // Initialize settings UI (includes tab switching)
         initializeSettingsUI(this.settingsManager, {
@@ -2521,6 +2586,26 @@ class SerenityBlocks {
             this.resumeGame();
         } else {
             this.pauseGame();
+        }
+    }
+
+    /**
+     * Pause the game without opening settings modal (used by Serenity Hub)
+     */
+    pauseGameOnly() {
+        console.log('[Main] Pausing game only (no settings modal)');
+
+        // Check if GameModeManager has a running mode
+        if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
+            this.gameModeManager.pauseCurrentMode({
+                enableTranceState: false  // No trance state when opening Serenity Hub
+            });
+            return;
+        }
+
+        // Fallback to old game state for classic modes
+        if (!this.gameState.isGameOver && !this.gameState.isPaused) {
+            this.gameState.isPaused = true;
         }
     }
 

@@ -5,23 +5,23 @@ import { normalizeQuality } from '../../utils/quality.js';
 
 const QUALITY_PRESETS = {
     Ultra: {
-        starCount: 200,  // Reduced from 320
-        initialParticles: 180,  // Reduced from 260
-        maxParticles: 450,  // Reduced from 720
-        minParticles: 250,  // Reduced from 420
+        starCount: 320,  // Reduced from 320
+        initialParticles: 260,  // Reduced from 260
+        maxParticles: 720, // Reduced from 720
+        minParticles: 420, // Reduced from 420
         adaptiveStep: 40,
         targetFps: 60,
-        renderScale: 0.9,  // Reduced from 1.0
-        effectIntensity: 0.9,  // Reduced from 1.0
-        pulseCoverage: 0.6,  // Reduced from 0.9
-        comboBurstLimit: 40,  // Reduced from 60
-        eruptionLimit: 50,  // Reduced from 80
+        renderScale: 1.0,  // Reduced from 1.0
+        effectIntensity: 1.0,  // Reduced from 1.0
+        pulseCoverage: 0.9,  // Reduced from 0.9
+        comboBurstLimit: 60,  // Reduced from 60
+        eruptionLimit: 80,  // Reduced from 80
         allowEruptions: true,
-        lineEffectCooldown: 100,  // Increased from 80
-        comboEffectCooldown: 180,  // Increased from 140
-        smallBurstLimit: 8,  // Reduced from 10
-        starBurstLimit: 3,  // Reduced from 4
-        trailDetail: 0.7,  // Reduced from 1.0
+        lineEffectCooldown: 90,  // Increased from 80
+        comboEffectCooldown: 140,  // Increased from 140
+        smallBurstLimit: 10,  // Reduced from 10
+        starBurstLimit: 4,  // Reduced from 4
+        trailDetail: 0.8,  // Reduced from 1.0
         useCanvasStars: false,  // DOM stars for best quality
         skipPhysicsDistance: 1.8,  // Skip physics beyond 1.8x pull radius
     },
