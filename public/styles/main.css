@@ -13770,3 +13770,73 @@ body.serenity-mode.cursor-hidden * {
     image-rendering: crisp-edges;
     image-rendering: -webkit-optimize-contrast;
 }
+
+/* =============================================================================
+   Serenity Mode Interactive Effects
+   ============================================================================= */
+
+/* Click ripple effect */
+.serenity-click-ripple {
+    position: fixed;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid rgba(100, 200, 255, 0.8);
+    box-shadow:
+        0 0 10px rgba(100, 200, 255, 0.6),
+        0 0 20px rgba(100, 200, 255, 0.4);
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%) scale(0);
+    animation: rippleExpand 1s ease-out forwards;
+}
+
+/* Cooldown ripple effect (red) */
+.serenity-click-ripple.cooldown {
+    border: 2px solid rgba(255, 80, 80, 0.8);
+    box-shadow:
+        0 0 10px rgba(255, 80, 80, 0.6),
+        0 0 20px rgba(255, 80, 80, 0.4);
+    animation: rippleExpandCooldown 0.5s ease-out forwards;
+}
+
+@keyframes rippleExpand {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(3);
+        opacity: 0;
+    }
+}
+
+@keyframes rippleExpandCooldown {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Cursor styles for Serenity Mode */
+body.serenity-mode {
+    cursor: crosshair;
+}
+
+body.cursor-hidden {
+    cursor: none;
+}
+
+body.cursor-hidden * {
+    cursor: none !important;
+}
