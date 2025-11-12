@@ -248,7 +248,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 brightness: Math.random() * 0.8 + 0.2,
                 pulseSpeed: Math.random() * 0.05 + 0.02,
                 pulsePhase: Math.random() * Math.PI * 2,
-                color: Math.random() > 0.7 ? 'cyan' : 'green',
+                color: Math.random() > 0.7 ? 'cyan' : 'green', // Mix of colors
                 trail: []
             });
         }
@@ -261,7 +261,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 x: Math.random() * this.canvas.width,
                 y: Math.random() * this.canvas.height,
                 vx: (Math.random() - 0.5) * 0.5,
-                vy: -Math.random() * 1.5 - 0.5,
+                vy: -Math.random() * 1.5 - 0.5, // Float upward
                 size: Math.random() * 2 + 1,
                 opacity: Math.random() * 0.6 + 0.2,
                 driftPhase: Math.random() * Math.PI * 2,
@@ -282,7 +282,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 pulsePhase: Math.random() * Math.PI * 2,
                 driftSpeed: Math.random() * 0.0003 + 0.0001,
                 driftPhase: Math.random() * Math.PI * 2,
-                hue: Math.random() * 50 + 155
+                hue: Math.random() * 50 + 155 // Cyan-green range
             });
         }
     }
@@ -472,14 +472,14 @@ export default class BioluminescenceTheme extends BaseTheme {
                         x: plant.x,
                         y: plant.y - plant.height * 0.5,
                         vx: Math.cos(angle) * speed,
-                        vy: Math.sin(angle) * speed - 1,
+                        vy: Math.sin(angle) * speed - 1, // Slight upward bias
                         size: Math.random() * 4 + 2,
                         opacity: Math.random() * 0.8 + 0.4,
                         life: 1.0,
                         color: Math.random() > 0.5 ? 'cyan' : 'green',
                         pulsePhase: Math.random() * Math.PI * 2,
                         rotationSpeed: (Math.random() - 0.5) * 0.2,
-                        hue: plant.hue
+                        hue: plant.hue // Use plant's color
                     });
                 }
             }
@@ -493,6 +493,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         if (this.cachedGradients.background) {
             this.ctx.fillStyle = this.cachedGradients.background;
         } else {
+            // Fallback solid color if gradient failed
             this.ctx.fillStyle = '#0a1f1f';
         }
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -515,392 +516,60 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
-    drawAmbientGlows() {
-        for (const glow of this.ambientGlows) {
-            glow.pulsePhase += glow.pulseSpeed;
-            glow.driftPhase += glow.driftSpeed;
+    drawMyceliumNetwork() {
+        for (const connection of this.myceliumNetwork) {
+            connection.pulsePhase += connection.pulseSpeed;
+            const pulse = Math.sin(connection.pulsePhase) * 0.4 + 0.6;
 
-            const pulse = Math.sin(glow.pulsePhase) * 0.3 + 0.7;
-            const drift = Math.sin(glow.driftPhase) * 60;
+            this.ctx.strokeStyle = `rgba(50, 255, 180, ${0.08 * pulse})`;
+            this.ctx.lineWidth = 1.5;
+            this.ctx.beginPath();
+            this.ctx.moveTo(connection.from.x, connection.from.y);
+            this.ctx.lineTo(connection.to.x, connection.to.y);
+            this.ctx.stroke();
 
-            const x = glow.x + drift;
-            const y = glow.y + Math.cos(glow.driftPhase * 1.3) * 40;
+            // Add glowing nodes along the connection
+            const segments = 5;
+            for (let i = 1; i < segments; i++) {
+                const t = i / segments;
+                const x = connection.from.x + (connection.to.x - connection.from.x) * t;
+                const y = connection.from.y + (connection.to.y - connection.from.y) * t;
 
-            const gradient = this.ctx.createRadialGradient(x, y, 0, x, y, glow.size);
-            gradient.addColorStop(0, `hsla(${glow.hue}, 100%, 65%, ${glow.opacity * pulse * (1 + this.pulseIntensity * 0.3)})`);
-            gradient.addColorStop(0.4, `hsla(${glow.hue}, 90%, 55%, ${glow.opacity * pulse * 0.6})`);
-            gradient.addColorStop(0.7, `hsla(${glow.hue}, 80%, 45%, ${glow.opacity * pulse * 0.3})`);
+                const nodeGradient = this.ctx.createRadialGradient(x, y, 0, x, y, 8);
+                nodeGradient.addColorStop(0, `rgba(100, 255, 200, ${0.4 * pulse})`);
+                nodeGradient.addColorStop(0.5, `rgba(50, 255, 180, ${0.2 * pulse})`);
+                nodeGradient.addColorStop(1, 'rgba(20, 200, 150, 0)');
+
+                this.ctx.fillStyle = nodeGradient;
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, 8, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+        }
+    }
+
+    drawGlowOrbs() {
+        for (const orb of this.glowOrbs) {
+            orb.pulsePhase += orb.pulseSpeed;
+            orb.driftPhase += orb.driftSpeed;
+
+            const pulse = Math.sin(orb.pulsePhase) * 0.3 + 0.7;
+            const drift = Math.sin(orb.driftPhase) * 50;
+
+            const x = orb.x + drift;
+            const y = orb.y + Math.cos(orb.driftPhase * 1.5) * 30;
+
+            const gradient = this.ctx.createRadialGradient(x, y, 0, x, y, orb.size);
+            gradient.addColorStop(0, `rgba(100, 255, 200, ${orb.opacity * pulse})`);
+            gradient.addColorStop(0.4, `rgba(50, 220, 180, ${orb.opacity * pulse * 0.6})`);
+            gradient.addColorStop(0.7, `rgba(20, 180, 150, ${orb.opacity * pulse * 0.3})`);
             gradient.addColorStop(1, 'rgba(0, 150, 120, 0)');
 
             this.ctx.fillStyle = gradient;
             this.ctx.beginPath();
-            this.ctx.arc(x, y, glow.size, 0, Math.PI * 2);
+            this.ctx.arc(x, y, orb.size, 0, Math.PI * 2);
             this.ctx.fill();
         }
-    }
-
-    drawLuminousVines() {
-        for (const vine of this.luminousVines) {
-            vine.pulsePhase += vine.pulseSpeed;
-            vine.swayPhase += vine.swaySpeed;
-
-            const pulse = Math.sin(vine.pulsePhase) * 0.3 + 0.7;
-            const sway = Math.sin(vine.swayPhase) * 15;
-
-            for (let i = 0; i < vine.segments.length; i++) {
-                const segment = vine.segments[i];
-                const swayOffset = sway * (i / vine.segments.length);
-
-                const x1 = segment.x + swayOffset;
-                const y1 = segment.y;
-                const x2 = x1 + Math.cos(segment.angle) * segment.length;
-                const y2 = y1 + Math.sin(segment.angle) * segment.length;
-
-                // Draw glowing vine segment
-                const gradient = this.ctx.createLinearGradient(x1, y1, x2, y2);
-                gradient.addColorStop(0, `hsla(${vine.hue}, 100%, 60%, ${0.3 * pulse})`);
-                gradient.addColorStop(1, `hsla(${vine.hue}, 100%, 60%, ${0.2 * pulse})`);
-
-                this.ctx.strokeStyle = gradient;
-                this.ctx.lineWidth = segment.thickness;
-                this.ctx.lineCap = 'round';
-                this.ctx.beginPath();
-                this.ctx.moveTo(x1, y1);
-                this.ctx.lineTo(x2, y2);
-                this.ctx.stroke();
-
-                // Add glowing orbs along vine
-                if (i % 2 === 0) {
-                    const glowGradient = this.ctx.createRadialGradient(x2, y2, 0, x2, y2, segment.glowSize);
-                    glowGradient.addColorStop(0, `hsla(${vine.hue}, 100%, 70%, ${0.7 * pulse})`);
-                    glowGradient.addColorStop(0.5, `hsla(${vine.hue}, 100%, 60%, ${0.4 * pulse})`);
-                    glowGradient.addColorStop(1, 'rgba(0, 255, 200, 0)');
-
-                    this.ctx.fillStyle = glowGradient;
-                    this.ctx.beginPath();
-                    this.ctx.arc(x2, y2, segment.glowSize, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-            }
-        }
-    }
-
-    drawCrystalFormations() {
-        for (const formation of this.crystalFormations) {
-            formation.pulsePhase += formation.pulseSpeed;
-            const pulse = Math.sin(formation.pulsePhase) * 0.3 + 0.7;
-
-            for (const crystal of formation.crystals) {
-                const x = formation.x + crystal.offsetX;
-                const y = formation.y;
-
-                this.ctx.save();
-                this.ctx.translate(x, y);
-                this.ctx.rotate(crystal.angle);
-
-                // Decay intense glow
-                if (crystal.glowIntensity > 0.5) {
-                    crystal.glowIntensity *= 0.985;
-                }
-
-                const glowMult = crystal.glowIntensity * pulse * (1 + this.pulseIntensity * 0.4);
-
-                // Draw crystal glow
-                const glowGradient = this.ctx.createRadialGradient(0, -crystal.height / 2, 0, 0, -crystal.height / 2, crystal.width * 3);
-                glowGradient.addColorStop(0, `hsla(${formation.hue}, 100%, 70%, ${0.5 * glowMult})`);
-                glowGradient.addColorStop(0.5, `hsla(${formation.hue}, 90%, 60%, ${0.3 * glowMult})`);
-                glowGradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
-
-                this.ctx.fillStyle = glowGradient;
-                this.ctx.beginPath();
-                this.ctx.arc(0, -crystal.height / 2, crystal.width * 3, 0, Math.PI * 2);
-                this.ctx.fill();
-
-                // Draw crystal body
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, 0);
-                this.ctx.lineTo(-crystal.width / 2, -crystal.height);
-                this.ctx.lineTo(crystal.width / 2, -crystal.height);
-                this.ctx.closePath();
-
-                const crystalGradient = this.ctx.createLinearGradient(0, 0, 0, -crystal.height);
-                crystalGradient.addColorStop(0, `hsla(${formation.hue}, 80%, 45%, 0.8)`);
-                crystalGradient.addColorStop(0.5, `hsla(${formation.hue}, 90%, 60%, ${0.6 + glowMult * 0.2})`);
-                crystalGradient.addColorStop(1, `hsla(${formation.hue}, 100%, 70%, ${0.9 + glowMult * 0.1})`);
-
-                this.ctx.fillStyle = crystalGradient;
-                this.ctx.fill();
-
-                // Add highlight
-                this.ctx.strokeStyle = `hsla(${formation.hue}, 100%, 85%, ${0.6 * glowMult})`;
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
-
-                this.ctx.restore();
-            }
-        }
-    }
-
-    drawGlowingPlants() {
-        for (const plant of this.glowingPlants) {
-            plant.pulsePhase += plant.pulseSpeed;
-            plant.swayPhase += plant.swaySpeed;
-
-            const pulse = Math.sin(plant.pulsePhase) * 0.3 + 0.7;
-            const sway = Math.sin(plant.swayPhase) * plant.swayAmount;
-
-            // Decay intense glow
-            if (plant.glowIntensity > 1) {
-                plant.glowIntensity *= 0.97;
-            }
-
-            const glowMult = plant.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
-
-            this.ctx.save();
-            this.ctx.translate(plant.x, plant.y);
-
-            // Draw based on plant type
-            if (plant.type === 'fern') {
-                this.drawFern(plant, sway, glowMult);
-            } else if (plant.type === 'flower') {
-                this.drawFlower(plant, sway, glowMult);
-            } else if (plant.type === 'grass') {
-                this.drawGrass(plant, sway, glowMult);
-            } else if (plant.type === 'bulb') {
-                this.drawBulb(plant, sway, glowMult);
-            } else if (plant.type === 'tendril') {
-                this.drawTendril(plant, sway, glowMult);
-            }
-
-            this.ctx.restore();
-        }
-    }
-
-    drawFern(plant, sway, glowMult) {
-        const stemHeight = plant.height;
-
-        // Draw stem
-        this.ctx.strokeStyle = `hsla(${plant.hue}, 70%, 40%, 0.8)`;
-        this.ctx.lineWidth = 3;
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(sway, -stemHeight);
-        this.ctx.stroke();
-
-        // Draw fronds
-        for (let i = 0; i < plant.fronds; i++) {
-            const frondY = -stemHeight * (i / plant.fronds);
-            const frondLength = plant.width * (1 - i / plant.fronds) * 0.8;
-            const side = i % 2 === 0 ? 1 : -1;
-
-            // Draw frond
-            const gradient = this.ctx.createLinearGradient(sway, frondY, sway + frondLength * side, frondY);
-            gradient.addColorStop(0, `hsla(${plant.hue}, 80%, 50%, ${0.6 * glowMult})`);
-            gradient.addColorStop(1, `hsla(${plant.hue}, 100%, 65%, ${0.3 * glowMult})`);
-
-            this.ctx.strokeStyle = gradient;
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.moveTo(sway, frondY);
-            this.ctx.quadraticCurveTo(
-                sway + frondLength * side * 0.5, frondY - 10,
-                sway + frondLength * side, frondY
-            );
-            this.ctx.stroke();
-
-            // Glow at frond tip
-            const glowGradient = this.ctx.createRadialGradient(
-                sway + frondLength * side, frondY, 0,
-                sway + frondLength * side, frondY, 15
-            );
-            glowGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 70%, ${0.6 * glowMult})`);
-            glowGradient.addColorStop(1, 'rgba(0, 255, 200, 0)');
-
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(sway + frondLength * side, frondY, 15, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-    }
-
-    drawFlower(plant, sway, glowMult) {
-        const stemHeight = plant.height * 0.7;
-        const flowerY = -stemHeight;
-
-        // Draw stem
-        this.ctx.strokeStyle = `hsla(${plant.hue}, 60%, 35%, 0.9)`;
-        this.ctx.lineWidth = 4;
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-        this.ctx.quadraticCurveTo(sway * 0.5, -stemHeight * 0.5, sway, flowerY);
-        this.ctx.stroke();
-
-        // Draw petals
-        this.ctx.save();
-        this.ctx.translate(sway, flowerY);
-
-        for (let i = 0; i < plant.petals; i++) {
-            const angle = (Math.PI * 2 / plant.petals) * i;
-            const petalLength = plant.width * 0.4;
-
-            this.ctx.save();
-            this.ctx.rotate(angle);
-
-            // Petal glow
-            const glowGradient = this.ctx.createRadialGradient(petalLength * 0.5, 0, 0, petalLength * 0.5, 0, petalLength);
-            glowGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 70%, ${0.7 * glowMult})`);
-            glowGradient.addColorStop(0.5, `hsla(${plant.hue}, 100%, 65%, ${0.4 * glowMult})`);
-            glowGradient.addColorStop(1, 'rgba(0, 255, 200, 0)');
-
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.beginPath();
-            this.ctx.ellipse(petalLength * 0.5, 0, petalLength * 0.8, petalLength * 0.3, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Petal body
-            const petalGradient = this.ctx.createLinearGradient(0, 0, petalLength, 0);
-            petalGradient.addColorStop(0, `hsla(${plant.hue}, 90%, 55%, 0.9)`);
-            petalGradient.addColorStop(1, `hsla(${plant.hue}, 100%, 70%, ${0.7 + glowMult * 0.2})`);
-
-            this.ctx.fillStyle = petalGradient;
-            this.ctx.beginPath();
-            this.ctx.ellipse(petalLength * 0.5, 0, petalLength * 0.6, petalLength * 0.25, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.restore();
-        }
-
-        // Draw center
-        const centerGradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, plant.centerSize);
-        centerGradient.addColorStop(0, `hsla(${plant.hue + 30}, 100%, 80%, ${0.95 * glowMult})`);
-        centerGradient.addColorStop(0.5, `hsla(${plant.hue + 20}, 100%, 70%, ${0.8 * glowMult})`);
-        centerGradient.addColorStop(1, `hsla(${plant.hue}, 90%, 60%, 0.6)`);
-
-        this.ctx.fillStyle = centerGradient;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, plant.centerSize, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.restore();
-    }
-
-    drawGrass(plant, sway, glowMult) {
-        const blades = 5;
-
-        for (let i = 0; i < blades; i++) {
-            const offsetX = (i - blades / 2) * 8;
-            const bladeHeight = plant.height * (0.7 + Math.random() * 0.3);
-            const bladeSway = sway + (Math.random() - 0.5) * 10;
-
-            const gradient = this.ctx.createLinearGradient(offsetX, 0, offsetX + bladeSway, -bladeHeight);
-            gradient.addColorStop(0, `hsla(${plant.hue}, 70%, 40%, 0.8)`);
-            gradient.addColorStop(0.7, `hsla(${plant.hue}, 90%, 60%, ${0.6 * glowMult})`);
-            gradient.addColorStop(1, `hsla(${plant.hue}, 100%, 70%, ${0.9 * glowMult})`);
-
-            this.ctx.strokeStyle = gradient;
-            this.ctx.lineWidth = 3;
-            this.ctx.lineCap = 'round';
-            this.ctx.beginPath();
-            this.ctx.moveTo(offsetX, 0);
-            this.ctx.quadraticCurveTo(
-                offsetX + bladeSway * 0.5, -bladeHeight * 0.6,
-                offsetX + bladeSway, -bladeHeight
-            );
-            this.ctx.stroke();
-
-            // Tip glow
-            const tipGradient = this.ctx.createRadialGradient(
-                offsetX + bladeSway, -bladeHeight, 0,
-                offsetX + bladeSway, -bladeHeight, 12
-            );
-            tipGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 75%, ${0.8 * glowMult})`);
-            tipGradient.addColorStop(1, 'rgba(0, 255, 200, 0)');
-
-            this.ctx.fillStyle = tipGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(offsetX + bladeSway, -bladeHeight, 12, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-    }
-
-    drawBulb(plant, sway, glowMult) {
-        const stemHeight = plant.stemHeight;
-        const bulbY = -stemHeight;
-
-        // Draw stem
-        this.ctx.strokeStyle = `hsla(${plant.hue}, 60%, 35%, 0.9)`;
-        this.ctx.lineWidth = 5;
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-        this.ctx.quadraticCurveTo(sway * 0.5, -stemHeight * 0.5, sway, bulbY);
-        this.ctx.stroke();
-
-        // Draw bulb glow
-        const bulbGlowGradient = this.ctx.createRadialGradient(sway, bulbY, 0, sway, bulbY, plant.bulbSize * 2);
-        bulbGlowGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 70%, ${0.7 * glowMult})`);
-        bulbGlowGradient.addColorStop(0.5, `hsla(${plant.hue}, 100%, 65%, ${0.4 * glowMult})`);
-        bulbGlowGradient.addColorStop(1, 'rgba(0, 255, 200, 0)');
-
-        this.ctx.fillStyle = bulbGlowGradient;
-        this.ctx.beginPath();
-        this.ctx.arc(sway, bulbY, plant.bulbSize * 2, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Draw bulb body
-        const bulbGradient = this.ctx.createRadialGradient(sway - plant.bulbSize * 0.2, bulbY - plant.bulbSize * 0.2, plant.bulbSize * 0.2, sway, bulbY, plant.bulbSize);
-        bulbGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 75%, ${0.95 * glowMult})`);
-        bulbGradient.addColorStop(0.5, `hsla(${plant.hue}, 90%, 65%, ${0.85 * glowMult})`);
-        bulbGradient.addColorStop(1, `hsla(${plant.hue}, 80%, 55%, 0.7)`);
-
-        this.ctx.fillStyle = bulbGradient;
-        this.ctx.beginPath();
-        this.ctx.arc(sway, bulbY, plant.bulbSize, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Add highlight
-        this.ctx.fillStyle = `hsla(${plant.hue}, 100%, 90%, ${0.6 * glowMult})`;
-        this.ctx.beginPath();
-        this.ctx.arc(sway - plant.bulbSize * 0.3, bulbY - plant.bulbSize * 0.3, plant.bulbSize * 0.3, 0, Math.PI * 2);
-        this.ctx.fill();
-    }
-
-    drawTendril(plant, sway, glowMult) {
-        let currentX = 0;
-        let currentY = 0;
-        const segmentHeight = plant.height / plant.segments;
-
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-
-        for (let i = 0; i < plant.segments; i++) {
-            const waveOffset = Math.sin((i / plant.segments) * Math.PI * 2 + plant.swayPhase) * sway * (i / plant.segments);
-            currentX = waveOffset;
-            currentY -= segmentHeight;
-
-            this.ctx.lineTo(currentX, currentY);
-
-            // Add glowing nodes
-            if (i % 2 === 0) {
-                const nodeGradient = this.ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 10);
-                nodeGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 75%, ${0.9 * glowMult})`);
-                nodeGradient.addColorStop(0.5, `hsla(${plant.hue}, 100%, 65%, ${0.5 * glowMult})`);
-                nodeGradient.addColorStop(1, 'rgba(0, 255, 200, 0)');
-
-                this.ctx.fillStyle = nodeGradient;
-                this.ctx.beginPath();
-                this.ctx.arc(currentX, currentY, 10, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
-        }
-
-        const gradient = this.ctx.createLinearGradient(0, 0, 0, currentY);
-        gradient.addColorStop(0, `hsla(${plant.hue}, 70%, 45%, 0.7)`);
-        gradient.addColorStop(1, `hsla(${plant.hue}, 90%, 60%, ${0.5 * glowMult})`);
-
-        this.ctx.strokeStyle = gradient;
-        this.ctx.lineWidth = 4;
-        this.ctx.lineCap = 'round';
-        this.ctx.stroke();
     }
 
     drawSpores() {
@@ -1005,6 +674,113 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.ctx.fillStyle = gradient;
             this.ctx.beginPath();
             this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+    }
+
+    drawMushrooms() {
+        for (const mushroom of this.mushrooms) {
+            mushroom.pulsePhase += mushroom.pulseSpeed;
+            mushroom.floatPhase += mushroom.floatSpeed;
+
+            const pulse = Math.sin(mushroom.pulsePhase) * 0.3 + 0.7;
+            const floatOffset = Math.sin(mushroom.floatPhase) * mushroom.floatAmplitude;
+
+            const x = mushroom.x;
+            const y = mushroom.y + floatOffset;
+
+            // Gradually decay intense glow back to normal
+            if (mushroom.glowIntensity > 1) {
+                mushroom.glowIntensity *= 0.98;
+            }
+
+            const glowMult = mushroom.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
+
+            // Draw stem with gradient
+            const stemGradient = this.ctx.createLinearGradient(
+                x, y,
+                x, y - mushroom.stemHeight
+            );
+            stemGradient.addColorStop(0, `hsl(${180 + mushroom.hueShift}, 60%, 30%)`);
+            stemGradient.addColorStop(1, `hsl(${180 + mushroom.hueShift}, 70%, 40%)`);
+
+            this.ctx.fillStyle = stemGradient;
+            this.ctx.beginPath();
+            this.ctx.ellipse(
+                x, y - mushroom.stemHeight / 2,
+                mushroom.stemWidth, mushroom.stemHeight / 2,
+                0, 0, Math.PI * 2
+            );
+            this.ctx.fill();
+
+            // Stem glow
+            const stemGlow = this.ctx.createRadialGradient(x, y - mushroom.stemHeight / 2, 0, x, y - mushroom.stemHeight / 2, mushroom.stemWidth * 2);
+            stemGlow.addColorStop(0, `rgba(100, 255, 200, ${0.2 * glowMult})`);
+            stemGlow.addColorStop(1, 'rgba(50, 200, 150, 0)');
+            this.ctx.fillStyle = stemGlow;
+            this.ctx.fillRect(x - mushroom.stemWidth * 2, y - mushroom.stemHeight, mushroom.stemWidth * 4, mushroom.stemHeight);
+
+            // Draw mushroom cap
+            const capY = y - mushroom.stemHeight;
+
+            // Outer glow layers (multiple for intense effect)
+            for (let i = 4; i >= 1; i--) {
+                const glowRadius = mushroom.capRadius * (1 + i * 0.15);
+                const glowOpacity = (0.15 / i) * glowMult;
+
+                const outerGlow = this.ctx.createRadialGradient(x, capY, mushroom.capRadius * 0.5, x, capY, glowRadius);
+                outerGlow.addColorStop(0, `rgba(100, 255, 220, ${glowOpacity * 0.8})`);
+                outerGlow.addColorStop(0.5, `rgba(50, 220, 180, ${glowOpacity * 0.5})`);
+                outerGlow.addColorStop(1, 'rgba(20, 180, 150, 0)');
+
+                this.ctx.fillStyle = outerGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(x, capY, glowRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            // Main cap body
+            const capGradient = this.ctx.createRadialGradient(
+                x - mushroom.capRadius * 0.2, capY - mushroom.capRadius * 0.2, mushroom.capRadius * 0.2,
+                x, capY, mushroom.capRadius
+            );
+            capGradient.addColorStop(0, `hsl(${180 + mushroom.hueShift}, 100%, ${60 + glowMult * 10}%)`);
+            capGradient.addColorStop(0.5, `hsl(${180 + mushroom.hueShift}, 90%, ${45 + glowMult * 8}%)`);
+            capGradient.addColorStop(1, `hsl(${180 + mushroom.hueShift}, 80%, ${30 + glowMult * 5}%)`);
+
+            this.ctx.fillStyle = capGradient;
+            this.ctx.beginPath();
+            this.ctx.arc(x, capY, mushroom.capRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Draw glowing spots
+            for (const spot of mushroom.spots) {
+                const spotX = x + Math.cos(spot.angle) * spot.distance * mushroom.capRadius;
+                const spotY = capY - Math.sin(spot.angle) * spot.distance * mushroom.capRadius * 0.5;
+
+                const spotGlow = this.ctx.createRadialGradient(spotX, spotY, 0, spotX, spotY, spot.size);
+                spotGlow.addColorStop(0, `rgba(200, 255, 240, ${0.9 * spot.intensity * glowMult})`);
+                spotGlow.addColorStop(0.5, `rgba(150, 255, 220, ${0.6 * spot.intensity * glowMult})`);
+                spotGlow.addColorStop(1, 'rgba(100, 220, 180, 0)');
+
+                this.ctx.fillStyle = spotGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(spotX, spotY, spot.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            // Add rim highlight for 3D effect
+            const rimGradient = this.ctx.createRadialGradient(
+                x - mushroom.capRadius * 0.3, capY - mushroom.capRadius * 0.3, 0,
+                x, capY, mushroom.capRadius
+            );
+            rimGradient.addColorStop(0, `rgba(255, 255, 255, ${0.3 * glowMult})`);
+            rimGradient.addColorStop(0.4, `rgba(200, 255, 240, ${0.15 * glowMult})`);
+            rimGradient.addColorStop(1, 'rgba(150, 255, 220, 0)');
+
+            this.ctx.fillStyle = rimGradient;
+            this.ctx.beginPath();
+            this.ctx.arc(x, capY, mushroom.capRadius, 0, Math.PI * 2);
             this.ctx.fill();
         }
     }
