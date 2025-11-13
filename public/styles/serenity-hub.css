@@ -212,9 +212,10 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.9);
-  width: 520px;
-  max-width: 95vw;
-  max-height: 700px;
+  width: 680px;
+  max-width: 90vw;
+  max-height: 85vh;
+  min-height: 500px;
   background: var(--hub-background);
   backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(180%);
@@ -396,8 +397,7 @@
 
 .tab-panel {
   display: none;
-  padding: var(--hub-spacing-lg);
-  min-height: 400px;
+  padding: var(--hub-spacing-md) var(--hub-spacing-lg);
 }
 
 .tab-panel.active {
@@ -429,6 +429,24 @@
 /* ===========================
    Responsive Design
    =========================== */
+/* Desktop (>900px) */
+@media (min-width: 901px) {
+  .serenity-hub-panel {
+    width: 680px;
+    max-height: 85vh;
+  }
+}
+
+/* Tablet (601-900px) */
+@media (min-width: 601px) and (max-width: 900px) {
+  .serenity-hub-panel {
+    width: 85%;
+    max-width: 650px;
+    max-height: 85vh;
+  }
+}
+
+/* Mobile (≤600px) */
 @media (max-width: 600px) {
   .serenity-hub-icon {
     top: 15px;
@@ -470,13 +488,6 @@
 
   .tab-panel {
     padding: var(--hub-spacing-md);
-  }
-}
-
-@media (min-width: 601px) and (max-width: 900px) {
-  .serenity-hub-panel {
-    width: 85%;
-    max-width: 600px;
   }
 }
 
@@ -636,9 +647,9 @@
 /* Technique Grid */
 .technique-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: var(--hub-spacing-md);
-  margin-top: var(--hub-spacing-md);
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--hub-spacing-sm);
+  margin-top: var(--hub-spacing-sm);
 }
 
 /* Technique Card */
@@ -828,7 +839,7 @@
 /* Mobile Responsive */
 @media (max-width: 600px) {
   .technique-grid {
-    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: var(--hub-spacing-sm);
   }
 
@@ -859,7 +870,7 @@
 /* Tablet Responsive */
 @media (min-width: 601px) and (max-width: 900px) {
   .technique-grid {
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
   }
 }
 
@@ -874,11 +885,11 @@
   padding: var(--hub-spacing-sm);
 }
 
-/* Now Playing Section */
+/* Now Playing Section - Compact Combined Card */
 .now-playing-section {
   display: flex;
   flex-direction: column;
-  gap: var(--hub-spacing-md);
+  gap: var(--hub-spacing-sm);
 }
 
 .now-playing-header {
@@ -886,10 +897,11 @@
   align-items: center;
   gap: var(--hub-spacing-sm);
   color: var(--hub-primary);
+  margin-bottom: var(--hub-spacing-xs);
 }
 
 .music-icon {
-  font-size: 24px;
+  font-size: 20px;
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -900,35 +912,37 @@
 
 .now-playing-header h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
 }
 
+/* Combined Now Playing + Controls Card */
 .now-playing-card {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--hub-border);
   border-radius: var(--hub-radius-md);
   padding: var(--hub-spacing-lg);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: var(--hub-spacing-md);
+  gap: var(--hub-spacing-lg);
   backdrop-filter: blur(10px);
 }
 
-/* Vinyl Disc Animation */
+/* Vinyl Disc Animation - Smaller */
 .album-art {
-  width: 150px;
-  height: 150px;
+  width: 100px;
+  height: 100px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  flex-shrink: 0;
 }
 
 .vinyl-disc {
-  width: 140px;
-  height: 140px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   background: var(--music-vinyl);
   position: relative;
@@ -950,8 +964,8 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 35px;
-  height: 35px;
+  width: 25px;
+  height: 25px;
   border-radius: 50%;
   background: radial-gradient(circle, #8b8b8b 0%, #2d2d2d 50%, #1a1a1a 100%);
   box-shadow:
@@ -965,41 +979,46 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #000;
 }
 
+/* Track Info and Controls Container */
+.track-controls-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hub-spacing-md);
+  min-width: 0;
+}
+
 .track-info {
-  text-align: center;
+  text-align: left;
   color: var(--hub-primary);
-  max-width: 100%;
+  min-width: 0;
 }
 
 .track-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: var(--hub-spacing-xs);
+  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .track-artist {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--hub-secondary);
 }
 
-/* Playback Controls Section */
+/* Playback Controls Section - Now inside combined card */
 .playback-controls-section {
   display: flex;
   flex-direction: column;
-  gap: var(--hub-spacing-md);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hub-border);
-  border-radius: var(--hub-radius-md);
-  padding: var(--hub-spacing-lg);
+  gap: var(--hub-spacing-sm);
 }
 
 .progress-container {
@@ -1063,7 +1082,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--hub-spacing-md);
+  gap: var(--hub-spacing-sm);
 }
 
 .control-btn {
@@ -1076,7 +1095,7 @@
   justify-content: center;
   transition: all var(--hub-transition-fast);
   color: var(--hub-primary);
-  font-size: 24px;
+  font-size: 20px;
   padding: 0;
   outline: none;
 }
@@ -1092,8 +1111,8 @@
 }
 
 .control-btn.primary {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   background: linear-gradient(135deg, var(--music-primary), var(--music-secondary));
   border: none;
   box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
@@ -1105,8 +1124,8 @@
 }
 
 .control-btn.secondary {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
 }
 
 .control-icon {
@@ -1114,21 +1133,22 @@
   line-height: 1;
 }
 
-/* Volume Controls Section */
+/* Volume Controls Section - Compact */
 .volume-section {
   display: flex;
   flex-direction: column;
-  gap: var(--hub-spacing-md);
+  gap: var(--hub-spacing-sm);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--hub-border);
   border-radius: var(--hub-radius-md);
-  padding: var(--hub-spacing-lg);
+  padding: var(--hub-spacing-md) var(--hub-spacing-lg);
 }
 
 .volume-control {
   display: flex;
-  flex-direction: column;
-  gap: var(--hub-spacing-sm);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--hub-spacing-md);
 }
 
 .volume-label {
@@ -1136,18 +1156,21 @@
   align-items: center;
   gap: var(--hub-spacing-xs);
   color: var(--hub-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
+  min-width: 110px;
+  flex-shrink: 0;
 }
 
 .volume-icon {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .volume-slider-container {
   display: flex;
   align-items: center;
-  gap: var(--hub-spacing-md);
+  gap: var(--hub-spacing-sm);
+  flex: 1;
 }
 
 .volume-slider {
@@ -1164,8 +1187,8 @@
 .volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   background: linear-gradient(135deg, var(--music-primary), var(--music-secondary));
   border-radius: 50%;
   cursor: pointer;
@@ -1178,8 +1201,8 @@
 }
 
 .volume-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   background: linear-gradient(135deg, var(--music-primary), var(--music-secondary));
   border-radius: 50%;
   cursor: pointer;
@@ -1193,17 +1216,17 @@
 }
 
 .volume-value {
-  min-width: 45px;
+  min-width: 40px;
   text-align: right;
   color: var(--hub-secondary);
-  font-size: 13px;
+  font-size: 12px;
   font-family: 'Courier New', monospace;
 }
 
 .mute-toggle {
   display: flex;
-  justify-content: center;
-  margin-top: var(--hub-spacing-xs);
+  justify-content: flex-end;
+  margin-top: 0;
 }
 
 .mute-btn {
@@ -1213,11 +1236,11 @@
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid var(--hub-border);
   border-radius: var(--hub-radius-sm);
-  padding: var(--hub-spacing-sm) var(--hub-spacing-lg);
+  padding: 6px var(--hub-spacing-md);
   color: var(--hub-primary);
   cursor: pointer;
   transition: all var(--hub-transition-fast);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .mute-btn:hover {
@@ -1231,7 +1254,7 @@
 }
 
 .mute-icon {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 /* Playlist Section */
@@ -1266,28 +1289,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--hub-spacing-xs);
-  max-height: 300px;
-  overflow-y: auto;
-  padding-right: var(--hub-spacing-xs);
-}
-
-/* Custom scrollbar for playlist */
-.playlist-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.playlist-container::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.playlist-container::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.playlist-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
 }
 
 .playlist-item {
@@ -1369,18 +1370,27 @@
     gap: var(--hub-spacing-md);
   }
 
+  .now-playing-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .track-info {
+    text-align: center;
+  }
+
   .album-art {
-    width: 120px;
-    height: 120px;
+    width: 100px;
+    height: 100px;
   }
 
   .vinyl-disc {
-    width: 110px;
-    height: 110px;
+    width: 90px;
+    height: 90px;
   }
 
   .track-title {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .control-btn.primary {
@@ -1391,10 +1401,6 @@
   .control-btn.secondary {
     width: 42px;
     height: 42px;
-  }
-
-  .playlist-container {
-    max-height: 200px;
   }
 }
 
@@ -1507,32 +1513,11 @@
 /* Themes Grid */
 .themes-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: minmax(200px, auto);
-  gap: var(--hub-spacing-md);
-  max-height: 450px;
-  overflow-y: auto;
-  padding-right: var(--hub-spacing-xs);
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(180px, auto);
+  gap: var(--hub-spacing-sm);
 }
 
-/* Custom scrollbar for themes grid */
-.themes-grid::-webkit-scrollbar {
-  width: 6px;
-}
-
-.themes-grid::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.themes-grid::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.themes-grid::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
 
 /* Theme Card */
 .theme-card {
@@ -1698,8 +1683,7 @@
 
   .themes-grid {
     grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: minmax(180px, auto);
-    max-height: 350px;
+    grid-auto-rows: minmax(160px, auto);
     gap: var(--hub-spacing-sm);
   }
 
@@ -1735,15 +1719,15 @@
 @media (min-width: 601px) and (max-width: 900px) {
   .themes-grid {
     grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: minmax(190px, auto);
+    grid-auto-rows: minmax(175px, auto);
   }
 
   .theme-swatch {
-    height: 110px;
+    height: 100px;
   }
 
   .theme-icon {
-    font-size: 44px;
+    font-size: 40px;
   }
 }
 
