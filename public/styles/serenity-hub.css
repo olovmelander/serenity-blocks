@@ -1142,6 +1142,8 @@
   border: 1px solid var(--hub-border);
   border-radius: var(--hub-radius-md);
   padding: var(--hub-spacing-md) var(--hub-spacing-lg);
+  padding-bottom: 36px;
+  position: relative;
 }
 
 .volume-control {
@@ -1171,6 +1173,7 @@
   align-items: center;
   gap: var(--hub-spacing-sm);
   flex: 1;
+  min-width: 0;
 }
 
 .volume-slider {
@@ -1223,29 +1226,29 @@
   font-family: 'Courier New', monospace;
 }
 
-.mute-toggle {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0;
-}
-
 .mute-btn {
+  position: absolute;
+  bottom: 10px;
+  right: var(--hub-spacing-lg);
   display: flex;
   align-items: center;
-  gap: var(--hub-spacing-xs);
-  background: rgba(255, 255, 255, 0.1);
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--hub-border);
   border-radius: var(--hub-radius-sm);
-  padding: 6px var(--hub-spacing-md);
+  padding: 5px 10px;
   color: var(--hub-primary);
   cursor: pointer;
   transition: all var(--hub-transition-fast);
-  font-size: 13px;
+  font-size: 10px;
+  white-space: nowrap;
+  z-index: 10;
+  backdrop-filter: blur(10px);
 }
 
 .mute-btn:hover {
   background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-1px);
+  transform: scale(1.05);
 }
 
 .mute-btn.muted {
@@ -1254,7 +1257,21 @@
 }
 
 .mute-icon {
-  font-size: 16px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.mute-text {
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Spacer no longer needed - mute button is in header */
+.mute-btn-spacer {
+  display: none;
 }
 
 /* Playlist Section */
@@ -1401,6 +1418,27 @@
   .control-btn.secondary {
     width: 42px;
     height: 42px;
+  }
+
+  /* Adjust volume section padding on mobile */
+  .volume-section {
+    padding-bottom: 32px;
+  }
+
+  /* Compact mute button on mobile - icon only */
+  .mute-btn {
+    padding: 4px 6px;
+    bottom: 8px;
+    right: 12px;
+  }
+
+  .mute-text {
+    display: none;
+  }
+
+  .volume-label {
+    min-width: 90px;
+    font-size: 12px;
   }
 }
 
