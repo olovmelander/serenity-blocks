@@ -306,8 +306,10 @@ export class ThemesTab {
         // Update current theme
         this.currentTheme = themeId;
 
-        // Update settings
+        // Update settings and save to disk
         this.settingsManager.update({ backgroundTheme: themeId });
+        this.settingsManager.save();
+        console.log('[ThemesTab] Theme saved to settings:', themeId);
 
         // Update UI
         this.updateThemeSelection();

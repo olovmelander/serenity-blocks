@@ -22,9 +22,12 @@ export class MusicTab {
         this.currentSong = this.soundManager.musicTrack;
         this.render();
         this.attachEventListeners();
-        this.initializeGestureControl();
         this.startProgressTracking();
         this.listenForTrackChanges();
+        this.listenForAudioEvents();
+
+        // Sync initial state with actual audio element (with small delay for audio loading)
+        setTimeout(() => this.syncWithAudioState(), 100);
     }
 
     /**
@@ -40,7 +43,7 @@ export class MusicTab {
         // Clear loading message
         container.innerHTML = `
             <div class="music-tab">
-                <!-- Now Playing Section -->
+                <!-- Compact Now Playing + Controls Section -->
                 <div class="now-playing-section">
                     <div class="now-playing-header">
                         <span class="music-icon">🎵</span>
@@ -52,40 +55,41 @@ export class MusicTab {
                                 <div class="vinyl-center"></div>
                             </div>
                         </div>
-                        <div class="track-info">
-                            <div class="track-title" id="current-track-title">
-                                ${this.getCurrentSongName()}
+                        <div class="track-controls-container">
+                            <div class="track-info">
+                                <div class="track-title" id="current-track-title">
+                                    ${this.getCurrentSongName()}
+                                </div>
+                                <div class="track-artist">Serenity Blocks</div>
                             </div>
-                            <div class="track-artist">Serenity Blocks</div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Playback Controls Section -->
-                <div class="playback-controls-section">
-                    <div class="progress-container">
-                        <div class="time-display">
-                            <span id="current-time">0:00</span>
-                            <span id="total-time">0:00</span>
-                        </div>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progress-fill"></div>
-                                <div class="progress-handle" id="progress-handle"></div>
+                            <div class="playback-controls-section">
+                                <div class="progress-container">
+                                    <div class="time-display">
+                                        <span id="current-time">0:00</span>
+                                        <span id="total-time">0:00</span>
+                                    </div>
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" id="progress-fill"></div>
+                                            <div class="progress-handle" id="progress-handle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="main-controls">
+                                    <button class="control-btn secondary" id="prev-track" title="Previous Track">
+                                        <span class="control-icon">⏮</span>
+                                    </button>
+                                    <button class="control-btn primary" id="play-pause" title="${this.isPlaying() ? 'Pause' : 'Play'}">
+                                        <span class="control-icon">${this.isPlaying() ? '⏸' : '▶'}</span>
+                                    </button>
+                                    <button class="control-btn secondary" id="next-track" title="Next Track">
+                                        <span class="control-icon">⏭</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="main-controls">
-                        <button class="control-btn secondary" id="prev-track" title="Previous Track">
-                            <span class="control-icon">⏮</span>
-                        </button>
-                        <button class="control-btn primary" id="play-pause" title="${this.isPlaying() ? 'Pause' : 'Play'}">
-                            <span class="control-icon">${this.isPlaying() ? '⏸' : '▶'}</span>
-                        </button>
-                        <button class="control-btn secondary" id="next-track" title="Next Track">
-                            <span class="control-icon">⏭</span>
-                        </button>
                     </div>
                 </div>
 
@@ -423,7 +427,28 @@ export class MusicTab {
      */
     updateProgressBar() {
         const audioElement = this.soundManager.audioElement;
-        if (!audioElement || !audioElement.duration) return;
+
+        // If no audio element exists, reset to zero
+        if (!audioElement) {
+            this.resetProgressBar();
+            return;
+        }
+
+        // Wait for duration to be available (audio is loading)
+        if (!audioElement.duration || !isFinite(audioElement.duration)) {
+            // Show loading state (only log once per second to avoid spam)
+            if (!this.lastLoadingLogTime || Date.now() - this.lastLoadingLogTime > 1000) {
+                console.log('[MusicTab] Waiting for audio duration...', audioElement.readyState);
+                this.lastLoadingLogTime = Date.now();
+            }
+            const currentTimeDisplay = document.getElementById('current-time');
+            const totalTimeDisplay = document.getElementById('total-time');
+            if (currentTimeDisplay && totalTimeDisplay) {
+                currentTimeDisplay.textContent = '0:00';
+                totalTimeDisplay.textContent = '--:--';
+            }
+            return;
+        }
 
         const currentTime = audioElement.currentTime;
         const duration = audioElement.duration;
@@ -435,6 +460,12 @@ export class MusicTab {
         if (progressFill && progressHandle) {
             progressFill.style.width = `${percentage}%`;
             progressHandle.style.left = `${percentage}%`;
+        } else {
+            // Log if elements are missing (only once per second)
+            if (!this.lastMissingElementsLog || Date.now() - this.lastMissingElementsLog > 1000) {
+                console.warn('[MusicTab] Progress elements not found:', {progressFill: !!progressFill, progressHandle: !!progressHandle});
+                this.lastMissingElementsLog = Date.now();
+            }
         }
 
         // Update time displays
@@ -443,6 +474,31 @@ export class MusicTab {
         if (currentTimeDisplay && totalTimeDisplay) {
             currentTimeDisplay.textContent = this.formatTime(currentTime);
             totalTimeDisplay.textContent = this.formatTime(duration);
+        } else {
+            // Log if elements are missing (only once per second)
+            if (!this.lastMissingTimeLog || Date.now() - this.lastMissingTimeLog > 1000) {
+                console.warn('[MusicTab] Time display elements not found:', {currentTimeDisplay: !!currentTimeDisplay, totalTimeDisplay: !!totalTimeDisplay});
+                this.lastMissingTimeLog = Date.now();
+            }
+        }
+    }
+
+    /**
+     * Resets the progress bar to zero
+     */
+    resetProgressBar() {
+        const progressFill = document.getElementById('progress-fill');
+        const progressHandle = document.getElementById('progress-handle');
+        if (progressFill && progressHandle) {
+            progressFill.style.width = '0%';
+            progressHandle.style.left = '0%';
+        }
+
+        const currentTimeDisplay = document.getElementById('current-time');
+        const totalTimeDisplay = document.getElementById('total-time');
+        if (currentTimeDisplay && totalTimeDisplay) {
+            currentTimeDisplay.textContent = '0:00';
+            totalTimeDisplay.textContent = '0:00';
         }
     }
 
@@ -496,6 +552,14 @@ export class MusicTab {
                 this.currentSong = trackName;
                 this.updateNowPlaying();
                 this.updatePlaylist();
+
+                // Sync play/pause state when track changes
+                const audioElement = this.soundManager.audioElement;
+                if (audioElement) {
+                    const isPlaying = !audioElement.paused;
+                    this.updatePlayPauseButton(isPlaying);
+                    this.updateVinylAnimation(isPlaying);
+                }
             }
         };
 
@@ -504,17 +568,110 @@ export class MusicTab {
     }
 
     /**
+     * Listen for audio element events (play, pause, loadedmetadata)
+     */
+    listenForAudioEvents() {
+        const audioElement = this.soundManager.audioElement;
+
+        if (!audioElement) {
+            console.log('[MusicTab] No audio element - will sync on next update');
+            return;
+        }
+
+        // Play event - sync UI when audio starts playing
+        this.audioPlayHandler = () => {
+            console.log('[MusicTab] Audio play event detected');
+            this.updatePlayPauseButton(true);
+            this.updateVinylAnimation(true);
+        };
+
+        // Pause event - sync UI when audio pauses
+        this.audioPauseHandler = () => {
+            console.log('[MusicTab] Audio pause event detected');
+            this.updatePlayPauseButton(false);
+            this.updateVinylAnimation(false);
+        };
+
+        // Loadedmetadata event - sync progress bar when metadata loads
+        this.audioLoadedMetadataHandler = () => {
+            console.log('[MusicTab] Audio metadata loaded');
+            this.updateProgressBar();
+        };
+
+        audioElement.addEventListener('play', this.audioPlayHandler);
+        audioElement.addEventListener('pause', this.audioPauseHandler);
+        audioElement.addEventListener('loadedmetadata', this.audioLoadedMetadataHandler);
+
+        console.log('[MusicTab] Audio event listeners attached');
+    }
+
+    /**
+     * Syncs the UI state with the actual audio element state
+     * Called on initialization to ensure UI matches reality
+     */
+    syncWithAudioState() {
+        const audioElement = this.soundManager.audioElement;
+
+        if (!audioElement) {
+            console.log('[MusicTab] No audio element found - UI showing default state');
+            this.updatePlayPauseButton(false);
+            this.updateVinylAnimation(false);
+            this.resetProgressBar();
+            return;
+        }
+
+        // Sync play/pause state
+        const isPlaying = !audioElement.paused;
+        console.log('[MusicTab] Syncing with audio state - isPlaying:', isPlaying, 'currentTime:', audioElement.currentTime, 'duration:', audioElement.duration);
+        this.updatePlayPauseButton(isPlaying);
+        this.updateVinylAnimation(isPlaying);
+
+        // Sync current track
+        const currentTrack = this.soundManager.musicTrack;
+        if (currentTrack && currentTrack !== this.currentSong) {
+            console.log('[MusicTab] Syncing current track:', currentTrack);
+            this.currentSong = currentTrack;
+            this.updateNowPlaying();
+            this.updatePlaylist();
+        }
+
+        // Immediately update progress bar
+        this.updateProgressBar();
+    }
+
+    /**
      * Cleans up the music tab
      */
     destroy() {
+        // Clear progress tracking interval
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
             this.updateInterval = null;
         }
 
+        // Remove track change listener
         if (this.trackChangeHandler) {
             window.removeEventListener('musicTrackChanged', this.trackChangeHandler);
             this.trackChangeHandler = null;
         }
+
+        // Remove audio element event listeners
+        const audioElement = this.soundManager?.audioElement;
+        if (audioElement) {
+            if (this.audioPlayHandler) {
+                audioElement.removeEventListener('play', this.audioPlayHandler);
+                this.audioPlayHandler = null;
+            }
+            if (this.audioPauseHandler) {
+                audioElement.removeEventListener('pause', this.audioPauseHandler);
+                this.audioPauseHandler = null;
+            }
+            if (this.audioLoadedMetadataHandler) {
+                audioElement.removeEventListener('loadedmetadata', this.audioLoadedMetadataHandler);
+                this.audioLoadedMetadataHandler = null;
+            }
+        }
+
+        console.log('[MusicTab] Destroyed and cleaned up');
     }
 }
