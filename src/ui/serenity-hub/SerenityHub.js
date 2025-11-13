@@ -497,6 +497,11 @@ export class SerenityHub {
     if (tabName === 'themes' && this.themesTab) {
       this.themesTab.refreshCurrentTheme();
     }
+
+    // Refresh music tab if it's already loaded (in case music state changed)
+    if (tabName === 'music' && this.musicTab) {
+      this.musicTab.syncWithAudioState();
+    }
   }
 
   /**

@@ -84,9 +84,9 @@ export class SerenityMode extends BaseGameMode {
 
         // Check if there's a global Serenity Hub (created by main.js)
         // If not, create mode-specific instance (fallback for testing)
-        if (window.app && window.app.serenityHub) {
+        if (window.serenityBlocks && window.serenityBlocks.serenityHub) {
             console.log('[Serenity] Using global Serenity Hub instance');
-            this.serenityHub = window.app.serenityHub;
+            this.serenityHub = window.serenityBlocks.serenityHub;
             // Update the wrapper to point to this mode for breathing controls
             this.serenityHub.serenityMode = this;
         } else {
