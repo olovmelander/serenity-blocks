@@ -95,6 +95,11 @@ export class MusicTab {
 
                 <!-- Volume Controls Section -->
                 <div class="volume-section">
+                    <button class="mute-btn ${this.soundManager.isMuted ? 'muted' : ''}" id="mute-toggle">
+                        <span class="mute-icon">${this.soundManager.isMuted ? '🔇' : '🔊'}</span>
+                        <span class="mute-text">${this.soundManager.isMuted ? 'Unmute' : 'Mute'}</span>
+                    </button>
+
                     <div class="volume-control">
                         <label class="volume-label">
                             <span class="volume-icon">🎵</span>
@@ -133,13 +138,6 @@ export class MusicTab {
                                 ${Math.round(this.soundManager.sfxVolume * 100)}%
                             </span>
                         </div>
-                    </div>
-
-                    <div class="mute-toggle">
-                        <button class="mute-btn ${this.soundManager.isMuted ? 'muted' : ''}" id="mute-toggle">
-                            <span class="mute-icon">${this.soundManager.isMuted ? '🔇' : '🔊'}</span>
-                            <span class="mute-text">${this.soundManager.isMuted ? 'Unmute' : 'Mute'}</span>
-                        </button>
                     </div>
                 </div>
 
