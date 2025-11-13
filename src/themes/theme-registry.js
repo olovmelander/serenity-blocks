@@ -240,6 +240,12 @@ export const THEME_REGISTRY = [
         group: 'urban',
     },
     {
+        id: 'synthwave-sunset',
+        displayName: 'Synthwave Sunset',
+        module: './synthwave-sunset/synthwave-sunset-theme.js',
+        group: 'urban',
+    },
+    {
         id: 'stillwater',
         displayName: 'Stillwater',
         module: './stillwater/stillwater-theme.js',
