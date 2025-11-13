@@ -13737,6 +13737,94 @@ body.serenity-mode.cursor-hidden * {
     }
 }
 
+/* === Headphone Recommendation Badge === */
+.headphone-badge {
+    position: absolute;
+    bottom: 30px;
+    left: 30px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    animation: fadeInBadge 1s ease-out 1.5s forwards, floatBadge 3s ease-in-out 2.5s infinite;
+}
+
+@keyframes fadeInBadge {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes floatBadge {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+.headphone-icon {
+    width: 20px;
+    height: 20px;
+    color: #64c8ff;
+    filter: drop-shadow(0 0 6px rgba(100, 200, 255, 0.6));
+    flex-shrink: 0;
+}
+
+.headphone-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .headphone-badge {
+        bottom: 20px;
+        left: 20px;
+        padding: 8px 16px;
+        gap: 8px;
+    }
+
+    .headphone-icon {
+        width: 18px;
+        height: 18px;
+    }
+
+    .headphone-text {
+        font-size: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .headphone-badge {
+        bottom: 15px;
+        left: 15px;
+        padding: 7px 14px;
+        gap: 7px;
+    }
+
+    .headphone-icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    .headphone-text {
+        font-size: 0.7rem;
+    }
+}
+
 /* =============================================================================
    Blood Moon Theme
    ============================================================================= */
