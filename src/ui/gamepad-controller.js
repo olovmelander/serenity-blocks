@@ -1399,6 +1399,23 @@ export class GamepadController {
     }
 
     /**
+     * Get the first connected gamepad (for simple use cases)
+     * @returns {Gamepad|null} The first connected gamepad or null
+     */
+    getGamepad() {
+        // Return the first connected gamepad
+        const slot = this.connected.findIndex(isConnected => isConnected);
+        if (slot === -1) return null;
+
+        const gamepad = this.gamepads[slot];
+        if (!gamepad) return null;
+
+        // Get fresh gamepad state from the browser API
+        const gamepads = navigator.getGamepads();
+        return gamepads[gamepad.index] || null;
+    }
+
+    /**
      * Get connection status
      */
     getConnectionStatus() {
