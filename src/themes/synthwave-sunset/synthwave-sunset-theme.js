@@ -29,6 +29,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.gridWaves = [];
         this.sunPulseIntensity = 0;
         this.comboMultiplier = 1.0;
+        this.cityGlowIntensity = 0;
+        this.frontCityPath = null;
+        this.backCityPath = null;
 
         // Performance limits
         this.MAX_BURSTS = 5;
@@ -146,6 +149,41 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
     }
 
+    updateCityGlow() {
+        // Apply hot pink glow effect to front city outline
+        if (this.frontCityPath) {
+            if (this.cityGlowIntensity > 0) {
+                const strokeWidth = this.cityGlowIntensity * 0.5;
+                const glowBlur = this.cityGlowIntensity * 15;
+
+                this.frontCityPath.setAttribute('stroke', '#ff0066');
+                this.frontCityPath.setAttribute('stroke-width', strokeWidth);
+                this.frontCityPath.style.filter = `drop-shadow(0 0 ${glowBlur}px #ff0066) drop-shadow(0 0 ${glowBlur * 0.5}px #ff0066)`;
+            } else {
+                this.frontCityPath.setAttribute('stroke', 'none');
+                this.frontCityPath.setAttribute('stroke-width', '0');
+                this.frontCityPath.style.filter = '';
+            }
+        }
+
+        // Apply subtle purple glow effect to back city outline
+        if (this.backCityPath) {
+            if (this.cityGlowIntensity > 0) {
+                // More subtle effect - half the intensity
+                const strokeWidth = this.cityGlowIntensity * 0.25;
+                const glowBlur = this.cityGlowIntensity * 8;
+
+                this.backCityPath.setAttribute('stroke', '#b000ff');
+                this.backCityPath.setAttribute('stroke-width', strokeWidth);
+                this.backCityPath.style.filter = `drop-shadow(0 0 ${glowBlur}px #b000ff)`;
+            } else {
+                this.backCityPath.setAttribute('stroke', 'none');
+                this.backCityPath.setAttribute('stroke-width', '0');
+                this.backCityPath.style.filter = '';
+            }
+        }
+    }
+
     createCityGlow() {
         const glowContainer = this.getContainer('synthwave-sunset-city-glow');
 
@@ -239,6 +277,13 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         path.setAttribute('d', pathData);
         path.setAttribute('fill', fillColor);
         path.setAttribute('stroke', 'none');
+
+        // Store reference to city paths for glow effects
+        if (containerId === 'synthwave-sunset-city-front') {
+            this.frontCityPath = path;
+        } else if (containerId === 'synthwave-sunset-city-back') {
+            this.backCityPath = path;
+        }
 
         svg.appendChild(path);
         cityContainer.appendChild(svg);
@@ -478,6 +523,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Pulse the grid
         this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.3 * lineCount);
 
+        // Pulse the city glow
+        this.cityGlowIntensity = Math.min(1, this.cityGlowIntensity + 0.3 * lineCount);
+
         // Create horizon light bursts
         this.createHorizonBursts(lineCount);
 
@@ -504,6 +552,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Pulse the sun
         this.sunPulseIntensity = Math.min(1, this.sunPulseIntensity + 0.4);
+
+        // Pulse the city glow
+        this.cityGlowIntensity = Math.min(1, this.cityGlowIntensity + 0.4);
 
         // Create retro particles
         if (comboCount >= 2) {
@@ -697,6 +748,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.sunPulseIntensity *= 0.92;
             if (this.sunPulseIntensity < 0.01) this.sunPulseIntensity = 0;
         }
+
+        // Decay city glow
+        if (this.cityGlowIntensity > 0) {
+            this.cityGlowIntensity *= 0.92;
+            if (this.cityGlowIntensity < 0.01) this.cityGlowIntensity = 0;
+        }
     }
 
     renderEffects() {
@@ -770,6 +827,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Update sun glow for pulse effect
         this.updateSunPulse();
 
+        // Update city glow for combo effects
+        this.updateCityGlow();
+
         // Draw grid
         this.drawPerspectiveGrid();
 
@@ -802,6 +862,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.gridWaves = [];
         this.sunPulseIntensity = 0;
         this.comboMultiplier = 1.0;
+        this.cityGlowIntensity = 0;
 
         // Clear effects canvas
         if (this.effectsCanvas && this.effectsCtx) {
@@ -814,6 +875,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.gridCtx = null;
         this.effectsCanvas = null;
         this.effectsCtx = null;
+        this.frontCityPath = null;
+        this.backCityPath = null;
 
         super.stop();
     }
