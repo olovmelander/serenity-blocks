@@ -94,30 +94,30 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     calculateSunPosition() {
-        // Ultra-slow drifting motion similar to blood moon
-        // The sun moves horizontally across screen with subtle vertical float
+        // Smooth left-to-right horizontal drift centered around screen center
+        // The sun drifts continuously from left to right with subtle vertical float
 
-        // Movement range (percentage of viewport)
-        const horizontalRange = 30; // 30% left-right movement from center
-        const verticalRange = 8;    // 8% up-down floating
+        // Movement range (percentage of viewport from center)
+        const horizontalRange = 25; // Extended range for longer glide to the sides (50% total travel)
+        const verticalRange = 3;    // Subtle up-down floating
 
-        // Ultra-slow, smooth movement using multiple sine waves with random phase offsets
-        // Apply random time offset so sun starts at different position each time
+        // Apply time offset so sun starts at different position each time
         const time = this.animationTime + this.timeOffset;
 
-        // Primary horizontal movement (very slow drift)
-        const sunX = Math.sin(time * 0.00008 + this.sunPhaseX) * horizontalRange;
+        // Continuous left-to-right drift using modulo to loop smoothly
+        // Drift cycle takes about 30 seconds for a full left-to-right pass
+        const driftSpeed = 0.002; // Speed of the drift (increased 10x for visible movement)
+        const driftProgress = (time * driftSpeed) % 1; // 0 to 1 progress through drift cycle
 
-        // Primary vertical float (subtle)
-        const sunY = Math.cos(time * 0.00006 + this.sunPhaseY) * verticalRange;
+        // Map progress to position: -horizontalRange (left) to +horizontalRange (right)
+        const sunX = (driftProgress * 2 - 1) * horizontalRange; // Maps 0->1 to -25->+25
 
-        // Secondary movement for more natural path
-        const sunXOffset = Math.sin(time * 0.0001 + this.sunPhaseX2) * (horizontalRange * 0.3);
-        const sunYOffset = Math.cos(time * 0.00012 + this.sunPhaseY2) * (verticalRange * 0.5);
+        // Subtle vertical float (very gentle)
+        const sunY = Math.sin(time * 0.0004) * verticalRange;
 
         return {
-            x: sunX + sunXOffset,
-            y: sunY + sunYOffset
+            x: sunX,
+            y: sunY
         };
     }
 
