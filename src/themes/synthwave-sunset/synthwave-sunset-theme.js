@@ -19,6 +19,22 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Random starting time offset so sun starts at different position each time
         this.timeOffset = Math.random() * 10000;
+
+        // Combo effects
+        this.effectsCanvas = null;
+        this.effectsCtx = null;
+        this.horizonBursts = [];
+        this.retroStreaks = [];
+        this.retroParticles = [];
+        this.gridWaves = [];
+        this.sunPulseIntensity = 0;
+        this.comboMultiplier = 1.0;
+
+        // Performance limits
+        this.MAX_BURSTS = 5;
+        this.MAX_STREAKS = 8;
+        this.MAX_PARTICLES = 150;
+        this.MAX_WAVES = 4;
     }
 
     async createScene() {
@@ -41,6 +57,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Create scan lines overlay
         this.createScanLines();
+
+        // Setup combo effects canvas
+        this.setupComboEffects();
 
         // Setup event listeners for combo effects
         this.setupEventListeners();
@@ -112,6 +131,21 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.sunContainer.style.transform = `translate(${finalX}%, ${finalY}%)`;
     }
 
+    updateSunPulse() {
+        if (!this.sunContainer) return;
+
+        // Apply pulse effect by adjusting filter brightness
+        if (this.sunPulseIntensity > 0) {
+            const brightness = 1 + this.sunPulseIntensity * 0.5;
+            const scale = 1 + this.sunPulseIntensity * 0.15;
+            this.sunContainer.style.filter = `brightness(${brightness})`;
+            this.sunContainer.style.scale = `${scale}`;
+        } else {
+            this.sunContainer.style.filter = '';
+            this.sunContainer.style.scale = '1';
+        }
+    }
+
     createCityGlow() {
         const glowContainer = this.getContainer('synthwave-sunset-city-glow');
 
@@ -138,10 +172,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     createCitySkyline() {
         // Create back city layer (smaller, more distant)
-        this.createCityLayer('synthwave-sunset-city-back', '#08040f', 0.8);
+        this.createCityLayer('synthwave-sunset-city-back', '#08040f', 1.1);
 
         // Create front city layer (larger, closer)
-        this.createCityLayer('synthwave-sunset-city-front', '#0a0515', 1.0);
+        this.createCityLayer('synthwave-sunset-city-front', '#0a0515', 1.0
+        );
     }
 
     createCityLayer(containerId, fillColor, sizeScale) {
@@ -290,9 +325,20 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             if (depth > 1) continue;
 
             // Calculate Y position with perspective
-            const y = vanishingPointY + (height - vanishingPointY) * depth;
+            let y = vanishingPointY + (height - vanishingPointY) * depth;
 
             if (y > height) continue;
+
+            // Apply grid wave effects
+            let waveOffset = 0;
+            this.gridWaves.forEach(wave => {
+                const waveDist = Math.abs(depth - wave.progress);
+                if (waveDist < 0.3) {
+                    const waveIntensity = (1 - waveDist / 0.3) * wave.intensity * wave.life;
+                    waveOffset += Math.sin(waveDist * 10) * waveIntensity * 15;
+                }
+            });
+            y += waveOffset;
 
             // Calculate alpha and line width based on depth
             const alpha = Math.max(0.25, 1 - depth * 0.7) * brightness;
@@ -364,16 +410,59 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
     }
 
-    setupEventListeners() {
-        const settings = window.app?.settingsManager?.getSettings();
+    setupComboEffects() {
+        const themeContainer = this.getContainer('synthwave-sunset-theme');
+        if (!themeContainer) return;
 
+        // Create canvas for combo effects
+        let canvas = themeContainer.querySelector('.synthwave-effects-canvas');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.className = 'synthwave-effects-canvas';
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.style.pointerEvents = 'none';
+            canvas.style.zIndex = '100';
+            themeContainer.appendChild(canvas);
+        }
+
+        this.effectsCanvas = canvas;
+        this.effectsCtx = canvas.getContext('2d', { alpha: true });
+
+        // Size canvas
+        const resizeEffectsCanvas = () => {
+            if (!this.effectsCanvas || !themeContainer) return;
+            const rect = themeContainer.getBoundingClientRect();
+            this.effectsCanvas.width = rect.width;
+            this.effectsCanvas.height = rect.height;
+        };
+        resizeEffectsCanvas();
+        window.addEventListener('resize', resizeEffectsCanvas);
+    }
+
+    setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            console.log('LINE_CLEAR event:', {
+                isActive: this.isActive,
+                backgroundComboEffects: settings?.backgroundComboEffects,
+                data
+            });
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.handleLineClear(data);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            console.log('COMBO event:', {
+                isActive: this.isActive,
+                backgroundComboEffects: settings?.backgroundComboEffects,
+                data
+            });
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.handleCombo(data);
             }
@@ -383,15 +472,291 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     handleLineClear(data) {
+        const { lineCount } = data;
+        console.log('Synthwave Sunset: LINE_CLEAR event received', { lineCount, isActive: this.isActive });
+
         // Pulse the grid
-        this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.3);
+        this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.3 * lineCount);
+
+        // Create horizon light bursts
+        this.createHorizonBursts(lineCount);
+
+        // Create retro streaks for multi-line clears
+        if (lineCount >= 2) {
+            this.createRetroStreaks(lineCount);
+        }
+
+        // Create grid waves for big clears
+        if (lineCount >= 3) {
+            this.createGridWave();
+        }
     }
 
     handleCombo(data) {
+        const { comboCount } = data;
+        console.log('Synthwave Sunset: COMBO event received', { comboCount, isActive: this.isActive });
+
+        this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
+
         // Color shift based on combo count
-        const comboCount = data.comboCount || 1;
         this.comboColorShift = Math.min(60, comboCount * 10);
         this.gridPulseIntensity = Math.min(1, 0.5 + comboCount * 0.1);
+
+        // Pulse the sun
+        this.sunPulseIntensity = Math.min(1, this.sunPulseIntensity + 0.4);
+
+        // Create retro particles
+        if (comboCount >= 2) {
+            this.createRetroParticles(comboCount);
+        }
+
+        // Create additional streaks for high combos
+        if (comboCount >= 4) {
+            this.createRetroStreaks(Math.floor(comboCount / 2));
+        }
+    }
+
+    createHorizonBursts(lineCount) {
+        if (!this.effectsCanvas) {
+            console.warn('Synthwave Sunset: effectsCanvas not available for horizon bursts');
+            return;
+        }
+        if (this.horizonBursts.length >= this.MAX_BURSTS) return;
+
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+        const horizonY = height * 0.65; // Position near city horizon
+
+        console.log('Creating horizon bursts:', { lineCount, width, height, horizonY });
+
+        // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
+        const colors = ['#ff0066', '#ff4500', '#ff006e', '#b000ff', '#ff5e78'];
+        const burstCount = Math.min(lineCount, this.MAX_BURSTS - this.horizonBursts.length);
+
+        for (let i = 0; i < burstCount; i++) {
+            const x = Math.random() * width;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const particleCount = Math.floor(15 + Math.random() * 20) * this.comboMultiplier;
+
+            const particles = [];
+            for (let j = 0; j < particleCount; j++) {
+                const angle = Math.random() * Math.PI - Math.PI / 2; // Upward burst
+                const speed = (Math.random() * 2 + 1.5) * this.comboMultiplier;
+                particles.push({
+                    x: x,
+                    y: horizonY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 1.0,
+                    size: Math.random() * 3 + 1.5,
+                });
+            }
+
+            this.horizonBursts.push({
+                particles,
+                color,
+                life: 1.0,
+                maxLife: 1.2 + Math.random() * 0.4,
+            });
+        }
+    }
+
+    createRetroStreaks(count) {
+        if (!this.effectsCanvas) return;
+        if (this.retroStreaks.length >= this.MAX_STREAKS) return;
+
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+        // Sunset-themed colors: hot pink, orange-red, violet purple, deep pink
+        const colors = ['#ff0066', '#ff4500', '#b000ff', '#ff006e'];
+        const streakCount = Math.min(count * 2, this.MAX_STREAKS - this.retroStreaks.length);
+
+        for (let i = 0; i < streakCount; i++) {
+            const y = Math.random() * height * 0.7;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const speed = (Math.random() * 400 + 300) * (Math.random() > 0.5 ? 1 : -1);
+
+            this.retroStreaks.push({
+                x: Math.random() > 0.5 ? -50 : width + 50,
+                y,
+                speed,
+                life: 1.0,
+                maxLife: 0.6 + Math.random() * 0.4,
+                width: Math.random() * 150 + 100,
+                height: Math.random() * 3 + 2,
+                color,
+            });
+        }
+    }
+
+    createRetroParticles(comboCount) {
+        if (!this.effectsCanvas) return;
+        if (this.retroParticles.length >= this.MAX_PARTICLES) {
+            // Remove oldest particles
+            this.retroParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
+        }
+
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
+        const colors = ['#ff0066', '#ff4500', '#ff006e', '#b000ff', '#ff5e78'];
+        const particleCount = Math.min(comboCount * 15, this.MAX_PARTICLES);
+
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (Math.random() * 2.5 + 2) * this.comboMultiplier;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const isSquare = Math.random() > 0.5;
+
+            this.retroParticles.push({
+                x: centerX,
+                y: centerY,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 1.0,
+                maxLife: Math.random() * 0.8 + 0.5,
+                size: Math.random() * 4 + 2,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.1,
+                color,
+                isSquare,
+                glow: Math.random() * 12 + 8,
+            });
+        }
+    }
+
+    createGridWave() {
+        if (!this.gridWaves || this.gridWaves.length >= this.MAX_WAVES) return;
+
+        this.gridWaves.push({
+            progress: 0,
+            life: 1.0,
+            maxLife: 1.5,
+            intensity: 0.8,
+        });
+    }
+
+    updateEffects(delta) {
+        // Update horizon bursts
+        for (let i = this.horizonBursts.length - 1; i >= 0; i--) {
+            const burst = this.horizonBursts[i];
+            burst.life -= delta / burst.maxLife;
+
+            burst.particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1; // Gravity
+                p.life -= delta / burst.maxLife;
+            });
+
+            if (burst.life <= 0) {
+                this.horizonBursts.splice(i, 1);
+            }
+        }
+
+        // Update retro streaks
+        for (let i = this.retroStreaks.length - 1; i >= 0; i--) {
+            const streak = this.retroStreaks[i];
+            streak.x += streak.speed * delta;
+            streak.life -= delta / streak.maxLife;
+
+            if (streak.life <= 0) {
+                this.retroStreaks.splice(i, 1);
+            }
+        }
+
+        // Update retro particles
+        for (let i = this.retroParticles.length - 1; i >= 0; i--) {
+            const p = this.retroParticles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.08; // Slight gravity
+            p.rotation += p.rotationSpeed;
+            p.life -= delta / p.maxLife;
+
+            if (p.life <= 0) {
+                this.retroParticles.splice(i, 1);
+            }
+        }
+
+        // Update grid waves
+        for (let i = this.gridWaves.length - 1; i >= 0; i--) {
+            const wave = this.gridWaves[i];
+            wave.progress += delta * 0.5;
+            wave.life -= delta / wave.maxLife;
+
+            if (wave.life <= 0) {
+                this.gridWaves.splice(i, 1);
+            }
+        }
+
+        // Decay sun pulse
+        if (this.sunPulseIntensity > 0) {
+            this.sunPulseIntensity *= 0.92;
+            if (this.sunPulseIntensity < 0.01) this.sunPulseIntensity = 0;
+        }
+    }
+
+    renderEffects() {
+        if (!this.effectsCanvas || !this.effectsCtx) return;
+
+        const ctx = this.effectsCtx;
+        const width = this.effectsCanvas.width;
+        const height = this.effectsCanvas.height;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+
+        // Render retro streaks
+        this.retroStreaks.forEach(streak => {
+            const alpha = streak.life * 0.7;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = streak.color;
+            ctx.fillStyle = streak.color;
+            ctx.fillRect(streak.x, streak.y, streak.width, streak.height);
+            ctx.restore();
+        });
+
+        // Render horizon bursts
+        this.horizonBursts.forEach(burst => {
+            burst.particles.forEach(p => {
+                const alpha = p.life * burst.life;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = burst.color;
+                ctx.fillStyle = burst.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        });
+
+        // Render retro particles
+        this.retroParticles.forEach(p => {
+            const alpha = p.life;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.shadowBlur = p.glow;
+            ctx.shadowColor = p.color;
+            ctx.fillStyle = p.color;
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+
+            if (p.isSquare) {
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            } else {
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        });
     }
 
     animate() {
@@ -402,8 +767,15 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Update sun position
         this.updateSunPosition();
 
+        // Update sun glow for pulse effect
+        this.updateSunPulse();
+
         // Draw grid
         this.drawPerspectiveGrid();
+
+        // Update and render combo effects
+        this.updateEffects(0.016);
+        this.renderEffects();
 
         // Continue animation loop
         const animId = requestAnimationFrame(() => this.animate());
@@ -423,10 +795,25 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
+        // Clear combo effects
+        this.horizonBursts = [];
+        this.retroStreaks = [];
+        this.retroParticles = [];
+        this.gridWaves = [];
+        this.sunPulseIntensity = 0;
+        this.comboMultiplier = 1.0;
+
+        // Clear effects canvas
+        if (this.effectsCanvas && this.effectsCtx) {
+            this.effectsCtx.clearRect(0, 0, this.effectsCanvas.width, this.effectsCanvas.height);
+        }
+
         // Clear references
         this.sunContainer = null;
         this.gridCanvas = null;
         this.gridCtx = null;
+        this.effectsCanvas = null;
+        this.effectsCtx = null;
 
         super.stop();
     }
