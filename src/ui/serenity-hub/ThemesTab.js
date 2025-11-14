@@ -103,8 +103,11 @@ export class ThemesTab {
         // Check if theme has custom PNG icon
         const themeMeta = THEME_REGISTRY.find(t => t.id === theme.id);
         if (themeMeta?.icon) {
-            // Import path needs to be resolved relative to themes directory
-            const iconPath = `/src/themes/${themeMeta.icon}`;
+            // Extract just the filename from the icon path
+            // themeMeta.icon is like './ice-temple/ice-temple-theme-icon.png'
+            const iconFilename = themeMeta.icon.split('/').pop();
+            // Reference from public/assets/themes folder
+            const iconPath = `assets/themes/${iconFilename}`;
             return `<img src="${iconPath}" alt="${theme.displayName}" class="theme-icon-img" />`;
         }
 
