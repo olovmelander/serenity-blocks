@@ -260,6 +260,7 @@ export const THEME_REGISTRY = [
         displayName: 'Blood Moon',
         module: './blood-moon/blood-moon-theme.js',
         group: 'cosmic',
+        icon: './blood-moon/blood-moon-icon.png',
     },
 ];
 
