@@ -1592,6 +1592,29 @@
   overflow: hidden;
 }
 
+/* Theme Icon - PNG Image */
+.theme-icon-img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  animation: float 3s ease-in-out infinite;
+  transition: transform var(--hub-transition-fast);
+}
+
+.theme-card:hover .theme-icon-img {
+  transform: scale(1.05);
+}
+
+/* Theme Icon - Emoji Fallback */
+.theme-icon-emoji {
+  font-size: 48px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Legacy support for old .theme-icon class */
 .theme-icon {
   font-size: 48px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
@@ -1729,6 +1752,12 @@
     height: 100px;
   }
 
+  .theme-icon-img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .theme-icon-emoji,
   .theme-icon {
     font-size: 36px;
   }
@@ -1764,6 +1793,12 @@
     height: 100px;
   }
 
+  .theme-icon-img {
+    width: 84px;
+    height: 84px;
+  }
+
+  .theme-icon-emoji,
   .theme-icon {
     font-size: 40px;
   }

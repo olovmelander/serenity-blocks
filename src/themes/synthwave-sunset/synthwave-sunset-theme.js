@@ -12,6 +12,15 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.gridPulseIntensity = 0;
         this.comboColorShift = 0;
         this.resizeHandler = null;
+
+        // Random phase offsets for unique sun movement each time
+        this.sunPhaseX = Math.random() * Math.PI * 2;
+        this.sunPhaseY = Math.random() * Math.PI * 2;
+        this.sunPhaseX2 = Math.random() * Math.PI * 2;
+        this.sunPhaseY2 = Math.random() * Math.PI * 2;
+
+        // Random starting time offset so sun starts at different position each time
+        this.timeOffset = Math.random() * 10000;
     }
 
     clearContainers() {
@@ -78,6 +87,51 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             glow.className = `synthwave-sun-glow glow-layer-${i}`;
             sunContainer.appendChild(glow);
         }
+
+        // Store reference to sun container for animation
+        this.sunContainer = sunContainer;
+        console.log('[SynthwaveSunset] Sun container stored:', !!this.sunContainer);
+    }
+
+    calculateSunPosition() {
+        // Ultra-slow drifting motion similar to blood moon
+        // The sun moves horizontally across screen with subtle vertical float
+
+        // Movement range (percentage of viewport)
+        const horizontalRange = 30; // 30% left-right movement from center
+        const verticalRange = 8;    // 8% up-down floating
+
+        // Ultra-slow, smooth movement using multiple sine waves with random phase offsets
+        // Apply random time offset so sun starts at different position each time
+        const time = this.animationTime + this.timeOffset;
+
+        // Primary horizontal movement (very slow drift)
+        const sunX = Math.sin(time * 0.00008 + this.sunPhaseX) * horizontalRange;
+
+        // Primary vertical float (subtle)
+        const sunY = Math.cos(time * 0.00006 + this.sunPhaseY) * verticalRange;
+
+        // Secondary movement for more natural path
+        const sunXOffset = Math.sin(time * 0.0001 + this.sunPhaseX2) * (horizontalRange * 0.3);
+        const sunYOffset = Math.cos(time * 0.00012 + this.sunPhaseY2) * (verticalRange * 0.5);
+
+        return {
+            x: sunX + sunXOffset,
+            y: sunY + sunYOffset
+        };
+    }
+
+    updateSunPosition() {
+        if (!this.sunContainer) return;
+
+        const pos = this.calculateSunPosition();
+
+        // Combine the centering transform (-50%, -50%) with the movement offset
+        // The CSS centers the sun, and we add the drift on top of that
+        const finalX = -50 + pos.x;
+        const finalY = -50 + pos.y;
+
+        this.sunContainer.style.transform = `translate(${finalX}%, ${finalY}%)`;
     }
 
     createCityGlow() {
@@ -347,6 +401,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         this.animationTime += 0.016; // Approximately 60fps
 
+        // Update sun position
+        this.updateSunPosition();
+
         // Draw grid
         this.drawPerspectiveGrid();
 
@@ -374,6 +431,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.resizeHandler = null;
         }
 
+        // Clear sun container reference
+        this.sunContainer = null;
+
         super.stop();
     }
 
@@ -382,6 +442,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Call base resume to handle common setup
         super.resume();
+
+        // Restore sun container reference
+        if (!this.sunContainer) {
+            this.sunContainer = document.getElementById('synthwave-sunset-sun');
+        }
 
         // Reacquire grid canvas context if it was lost
         if (this.gridCanvas && !this.gridCtx) {
