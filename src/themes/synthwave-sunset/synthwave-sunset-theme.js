@@ -14,8 +14,30 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.resizeHandler = null;
     }
 
+    clearContainers() {
+        // Clear all containers to prevent duplicates when theme is reactivated
+        const containerIds = [
+            'synthwave-sunset-sun',
+            'synthwave-sunset-city-glow',
+            'synthwave-sunset-city-back',
+            'synthwave-sunset-city-front',
+            'synthwave-sunset-grid',
+            'synthwave-sunset-scanlines'
+        ];
+
+        containerIds.forEach(id => {
+            const container = document.getElementById(id);
+            if (container) {
+                container.innerHTML = '';
+            }
+        });
+    }
+
     async createScene() {
         const container = this.getContainer('synthwave-sunset-theme');
+
+        // Clear all containers first to prevent duplicates when theme is reactivated
+        this.clearContainers();
 
         // Create sky gradient background (handled by CSS)
         const sky = this.getContainer('synthwave-sunset-sky');
@@ -342,7 +364,54 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     stop() {
+        // Unsubscribe from events when stopping
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // Remove resize event listener
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+
         super.stop();
+    }
+
+    resume() {
+        console.log('[SynthwaveSunset] Resuming theme...');
+
+        // Call base resume to handle common setup
+        super.resume();
+
+        // Reacquire grid canvas context if it was lost
+        if (this.gridCanvas && !this.gridCtx) {
+            console.log('[SynthwaveSunset] Reacquiring grid canvas context');
+            this.gridCtx = this.gridCanvas.getContext('2d');
+
+            // Reapply device pixel ratio scaling
+            const dpr = window.devicePixelRatio || 1;
+            this.gridCtx.scale(dpr, dpr);
+        }
+
+        // If canvas doesn't exist or context can't be acquired, need full restart
+        if (!this.gridCanvas || !this.gridCtx) {
+            console.warn('[SynthwaveSunset] Grid canvas or context unavailable, full restart required');
+            return false;
+        }
+
+        // Re-setup resize handler (only if not already set)
+        if (!this.resizeHandler) {
+            this.resizeHandler = () => this.resizeGrid();
+            window.addEventListener('resize', this.resizeHandler);
+        }
+
+        // Re-setup event listeners (only if not already set)
+        if (this.eventUnsubscribers.length === 0) {
+            this.setupEventListeners();
+        }
+
+        console.log('[SynthwaveSunset] Theme resumed successfully');
+        return true;
     }
 
     cleanup() {
@@ -357,21 +426,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
 
         // Clean up all containers by clearing their contents
-        const containerIds = [
-            'synthwave-sunset-sun',
-            'synthwave-sunset-city-glow',
-            'synthwave-sunset-city-back',
-            'synthwave-sunset-city-front',
-            'synthwave-sunset-grid',
-            'synthwave-sunset-scanlines'
-        ];
-
-        containerIds.forEach(id => {
-            const container = document.getElementById(id);
-            if (container) {
-                container.innerHTML = '';
-            }
-        });
+        this.clearContainers();
 
         // Clean up canvas references
         this.gridCanvas = null;

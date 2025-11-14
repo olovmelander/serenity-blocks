@@ -73,11 +73,12 @@ export default class NimbusVeilTheme extends BaseTheme {
 
     /**
      * Initialize the theme
+     * Note: super.start() already calls createScene(), so we don't call it again
      */
     async start(webglRenderer, resources) {
         await super.start(webglRenderer, resources);
 
-        await this.createScene();
+        // Start animation after scene is created
         this.startAnimation();
     }
 

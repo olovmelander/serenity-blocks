@@ -280,19 +280,27 @@ export class ThemeManager {
     }
 
     async activateThemeInstance(themeInstance, themeName) {
-        if (!themeInstance) return;
+        if (!themeInstance) {
+            console.error('[ThemeManager] Cannot activate null theme instance');
+            return;
+        }
 
+        console.log('[ThemeManager] Activating theme:', themeName, 'isActive:', themeInstance.isActive);
+
+        // Stop current active theme if different from the one we're activating
         if (this.activeTheme && this.activeTheme !== themeInstance) {
             console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
             this.activeTheme.stop();
+
+            // Clean up renderer resources when switching between different themes
+            if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
+                console.log('[ThemeManager] Cleaning up renderer resources for theme switch');
+                this.webglRenderer.cleanup();
+            }
         }
 
-        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
-            console.log('[ThemeManager] Cleaning up renderer resources');
-            this.webglRenderer.cleanup();
-        }
-
-        console.log('[ThemeManager] Starting new theme with renderer:', this.webglRenderer);
+        // Start the theme (this calls createScene and initializes everything)
+        console.log('[ThemeManager] Starting theme:', themeName);
         await themeInstance.start(this.webglRenderer, {
             assetManager: this.assetManager,
             audioManager: this.audioManager,
@@ -306,7 +314,7 @@ export class ThemeManager {
         this.themesSuspended = false;
 
         eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
-        console.log('[ThemeManager] Theme switch complete:', themeName);
+        console.log('[ThemeManager] Theme activation complete:', themeName);
 
         this.preloadNextTheme().catch((error) => {
             console.warn('[ThemeManager] Failed to preload next theme:', error);
@@ -322,25 +330,76 @@ export class ThemeManager {
             this.activeTheme = null;
         }
 
-        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
-            this.webglRenderer.cleanup();
-        }
+        // Don't cleanup the renderer when suspending - we'll likely resume with the same theme
+        // Only cleanup when actually switching themes or shutting down
+        // This preserves canvas contexts and GPU resources for quick resume
+        console.log('[ThemeManager] Theme suspended, renderer preserved for quick resume');
 
         this.themesSuspended = true;
     }
 
     async resumeThemes() {
         if (!this.themesSuspended) {
+            console.log('[ThemeManager] Themes not suspended, nothing to resume');
             return;
         }
+
         const themeName = this.pendingThemeName || this.activeThemeName;
         const themeInstance = this.pendingThemeInstance || (themeName ? this.themeInstances.get(themeName) : null);
+
         if (!themeName || !themeInstance) {
             console.warn('[ThemeManager] No theme queued to resume');
             this.themesSuspended = false;
             return;
         }
-        await this.activateThemeInstance(themeInstance, themeName);
+
+        console.log('[ThemeManager] Resuming themes - themeName:', themeName, 'isActive:', themeInstance.isActive, 'pendingTheme:', !!this.pendingThemeInstance);
+
+        // Check if theme was ever started (has isActive been true before)
+        // If the theme was loaded but never started, we need to do full activation
+        const wasNeverStarted = !themeInstance.isActive && this.pendingThemeInstance === themeInstance;
+
+        if (wasNeverStarted) {
+            console.log('[ThemeManager] Theme was never started, performing full activation');
+            await this.activateThemeInstance(themeInstance, themeName);
+            return;
+        }
+
+        // If resuming the exact same theme instance that was suspended, try quick resume
+        if (themeInstance === this.pendingThemeInstance && !this.activeTheme) {
+            console.log('[ThemeManager] Attempting quick resume for theme:', themeName);
+
+            this.activeTheme = themeInstance;
+            this.activeThemeName = themeName;
+            this.themesSuspended = false;
+
+            // Try to resume the theme (restores contexts without recreating scene)
+            const resumed = typeof themeInstance.resume === 'function'
+                ? themeInstance.resume()
+                : false;
+
+            if (!resumed) {
+                // Resume failed or not supported, do full restart
+                console.log('[ThemeManager] Quick resume failed, performing full restart');
+                await this.activateThemeInstance(themeInstance, themeName);
+            } else {
+                // Successfully resumed
+                this.pendingThemeInstance = null;
+                this.pendingThemeName = null;
+
+                // Restart animation loop if the theme has an animate method
+                if (typeof themeInstance.animate === 'function') {
+                    themeInstance.animate();
+                }
+
+                eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
+                console.log('[ThemeManager] Theme resumed successfully (quick resume):', themeName);
+            }
+        } else {
+            // Different theme or no pending instance, do full activation
+            console.log('[ThemeManager] Performing full theme activation');
+            await this.activateThemeInstance(themeInstance, themeName);
+        }
     }
 
     /**
