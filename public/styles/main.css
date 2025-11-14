@@ -10561,11 +10561,11 @@ body {
 /* Neon Sun */
 #neon-dusk-sun {
     position: absolute;
-    top: 35%;
+    top: 25%;
     left: 50%;
     transform: translateX(-50%);
-    width: 280px;
-    height: 280px;
+    width: 360px;
+    height: 360px;
     border-radius: 50%;
     background: radial-gradient(
         circle at 35% 35%,
@@ -10603,11 +10603,11 @@ body {
 /* Scanlines on Sun - Retro CRT Effect */
 #neon-dusk-scanlines-sun {
     position: absolute;
-    top: 35%;
+    top: 25%;
     left: 50%;
     transform: translateX(-50%);
-    width: 280px;
-    height: 280px;
+    width: 360px;
+    height: 360px;
     border-radius: 50%;
     background: repeating-linear-gradient(
         0deg,
