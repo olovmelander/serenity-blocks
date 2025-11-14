@@ -45,7 +45,12 @@ export class BaseTheme {
         console.warn('[BaseTheme] >>>>>> START METHOD CALLED <<<<<<', this.name);
         console.log('[BaseTheme] start() called, isActive:', this.isActive, 'theme:', this.name);
 
-        // Don't early return - allow restart
+        // If already active and running, stop first to ensure clean restart
+        if (this.isActive) {
+            console.warn('[BaseTheme] Theme already active, stopping before restart:', this.name);
+            this.stop();
+        }
+
         // Set active state
         this.isActive = true;
         this.webglRenderer = webglRenderer;
@@ -127,6 +132,31 @@ export class BaseTheme {
         // Note: WebGL renderer clears layers when loadTheme() is called,
         // so we just reset our local tracking
         this.webglLayers = [];
+    }
+
+    /**
+     * Resume theme after suspension
+     * Restores canvas contexts and restarts animations without recreating the scene
+     * Override this in subclasses that use canvas contexts
+     * @returns {boolean} True if resumed successfully, false if full restart needed
+     */
+    resume() {
+        console.log('[BaseTheme] resume() called for theme:', this.name);
+
+        this.isActive = true;
+
+        // Reactivate the DOM container
+        const themeContainer = document.getElementById(`${this.name}-theme`);
+        if (themeContainer) {
+            document.querySelectorAll('.theme-container').forEach((container) => {
+                container.classList.remove('active');
+            });
+            themeContainer.classList.add('active');
+        }
+
+        // Override in subclass to restore canvas contexts
+        // Return false if contexts can't be restored and full restart is needed
+        return true;
     }
 
     /**

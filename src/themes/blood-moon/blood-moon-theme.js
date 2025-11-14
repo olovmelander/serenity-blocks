@@ -14,7 +14,13 @@ export default class BloodMoonTheme extends BaseTheme {
         this.moonY = 0;
         this.moonRadius = 0;
         this.moonFloatOffset = { x: 0, y: 0 };
-        this.moonRotation = 0;
+        this.moonRotation = Math.random() * Math.PI * 2; // Random starting rotation
+
+        // Random phase offsets for unique moon paths each time
+        this.moonPhaseX = Math.random() * Math.PI * 2;
+        this.moonPhaseY = Math.random() * Math.PI * 2;
+        this.moonPhaseX2 = Math.random() * Math.PI * 2;
+        this.moonPhaseY2 = Math.random() * Math.PI * 2;
 
         // Performance optimizations
         this.cachedGradients = {};
@@ -460,13 +466,14 @@ export default class BloodMoonTheme extends BaseTheme {
         const centerX = this.canvas.width * 0.5;
         const centerY = this.canvas.height * 0.4;
 
-        // Ultra-slow, smooth movement using multiple sine waves (reduced speeds by ~60%)
-        const moonX = centerX + Math.sin(this.time * 0.00008) * (horizontalRange * 0.5);
-        const moonY = centerY + Math.cos(this.time * 0.00006) * (verticalRange * 0.5);
+        // Ultra-slow, smooth movement using multiple sine waves with random phase offsets
+        // Each session starts at a different point in the path
+        const moonX = centerX + Math.sin(this.time * 0.00008 + this.moonPhaseX) * (horizontalRange * 0.5);
+        const moonY = centerY + Math.cos(this.time * 0.00006 + this.moonPhaseY) * (verticalRange * 0.5);
 
-        // Add secondary movement for more natural path (also slowed down)
-        const moonXOffset = Math.sin(this.time * 0.0001 + Math.PI / 3) * (horizontalRange * 0.2);
-        const moonYOffset = Math.cos(this.time * 0.00012 + Math.PI / 4) * (verticalRange * 0.2);
+        // Add secondary movement for more natural path with different random offsets
+        const moonXOffset = Math.sin(this.time * 0.0001 + this.moonPhaseX2) * (horizontalRange * 0.2);
+        const moonYOffset = Math.cos(this.time * 0.00012 + this.moonPhaseY2) * (verticalRange * 0.2);
 
         return {
             x: moonX + moonXOffset,
