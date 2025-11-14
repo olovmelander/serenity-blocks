@@ -250,6 +250,12 @@ export const THEME_REGISTRY = [
         group: 'urban',
     },
     {
+        id: 'chromadelic-highway',
+        displayName: 'Chromadelic Highway',
+        module: './chromadelic-highway/chromadelic-highway-theme.js',
+        group: 'abstract',
+    },
+    {
         id: 'stillwater',
         displayName: 'Stillwater',
         module: './stillwater/stillwater-theme.js',
