@@ -15,6 +15,13 @@ export default class StillwaterTheme extends BaseTheme {
         this.lightBeams = [];
         this.comboMultiplier = 1.0;
         this.eventUnsubscribers = [];
+        this.treeGlowIntensity = 0;
+
+        // Tree layer references for glow effects
+        this.distantTreesContainer = null;
+        this.midTreesContainer = null;
+        this.closeTreesContainer = null;
+        this.foregroundTreesContainer = null;
 
         // Performance limits
         this.MAX_RIPPLES = 6;
@@ -79,6 +86,8 @@ export default class StillwaterTheme extends BaseTheme {
             });
             this.registerContainer(distantTreesContainer);
         }
+        // Store reference for glow effects
+        this.distantTreesContainer = distantTreesContainer;
 
         // Layer 2 - Mid Trees (Varied organic silhouettes)
         const midTreesContainer = document.getElementById('stillwater-mid-trees');
@@ -99,6 +108,8 @@ export default class StillwaterTheme extends BaseTheme {
             });
             this.registerContainer(midTreesContainer);
         }
+        // Store reference for glow effects
+        this.midTreesContainer = midTreesContainer;
 
         // Layer 3 - Close Trees (Defined trunks)
         const closeTreesContainer = document.getElementById('stillwater-close-trees');
@@ -116,6 +127,8 @@ export default class StillwaterTheme extends BaseTheme {
             });
             this.registerContainer(closeTreesContainer);
         }
+        // Store reference for glow effects
+        this.closeTreesContainer = closeTreesContainer;
 
         // Layer 4 - Foreground Trees (Large prominent trunks)
         const foregroundTreesContainer = document.getElementById('stillwater-foreground-trees');
@@ -135,6 +148,8 @@ export default class StillwaterTheme extends BaseTheme {
             });
             this.registerContainer(foregroundTreesContainer);
         }
+        // Store reference for glow effects
+        this.foregroundTreesContainer = foregroundTreesContainer;
 
         // Layer 5 - Rocks along waterline
         const rocksContainer = document.getElementById('stillwater-rocks');
@@ -235,6 +250,50 @@ export default class StillwaterTheme extends BaseTheme {
         this.animate();
     }
 
+    updateTreeGlow() {
+        // Apply subtle mystical glow to tree layers with increasing intensity from back to front
+
+        // Distant trees - Very subtle lavender glow (most subtle)
+        if (this.distantTreesContainer) {
+            if (this.treeGlowIntensity > 0) {
+                const glowBlur = this.treeGlowIntensity * 6;
+                this.distantTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #b39ddb)`;
+            } else {
+                this.distantTreesContainer.style.filter = '';
+            }
+        }
+
+        // Mid trees - Soft cyan glow (subtle)
+        if (this.midTreesContainer) {
+            if (this.treeGlowIntensity > 0) {
+                const glowBlur = this.treeGlowIntensity * 8;
+                this.midTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #5fc3c1)`;
+            } else {
+                this.midTreesContainer.style.filter = '';
+            }
+        }
+
+        // Close trees - Pale yellow glow (moderate)
+        if (this.closeTreesContainer) {
+            if (this.treeGlowIntensity > 0) {
+                const glowBlur = this.treeGlowIntensity * 10;
+                this.closeTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #fff9c4) drop-shadow(0 0 ${glowBlur * 0.5}px #fff9c4)`;
+            } else {
+                this.closeTreesContainer.style.filter = '';
+            }
+        }
+
+        // Foreground trees - Brighter cyan-blue glow (most visible)
+        if (this.foregroundTreesContainer) {
+            if (this.treeGlowIntensity > 0) {
+                const glowBlur = this.treeGlowIntensity * 12;
+                this.foregroundTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #80deea) drop-shadow(0 0 ${glowBlur * 0.5}px #80deea)`;
+            } else {
+                this.foregroundTreesContainer.style.filter = '';
+            }
+        }
+    }
+
     setupComboEffects() {
         const themeContainer = document.getElementById('stillwater-theme');
         if (!themeContainer) return;
@@ -289,6 +348,9 @@ export default class StillwaterTheme extends BaseTheme {
     handleLineClear(data) {
         const { lineCount } = data;
 
+        // Pulse the tree glow
+        this.treeGlowIntensity = Math.min(1, this.treeGlowIntensity + 0.3 * lineCount);
+
         // Create water ripple bursts
         this.createWaterRipples(lineCount);
 
@@ -306,6 +368,9 @@ export default class StillwaterTheme extends BaseTheme {
     handleCombo(data) {
         const { comboCount } = data;
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
+
+        // Pulse the tree glow
+        this.treeGlowIntensity = Math.min(1, this.treeGlowIntensity + 0.4);
 
         // Create firefly swarms
         if (comboCount >= 2) {
@@ -539,6 +604,12 @@ export default class StillwaterTheme extends BaseTheme {
                 this.lightBeams.splice(i, 1);
             }
         }
+
+        // Decay tree glow
+        if (this.treeGlowIntensity > 0) {
+            this.treeGlowIntensity *= 0.92;
+            if (this.treeGlowIntensity < 0.01) this.treeGlowIntensity = 0;
+        }
     }
 
     renderEffects() {
@@ -647,6 +718,9 @@ export default class StillwaterTheme extends BaseTheme {
     animate() {
         if (!this.isActive) return;
 
+        // Update tree glow for combo effects
+        this.updateTreeGlow();
+
         // Update and render combo effects
         this.updateEffects(0.016);
         this.renderEffects();
@@ -668,6 +742,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.fireflySwarms = [];
         this.lightBeams = [];
         this.comboMultiplier = 1.0;
+        this.treeGlowIntensity = 0;
 
         // Clear effects canvas
         if (this.effectsCanvas && this.effectsCtx) {
@@ -677,6 +752,10 @@ export default class StillwaterTheme extends BaseTheme {
         // Clear references
         this.effectsCanvas = null;
         this.effectsCtx = null;
+        this.distantTreesContainer = null;
+        this.midTreesContainer = null;
+        this.closeTreesContainer = null;
+        this.foregroundTreesContainer = null;
 
         super.stop();
     }
