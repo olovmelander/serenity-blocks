@@ -29,6 +29,8 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.mistParticles = [];
         this.movingParticles = []; // Small moving particles
         this.lightningFlashes = []; // Lightning flash effects
+        this.comboRings = []; // Expanding rings for combo effects
+        this.sparkles = []; // Sparkle particles for combos
 
         // Canvas elements
         this.canvas = null;
@@ -389,6 +391,33 @@ export default class NimbusVeilTheme extends BaseTheme {
 
             particle.currentOpacity = particle.opacity * (0.5 + Math.sin(time * particle.twinkleSpeed + particle.twinkleOffset) * 0.5 + lightningBrightness);
         }
+
+        // Update combo rings (expand and fade out)
+        const dt = deltaTime * 0.001;
+        for (let i = this.comboRings.length - 1; i >= 0; i--) {
+            const ring = this.comboRings[i];
+            ring.age += dt;
+            ring.radius += ring.expansionSpeed * deltaTime;
+            ring.opacity = (1 - (ring.age / ring.lifetime)) * ring.maxOpacity;
+
+            if (ring.age >= ring.lifetime) {
+                this.comboRings.splice(i, 1);
+            }
+        }
+
+        // Update sparkles (move and fade out)
+        for (let i = this.sparkles.length - 1; i >= 0; i--) {
+            const sparkle = this.sparkles[i];
+            sparkle.age += dt;
+            sparkle.x += sparkle.vx * deltaTime;
+            sparkle.y += sparkle.vy * deltaTime;
+            sparkle.vy += sparkle.gravity * deltaTime; // Apply gravity
+            sparkle.opacity = (1 - (sparkle.age / sparkle.lifetime)) * sparkle.maxOpacity;
+
+            if (sparkle.age >= sparkle.lifetime) {
+                this.sparkles.splice(i, 1);
+            }
+        }
     }
 
     /**
@@ -502,6 +531,48 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.ctx.globalAlpha = 0.6; // Fixed alpha for all
         this.ctx.fill();
         this.ctx.restore();
+
+        // Draw combo rings
+        if (this.comboRings.length > 0) {
+            this.ctx.save();
+            for (let i = 0; i < this.comboRings.length; i++) {
+                const ring = this.comboRings[i];
+                this.ctx.globalAlpha = ring.opacity;
+                this.ctx.strokeStyle = ring.color;
+                this.ctx.lineWidth = ring.thickness;
+                this.ctx.beginPath();
+                this.ctx.arc(ring.x, ring.y, ring.radius, 0, 6.28318);
+                this.ctx.stroke();
+            }
+            this.ctx.restore();
+        }
+
+        // Draw sparkles
+        if (this.sparkles.length > 0) {
+            this.ctx.save();
+            for (let i = 0; i < this.sparkles.length; i++) {
+                const sparkle = this.sparkles[i];
+                this.ctx.globalAlpha = sparkle.opacity;
+
+                // Draw sparkle as a small cross/star
+                this.ctx.strokeStyle = sparkle.color;
+                this.ctx.lineWidth = 2;
+                this.ctx.lineCap = 'round';
+
+                // Horizontal line
+                this.ctx.beginPath();
+                this.ctx.moveTo(sparkle.x - sparkle.size, sparkle.y);
+                this.ctx.lineTo(sparkle.x + sparkle.size, sparkle.y);
+                this.ctx.stroke();
+
+                // Vertical line
+                this.ctx.beginPath();
+                this.ctx.moveTo(sparkle.x, sparkle.y - sparkle.size);
+                this.ctx.lineTo(sparkle.x, sparkle.y + sparkle.size);
+                this.ctx.stroke();
+            }
+            this.ctx.restore();
+        }
     }
 
     /**
@@ -581,14 +652,72 @@ export default class NimbusVeilTheme extends BaseTheme {
     }
 
     /**
-     * React to combo events
+     * React to combo events - Enhanced with rings and sparkles!
      */
     onCombo(comboCount) {
-        if (comboCount >= 3) {
-            this.createCloudWave(comboCount);
+        // Create expanding rings around random clouds
+        const ringCount = Math.min(Math.floor(comboCount / 2), 5); // 1 ring per 2 combos, max 5
+        for (let i = 0; i < ringCount; i++) {
+            // Pick a random cloud to center the ring on
+            if (this.cloudParticles.length > 0) {
+                const cloud = this.cloudParticles[Math.floor(Math.random() * this.cloudParticles.length)];
+
+                this.comboRings.push({
+                    x: cloud.x,
+                    y: cloud.y,
+                    radius: 20 + (i * 10), // Stagger initial sizes
+                    expansionSpeed: 0.3 + (comboCount * 0.02), // Faster for higher combos
+                    thickness: 3 + Math.min(comboCount * 0.5, 5), // Thicker for higher combos
+                    opacity: 1,
+                    maxOpacity: 0.7,
+                    color: `rgba(200, 220, 255, ${0.8})`, // Soft blue-white
+                    age: 0,
+                    lifetime: 1.5 + (comboCount * 0.1) // Longer for higher combos
+                });
+            }
         }
 
-        // Speed up drift temporarily
+        // Create sparkles bursting from clouds
+        const sparkleCount = Math.min(comboCount * 3, 30); // 3 sparkles per combo, max 30
+        for (let i = 0; i < sparkleCount; i++) {
+            // Pick a random cloud as sparkle source
+            if (this.cloudParticles.length > 0) {
+                const cloud = this.cloudParticles[Math.floor(Math.random() * this.cloudParticles.length)];
+
+                // Random burst direction
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 0.3 + 0.1;
+
+                this.sparkles.push({
+                    x: cloud.x + (Math.random() - 0.5) * cloud.size,
+                    y: cloud.y + (Math.random() - 0.5) * cloud.size,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    gravity: 0.0002, // Slight downward pull
+                    size: Math.random() * 4 + 2, // 2-6px
+                    opacity: 1,
+                    maxOpacity: 0.9,
+                    color: Math.random() > 0.5 ? 'rgba(255, 255, 255, 1)' : 'rgba(200, 220, 255, 1)',
+                    age: 0,
+                    lifetime: 0.8 + Math.random() * 0.4 // 0.8-1.2 seconds
+                });
+            }
+        }
+
+        // Add color tint to clouds during high combos
+        if (comboCount >= 5) {
+            this.cloudParticles.forEach(particle => {
+                const originalColor = particle.color;
+                particle.color = 'rgba(200, 220, 255, 0.85)'; // Blue tint
+
+                // Restore after 500ms
+                setTimeout(() => {
+                    particle.color = originalColor;
+                }, 500);
+            });
+        }
+
+        // Speed up drift temporarily (existing effect, kept)
         const speedMultiplier = 1 + (comboCount * 0.1);
         this.cloudParticles.forEach(particle => {
             particle.speedX *= speedMultiplier;
@@ -600,6 +729,24 @@ export default class NimbusVeilTheme extends BaseTheme {
                 particle.speedX /= speedMultiplier;
             });
         }, 1000);
+
+        // Push clouds outward from center for dramatic combos (10+)
+        if (comboCount >= 10) {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+
+            this.cloudParticles.forEach(particle => {
+                const dx = particle.x - centerX;
+                const dy = particle.y - centerY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > 0) {
+                    const pushStrength = 5;
+                    particle.x += (dx / distance) * pushStrength;
+                    particle.y += (dy / distance) * pushStrength;
+                }
+            });
+        }
     }
 
     /**
@@ -640,24 +787,11 @@ export default class NimbusVeilTheme extends BaseTheme {
 
     /**
      * Create cloud wave effect for combos
+     * REMOVED: Now using canvas-based rings instead of DOM elements
      */
-    createCloudWave(comboCount) {
-        const wavesContainer = document.getElementById('nimbus-veil-waves');
-        if (!wavesContainer) return;
-
-        const waveCount = Math.min(comboCount - 2, 3);
-
-        for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => {
-                const wave = document.createElement('div');
-                wave.className = 'nimbus-veil-wave';
-                wavesContainer.appendChild(wave);
-
-                setTimeout(() => {
-                    wave.remove();
-                }, 3000);
-            }, i * 200);
-        }
+    createCloudWave() {
+        // No longer needed - combo effects now use canvas rings and sparkles
+        // See onCombo() method for new implementation
     }
 
     /**
@@ -722,6 +856,8 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.mistParticles = [];
         this.movingParticles = [];
         this.lightningFlashes = [];
+        this.comboRings = [];
+        this.sparkles = [];
 
         // Reset ambient effects
         this.windIntensity = 0.5;
