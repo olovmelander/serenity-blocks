@@ -6,13 +6,21 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         super('chromadelic-highway');
         this.animationTime = 0;
         this.eventUnsubscribers = [];
+
+        // Smooth easing for combo effects - current values
         this.wavePulseIntensity = 0;
-        this.waveAmplitudeBoost = 0; // Extra wave height on combos
-        this.colorSpeedBoost = 0; // Speed up color cycling on combos
+        this.waveAmplitudeBoost = 0;
+        this.colorSpeedBoost = 0;
+
+        // Smooth easing - target values (lerp towards these)
+        this.wavePulseTarget = 0;
+        this.amplitudeBoostTarget = 0;
+        this.colorSpeedTarget = 0;
+
         this.sparkles = [];
-        this.maxSparkles = 80; // Rainbow particles from waves
+        this.maxSparkles = 60; // Reduced from 80 for performance
         this.stars = [];
-        this.maxStars = 50; // Static stars at top
+        this.maxStars = 40; // Reduced from 50 for performance
         this.comboParticles = []; // Burst particles from combos
         this.shockwaves = []; // Rainbow shockwave rings
 
@@ -21,6 +29,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.waveCtx = null;
         this.sparkleCanvas = null;
         this.sparkleCtx = null;
+
+        // Performance: Cache gradient for waves
+        this.cachedWaveGradient = null;
+        this.cachedGradientWidth = 0;
 
         // Random time offset for varied starting positions
         this.timeOffset = Math.random() * 10000;
@@ -73,7 +85,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     resizeWaves() {
         if (!this.waveCanvas) return;
 
-        const dpr = window.devicePixelRatio || 1;
+        // PERFORMANCE: Cap DPR at 1.5 for better performance on high-DPI displays
+        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
         const rect = this.waveCanvas.getBoundingClientRect();
 
         this.waveCanvas.width = rect.width * dpr;
@@ -107,7 +120,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         ];
 
         // Apply color speed boost for combo effects (speeds up rainbow cycling)
-        const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 2);
+        const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 0.5);
         const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
 
         // Number of wave layers for depth
@@ -136,8 +149,15 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Draw wave path
             ctx.save();
 
+            // PERFORMANCE: Reuse or cache gradient if width hasn't changed
+            let gradient;
+            if (layer === 0 && this.cachedGradientWidth !== width) {
+                this.cachedWaveGradient = ctx.createLinearGradient(0, 0, width, 0);
+                this.cachedGradientWidth = width;
+            }
+
             // Create gradient along the wave
-            const gradient = ctx.createLinearGradient(0, 0, width, 0);
+            gradient = ctx.createLinearGradient(0, 0, width, 0);
 
             // Color offset for gradient rotation - faster color cycling
             const colorOffset = (time * 1.2 + layer * 0.3) % 1;
@@ -155,8 +175,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             ctx.fillStyle = gradient;
 
-            // Add enhanced glow effect
-            const glowIntensity = 50 + layerDepth * 80; // Much more glow!
+            // PERFORMANCE: Reduce shadow blur intensity (still looks good but much faster)
+            const glowIntensity = 30 + layerDepth * 50; // Reduced from 50-130 to 30-80
             ctx.shadowBlur = glowIntensity;
 
             // More vibrant glow color that shifts with the rainbow
@@ -172,8 +192,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Draw bottom edge
             ctx.lineTo(0, layerY + layerHeight);
 
+            // PERFORMANCE: Increased step from 5 to 8 pixels (still smooth but 37% fewer segments)
             // Draw wavy top edge
-            for (let x = 0; x <= width; x += 5) {
+            for (let x = 0; x <= width; x += 8) {
                 const waveOffset = Math.sin(x * frequency + phaseOffset) * amplitude * breathe * pulseEffect;
                 const waveY = layerY + waveOffset;
 
@@ -190,19 +211,26 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             ctx.restore();
         }
 
-        // Decay combo effects smoothly
-        if (this.wavePulseIntensity > 0) {
-            this.wavePulseIntensity *= 0.93;
-            if (this.wavePulseIntensity < 0.01) this.wavePulseIntensity = 0;
-        }
-        if (this.waveAmplitudeBoost > 0) {
-            this.waveAmplitudeBoost *= 0.95;
-            if (this.waveAmplitudeBoost < 0.01) this.waveAmplitudeBoost = 0;
-        }
-        if (this.colorSpeedBoost > 0) {
-            this.colorSpeedBoost *= 0.96;
-            if (this.colorSpeedBoost < 0.01) this.colorSpeedBoost = 0;
-        }
+        // Smooth easing for all combo effects - gentle, organic transitions
+        const lerpFactor = 0.08; // Smooth interpolation speed (0.08 = gentle)
+
+        // Smoothly lerp current values towards their targets
+        this.wavePulseIntensity += (this.wavePulseTarget - this.wavePulseIntensity) * lerpFactor;
+        this.waveAmplitudeBoost += (this.amplitudeBoostTarget - this.waveAmplitudeBoost) * lerpFactor;
+        this.colorSpeedBoost += (this.colorSpeedTarget - this.colorSpeedBoost) * lerpFactor;
+
+        // Smoothly decay targets back to 0 (natural fade-out)
+        this.wavePulseTarget *= 0.97;
+        this.amplitudeBoostTarget *= 0.97;
+        this.colorSpeedTarget *= 0.97;
+
+        // Clamp to 0 when very close
+        if (Math.abs(this.wavePulseIntensity) < 0.001) this.wavePulseIntensity = 0;
+        if (Math.abs(this.waveAmplitudeBoost) < 0.001) this.waveAmplitudeBoost = 0;
+        if (Math.abs(this.colorSpeedBoost) < 0.001) this.colorSpeedBoost = 0;
+        if (Math.abs(this.wavePulseTarget) < 0.001) this.wavePulseTarget = 0;
+        if (Math.abs(this.amplitudeBoostTarget) < 0.001) this.amplitudeBoostTarget = 0;
+        if (Math.abs(this.colorSpeedTarget) < 0.001) this.colorSpeedTarget = 0;
     }
 
     /**
@@ -212,7 +240,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     getWaveSurfacePoint(xPercent, layerIndex = 2) {
         if (!this.waveWidth || !this.waveHeight) return { x: 0.5, y: 0.6 };
 
-        const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 2);
+        const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 0.5);
         const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
 
         const numLayers = 5;
@@ -262,7 +290,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     resizeSparkles() {
         if (!this.sparkleCanvas) return;
 
-        const dpr = window.devicePixelRatio || 1;
+        // PERFORMANCE: Cap DPR at 1.5 for better performance on high-DPI displays
+        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
         const rect = this.sparkleCanvas.getBoundingClientRect();
 
         this.sparkleCanvas.width = rect.width * dpr;
@@ -398,34 +427,39 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const saturation = 95 + twinkle * 5;
             const lightness = 65 + twinkle * 20;
 
-            // Draw sparkle with rainbow color that syncs with wave flow
+            // PERFORMANCE: Use layered circles instead of heavy shadow blur for glow effect
             ctx.save();
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 1)`;
-            ctx.shadowBlur = sparkle.glowSize + twinkle * 8;
-            ctx.shadowColor = `hsla(${hue}, 100%, 75%, ${alpha * 1.1})`;
 
-            // Draw as soft circle
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Add extra rainbow glow for larger particles
+            // Outer glow layer (only for larger particles)
             if (sparkle.size > 2) {
-                ctx.globalAlpha = alpha * 0.35;
-                ctx.shadowBlur = sparkle.glowSize * 2.5;
-                // Slightly shift hue for outer glow
                 const outerHue = (hue + 20) % 360;
-                ctx.shadowColor = `hsla(${outerHue}, 100%, 70%, ${alpha * 0.8})`;
+                ctx.globalAlpha = alpha * 0.2;
+                ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
+                ctx.beginPath();
+                ctx.arc(x, y, size * 2.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.globalAlpha = alpha * 0.35;
+                ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
                 ctx.beginPath();
                 ctx.arc(x, y, size * 1.5, 0, Math.PI * 2);
                 ctx.fill();
             }
 
+            // Main sparkle with minimal shadow blur
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 1)`;
+            ctx.shadowBlur = Math.min(8, sparkle.glowSize * 0.5); // Drastically reduced
+            ctx.shadowColor = `hsla(${hue}, 100%, 75%, ${alpha})`;
+
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+
             ctx.restore();
         });
 
-        // Draw stars at the top
+        // Draw stars at the top - PERFORMANCE: Minimal shadow blur
         this.stars.forEach(star => {
             const x = star.x * width;
             const y = star.y * height;
@@ -438,8 +472,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             ctx.save();
             ctx.globalAlpha = alpha;
             ctx.fillStyle = '#ffffff';
-            ctx.shadowBlur = 4 + twinkle * 3;
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+            ctx.shadowBlur = 3; // Reduced from 4-7 to constant 3
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
 
             ctx.beginPath();
             ctx.arc(x, y, size, 0, Math.PI * 2);
@@ -482,8 +516,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             ctx.strokeStyle = gradient;
             ctx.lineWidth = 80 * lifeFactor;
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = `hsla(${hueOffset % 360}, 100%, 60%, ${lifeFactor * 0.8})`;
+            ctx.shadowBlur = 15; // PERFORMANCE: Reduced from 30
+            ctx.shadowColor = `hsla(${hueOffset % 360}, 100%, 60%, ${lifeFactor * 0.6})`;
 
             ctx.beginPath();
             ctx.arc(centerX, centerY, wave.radius, 0, Math.PI * 2);
@@ -528,9 +562,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             ctx.save();
 
-            // Draw trailing glow (motion blur effect)
+            // PERFORMANCE: Reduced trail segments from 5 to 3, removed shadow blur
             if (particle.life < 2.0) {
-                const trailLength = 5;
+                const trailLength = 3; // Reduced from 5
                 for (let t = 0; t < trailLength; t++) {
                     const trailFactor = t / trailLength;
                     const trailX = prevScreenX + (x - prevScreenX) * trailFactor;
@@ -541,8 +575,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
                     ctx.globalAlpha = trailAlpha;
                     ctx.fillStyle = `hsla(${trailHue}, 100%, 70%, 1)`;
-                    ctx.shadowBlur = 15 + trailSize;
-                    ctx.shadowColor = `hsla(${trailHue}, 100%, 65%, ${trailAlpha})`;
+                    // PERFORMANCE: No shadow blur on trails
 
                     ctx.beginPath();
                     ctx.arc(trailX, trailY, trailSize, 0, Math.PI * 2);
@@ -550,25 +583,31 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
             }
 
-            // Draw main particle
+            // PERFORMANCE: Use layered circles instead of heavy shadow blur
+            const outerHue = (particle.hue + 180) % 360;
+
+            // Outermost glow
+            ctx.globalAlpha = alpha * 0.25;
+            ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
+            ctx.beginPath();
+            ctx.arc(x, y, size * 2.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Mid glow
+            ctx.globalAlpha = alpha * 0.4;
+            ctx.fillStyle = `hsla(${outerHue}, 100%, 75%, 1)`;
+            ctx.beginPath();
+            ctx.arc(x, y, size * 1.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Main particle with minimal shadow
             ctx.globalAlpha = alpha;
             ctx.fillStyle = `hsla(${particle.hue}, 100%, ${75 + lifeFactor * 10}%, 1)`;
-            ctx.shadowBlur = 25 + lifeFactor * 15;
-            ctx.shadowColor = `hsla(${particle.hue}, 100%, 70%, ${alpha})`;
+            ctx.shadowBlur = 8; // Drastically reduced from 25-40
+            ctx.shadowColor = `hsla(${particle.hue}, 100%, 70%, ${alpha * 0.6})`;
 
             ctx.beginPath();
             ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Outer glow with complementary hue
-            ctx.globalAlpha = alpha * 0.5;
-            ctx.shadowBlur = 40 + lifeFactor * 20;
-            const outerHue = (particle.hue + 180) % 360; // Complementary color
-            ctx.shadowColor = `hsla(${outerHue}, 100%, 70%, ${alpha * 0.6})`;
-            ctx.fillStyle = `hsla(${particle.hue}, 100%, 80%, 1)`;
-
-            ctx.beginPath();
-            ctx.arc(x, y, size * 1.6, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.restore();
@@ -605,8 +644,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         // LOG: Verify line clear is triggering
         console.log(`✨ [Chromadelic Highway] Line clear triggered! Lines: ${data.linesCleared || 'unknown'}`);
 
-        // Gentle pulse the waves
-        this.wavePulseIntensity = Math.min(1, this.wavePulseIntensity + 0.2);
+        // Gentle pulse the waves - smoothly add to target instead of instant
+        this.wavePulseTarget = Math.min(0.6, this.wavePulseTarget + 0.15);
     }
 
     handleCombo(data) {
@@ -614,18 +653,19 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const intensity = Math.min(1, comboCount / 10); // 0 to 1 based on combo
 
         // LOG: Verify combo is triggering
-        console.log(`🌈✨ [Chromadelic Highway] COMBO x${comboCount}! Triggering integrated rainbow effects...`);
+        console.log(`🌈✨ [Chromadelic Highway] COMBO x${comboCount}! Triggering smooth rainbow effects...`);
 
-        // TRIGGER MULTIPLE INTEGRATED EFFECTS:
+        // SMOOTHLY TRIGGER INTEGRATED EFFECTS - set targets, not instant values
+        // Values will smoothly lerp towards these targets for organic feel
 
-        // 1. Wave intensity pulse
-        this.wavePulseIntensity = Math.min(1, 0.4 + intensity * 0.6);
+        // 1. Wave intensity pulse (reduced from 0.4-1.0 to 0.2-0.6 for subtlety)
+        this.wavePulseTarget = Math.min(0.6, 0.2 + intensity * 0.4);
 
-        // 2. Wave amplitude surge (waves grow taller!)
-        this.waveAmplitudeBoost = Math.min(1, 0.3 + intensity * 0.7);
+        // 2. Wave amplitude surge (reduced from 0.3-1.0 to 0.15-0.5 for subtlety)
+        this.amplitudeBoostTarget = Math.min(0.5, 0.15 + intensity * 0.35);
 
-        // 3. Speed up rainbow color cycling
-        this.colorSpeedBoost = Math.min(1, 0.4 + intensity * 0.6);
+        // 3. Rainbow color cycling (reduced from 0.4-1.0 to 0.2-0.5 for subtlety)
+        this.colorSpeedTarget = Math.min(0.5, 0.2 + intensity * 0.3);
 
         // 4. Create rainbow shockwave rings
         const numShockwaves = Math.min(3, 1 + Math.floor(comboCount / 3));
@@ -648,10 +688,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
 
         // 5. Spawn particles FROM the actual wave surfaces (integrated!)
-        const particlesPerWave = Math.min(15, 8 + comboCount * 2);
+        // PERFORMANCE: Reduced particle count from max 45 to max 30
+        const particlesPerWave = Math.min(10, 6 + comboCount * 1.5);
         const numWaveLayers = 3; // Spawn from multiple wave layers
 
-        console.log(`  ✨ Spawning ${particlesPerWave * numWaveLayers} particles from wave surfaces...`);
+        console.log(`  ✨ Spawning ${Math.floor(particlesPerWave * numWaveLayers)} particles from wave surfaces...`);
 
         for (let layer = 0; layer < numWaveLayers; layer++) {
             const waveLayer = 1 + layer; // Use layers 1, 2, 3
@@ -668,7 +709,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 const vy = Math.sin(angle) * speed;
 
                 // Rainbow color synchronized with current wave color at spawn position
-                const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 2);
+                const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 0.5);
                 const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
                 const colorPhase = (time * 60 + xPos * 120 + layer * 80) % 360;
                 const startHue = colorPhase;
@@ -690,8 +731,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
         }
 
-        console.log(`  🌊 Wave surge activated! Amplitude: +${(this.waveAmplitudeBoost * 100).toFixed(0)}%`);
-        console.log(`  🎨 Rainbow accelerated! Color speed: +${(this.colorSpeedBoost * 100).toFixed(0)}%`);
+        console.log(`  🌊 Wave surge target: ${(this.amplitudeBoostTarget * 100).toFixed(0)}%`);
+        console.log(`  🎨 Rainbow speed target: ${(this.colorSpeedTarget * 100).toFixed(0)}%`);
     }
 
     animate() {

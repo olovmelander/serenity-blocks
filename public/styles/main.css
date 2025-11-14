@@ -14565,6 +14565,9 @@ body.cursor-hidden * {
     height: 100%;
     opacity: 1;
     filter: brightness(1.1) contrast(1.05);
+    /* PERFORMANCE: GPU acceleration hints */
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 /* Sparkles Container */
@@ -14587,4 +14590,7 @@ body.cursor-hidden * {
     height: 100%;
     opacity: 0.9;
     filter: brightness(1.2);
+    /* PERFORMANCE: GPU acceleration hints */
+    will-change: transform;
+    transform: translateZ(0);
 }
