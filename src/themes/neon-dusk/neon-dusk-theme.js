@@ -89,6 +89,7 @@ export default class NeonDuskTheme extends BaseTheme {
             mountain.className = 'neon-dusk-mountain-back';
             mountain.style.width = '100%';
             mountain.style.height = '100%';
+            mountain.style.setProperty('--h0', '70%');
             mountain.style.setProperty('--p1', '8%');
             mountain.style.setProperty('--h1', '65%');
             mountain.style.setProperty('--p2', '18%');
@@ -107,6 +108,7 @@ export default class NeonDuskTheme extends BaseTheme {
             mountain.style.setProperty('--h8', '45%');
             mountain.style.setProperty('--p9', '88%');
             mountain.style.setProperty('--h9', '60%');
+            mountain.style.setProperty('--h10', '65%');
             mountainsBack.appendChild(mountain);
             this.registerContainer(mountainsBack);
         }
@@ -118,6 +120,7 @@ export default class NeonDuskTheme extends BaseTheme {
             mountain.className = 'neon-dusk-mountain-mid';
             mountain.style.width = '100%';
             mountain.style.height = '100%';
+            mountain.style.setProperty('--h0', '65%');
             mountain.style.setProperty('--p1', '12%');
             mountain.style.setProperty('--h1', '60%');
             mountain.style.setProperty('--p2', '22%');
@@ -134,6 +137,7 @@ export default class NeonDuskTheme extends BaseTheme {
             mountain.style.setProperty('--h7', '50%');
             mountain.style.setProperty('--p8', '82%');
             mountain.style.setProperty('--h8', '40%');
+            mountain.style.setProperty('--h9', '60%');
             mountainsMid.appendChild(mountain);
             this.registerContainer(mountainsMid);
         }
@@ -145,6 +149,7 @@ export default class NeonDuskTheme extends BaseTheme {
             mountain.className = 'neon-dusk-mountain-front';
             mountain.style.width = '100%';
             mountain.style.height = '100%';
+            mountain.style.setProperty('--h0', '60%');
             mountain.style.setProperty('--p1', '10%');
             mountain.style.setProperty('--h1', '55%');
             mountain.style.setProperty('--p2', '20%');
@@ -163,6 +168,7 @@ export default class NeonDuskTheme extends BaseTheme {
             mountain.style.setProperty('--h8', '35%');
             mountain.style.setProperty('--p9', '90%');
             mountain.style.setProperty('--h9', '50%');
+            mountain.style.setProperty('--h10', '55%');
             mountainsFront.appendChild(mountain);
             this.registerContainer(mountainsFront);
         }

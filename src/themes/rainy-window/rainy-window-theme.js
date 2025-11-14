@@ -1380,4 +1380,35 @@ export default class RainyWindowTheme extends BaseTheme {
 
         super.stop();
     }
+
+    resume() {
+        console.log('[RainyWindow] Resuming theme...');
+
+        // Call base resume to handle common setup
+        super.resume();
+
+        // Reacquire canvas context if it was lost
+        if (!this.ctx && this.canvas) {
+            console.log('[RainyWindow] Reacquiring canvas context');
+            this.ctx = this.canvas.getContext('2d');
+        }
+
+        // If canvas doesn't exist or context can't be acquired, need full restart
+        if (!this.canvas || !this.ctx) {
+            console.warn('[RainyWindow] Canvas or context unavailable, full restart required');
+            return false;
+        }
+
+        // Re-setup resize handler
+        if (!this.resizeHandler) {
+            this.resizeHandler = () => this.resizeCanvas();
+            window.addEventListener('resize', this.resizeHandler, false);
+        }
+
+        // Re-setup event listeners
+        this.setupEventListeners();
+
+        console.log('[RainyWindow] Theme resumed successfully');
+        return true;
+    }
 }

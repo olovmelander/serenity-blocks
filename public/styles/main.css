@@ -10561,11 +10561,11 @@ body {
 /* Neon Sun */
 #neon-dusk-sun {
     position: absolute;
-    top: 35%;
+    top: 25%;
     left: 50%;
     transform: translateX(-50%);
-    width: 280px;
-    height: 280px;
+    width: 360px;
+    height: 360px;
     border-radius: 50%;
     background: radial-gradient(
         circle at 35% 35%,
@@ -10603,11 +10603,11 @@ body {
 /* Scanlines on Sun - Retro CRT Effect */
 #neon-dusk-scanlines-sun {
     position: absolute;
-    top: 35%;
+    top: 25%;
     left: 50%;
     transform: translateX(-50%);
-    width: 280px;
-    height: 280px;
+    width: 360px;
+    height: 360px;
     border-radius: 50%;
     background: repeating-linear-gradient(
         0deg,
@@ -10719,6 +10719,25 @@ body {
     }
 }
 
+/* Ground Base - Solid layer to block sun behind mountains */
+#neon-dusk-ground-base {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 75%;
+    background: linear-gradient(
+        to top,
+        #8b4d8b 0%,
+        #7a4179 30%,
+        #693568 50%,
+        rgba(105, 53, 104, 0.8) 70%,
+        rgba(105, 53, 104, 0.4) 85%,
+        transparent 100%
+    );
+    z-index: 6;
+}
+
 /* Mountain Silhouettes - Back Layer */
 #neon-dusk-mountains-back {
     position: absolute;
@@ -10732,9 +10751,10 @@ body {
 .neon-dusk-mountain-back {
     position: absolute;
     bottom: 0;
-    background: rgba(45, 27, 78, 0.6);
+    background: rgba(45, 27, 78, 0.95);
     clip-path: polygon(
-        0% 100%,
+        -5% 100%,
+        0% var(--h0, 70%),
         var(--p1, 10%) var(--h1, 60%),
         var(--p2, 20%) var(--h2, 40%),
         var(--p3, 30%) var(--h3, 50%),
@@ -10744,7 +10764,8 @@ body {
         var(--p7, 70%) var(--h7, 50%),
         var(--p8, 80%) var(--h8, 40%),
         var(--p9, 90%) var(--h9, 55%),
-        100% 100%
+        100% var(--h10, 65%),
+        105% 100%
     );
     border-top: 1px solid rgba(138, 43, 226, 0.5);
     box-shadow: 0 -1px 20px rgba(138, 43, 226, 0.4);
@@ -10763,9 +10784,10 @@ body {
 .neon-dusk-mountain-mid {
     position: absolute;
     bottom: 0;
-    background: rgba(74, 45, 110, 0.7);
+    background: rgba(74, 45, 110, 0.98);
     clip-path: polygon(
-        0% 100%,
+        -5% 100%,
+        0% var(--h0, 65%),
         var(--p1, 15%) var(--h1, 55%),
         var(--p2, 25%) var(--h2, 35%),
         var(--p3, 35%) var(--h3, 45%),
@@ -10774,7 +10796,8 @@ body {
         var(--p6, 65%) var(--h6, 30%),
         var(--p7, 75%) var(--h7, 45%),
         var(--p8, 85%) var(--h8, 35%),
-        100% 100%
+        100% var(--h9, 60%),
+        105% 100%
     );
     border-top: 2px solid rgba(233, 30, 99, 0.6);
     box-shadow: 0 -2px 30px rgba(233, 30, 99, 0.5);
@@ -10793,9 +10816,10 @@ body {
 .neon-dusk-mountain-front {
     position: absolute;
     bottom: 0;
-    background: rgba(139, 77, 139, 0.8);
+    background: rgba(139, 77, 139, 1);
     clip-path: polygon(
-        0% 100%,
+        -5% 100%,
+        0% var(--h0, 60%),
         var(--p1, 12%) var(--h1, 50%),
         var(--p2, 22%) var(--h2, 30%),
         var(--p3, 32%) var(--h3, 40%),
@@ -10805,7 +10829,8 @@ body {
         var(--p7, 72%) var(--h7, 40%),
         var(--p8, 82%) var(--h8, 30%),
         var(--p9, 92%) var(--h9, 45%),
-        100% 100%
+        100% var(--h10, 55%),
+        105% 100%
     );
     border-top: 2px solid rgba(255, 0, 255, 0.7);
     box-shadow: 0 -3px 40px rgba(255, 0, 255, 0.6);
@@ -10817,12 +10842,19 @@ body {
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 30%;
-    background-image:
+    height: 70%;
+    background:
         linear-gradient(rgba(255, 0, 255, 0.3) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 0, 255, 0.3) 1px, transparent 1px);
-    background-size: 50px 50px;
-    background-position: 0 0;
+        linear-gradient(90deg, rgba(255, 0, 255, 0.3) 1px, transparent 1px),
+        linear-gradient(to top,
+            rgba(139, 77, 139, 0.9) 0%,
+            rgba(139, 77, 139, 0.85) 20%,
+            rgba(139, 77, 139, 0.6) 40%,
+            rgba(139, 77, 139, 0.3) 60%,
+            transparent 100%
+        );
+    background-size: 50px 50px, 50px 50px, 100% 100%;
+    background-position: 0 0, 0 0, 0 0;
     transform-origin: bottom center;
     transform: perspective(500px) rotateX(60deg);
     z-index: 10;
@@ -10830,8 +10862,8 @@ body {
 }
 
 @keyframes neon-grid-scroll {
-    0% { background-position: 0 0; }
-    100% { background-position: 0 50px; }
+    0% { background-position: 0 0, 0 0, 0 0; }
+    100% { background-position: 0 50px, 0 50px, 0 0; }
 }
 
 /* Grid Overlay - Adds depth with brighter lines */
@@ -10840,7 +10872,7 @@ body {
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 30%;
+    height: 70%;
     transform-origin: bottom center;
     transform: perspective(500px) rotateX(60deg);
     z-index: 11;
@@ -10993,6 +11025,321 @@ body {
         opacity: 0.9;
         filter: blur(40px);
     }
+}
+
+/* =================================================================================
+   🌆 SYNTHWAVE SUNSET THEME - 80s Retrowave City Sunset
+   ================================================================================= */
+
+#synthwave-sunset-theme {
+    background: linear-gradient(
+        to bottom,
+        #1f0828 0%,
+        #380a38 4%,
+        #510d47 8%,
+        #6a1055 12%,
+        #831562 16%,
+        #9c1a6e 20%,
+        #b52078 24%,
+        #cd2780 28%,
+        #e53086 32%,
+        #fb3b89 36%,
+        #ff4889 40%,
+        #ff5887 44%,
+        #ff6a83 48%,
+        #ff7c7e 52%,
+        #ff8e78 56%,
+        #ffa071 60%,
+        #ffb26b 64%,
+        #ffc465 68%,
+        #ffd660 72%,
+        #ffe85c 76%,
+        #fff959 80%,
+        #fffa57 85%,
+        #fffa57 90%,
+        #fffa57 100%
+    );
+    overflow: hidden;
+}
+
+/* Sky - Intense hot pink/red glow */
+#synthwave-sunset-sky {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(
+        ellipse at 50% 50%,
+        rgba(255, 220, 100, 1) 0%,
+        rgba(255, 170, 90, 0.98) 4%,
+        rgba(255, 120, 100, 0.95) 8%,
+        rgba(255, 90, 120, 0.9) 12%,
+        rgba(255, 72, 137, 0.85) 16%,
+        rgba(251, 59, 137, 0.75) 20%,
+        rgba(229, 48, 134, 0.65) 24%,
+        rgba(205, 39, 128, 0.5) 28%,
+        rgba(181, 32, 120, 0.35) 32%,
+        rgba(156, 26, 110, 0.2) 36%,
+        transparent 45%
+    );
+    z-index: 1;
+}
+
+/* Sun Container - Positioned at horizon behind city */
+#synthwave-sunset-sun {
+    position: absolute;
+    top: 52%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 550px;
+    height: 550px;
+    z-index: 3;
+}
+
+/* Main Sun - Bright orange/red */
+.synthwave-sun {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 550px;
+    height: 550px;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle at 45% 40%,
+        #fff5e6 0%,
+        #ffe8b3 3%,
+        #ffd480 8%,
+        #ffbe5a 15%,
+        #ffa640 23%,
+        #ff8d30 32%,
+        #ff7428 42%,
+        #f85d25 53%,
+        #e54828 65%,
+        #cc3c30 78%,
+        #b03038 92%,
+        #8f253e 100%
+    );
+    box-shadow:
+        0 0 120px rgba(255, 160, 60, 1),
+        0 0 200px rgba(255, 120, 50, 0.95),
+        0 0 280px rgba(248, 93, 69, 0.85),
+        0 0 360px rgba(204, 70, 93, 0.7),
+        inset 0 -70px 120px rgba(143, 37, 62, 0.5);
+    animation: synthwave-sun-pulse 8s ease-in-out infinite;
+}
+
+/* Sun Glow Layers - Intense orange/red glow */
+.synthwave-sun-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    opacity: 0.8;
+}
+
+.glow-layer-0 {
+    width: 680px;
+    height: 680px;
+    background: radial-gradient(
+        circle at center,
+        rgba(255, 160, 60, 0.6) 0%,
+        rgba(255, 120, 50, 0.35) 40%,
+        transparent 70%
+    );
+    animation: synthwave-glow-pulse 8s ease-in-out infinite;
+}
+
+.glow-layer-1 {
+    width: 840px;
+    height: 840px;
+    background: radial-gradient(
+        circle at center,
+        rgba(255, 120, 50, 0.5) 0%,
+        rgba(248, 93, 69, 0.3) 40%,
+        transparent 70%
+    );
+    animation: synthwave-glow-pulse 8s ease-in-out infinite 0.7s;
+}
+
+.glow-layer-2 {
+    width: 1020px;
+    height: 1020px;
+    background: radial-gradient(
+        circle at center,
+        rgba(248, 93, 69, 0.4) 0%,
+        rgba(204, 70, 93, 0.2) 40%,
+        transparent 70%
+    );
+    animation: synthwave-glow-pulse 8s ease-in-out infinite 1.4s;
+}
+
+@keyframes synthwave-sun-pulse {
+    0%, 100% {
+        box-shadow:
+            0 0 120px rgba(255, 160, 60, 1),
+            0 0 200px rgba(255, 120, 50, 0.95),
+            0 0 280px rgba(248, 93, 69, 0.85),
+            0 0 360px rgba(204, 70, 93, 0.7),
+            inset 0 -70px 120px rgba(143, 37, 62, 0.5);
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        box-shadow:
+            0 0 140px rgba(255, 160, 60, 1),
+            0 0 230px rgba(255, 120, 50, 1),
+            0 0 320px rgba(248, 93, 69, 0.9),
+            0 0 410px rgba(204, 70, 93, 0.8),
+            inset 0 -70px 120px rgba(143, 37, 62, 0.6);
+        transform: translate(-50%, -50%) scale(1.015);
+    }
+}
+
+@keyframes synthwave-glow-pulse {
+    0%, 100% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.06);
+    }
+}
+
+/* City Glow - Warm light coming from between buildings */
+#synthwave-sunset-city-glow {
+    position: absolute;
+    bottom: 32%;
+    left: 0;
+    width: 100%;
+    height: 42%;
+    z-index: 5;
+    overflow: visible;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+.synthwave-city-glow-beam {
+    position: absolute;
+    bottom: 0;
+    height: 100%;
+    transform: translateX(-50%);
+    background: radial-gradient(
+        ellipse at bottom,
+        rgba(80, 8, 5, 1) 0%,
+        rgba(100, 12, 8, 0.9) 8%,
+        rgba(120, 18, 12, 0.75) 16%,
+        rgba(140, 24, 16, 0.55) 28%,
+        rgba(160, 30, 20, 0.35) 42%,
+        rgba(180, 36, 24, 0.18) 60%,
+        transparent 80%
+    );
+    filter: blur(35px);
+    opacity: 1;
+    animation: cityGlowPulse 4s ease-in-out infinite;
+}
+
+@keyframes cityGlowPulse {
+    0%, 100% {
+        opacity: 0.85;
+        transform: translateX(-50%) scaleY(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(1.2);
+    }
+}
+
+/* City Skyline - Back Layer */
+#synthwave-sunset-city-back {
+    position: absolute;
+    bottom: 44%;
+    left: 0;
+    width: 100%;
+    height: 14%;
+    z-index: 6;
+    opacity: 0.85;
+}
+
+/* City Skyline - Front Layer */
+#synthwave-sunset-city-front {
+    position: absolute;
+    bottom: 36%;
+    left: 0;
+    width: 100%;
+    height: 18%;
+    z-index: 7;
+}
+
+.synthwave-city-svg {
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.3));
+}
+
+/* Ground Layer - Blocks sun under grid */
+#synthwave-sunset-ground {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 62%;
+    z-index: 4;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(10, 2, 15, 0.3) 10%,
+        rgba(8, 1, 12, 0.6) 20%,
+        rgba(5, 0, 10, 0.85) 35%,
+        rgba(3, 0, 8, 0.95) 50%,
+        #000000 70%,
+        #000000 100%
+    );
+}
+
+/* Grid Floor */
+#synthwave-sunset-grid {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 40%;
+    z-index: 5;
+    overflow: hidden;
+}
+
+.synthwave-grid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Scanlines - CRT Effect */
+#synthwave-sunset-scanlines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.15) 2px,
+        rgba(0, 0, 0, 0.15) 4px
+    );
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0.4;
+    animation: synthwave-scanline-flicker 0.1s infinite;
+}
+
+@keyframes synthwave-scanline-flicker {
+    0% { opacity: 0.4; }
+    50% { opacity: 0.38; }
+    100% { opacity: 0.4; }
 }
 
 /* ================== STILLWATER THEME ================== */
