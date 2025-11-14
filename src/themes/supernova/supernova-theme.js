@@ -18,6 +18,11 @@ export default class SupernovaTheme extends BaseTheme {
 
         // Pre-compute color cache
         this.colorCache = new Map();
+
+        // Effect state tracking for smooth transitions
+        this.activeEffectTimeout = null;
+        this.currentBrightness = 100;
+        this.currentSaturation = 100;
     }
 
     async createScene() {
@@ -184,6 +189,15 @@ export default class SupernovaTheme extends BaseTheme {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // Remove expired combo particles
+        this.shockwaveParticles = this.shockwaveParticles.filter(particle => {
+            if (particle.isComboParticle) {
+                particle.lifetime += deltaTime;
+                return particle.lifetime < particle.maxLifetime;
+            }
+            return true; // Keep non-combo particles
+        });
+
         // Batch particle updates and renders
         const particleCount = this.shockwaveParticles.length;
 
@@ -212,6 +226,16 @@ export default class SupernovaTheme extends BaseTheme {
             if (particle.distance > fadeStart) {
                 const fadeProgress = (particle.distance - fadeStart) / (particle.maxDistance - fadeStart);
                 particle.opacity = particle.baseOpacity * (1 - fadeProgress);
+            }
+
+            // Fade out combo particles based on lifetime
+            if (particle.isComboParticle) {
+                const lifetimeProgress = particle.lifetime / particle.maxLifetime;
+                // Start fading at 70% of lifetime
+                if (lifetimeProgress > 0.7) {
+                    const fadeOutProgress = (lifetimeProgress - 0.7) / 0.3;
+                    particle.opacity *= (1 - fadeOutProgress);
+                }
             }
 
             // Calculate position with turbulence
@@ -486,14 +510,45 @@ export default class SupernovaTheme extends BaseTheme {
         const theme = document.getElementById('supernova-theme');
         if (!theme) return;
 
-        const brightness = 100 + Math.min(comboCount * 15, 70);
-        const saturation = 100 + Math.min(comboCount * 25, 100);
+        // Clear any existing timeout
+        if (this.activeEffectTimeout) {
+            clearTimeout(this.activeEffectTimeout);
+            this.activeEffectTimeout = null;
+        }
 
-        theme.style.filter = `brightness(${brightness}%) saturate(${saturation}%)`;
+        // Calculate new target values (accumulate but cap)
+        const targetBrightness = Math.min(this.currentBrightness + comboCount * 15, 170);
+        const targetSaturation = Math.min(this.currentSaturation + comboCount * 25, 200);
 
-        setTimeout(() => {
-            theme.style.filter = '';
-        }, 1000 + comboCount * 120);
+        this.currentBrightness = targetBrightness;
+        this.currentSaturation = targetSaturation;
+
+        // Apply the effect with smooth transition
+        theme.style.transition = 'filter 0.3s ease-out';
+        theme.style.filter = `brightness(${this.currentBrightness}%) saturate(${this.currentSaturation}%)`;
+
+        // Gradually fade back to normal
+        this.activeEffectTimeout = setTimeout(() => {
+            this.fadeBackToNormal(theme);
+        }, 800 + comboCount * 100);
+    }
+
+    /**
+     * Gradually fade effects back to normal state
+     */
+    fadeBackToNormal(theme) {
+        if (!theme) return;
+
+        // Smoothly transition back to normal
+        theme.style.transition = 'filter 1.5s ease-in-out';
+        theme.style.filter = 'brightness(100%) saturate(100%)';
+
+        // Reset internal state
+        this.currentBrightness = 100;
+        this.currentSaturation = 100;
+
+        // Clear the timeout reference
+        this.activeEffectTimeout = null;
     }
 
     /**
@@ -556,8 +611,6 @@ export default class SupernovaTheme extends BaseTheme {
      */
     createExplosionParticles(intensity) {
         const particleCount = Math.min(intensity * 8, 50);
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
 
         const colors = [
             { r: 100, g: 220, b: 255 },   // Bright cyan
@@ -587,6 +640,9 @@ export default class SupernovaTheme extends BaseTheme {
                 orbitAngle: this.random(0, Math.PI * 2),
                 orbitSpeed: this.random(-0.02, 0.02),
                 turbulence: this.random(1, 3),
+                isComboParticle: true, // Mark as temporary combo particle
+                lifetime: 0, // Track how long this particle has existed
+                maxLifetime: 3000, // Remove after 3 seconds
             });
         }
     }
@@ -611,6 +667,12 @@ export default class SupernovaTheme extends BaseTheme {
             this.animationFrame = null;
         }
 
+        // Clear any active effect timeouts
+        if (this.activeEffectTimeout) {
+            clearTimeout(this.activeEffectTimeout);
+            this.activeEffectTimeout = null;
+        }
+
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
@@ -629,10 +691,15 @@ export default class SupernovaTheme extends BaseTheme {
         // Reset performance tracking
         this.lastFrameTime = 0;
 
+        // Reset effect state
+        this.currentBrightness = 100;
+        this.currentSaturation = 100;
+
         // Clear any active effects
         const theme = document.getElementById('supernova-theme');
         if (theme) {
             theme.style.filter = '';
+            theme.style.transition = '';
         }
 
         super.stop();
