@@ -38,10 +38,19 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.colorCache = new Map();
         this.offscreenCanvas = null; // For pre-rendering clouds
         this.offscreenCtx = null;
+        this.mistCanvas = null; // Separate canvas for mist (pre-rendered once)
+        this.mistCtx = null;
         this.needsRedraw = true; // Flag to track if clouds need re-rendering
         this.frameSkip = 0; // Skip frames for performance
         this.updateCounter = 0; // Counter for selective updates
         this.cachedSinCos = { sin: 0, cos: 0 }; // Cache trig values
+
+        // Layer caching for performance
+        this.cloudLayerCanvas = null;
+        this.cloudLayerCtx = null;
+        this.mistLayerCanvas = null;
+        this.mistLayerCtx = null;
+        this.layersNeedUpdate = true;
 
         // Cache frequently used values
         this.cachedWidth = 0;
@@ -115,9 +124,9 @@ export default class NimbusVeilTheme extends BaseTheme {
     createCloudParticles() {
         const colors = this.getCloudColors();
 
-        // Create 11 cloud particles - large, dynamic, visually stunning
-        for (let i = 0; i < 11; i++) {
-            const baseSize = Math.random() * 120 + 50; // Much larger clouds (50-170px)
+        // Create 4 cloud particles - large, dynamic, visually stunning (heavily optimized)
+        for (let i = 0; i < 4; i++) {
+            const baseSize = Math.random() * 140 + 70; // Larger clouds to compensate (70-210px)
             this.cloudParticles.push({
                 x: Math.random() * window.innerWidth,
                 y: Math.random() * window.innerHeight,
@@ -131,11 +140,9 @@ export default class NimbusVeilTheme extends BaseTheme {
                 blur: Math.random() * 35 + 25, // 25-60px blur
                 pulseSpeed: Math.random() * 0.025 + 0.015, // Faster pulsing
                 pulseOffset: Math.random() * Math.PI * 2,
-                // Subtle morphing properties for gentle size changes
-                morphSpeed: Math.random() * 0.004 + 0.002, // Slower morphing (was 0.01-0.025)
-                morphTimer: Math.random() * 10, // Start at random point in morph cycle
                 swayAmplitude: Math.random() * 0.35 + 0.2, // Much more sway
                 swaySpeed: Math.random() * 0.02 + 0.015 // Faster sway
+                // REMOVED morphing for performance - clouds stay constant size
             });
         }
     }
@@ -144,9 +151,9 @@ export default class NimbusVeilTheme extends BaseTheme {
      * Create mist/fog particles for depth
      */
     createMistParticles() {
-        // Create 7 larger mist particles for enhanced background depth
-        for (let i = 0; i < 7; i++) {
-            const baseSize = Math.random() * 200 + 100; // Bigger mist (100-300px)
+        // Create 3 larger mist particles for enhanced background depth (heavily optimized)
+        for (let i = 0; i < 3; i++) {
+            const baseSize = Math.random() * 250 + 150; // Bigger mist to compensate (150-400px)
             this.mistParticles.push({
                 x: Math.random() * window.innerWidth,
                 y: Math.random() * window.innerHeight,
@@ -159,16 +166,14 @@ export default class NimbusVeilTheme extends BaseTheme {
                 blur: Math.random() * 65 + 55, // 55-120px heavy blur
                 pulseSpeed: Math.random() * 0.02 + 0.01, // Faster pulsing
                 pulseOffset: Math.random() * Math.PI * 2,
-                // Subtle morphing properties
-                morphSpeed: Math.random() * 0.003 + 0.001, // Slower morphing (was 0.006-0.018)
-                morphTimer: Math.random() * 10,
                 swayAmplitude: Math.random() * 0.25 + 0.12, // More sway
                 swaySpeed: Math.random() * 0.015 + 0.008 // Faster sway
+                // REMOVED morphing for performance - mist stays constant size
             });
         }
 
-        // Create 30 small moving particles (highly optimized)
-        for (let i = 0; i < 30; i++) {
+        // Create 10 small moving particles (heavily optimized for max performance)
+        for (let i = 0; i < 10; i++) {
             this.movingParticles.push({
                 x: Math.random() * window.innerWidth,
                 y: Math.random() * window.innerHeight,
@@ -197,14 +202,47 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true // Performance optimization
+            desynchronized: true, // Performance optimization
+            willReadFrequently: false
         });
+
+        // Create offscreen canvases for layer caching (MASSIVE performance boost)
+        this.createLayerCanvases();
 
         console.log('[Nimbus Veil] Canvas initialized:', this.canvas.width, 'x', this.canvas.height);
     }
 
     /**
-     * Main animation loop (optimized for smoothness)
+     * Create offscreen canvases for pre-rendering blurred layers
+     * This is the key performance optimization - render blur ONCE, composite every frame
+     */
+    createLayerCanvases() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        // Cloud layer canvas (pre-rendered with blur)
+        this.cloudLayerCanvas = document.createElement('canvas');
+        this.cloudLayerCanvas.width = width;
+        this.cloudLayerCanvas.height = height;
+        this.cloudLayerCtx = this.cloudLayerCanvas.getContext('2d', {
+            alpha: true,
+            willReadFrequently: false
+        });
+
+        // Mist layer canvas (pre-rendered with heavy blur)
+        this.mistLayerCanvas = document.createElement('canvas');
+        this.mistLayerCanvas.width = width;
+        this.mistLayerCanvas.height = height;
+        this.mistLayerCtx = this.mistLayerCanvas.getContext('2d', {
+            alpha: true,
+            willReadFrequently: false
+        });
+
+        console.log('[Nimbus Veil] Layer canvases created for pre-rendering');
+    }
+
+    /**
+     * Main animation loop (optimized for 60 FPS)
      */
     startAnimation() {
         const animate = (currentTime) => {
@@ -217,8 +255,10 @@ export default class NimbusVeilTheme extends BaseTheme {
             // Accumulate elapsed time (smoother than Date.now())
             this.elapsedTime += deltaTime * 0.001; // Convert to seconds
 
-            // Update and render every frame (let GPU handle it)
+            // Update particle positions every frame
             this.updateParticles(deltaTime);
+
+            // Render at full 60 FPS (no frame skipping!)
             this.renderCanvas();
 
             this.animationFrame = requestAnimationFrame(animate);
@@ -245,8 +285,8 @@ export default class NimbusVeilTheme extends BaseTheme {
         const width = this.cachedWidth;
         const height = this.cachedHeight;
 
-        // Update wind only every 3 frames
-        if (this.updateCounter % 3 === 0) {
+        // Update wind only every 10 frames (heavily reduced for performance)
+        if (this.updateCounter % 10 === 0) {
             this.windChangeTimer += deltaTime * 0.003;
             if (this.windChangeTimer > 10) {
                 this.windChangeTimer = 0;
@@ -260,8 +300,8 @@ export default class NimbusVeilTheme extends BaseTheme {
         const windX = this.cachedWindX;
         const windY = this.cachedWindY;
 
-        // Lightning (ultra rare)
-        if (this.updateCounter % 30 === 0 && Math.random() < 0.0005) {
+        // Lightning (ultra rare) - check less frequently for performance
+        if (this.updateCounter % 60 === 0 && Math.random() < 0.0005) {
             this.createLightningFlash();
         }
 
@@ -278,8 +318,8 @@ export default class NimbusVeilTheme extends BaseTheme {
             }
         }
 
-        // Update trig cache only every 2 frames
-        if (this.updateCounter % 2 === 0) {
+        // Update trig cache only every 5 frames (heavily reduced for performance)
+        if (this.updateCounter % 5 === 0) {
             this.cachedSinCos.sin = Math.sin(time * 0.5);
             this.cachedSinCos.cos = Math.cos(time * 0.5);
         }
@@ -299,16 +339,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         for (let i = 0, len = this.cloudParticles.length; i < len; i++) {
             const particle = this.cloudParticles[i];
 
-            // Subtle morphing for gentle size changes
-            particle.morphTimer += particle.morphSpeed;
-            if (particle.morphTimer > 1) {
-                particle.morphTimer = 0;
-                particle.targetSize = particle.baseSize * (0.9 + Math.random() * 0.2); // 90%-110% size variation (was 75%-125%)
-            }
-
-            particle.size += (particle.targetSize - particle.size) * 0.015; // Slower, smoother transitions (was 0.03)
-
-            // Movement
+            // Movement (REMOVED morphing calculations for performance)
             particle.x += particle.speedX + sinTime * particle.swayAmplitude + windX12;
             particle.y += particle.speedY + cosTime * particle.swayAmplitude * 0.5 + windY12;
 
@@ -330,14 +361,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         for (let i = 0, len = this.mistParticles.length; i < len; i++) {
             const particle = this.mistParticles[i];
 
-            particle.morphTimer += particle.morphSpeed;
-            if (particle.morphTimer > 1) {
-                particle.morphTimer = 0;
-                particle.targetSize = particle.baseSize * (0.9 + Math.random() * 0.2); // 90%-110% size variation (was 70%-130%)
-            }
-
-            particle.size += (particle.targetSize - particle.size) * 0.012; // Slower, smoother transitions (was 0.025)
-
+            // Movement (REMOVED morphing calculations for performance)
             particle.x += particle.speedX + sinTime08 * particle.swayAmplitude + windX08;
             particle.y += particle.speedY + cosTime06 * particle.swayAmplitude + windY08;
 
@@ -368,21 +392,78 @@ export default class NimbusVeilTheme extends BaseTheme {
     }
 
     /**
-     * Render particles to canvas (smooth & optimized)
+     * Pre-render mist layer with blur (called once or when particles change significantly)
+     */
+    prerenderMistLayer() {
+        if (!this.mistLayerCtx) return;
+
+        const ctx = this.mistLayerCtx;
+
+        // Clear the layer
+        ctx.clearRect(0, 0, this.mistLayerCanvas.width, this.mistLayerCanvas.height);
+
+        // Apply blur filter ONCE for all mist (reduced blur for performance)
+        ctx.save();
+        ctx.filter = 'blur(40px)'; // Reduced from 50px for performance
+        ctx.fillStyle = '#ffffff';
+
+        // Draw all mist particles with their BASE opacity
+        for (let i = 0; i < this.mistParticles.length; i++) {
+            const particle = this.mistParticles[i];
+            ctx.globalAlpha = particle.opacity;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    /**
+     * Pre-render cloud layer with blur (called once or when particles change significantly)
+     */
+    prerenderCloudLayer() {
+        if (!this.cloudLayerCtx) return;
+
+        const ctx = this.cloudLayerCtx;
+
+        // Clear the layer
+        ctx.clearRect(0, 0, this.cloudLayerCanvas.width, this.cloudLayerCanvas.height);
+
+        // Apply blur filter ONCE for all clouds (slightly reduced for performance)
+        ctx.save();
+        ctx.filter = 'blur(30px)'; // Reduced from 35px for performance
+        ctx.fillStyle = '#ffffff';
+
+        // Draw all cloud particles with their BASE opacity
+        for (let i = 0; i < this.cloudParticles.length; i++) {
+            const particle = this.cloudParticles[i];
+            ctx.globalAlpha = particle.opacity;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    /**
+     * Render particles to canvas (ULTRA-OPTIMIZED - 60 FPS capable)
+     * Key optimization: Composite pre-rendered blurred layers instead of applying blur every frame
      */
     renderCanvas() {
         if (!this.ctx) return;
 
-        // Render at 20 FPS (every 3rd frame for performance)
+        // Pre-render layers every 10 frames (particles move slowly, don't need to re-blur constantly)
+        // This is a MAJOR performance boost - blur is expensive!
         this.frameSkip++;
-        if (this.frameSkip % 3 !== 0) {
-            return;
+        if (this.frameSkip % 10 === 0) {
+            this.prerenderMistLayer();
+            this.prerenderCloudLayer();
         }
 
-        // Clear canvas
+        // Clear main canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Draw lightning flashes (behind clouds)
+        // Draw lightning flashes (behind everything)
         if (this.lightningFlashes.length > 0) {
             this.ctx.save();
             this.ctx.globalAlpha = this.lightningFlashes[0].opacity * 0.15;
@@ -391,45 +472,20 @@ export default class NimbusVeilTheme extends BaseTheme {
             this.ctx.restore();
         }
 
-        // Batch render mist with same blur value (reduced filter changes)
+        // Composite pre-rendered mist layer (NO BLUR FILTER - instant!)
         this.ctx.save();
-        this.ctx.filter = 'blur(50px)'; // Fixed blur for all mist (reduced for performance)
-        this.ctx.fillStyle = '#ffffff';
-
-        // Draw all mist particles in one batch
-        for (let i = 0; i < this.mistParticles.length; i++) {
-            const particle = this.mistParticles[i];
-            if (particle.currentOpacity < 0.01) continue;
-
-            this.ctx.globalAlpha = particle.currentOpacity;
-            this.ctx.beginPath();
-            this.ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318); // Use constant for 2π
-            this.ctx.fill();
-        }
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.drawImage(this.mistLayerCanvas, 0, 0);
         this.ctx.restore();
 
-        // Batch render clouds with fixed blur (major performance boost)
+        // Composite pre-rendered cloud layer (NO BLUR FILTER - instant!)
         this.ctx.save();
-        this.ctx.filter = 'blur(35px)'; // Fixed blur for all clouds (softer, more ethereal)
-
-        // Group clouds by color for fewer state changes
-        const whiteColor = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.fillStyle = whiteColor;
-
-        for (let i = 0; i < this.cloudParticles.length; i++) {
-            const particle = this.cloudParticles[i];
-            if (particle.currentOpacity < 0.01) continue;
-
-            this.ctx.globalAlpha = particle.currentOpacity;
-            this.ctx.beginPath();
-            this.ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318);
-            this.ctx.fill();
-        }
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.drawImage(this.cloudLayerCanvas, 0, 0);
         this.ctx.restore();
 
         // Draw moving particles (no blur, ultra-fast batch render)
         this.ctx.save();
-        this.ctx.filter = 'none';
         this.ctx.fillStyle = '#ffffff';
 
         // Single path for all particles (maximum performance)
@@ -550,9 +606,15 @@ export default class NimbusVeilTheme extends BaseTheme {
      * React to piece lock events
      */
     onPieceLock(piece) {
-        // 30% chance to create a small cloud puff
-        if (Math.random() < 0.3) {
-            this.createCloudPuff();
+        // DISABLED for performance - cloud puffs on every piece create too many particles
+        // Just brighten a random cloud instead
+        if (Math.random() < 0.15 && this.cloudParticles.length > 0) {
+            const cloud = this.cloudParticles[Math.floor(Math.random() * this.cloudParticles.length)];
+            const originalOpacity = cloud.opacity;
+            cloud.opacity = Math.min(cloud.opacity * 1.2, 0.8);
+            setTimeout(() => {
+                cloud.opacity = originalOpacity;
+            }, 300);
         }
     }
 
@@ -672,6 +734,18 @@ export default class NimbusVeilTheme extends BaseTheme {
         }
         this.canvas = null;
         this.ctx = null;
+
+        // Clear layer canvases
+        if (this.cloudLayerCtx) {
+            this.cloudLayerCtx.clearRect(0, 0, this.cloudLayerCanvas.width, this.cloudLayerCanvas.height);
+        }
+        if (this.mistLayerCtx) {
+            this.mistLayerCtx.clearRect(0, 0, this.mistLayerCanvas.width, this.mistLayerCanvas.height);
+        }
+        this.cloudLayerCanvas = null;
+        this.cloudLayerCtx = null;
+        this.mistLayerCanvas = null;
+        this.mistLayerCtx = null;
 
         // Clear cache
         this.colorCache.clear();
