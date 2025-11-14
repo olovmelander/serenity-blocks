@@ -95,11 +95,20 @@ export class ThemesTab {
     }
 
     /**
-     * Get emoji icon for theme based on name
-     * @param {string} name - Theme display name
-     * @returns {string} Emoji icon
+     * Get icon for theme (PNG or emoji fallback)
+     * @param {Object} theme - Theme object with id and displayName
+     * @returns {string} HTML string for icon (img tag or emoji div)
      */
-    getThemeIcon(name) {
+    getThemeIcon(theme) {
+        // Check if theme has custom PNG icon
+        const themeMeta = THEME_REGISTRY.find(t => t.id === theme.id);
+        if (themeMeta?.icon) {
+            // Import path needs to be resolved relative to themes directory
+            const iconPath = `/src/themes/${themeMeta.icon}`;
+            return `<img src="${iconPath}" alt="${theme.displayName}" class="theme-icon-img" />`;
+        }
+
+        // Fallback to emoji icons
         const icons = {
             'Forest': '🌲', 'Himalayan Peak': '🏔️', 'Ice Temple': '❄️',
             'Moonlit Forest': '🌙', 'Wolfhour': '🐺', 'Ocean': '🌊',
@@ -117,7 +126,8 @@ export class ThemesTab {
             'Nebula Flow': '🌀', 'Lunara': '🌙', 'Pyrestorm': '🔥',
             'Neon Dusk': '🌆', 'Stillwater': '💧'
         };
-        return icons[name] || '🎨';
+        const emoji = icons[theme.displayName] || '🎨';
+        return `<div class="theme-icon-emoji">${emoji}</div>`;
     }
 
     /**
@@ -194,14 +204,14 @@ export class ThemesTab {
         return filteredThemes.map(theme => {
             const isActive = theme.id === this.currentTheme;
             const colorScheme = this.getThemeColorScheme(theme.group);
-            const icon = this.getThemeIcon(theme.displayName);
+            const iconHtml = this.getThemeIcon(theme);
 
             return `
                 <div class="theme-card ${isActive ? 'active' : ''}"
                      data-theme="${theme.id}"
                      style="--theme-gradient: ${colorScheme.gradient}">
                     <div class="theme-swatch" style="background: ${colorScheme.gradient}">
-                        <div class="theme-icon">${icon}</div>
+                        ${iconHtml}
                         ${isActive ? '<div class="active-indicator">✓</div>' : ''}
                     </div>
                     <div class="theme-info">

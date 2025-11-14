@@ -16,6 +16,7 @@ export const THEME_REGISTRY = [
         displayName: 'Ice Temple',
         module: './ice-temple/ice-temple-theme.js',
         group: 'biomes',
+        icon: './ice-temple/ice-temple-theme-icon.png',
     },
     {
         id: 'moonlit-forest',
@@ -28,6 +29,7 @@ export const THEME_REGISTRY = [
         displayName: 'Wolfhour',
         module: './wolfhour/wolfhour-theme.js',
         group: 'biomes',
+        icon: './wolfhour/wolfhour-theme-icon.png',
     },
     {
         id: 'ocean',
@@ -52,6 +54,7 @@ export const THEME_REGISTRY = [
         displayName: 'Winter',
         module: './winter/winter-theme.js',
         group: 'biomes',
+        icon: './winter/winter-theme-icon.png',
     },
     {
         id: 'fall',
@@ -238,6 +241,7 @@ export const THEME_REGISTRY = [
         displayName: 'Neon Dusk',
         module: './neon-dusk/neon-dusk-theme.js',
         group: 'urban',
+        icon: './neon-dusk/neon-dusk-theme-icon.png',
     },
     {
         id: 'synthwave-sunset',
