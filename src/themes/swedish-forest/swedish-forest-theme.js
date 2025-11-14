@@ -28,6 +28,10 @@ export default class SwedishForestTheme extends BaseTheme {
         this.maxGodRays = 12;
         this.maxSpirits = 8;
 
+        // Gradient cache for performance
+        this.gradientCache = new Map();
+        this.frameCount = 0;
+
         // Event tracking
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
@@ -71,11 +75,12 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Initialize scene elements
         this.createTrees();
-        this.createMist();
         this.createGodRays();
         this.createFireflies();
-        this.createFallingLeaves();
         this.createForestSpirits();
+        // Removed for performance: mist, falling leaves
+        // this.createMist();
+        // this.createFallingLeaves();
 
         this.setupEventListeners();
         this.animate();
@@ -310,15 +315,13 @@ export default class SwedishForestTheme extends BaseTheme {
                 spirit.pulseSpeed = Math.min(spirit.pulseSpeed * 1.15, 0.04);
             });
         }
-
-        // Disable screen shake for mystical forest theme - it breaks the calm atmosphere
-        // and causes performance issues
     }
 
     animate() {
         if (!this.isActive || !this.ctx || !this.canvas) return;
 
         this.animationTime += 0.016;
+        this.frameCount++;
 
         // Decay effects
         if (this.pulseIntensity > 0) {
@@ -346,12 +349,13 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Draw scene (back to front) - no screen shake for better performance
         this.drawGodRays();
-        this.drawMist();
         this.drawForestSpirits('back');
         this.drawTrees();
         this.drawForestSpirits('front');
         this.drawFireflies();
-        this.drawFallingLeaves();
+        // Removed for performance: mist, falling leaves
+        // this.drawMist();
+        // this.drawFallingLeaves();
 
         // Draw magic glow overlay
         if (this.magicGlow > 0) {
@@ -362,7 +366,7 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawGodRays() {
-        this.godRays.forEach((ray) => {
+        this.godRays.forEach((ray, index) => {
             ray.pulsePhase += ray.pulseSpeed;
             ray.angle = ray.baseAngle + Math.sin(this.animationTime * ray.rotationSpeed) * 0.1;
 
@@ -374,12 +378,19 @@ export default class SwedishForestTheme extends BaseTheme {
             this.ctx.translate(ray.x, ray.y);
             this.ctx.rotate(ray.angle);
 
-            const gradient = this.ctx.createLinearGradient(0, 0, 0, ray.height);
-            gradient.addColorStop(0, `rgba(255, 250, 220, ${opacity * 0.5})`);
-            gradient.addColorStop(0.3, `rgba(255, 250, 220, ${opacity})`);
-            gradient.addColorStop(0.7, `rgba(255, 240, 200, ${opacity * 0.7})`);
-            gradient.addColorStop(1, 'rgba(255, 240, 200, 0)');
+            // Use cached gradient or create new one
+            const cacheKey = `godray-${index}`;
+            let gradient = this.gradientCache.get(cacheKey);
+            if (!gradient) {
+                gradient = this.ctx.createLinearGradient(0, 0, 0, ray.height);
+                gradient.addColorStop(0, 'rgba(255, 250, 220, 0.5)');
+                gradient.addColorStop(0.3, 'rgba(255, 250, 220, 1)');
+                gradient.addColorStop(0.7, 'rgba(255, 240, 200, 0.7)');
+                gradient.addColorStop(1, 'rgba(255, 240, 200, 0)');
+                this.gradientCache.set(cacheKey, gradient);
+            }
 
+            this.ctx.globalAlpha = opacity;
             this.ctx.fillStyle = gradient;
             this.ctx.fillRect(-ray.width / 2, 0, ray.width, ray.height);
 
@@ -388,7 +399,7 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawMist() {
-        this.mistLayers.forEach((mist) => {
+        this.mistLayers.forEach((mist, index) => {
             if (!mist.baseX) mist.baseX = mist.x;
 
             mist.driftPhase += mist.driftSpeed * 0.001;
@@ -398,26 +409,21 @@ export default class SwedishForestTheme extends BaseTheme {
             if (mist.x > this.canvas.width + mist.width) {
                 mist.x = -mist.width;
                 mist.baseX = mist.x;
+                // Invalidate cached gradient when mist wraps
+                this.gradientCache.delete(`mist-${index}`);
             }
 
             const comboBoost = 1 + this.comboMultiplier * 0.3;
             const opacity = mist.opacity * comboBoost;
 
-            const gradient = this.ctx.createRadialGradient(
-                mist.x, mist.y, 0,
-                mist.x, mist.y, mist.width / 2
-            );
-
+            // Use solid color instead of gradient for better performance
             const mistColor = this.magicGlow > 0
                 ? `rgba(180, 220, 255, ${opacity * (1 + this.magicGlow * 0.5)})`
                 : `rgba(200, 210, 220, ${opacity})`;
 
-            gradient.addColorStop(0, mistColor);
-            gradient.addColorStop(0.5, `rgba(200, 210, 220, ${opacity * 0.5})`);
-            gradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = gradient;
             this.ctx.save();
+            this.ctx.fillStyle = mistColor;
+            this.ctx.globalAlpha = opacity;
             this.ctx.translate(mist.x, mist.y);
             this.ctx.scale(1, mist.height / mist.width);
             this.ctx.beginPath();
@@ -428,10 +434,12 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawTrees() {
-        // Sort trees by layer for proper depth
-        const sortedTrees = [...this.trees].sort((a, b) => a.layer - b.layer);
+        // Sort trees once and cache - no need to sort every frame
+        if (!this.sortedTrees) {
+            this.sortedTrees = [...this.trees].sort((a, b) => a.layer - b.layer);
+        }
 
-        sortedTrees.forEach((tree) => {
+        this.sortedTrees.forEach((tree) => {
             tree.swayPhase += tree.swaySpeed;
             const sway = Math.sin(tree.swayPhase) * tree.swayAmount;
 
@@ -511,25 +519,15 @@ export default class SwedishForestTheme extends BaseTheme {
             const pulse = Math.sin(firefly.pulsePhase) * 0.5 + 0.5;
             const opacity = firefly.opacity * pulse * (1 + this.comboMultiplier * 0.3);
 
-            // Draw firefly glow
-            const gradient = this.ctx.createRadialGradient(
-                firefly.x, firefly.y, 0,
-                firefly.x, firefly.y, firefly.size * 3
-            );
-            gradient.addColorStop(0, `hsla(${firefly.hue}, 100%, 70%, ${opacity})`);
-            gradient.addColorStop(0.3, `hsla(${firefly.hue}, 100%, 60%, ${opacity * 0.6})`);
-            gradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Draw firefly core
+            // Use shadowBlur instead of gradient for better performance
+            this.ctx.save();
+            this.ctx.shadowBlur = firefly.size * 3;
+            this.ctx.shadowColor = `hsla(${firefly.hue}, 100%, 70%, ${opacity * 0.6})`;
             this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 90%, ${opacity})`;
             this.ctx.beginPath();
             this.ctx.arc(firefly.x, firefly.y, firefly.size * 0.5, 0, Math.PI * 2);
             this.ctx.fill();
+            this.ctx.restore();
         }
     }
 
@@ -593,8 +591,8 @@ export default class SwedishForestTheme extends BaseTheme {
             if (spirit.y < -50) spirit.y = this.canvas.height + 50;
             if (spirit.y > this.canvas.height + 50) spirit.y = -50;
 
-            // Add to trail every 2 frames to reduce trail points
-            if (this.animationTime % 2 < 0.02) {
+            // Add to trail every 3 frames for better performance
+            if (this.frameCount % 3 === 0) {
                 spirit.trail.push({ x: spirit.x, y: spirit.y });
                 if (spirit.trail.length > spirit.maxTrailLength) {
                     spirit.trail.shift();
@@ -608,8 +606,8 @@ export default class SwedishForestTheme extends BaseTheme {
             const glowBoost = this.magicGlow > 0 ? 1 + this.magicGlow * 0.8 : 1;
             const opacity = spirit.opacity * pulse * comboBoost * glowBoost * spirit.life;
 
-            // Draw simplified trail - only draw every other point and use solid colors
-            if (spirit.trail.length > 1) {
+            // Skip trail during high combos for performance
+            if (spirit.trail.length > 1 && this.comboMultiplier < 1.5) {
                 this.ctx.save();
                 this.ctx.globalAlpha = opacity * 0.3;
                 this.ctx.strokeStyle = `hsl(${spirit.hue}, 80%, 70%)`;
@@ -626,28 +624,18 @@ export default class SwedishForestTheme extends BaseTheme {
                 this.ctx.restore();
             }
 
-            // Draw spirit main body using shadowBlur instead of gradients
+            // Simplified spirit rendering - single draw call with shadowBlur
             this.ctx.save();
-            this.ctx.shadowBlur = spirit.size * 1.2;
-            this.ctx.shadowColor = `hsla(${spirit.hue}, 80%, 70%, ${opacity * 0.6})`;
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 90%, 80%, ${opacity * 0.8})`;
+            this.ctx.shadowBlur = spirit.size * 1.5;
+            this.ctx.shadowColor = `hsla(${spirit.hue}, 80%, 70%, ${opacity * 0.5})`;
+            this.ctx.fillStyle = `hsla(${spirit.hue}, 95%, 85%, ${opacity})`;
             this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.3, 0, Math.PI * 2);
+            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.25, 0, Math.PI * 2);
             this.ctx.fill();
             this.ctx.restore();
 
-            // Draw bright core
-            this.ctx.save();
-            this.ctx.shadowBlur = spirit.size * 0.5;
-            this.ctx.shadowColor = `hsla(${spirit.hue}, 100%, 95%, ${opacity})`;
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 95%, ${opacity})`;
-            this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.15, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.restore();
-
-            // Draw subtle particles around spirit during combos - reduced count
-            if (this.comboMultiplier > 1.3) {
+            // Skip particles during high combos for performance - they cause major slowdown
+            if (this.comboMultiplier > 1.3 && this.comboMultiplier < 1.5) {
                 const particleCount = 2;
                 this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 90%, ${opacity * 0.4})`;
                 for (let i = 0; i < particleCount; i++) {
@@ -694,5 +682,8 @@ export default class SwedishForestTheme extends BaseTheme {
         this.fallingLeaves = [];
         this.godRays = [];
         this.forestSpirits = [];
+        this.sortedTrees = null;
+        this.gradientCache.clear();
+        this.frameCount = 0;
     }
 }
