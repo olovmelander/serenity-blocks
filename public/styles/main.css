@@ -10545,8 +10545,8 @@ body {
 #pyrestorm-lava-rivers {
     position: absolute;
     bottom: 0; left: 0;
-    width: 200%; height: 40%;
-    z-index: 3;
+    width: 200%; height: 85%;
+    z-index: 2.5;
     pointer-events: none;
 }
 
