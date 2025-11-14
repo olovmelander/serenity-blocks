@@ -7,11 +7,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.gridCanvas = null;
         this.gridCtx = null;
         this.animationTime = 0;
-        this.cityBuildings = [];
         this.eventUnsubscribers = [];
         this.gridPulseIntensity = 0;
         this.comboColorShift = 0;
-        this.resizeHandler = null;
 
         // Random phase offsets for unique sun movement each time
         this.sunPhaseX = Math.random() * Math.PI * 2;
@@ -23,30 +21,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.timeOffset = Math.random() * 10000;
     }
 
-    clearContainers() {
-        // Clear all containers to prevent duplicates when theme is reactivated
-        const containerIds = [
-            'synthwave-sunset-sun',
-            'synthwave-sunset-city-glow',
-            'synthwave-sunset-city-back',
-            'synthwave-sunset-city-front',
-            'synthwave-sunset-grid',
-            'synthwave-sunset-scanlines'
-        ];
-
-        containerIds.forEach(id => {
-            const container = document.getElementById(id);
-            if (container) {
-                container.innerHTML = '';
-            }
-        });
-    }
-
     async createScene() {
         const container = this.getContainer('synthwave-sunset-theme');
-
-        // Clear all containers first to prevent duplicates when theme is reactivated
-        this.clearContainers();
 
         // Create sky gradient background (handled by CSS)
         const sky = this.getContainer('synthwave-sunset-sky');
@@ -76,21 +52,23 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createSun() {
         const sunContainer = this.getContainer('synthwave-sunset-sun');
 
-        // Create the sun element
-        const sun = document.createElement('div');
-        sun.className = 'synthwave-sun';
-        sunContainer.appendChild(sun);
+        // Only create sun elements if container is empty
+        if (sunContainer && sunContainer.children.length === 0) {
+            // Create the sun element
+            const sun = document.createElement('div');
+            sun.className = 'synthwave-sun';
+            sunContainer.appendChild(sun);
 
-        // Create sun glow layers
-        for (let i = 0; i < 3; i++) {
-            const glow = document.createElement('div');
-            glow.className = `synthwave-sun-glow glow-layer-${i}`;
-            sunContainer.appendChild(glow);
+            // Create sun glow layers
+            for (let i = 0; i < 3; i++) {
+                const glow = document.createElement('div');
+                glow.className = `synthwave-sun-glow glow-layer-${i}`;
+                sunContainer.appendChild(glow);
+            }
         }
 
         // Store reference to sun container for animation
         this.sunContainer = sunContainer;
-        console.log('[SynthwaveSunset] Sun container stored:', !!this.sunContainer);
     }
 
     calculateSunPosition() {
@@ -137,22 +115,25 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createCityGlow() {
         const glowContainer = this.getContainer('synthwave-sunset-city-glow');
 
-        // Create multiple glow beams at different positions to simulate light coming from between buildings
-        const glowPositions = [8, 18, 28, 38, 48, 58, 68, 78, 88, 95];
+        // Only create glow beams if container is empty
+        if (glowContainer && glowContainer.children.length === 0) {
+            // Create multiple glow beams at different positions to simulate light coming from between buildings
+            const glowPositions = [8, 18, 28, 38, 48, 58, 68, 78, 88, 95];
 
-        glowPositions.forEach((xPos, index) => {
-            const glow = document.createElement('div');
-            glow.className = 'synthwave-city-glow-beam';
-            glow.style.left = `${xPos}%`;
+            glowPositions.forEach((xPos) => {
+                const glow = document.createElement('div');
+                glow.className = 'synthwave-city-glow-beam';
+                glow.style.left = `${xPos}%`;
 
-            // Vary the width and intensity slightly for more organic look
-            const width = this.random(10, 18);
-            const delay = this.random(0, 3);
-            glow.style.width = `${width}%`;
-            glow.style.animationDelay = `${delay}s`;
+                // Vary the width and intensity slightly for more organic look
+                const width = this.random(10, 18);
+                const delay = this.random(0, 3);
+                glow.style.width = `${width}%`;
+                glow.style.animationDelay = `${delay}s`;
 
-            glowContainer.appendChild(glow);
-        });
+                glowContainer.appendChild(glow);
+            });
+        }
     }
 
     createCitySkyline() {
@@ -165,6 +146,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     createCityLayer(containerId, fillColor, sizeScale) {
         const cityContainer = this.getContainer(containerId);
+
+        // Only create city layer if container is empty
+        if (!cityContainer || cityContainer.children.length > 0) {
+            return;
+        }
 
         // Generate clean, simple city buildings
         const buildings = [];
@@ -226,19 +212,28 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createPerspectiveGrid() {
         const gridContainer = this.getContainer('synthwave-sunset-grid');
 
-        // Create canvas for grid
-        this.gridCanvas = document.createElement('canvas');
-        this.gridCanvas.className = 'synthwave-grid-canvas';
-        this.gridCtx = this.gridCanvas.getContext('2d');
+        // Only create canvas if container is empty
+        if (gridContainer && gridContainer.children.length === 0) {
+            // Create canvas for grid
+            this.gridCanvas = document.createElement('canvas');
+            this.gridCanvas.className = 'synthwave-grid-canvas';
+            this.gridCtx = this.gridCanvas.getContext('2d');
 
-        gridContainer.appendChild(this.gridCanvas);
+            gridContainer.appendChild(this.gridCanvas);
 
-        // Size canvas
-        this.resizeGrid();
+            // Size canvas
+            this.resizeGrid();
 
-        // Handle resize - store handler reference for cleanup
-        this.resizeHandler = () => this.resizeGrid();
-        window.addEventListener('resize', this.resizeHandler);
+            // Handle resize
+            window.addEventListener('resize', () => this.resizeGrid());
+        } else if (gridContainer && gridContainer.children.length > 0) {
+            // Reuse existing canvas
+            this.gridCanvas = gridContainer.querySelector('.synthwave-grid-canvas');
+            if (this.gridCanvas) {
+                this.gridCtx = this.gridCanvas.getContext('2d');
+                this.resizeGrid();
+            }
+        }
     }
 
     resizeGrid() {
@@ -361,9 +356,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createScanLines() {
         const container = this.getContainer('synthwave-sunset-scanlines');
 
-        const scanlines = document.createElement('div');
-        scanlines.className = 'synthwave-scanlines';
-        container.appendChild(scanlines);
+        // Only create scanlines if container is empty
+        if (container && container.children.length === 0) {
+            const scanlines = document.createElement('div');
+            scanlines.className = 'synthwave-scanlines';
+            container.appendChild(scanlines);
+        }
     }
 
     setupEventListeners() {
@@ -421,82 +419,15 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     stop() {
-        // Unsubscribe from events when stopping
-        this.eventUnsubscribers.forEach(unsub => unsub());
-        this.eventUnsubscribers = [];
-
-        // Remove resize event listener
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
-        }
-
-        // Clear sun container reference
-        this.sunContainer = null;
-
-        super.stop();
-    }
-
-    resume() {
-        console.log('[SynthwaveSunset] Resuming theme...');
-
-        // Call base resume to handle common setup
-        super.resume();
-
-        // Restore sun container reference
-        if (!this.sunContainer) {
-            this.sunContainer = document.getElementById('synthwave-sunset-sun');
-        }
-
-        // Reacquire grid canvas context if it was lost
-        if (this.gridCanvas && !this.gridCtx) {
-            console.log('[SynthwaveSunset] Reacquiring grid canvas context');
-            this.gridCtx = this.gridCanvas.getContext('2d');
-
-            // Reapply device pixel ratio scaling
-            const dpr = window.devicePixelRatio || 1;
-            this.gridCtx.scale(dpr, dpr);
-        }
-
-        // If canvas doesn't exist or context can't be acquired, need full restart
-        if (!this.gridCanvas || !this.gridCtx) {
-            console.warn('[SynthwaveSunset] Grid canvas or context unavailable, full restart required');
-            return false;
-        }
-
-        // Re-setup resize handler (only if not already set)
-        if (!this.resizeHandler) {
-            this.resizeHandler = () => this.resizeGrid();
-            window.addEventListener('resize', this.resizeHandler);
-        }
-
-        // Re-setup event listeners (only if not already set)
-        if (this.eventUnsubscribers.length === 0) {
-            this.setupEventListeners();
-        }
-
-        console.log('[SynthwaveSunset] Theme resumed successfully');
-        return true;
-    }
-
-    cleanup() {
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Remove resize event listener
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
-        }
-
-        // Clean up all containers by clearing their contents
-        this.clearContainers();
-
-        // Clean up canvas references
+        // Clear references
+        this.sunContainer = null;
         this.gridCanvas = null;
         this.gridCtx = null;
 
-        super.cleanup();
+        super.stop();
     }
 }
