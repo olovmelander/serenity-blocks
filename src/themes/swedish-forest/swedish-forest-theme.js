@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
 
 export default class SwedishForestTheme extends BaseTheme {
     constructor() {
@@ -685,5 +686,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.sortedTrees = null;
         this.gradientCache.clear();
         this.frameCount = 0;
+    }
+
+    /**
+     * Provide Swedish Forest themed tetromino styling (boreal glow palette)
+     * @returns {Object} Swedish Forest tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SWEDISH_FOREST_TETROMINOS;
     }
 }

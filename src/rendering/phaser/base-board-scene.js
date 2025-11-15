@@ -5,6 +5,7 @@ import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { getGhostLandingY } from '../../core/game.js';
+import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -80,10 +81,20 @@ export function createBaseBoardScene(
             this.effectQuality = 'High';
             this.qualityConfig = getQualityConfig(this.effectQuality);
             this.cameraSettings = null;
+            this._comboPaletteCache = null;
 
             // PERFORMANCE: Periodic cleanup counters to prevent memory leaks
             this.frameCount = 0;
             this.cleanupInterval = 60; // Clean up every 1 second at 60fps (increased frequency)
+
+            // Initialize Tetromino Style Manager for theme-based tetromino colors
+            this.styleManager = new TetrominoStyleManager(
+                typeof window !== 'undefined' ? window.themeManager : null,
+                typeof window !== 'undefined' ? window.settingsManager : null
+            );
+            if (this.styleManager) {
+                this.styleManager.init();
+            }
 
             // No caching needed - simple is better
         }
@@ -285,6 +296,174 @@ export function createBaseBoardScene(
                 // Return the full height of the board, including the hidden area for spawning
                 height: (rows + hiddenRows) * blockSize,
             };
+        }
+
+        /**
+         * Get themed color for a piece type
+         * @param {string} pieceType - Piece type ('I', 'O', 'T', 'S', 'Z', 'J', 'L', 'GARBAGE')
+         * @param {string} fallbackColor - Fallback color if themed colors are disabled
+         * @returns {string} Hex color string
+         */
+        getThemedColor(pieceType, fallbackColor) {
+            if (!this.styleManager || !pieceType) {
+                return fallbackColor || '#808080';
+            }
+
+            const styleConfig = this.styleManager.getStyleForPiece(pieceType);
+            return styleConfig.color || fallbackColor || '#808080';
+        }
+
+        /**
+         * Get theme-driven combo tint (used by particle effects)
+         * @param {number} comboCount
+         * @param {number} index
+         * @returns {number} Hex tint
+         */
+        getComboTint(comboCount = 1, index = 0) {
+            const palette = this._getComboPalette();
+            if (!palette || palette.length === 0) {
+                return 0x00ffff;
+            }
+
+            if (comboCount <= 1) {
+                return palette[0];
+            }
+
+            if (comboCount <= 4) {
+                return palette[Math.min(comboCount, palette.length - 1)];
+            }
+
+            return palette[index % palette.length];
+        }
+
+        /**
+         * Build or reuse palette generated from theme tetromino colors
+         * @private
+         */
+        _getComboPalette() {
+            const baseColor = this._getThemeComboBaseColor();
+
+            if (
+                this._comboPaletteCache
+                && this._comboPaletteCache.base === baseColor
+                && Array.isArray(this._comboPaletteCache.colors)
+            ) {
+                return this._comboPaletteCache.colors;
+            }
+
+            const rgb = this._parseColor(baseColor);
+            if (!rgb) {
+                const fallback = this._parseColor('#00ffff') || { int: 0x00ffff };
+                this._comboPaletteCache = { base: baseColor, colors: [fallback.int] };
+                return this._comboPaletteCache.colors;
+            }
+
+            const adjustments = [0, 0.18, -0.15, 0.35, -0.3, 0.55, -0.08];
+            const colors = adjustments.map((amount) => this._adjustColor(rgb, amount));
+            this._comboPaletteCache = { base: baseColor, colors };
+            return colors;
+        }
+
+        /**
+         * Resolve the best base color to derive effects from
+         * @private
+         */
+        _getThemeComboBaseColor() {
+            if (this.gameState?.comboState?.sourceColor) {
+                return this.gameState.comboState.sourceColor;
+            }
+
+            if (this.styleManager && this.gameState?.currentPiece?.type) {
+                const style = this.styleManager.getStyleForPiece(this.gameState.currentPiece.type);
+                if (style?.color) {
+                    return style.color;
+                }
+            }
+
+            if (this.styleManager?.getAllColors) {
+                const colorMap = this.styleManager.getAllColors();
+                if (colorMap) {
+                    return (
+                        colorMap.I
+                        || colorMap.T
+                        || colorMap.L
+                        || colorMap.O
+                        || Object.values(colorMap)[0]
+                    );
+                }
+            }
+
+            return COLORS.I || '#00ffff';
+        }
+
+        /**
+         * Normalize color value into RGB/int representation
+         * @private
+         */
+        _parseColor(colorValue) {
+            if (typeof colorValue === 'number' && Number.isFinite(colorValue)) {
+                const intValue = colorValue >>> 0;
+                return {
+                    r: (intValue >> 16) & 0xff,
+                    g: (intValue >> 8) & 0xff,
+                    b: intValue & 0xff,
+                    int: intValue,
+                };
+            }
+
+            if (typeof colorValue !== 'string') {
+                return null;
+            }
+
+            let hex = colorValue.trim();
+            if (hex.startsWith('#')) {
+                hex = hex.slice(1);
+            }
+            if (hex.length === 3) {
+                hex = hex
+                    .split('')
+                    .map((char) => char + char)
+                    .join('');
+            }
+            if (hex.length !== 6) {
+                return null;
+            }
+
+            const value = parseInt(hex, 16);
+            if (Number.isNaN(value)) {
+                return null;
+            }
+
+            return {
+                r: (value >> 16) & 0xff,
+                g: (value >> 8) & 0xff,
+                b: value & 0xff,
+                int: value,
+            };
+        }
+
+        /**
+         * Lighten or darken a base color by mixing with white/black
+         * @private
+         */
+        _adjustColor(rgb, amount = 0) {
+            if (!rgb) {
+                return 0x00ffff;
+            }
+
+            const clamp = (value) => Math.max(0, Math.min(255, value));
+            const adjust = (channel) => {
+                if (amount >= 0) {
+                    return clamp(Math.round(channel + (255 - channel) * amount));
+                }
+                return clamp(Math.round(channel + channel * amount));
+            };
+
+            const r = adjust(rgb.r);
+            const g = adjust(rgb.g);
+            const b = adjust(rgb.b);
+
+            return (r << 16) | (g << 8) | b;
         }
 
         /**
@@ -507,6 +686,11 @@ export function createBaseBoardScene(
                         colorValue = COLORS[colorValue];
                     }
 
+                    // Get themed color if cell has a type
+                    if (cell.type) {
+                        colorValue = this.getThemedColor(cell.type, colorValue);
+                    }
+
                     this.drawBlock(worldX, worldY, colorValue, 1.0);
                 }
             }
@@ -587,6 +771,9 @@ export function createBaseBoardScene(
             pieces
                 .filter((piece) => piece?.isAnimating && typeof piece.animationOffset === 'number' && piece.animationOffset !== 0)
                 .forEach((piece) => {
+                    // Get themed color for this piece type
+                    const themedColor = this.getThemedColor(piece.type, piece.color);
+
                     piece.shape.forEach((row, localY) => {
                         row.forEach((cell, localX) => {
                             if (cell <= 0) return;
@@ -596,7 +783,7 @@ export function createBaseBoardScene(
 
                             if (worldY < this.hiddenRows || worldY >= this.rows + this.hiddenRows) return;
 
-                            this.drawBlock(worldX, worldY, piece.color, 1.0);
+                            this.drawBlock(worldX, worldY, themedColor, 1.0);
                         });
                     });
                 });
@@ -630,13 +817,16 @@ export function createBaseBoardScene(
             const piece = this.gameState?.currentPiece;
             if (!piece) return;
 
+            // Get themed color for this piece type
+            const themedColor = this.getThemedColor(piece.type, piece.color);
+
             // Draw all blocks of the piece as solid fill first
             piece.shape.forEach((row, y) => {
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         const worldY = piece.y + y;
                         if (worldY >= this.hiddenRows) {
-                            this.drawBlock(piece.x + x, worldY, piece.color, 1.0, false, piece.shape, x, y);
+                            this.drawBlock(piece.x + x, worldY, themedColor, 1.0, false, piece.shape, x, y);
                         }
                     }
                 });
@@ -815,6 +1005,12 @@ export function createBaseBoardScene(
         shutdown() {
             if (this.scale) {
                 this.scale.off('resize');
+            }
+
+            // Cleanup style manager
+            if (this.styleManager) {
+                this.styleManager.destroy();
+                this.styleManager = null;
             }
 
             // Final cleanup on shutdown

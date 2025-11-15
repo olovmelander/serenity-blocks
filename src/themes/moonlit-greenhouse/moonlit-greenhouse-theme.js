@@ -3,6 +3,7 @@
  */
 
 import { BaseTheme } from '../base-theme.js';
+import { MOONLIT_GREENHOUSE_TETROMINOS } from './moonlit-greenhouse-tetrominos.js';
 
 /**
  * Moonlit Greenhouse Theme
@@ -98,5 +99,13 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 mothContainer.appendChild(moth);
             }
         }
+    }
+
+    /**
+     * Provide Moonlit Greenhouse themed tetromino styling (moonlit foliage palette)
+     * @returns {Object} Moonlit Greenhouse tetromino configuration
+     */
+    getTetrominoConfig() {
+        return MOONLIT_GREENHOUSE_TETROMINOS;
     }
 }

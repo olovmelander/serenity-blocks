@@ -4,6 +4,7 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { lunaraBackgroundCache } from '../../utils/cache.js';
+import { LUNARA_TETROMINOS } from './lunara-tetrominos.js';
 
 /**
  * Lunara Theme
@@ -259,5 +260,13 @@ export default class LunaraTheme extends BaseTheme {
                 forestRight.appendChild(tree);
             }
         }
+    }
+
+    /**
+     * Provide Lunara themed tetromino styling (moonlit alpine palette)
+     * @returns {Object} Lunara tetromino configuration
+     */
+    getTetrominoConfig() {
+        return LUNARA_TETROMINOS;
     }
 }

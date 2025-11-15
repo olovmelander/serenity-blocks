@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { SOLAR_ECLIPSE_TETROMINOS } from './solar-eclipse-tetrominos.js';
 
 export default class SolarEclipseTheme extends BaseTheme {
     constructor() {
@@ -25,20 +26,116 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.noiseTargetX = 0;
         this.noiseTargetY = 0;
         this.nextNoiseChange = 0;
+        this.coronaCanvas = null;
+        this.coronaCtx = null;
+        this.coronaCenterX = 0;
+        this.coronaCenterY = 0;
+        this.qualityChangeHandler = null;
+        this.starsContainer = null;
+        this.flareContainer = null;
+        this.cmeContainer = null;
+        this.burstContainer = null;
+        this.qualityPresets = {
+            'Low': {
+                starCount: 60,
+                coronaParticles: 120,
+                solarFlares: 4,
+                cmeLimit: 1,
+                burstLimit: 2,
+                driftRadiusScale: 0.35,
+            },
+            'Medium': {
+                starCount: 100,
+                coronaParticles: 200,
+                solarFlares: 6,
+                cmeLimit: 2,
+                burstLimit: 3,
+                driftRadiusScale: 0.5,
+            },
+            'High': {
+                starCount: 140,
+                coronaParticles: 260,
+                solarFlares: 8,
+                cmeLimit: 3,
+                burstLimit: 4,
+                driftRadiusScale: 0.65,
+            },
+            'Ultra': {
+                starCount: 180,
+                coronaParticles: 340,
+                solarFlares: 10,
+                cmeLimit: 4,
+                burstLimit: 5,
+                driftRadiusScale: 0.8,
+            }
+        };
+        this.currentQuality = 'Medium';
+        this.activePreset = this.qualityPresets['Medium'];
+    }
+
+    applyQualityPreset(quality, { skipRefresh = false } = {}) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Solar Eclipse: Unknown quality preset "${quality}", defaulting to Medium`);
+            quality = 'Medium';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        if (!skipRefresh) {
+            this.refreshQualityDependentElements();
+        }
+
+        console.log(`🌘 Solar Eclipse: Applying ${quality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'Medium';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createStars(true);
+        this.createSolarFlares(true);
+        if (this.coronaCanvas && this.coronaCtx) {
+            this.driftRadiusX = Math.min(this.coronaCanvas.width, this.coronaCanvas.height) * (this.activePreset?.driftRadiusScale ?? 0.5);
+            this.driftRadiusY = this.driftRadiusX * 0.65;
+            this.initializeCoronaParticles(this.coronaCenterX, this.coronaCenterY);
+        }
     }
 
     async createScene() {
         console.log('[SolarEclipse] Creating scene...');
 
         try {
+            const quality = this.getGraphicsQuality();
+            this.applyQualityPreset(quality, { skipRefresh: true });
+
             // Create background stars
-            this.createStars();
+            this.createStars(true);
 
             // Create corona particles using canvas
             this.createCoronaCanvas();
 
             // Create solar flares
-            this.createSolarFlares();
+            this.createSolarFlares(true);
 
             // Cache drift targets now that all static nodes exist
             this.cacheDriftTargets();
@@ -46,6 +143,8 @@ export default class SolarEclipseTheme extends BaseTheme {
 
             // Setup event listeners for reactive effects
             this.setupEventListeners();
+
+            this.setupQualityListener();
 
             console.log('[SolarEclipse] Scene created successfully!');
         } catch (error) {
@@ -57,13 +156,23 @@ export default class SolarEclipseTheme extends BaseTheme {
     /**
      * Create background stars
      */
-    createStars() {
-        const starsContainer = document.getElementById('eclipse-stars');
-        if (!starsContainer || starsContainer.children.length > 0) return;
+    createStars(force = false) {
+        if (!this.starsContainer) {
+            this.starsContainer = document.getElementById('eclipse-stars');
+            if (this.starsContainer) {
+                this.registerContainer(this.starsContainer);
+            }
+        }
+        const starsContainer = this.starsContainer;
+        if (!starsContainer) return;
+        if (!force && starsContainer.children.length > 0) return;
+
+        starsContainer.textContent = '';
 
         const fragment = document.createDocumentFragment();
-        const starCount = 100;
-
+        const starCount = this.activePreset?.starCount ?? 100;
+        this.stars = [];
+        
         for (let i = 0; i < starCount; i++) {
             const star = document.createElement('div');
             star.className = 'eclipse-star';
@@ -79,7 +188,6 @@ export default class SolarEclipseTheme extends BaseTheme {
         }
 
         starsContainer.appendChild(fragment);
-        this.registerContainer(starsContainer);
     }
 
     /**
@@ -96,14 +204,25 @@ export default class SolarEclipseTheme extends BaseTheme {
         canvas.height = window.innerHeight;
 
         const ctx = canvas.getContext('2d');
-        this.driftRadiusX = Math.min(canvas.width, canvas.height) * 0.5;
+        this.coronaCanvas = canvas;
+        this.coronaCtx = ctx;
+        this.driftRadiusX = Math.min(canvas.width, canvas.height) * (this.activePreset?.driftRadiusScale ?? 0.5);
         this.driftRadiusY = this.driftRadiusX * 0.65;
         this.lastDriftTime = performance.now();
 
-        // Initialize corona particles
-        const particleCount = 200;
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
+        this.coronaCenterX = centerX;
+        this.coronaCenterY = centerY;
+        this.initializeCoronaParticles(centerX, centerY);
+
+        // Start animation
+        this.animateCorona(canvas, ctx, centerX, centerY);
+    }
+
+    initializeCoronaParticles(centerX = this.coronaCenterX, centerY = this.coronaCenterY) {
+        this.coronaParticles = [];
+        const particleCount = this.activePreset?.coronaParticles ?? 200;
 
         for (let i = 0; i < particleCount; i++) {
             const angle = this.random(0, Math.PI * 2);
@@ -111,7 +230,7 @@ export default class SolarEclipseTheme extends BaseTheme {
             const speed = this.random(0.002, 0.008);
             const size = this.random(1, 4);
             const opacity = this.random(0.3, 0.9);
-            const hue = this.random(20, 60); // Orange to yellow range
+            const hue = this.random(20, 60);
 
             this.coronaParticles.push({
                 angle,
@@ -125,9 +244,6 @@ export default class SolarEclipseTheme extends BaseTheme {
                 pulseSpeed: this.random(0.02, 0.05),
             });
         }
-
-        // Start animation
-        this.animateCorona(canvas, ctx, centerX, centerY);
     }
 
     /**
@@ -285,12 +401,20 @@ export default class SolarEclipseTheme extends BaseTheme {
      * Create solar flares
      */
     createSolarFlares() {
-        const flareContainer = document.getElementById('eclipse-flares');
+        if (!this.flareContainer) {
+            this.flareContainer = document.getElementById('eclipse-flares');
+            if (this.flareContainer) {
+                this.registerContainer(this.flareContainer);
+            }
+        }
+        const flareContainer = this.flareContainer;
         if (!flareContainer) return;
+        flareContainer.textContent = '';
 
-        // Create 6 major flares
+        // Create scalable number of flares
         const fragment = document.createDocumentFragment();
-        for (let i = 0; i < 6; i++) {
+        const flareCount = this.activePreset?.solarFlares ?? 6;
+        for (let i = 0; i < flareCount; i++) {
             const flare = document.createElement('div');
             flare.className = 'eclipse-flare';
 
@@ -309,7 +433,6 @@ export default class SolarEclipseTheme extends BaseTheme {
         }
 
         flareContainer.appendChild(fragment);
-        this.registerContainer(flareContainer);
     }
 
     /**
@@ -401,10 +524,14 @@ export default class SolarEclipseTheme extends BaseTheme {
      * Create solar burst effect
      */
     createSolarBurst(intensity) {
-        const burstContainer = document.getElementById('eclipse-bursts');
+        if (!this.burstContainer) {
+            this.burstContainer = document.getElementById('eclipse-bursts');
+        }
+        const burstContainer = this.burstContainer;
         if (!burstContainer) return;
 
-        const burstCount = Math.min(intensity, 4);
+        const burstLimit = this.activePreset?.burstLimit ?? 4;
+        const burstCount = Math.min(intensity, burstLimit);
 
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
@@ -469,10 +596,14 @@ export default class SolarEclipseTheme extends BaseTheme {
      * Create coronal mass ejection effect
      */
     createCoronalMassEjection(comboCount) {
-        const cmeContainer = document.getElementById('eclipse-cme');
+        if (!this.cmeContainer) {
+            this.cmeContainer = document.getElementById('eclipse-cme');
+        }
+        const cmeContainer = this.cmeContainer;
         if (!cmeContainer) return;
 
-        const cmeCount = Math.min(comboCount - 2, 3);
+        const cmeLimit = this.activePreset?.cmeLimit ?? 3;
+        const cmeCount = Math.min(comboCount - 2, cmeLimit);
 
         for (let i = 0; i < cmeCount; i++) {
             setTimeout(() => {
@@ -519,6 +650,10 @@ export default class SolarEclipseTheme extends BaseTheme {
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
 
         // Clear particles
         this.coronaParticles = [];
@@ -533,5 +668,13 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.resetDrift();
 
         super.stop();
+    }
+
+    /**
+     * Provide Solar Eclipse themed tetromino styling (corona glow palette)
+     * @returns {Object} Solar Eclipse tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SOLAR_ECLIPSE_TETROMINOS;
     }
 }

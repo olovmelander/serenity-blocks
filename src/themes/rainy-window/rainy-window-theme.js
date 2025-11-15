@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { RAINY_WINDOW_TETROMINOS } from './rainy-window-tetrominos.js';
 
 export default class RainyWindowTheme extends BaseTheme {
     constructor() {
@@ -37,6 +38,109 @@ export default class RainyWindowTheme extends BaseTheme {
         this.comboRainCurtains = [];
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+
+        // Effect limits (Ultra defaults)
+        this.maxMistParticles = 250;
+        this.maxSplashes = 50;
+        this.maxActiveDrops = 350;
+        this.maxRainBurstDrops = 100;
+        this.maxThunderStrikes = 6;
+        this.maxComboRainCurtains = 4;
+        this.maxLightningBolts = 4;
+        this.lightningEnabled = true;
+        this.lightningIntervalMin = 200;
+        this.lightningIntervalMax = 500;
+        this.gustIntensityMultiplier = 1;
+        this.comboEffectScale = 1;
+        this.mistSpawnMultiplier = 1;
+        this.splashSpawnMultiplier = 1;
+
+        // Graphics quality
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                maxDrops: 80,
+                dropSpawnProbability: 0.22,
+                currentDropCap: 35,
+                maxRipples: 50,
+                maxMistParticles: 120,
+                maxSplashes: 20,
+                maxActiveDrops: 160,
+                maxRainBurstDrops: 35,
+                maxThunderStrikes: 1,
+                maxComboRainCurtains: 1,
+                maxLightningBolts: 1,
+                lightningEnabled: false,
+                lightningIntervalMin: 700,
+                lightningIntervalMax: 1000,
+                gustIntensityMultiplier: 0.6,
+                comboEffectScale: 0.45,
+                mistSpawnMultiplier: 0.5,
+                splashSpawnMultiplier: 0.6,
+            },
+            'Medium': {
+                maxDrops: 120,
+                dropSpawnProbability: 0.32,
+                currentDropCap: 48,
+                maxRipples: 60,
+                maxMistParticles: 170,
+                maxSplashes: 30,
+                maxActiveDrops: 240,
+                maxRainBurstDrops: 60,
+                maxThunderStrikes: 3,
+                maxComboRainCurtains: 2,
+                maxLightningBolts: 2,
+                lightningEnabled: true,
+                lightningIntervalMin: 400,
+                lightningIntervalMax: 650,
+                gustIntensityMultiplier: 0.75,
+                comboEffectScale: 0.7,
+                mistSpawnMultiplier: 0.7,
+                splashSpawnMultiplier: 0.8,
+            },
+            'High': {
+                maxDrops: 150,
+                dropSpawnProbability: 0.4,
+                currentDropCap: 58,
+                maxRipples: 80,
+                maxMistParticles: 210,
+                maxSplashes: 40,
+                maxActiveDrops: 280,
+                maxRainBurstDrops: 80,
+                maxThunderStrikes: 4,
+                maxComboRainCurtains: 3,
+                maxLightningBolts: 3,
+                lightningEnabled: true,
+                lightningIntervalMin: 280,
+                lightningIntervalMax: 520,
+                gustIntensityMultiplier: 0.9,
+                comboEffectScale: 0.85,
+                mistSpawnMultiplier: 0.85,
+                splashSpawnMultiplier: 0.9,
+            },
+            'Ultra': {
+                maxDrops: 180,
+                dropSpawnProbability: 0.45,
+                currentDropCap: 63,
+                maxRipples: 100,
+                maxMistParticles: 250,
+                maxSplashes: 50,
+                maxActiveDrops: 350,
+                maxRainBurstDrops: 100,
+                maxThunderStrikes: 6,
+                maxComboRainCurtains: 4,
+                maxLightningBolts: 4,
+                lightningEnabled: true,
+                lightningIntervalMin: 200,
+                lightningIntervalMax: 500,
+                gustIntensityMultiplier: 1,
+                comboEffectScale: 1,
+                mistSpawnMultiplier: 1,
+                splashSpawnMultiplier: 1,
+            }
+        };
+        this.currentQuality = 'Ultra';
+        this.activePreset = this.qualityPresets['Ultra'];
 
         // Performance optimization: Cache static data to avoid recreation every frame
         this.colorSchemes = {
@@ -84,10 +188,111 @@ export default class RainyWindowTheme extends BaseTheme {
         };
     }
 
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`[RainyWindow] Unknown preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+        const preset = this.activePreset;
+
+        this.maxDrops = preset.maxDrops;
+        this.dropSpawnProbability = preset.dropSpawnProbability;
+        this.currentDropCap = Math.min(preset.currentDropCap, this.maxDrops);
+        this.maxRipples = preset.maxRipples;
+        this.maxMistParticles = preset.maxMistParticles;
+        this.maxSplashes = preset.maxSplashes;
+        this.maxActiveDrops = preset.maxActiveDrops;
+        this.maxRainBurstDrops = preset.maxRainBurstDrops;
+        this.maxThunderStrikes = preset.maxThunderStrikes;
+        this.maxComboRainCurtains = preset.maxComboRainCurtains;
+        this.maxLightningBolts = preset.maxLightningBolts;
+        this.lightningEnabled = preset.lightningEnabled;
+        this.lightningIntervalMin = preset.lightningIntervalMin;
+        this.lightningIntervalMax = preset.lightningIntervalMax;
+        this.gustIntensityMultiplier = preset.gustIntensityMultiplier;
+        this.comboEffectScale = preset.comboEffectScale;
+        this.mistSpawnMultiplier = preset.mistSpawnMultiplier;
+        this.splashSpawnMultiplier = preset.splashSpawnMultiplier;
+
+        this.trimEffectCollections();
+        this.scheduleNextLightning();
+
+        console.log(`[RainyWindow] Applying ${quality} graphics preset`);
+    }
+
+    trimEffectCollections() {
+        const clamp = (collection, limit) => {
+            if (!collection || typeof limit !== 'number' || limit <= 0) return;
+            if (collection.length > limit) {
+                collection.splice(0, collection.length - limit);
+            }
+        };
+
+        clamp(this.drops, this.maxActiveDrops);
+        clamp(this.ripples, this.maxRipples);
+        clamp(this.splashes, this.maxSplashes);
+        clamp(this.mistParticles, this.maxMistParticles);
+        clamp(this.lightningBolts, this.maxLightningBolts);
+        clamp(this.thunderStrikes, this.maxThunderStrikes);
+        clamp(this.comboRainCurtains, this.maxComboRainCurtains);
+        clamp(this.rainBurstDrops, this.maxRainBurstDrops);
+
+        if (!this.lightningEnabled) {
+            this.lightningBolts.length = 0;
+            this.lightningRipples.length = 0;
+            this.thunderStrikes.length = 0;
+        }
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.teardownQualityListener();
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+    }
+
+    scheduleNextLightning() {
+        if (!this.lightningEnabled) {
+            this.nextLightning = Infinity;
+            return;
+        }
+
+        const min = this.lightningIntervalMin ?? 200;
+        const max = this.lightningIntervalMax ?? 500;
+        const interval = Math.random() * (max - min) + min;
+        this.nextLightning = this.time + interval;
+    }
+
     async createScene() {
         this.canvas = document.getElementById('rain-canvas');
         if (!this.canvas) return;
         this.ctx = this.canvas.getContext('2d');
+
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
+        this.scheduleNextLightning();
 
         this.resizeHandler = () => this.resizeCanvas();
         window.addEventListener('resize', this.resizeHandler, false);
@@ -178,22 +383,31 @@ export default class RainyWindowTheme extends BaseTheme {
         this.comboDecay = 180; // 3 seconds at 60fps
 
         // Create rain burst - intense rain from line clears
-        const burstCount = Math.min(lineCount * 15 + comboCount * 10, 100);
+        const burstCount = Math.min(
+            Math.ceil((lineCount * 15 + comboCount * 10) * this.comboEffectScale),
+            this.maxRainBurstDrops
+        );
         for (let i = 0; i < burstCount; i++) {
             this.rainBurstDrops.push(this.createRainBurstDrop(lineCount));
         }
 
         // Trigger wind gust and rain intensity
-        const gustBonus = lineCount * 1.5 + comboCount * 2;
+        const gustBonus = (lineCount * 1.5 + comboCount * 2) * this.gustIntensityMultiplier;
         this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (4 + gustBonus);
-        this.gustIntensity = Math.min(0.4 + lineCount * 0.15, 1.0);
-        this.gustDuration = 30 + lineCount * 15;
+        this.gustIntensity = Math.min((0.4 + lineCount * 0.15) * this.gustIntensityMultiplier, 1.0);
+        this.gustDuration = (30 + lineCount * 15) * this.gustIntensityMultiplier;
 
         // Increase drop spawn rate temporarily
-        this.currentDropCap = Math.min(this.currentDropCap + lineCount * 10, this.maxDrops);
+        this.currentDropCap = Math.min(
+            this.currentDropCap + lineCount * 10 * this.comboEffectScale,
+            this.maxDrops
+        );
 
         // Create water explosion on water surface
-        const explosionCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
+        const explosionCount = Math.min(
+            Math.ceil((lineCount + Math.floor(comboCount / 2)) * this.comboEffectScale),
+            4
+        );
         for (let i = 0; i < explosionCount; i++) {
             const x = Math.random() * this.canvas.width;
             const depth = Math.random();
@@ -206,8 +420,9 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         // Rain curtains for big combos
-        if (comboCount >= 5) {
-            const curtainCount = Math.min(Math.floor(comboCount / 3), 3);
+        if (comboCount >= 5 && this.comboRainCurtains.length < this.maxComboRainCurtains) {
+            const availableSlots = this.maxComboRainCurtains - this.comboRainCurtains.length;
+            const curtainCount = Math.min(Math.floor(comboCount / 3), 3, availableSlots);
             for (let i = 0; i < curtainCount; i++) {
                 this.comboRainCurtains.push(this.createRainCurtain());
             }
@@ -215,7 +430,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Flash effect for big line clears
         if (lineCount >= 3) {
-            this.lightningFlashIntensity = Math.min(0.15 + lineCount * 0.05, 0.35);
+            this.lightningFlashIntensity = Math.min(
+                (0.15 + lineCount * 0.05) * this.comboEffectScale,
+                0.35
+            );
         }
     }
 
@@ -323,6 +541,8 @@ export default class RainyWindowTheme extends BaseTheme {
     }
 
     createLightningBolt() {
+        if (!this.lightningEnabled) return null;
+
         const startX = this.canvas.width * (0.15 + Math.random() * 0.7);
         const mainSegs = [];
         const branchSegs = [];
@@ -366,7 +586,8 @@ export default class RainyWindowTheme extends BaseTheme {
 
     createMist(x, y, depth) {
         const particles = [];
-        const count = Math.floor(Math.random() * 6) + 4;
+        const baseCount = Math.floor(Math.random() * 6) + 4;
+        const count = Math.max(1, Math.round(baseCount * this.mistSpawnMultiplier));
         const depthScale = 0.3 + depth * 0.7;
 
         for (let i = 0; i < count; i++) {
@@ -387,7 +608,8 @@ export default class RainyWindowTheme extends BaseTheme {
 
     createSplash(x, y, depth) {
         const particles = [];
-        const count = Math.floor(Math.random() * 4) + 3;
+        const baseCount = Math.floor(Math.random() * 4) + 3;
+        const count = Math.max(1, Math.round(baseCount * this.splashSpawnMultiplier));
         const depthScale = 0.3 + depth * 0.7;
         for (let i = 0; i < count; i++) {
             const angle = (Math.PI / 2) + (Math.random() - 0.5) * Math.PI * 0.8;
@@ -426,8 +648,12 @@ export default class RainyWindowTheme extends BaseTheme {
 
     createComboThunderStrike(comboCount) {
         const bolt = this.createLightningBolt();
+        if (!bolt) return;
         bolt.intensity = Math.min(comboCount * 0.2, 1.5);
         bolt.glowIntensity = Math.min(comboCount * 0.3, 2.0);
+        if (this.thunderStrikes.length >= this.maxThunderStrikes) {
+            this.thunderStrikes.shift();
+        }
         this.thunderStrikes.push(bolt);
 
         // Flash intensity based on combo
@@ -435,8 +661,11 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Create multiple ripples
         const waterY = this.getWaterY(bolt.depth);
-        const numRipples = Math.min(3 + comboCount, 8);
-        for (let i = 0; i < numRipples; i++) {
+        const numRipples = Math.min(
+            Math.max(1, Math.floor((3 + comboCount) * this.comboEffectScale)),
+            8
+        );
+        for (let i = 0; i < numRipples && this.lightningRipples.length < this.maxRipples; i++) {
             this.lightningRipples.push({
                 x: bolt.impactX + (Math.random() - 0.5) * 100,
                 y: waterY,
@@ -581,11 +810,11 @@ export default class RainyWindowTheme extends BaseTheme {
         // Wind gust system
         if (this.time >= this.nextGust && this.gustDuration <= 0) {
             // Trigger a random wind gust
-            const gustStrength = Math.random() * 1.5 + 1; // 1 to 2.5 (reduced from 3)
+            const gustStrength = (Math.random() * 1.5 + 1) * this.gustIntensityMultiplier;
             const gustDirection = Math.random() < 0.5 ? -1 : 1;
             this.targetWindForce = gustDirection * gustStrength;
             this.gustIntensity = 1.0;
-            this.gustDuration = Math.random() * 40 + 30; // 30-70 frames
+            this.gustDuration = (Math.random() * 40 + 30) * this.gustIntensityMultiplier; // 30-70 frames
             this.nextGust = this.time + Math.random() * 400 + 300; // Less frequent
         }
 
@@ -602,35 +831,40 @@ export default class RainyWindowTheme extends BaseTheme {
         this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
 
         // Lightning timing
-        if (this.time >= this.nextLightning) {
+        if (this.lightningEnabled && this.time >= this.nextLightning) {
             const bolt = this.createLightningBolt();
-            this.lightningBolts.push(bolt);
+            if (bolt) {
+                if (this.lightningBolts.length >= this.maxLightningBolts) {
+                    this.lightningBolts.shift();
+                }
+                this.lightningBolts.push(bolt);
 
-            // Set flash intensity for atmospheric effect
-            this.lightningFlashIntensity = 0.25;
+                // Set flash intensity for atmospheric effect
+                this.lightningFlashIntensity = Math.max(this.lightningFlashIntensity, 0.25);
 
-            // Trigger wind gust with lightning
-            const gustStrength = Math.random() * 2.5 + 2; // 2 to 4.5 (stronger than random gusts)
-            const gustDirection = Math.random() < 0.5 ? -1 : 1;
-            this.targetWindForce = gustDirection * gustStrength;
-            this.gustIntensity = 1.0;
-            this.gustDuration = Math.random() * 50 + 40; // 40-90 frames (longer than random gusts)
+                // Trigger wind gust with lightning
+                const gustStrength = (Math.random() * 2.5 + 2) * this.gustIntensityMultiplier;
+                const gustDirection = Math.random() < 0.5 ? -1 : 1;
+                this.targetWindForce = gustDirection * gustStrength;
+                this.gustIntensity = 1.0;
+                this.gustDuration = (Math.random() * 50 + 40) * this.gustIntensityMultiplier; // 40-90 frames
 
-            // Create ripples on water when lightning strikes (reduced for performance)
-            const waterY = this.getWaterY(bolt.depth);
-            const numRipples = 2 + Math.floor(Math.random() * 2); // Reduced from 4-7 to 2-3
-            for (let i = 0; i < numRipples; i++) {
-                this.lightningRipples.push({
-                    x: bolt.impactX + (Math.random() - 0.5) * 80,
-                    y: waterY,
-                    depth: bolt.depth,
-                    size: 9 + Math.random() * 7, // Slightly larger to compensate for fewer ripples
-                    delay: i * 3,
-                    spawned: false
-                });
+                // Create ripples on water when lightning strikes (reduced for performance)
+                const waterY = this.getWaterY(bolt.depth);
+                const numRipples = Math.max(1, Math.floor((2 + Math.random() * 2) * this.comboEffectScale));
+                for (let i = 0; i < numRipples && this.lightningRipples.length < this.maxRipples; i++) {
+                    this.lightningRipples.push({
+                        x: bolt.impactX + (Math.random() - 0.5) * 80,
+                        y: waterY,
+                        depth: bolt.depth,
+                        size: 9 + Math.random() * 7,
+                        delay: i * 3,
+                        spawned: false
+                    });
+                }
             }
 
-            this.nextLightning = this.time + Math.random() * 400 + 300;
+            this.scheduleNextLightning();
         }
 
         // Fade lightning flash
@@ -1016,7 +1250,10 @@ export default class RainyWindowTheme extends BaseTheme {
             if (drop.life <= 0 || drop.y >= waterY) {
                 if (drop.y >= waterY && this.ripples.length < this.maxRipples) {
                     this.ripples.push(this.createRipple(drop.x, waterY, drop.r, drop.z));
-                    if (Math.random() > 0.6) {
+                    if (
+                        Math.random() > 0.6
+                        && this.splashes.length < this.maxSplashes
+                    ) {
                         this.splashes.push(this.createSplash(drop.x, waterY, drop.z));
                     }
                 }
@@ -1332,11 +1569,15 @@ export default class RainyWindowTheme extends BaseTheme {
                 if (this.ripples.length < this.maxRipples) {
                     this.ripples.push(this.createRipple(drop.x, waterY, drop.r, drop.z));
                 }
-                if (Math.random() > 0.5) {
+                if (Math.random() > 0.5 && this.splashes.length < this.maxSplashes) {
                     this.splashes.push(this.createSplash(drop.x, waterY, drop.z));
                 }
-                if (Math.random() > 0.3) {
-                    this.mistParticles.push(...this.createMist(drop.x, waterY - 3, drop.z));
+                if (Math.random() > 0.3 && this.mistParticles.length < this.maxMistParticles) {
+                    const newMist = this.createMist(drop.x, waterY - 3, drop.z);
+                    const available = Math.max(0, this.maxMistParticles - this.mistParticles.length);
+                    if (available > 0) {
+                        this.mistParticles.push(...newMist.slice(0, available));
+                    }
                 }
                 this.drops.splice(i, 1);
                 continue;
@@ -1352,14 +1593,17 @@ export default class RainyWindowTheme extends BaseTheme {
         if (this.ripples.length > this.maxRipples) {
             this.ripples = this.ripples.slice(-this.maxRipples);
         }
-        if (this.drops.length > 350) {
-            this.drops = this.drops.slice(-350);
+        if (this.drops.length > this.maxActiveDrops) {
+            this.drops = this.drops.slice(-this.maxActiveDrops);
         }
-        if (this.splashes.length > 50) {
-            this.splashes = this.splashes.slice(-50);
+        if (this.splashes.length > this.maxSplashes) {
+            this.splashes = this.splashes.slice(-this.maxSplashes);
         }
-        if (this.mistParticles.length > 250) {
-            this.mistParticles = this.mistParticles.slice(-250);
+        if (this.mistParticles.length > this.maxMistParticles) {
+            this.mistParticles = this.mistParticles.slice(-this.maxMistParticles);
+        }
+        if (this.rainBurstDrops.length > this.maxRainBurstDrops) {
+            this.rainBurstDrops = this.rainBurstDrops.slice(-this.maxRainBurstDrops);
         }
         if (this.drops.length > this.maxDrops) {
             this.drops = this.drops.slice(-this.maxDrops);
@@ -1377,6 +1621,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
         this.teardownEventListeners();
         this.pendingComboCount = 0;
+        this.teardownQualityListener();
 
         super.stop();
     }
@@ -1386,6 +1631,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Call base resume to handle common setup
         super.resume();
+
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
+        this.scheduleNextLightning();
 
         // Reacquire canvas context if it was lost
         if (!this.ctx && this.canvas) {
@@ -1410,5 +1659,13 @@ export default class RainyWindowTheme extends BaseTheme {
 
         console.log('[RainyWindow] Theme resumed successfully');
         return true;
+    }
+
+    /**
+     * Provide rainy window tetromino palette so tiles match the scene
+     * @returns {Object} Rainy Window tetromino configuration
+     */
+    getTetrominoConfig() {
+        return RAINY_WINDOW_TETROMINOS;
     }
 }

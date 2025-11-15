@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MOUNTAIN_TETROMINOS } from './mountain-tetrominos.js';
 
 // Quality presets for performance scaling
 const QUALITY_PRESETS = {
@@ -36,6 +37,10 @@ export default class MountainTheme extends BaseTheme {
         this.lastComboEffectTime = 0;
         this.activeParticles = [];
         this.qualityPreset = QUALITY_PRESETS.High;
+    }
+
+    getTetrominoConfig() {
+        return MOUNTAIN_TETROMINOS;
     }
 
     async createScene() {

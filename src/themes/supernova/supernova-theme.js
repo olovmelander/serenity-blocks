@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { SUPERNOVA_TETROMINOS } from './supernova-tetrominos.js';
 
 export default class SupernovaTheme extends BaseTheme {
     constructor() {
@@ -32,26 +33,118 @@ export default class SupernovaTheme extends BaseTheme {
         this.driftY = 0;
         this.baseCenterX = 0;
         this.baseCenterY = 0;
+
+        // Cached DOM references for rebuilds
+        this.starsContainer = null;
+        this.rayContainer = null;
+        this.filamentContainer = null;
+
+        // Graphics quality presets
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                starCount: 60,
+                shockwaveParticles: 160,
+                energyRays: 6,
+                coreFilaments: 10,
+                driftRadiusScale: 0.2,
+            },
+            'Medium': {
+                starCount: 80,
+                shockwaveParticles: 200,
+                energyRays: 8,
+                coreFilaments: 12,
+                driftRadiusScale: 0.25,
+            },
+            'High': {
+                starCount: 100,
+                shockwaveParticles: 250,
+                energyRays: 10,
+                coreFilaments: 15,
+                driftRadiusScale: 0.3,
+            },
+            'Ultra': {
+                starCount: 140,
+                shockwaveParticles: 320,
+                energyRays: 14,
+                coreFilaments: 20,
+                driftRadiusScale: 0.35,
+            }
+        };
+
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    applyQualityPreset(quality, { skipRefresh = false } = {}) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Supernova: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        if (!skipRefresh) {
+            this.refreshQualityDependentElements();
+        }
+
+        console.log(`💥 Supernova: Applying ${quality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createStars(true);
+        this.createEnergyRays(true);
+        this.createCoreFilaments(true);
+        this.resetShockwaveParticles();
     }
 
     async createScene() {
         console.log('[Supernova] Creating scene...');
 
         try {
+            const quality = this.getGraphicsQuality();
+            this.applyQualityPreset(quality, { skipRefresh: true });
+
             // Create background stars
-            this.createStars();
+            this.createStars(true);
 
             // Create expanding shockwave particles using canvas
             this.createShockwaveCanvas();
 
             // Create energy rays
-            this.createEnergyRays();
+            this.createEnergyRays(true);
 
             // Create pulsing core filaments
-            this.createCoreFilaments();
+            this.createCoreFilaments(true);
 
             // Setup event listeners for reactive effects
             this.setupEventListeners();
+
+            // Listen for runtime graphics changes
+            this.setupQualityListener();
 
             console.log('[Supernova] Scene created successfully!');
         } catch (error) {
@@ -63,12 +156,23 @@ export default class SupernovaTheme extends BaseTheme {
     /**
      * Create background stars
      */
-    createStars() {
-        const starsContainer = document.getElementById('supernova-stars');
-        if (!starsContainer || starsContainer.children.length > 0) return;
+    createStars(force = false) {
+        if (!this.starsContainer) {
+            this.starsContainer = document.getElementById('supernova-stars');
+            if (this.starsContainer) {
+                this.registerContainer(this.starsContainer);
+            }
+        }
+
+        const starsContainer = this.starsContainer;
+        if (!starsContainer) return;
+        if (!force && starsContainer.children.length > 0) return;
+
+        starsContainer.textContent = '';
+        this.stars = [];
 
         const fragment = document.createDocumentFragment();
-        const starCount = 100; // Reduced from 150 for performance
+        const starCount = this.activePreset?.starCount ?? 100; // Reduced from 150 for performance
 
         // Define star color palette matching the supernova theme
         const starColors = [
@@ -106,7 +210,6 @@ export default class SupernovaTheme extends BaseTheme {
         }
 
         starsContainer.appendChild(fragment);
-        this.registerContainer(starsContainer);
     }
 
     /**
@@ -127,15 +230,28 @@ export default class SupernovaTheme extends BaseTheme {
             desynchronized: true // Enable async rendering
         });
 
-        // Initialize shockwave particles - Reduced for performance
-        const particleCount = 250; // Reduced from 350
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
         // Initialize drift parameters
         this.baseCenterX = centerX;
         this.baseCenterY = centerY;
-        this.driftRadius = Math.min(this.canvas.width, this.canvas.height) * 0.30; // 30% of smaller dimension for large screen coverage
+        const driftScale = this.activePreset?.driftRadiusScale ?? 0.3;
+        this.driftRadius = Math.min(this.canvas.width, this.canvas.height) * driftScale;
+
+        this.initializeShockwaveParticles();
+
+        // Start animation
+        this.animateShockwave(this.canvas, this.ctx, centerX, centerY);
+    }
+
+    initializeShockwaveParticles() {
+        if (!this.canvas || !this.ctx) return;
+
+        this.shockwaveParticles = [];
+        const particleCount = this.activePreset?.shockwaveParticles ?? 250;
+        const driftScale = this.activePreset?.driftRadiusScale ?? 0.3;
+        this.driftRadius = Math.min(this.canvas.width, this.canvas.height) * driftScale;
 
         // Supernova color palette - vibrant explosion colors
         const colors = [
@@ -156,7 +272,6 @@ export default class SupernovaTheme extends BaseTheme {
             const size = this.random(1.5, 3.5);
             const opacity = this.random(0.35, 0.75);
 
-            // Color based on distance - blue center, magenta outer
             const colorIndex = Math.floor((distance / 400) * colors.length);
             const color = colors[Math.min(colorIndex, colors.length - 1)];
 
@@ -171,15 +286,16 @@ export default class SupernovaTheme extends BaseTheme {
                 color,
                 pulse: this.random(0, Math.PI * 2),
                 pulseSpeed: this.random(0.02, 0.05),
-                // Orbital motion for turbulence
                 orbitAngle: this.random(0, Math.PI * 2),
                 orbitSpeed: this.random(-0.01, 0.01),
                 turbulence: this.random(0.5, 2),
             });
         }
+    }
 
-        // Start animation
-        this.animateShockwave(this.canvas, this.ctx, centerX, centerY);
+    resetShockwaveParticles() {
+        if (!this.canvas) return;
+        this.initializeShockwaveParticles();
     }
 
     /**
@@ -352,13 +468,23 @@ export default class SupernovaTheme extends BaseTheme {
     /**
      * Create energy rays radiating from core
      */
-    createEnergyRays() {
-        const rayContainer = document.getElementById('supernova-rays');
-        if (!rayContainer) return;
+    createEnergyRays(force = false) {
+        if (!this.rayContainer) {
+            this.rayContainer = document.getElementById('supernova-rays');
+            if (this.rayContainer) {
+                this.registerContainer(this.rayContainer);
+            }
+        }
 
-        // Create 10 major energy rays (reduced from 12 for performance)
+        const rayContainer = this.rayContainer;
+        if (!rayContainer) return;
+        if (!force && rayContainer.children.length > 0) return;
+
+        rayContainer.textContent = '';
+
         const fragment = document.createDocumentFragment();
-        for (let i = 0; i < 10; i++) {
+        const rayCount = this.activePreset?.energyRays ?? 10; // Reduced from 12 for performance
+        for (let i = 0; i < rayCount; i++) {
             const ray = document.createElement('div');
             ray.className = 'supernova-ray';
 
@@ -377,18 +503,27 @@ export default class SupernovaTheme extends BaseTheme {
         }
 
         rayContainer.appendChild(fragment);
-        this.registerContainer(rayContainer);
     }
 
     /**
      * Create pulsing filaments in the core
      */
-    createCoreFilaments() {
-        const filamentContainer = document.getElementById('supernova-filaments');
+    createCoreFilaments(force = false) {
+        if (!this.filamentContainer) {
+            this.filamentContainer = document.getElementById('supernova-filaments');
+            if (this.filamentContainer) {
+                this.registerContainer(this.filamentContainer);
+            }
+        }
+
+        const filamentContainer = this.filamentContainer;
         if (!filamentContainer) return;
+        if (!force && filamentContainer.children.length > 0) return;
+
+        filamentContainer.textContent = '';
 
         const fragment = document.createDocumentFragment();
-        const filamentCount = 15; // Reduced from 18 for performance
+        const filamentCount = this.activePreset?.coreFilaments ?? 15; // Reduced from 18 for performance
 
         for (let i = 0; i < filamentCount; i++) {
             const filament = document.createElement('div');
@@ -736,6 +871,11 @@ export default class SupernovaTheme extends BaseTheme {
     }
 
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Cancel animation frame
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
@@ -815,5 +955,13 @@ export default class SupernovaTheme extends BaseTheme {
         });
 
         super.stop();
+    }
+
+    /**
+     * Provide Supernova themed tetromino styling (explosive neon palette)
+     * @returns {Object} Supernova tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SUPERNOVA_TETROMINOS;
     }
 }

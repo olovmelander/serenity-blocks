@@ -15,11 +15,13 @@ import {
   drawGrid,
   drawPiece,
   drawLockedPieces,
-  calculateGhostY
+  calculateGhostY,
+  drawBlockStyled
 } from '../rendering/canvas/canvas-drawing-utils.js';
 import { MultiplayerEffectsManager } from '../rendering/phaser/multiplayer-effects-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
+import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 
 export class MultiPlayerCanvasLayout {
   constructor(ffaGameState) {
@@ -47,6 +49,13 @@ export class MultiPlayerCanvasLayout {
     this._lineImpactUnsub = null;
     this._pieceLockUnsub = null;
     this._comboUnsub = null;
+
+    // Initialize Tetromino Style Manager for theme-based tetromino colors
+    this.styleManager = new TetrominoStyleManager(
+      window.themeManager,
+      window.settingsManager
+    );
+    this.styleManager.init();
 
     this.createUI();
   }
@@ -1345,12 +1354,73 @@ export class MultiPlayerCanvasLayout {
       }
       return;
     }
-    
+
     this.canvases.forEach((canvasData, steamId) => {
       this.renderPlayerCanvas(canvasData);
     });
   }
-  
+
+  /**
+   * Draw a piece with theme-based styling
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {Object} piece - Piece to draw
+   * @param {number} blockSize - Size of each block in pixels
+   * @param {boolean} isGhost - Whether this is a ghost piece
+   */
+  drawStyledPiece(ctx, piece, blockSize, isGhost = false) {
+    if (!piece || !piece.shape) return;
+
+    piece.shape.forEach((row, localY) => {
+      row.forEach((cell, localX) => {
+        if (cell > 0) {
+          const worldY = piece.y + localY;
+          const x = (piece.x + localX) * blockSize;
+          const y = (worldY - HIDDEN_ROWS) * blockSize;
+
+          // Get themed style for this piece type
+          const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+
+          // Use styled drawing
+          drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost);
+        }
+      });
+    });
+  }
+
+  /**
+   * Draw locked pieces with theme-based styling
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   * @param {Array} lockedPieces - Array of locked pieces
+   * @param {number} blockSize - Size of each block in pixels
+   */
+  drawStyledLockedPieces(ctx, lockedPieces, blockSize) {
+    if (!lockedPieces || lockedPieces.length === 0) return;
+
+    lockedPieces.forEach(piece => {
+      if (!piece.shape) return;
+
+      piece.shape.forEach((row, localY) => {
+        row.forEach((cell, localX) => {
+          if (cell > 0) {
+            const worldY = piece.y + localY;
+
+            // Only draw visible area (below hidden rows)
+            if (worldY >= HIDDEN_ROWS) {
+              const x = (piece.x + localX) * blockSize;
+              const y = (worldY - HIDDEN_ROWS) * blockSize;
+
+              // Get themed style for this piece type
+              const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+
+              // Use styled drawing
+              drawBlockStyled(ctx, x, y, blockSize, styleConfig, false);
+            }
+          }
+        });
+      });
+    });
+  }
+
   /**
    * Render a single player's canvas with upgraded drawing functions
    */
@@ -1367,46 +1437,46 @@ export class MultiPlayerCanvasLayout {
     try {
       // 1. Draw grid
       drawGrid(ctx, canvas.width, canvas.height, blockSize);
-      
-      // 2. Draw locked pieces (solid tetromino look)
+
+      // 2. Draw locked pieces with theme-based styling
       if (gameState.lockedPieces && gameState.lockedPieces.length > 0) {
-        drawLockedPieces(ctx, gameState.lockedPieces, blockSize);
+        this.drawStyledLockedPieces(ctx, gameState.lockedPieces, blockSize);
       }
-      
-      // 3. Draw ghost piece (pulsating effect)
+
+      // 3. Draw ghost piece with theme-based styling
       if (gameState.currentPiece) {
         const ghostY = calculateGhostY(
           gameState.currentPiece,
           gameState.lockedPieces,
           (piece, x, y) => canPlacePiece(gameState, piece, x, y)
         );
-        
+
         if (ghostY > gameState.currentPiece.y) {
           const ghostPiece = {
             ...gameState.currentPiece,
             y: ghostY
           };
-          drawPiece(ctx, ghostPiece, blockSize, true, false);
-          
+          this.drawStyledPiece(ctx, ghostPiece, blockSize, true);
+
           // Debug log for main player (first time only)
           if (isMain && !this._ghostDebugLogged) {
-            console.log('👻 Ghost piece rendered!', { 
-              currentY: gameState.currentPiece.y, 
+            console.log('👻 Ghost piece rendered with theme-based styling!', {
+              currentY: gameState.currentPiece.y,
               ghostY,
-              blockSize 
+              blockSize
             });
             this._ghostDebugLogged = true;
           }
         }
       }
-      
-      // 4. Draw current piece (solid with outline)
+
+      // 4. Draw current piece with theme-based styling
       if (gameState.currentPiece) {
-        drawPiece(ctx, gameState.currentPiece, blockSize, false, true);
-        
+        this.drawStyledPiece(ctx, gameState.currentPiece, blockSize, false);
+
         // Debug log for main player (first time only)
         if (isMain && !this._pieceDebugLogged) {
-          console.log('🎮 Current piece rendered with solid look!', {
+          console.log('🎮 Current piece rendered with theme-based styling!', {
             piece: gameState.currentPiece.type,
             color: gameState.currentPiece.color,
             blockSize
@@ -1617,10 +1687,16 @@ export class MultiPlayerCanvasLayout {
    */
   destroy() {
     this.stopRenderLoop();
-    
+
     // Remove effect event listeners
     this.removeEffectEventListeners();
-    
+
+    // Cleanup style manager
+    if (this.styleManager) {
+      this.styleManager.destroy();
+      this.styleManager = null;
+    }
+
     // Destroy effects manager
     if (this.effectsManager) {
       const mainCanvasData = this.canvases.get(this.gameState?.localPlayerId);
@@ -1638,11 +1714,11 @@ export class MultiPlayerCanvasLayout {
       this.effectsManager.destroy();
       this.effectsManager = null;
     }
-    
+
     if (this.container) {
       this.container.remove();
     }
-    
+
     this.boardEffects.forEach((controller) => controller.destroy());
     this.boardEffects.clear();
     this.canvases.clear();

@@ -25,6 +25,8 @@ const DEFAULT_CONFIG = {
     lineClearEffects: true,
     backgroundComboEffects: true,
     sunsetFlareIntensity: 'full',
+    // Tetromino Visual Settings
+    themeBasedTetrominos: true,  // Use theme-specific tetromino colors and effects
     controlScheme: 'Keyboard',
     gamepadEnabled: true,
     gamepadDeadzone: 0.25,
@@ -816,6 +818,19 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             const enabled = e.target.value === 'true';
             settingsManager.update({ backgroundComboEffects: enabled });
             settingsManager.save();
+        });
+    }
+
+    // Theme-based tetrominos toggle
+    const themeBasedTetrominosSelect = document.getElementById('theme-based-tetrominos');
+    if (themeBasedTetrominosSelect) {
+        themeBasedTetrominosSelect.value = (settings.themeBasedTetrominos ?? true) ? 'true' : 'false';
+
+        themeBasedTetrominosSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ themeBasedTetrominos: enabled });
+            settingsManager.save();
+            console.log(`[Settings] Theme-based tetrominos ${enabled ? 'enabled' : 'disabled'}`);
         });
     }
 

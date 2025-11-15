@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { COSMIC_CHIMES_TETROMINOS } from './cosmic-chimes-tetrominos.js';
 
 export default class CosmicChimesTheme extends BaseTheme {
     constructor() {
@@ -37,5 +38,13 @@ export default class CosmicChimesTheme extends BaseTheme {
             }
             this.registerContainer(chimesContainer);
         }
+    }
+
+    /**
+     * Provide Cosmic Chimes themed tetromino styling (cosmic glow palette)
+     * @returns {Object} Cosmic Chimes tetromino configuration
+     */
+    getTetrominoConfig() {
+        return COSMIC_CHIMES_TETROMINOS;
     }
 }

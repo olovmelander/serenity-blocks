@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { BLOOD_MOON_TETROMINOS } from './blood-moon-tetrominos.js';
 
 export default class BloodMoonTheme extends BaseTheme {
     constructor() {
@@ -45,6 +46,105 @@ export default class BloodMoonTheme extends BaseTheme {
         this.pendingComboCount = 0;
         this.soulOrbs = [];
         this.bloodVortexes = [];
+
+        // Graphics quality presets
+        this.qualityPresets = {
+            'Low': {
+                stars: 150,
+                nebulaClouds: 8,
+                craterData: 15,
+                moonTexture: 250,
+                maxParticles: 80,
+                maxLightning: 2,
+                maxWaves: 4,
+                maxOrbs: 8,
+                maxVortexes: 2,
+                lightningBranches: 4,
+                lightningSegments: 5,
+                vortexParticleLimit: 25,
+                vortexSpawnRate: 0.25
+            },
+            'Medium': {
+                stars: 200,
+                nebulaClouds: 12,
+                craterData: 20,
+                moonTexture: 400,
+                maxParticles: 120,
+                maxLightning: 3,
+                maxWaves: 5,
+                maxOrbs: 12,
+                maxVortexes: 2,
+                lightningBranches: 6,
+                lightningSegments: 6,
+                vortexParticleLimit: 30,
+                vortexSpawnRate: 0.35
+            },
+            'High': {
+                stars: 300,
+                nebulaClouds: 15,
+                craterData: 25,
+                moonTexture: 600,
+                maxParticles: 150,
+                maxLightning: 3,
+                maxWaves: 6,
+                maxOrbs: 15,
+                maxVortexes: 3,
+                lightningBranches: 8,
+                lightningSegments: 7,
+                vortexParticleLimit: 40,
+                vortexSpawnRate: 0.4
+            },
+            'Ultra': {
+                stars: 500,
+                nebulaClouds: 20,
+                craterData: 35,
+                moonTexture: 900,
+                maxParticles: 250,
+                maxLightning: 5,
+                maxWaves: 10,
+                maxOrbs: 25,
+                maxVortexes: 4,
+                lightningBranches: 10,
+                lightningSegments: 10,
+                vortexParticleLimit: 60,
+                vortexSpawnRate: 0.5
+            }
+        };
+
+        this.currentQuality = 'High'; // Default
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    /**
+     * Apply graphics quality preset
+     * @param {string} quality - Quality level: 'Low', 'Medium', 'High', or 'Ultra'
+     */
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Unknown quality preset: ${quality}, using High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        // Update max limits based on preset
+        this.MAX_PARTICLES = this.activePreset.maxParticles;
+        this.MAX_LIGHTNING = this.activePreset.maxLightning;
+        this.MAX_WAVES = this.activePreset.maxWaves;
+        this.MAX_ORBS = this.activePreset.maxOrbs;
+        this.MAX_VORTEXES = this.activePreset.maxVortexes;
+
+        console.log(`🌙 Blood Moon: Applying ${quality} quality preset`);
+    }
+
+    /**
+     * Get current graphics quality from settings
+     * @returns {string} Quality level
+     */
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
     }
 
     async createScene() {
@@ -60,6 +160,11 @@ export default class BloodMoonTheme extends BaseTheme {
         window.addEventListener('resize', this.resizeHandler, false);
         this.resizeCanvas();
 
+        // Apply graphics quality preset from settings
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
+        console.log(`🌙 Blood Moon: Using ${quality} quality preset`);
+
         // Initialize stars
         this.createStars();
 
@@ -72,7 +177,38 @@ export default class BloodMoonTheme extends BaseTheme {
         // Setup gameplay event listeners
         this.setupEventListeners();
 
+        // Setup quality change listener
+        this.setupQualityListener();
+
         this.animate();
+    }
+
+    /**
+     * Setup listener for graphics quality changes
+     */
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.qualityChangeHandler = (event) => {
+            if (event.detail && event.detail.effectQuality) {
+                const newQuality = event.detail.effectQuality;
+                console.log(`🌙 Blood Moon: Quality changed to ${newQuality}`);
+
+                // Apply new quality preset
+                this.applyQualityPreset(newQuality);
+
+                // Recreate scene elements with new quality
+                this.stars = [];
+                this.nebulaClouds = [];
+                this.craterData = [];
+
+                this.createStars();
+                this.createNebulaClouds();
+                this.createCraterData();
+            }
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
     }
 
     resizeCanvas() {
@@ -108,7 +244,7 @@ export default class BloodMoonTheme extends BaseTheme {
     }
 
     createStars() {
-        const starCount = 300;
+        const starCount = this.activePreset.stars;
         for (let i = 0; i < starCount; i++) {
             this.stars.push({
                 x: Math.random(),
@@ -123,7 +259,7 @@ export default class BloodMoonTheme extends BaseTheme {
     }
 
     createNebulaClouds() {
-        const cloudCount = 15; // Increased from 8
+        const cloudCount = this.activePreset.nebulaClouds;
         for (let i = 0; i < cloudCount; i++) {
             this.nebulaClouds.push({
                 x: Math.random(),
@@ -140,7 +276,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
     createCraterData() {
         // Create realistic crater positions and sizes
-        const craterCount = 25;
+        const craterCount = this.activePreset.craterData;
         for (let i = 0; i < craterCount; i++) {
             const angle = Math.random() * Math.PI * 2;
             const distance = Math.random() * 0.8; // Within 80% of moon radius
@@ -374,7 +510,10 @@ export default class BloodMoonTheme extends BaseTheme {
 
     createCrimsonLightning(x, y, comboCount) {
         const branches = [];
-        const numBranches = Math.min(Math.floor(comboCount / 3) + 3, 8); // Reduced and capped
+        const numBranches = Math.min(
+            Math.floor(comboCount / 3) + 3,
+            this.activePreset.lightningBranches
+        );
 
         for (let i = 0; i < numBranches; i++) {
             const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.5;
@@ -382,8 +521,8 @@ export default class BloodMoonTheme extends BaseTheme {
             let currentX = x;
             let currentY = y;
 
-            // Reduced segments from 10 to 7
-            for (let j = 0; j < 7; j++) {
+            const segmentCount = this.activePreset.lightningSegments;
+            for (let j = 0; j < segmentCount; j++) {
                 const length = Math.random() * 100 + 60;
                 const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.9) * length;
                 const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.9) * length;
@@ -558,7 +697,7 @@ export default class BloodMoonTheme extends BaseTheme {
         }
 
         // Add animated texture noise and shimmer for moon surface
-        for (let i = 0; i < 600; i++) { // Increased from 400 to 600
+        for (let i = 0; i < this.activePreset.moonTexture; i++) {
             const angle = Math.random() * Math.PI * 2;
             const distance = Math.random() * this.moonRadius;
             const x = Math.cos(angle) * distance;
@@ -841,8 +980,10 @@ export default class BloodMoonTheme extends BaseTheme {
             vortex.radius += vortex.expansionRate;
             vortex.life -= 0.006;
 
-            // Spawn vortex particles - reduced spawn rate for performance
-            if (Math.random() < 0.4 && vortex.radius < vortex.maxRadius && vortex.particles.length < 40) {
+            // Spawn vortex particles - quality-based spawn rate
+            if (Math.random() < this.activePreset.vortexSpawnRate &&
+                vortex.radius < vortex.maxRadius &&
+                vortex.particles.length < this.activePreset.vortexParticleLimit) {
                 const particleAngle = vortex.angle + Math.random() * Math.PI * 0.4;
                 const particleRadius = vortex.radius + Math.random() * 50;
                 vortex.particles.push({
@@ -894,6 +1035,12 @@ export default class BloodMoonTheme extends BaseTheme {
             this.resizeHandler = null;
         }
 
+        // Remove quality change listener
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
@@ -909,5 +1056,13 @@ export default class BloodMoonTheme extends BaseTheme {
         this.pendingComboCount = 0;
 
         super.stop();
+    }
+
+    /**
+     * Get custom tetromino configuration for Blood Moon theme
+     * @returns {Object} Tetromino configuration with crimson blood moon colors
+     */
+    getTetrominoConfig() {
+        return BLOOD_MOON_TETROMINOS;
     }
 }

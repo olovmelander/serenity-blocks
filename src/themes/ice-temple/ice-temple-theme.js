@@ -5,6 +5,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { iceTempleCache } from '../../utils/cache.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ICE_TEMPLE_TETROMINOS } from './ice-temple-tetrominos.js';
 
 export default class IceTempleTheme extends BaseTheme {
     constructor() {
@@ -15,6 +16,9 @@ export default class IceTempleTheme extends BaseTheme {
         this.comboDecay = 0;
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+        this.qualityListener = null;
+        this.currentQuality = 'Ultra';
+        this.activePreset = null;
 
         // Canvas for dynamic effects
         this.effectsCanvas = null;
@@ -36,6 +40,133 @@ export default class IceTempleTheme extends BaseTheme {
         this.crackGlow = 0;
         this.flashIntensity = 0;
         this.screenShake = { x: 0, y: 0, intensity: 0 };
+
+        // Effect limits and adaptive performance state
+        this.effectLimits = {
+            maxIceShards: 550,
+            maxFrozenCrystals: 220,
+            maxComboRings: 6,
+            maxGlacialLightning: 3,
+            maxIceStormParticles: 240,
+        };
+
+        this.comboCooldownMs = 220;
+        this.lastLineClearTime = 0;
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67;
+
+        this.spawnScales = {
+            shards: 1,
+            crystals: 1,
+            rings: 1,
+            sparkles: 1,
+            embers: 1,
+            lava: 1,
+            lightning: 1,
+            storm: 1,
+            aurora: 1,
+        };
+
+        this.qualityPresets = {
+            Low: {
+                effectLimits: {
+                    maxIceShards: 220,
+                    maxFrozenCrystals: 90,
+                    maxComboRings: 3,
+                    maxGlacialLightning: 1,
+                    maxIceStormParticles: 90,
+                },
+                spawnScale: {
+                    shards: 0.55,
+                    crystals: 0.5,
+                    rings: 0.55,
+                    sparkles: 0.6,
+                    embers: 0.6,
+                    lava: 0.6,
+                    lightning: 0.55,
+                    storm: 0.4,
+                    aurora: 0.9,
+                },
+                enableGlacialLightning: true,
+                enableIceStorm: false,
+                comboCooldownMs: 260,
+            },
+            Medium: {
+                effectLimits: {
+                    maxIceShards: 360,
+                    maxFrozenCrystals: 150,
+                    maxComboRings: 4,
+                    maxGlacialLightning: 2,
+                    maxIceStormParticles: 150,
+                },
+                spawnScale: {
+                    shards: 0.75,
+                    crystals: 0.7,
+                    rings: 0.8,
+                    sparkles: 0.85,
+                    embers: 0.85,
+                    lava: 0.85,
+                    lightning: 0.8,
+                    storm: 0.7,
+                    aurora: 1,
+                },
+                enableGlacialLightning: true,
+                enableIceStorm: true,
+                comboCooldownMs: 230,
+            },
+            High: {
+                effectLimits: {
+                    maxIceShards: 520,
+                    maxFrozenCrystals: 220,
+                    maxComboRings: 6,
+                    maxGlacialLightning: 3,
+                    maxIceStormParticles: 220,
+                },
+                spawnScale: {
+                    shards: 1,
+                    crystals: 1,
+                    rings: 1,
+                    sparkles: 1,
+                    embers: 1,
+                    lava: 1,
+                    lightning: 1,
+                    storm: 1,
+                    aurora: 1.05,
+                },
+                enableGlacialLightning: true,
+                enableIceStorm: true,
+                comboCooldownMs: 210,
+            },
+            Ultra: {
+                effectLimits: {
+                    maxIceShards: 650,
+                    maxFrozenCrystals: 260,
+                    maxComboRings: 7,
+                    maxGlacialLightning: 4,
+                    maxIceStormParticles: 280,
+                },
+                spawnScale: {
+                    shards: 1.15,
+                    crystals: 1.1,
+                    rings: 1.1,
+                    sparkles: 1.1,
+                    embers: 1.1,
+                    lava: 1.1,
+                    lightning: 1.15,
+                    storm: 1.15,
+                    aurora: 1.1,
+                },
+                enableGlacialLightning: true,
+                enableIceStorm: true,
+                comboCooldownMs: 200,
+            },
+        };
+    }
+
+    getTetrominoConfig() {
+        return ICE_TEMPLE_TETROMINOS;
     }
 
     async init() {
@@ -130,6 +261,20 @@ export default class IceTempleTheme extends BaseTheme {
         return settings?.backgroundComboEffects === true;
     }
 
+    shouldThrottleEffects() {
+        const now = Date.now();
+        const timeSinceLast = now - this.lastLineClearTime;
+        const performanceDrop = this.averageFrameTime > 24;
+        const shardPressure = this.iceShardBurst.length >= this.effectLimits.maxIceShards * 0.85;
+        const stormPressure = this.iceStorm.length >= this.effectLimits.maxIceStormParticles * 0.85;
+        return (
+            performanceDrop ||
+            shardPressure ||
+            stormPressure ||
+            timeSinceLast < this.comboCooldownMs
+        );
+    }
+
     normalizeEventPayload(payload = {}) {
         if (payload && typeof payload === 'object' && 'detail' in payload && payload.detail) {
             return payload.detail;
@@ -165,6 +310,9 @@ export default class IceTempleTheme extends BaseTheme {
     onLineClear(lineCount, comboCount) {
         if (!this.effectsCanvas) return;
 
+        const throttled = this.shouldThrottleEffects();
+        this.lastLineClearTime = Date.now();
+
         // Update combo multiplier
         this.comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
         this.comboDecay = 180; // 3 seconds at 60fps
@@ -177,7 +325,9 @@ export default class IceTempleTheme extends BaseTheme {
         this.pulseAurora(lineCount, comboCount);
 
         // Ice shard burst
-        const shardCount = lineCount * 40 + comboCount * 25;
+        let shardCount = Math.floor((lineCount * 35 + comboCount * 18) * (throttled ? 0.55 : 1));
+        const shardCapacity = Math.max(this.effectLimits.maxIceShards - this.iceShardBurst.length, 0);
+        shardCount = Math.max(0, Math.min(shardCount, shardCapacity));
         for (let i = 0; i < shardCount; i++) {
             this.iceShardBurst.push(this.createIceShardParticle(centerX, centerY, lineCount));
         }
@@ -190,32 +340,44 @@ export default class IceTempleTheme extends BaseTheme {
 
         // Frozen crystals for multi-line clears
         if (lineCount >= 2) {
-            for (let i = 0; i < lineCount * 15; i++) {
+            const crystalCapacity = Math.max(this.effectLimits.maxFrozenCrystals - this.frozenCrystals.length, 0);
+            let crystalCount = Math.floor(lineCount * 12 * (throttled ? 0.6 : 1));
+            crystalCount = Math.max(0, Math.min(crystalCount, crystalCapacity));
+            for (let i = 0; i < crystalCount; i++) {
                 this.frozenCrystals.push(this.createFrozenCrystal(centerX, centerY));
             }
         }
 
         // Combo rings
         if (comboCount >= 2) {
-            for (let i = 0; i < Math.min(comboCount, 5); i++) {
+            const ringCapacity = Math.max(this.effectLimits.maxComboRings - this.comboRings.length, 0);
+            let ringCount = Math.min(comboCount, 5, ringCapacity);
+            if (throttled) {
+                ringCount = Math.min(ringCount, 1);
+            }
+            for (let i = 0; i < ringCount; i++) {
                 this.comboRings.push(this.createComboRing(centerX, centerY, i));
             }
         }
 
         // Glacial lightning for big combos
-        if (comboCount >= 5) {
-            this.createGlacialLightning(centerX, centerY, comboCount);
+        const lightningThreshold = throttled ? 6 : 5;
+        if (comboCount >= lightningThreshold && this.glacialLightning.length < this.effectLimits.maxGlacialLightning) {
+            this.createGlacialLightning(centerX, centerY, comboCount, throttled);
         }
 
         // Ice storm for massive combos
-        if (comboCount >= 8) {
-            this.triggerIceStorm(comboCount);
+        const stormThreshold = throttled ? 9 : 8;
+        if (comboCount >= stormThreshold) {
+            this.triggerIceStorm(comboCount, throttled);
         }
 
         // Screen shake
         if (comboCount >= 3 || lineCount >= 3) {
             this.screenShake.intensity = Math.min((comboCount + lineCount) * 1.5, 12);
         }
+
+        this.trimEffectCollections();
     }
 
     pulseAurora(lineCount, comboCount) {
@@ -284,9 +446,14 @@ export default class IceTempleTheme extends BaseTheme {
         };
     }
 
-    createGlacialLightning(x, y, comboCount) {
+    createGlacialLightning(x, y, comboCount, throttled = false) {
+        if (this.glacialLightning.length >= this.effectLimits.maxGlacialLightning) {
+            return;
+        }
+
         const branches = [];
-        const numBranches = Math.floor(comboCount / 2) + 3;
+        const branchCap = throttled ? 4 : 8;
+        const numBranches = Math.min(Math.floor(comboCount / 2) + 3, branchCap);
 
         for (let i = 0; i < numBranches; i++) {
             const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.4;
@@ -294,7 +461,8 @@ export default class IceTempleTheme extends BaseTheme {
             let currentX = x;
             let currentY = y;
 
-            for (let j = 0; j < 6 + Math.floor(comboCount / 3); j++) {
+            const segmentCount = throttled ? Math.max(4, 4 + Math.floor(comboCount / 4)) : 6 + Math.floor(comboCount / 3);
+            for (let j = 0; j < segmentCount; j++) {
                 const length = Math.random() * 70 + 50;
                 const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.7) * length;
                 const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.7) * length;
@@ -315,8 +483,16 @@ export default class IceTempleTheme extends BaseTheme {
         });
     }
 
-    triggerIceStorm(comboCount) {
-        const stormCount = Math.min(comboCount * 20, 200);
+    triggerIceStorm(comboCount, throttled = false) {
+        const capacity = Math.max(this.effectLimits.maxIceStormParticles - this.iceStorm.length, 0);
+        if (capacity <= 0) return;
+
+        let stormCount = Math.min(comboCount * 18, 220);
+        if (throttled) {
+            stormCount = Math.min(stormCount, 100);
+        }
+        stormCount = Math.max(0, Math.min(stormCount, capacity));
+
         for (let i = 0; i < stormCount; i++) {
             this.iceStorm.push({
                 x: Math.random() * this.effectsCanvas.width,
@@ -332,14 +508,45 @@ export default class IceTempleTheme extends BaseTheme {
         }
     }
 
+    trimEffectCollections() {
+        const clamp = (collection, limit) => {
+            if (collection.length > limit) {
+                collection.splice(0, collection.length - limit);
+            }
+        };
+
+        clamp(this.iceShardBurst, this.effectLimits.maxIceShards);
+        clamp(this.frozenCrystals, this.effectLimits.maxFrozenCrystals);
+        clamp(this.comboRings, this.effectLimits.maxComboRings);
+        clamp(this.iceStorm, this.effectLimits.maxIceStormParticles);
+        clamp(this.glacialLightning, this.effectLimits.maxGlacialLightning);
+    }
+
     startEffectsAnimation() {
         if (!this.isActive || !this.effectsCanvas) return;
-
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
         this.animateEffects();
     }
 
     animateEffects() {
         if (!this.isActive || !this.effectsCanvas) return;
+
+        const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+        if (this.lastFrameTime > 0) {
+            const frameTime = now - this.lastFrameTime;
+            this.frameTimeAccumulator += frameTime;
+            this.frameTimeCount += 1;
+            if (this.frameTimeCount >= 30) {
+                this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
+                this.frameTimeAccumulator = 0;
+                this.frameTimeCount = 0;
+            }
+        }
+        this.lastFrameTime = now;
 
         this.time += 1;
 
@@ -407,6 +614,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.updateIceShardBurst();
         this.updateFrozenCrystals();
         this.updateIceStorm();
+        this.trimEffectCollections();
 
         this.effectsCtx.restore();
 
@@ -948,6 +1156,11 @@ export default class IceTempleTheme extends BaseTheme {
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.comboMultiplier = 1.0;
         this.comboDecay = 0;
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67;
+        this.lastLineClearTime = 0;
 
         super.stop();
     }

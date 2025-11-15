@@ -26,6 +26,7 @@ export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid(
     for (const piece of pieces) {
         const pieceId = piece.pieceId || piece.shapeKey;
         const color = piece.color || piece.shapeKey;
+        const type = piece.type || piece.shapeKey; // Store piece type for themed rendering
 
         piece.shape.forEach((row, y) => {
             row.forEach((cell, x) => {
@@ -37,6 +38,7 @@ export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid(
                         targetGrid[boardY][boardX] = {
                             color,
                             id: pieceId,
+                            type, // Add piece type for themed colors
                         };
                     }
                 }
@@ -84,6 +86,7 @@ export function addPieceToGrid(piece, targetGrid) {
 
     const pieceId = piece.pieceId || piece.shapeKey;
     const color = piece.color || piece.shapeKey;
+    const type = piece.type || piece.shapeKey;
 
     piece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
@@ -95,6 +98,7 @@ export function addPieceToGrid(piece, targetGrid) {
                     targetGrid[boardY][boardX] = {
                         color,
                         id: pieceId,
+                        type,
                     };
                 }
             }
@@ -114,6 +118,7 @@ export function updatePiecePositionInGrid(piece, oldY, targetGrid) {
 
     const pieceId = piece.pieceId || piece.shapeKey;
     const color = piece.color || piece.shapeKey;
+    const type = piece.type || piece.shapeKey;
 
     // Remove from old position
     piece.shape.forEach((row, y) => {
@@ -142,6 +147,7 @@ export function updatePiecePositionInGrid(piece, oldY, targetGrid) {
                     targetGrid[boardY][boardX] = {
                         color,
                         id: pieceId,
+                        type,
                     };
                 }
             }
@@ -254,7 +260,12 @@ export function findConnectedComponents(boardData) {
             if (!boardData[y][x] || boardData[y][x].id !== pieceId) continue;
 
             visited[y][x] = true;
-            cells.push({ x, y, color: boardData[y][x].color });
+            cells.push({
+                x,
+                y,
+                color: boardData[y][x].color,
+                type: boardData[y][x].type || boardData[y][x].color,
+            });
 
             // Check 4 adjacent cells
             stack.push([y - 1, x], [y + 1, x], [y, x - 1], [y, x + 1]);
@@ -265,12 +276,14 @@ export function findConnectedComponents(boardData) {
 
     for (let y = 0; y < boardData.length; y++) {
         for (let x = 0; x < COLS; x++) {
-            if (boardData[y][x] && !visited[y][x]) {
-                const cells = floodFill(y, x, boardData[y][x].id);
+            const cell = boardData[y][x];
+            if (cell && !visited[y][x]) {
+                const cells = floodFill(y, x, cell.id);
                 if (cells.length > 0) {
                     components.push({
                         cells,
-                        pieceId: boardData[y][x].id,
+                        pieceId: cell.id,
+                        type: cell.type || cell.color,
                     });
                 }
             }

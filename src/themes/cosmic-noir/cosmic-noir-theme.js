@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
 
 export default class CosmicNoirTheme extends BaseTheme {
     constructor() {
@@ -23,17 +24,104 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.lastFrameTime = 0;
         this.targetFrameTime = 1000 / 60; // 60 FPS
         this.colorCache = new Map();
+
+        // Quality preset state
+        this.starsContainer = null;
+        this.waveContainer = null;
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                starCount: 80,
+                galaxyParticles: 120,
+                dustParticles: 60,
+                maxWaveBursts: 1,
+            },
+            'Medium': {
+                starCount: 110,
+                galaxyParticles: 160,
+                dustParticles: 80,
+                maxWaveBursts: 2,
+            },
+            'High': {
+                starCount: 140,
+                galaxyParticles: 200,
+                dustParticles: 110,
+                maxWaveBursts: 3,
+            },
+            'Ultra': {
+                starCount: 180,
+                galaxyParticles: 260,
+                dustParticles: 150,
+                maxWaveBursts: 4,
+            }
+        };
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+        this.maxWaveBursts = this.activePreset.maxWaveBursts;
+    }
+
+    applyQualityPreset(quality, { skipRefresh = false } = {}) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Cosmic Noir: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+        this.maxWaveBursts = this.activePreset.maxWaveBursts;
+
+        if (!skipRefresh) {
+            this.refreshQualityDependentElements();
+        }
+
+        console.log(`🌌 Cosmic Noir: Applying ${quality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createStars(true);
+        if (this.canvas && this.ctx) {
+            this.generateGalaxyParticles();
+            this.generateDustParticles();
+        }
     }
 
     async createScene() {
         console.log('[Cosmic Noir] Creating scene...');
 
         try {
+            const quality = this.getGraphicsQuality();
+            this.applyQualityPreset(quality, { skipRefresh: true });
+
             // Create background stars
-            this.createStars();
+            this.createStars(true);
 
             // Create drifting galaxy particles
             this.createGalaxyCanvas();
+
+            // Setup listener for runtime graphics changes
+            this.setupQualityListener();
 
             // Setup event listeners for reactive effects
             this.setupEventListeners();
@@ -48,12 +136,23 @@ export default class CosmicNoirTheme extends BaseTheme {
     /**
      * Create background stars with varying brightness
      */
-    createStars() {
-        const starsContainer = document.getElementById('cosmic-noir-stars');
-        if (!starsContainer || starsContainer.children.length > 0) return;
+    createStars(force = false) {
+        if (!this.starsContainer) {
+            this.starsContainer = document.getElementById('cosmic-noir-stars');
+            if (this.starsContainer) {
+                this.registerContainer(this.starsContainer);
+            }
+        }
+
+        const starsContainer = this.starsContainer;
+        if (!starsContainer) return;
+        if (!force && starsContainer.children.length > 0) return;
+
+        starsContainer.textContent = '';
+        this.stars = [];
 
         const fragment = document.createDocumentFragment();
-        const starCount = 120;
+        const starCount = this.activePreset?.starCount ?? 120;
 
         // Grayscale palette - pure monochrome
         const starColors = [
@@ -88,7 +187,6 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         starsContainer.appendChild(fragment);
-        this.registerContainer(starsContainer);
     }
 
     /**
@@ -116,8 +214,17 @@ export default class CosmicNoirTheme extends BaseTheme {
         const centerX = this.galaxyCenterX;
         const centerY = this.galaxyCenterY;
 
-        // Create galaxy drift particles (200 particles)
-        for (let i = 0; i < 200; i++) {
+        this.generateGalaxyParticles();
+        this.generateDustParticles();
+
+        // Start animation
+        this.animateGalaxy(centerX, centerY);
+    }
+
+    generateGalaxyParticles() {
+        this.galaxyParticles = [];
+        const count = this.activePreset?.galaxyParticles ?? 200;
+        for (let i = 0; i < count; i++) {
             const angle = this.random(0, Math.PI * 2);
             const distance = this.random(100, 600);
             const brightness = Math.floor(this.random(120, 255));
@@ -135,12 +242,15 @@ export default class CosmicNoirTheme extends BaseTheme {
                 pulseSpeed: this.random(0.01, 0.03),
             });
         }
+    }
 
-        // Create dust/grain particles (100 smaller particles)
-        for (let i = 0; i < 100; i++) {
+    generateDustParticles() {
+        this.dustParticles = [];
+        const count = this.activePreset?.dustParticles ?? 100;
+        for (let i = 0; i < count; i++) {
             this.dustParticles.push({
-                x: this.random(0, this.canvas.width),
-                y: this.random(0, this.canvas.height),
+                x: this.random(0, this.canvas?.width || window.innerWidth),
+                y: this.random(0, this.canvas?.height || window.innerHeight),
                 vx: this.random(-0.3, 0.3),
                 vy: this.random(-0.3, 0.3),
                 size: this.random(0.5, 1.5),
@@ -148,9 +258,6 @@ export default class CosmicNoirTheme extends BaseTheme {
                 brightness: Math.floor(this.random(150, 220)),
             });
         }
-
-        // Start animation
-        this.animateGalaxy(centerX, centerY);
     }
 
     /**
@@ -400,7 +507,10 @@ export default class CosmicNoirTheme extends BaseTheme {
      * Create galaxy wave effect - originates from the cosmic-noir-planet element!
      */
     createGalaxyWave(comboCount) {
-        const waveContainer = document.getElementById('cosmic-noir-waves');
+        if (!this.waveContainer) {
+            this.waveContainer = document.getElementById('cosmic-noir-waves');
+        }
+        const waveContainer = this.waveContainer;
         if (!waveContainer) return;
 
         // Get planet element position
@@ -419,7 +529,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         const offsetX = planetCenterX - containerCenterX;
         const offsetY = planetCenterY - containerCenterY;
 
-        for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
+        const burstCount = Math.min(comboCount - 2, this.maxWaveBursts);
+        for (let i = 0; i < burstCount; i++) {
+            if (waveContainer.children.length >= this.maxWaveBursts) break;
             setTimeout(() => {
                 const wave = document.createElement('div');
                 wave.className = 'cosmic-noir-wave';
@@ -453,6 +565,11 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Cancel animation frame
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
@@ -491,5 +608,13 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         super.stop();
+    }
+
+    /**
+     * Provide Cosmic Noir themed tetromino styling (monochrome glow)
+     * @returns {Object} Cosmic Noir tetromino configuration
+     */
+    getTetrominoConfig() {
+        return COSMIC_NOIR_TETROMINOS;
     }
 }

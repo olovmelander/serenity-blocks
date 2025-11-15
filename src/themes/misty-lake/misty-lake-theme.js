@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MISTY_LAKE_TETROMINOS } from './misty-lake-tetrominos.js';
 
 // Cache buster v2024-10-12-23:00
 export default class MistyLakeTheme extends BaseTheme {
@@ -170,7 +171,11 @@ export default class MistyLakeTheme extends BaseTheme {
                 
                 ripple.style.left = `${x}%`;
                 ripple.style.top = `${y}%`;
-                ripple.style.setProperty('--ripple-size', `${100 + intensity * 50}px`);
+                const baseWidth = 140 + intensity * 60;
+                const baseHeight = baseWidth * 0.45;
+                ripple.style.setProperty('--ripple-width', `${baseWidth}px`);
+                ripple.style.setProperty('--ripple-height', `${baseHeight}px`);
+                ripple.style.setProperty('--ripple-size', `${baseWidth}px`);
                 ripple.style.animationDuration = `${1.5 + Math.random()}s`;
                 
                 ripplesContainer.appendChild(ripple);
@@ -200,6 +205,8 @@ export default class MistyLakeTheme extends BaseTheme {
         
         ripple.style.left = `${x}%`;
         ripple.style.top = `${y}%`;
+        ripple.style.setProperty('--ripple-width', '70px');
+        ripple.style.setProperty('--ripple-height', '30px');
         ripple.style.setProperty('--ripple-size', '50px');
         ripple.style.opacity = '0.3';
         
@@ -345,5 +352,13 @@ export default class MistyLakeTheme extends BaseTheme {
         }
         
         super.stop();
+    }
+
+    /**
+     * Provide Misty Lake themed tetromino styling (tranquil moonlit palette)
+     * @returns {Object} Misty Lake tetromino configuration
+     */
+    getTetrominoConfig() {
+        return MISTY_LAKE_TETROMINOS;
     }
 }

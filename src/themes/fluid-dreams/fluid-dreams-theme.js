@@ -4,6 +4,7 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { FLUID_DREAMS_TETROMINOS } from './fluid-dreams-tetrominos.js';
 
 /**
  * Fluid Dreams Theme
@@ -39,6 +40,123 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.MAX_STREAMS = 3;
         this.MAX_BURSTS = 1;
         this.MAX_BLOBS = 1;
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                blobCount: 6,
+                bubbleCount: 14,
+                ribbonCount: 3,
+                maxParticles: 55,
+                maxWaves: 3,
+                maxRipples: 4,
+                maxStreams: 2,
+                maxBursts: 1,
+                maxBlobs: 1,
+            },
+            'Medium': {
+                blobCount: 7,
+                bubbleCount: 18,
+                ribbonCount: 4,
+                maxParticles: 70,
+                maxWaves: 4,
+                maxRipples: 5,
+                maxStreams: 3,
+                maxBursts: 1,
+                maxBlobs: 1,
+            },
+            'High': {
+                blobCount: 8,
+                bubbleCount: 22,
+                ribbonCount: 5,
+                maxParticles: 90,
+                maxWaves: 5,
+                maxRipples: 6,
+                maxStreams: 4,
+                maxBursts: 2,
+                maxBlobs: 2,
+            },
+            'Ultra': {
+                blobCount: 10,
+                bubbleCount: 26,
+                ribbonCount: 6,
+                maxParticles: 110,
+                maxWaves: 6,
+                maxRipples: 8,
+                maxStreams: 5,
+                maxBursts: 2,
+                maxBlobs: 2,
+            }
+        };
+        this.currentQuality = 'Ultra';
+        this.activePreset = this.qualityPresets['Ultra'];
+    }
+
+    applyQualityPreset(quality, { skipRefresh = false } = {}) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Fluid Dreams: Unknown quality preset "${quality}", defaulting to Ultra`);
+            quality = 'Ultra';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        this.MAX_PARTICLES = this.activePreset.maxParticles;
+        this.MAX_WAVES = this.activePreset.maxWaves;
+        this.MAX_RIPPLES = this.activePreset.maxRipples;
+        this.MAX_STREAMS = this.activePreset.maxStreams;
+        this.MAX_BURSTS = this.activePreset.maxBursts;
+        this.MAX_BLOBS = this.activePreset.maxBlobs;
+
+        if (!skipRefresh) {
+            this.refreshQualityDependentElements();
+        }
+
+        console.log(`💧 Fluid Dreams: Applying ${quality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'Ultra';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createMorphingBlobs(true);
+        this.createBubbles(true);
+        this.createRibbons(true);
+        this.trimEffectCollections();
+    }
+
+    trimEffectCollections() {
+        this.trimArray(this.liquidSplashes, this.MAX_PARTICLES);
+        this.trimArray(this.iridescenceWaves, this.MAX_WAVES);
+        this.trimArray(this.dreamRipples, this.MAX_RIPPLES);
+        this.trimArray(this.fluidStreams, this.MAX_STREAMS);
+        this.trimArray(this.prismBursts, this.MAX_BURSTS);
+        this.trimArray(this.morphBlobs, this.MAX_BLOBS);
+    }
+
+    trimArray(collection, limit) {
+        if (!collection || typeof limit !== 'number') return;
+        if (collection.length > limit) {
+            collection.splice(0, collection.length - limit);
+        }
     }
 
     async init() {
@@ -46,81 +164,104 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     async createScene() {
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality, { skipRefresh: true });
+
         // 1. Morphing Blobs for Gooey Effect
-        const blobContainer = this.getContainer('morphing-blobs');
-        if (blobContainer && blobContainer.children.length === 0) {
-            const numBlobs = 8;
-            for (let i = 0; i < numBlobs; i++) {
-                const blob = document.createElement('div');
-                blob.className = 'morph-blob';
-                const size = Math.random() * 150 + 100; // 100px to 250px
-                blob.style.width = `${size}px`;
-                blob.style.height = `${size}px`;
-
-                // Set random animation properties using CSS variables
-                blob.style.setProperty('--x-start', `${Math.random() * 80 + 10}vw`);
-                blob.style.setProperty('--y-start', `${Math.random() * 80 + 10}vh`);
-                blob.style.setProperty('--x-end', `${Math.random() * 80 + 10}vw`);
-                blob.style.setProperty('--y-end', `${Math.random() * 80 + 10}vh`);
-                blob.style.setProperty('--scale-start', `${Math.random() * 0.5 + 0.8}`);
-                blob.style.setProperty('--scale-end', `${Math.random() * 0.5 + 0.8}`);
-
-                blob.style.animationDelay = `-${Math.random() * 10}s, -${Math.random() * 15}s, -${Math.random() * 20}s`;
-                blobContainer.appendChild(blob);
-
-                // Store reference to blob
-                this.domBlobs.push(blob);
-                this.blobPulses.set(blob, { intensity: 0, lastPulse: 0 });
-            }
-        }
+        this.createMorphingBlobs(true);
 
         // 2. Iridescent Bubbles
-        const bubbleContainer = this.getContainer('iridescent-bubbles');
-        if (bubbleContainer && bubbleContainer.children.length === 0) {
-            const numBubbles = 20;
-            for (let i = 0; i < numBubbles; i++) {
-                const bubble = document.createElement('div');
-                bubble.className = 'iridescent-bubble';
-                const size = Math.random() * 80 + 20; // 20px to 100px
-                bubble.style.width = `${size}px`;
-                bubble.style.height = `${size}px`;
-
-                bubble.style.setProperty('--x-start', `${Math.random() * 100}vw`);
-                bubble.style.setProperty('--y-start', `${110}vh`); // Start from bottom
-                bubble.style.setProperty('--x-end', `${Math.random() * 100}vw`);
-                bubble.style.setProperty('--y-end', `${-10}vh`); // Float to top
-                bubble.style.setProperty('--scale', `${Math.random() * 0.4 + 0.8}`);
-
-                const duration = Math.random() * 15 + 20; // 20s to 35s
-                bubble.style.animationDuration = `${duration}s`;
-                bubble.style.animationDelay = `-${Math.random() * duration}s`;
-                bubbleContainer.appendChild(bubble);
-            }
-        }
+        this.createBubbles(true);
 
         // 3. Flowing Ribbons
-        const ribbonContainer = this.getContainer('ribbon-streams');
-        if (ribbonContainer && ribbonContainer.children.length === 0) {
-            const numRibbons = 5;
-            for (let i = 0; i < numRibbons; i++) {
-                const ribbon = document.createElement('div');
-                ribbon.className = 'ribbon-stream';
-
-                ribbon.style.setProperty('--x-start', `${Math.random() * 120 - 10}vw`);
-                ribbon.style.setProperty('--y-start', `${Math.random() * 120 - 10}vh`);
-                ribbon.style.setProperty('--x-end', `${Math.random() * 120 - 10}vw`);
-                ribbon.style.setProperty('--y-end', `${Math.random() * 120 - 10}vh`);
-                ribbon.style.setProperty('--r-start', `${Math.random() * 720 - 360}deg`);
-                ribbon.style.setProperty('--r-end', `${Math.random() * 720 - 360}deg`);
-
-                const duration = Math.random() * 20 + 30; // 30s to 50s
-                ribbon.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * 10}s`;
-                ribbonContainer.appendChild(ribbon);
-            }
-        }
+        this.createRibbons(true);
 
         // Setup gameplay effects
         this.setupGameplayEffects();
+        this.setupQualityListener();
+    }
+
+    createMorphingBlobs(force = false) {
+        const blobContainer = this.getContainer('morphing-blobs');
+        if (!blobContainer) return;
+        if (!force && blobContainer.children.length > 0) return;
+
+        blobContainer.textContent = '';
+        this.domBlobs = [];
+        this.blobPulses.clear();
+
+        const numBlobs = this.activePreset?.blobCount ?? 8;
+        for (let i = 0; i < numBlobs; i++) {
+            const blob = document.createElement('div');
+            blob.className = 'morph-blob';
+            const size = Math.random() * 150 + 100;
+            blob.style.width = `${size}px`;
+            blob.style.height = `${size}px`;
+
+            blob.style.setProperty('--x-start', `${Math.random() * 80 + 10}vw`);
+            blob.style.setProperty('--y-start', `${Math.random() * 80 + 10}vh`);
+            blob.style.setProperty('--x-end', `${Math.random() * 80 + 10}vw`);
+            blob.style.setProperty('--y-end', `${Math.random() * 80 + 10}vh`);
+            blob.style.setProperty('--scale-start', `${Math.random() * 0.5 + 0.8}`);
+            blob.style.setProperty('--scale-end', `${Math.random() * 0.5 + 0.8}`);
+
+            blob.style.animationDelay = `-${Math.random() * 10}s, -${Math.random() * 15}s, -${Math.random() * 20}s`;
+            blobContainer.appendChild(blob);
+
+            this.domBlobs.push(blob);
+            this.blobPulses.set(blob, { intensity: 0, lastPulse: 0 });
+        }
+    }
+
+    createBubbles(force = false) {
+        const bubbleContainer = this.getContainer('iridescent-bubbles');
+        if (!bubbleContainer) return;
+        if (!force && bubbleContainer.children.length > 0) return;
+
+        bubbleContainer.textContent = '';
+        const numBubbles = this.activePreset?.bubbleCount ?? 20;
+        for (let i = 0; i < numBubbles; i++) {
+            const bubble = document.createElement('div');
+            bubble.className = 'iridescent-bubble';
+            const size = Math.random() * 80 + 20;
+            bubble.style.width = `${size}px`;
+            bubble.style.height = `${size}px`;
+
+            bubble.style.setProperty('--x-start', `${Math.random() * 100}vw`);
+            bubble.style.setProperty('--y-start', `${110}vh`);
+            bubble.style.setProperty('--x-end', `${Math.random() * 100}vw`);
+            bubble.style.setProperty('--y-end', `${-10}vh`);
+            bubble.style.setProperty('--scale', `${Math.random() * 0.4 + 0.8}`);
+
+            const duration = Math.random() * 15 + 20;
+            bubble.style.animationDuration = `${duration}s`;
+            bubble.style.animationDelay = `-${Math.random() * duration}s`;
+            bubbleContainer.appendChild(bubble);
+        }
+    }
+
+    createRibbons(force = false) {
+        const ribbonContainer = this.getContainer('ribbon-streams');
+        if (!ribbonContainer) return;
+        if (!force && ribbonContainer.children.length > 0) return;
+
+        ribbonContainer.textContent = '';
+        const numRibbons = this.activePreset?.ribbonCount ?? 5;
+        for (let i = 0; i < numRibbons; i++) {
+            const ribbon = document.createElement('div');
+            ribbon.className = 'ribbon-stream';
+
+            ribbon.style.setProperty('--x-start', `${Math.random() * 120 - 10}vw`);
+            ribbon.style.setProperty('--y-start', `${Math.random() * 120 - 10}vh`);
+            ribbon.style.setProperty('--x-end', `${Math.random() * 120 - 10}vw`);
+            ribbon.style.setProperty('--y-end', `${Math.random() * 120 - 10}vh`);
+            ribbon.style.setProperty('--r-start', `${Math.random() * 720 - 360}deg`);
+            ribbon.style.setProperty('--r-end', `${Math.random() * 720 - 360}deg`);
+
+            const duration = Math.random() * 20 + 30;
+            ribbon.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * 10}s`;
+            ribbonContainer.appendChild(ribbon);
+        }
     }
 
     setupGameplayEffects() {
@@ -928,6 +1069,10 @@ export default class FluidDreamsTheme extends BaseTheme {
 
     stop() {
         this.stopEffectsLoop();
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
         super.stop();
     }
 
@@ -966,5 +1111,13 @@ export default class FluidDreamsTheme extends BaseTheme {
             this.effectsCanvas = null;
             this.effectsCtx = null;
         }
+    }
+
+    /**
+     * Provide Fluid Dreams themed tetromino styling (liquid neon palette)
+     * @returns {Object} Fluid Dreams tetromino configuration
+     */
+    getTetrominoConfig() {
+        return FLUID_DREAMS_TETROMINOS;
     }
 }
