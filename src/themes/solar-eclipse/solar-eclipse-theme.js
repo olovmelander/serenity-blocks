@@ -8,6 +8,23 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.coronaParticles = [];
         this.stars = [];
         this.animationFrame = null;
+        this.driftTargets = [];
+
+        // Shared drift state for smooth parallax
+        this.driftAngle = 0;
+        this.driftSpeed = 0.00001;
+        this.driftRadiusX = 0;
+        this.driftRadiusY = 0;
+        this.driftX = 0;
+        this.driftY = 0;
+        this.lastDriftTime = 0;
+        this.driftAngleSecondary = Math.random() * Math.PI * 2;
+        this.driftSpeedSecondary = 0.000007;
+        this.noiseCurrentX = 0;
+        this.noiseCurrentY = 0;
+        this.noiseTargetX = 0;
+        this.noiseTargetY = 0;
+        this.nextNoiseChange = 0;
     }
 
     async createScene() {
@@ -22,6 +39,10 @@ export default class SolarEclipseTheme extends BaseTheme {
 
             // Create solar flares
             this.createSolarFlares();
+
+            // Cache drift targets now that all static nodes exist
+            this.cacheDriftTargets();
+            this.seedInitialDriftPosition();
 
             // Setup event listeners for reactive effects
             this.setupEventListeners();
@@ -75,6 +96,9 @@ export default class SolarEclipseTheme extends BaseTheme {
         canvas.height = window.innerHeight;
 
         const ctx = canvas.getContext('2d');
+        this.driftRadiusX = Math.min(canvas.width, canvas.height) * 0.5;
+        this.driftRadiusY = this.driftRadiusX * 0.65;
+        this.lastDriftTime = performance.now();
 
         // Initialize corona particles
         const particleCount = 200;
@@ -112,6 +136,14 @@ export default class SolarEclipseTheme extends BaseTheme {
     animateCorona(canvas, ctx, centerX, centerY) {
         if (!this.isActive) return;
 
+        const now = performance.now();
+        if (!this.lastDriftTime) {
+            this.lastDriftTime = now;
+        }
+        const deltaTime = now - this.lastDriftTime;
+        this.lastDriftTime = now;
+        this.updateDrift(deltaTime, now);
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Draw particles
@@ -145,6 +177,111 @@ export default class SolarEclipseTheme extends BaseTheme {
     }
 
     /**
+     * Cache DOM nodes that should follow the global drift
+     */
+    cacheDriftTargets() {
+        const potentialTargets = [
+            { node: document.getElementById('eclipse-stars'), multiplier: 1.25 },
+            { node: document.querySelector('.eclipse-corona'), multiplier: 1 },
+            { node: document.querySelector('.eclipse-sun'), multiplier: 1 },
+            { node: document.querySelector('.eclipse-moon'), multiplier: 1 },
+            { node: document.getElementById('eclipse-corona-canvas'), multiplier: 1 },
+            { node: document.getElementById('eclipse-flares'), multiplier: 1 },
+            { node: document.getElementById('eclipse-bursts'), multiplier: 1 },
+            { node: document.getElementById('eclipse-cme'), multiplier: 1 }
+        ];
+
+        this.driftTargets = potentialTargets.filter(target => target.node);
+    }
+
+    /**
+     * Randomize initial drift offsets so each activation starts unique
+     */
+    seedInitialDriftPosition() {
+        const timestamp = performance.now();
+        this.driftAngle = this.random(0, Math.PI * 2);
+        this.driftAngleSecondary = this.random(0, Math.PI * 2);
+        this.noiseCurrentX = this.random(-1, 1);
+        this.noiseCurrentY = this.random(-1, 1);
+        this.noiseTargetX = this.random(-1, 1);
+        this.noiseTargetY = this.random(-1, 1);
+        this.nextNoiseChange = timestamp + this.random(16000, 28000);
+        this.updateDrift(0, timestamp);
+    }
+
+    /**
+     * Update drift offsets for a slow unified motion
+     */
+    updateDrift(deltaTime = 16, timestamp = 0) {
+        const primaryFactor = deltaTime * this.driftSpeed;
+        const secondaryFactor = deltaTime * this.driftSpeedSecondary;
+        this.driftAngle += primaryFactor;
+        this.driftAngleSecondary += secondaryFactor;
+
+        if (!timestamp) {
+            timestamp = performance.now();
+        }
+
+        if (!this.nextNoiseChange || timestamp >= this.nextNoiseChange) {
+            this.noiseTargetX = this.random(-1, 1);
+            this.noiseTargetY = this.random(-1, 1);
+            this.nextNoiseChange = timestamp + this.random(16000, 28000);
+        }
+
+        const smoothing = Math.min(deltaTime / 18000, 0.1);
+        this.noiseCurrentX += (this.noiseTargetX - this.noiseCurrentX) * smoothing;
+        this.noiseCurrentY += (this.noiseTargetY - this.noiseCurrentY) * smoothing;
+
+        const baseX = Math.cos(this.driftAngle) * this.driftRadiusX;
+        const secondaryX = Math.sin(this.driftAngleSecondary * 1.7) * this.driftRadiusX * 0.18;
+        const noiseX = this.noiseCurrentX * this.driftRadiusX * 0.08;
+
+        const baseY = Math.sin(this.driftAngle * 0.85) * this.driftRadiusY;
+        const secondaryY = Math.cos(this.driftAngleSecondary * 1.2) * this.driftRadiusY * 0.22;
+        const noiseY = this.noiseCurrentY * this.driftRadiusY * 0.1;
+
+        this.driftX = baseX + secondaryX + noiseX;
+        this.driftY = baseY + secondaryY + noiseY;
+        this.updateDriftPositions();
+    }
+
+    /**
+     * Apply drift offsets to all registered nodes
+     */
+    updateDriftPositions() {
+        if (!this.driftTargets || this.driftTargets.length === 0) {
+            this.cacheDriftTargets();
+        }
+        if (!this.driftTargets || this.driftTargets.length === 0) return;
+        this.driftTargets.forEach(({ node, multiplier = 1 }) => {
+            const translateValue = `${this.driftX * multiplier}px ${this.driftY * multiplier}px`;
+            node.style.translate = translateValue;
+        });
+    }
+
+    /**
+     * Clear drift transforms when theme stops
+     */
+    resetDrift() {
+        if (this.driftTargets) {
+            this.driftTargets.forEach(({ node }) => {
+                node.style.translate = '';
+            });
+        }
+        this.driftTargets = [];
+        this.driftAngle = 0;
+        this.driftAngleSecondary = Math.random() * Math.PI * 2;
+        this.driftX = 0;
+        this.driftY = 0;
+        this.noiseCurrentX = 0;
+        this.noiseCurrentY = 0;
+        this.noiseTargetX = 0;
+        this.noiseTargetY = 0;
+        this.nextNoiseChange = 0;
+        this.lastDriftTime = 0;
+    }
+
+    /**
      * Create solar flares
      */
     createSolarFlares() {
@@ -158,7 +295,7 @@ export default class SolarEclipseTheme extends BaseTheme {
             flare.className = 'eclipse-flare';
 
             const angle = (i * 60) + this.random(-15, 15);
-            const length = this.random(200, 400);
+            const length = this.random(260, 480);
             const width = this.random(80, 150);
             const duration = this.random(4, 8);
 
@@ -392,6 +529,8 @@ export default class SolarEclipseTheme extends BaseTheme {
         if (theme) {
             theme.style.filter = '';
         }
+
+        this.resetDrift();
 
         super.stop();
     }

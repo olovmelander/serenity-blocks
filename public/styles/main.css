@@ -8538,7 +8538,7 @@ body {
     left: 50%;
     width: 0;
     height: 0;
-    z-index: 1;
+    z-index: 5;
     pointer-events: none;
 }
 
@@ -8546,10 +8546,10 @@ body {
     position: absolute;
     top: 0;
     left: 0;
-    width: var(--flare-length, 300px);
+    width: var(--flare-length, 380px);
     height: var(--flare-width, 100px);
-    transform: rotate(var(--flare-angle, 0deg)) translateX(calc(var(--flare-length, 300px) / -2));
-    transform-origin: center center;
+    transform: translateY(-50%) rotate(var(--flare-angle, 0deg));
+    transform-origin: 0% 50%;
     background: linear-gradient(to right,
         rgba(255, 200, 100, 0.6) 0%,
         rgba(255, 150, 50, 0.4) 30%,
