@@ -230,6 +230,9 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
         // Shift sky colors
         this.shiftSkyColors(comboCount);
+
+        // Glow mountain outlines
+        this.glowMountainOutlines(comboCount);
     }
 
     /**
@@ -359,7 +362,8 @@ export default class MoonriseSummitTheme extends BaseTheme {
         const aura = document.createElement('div');
         aura.className = 'moonrise-aura-pulse';
 
-        const intensity = Math.min(comboCount - 2, 3);
+        // Reduced intensity for more subtle effect
+        const intensity = Math.min((comboCount - 2) * 0.5, 1.5);
         aura.style.setProperty('--aura-intensity', intensity);
 
         auraContainer.appendChild(aura);
@@ -404,6 +408,160 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 star.style.opacity = originalOpacity;
             }, 200);
         }
+    }
+
+    /**
+     * Glow mountain outlines during combos
+     */
+    glowMountainOutlines(comboCount) {
+        console.log('[MoonriseSummit] Glowing mountain outlines for combo:', comboCount);
+
+        const mountains = document.querySelectorAll('.moonrise-mountain-layer');
+        if (!mountains.length) {
+            console.warn('[MoonriseSummit] No mountains found!');
+            return;
+        }
+
+        console.log('[MoonriseSummit] Found', mountains.length, 'mountains');
+
+        // Calculate glow intensity based on combo count
+        const glowOpacity = Math.min(0.15 + (comboCount * 0.02), 0.35);
+        const blurAmount = 2 + (comboCount * 0.5);
+        const strokeWidth = 0.2 + (comboCount * 0.08); // In viewBox units (0-100)
+
+        mountains.forEach((mountain, index) => {
+            setTimeout(() => {
+                // Get the clip-path from the ::before pseudo-element
+                const beforeStyle = window.getComputedStyle(mountain, '::before');
+                const clipPath = beforeStyle.clipPath;
+
+                // Parse the polygon points from clip-path
+                const polygonMatch = clipPath.match(/polygon\(([^)]+)\)/);
+                if (!polygonMatch) {
+                    console.warn('[MoonriseSummit] Could not parse clip-path for mountain', index);
+                    return;
+                }
+
+                // Create SVG for the outline
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('class', 'moonrise-mountain-outline-glow');
+                svg.setAttribute('viewBox', '0 0 100 100');
+                svg.setAttribute('preserveAspectRatio', 'none');
+                svg.style.cssText = `
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    pointer-events: none;
+                    opacity: 0;
+                    transition: opacity 0.5s ease-out;
+                    overflow: visible;
+                `;
+
+                // Parse polygon points and convert to SVG path
+                const points = polygonMatch[1].trim();
+                const coords = points.split(',').map(pair => {
+                    const [x, y] = pair.trim().split(/\s+/);
+                    return {
+                        x: parseFloat(x),
+                        y: parseFloat(y)
+                    };
+                });
+
+                // Create path for the complete mountain outline (excluding only the bottom edge)
+                let pathData = '';
+                const bottomY = 100;
+
+                // Filter out only the bottom edge points
+                const outlinePoints = coords.filter(coord => coord.y !== bottomY);
+
+                // Draw the complete mountain outline
+                if (outlinePoints.length > 0) {
+                    pathData = `M ${outlinePoints[0].x} ${outlinePoints[0].y} `;
+                    for (let i = 1; i < outlinePoints.length; i++) {
+                        pathData += `L ${outlinePoints[i].x} ${outlinePoints[i].y} `;
+                    }
+                }
+
+                console.log('[MoonriseSummit] Path data:', pathData);
+
+                // Create the path element with glow
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', pathData);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke', `rgba(255, 200, 120, ${glowOpacity})`);
+                path.setAttribute('stroke-width', strokeWidth);
+                path.setAttribute('stroke-linecap', 'round');
+                path.setAttribute('stroke-linejoin', 'round');
+
+                // Create filter for glow effect
+                const filterId = `mountain-glow-filter-${index}-${Date.now()}`;
+                const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+                filter.setAttribute('id', filterId);
+                filter.setAttribute('x', '-50%');
+                filter.setAttribute('y', '-50%');
+                filter.setAttribute('width', '200%');
+                filter.setAttribute('height', '200%');
+
+                // Multiple blur layers for intense glow
+                const blur1 = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+                blur1.setAttribute('in', 'SourceGraphic');
+                blur1.setAttribute('stdDeviation', blurAmount);
+                blur1.setAttribute('result', 'blur1');
+
+                const colorMatrix = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
+                colorMatrix.setAttribute('in', 'blur1');
+                colorMatrix.setAttribute('type', 'matrix');
+                colorMatrix.setAttribute('values', `1 0 0 0 0  0 0.8 0 0 0  0 0 0.6 0 0  0 0 0 ${glowOpacity * 0.8} 0`);
+                colorMatrix.setAttribute('result', 'coloredBlur');
+
+                const merge = document.createElementNS('http://www.w3.org/2000/svg', 'feMerge');
+                const mergeNode1 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+                mergeNode1.setAttribute('in', 'coloredBlur');
+                const mergeNode2 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+                mergeNode2.setAttribute('in', 'coloredBlur');
+                const mergeNode3 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+                mergeNode3.setAttribute('in', 'SourceGraphic');
+
+                merge.appendChild(mergeNode1);
+                merge.appendChild(mergeNode2);
+                merge.appendChild(mergeNode3);
+
+                filter.appendChild(blur1);
+                filter.appendChild(colorMatrix);
+                filter.appendChild(merge);
+
+                svg.appendChild(filter);
+                path.setAttribute('filter', `url(#${filterId})`);
+                svg.appendChild(path);
+
+                mountain.appendChild(svg);
+
+                console.log('[MoonriseSummit] Created outline SVG for mountain', index);
+
+                // Animate in
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        svg.style.opacity = '1';
+                        console.log('[MoonriseSummit] Outline glow faded in for mountain', index);
+                    });
+                });
+
+                // Reset after duration based on combo count
+                const duration = 1000 + (comboCount * 200);
+                setTimeout(() => {
+                    svg.style.opacity = '0';
+
+                    // Remove SVG after fade out
+                    setTimeout(() => {
+                        if (svg.parentNode) {
+                            svg.parentNode.removeChild(svg);
+                        }
+                    }, 600);
+                }, duration);
+            }, index * 120); // Stagger the effect across mountains
+        });
     }
 
     stop() {
