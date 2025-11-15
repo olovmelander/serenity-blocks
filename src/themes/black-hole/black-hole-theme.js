@@ -103,6 +103,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.boundAnimateStardust = this.animateStardust.bind(this);
         this.handleResize = this.handleResize.bind(this);
         this.resizeAttached = false;
+        this.settingsListener = null;
         this.qualityProfile = QUALITY_PRESETS.High;
         this.effectIntensityMultiplier = this.qualityProfile.effectIntensity;
         this.baseBlackHolePullRadius = 400;
@@ -212,6 +213,30 @@ export default class BlackHoleTheme extends BaseTheme {
         this.trailDetailFactor = this.lowPowerMode ? Math.max(0.2, base * 0.5) : base;
     }
 
+    /**
+     * Attach settings listener to react to quality changes
+     */
+    attachSettingsListener() {
+        if (this.settingsListener || typeof window === 'undefined') return;
+        this.settingsListener = (event) => {
+            if (event?.detail?.effectQuality !== undefined) {
+                console.log('[BlackHole] Quality setting changed to:', event.detail.effectQuality);
+                this.applyQualityProfile(event.detail.effectQuality);
+            }
+        };
+        window.addEventListener('settingsChanged', this.settingsListener);
+    }
+
+    /**
+     * Detach settings listener
+     */
+    detachSettingsListener() {
+        if (this.settingsListener && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.settingsListener);
+            this.settingsListener = null;
+        }
+    }
+
     canRunComboEffects() {
         const now = performance.now();
         if (now - this.lastComboEffectTime < this.qualityProfile.comboEffectCooldown) {
@@ -277,6 +302,9 @@ export default class BlackHoleTheme extends BaseTheme {
 
             // Setup event listeners
             this.setupEventListeners();
+
+            // Attach settings listener to react to quality changes
+            this.attachSettingsListener();
 
             console.log('[BlackHole] Scene created successfully!');
         } catch (error) {
@@ -1632,6 +1660,9 @@ export default class BlackHoleTheme extends BaseTheme {
             window.removeEventListener('resize', this.handleResize);
             this.resizeAttached = false;
         }
+
+        // Detach settings listener
+        this.detachSettingsListener();
 
         this.particles.forEach((particle) => {
             if (!particle) return;

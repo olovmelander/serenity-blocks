@@ -34,7 +34,7 @@ const DEFAULT_CONFIG = {
     customResolution: null,         // { width: number, height: number } or null
     vsyncEnabled: true,
     targetFrameRate: 60,            // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
-    graphicsQuality: 'High',        // 'Low' | 'Medium' | 'High' | 'Ultra' | 'Custom'
+    effectQuality: 'High',          // 'Low' | 'Medium' | 'High' | 'Ultra' | 'Custom'
     // Advanced Graphics Settings
     enableAntialiasing: true,
     enableMotionBlur: false,
@@ -951,11 +951,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Graphics quality selector
     const graphicsQualitySelect = document.getElementById('graphics-quality');
     if (graphicsQualitySelect) {
-        graphicsQualitySelect.value = settings.graphicsQuality || 'High';
+        graphicsQualitySelect.value = settings.effectQuality || 'High';
 
         graphicsQualitySelect.addEventListener('change', (e) => {
             const quality = e.target.value;
-            settingsManager.update({ graphicsQuality: quality });
+            settingsManager.update({ effectQuality: quality });
             settingsManager.save();
 
             // Update performance monitor quality mode if it's active
