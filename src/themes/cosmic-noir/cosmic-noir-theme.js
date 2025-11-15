@@ -357,7 +357,10 @@ export default class CosmicNoirTheme extends BaseTheme {
      */
     intensifyGalaxy(comboCount) {
         const theme = document.getElementById('cosmic-noir-theme');
-        if (!theme) return;
+        if (!theme) {
+            console.warn('[Cosmic Noir] Theme element not found for intensify effect');
+            return;
+        }
 
         // Clear any existing timeout so rapid combos don't clear the effect early
         if (this.intensifyTimeout) {
@@ -366,8 +369,13 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Remove transition for instant application
         theme.style.transition = 'none';
-        const brightness = 100 + Math.min(comboCount * 12, 60);
-        theme.style.filter = `brightness(${brightness}%) contrast(${100 + comboCount * 8}%)`;
+
+        // Increased intensity: more noticeable brightness and contrast
+        const brightness = 100 + Math.min(comboCount * 15, 80);
+        const contrast = 100 + Math.min(comboCount * 12, 70);
+        theme.style.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+
+        console.log(`[Cosmic Noir] Intensify applied: brightness(${brightness}%) contrast(${contrast}%)`);
 
         // Contrast effect duration scales with combo count (2s base + 200ms per combo)
         const duration = 2000 + (comboCount * 200);
@@ -375,6 +383,8 @@ export default class CosmicNoirTheme extends BaseTheme {
             // Add smooth transition for fade-out
             theme.style.transition = 'filter 0.8s ease-out';
             theme.style.filter = 'brightness(100%) contrast(100%)';
+
+            console.log('[Cosmic Noir] Intensify fading out');
 
             // Clear transition after fade completes
             setTimeout(() => {
