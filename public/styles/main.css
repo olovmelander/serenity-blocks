@@ -9784,8 +9784,8 @@ body {
         rgba(180, 100, 255, 0.22) 70%,
         rgba(80, 255, 200, 0.15) 85%,
         transparent 100%);
-    transform-origin: 50% 0%;
-    transform: rotate(var(--ray-angle, 0deg)) translateZ(0);
+    transform-origin: 50% 0;
+    transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg)) translateZ(0);
     filter: blur(20px);
     opacity: 0.65;
     animation: supernova-ray-shimmer var(--ray-duration, 7s) ease-in-out infinite;
@@ -9826,8 +9826,8 @@ body {
         rgba(120, 180, 255, 0.5) 50%,
         rgba(80, 150, 255, 0.3) 75%,
         transparent 100%);
-    transform-origin: 50% 0%;
-    transform: rotate(var(--filament-angle, 0deg));
+    transform-origin: 50% 0;
+    transform: translate(-50%, 0) rotate(var(--filament-angle, 0deg));
     filter: blur(1px);
     opacity: 0.8;
     animation: supernova-filament-pulse var(--filament-duration, 4s) ease-in-out infinite;
@@ -9836,11 +9836,11 @@ body {
 @keyframes supernova-filament-pulse {
     0%, 100% {
         opacity: 0.6;
-        transform: rotate(var(--filament-angle, 0deg)) scaleY(1);
+        transform: translate(-50%, 0) rotate(var(--filament-angle, 0deg)) scaleY(1);
     }
     50% {
         opacity: 1;
-        transform: rotate(var(--filament-angle, 0deg)) scaleY(1.15);
+        transform: translate(-50%, 0) rotate(var(--filament-angle, 0deg)) scaleY(1.15);
     }
 }
 

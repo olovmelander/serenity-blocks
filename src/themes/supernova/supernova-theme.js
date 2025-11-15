@@ -23,6 +23,15 @@ export default class SupernovaTheme extends BaseTheme {
         this.activeEffectTimeout = null;
         this.currentBrightness = 100;
         this.currentSaturation = 100;
+
+        // Drift state for slow screen movement
+        this.driftAngle = 0;
+        this.driftSpeed = 0.0005; // Very slow drift (radians per frame) - about 2 minutes per cycle
+        this.driftRadius = 0; // Will be set based on screen size
+        this.driftX = 0;
+        this.driftY = 0;
+        this.baseCenterX = 0;
+        this.baseCenterY = 0;
     }
 
     async createScene() {
@@ -123,6 +132,11 @@ export default class SupernovaTheme extends BaseTheme {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
+        // Initialize drift parameters
+        this.baseCenterX = centerX;
+        this.baseCenterY = centerY;
+        this.driftRadius = Math.min(this.canvas.width, this.canvas.height) * 0.30; // 30% of smaller dimension for large screen coverage
+
         // Supernova color palette - vibrant explosion colors
         const colors = [
             { r: 100, g: 220, b: 255 },   // Bright cyan (core)
@@ -187,6 +201,14 @@ export default class SupernovaTheme extends BaseTheme {
 
         this.lastFrameTime = now - (deltaTime % this.targetFrameTime);
 
+        // Update drift - creates a slow figure-8 pattern
+        this.driftAngle += this.driftSpeed;
+        this.driftX = Math.cos(this.driftAngle) * this.driftRadius;
+        this.driftY = Math.sin(this.driftAngle * 2) * this.driftRadius * 0.5; // Half amplitude on Y for figure-8
+
+        // Update DOM element positions to follow the drift
+        this.updateDriftPositions();
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Remove expired combo particles
@@ -238,7 +260,7 @@ export default class SupernovaTheme extends BaseTheme {
                 }
             }
 
-            // Calculate position with turbulence
+            // Calculate position with turbulence (canvas itself is drifting)
             const x = centerX + Math.cos(particle.angle) * particle.distance + turbulenceX;
             const y = centerY + Math.sin(particle.angle) * particle.distance + turbulenceY;
 
@@ -274,6 +296,57 @@ export default class SupernovaTheme extends BaseTheme {
         this.animationFrame = requestAnimationFrame(() =>
             this.animateShockwave(canvas, ctx, centerX, centerY)
         );
+    }
+
+    /**
+     * Update positions of DOM elements to follow the drift
+     */
+    updateDriftPositions() {
+        // Apply drift using CSS translate property for all elements (consistent approach)
+        const starsContainer = document.getElementById('supernova-stars');
+        if (starsContainer) {
+            starsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const core = document.querySelector('.supernova-core');
+        if (core) {
+            core.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const shell = document.querySelector('.supernova-shell');
+        if (shell) {
+            shell.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const canvas = document.getElementById('supernova-shockwave-canvas');
+        if (canvas) {
+            canvas.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const raysContainer = document.getElementById('supernova-rays');
+        if (raysContainer) {
+            raysContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const filamentsContainer = document.getElementById('supernova-filaments');
+        if (filamentsContainer) {
+            filamentsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const pulsesContainer = document.getElementById('supernova-pulses');
+        if (pulsesContainer) {
+            pulsesContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const burstsContainer = document.getElementById('supernova-bursts');
+        if (burstsContainer) {
+            burstsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
+
+        const explosionsContainer = document.getElementById('supernova-explosions');
+        if (explosionsContainer) {
+            explosionsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+        }
     }
 
     /**
@@ -422,13 +495,15 @@ export default class SupernovaTheme extends BaseTheme {
         if (!core) return;
 
         const originalFilter = core.style.filter;
-        core.style.transition = 'filter 0.4s ease-out, transform 0.4s ease-out';
+        const originalScale = core.style.scale;
+        core.style.transition = 'filter 0.4s ease-out, scale 0.4s ease-out';
         core.style.filter = `brightness(${1 + intensity * 0.4}) saturate(${100 + intensity * 30}%)`;
-        core.style.transform = `translate(-50%, -50%) scale(${1 + intensity * 0.08})`;
+        // Use scale property (separate from transform) to preserve both animation and drift
+        core.style.scale = `${1 + intensity * 0.08}`;
 
         setTimeout(() => {
             core.style.filter = originalFilter;
-            core.style.transform = '';
+            core.style.scale = originalScale;
         }, 400);
     }
 
@@ -695,12 +770,49 @@ export default class SupernovaTheme extends BaseTheme {
         this.currentBrightness = 100;
         this.currentSaturation = 100;
 
+        // Reset drift state
+        this.driftAngle = 0;
+        this.driftX = 0;
+        this.driftY = 0;
+        this.baseCenterX = 0;
+        this.baseCenterY = 0;
+        this.driftRadius = 0;
+
         // Clear any active effects
         const theme = document.getElementById('supernova-theme');
         if (theme) {
             theme.style.filter = '';
             theme.style.transition = '';
         }
+
+        // Clear drift transforms from all elements
+        const core = document.querySelector('.supernova-core');
+        if (core) {
+            core.style.translate = '';
+            core.style.scale = '';
+        }
+
+        const shell = document.querySelector('.supernova-shell');
+        if (shell) {
+            shell.style.translate = '';
+        }
+
+        const containers = [
+            'supernova-stars',
+            'supernova-shockwave-canvas',
+            'supernova-rays',
+            'supernova-filaments',
+            'supernova-pulses',
+            'supernova-bursts',
+            'supernova-explosions'
+        ];
+
+        containers.forEach(id => {
+            const container = document.getElementById(id);
+            if (container) {
+                container.style.translate = '';
+            }
+        });
 
         super.stop();
     }
