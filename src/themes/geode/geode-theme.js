@@ -25,10 +25,14 @@ export default class GeodeTheme extends BaseTheme {
         // Gameplay reactive elements
         this.energyPulses = [];
         this.crystalResonance = [];
+        this.floorRipples = [];
 
         // Visual state
         this.comboMultiplier = 1.0;
         this.pulseIntensity = 0.0;
+        this.screenShake = { x: 0, y: 0, intensity: 0 };
+        this.chromaticAberration = 0;
+        this.crystalShakeIntensity = 0;
 
         // Performance limits
         this.maxDustParticles = 40;
@@ -84,6 +88,7 @@ export default class GeodeTheme extends BaseTheme {
         this.mist = [];
         this.energyPulses = [];
         this.crystalResonance = [];
+        this.floorRipples = [];
 
         this.cacheGradients();
 
@@ -445,13 +450,16 @@ export default class GeodeTheme extends BaseTheme {
         this.onCombo(comboCount);
     }
 
-    onLineClear(lineCount) {
+    onLineClear(lineCount, comboCount = 0) {
         this.pulseIntensity = Math.min(this.pulseIntensity + 0.3 * lineCount, 1.5);
 
-        // Make crystals glow
+        // Make crystals glow and shake
         this.crystalClusters.forEach((cluster) => {
             cluster.glowIntensity = Math.min(cluster.glowIntensity + 0.4, 2.5);
         });
+
+        // Add crystal shake based on combo
+        this.crystalShakeIntensity = Math.min(this.crystalShakeIntensity + 0.15 * (1 + comboCount * 0.3), 1.0);
 
         // Create energy pulse effect
         if (this.energyPulses.length < this.maxEnergyPulses) {
@@ -466,6 +474,17 @@ export default class GeodeTheme extends BaseTheme {
                     hue: sourceCluster.crystals[0].hue,
                     growthRate: 3 + lineCount * 0.5,
                 });
+
+                // Create floor ripple from crystal
+                this.floorRipples.push({
+                    x: sourceCluster.x,
+                    y: this.canvas.height * 0.85,
+                    radius: 0,
+                    maxRadius: 300 + lineCount * 80,
+                    opacity: 0.5,
+                    hue: sourceCluster.crystals[0].hue,
+                    growthRate: 4 + lineCount * 0.8,
+                });
             }
         }
     }
@@ -473,6 +492,17 @@ export default class GeodeTheme extends BaseTheme {
     onCombo(comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
         this.pulseIntensity = Math.min(this.pulseIntensity + 0.5 * comboCount, 2.0);
+
+        // Screen shake for high combos - INTENSE for 5+
+        if (comboCount >= 5) {
+            this.screenShake.intensity = Math.min(6 + (comboCount - 5) * 2, 14);
+            // Chromatic aberration for top-level combos (7+)
+            if (comboCount >= 7) {
+                this.chromaticAberration = Math.min(4 + (comboCount - 7) * 1.2, 10);
+            }
+        } else if (comboCount >= 3) {
+            this.screenShake.intensity = Math.min(2 + comboCount * 0.6, 5);
+        }
 
         // Create crystal resonance between nearby crystals
         if (comboCount >= 2) {
@@ -487,10 +517,11 @@ export default class GeodeTheme extends BaseTheme {
                             y1: cluster1.y,
                             x2: cluster2.x,
                             y2: cluster2.y,
-                            opacity: 0.6,
+                            opacity: 0.6 + comboCount * 0.05,
                             hue: cluster1.crystals[0].hue,
                             life: 1.0,
                             decay: 0.015,
+                            width: 2 + comboCount * 0.3,
                         });
                     }
                 }
@@ -510,14 +541,42 @@ export default class GeodeTheme extends BaseTheme {
         if (this.comboMultiplier > 1) {
             this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.01);
         }
+        if (this.screenShake.intensity > 0) {
+            this.screenShake.intensity *= 0.92;
+            if (this.screenShake.intensity < 0.1) this.screenShake.intensity = 0;
+        }
+        if (this.chromaticAberration > 0) {
+            this.chromaticAberration *= 0.94;
+            if (this.chromaticAberration < 0.1) this.chromaticAberration = 0;
+        }
+        if (this.crystalShakeIntensity > 0) {
+            this.crystalShakeIntensity *= 0.95;
+            if (this.crystalShakeIntensity < 0.05) this.crystalShakeIntensity = 0;
+        }
+
+        // Update screen shake position
+        if (this.screenShake.intensity > 0) {
+            this.screenShake.x = (Math.random() - 0.5) * this.screenShake.intensity * 2;
+            this.screenShake.y = (Math.random() - 0.5) * this.screenShake.intensity * 2;
+        } else {
+            this.screenShake.x = 0;
+            this.screenShake.y = 0;
+        }
 
         // Update element positions for smooth movement
         this.updateMovements();
+
+        // Apply screen shake transform
+        this.ctx.save();
+        if (this.screenShake.intensity > 0) {
+            this.ctx.translate(this.screenShake.x, this.screenShake.y);
+        }
 
         // Draw scene (back to front for proper layering)
         this.drawBackground();
         this.drawCaveWalls();
         this.drawCaveFloor();
+        this.drawFloorRipples();
         this.drawAmbientGlows();
         this.drawLightRays();
         this.drawRockFormations();
@@ -528,6 +587,14 @@ export default class GeodeTheme extends BaseTheme {
         this.drawStalactites();
         this.drawEnergyPulses();
         this.drawCrystalResonance();
+
+        // Restore transform
+        this.ctx.restore();
+
+        // Apply chromatic aberration if active (drawn separately for effect)
+        if (this.chromaticAberration > 0) {
+            this.drawChromaticAberration();
+        }
 
         this.registerAnimation(requestAnimationFrame(() => this.animate()));
     }
@@ -729,7 +796,16 @@ export default class GeodeTheme extends BaseTheme {
             const totalGlow = cluster.baseGlow * pulse * cluster.glowIntensity * (1 + this.pulseIntensity * 0.4);
 
             this.ctx.save();
-            this.ctx.translate(cluster.x, cluster.y);
+
+            // Add crystal shake effect
+            let shakeX = 0;
+            let shakeY = 0;
+            if (this.crystalShakeIntensity > 0) {
+                shakeX = (Math.random() - 0.5) * this.crystalShakeIntensity * 6;
+                shakeY = (Math.random() - 0.5) * this.crystalShakeIntensity * 6;
+            }
+
+            this.ctx.translate(cluster.x + shakeX, cluster.y + shakeY);
 
             // Apply slow rotation to entire cluster
             const clusterRotation = Math.sin(cluster.rotationPhase) * cluster.rotationAmount;
@@ -812,7 +888,9 @@ export default class GeodeTheme extends BaseTheme {
             ray.angle += ray.rotationSpeed;
 
             const pulse = Math.sin(ray.pulsePhase) * 0.4 + 0.6;
-            const opacity = ray.opacity * pulse * (1 + this.pulseIntensity * 0.3);
+            // Enhanced light ray intensity during combos
+            const comboBoost = 1 + this.pulseIntensity * 0.5 + this.comboMultiplier * 0.3;
+            const opacity = ray.opacity * pulse * comboBoost;
 
             this.ctx.save();
             this.ctx.translate(ray.x, ray.y);
@@ -903,7 +981,7 @@ export default class GeodeTheme extends BaseTheme {
             gradient.addColorStop(1, `hsla(${resonance.hue}, 80%, 70%, ${resonance.opacity})`);
 
             this.ctx.strokeStyle = gradient;
-            this.ctx.lineWidth = 2 + Math.sin(this.animationTime * 5 + i) * 1;
+            this.ctx.lineWidth = (resonance.width || 2) + Math.sin(this.animationTime * 5 + i) * 1;
             this.ctx.beginPath();
             this.ctx.moveTo(resonance.x1, resonance.y1);
 
@@ -913,6 +991,62 @@ export default class GeodeTheme extends BaseTheme {
             this.ctx.quadraticCurveTo(midX, midY, resonance.x2, resonance.y2);
             this.ctx.stroke();
         }
+    }
+
+    drawFloorRipples() {
+        // Limit to max 5 ripples for performance
+        while (this.floorRipples.length > 5) {
+            this.floorRipples.shift();
+        }
+
+        for (let i = this.floorRipples.length - 1; i >= 0; i--) {
+            const ripple = this.floorRipples[i];
+
+            ripple.radius += ripple.growthRate;
+            ripple.opacity *= 0.96;
+
+            if (ripple.radius >= ripple.maxRadius || ripple.opacity < 0.05) {
+                this.floorRipples.splice(i, 1);
+                continue;
+            }
+
+            // Draw simplified expanding ripple ring on the floor
+            this.ctx.strokeStyle = `hsla(${ripple.hue}, 70%, 55%, ${ripple.opacity})`;
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.ellipse(ripple.x, ripple.y, ripple.radius, ripple.radius * 0.3, 0, 0, Math.PI * 2);
+            this.ctx.stroke();
+        }
+    }
+
+    drawChromaticAberration() {
+        if (this.chromaticAberration <= 0) return;
+
+        // Ultra-efficient chromatic aberration using composite operations
+        // This draws colored overlays instead of processing pixels
+        const offset = this.chromaticAberration * 0.8;
+        const intensity = Math.min(this.chromaticAberration / 8, 0.15);
+
+        // Save the current canvas state
+        this.ctx.save();
+
+        // Red channel overlay (shifted left)
+        this.ctx.globalCompositeOperation = 'screen';
+        this.ctx.fillStyle = `rgba(255, 0, 0, ${intensity})`;
+        this.ctx.fillRect(-offset, 0, this.canvas.width, this.canvas.height);
+
+        // Blue channel overlay (shifted right)
+        this.ctx.fillStyle = `rgba(0, 100, 255, ${intensity})`;
+        this.ctx.fillRect(offset, 0, this.canvas.width, this.canvas.height);
+
+        // Add a subtle white flash overlay for impact
+        if (this.chromaticAberration > 5) {
+            this.ctx.globalCompositeOperation = 'lighten';
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${(this.chromaticAberration - 5) * 0.03})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
+        this.ctx.restore();
     }
 
     drawCaveFloor() {
@@ -1069,7 +1203,9 @@ export default class GeodeTheme extends BaseTheme {
             this.ctx.save();
 
             const pulse = Math.sin(this.animationTime * 0.5 + m.x * 0.01) * 0.2 + 0.8;
-            const opacity = m.opacity * pulse;
+            // Boost mist brightness during combos
+            const comboBoost = 1 + this.comboMultiplier * 0.4 + this.pulseIntensity * 0.3;
+            const opacity = m.opacity * pulse * Math.min(comboBoost, 2.5);
 
             // Draw elliptical mist patch
             const gradient = this.ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.width / 2);
@@ -1102,5 +1238,9 @@ export default class GeodeTheme extends BaseTheme {
         this.comboMultiplier = 1.0;
         this.energyPulses = [];
         this.crystalResonance = [];
+        this.floorRipples = [];
+        this.screenShake = { x: 0, y: 0, intensity: 0 };
+        this.chromaticAberration = 0;
+        this.crystalShakeIntensity = 0;
     }
 }

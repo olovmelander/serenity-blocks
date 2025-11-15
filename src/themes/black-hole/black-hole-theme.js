@@ -109,6 +109,15 @@ export default class BlackHoleTheme extends BaseTheme {
         this.baseBlackHolePullStrength = 0.5;
         this.blackHoleX = 0;
         this.blackHoleY = 0;
+
+        // Black hole drift animation
+        this.blackHoleDriftVelocityX = 0;
+        this.blackHoleDriftVelocityY = 0;
+        this.blackHoleDriftSpeed = 0.03; // Extremely slow drift speed (reduced from 0.15)
+        this.blackHoleTargetX = 0;
+        this.blackHoleTargetY = 0;
+        this.blackHoleDriftChangeTimer = 0;
+        this.blackHoleDriftChangeCooldown = 30000; // Change direction every 30 seconds (very slow changes)
         this.pendingParticleSpawns = [];
         this.accumulatedFrameTime = 0;
         this.lastFrameTime = 0;
@@ -551,6 +560,78 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     /**
+     * Update black hole drifting position for smooth, slow movement
+     */
+    updateBlackHoleDrift(delta) {
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+
+        // Update drift change timer
+        this.blackHoleDriftChangeTimer += delta;
+
+        // Change drift direction periodically
+        if (this.blackHoleDriftChangeTimer >= this.blackHoleDriftChangeCooldown) {
+            this.blackHoleDriftChangeTimer = 0;
+
+            // Define safe boundaries (keep black hole away from edges)
+            const marginX = width * 0.15; // 15% margin from edges
+            const marginY = height * 0.15;
+            const minX = marginX;
+            const maxX = width - marginX;
+            const minY = marginY;
+            const maxY = height - marginY;
+
+            // Pick a new random target position within safe boundaries
+            this.blackHoleTargetX = minX + Math.random() * (maxX - minX);
+            this.blackHoleTargetY = minY + Math.random() * (maxY - minY);
+        }
+
+        // Smoothly drift toward target position with interpolation
+        const dx = this.blackHoleTargetX - this.blackHoleX;
+        const dy = this.blackHoleTargetY - this.blackHoleY;
+
+        // Use extremely gentle interpolation for slow, smooth drifting
+        const smoothingFactor = 0.0005; // Very low value for gentle drift (was 0.008)
+
+        // Apply exponential smoothing (easing) for ultra-smooth motion
+        this.blackHoleX += dx * smoothingFactor;
+        this.blackHoleY += dy * smoothingFactor;
+
+        // Update velocity for consistency (optional, for future use)
+        this.blackHoleDriftVelocityX = dx * smoothingFactor;
+        this.blackHoleDriftVelocityY = dy * smoothingFactor;
+
+        // Update DOM black hole position to match canvas position
+        this.updateBlackHoleDOMPosition();
+    }
+
+    /**
+     * Update the DOM black hole element position to match canvas coordinates
+     */
+    updateBlackHoleDOMPosition() {
+        const blackHole = document.getElementById('stellar-black-hole');
+        if (!blackHole) return;
+
+        // Add smooth transition on first setup
+        if (!blackHole.dataset.driftInitialized) {
+            // Use very slow, linear transition for seamless drift
+            blackHole.style.transition = 'left 2s linear, top 2s linear';
+            blackHole.dataset.driftInitialized = 'true';
+        }
+
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+
+        // Convert canvas coordinates to viewport percentages
+        const percentX = (this.blackHoleX / width) * 100;
+        const percentY = (this.blackHoleY / height) * 100;
+
+        // Apply smooth CSS transform
+        blackHole.style.left = `${percentX}%`;
+        blackHole.style.top = `${percentY}%`;
+    }
+
+    /**
      * Animate stardust particles with black hole gravity
      */
     animateStardust() {
@@ -568,6 +649,9 @@ export default class BlackHoleTheme extends BaseTheme {
             this.lastFrameTime = now;
             this.accumulatedFrameTime += delta;
             this.adjustPerformanceTargets(delta);
+
+            // Update black hole drifting position
+            this.updateBlackHoleDrift(delta);
 
             if (this.accumulatedFrameTime >= this.frameInterval * 3) {
                 this.accumulatedFrameTime = this.frameInterval * 2;
@@ -834,13 +918,22 @@ export default class BlackHoleTheme extends BaseTheme {
             this.qualityProfile.starBurstLimit,
         );
 
+        // Calculate black hole position as percentages
+        const width = this.canvas?.width || window.innerWidth;
+        const height = this.canvas?.height || window.innerHeight;
+        const bhPercentX = (this.blackHoleX / width) * 100;
+        const bhPercentY = (this.blackHoleY / height) * 100;
+
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
                 const burst = document.createElement('div');
                 burst.className = 'stellar-star-burst';
 
-                burst.style.left = `${this.random(20, 80)}%`;
-                burst.style.top = `${this.random(20, 80)}%`;
+                // Position bursts near the black hole with some randomness
+                const offsetX = this.random(-15, 15);
+                const offsetY = this.random(-15, 15);
+                burst.style.left = `${bhPercentX + offsetX}%`;
+                burst.style.top = `${bhPercentY + offsetY}%`;
 
                 burstContainer.appendChild(burst);
 
@@ -942,8 +1035,17 @@ export default class BlackHoleTheme extends BaseTheme {
         const supernova = document.createElement('div');
         supernova.className = 'stellar-supernova';
 
-        supernova.style.left = `${this.random(30, 70)}%`;
-        supernova.style.top = `${this.random(30, 70)}%`;
+        // Calculate black hole position as percentages
+        const width = this.canvas?.width || window.innerWidth;
+        const height = this.canvas?.height || window.innerHeight;
+        const bhPercentX = (this.blackHoleX / width) * 100;
+        const bhPercentY = (this.blackHoleY / height) * 100;
+
+        // Position supernova near the black hole with some randomness
+        const offsetX = this.random(-10, 10);
+        const offsetY = this.random(-10, 10);
+        supernova.style.left = `${bhPercentX + offsetX}%`;
+        supernova.style.top = `${bhPercentY + offsetY}%`;
         supernova.style.setProperty('--supernova-intensity', Math.min(comboCount, 5));
 
         supernovaContainer.appendChild(supernova);
@@ -1196,12 +1298,19 @@ export default class BlackHoleTheme extends BaseTheme {
         );
         if (waveCount <= 0) return;
 
+        // Calculate black hole position as percentages
+        const width = this.canvas?.width || window.innerWidth;
+        const height = this.canvas?.height || window.innerHeight;
+        const percentX = (this.blackHoleX / width) * 100;
+        const percentY = (this.blackHoleY / height) * 100;
+
         for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
                 const wave = document.createElement('div');
                 wave.className = 'gravitational-wave';
-                wave.style.left = '35%';
-                wave.style.top = '50%';
+                // Position waves at the black hole's current location
+                wave.style.left = `${percentX}%`;
+                wave.style.top = `${percentY}%`;
                 wave.style.setProperty('--wave-delay', `${i * 0.2}s`);
 
                 waveContainer.appendChild(wave);
@@ -1489,8 +1598,24 @@ export default class BlackHoleTheme extends BaseTheme {
         }
         this.canvas.style.width = `${displayWidth}px`;
         this.canvas.style.height = `${displayHeight}px`;
+
+        // Initialize black hole position (starting point)
         this.blackHoleX = scaledWidth * 0.35;
         this.blackHoleY = scaledHeight * 0.5;
+
+        // Set initial drift target to a nearby position for smooth start
+        const marginX = scaledWidth * 0.15;
+        const marginY = scaledHeight * 0.15;
+        const minX = marginX;
+        const maxX = scaledWidth - marginX;
+        const minY = marginY;
+        const maxY = scaledHeight - marginY;
+
+        this.blackHoleTargetX = minX + Math.random() * (maxX - minX);
+        this.blackHoleTargetY = minY + Math.random() * (maxY - minY);
+
+        // Update DOM position immediately
+        this.updateBlackHoleDOMPosition();
     }
 
     stop() {
