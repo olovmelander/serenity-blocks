@@ -233,16 +233,22 @@ export default class FallTheme extends BaseTheme {
         svg.style.left = '0';
         svg.style.pointerEvents = 'none';
 
-        // Generate 2-3 branch systems
+        // Get viewport dimensions to calculate absolute positions
+        const { width, height } = this.getViewportSize();
+
+        // Generate 2-3 branch systems with percentage-based positions
         const branchSystems = [
-            { x: '10%', y: '20%', size: 0.8, opacity: 0.4, angle: 30 },
-            { x: '85%', y: '15%', size: 1.0, opacity: 0.5, angle: -25 },
-            { x: '50%', y: '10%', size: 0.6, opacity: 0.35, angle: 10 },
+            { xPercent: 10, yPercent: 20, size: 0.8, opacity: 0.4, angle: 30 },
+            { xPercent: 85, yPercent: 15, size: 1.0, opacity: 0.5, angle: -25 },
+            { xPercent: 50, yPercent: 10, size: 0.6, opacity: 0.35, angle: 10 },
         ];
 
         branchSystems.forEach((system) => {
             const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            g.setAttribute('transform', `translate(${system.x}, ${system.y}) rotate(${system.angle}) scale(${system.size})`);
+            // Convert percentages to absolute pixel values
+            const x = (system.xPercent / 100) * width;
+            const y = (system.yPercent / 100) * height;
+            g.setAttribute('transform', `translate(${x}, ${y}) rotate(${system.angle}) scale(${system.size})`);
             g.setAttribute('opacity', system.opacity);
 
             // Draw branches recursively
