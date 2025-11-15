@@ -694,8 +694,8 @@ class SerenityBlocks {
 
         // Update quality mode in performance monitor
         const settings = this.settingsManager?.settings;
-        if (settings?.graphicsQuality) {
-            performanceMonitor.setQualityMode(settings.graphicsQuality);
+        if (settings?.effectQuality) {
+            performanceMonitor.setQualityMode(settings.effectQuality);
         }
 
         // Legacy FPS counter (keep for compatibility)

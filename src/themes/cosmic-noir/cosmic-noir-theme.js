@@ -12,6 +12,13 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.canvas = null;
         this.ctx = null;
 
+        // Galaxy center position (the "planet")
+        this.galaxyCenterX = 0;
+        this.galaxyCenterY = 0;
+
+        // Combo effect timeout tracker
+        this.intensifyTimeout = null;
+
         // Performance optimization
         this.lastFrameTime = 0;
         this.targetFrameTime = 1000 / 60; // 60 FPS
@@ -102,8 +109,12 @@ export default class CosmicNoirTheme extends BaseTheme {
             desynchronized: true
         });
 
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
+        // Store galaxy center (the "planet") for use in combo effects
+        this.galaxyCenterX = this.canvas.width / 2;
+        this.galaxyCenterY = this.canvas.height / 2;
+
+        const centerX = this.galaxyCenterX;
+        const centerY = this.galaxyCenterY;
 
         // Create galaxy drift particles (200 particles)
         for (let i = 0; i < 200; i++) {
@@ -346,27 +357,77 @@ export default class CosmicNoirTheme extends BaseTheme {
      */
     intensifyGalaxy(comboCount) {
         const theme = document.getElementById('cosmic-noir-theme');
-        if (!theme) return;
+        if (!theme) {
+            console.warn('[Cosmic Noir] Theme element not found for intensify effect');
+            return;
+        }
 
-        const brightness = 100 + Math.min(comboCount * 12, 60);
-        theme.style.filter = `brightness(${brightness}%) contrast(${100 + comboCount * 8}%)`;
+        // Clear any existing timeout so rapid combos don't clear the effect early
+        if (this.intensifyTimeout) {
+            clearTimeout(this.intensifyTimeout);
+        }
 
-        setTimeout(() => {
-            theme.style.filter = '';
-        }, 1000 + comboCount * 100);
+        // Remove transition for instant application
+        theme.style.transition = 'none';
+
+        // Increased intensity: more noticeable brightness and contrast
+        const brightness = 100 + Math.min(comboCount * 15, 80);
+        const contrast = 100 + Math.min(comboCount * 12, 70);
+        theme.style.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+
+        console.log(`[Cosmic Noir] Intensify applied: brightness(${brightness}%) contrast(${contrast}%)`);
+
+        // Contrast effect duration scales with combo count (2s base + 200ms per combo)
+        const duration = 2000 + (comboCount * 200);
+        this.intensifyTimeout = setTimeout(() => {
+            // Add smooth transition for fade-out
+            theme.style.transition = 'filter 0.8s ease-out';
+            theme.style.filter = 'brightness(100%) contrast(100%)';
+
+            console.log('[Cosmic Noir] Intensify fading out');
+
+            // Clear transition after fade completes
+            setTimeout(() => {
+                theme.style.transition = '';
+                theme.style.filter = '';
+            }, 800);
+
+            this.intensifyTimeout = null;
+        }, duration);
     }
 
     /**
-     * Create galaxy wave effect
+     * Create galaxy wave effect - originates from the cosmic-noir-planet element!
      */
     createGalaxyWave(comboCount) {
         const waveContainer = document.getElementById('cosmic-noir-waves');
         if (!waveContainer) return;
 
+        // Get planet element position
+        const planet = document.querySelector('.cosmic-noir-planet');
+        if (!planet) return;
+
+        const planetRect = planet.getBoundingClientRect();
+        const planetCenterX = planetRect.left + planetRect.width / 2;
+        const planetCenterY = planetRect.top + planetRect.height / 2;
+
+        // Calculate offset from container's center position (container is at 50%, 50%)
+        // The container is positioned at screen center, so waves are positioned relative to it
+        const containerCenterX = window.innerWidth / 2;
+        const containerCenterY = window.innerHeight / 2;
+
+        const offsetX = planetCenterX - containerCenterX;
+        const offsetY = planetCenterY - containerCenterY;
+
         for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
             setTimeout(() => {
                 const wave = document.createElement('div');
                 wave.className = 'cosmic-noir-wave';
+
+                // Position wave relative to container, offset to planet center
+                wave.style.left = `${offsetX}px`;
+                wave.style.top = `${offsetY}px`;
+
                 waveContainer.appendChild(wave);
 
                 setTimeout(() => {
@@ -396,6 +457,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = null;
+        }
+
+        // Clear any pending intensify timeout
+        if (this.intensifyTimeout) {
+            clearTimeout(this.intensifyTimeout);
+            this.intensifyTimeout = null;
         }
 
         // Unsubscribe from events
