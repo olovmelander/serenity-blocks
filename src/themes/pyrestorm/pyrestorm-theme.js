@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { PYRESTORM_TETROMINOS } from './pyrestorm-tetrominos.js';
 
 export default class PyrestormTheme extends BaseTheme {
     constructor() {
@@ -25,9 +26,20 @@ export default class PyrestormTheme extends BaseTheme {
         this.volcanoGlowIntensity = 0;
         this.heatIntensity = 0;
         this.comboMultiplier = 1.0;
+        this.comboCooldownMs = 220;
+        this.lastEffectEventTime = 0;
+
+        // Frame timing for adaptive throttling
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67;
 
         // Mountain layer references for glow effects
         this.mountainLayers = [];
+        this.lavaRiversContainer = null;
+        this.embersContainer = null;
+        this.smokeContainer = null;
 
         // Performance limits - optimized for better FPS
         this.MAX_BURSTS = 3;
@@ -36,20 +48,163 @@ export default class PyrestormTheme extends BaseTheme {
         this.MAX_LIGHTNING = 2;
         this.MAX_SWARMS = 40;
         this.MAX_LAVA_BURSTS = 4;
+
+        // Graphics quality state
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                lavaRivers: 4,
+                emberCount: 60,
+                smokePlumes: 6,
+                maxBursts: 2,
+                maxGeysers: 3,
+                maxSparkles: 50,
+                maxLightning: 1,
+                maxSwarms: 20,
+                maxLavaBursts: 2,
+            },
+            'Medium': {
+                lavaRivers: 6,
+                emberCount: 90,
+                smokePlumes: 10,
+                maxBursts: 3,
+                maxGeysers: 4,
+                maxSparkles: 70,
+                maxLightning: 2,
+                maxSwarms: 30,
+                maxLavaBursts: 3,
+            },
+            'High': {
+                lavaRivers: 8,
+                emberCount: 120,
+                smokePlumes: 15,
+                maxBursts: 3,
+                maxGeysers: 5,
+                maxSparkles: 80,
+                maxLightning: 2,
+                maxSwarms: 40,
+                maxLavaBursts: 4,
+            },
+            'Ultra': {
+                lavaRivers: 12,
+                emberCount: 180,
+                smokePlumes: 22,
+                maxBursts: 5,
+                maxGeysers: 7,
+                maxSparkles: 110,
+                maxLightning: 3,
+                maxSwarms: 60,
+                maxLavaBursts: 6,
+            }
+        };
+
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Pyrestorm: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        const preset = this.activePreset;
+        this.MAX_BURSTS = preset.maxBursts;
+        this.MAX_GEYSERS = preset.maxGeysers;
+        this.MAX_SPARKLES = preset.maxSparkles;
+        this.MAX_LIGHTNING = preset.maxLightning;
+        this.MAX_SWARMS = preset.maxSwarms;
+        this.MAX_LAVA_BURSTS = preset.maxLavaBursts;
+
+        this.trimEffectCollections();
+
+        console.log(`🔥 Pyrestorm: Applying ${quality} quality preset`);
+    }
+
+    trimEffectCollections() {
+        const clamp = (collection, limit) => {
+            if (!collection || typeof limit !== 'number') return;
+            if (collection.length > limit) {
+                collection.splice(0, collection.length - limit);
+            }
+        };
+
+        clamp(this.eruptionBursts, this.MAX_BURSTS);
+        clamp(this.flameGeysers, this.MAX_GEYSERS);
+        clamp(this.moltenSparkles, this.MAX_SPARKLES);
+        clamp(this.lightningBolts, this.MAX_LIGHTNING);
+        clamp(this.emberSwarms, this.MAX_SWARMS);
+        clamp(this.lavaBursts, this.MAX_LAVA_BURSTS);
+    }
+
+    shouldThrottleEffects() {
+        const now = Date.now();
+        const timeSinceLastEffect = now - this.lastEffectEventTime;
+        const performanceDrop = this.averageFrameTime > 24;
+        const sparklePressure = this.moltenSparkles.length >= this.MAX_SPARKLES * 0.85;
+        const emberPressure = this.emberSwarms.length >= this.MAX_SWARMS * 0.85;
+        const burstPressure = this.eruptionBursts.length >= this.MAX_BURSTS;
+
+        return (
+            performanceDrop ||
+            sparklePressure ||
+            emberPressure ||
+            burstPressure ||
+            timeSinceLastEffect < this.comboCooldownMs
+        );
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+            this.refreshQualityDependentElements();
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createLavaRivers(true);
+        this.createEmbers(true);
+        this.createSmokePlumes(true);
+        this.trimEffectCollections();
     }
 
     async createScene() {
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
+
         // Create all base scene elements
         this.createVolcanoes();
-        this.createLavaRivers();
-        this.createEmbers();
-        this.createSmokePlumes();
+        this.createLavaRivers(true);
+        this.createEmbers(true);
+        this.createSmokePlumes(true);
 
         // Setup combo effects canvas
         this.setupComboEffects();
 
         // Setup event listeners for gameplay effects
         this.setupEventListeners();
+
+        // Listen for graphics quality changes
+        this.setupQualityListener();
 
         // Start animation loop
         this.animate();
@@ -234,19 +389,28 @@ export default class PyrestormTheme extends BaseTheme {
         });
     }
 
-    createLavaRivers() {
-        const lavaRiversContainer = this.getContainer('pyrestorm-lava-rivers');
-        if (!lavaRiversContainer || lavaRiversContainer.children.length > 0) return;
+    createLavaRivers(force = false) {
+        if (!this.lavaRiversContainer) {
+            this.lavaRiversContainer = this.getContainer('pyrestorm-lava-rivers');
+        }
+
+        const lavaRiversContainer = this.lavaRiversContainer;
+        if (!lavaRiversContainer) return;
+        if (!force && lavaRiversContainer.children.length > 0) return;
+
+        lavaRiversContainer.textContent = '';
 
         // Position behind front mountains (z-index 3) and in front of mid mountains (z-index 2)
         lavaRiversContainer.style.zIndex = '2.5';
 
-        const riverCount = 8;
+        const riverCount = this.activePreset?.lavaRivers ?? 8;
+        const spacing = riverCount > 1 ? 100 / (riverCount - 1) : 0;
 
         for (let i = 0; i < riverCount; i++) {
             const river = document.createElement('div');
             river.className = 'pyrestorm-lava-river';
-            river.style.left = `${i * 15}%`;
+            const left = riverCount > 1 ? Math.min(100, spacing * i) : 50;
+            river.style.left = `${left}%`;
             river.style.setProperty('--flow-speed', `${10 + Math.random() * 10}s`);
             river.style.animationDelay = `${Math.random() * 5}s`;
             river.style.width = `${100 + Math.random() * 100}px`;
@@ -298,11 +462,18 @@ export default class PyrestormTheme extends BaseTheme {
         }
     }
 
-    createEmbers() {
-        const embersContainer = this.getContainer('pyrestorm-embers');
-        if (!embersContainer || embersContainer.children.length > 0) return;
+    createEmbers(force = false) {
+        if (!this.embersContainer) {
+            this.embersContainer = this.getContainer('pyrestorm-embers');
+        }
 
-        const emberCount = 100;
+        const embersContainer = this.embersContainer;
+        if (!embersContainer) return;
+        if (!force && embersContainer.children.length > 0) return;
+
+        embersContainer.textContent = '';
+
+        const emberCount = this.activePreset?.emberCount ?? 100;
 
         for (let i = 0; i < emberCount; i++) {
             const ember = document.createElement('div');
@@ -319,11 +490,18 @@ export default class PyrestormTheme extends BaseTheme {
         }
     }
 
-    createSmokePlumes() {
-        const smokeContainer = this.getContainer('pyrestorm-smoke');
-        if (!smokeContainer || smokeContainer.children.length > 0) return;
+    createSmokePlumes(force = false) {
+        if (!this.smokeContainer) {
+            this.smokeContainer = this.getContainer('pyrestorm-smoke');
+        }
 
-        const smokeCount = 15;
+        const smokeContainer = this.smokeContainer;
+        if (!smokeContainer) return;
+        if (!force && smokeContainer.children.length > 0) return;
+
+        smokeContainer.textContent = '';
+
+        const smokeCount = this.activePreset?.smokePlumes ?? 15;
 
         for (let i = 0; i < smokeCount; i++) {
             const smoke = document.createElement('div');
@@ -392,44 +570,56 @@ export default class PyrestormTheme extends BaseTheme {
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
     }
 
-    handleLineClear(data) {
-        const { lineCount } = data;
+    handleLineClear(data = {}) {
+        const lineCount = Math.max(1, data.lineCount ?? data.count ?? 1);
+        const throttled = this.shouldThrottleEffects();
+        this.lastEffectEventTime = Date.now();
 
         // Increase volcanic activity
-        this.volcanoGlowIntensity = Math.min(1, this.volcanoGlowIntensity + 0.3 * lineCount);
-        this.heatIntensity = Math.min(1, this.heatIntensity + 0.3 * lineCount);
+        const intensityScale = throttled ? 0.6 : 1;
+        this.volcanoGlowIntensity = Math.min(1, this.volcanoGlowIntensity + 0.3 * lineCount * intensityScale);
+        this.heatIntensity = Math.min(1, this.heatIntensity + 0.3 * lineCount * intensityScale);
 
         // Create eruption bursts from volcano peaks
-        this.createEruptionBursts(lineCount);
+        this.createEruptionBursts(lineCount, throttled);
 
         // Removed lava waves - user didn't like the blue line effect
 
         // Create molten sparkles (reduced for performance)
-        this.createMoltenSparkles(lineCount * 10);
+        const sparkleCount = Math.max(4, Math.floor(lineCount * (throttled ? 6 : 10)));
+        this.createMoltenSparkles(sparkleCount, throttled);
+
+        this.trimEffectCollections();
     }
 
-    handleCombo(data) {
-        const { comboCount } = data;
+    handleCombo(data = {}) {
+        const comboCount = Math.max(0, data.comboCount ?? data.combo ?? data.count ?? 0);
+        const throttled = this.shouldThrottleEffects();
+        this.lastEffectEventTime = Date.now();
 
         this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.0);
-        this.volcanoGlowIntensity = Math.min(1, 0.5 + comboCount * 0.15);
-        this.heatIntensity = Math.min(1, 0.5 + comboCount * 0.15);
+        const comboScale = throttled ? 0.7 : 1;
+        this.volcanoGlowIntensity = Math.min(1, 0.5 + comboCount * 0.15 * comboScale);
+        this.heatIntensity = Math.min(1, 0.5 + comboCount * 0.15 * comboScale);
 
         // Create ember swarms (reduced for performance)
         if (comboCount >= 2) {
-            this.createEmberSwarm(Math.min(comboCount, 4));
+            this.createEmberSwarm(Math.min(comboCount, 4), throttled);
         }
 
         // Create lava bursts from mountain peaks for high combos
-        if (comboCount >= 4) {
-            this.createLavaBurst();
+        if (comboCount >= 4 && (!throttled || (comboCount >= 6 && Math.random() < 0.35))) {
+            this.createLavaBurst(throttled);
         }
 
         // Create extra sparkles (reduced for performance)
-        this.createMoltenSparkles(comboCount * 8);
+        const extraSparkles = Math.max(4, comboCount * (throttled ? 5 : 8));
+        this.createMoltenSparkles(extraSparkles, throttled);
+
+        this.trimEffectCollections();
     }
 
-    createEruptionBursts(lineCount) {
+    createEruptionBursts(lineCount, throttled = false) {
         if (!this.effectsCanvas || this.eruptionBursts.length >= this.MAX_BURSTS) return;
 
         const width = this.effectsCanvas.width;
@@ -438,18 +628,21 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Fire colors: bright yellow, orange, red
         const colors = ['#ffdc00', '#ff6b1a', '#ff4500', '#ffa500', '#ff0000'];
-        const burstCount = Math.min(lineCount, this.MAX_BURSTS - this.eruptionBursts.length);
+        const burstCount = Math.min(Math.max(1, lineCount), this.MAX_BURSTS - this.eruptionBursts.length);
 
         for (let i = 0; i < burstCount; i++) {
             const x = Math.random() * width;
             const color = colors[Math.floor(Math.random() * colors.length)];
-            // Reduced particle count for better performance
-            const particleCount = Math.floor(12 + Math.random() * 15);
+            let particleCount = Math.floor(10 + Math.random() * 12);
+            if (throttled) {
+                particleCount = Math.max(6, Math.floor(particleCount * 0.6));
+            }
 
             const particles = [];
             for (let j = 0; j < particleCount; j++) {
                 const angle = Math.random() * Math.PI - Math.PI / 2; // Upward burst
-                const speed = (Math.random() * 3 + 2) * Math.min(this.comboMultiplier, 2.0);
+                const speedBase = (Math.random() * 3 + 2) * Math.min(this.comboMultiplier, 2.0);
+                const speed = throttled ? speedBase * 0.8 : speedBase;
                 particles.push({
                     x: x,
                     y: volcanoY,
@@ -496,7 +689,7 @@ export default class PyrestormTheme extends BaseTheme {
         }
     }
 
-    createMoltenSparkles(count) {
+    createMoltenSparkles(count, throttled = false) {
         if (!this.effectsCanvas) return;
         if (this.moltenSparkles.length >= this.MAX_SPARKLES) {
             this.moltenSparkles.splice(0, Math.floor(this.MAX_SPARKLES * 0.3));
@@ -505,11 +698,18 @@ export default class PyrestormTheme extends BaseTheme {
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
         const colors = ['#ffdc00', '#ffcc00', '#ffa500', '#ff6347'];
-        const sparkleCount = Math.min(count, this.MAX_SPARKLES);
+        let sparkleCount = Math.min(count, this.MAX_SPARKLES);
+        if (throttled) {
+            sparkleCount = Math.floor(sparkleCount * 0.6);
+        }
+        const capacity = Math.max(this.MAX_SPARKLES - this.moltenSparkles.length, 0);
+        sparkleCount = Math.max(0, Math.min(sparkleCount, capacity));
+        if (sparkleCount <= 0) return;
 
         for (let i = 0; i < sparkleCount; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = (Math.random() * 2 + 1) * this.comboMultiplier;
+            const baseSpeed = (Math.random() * 2 + 1) * this.comboMultiplier;
+            const speed = throttled ? baseSpeed * 0.8 : baseSpeed;
             const color = colors[Math.floor(Math.random() * colors.length)];
 
             this.moltenSparkles.push({
@@ -527,7 +727,7 @@ export default class PyrestormTheme extends BaseTheme {
         }
     }
 
-    createLavaBurst() {
+    createLavaBurst(throttled = false) {
         if (!this.effectsCanvas || this.lavaBursts.length >= this.MAX_LAVA_BURSTS) return;
 
         const width = this.effectsCanvas.width;
@@ -539,7 +739,10 @@ export default class PyrestormTheme extends BaseTheme {
         const burstY = height * 0.75; // Mountain peak area
 
         const particles = [];
-        const particleCount = 15 + Math.floor(Math.random() * 10);
+        let particleCount = 15 + Math.floor(Math.random() * 10);
+        if (throttled) {
+            particleCount = Math.max(8, Math.floor(particleCount * 0.6));
+        }
 
         for (let i = 0; i < particleCount; i++) {
             // Create fountain-like spray
@@ -604,7 +807,7 @@ export default class PyrestormTheme extends BaseTheme {
         });
     }
 
-    createEmberSwarm(comboCount) {
+    createEmberSwarm(comboCount, throttled = false) {
         if (!this.effectsCanvas) return;
         if (this.emberSwarms.length >= this.MAX_SWARMS) {
             this.emberSwarms.splice(0, Math.floor(this.MAX_SWARMS * 0.3));
@@ -616,11 +819,18 @@ export default class PyrestormTheme extends BaseTheme {
         const centerY = height / 2;
         const colors = ['#ffdc00', '#ff6b1a', '#ff4500', '#ffa500'];
         // Reduced particle count for better performance
-        const particleCount = Math.min(comboCount * 6, this.MAX_SWARMS);
+        let particleCount = Math.min(comboCount * 6, this.MAX_SWARMS);
+        if (throttled) {
+            particleCount = Math.max(4, Math.floor(particleCount * 0.6));
+        }
+        const capacity = Math.max(this.MAX_SWARMS - this.emberSwarms.length, 0);
+        particleCount = Math.max(0, Math.min(particleCount, capacity));
+        if (particleCount <= 0) return;
 
         for (let i = 0; i < particleCount; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = (Math.random() * 2.5 + 1.5) * Math.min(this.comboMultiplier, 2.0);
+            const baseSpeed = (Math.random() * 2.5 + 1.5) * Math.min(this.comboMultiplier, 2.0);
+            const speed = throttled ? baseSpeed * 0.85 : baseSpeed;
             const color = colors[Math.floor(Math.random() * colors.length)];
 
             this.emberSwarms.push({
@@ -864,24 +1074,51 @@ export default class PyrestormTheme extends BaseTheme {
         ctx.globalAlpha = 1;
     }
 
-    animate() {
-        if (!this.isActive) return;
+    animate(timestamp) {
+        if (!this.isActive || !this.effectsCanvas || !this.effectsCtx) return;
 
-        this.animationTime += 0.016; // Approximately 60fps
+        if (typeof timestamp !== 'number') {
+            timestamp = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+                ? performance.now()
+                : Date.now();
+        }
+
+        if (this.lastFrameTime === 0) {
+            this.lastFrameTime = timestamp;
+        }
+
+        const deltaMs = timestamp - this.lastFrameTime;
+        const deltaSeconds = Math.min(deltaMs / 1000, 0.05);
+        this.lastFrameTime = timestamp;
+
+        this.frameTimeAccumulator += deltaMs;
+        this.frameTimeCount += 1;
+        if (this.frameTimeCount >= 30) {
+            this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
+            this.frameTimeAccumulator = 0;
+            this.frameTimeCount = 0;
+        }
+
+        this.animationTime += deltaSeconds;
 
         // Update mountain glow for combo effects
         this.updateMountainGlow();
 
         // Update and render combo effects
-        this.updateEffects(0.016);
+        this.updateEffects(deltaSeconds);
         this.renderEffects();
 
         // Continue animation loop
-        const animId = requestAnimationFrame(() => this.animate());
+        const animId = requestAnimationFrame((nextTimestamp) => this.animate(nextTimestamp));
         this.registerAnimation(animId);
     }
 
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
@@ -898,6 +1135,11 @@ export default class PyrestormTheme extends BaseTheme {
         this.volcanoGlowIntensity = 0;
         this.heatIntensity = 0;
         this.comboMultiplier = 1.0;
+        this.lastEffectEventTime = 0;
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67;
 
         // Clear effects canvas
         if (this.effectsCanvas && this.effectsCtx) {
@@ -910,5 +1152,13 @@ export default class PyrestormTheme extends BaseTheme {
         this.mountainLayers = [];
 
         super.stop();
+    }
+
+    /**
+     * Provide molten themed tetromino styling to match Pyrestorm visuals
+     * @returns {Object} Pyrestorm tetromino configuration
+     */
+    getTetrominoConfig() {
+        return PYRESTORM_TETROMINOS;
     }
 }

@@ -1021,6 +1021,9 @@ class SerenityBlocks {
         // Settings
         this.settingsManager = new SettingsManager();
         this.settingsManager.load(); // Load from localStorage
+        if (typeof window !== 'undefined') {
+            window.settingsManager = this.settingsManager;
+        }
         const currentSettings = this.settingsManager.get();
         setPieceLockRippleCss(currentSettings.pieceLockRippleColor);
         applySunsetFlarePreference(currentSettings.sunsetFlareIntensity);
@@ -1066,6 +1069,9 @@ class SerenityBlocks {
 
         // Theme manager
         this.themeManager = new ThemeManager(this.webglRenderer);
+        if (typeof window !== 'undefined') {
+            window.themeManager = this.themeManager;
+        }
         if (this.themeManager?.suspendThemes) {
             this.themeManager.suspendThemes();
         }

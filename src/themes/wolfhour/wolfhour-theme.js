@@ -5,6 +5,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { wolfhourBackgroundCache } from '../../utils/cache.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { WOLFHOUR_TETROMINOS } from './wolfhour-tetrominos.js';
 
 /**
  * Wolfhour Theme
@@ -32,18 +33,248 @@ export default class WolfhourTheme extends BaseTheme {
         this.celestialBeams = [];
         this.moonGlowPulses = [];
         this.constellationLines = [];
+        this.cachedStarElements = [];
 
         // Canvas for effects
         this.effectCanvas = null;
         this.effectCtx = null;
 
+        // Separate canvas for celestial beams (between mountain layers)
+        this.beamsCanvas = null;
+        this.beamsCtx = null;
+
         // Animation
         this.animationTime = 0;
         this.animationFrameId = null;
+        this.frameCount = 0;
 
         // Event tracking
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+
+        // Performance optimizations
+        this.cachedStarPositions = [];
+        this.starPositionsCacheTime = 0;
+        this.lastEffectCleanup = 0;
+
+        // Cached DOM references for performance
+        this.cachedDOMElements = {
+            mountainsDistant: null,
+            mountainsFore: null,
+            nebulaBack: null,
+            nebulaMid: null,
+            starsContainer: null,
+        };
+
+        // Frame rate tracking for adaptive performance
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67; // Target 60 FPS
+
+        // Quality presets - current settings are considered Ultra
+        this.qualityPresets = {
+            'Low': {
+                starCount: 50,
+                shootingStarInterval: 15000,
+                lightRayCount: 6,
+                cosmicRiftCount: 3,
+                spiritCount: 3,
+                nebulaBackBlobs: 20,
+                nebulaMidBlobs: 15,
+                maxStarBursts: 6,
+                maxCosmicWaves: 4,
+                maxCelestialBeams: 0,
+                maxMoonPulses: 0,
+                maxConstellationLines: 0,
+                enableConstellationLines: false,
+                enableMoonPulses: false,
+                enableCelestialBeams: false,
+                starBurstParticles: 6,
+                burstCountMultiplier: 1,  // lineCount * 1
+                shootingStarMultiplier: 0.5,  // lineCount * 0.5
+                useShadows: false,
+                useComplexGradients: false,
+                waveRingCount: 1,
+                effectUpdateInterval: 2,  // Update effects every 2 frames
+            },
+            'Medium': {
+                starCount: 80,
+                shootingStarInterval: 12000,
+                lightRayCount: 8,
+                cosmicRiftCount: 5,
+                spiritCount: 4,
+                nebulaBackBlobs: 30,
+                nebulaMidBlobs: 20,
+                maxStarBursts: 10,
+                maxCosmicWaves: 6,
+                maxCelestialBeams: 3,
+                maxMoonPulses: 4,
+                maxConstellationLines: 4,
+                enableConstellationLines: true,
+                enableMoonPulses: true,
+                enableCelestialBeams: false,
+                starBurstParticles: 8,
+                burstCountMultiplier: 1.5,  // lineCount * 1.5
+                shootingStarMultiplier: 0.75,  // lineCount * 0.75
+                useShadows: false,
+                useComplexGradients: false,
+                waveRingCount: 2,
+                effectUpdateInterval: 1,  // Update every frame
+            },
+            'High': {
+                starCount: 120,
+                shootingStarInterval: 10000,
+                lightRayCount: 10,
+                cosmicRiftCount: 6,
+                spiritCount: 5,
+                nebulaBackBlobs: 40,
+                nebulaMidBlobs: 30,
+                maxStarBursts: 15,
+                maxCosmicWaves: 10,
+                maxCelestialBeams: 5,
+                maxMoonPulses: 6,
+                maxConstellationLines: 6,
+                enableConstellationLines: true,
+                enableMoonPulses: true,
+                enableCelestialBeams: true,
+                starBurstParticles: 10,
+                burstCountMultiplier: 2,  // lineCount * 2
+                shootingStarMultiplier: 1,  // lineCount * 1
+                useShadows: true,
+                useComplexGradients: true,
+                waveRingCount: 2,
+                effectUpdateInterval: 1,  // Update every frame
+            },
+            'Ultra': {
+                starCount: 150,
+                shootingStarInterval: 8000,
+                lightRayCount: 12,
+                cosmicRiftCount: 8,
+                spiritCount: 6,
+                nebulaBackBlobs: 50,
+                nebulaMidBlobs: 40,
+                maxStarBursts: 20,
+                maxCosmicWaves: 12,
+                maxCelestialBeams: 8,
+                maxMoonPulses: 8,
+                maxConstellationLines: 8,
+                enableConstellationLines: true,
+                enableMoonPulses: true,
+                enableCelestialBeams: true,
+                starBurstParticles: 12,
+                burstCountMultiplier: 2,  // lineCount * 2 (current)
+                shootingStarMultiplier: 1,  // lineCount * 1 (current)
+                useShadows: true,
+                useComplexGradients: true,
+                waveRingCount: 3,
+                effectUpdateInterval: 1,  // Update every frame
+            }
+        };
+
+        // Active quality preset
+        this.activeQuality = this.qualityPresets['Ultra'];
+        this.qualityListener = null;
+
+        // Performance throttling helpers
+        this.comboEffectCooldownMs = 320;
+        this.lastComboEffectTime = 0;
+        this.constellationCooldownMs = 700;
+        this.lastConstellationTime = 0;
+        this.starPositionsCacheDuration = 1000;
+        this.starBoostTimeout = null;
+        this.lastStarBoostTime = 0;
+        this.mountainGlowCooldownMs = 350;
+        this.lastMountainGlowTime = 0;
+        this.mountainGlowTimeoutDistant = null;
+        this.mountainGlowTimeoutFore = null;
+    }
+
+    getTetrominoConfig() {
+        return WOLFHOUR_TETROMINOS;
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.visualQuality || 'Ultra';
+    }
+
+    applyQualityPreset() {
+        const quality = this.getGraphicsQuality();
+        this.activeQuality = this.qualityPresets[quality] || this.qualityPresets['Ultra'];
+
+        // Trim effect collections to match new limits
+        this.trimEffectCollections();
+
+        // Restart shooting star interval with new timing
+        this.restartShootingStarInterval();
+    }
+
+    setupQualityListener() {
+        this.qualityListener = (event) => {
+            if (event.detail?.visualQuality !== undefined) {
+                this.applyQualityPreset();
+            }
+        };
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('settingsChanged', this.qualityListener);
+        }
+    }
+
+    teardownQualityListener() {
+        if (this.qualityListener && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityListener);
+            this.qualityListener = null;
+        }
+    }
+
+    trimEffectCollections() {
+        // Trim effect arrays to match quality limits
+        if (this.starBursts.length > this.activeQuality.maxStarBursts) {
+            this.starBursts = this.starBursts.slice(0, this.activeQuality.maxStarBursts);
+        }
+        if (this.cosmicWaves.length > this.activeQuality.maxCosmicWaves) {
+            this.cosmicWaves = this.cosmicWaves.slice(0, this.activeQuality.maxCosmicWaves);
+        }
+        if (this.celestialBeams.length > this.activeQuality.maxCelestialBeams) {
+            this.celestialBeams = this.celestialBeams.slice(0, this.activeQuality.maxCelestialBeams);
+        }
+        if (this.moonGlowPulses.length > this.activeQuality.maxMoonPulses) {
+            this.moonGlowPulses = this.moonGlowPulses.slice(0, this.activeQuality.maxMoonPulses);
+        }
+        if (this.constellationLines.length > this.activeQuality.maxConstellationLines) {
+            this.constellationLines = this.constellationLines.slice(0, this.activeQuality.maxConstellationLines);
+        }
+    }
+
+    restartShootingStarInterval() {
+        // Clear existing interval
+        if (this.shootingStarInterval) {
+            clearInterval(this.shootingStarInterval);
+            this.shootingStarInterval = null;
+        }
+
+        // Only restart if theme is active
+        if (!this.isActive) return;
+
+        const starsContainer = document.getElementById('wolfhour-stars');
+        if (!starsContainer) return;
+
+        // Create new interval with quality-based timing
+        this.shootingStarInterval = setInterval(() => {
+            if (!this.isActive) return;
+            const shootingStar = document.createElement('div');
+            shootingStar.className = 'wolfhour-shooting-star';
+            shootingStar.style.left = `${Math.random() * 100}%`;
+            shootingStar.style.top = `${Math.random() * 40}%`;
+            const distance = Math.random() * 300 + 200;
+            shootingStar.style.setProperty('--shoot-x', `${-distance}px`);
+            shootingStar.style.setProperty('--shoot-y', `${distance}px`);
+            shootingStar.style.setProperty('--shoot-duration', `${Math.random() * 1 + 1.5}s`);
+            starsContainer.appendChild(shootingStar);
+            setTimeout(() => shootingStar.remove(), 3000);
+        }, this.activeQuality.shootingStarInterval);
     }
 
     async init() {
@@ -51,10 +282,14 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     async createScene() {
-        // 1. Create dense star field (optimized count for performance)
+        // Apply quality preset
+        this.applyQualityPreset();
+
+        // 1. Create dense star field (quality-based count)
         const starsContainer = this.getContainer('wolfhour-stars');
         if (starsContainer && starsContainer.children.length === 0) {
-            const starCount = 150; // Reduced from 300 for better performance
+            const starCount = this.activeQuality.starCount;
+            this.cachedStarElements = [];
             for (let i = 0; i < starCount; i++) {
                 const star = document.createElement('div');
                 star.className = 'wolfhour-star';
@@ -68,9 +303,10 @@ export default class WolfhourTheme extends BaseTheme {
                 star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
                 star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
                 starsContainer.appendChild(star);
+                this.cachedStarElements.push(star);
             }
 
-            // Create shooting stars periodically
+            // Create shooting stars periodically (quality-based interval)
             this.shootingStarInterval = setInterval(() => {
                 if (!this.isActive) return;
                 const shootingStar = document.createElement('div');
@@ -83,13 +319,14 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStar.style.setProperty('--shoot-duration', `${Math.random() * 1 + 1.5}s`);
                 starsContainer.appendChild(shootingStar);
                 setTimeout(() => shootingStar.remove(), 3000);
-            }, 8000);
+            }, this.activeQuality.shootingStarInterval);
         }
 
-        // 2. Create nebula clouds using canvas (with caching)
+        // 2. Create nebula clouds using canvas (with caching, quality-based)
         const nebulaBack = this.getContainer('wolfhour-nebula-back');
         if (nebulaBack) {
-            const cacheKey = 'wolfhour-nebula-back-2000x800';
+            const quality = this.getGraphicsQuality();
+            const cacheKey = `wolfhour-nebula-back-2000x800-${quality}`;
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -102,8 +339,8 @@ export default class WolfhourTheme extends BaseTheme {
                 canvas.height = 800;
                 const ctx = canvas.getContext('2d');
 
-                // Create wispy nebula texture
-                for (let i = 0; i < 50; i++) {
+                // Create wispy nebula texture (quality-based blob count)
+                for (let i = 0; i < this.activeQuality.nebulaBackBlobs; i++) {
                     const x = rng() * canvas.width;
                     const y = rng() * canvas.height;
                     const radius = rng() * 200 + 100;
@@ -124,7 +361,8 @@ export default class WolfhourTheme extends BaseTheme {
 
         const nebulaMid = this.getContainer('wolfhour-nebula-mid');
         if (nebulaMid) {
-            const cacheKey = 'wolfhour-nebula-mid-2000x800';
+            const quality = this.getGraphicsQuality();
+            const cacheKey = `wolfhour-nebula-mid-2000x800-${quality}`;
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -137,8 +375,8 @@ export default class WolfhourTheme extends BaseTheme {
                 canvas.height = 800;
                 const ctx = canvas.getContext('2d');
 
-                // Create denser nebula for mid layer
-                for (let i = 0; i < 40; i++) {
+                // Create denser nebula for mid layer (quality-based blob count)
+                for (let i = 0; i < this.activeQuality.nebulaMidBlobs; i++) {
                     const x = rng() * canvas.width;
                     const y = rng() * canvas.height;
                     const radius = rng() * 250 + 150;
@@ -157,10 +395,10 @@ export default class WolfhourTheme extends BaseTheme {
             }
         }
 
-        // 3. Create mystical light rays
+        // 3. Create mystical light rays (quality-based count)
         const lightRaysContainer = this.getContainer('wolfhour-light-rays');
         if (lightRaysContainer && lightRaysContainer.children.length === 0) {
-            const rayCount = 12;
+            const rayCount = this.activeQuality.lightRayCount;
             for (let i = 0; i < rayCount; i++) {
                 const ray = document.createElement('div');
                 ray.className = 'wolfhour-light-ray';
@@ -175,10 +413,10 @@ export default class WolfhourTheme extends BaseTheme {
             }
         }
 
-        // 4. Create cosmic rifts (glowing cracks in space)
+        // 4. Create cosmic rifts (glowing cracks in space, quality-based count)
         const cosmicRiftsContainer = this.getContainer('wolfhour-cosmic-rifts');
         if (cosmicRiftsContainer && cosmicRiftsContainer.children.length === 0) {
-            const riftCount = 8;
+            const riftCount = this.activeQuality.cosmicRiftCount;
             for (let i = 0; i < riftCount; i++) {
                 const rift = document.createElement('div');
                 rift.className = 'wolfhour-cosmic-rift';
@@ -192,10 +430,10 @@ export default class WolfhourTheme extends BaseTheme {
             }
         }
 
-        // 5. Create ethereal spirits
+        // 5. Create ethereal spirits (quality-based count)
         const spiritsContainer = this.getContainer('wolfhour-spirits');
         if (spiritsContainer && spiritsContainer.children.length === 0) {
-            const spiritCount = 6;
+            const spiritCount = this.activeQuality.spiritCount;
             for (let i = 0; i < spiritCount; i++) {
                 const spirit = document.createElement('div');
                 spirit.className = 'wolfhour-spirit';
@@ -306,13 +544,50 @@ export default class WolfhourTheme extends BaseTheme {
 
         // 9. Start animation loop
         this.startAnimation();
+
+        // 10. Setup quality change listener
+        this.setupQualityListener();
+    }
+
+    cacheDOMReferences() {
+        // Cache frequently accessed DOM elements to avoid repeated queries
+        this.cachedDOMElements.mountainsDistant = document.getElementById('wolfhour-mountains-distant');
+        this.cachedDOMElements.mountainsFore = document.getElementById('wolfhour-mountains-fore');
+        this.cachedDOMElements.nebulaBack = document.getElementById('wolfhour-nebula-back');
+        this.cachedDOMElements.nebulaMid = document.getElementById('wolfhour-nebula-mid');
+        this.cachedDOMElements.starsContainer = document.getElementById('wolfhour-stars');
     }
 
     setupEffectsCanvas() {
         const themeContainer = document.getElementById('wolfhour-theme');
         if (!themeContainer) return;
 
-        // Create or get canvas for effects
+        // Cache DOM references after scene is created
+        this.cacheDOMReferences();
+
+        // Create canvas for celestial beams (between mountain layers)
+        this.beamsCanvas = document.getElementById('wolfhour-beams-canvas');
+        if (!this.beamsCanvas) {
+            this.beamsCanvas = document.createElement('canvas');
+            this.beamsCanvas.id = 'wolfhour-beams-canvas';
+            this.beamsCanvas.style.position = 'absolute';
+            this.beamsCanvas.style.top = '0';
+            this.beamsCanvas.style.left = '0';
+            this.beamsCanvas.style.width = '100%';
+            this.beamsCanvas.style.height = '100%';
+            this.beamsCanvas.style.pointerEvents = 'none';
+            this.beamsCanvas.style.zIndex = '5'; // Between distant (4) and foreground (6) mountains
+            themeContainer.appendChild(this.beamsCanvas);
+        }
+
+        this.beamsCanvas.width = window.innerWidth;
+        this.beamsCanvas.height = window.innerHeight;
+        this.beamsCtx = this.beamsCanvas.getContext('2d', {
+            alpha: true,
+            desynchronized: true,
+        });
+
+        // Create or get canvas for other effects
         this.effectCanvas = document.getElementById('wolfhour-effects-canvas');
         if (!this.effectCanvas) {
             this.effectCanvas = document.createElement('canvas');
@@ -339,6 +614,10 @@ export default class WolfhourTheme extends BaseTheme {
             if (this.effectCanvas) {
                 this.effectCanvas.width = window.innerWidth;
                 this.effectCanvas.height = window.innerHeight;
+            }
+            if (this.beamsCanvas) {
+                this.beamsCanvas.width = window.innerWidth;
+                this.beamsCanvas.height = window.innerHeight;
             }
         };
         window.addEventListener('resize', resizeHandler);
@@ -392,16 +671,19 @@ export default class WolfhourTheme extends BaseTheme {
         // Increase cosmic energy
         this.cosmicEnergy = Math.min(this.cosmicEnergy + lineCount * 0.2, 1.5);
 
-        // Optimized burst count (reduced from lineCount * 3)
-        const burstCount = Math.min(lineCount * 2, 6);
+        // Quality-based burst count
+        const burstCount = Math.min(
+            Math.floor(lineCount * this.activeQuality.burstCountMultiplier),
+            this.activeQuality.maxStarBursts - this.starBursts.length
+        );
 
         // Create star bursts from cleared lines
         for (let i = 0; i < burstCount; i++) {
             this.createStarBurst();
         }
 
-        // Trigger shooting stars (reduced)
-        const shootingStarCount = Math.min(lineCount, 2);
+        // Trigger shooting stars (quality-based)
+        const shootingStarCount = Math.floor(lineCount * this.activeQuality.shootingStarMultiplier);
         for (let i = 0; i < shootingStarCount; i++) {
             this.triggerShootingStar();
         }
@@ -413,37 +695,52 @@ export default class WolfhourTheme extends BaseTheme {
     onCombo(comboCount) {
         if (!this.effectCanvas || !this.effectCtx) return;
 
+        const throttleEffects = this.shouldThrottleComboEffects();
+        const allowHeavyEffects = !throttleEffects;
+
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.wolfhourPower = Math.min(this.wolfhourPower + comboCount * 0.15, 2.0);
 
-        // Optimized wave count (only trigger at combo 2+)
+        // Quality-based wave count (only trigger at combo 2+)
         if (comboCount >= 2) {
-            const waveCount = Math.min(Math.floor(comboCount / 2), 3);
+            const maxWaves = this.activeQuality.maxCosmicWaves - this.cosmicWaves.length;
+            const baseWaveCount = Math.min(Math.floor(comboCount / 2), 3, maxWaves);
+            const waveCount = throttleEffects ? Math.min(1, baseWaveCount) : baseWaveCount;
             for (let i = 0; i < waveCount; i++) {
                 this.createCosmicWave();
             }
         }
 
-        // Create celestial beams from the heavens (higher threshold)
-        if (comboCount >= 4) {
-            const beamCount = Math.min(Math.floor(comboCount / 2) - 1, 2);
+        // Create celestial beams from the heavens (quality-based)
+        if (allowHeavyEffects && this.activeQuality.enableCelestialBeams && comboCount >= 4) {
+            const maxBeams = this.activeQuality.maxCelestialBeams - this.celestialBeams.length;
+            const beamCount = Math.min(Math.floor(comboCount / 2) - 1, 2, maxBeams);
             for (let i = 0; i < beamCount; i++) {
                 this.createCelestialBeam();
             }
         }
 
-        // Pulse the moon
-        if (comboCount >= 5) {
-            this.createMoonPulse(comboCount);
+        // Pulse the moon (quality-based)
+        if (allowHeavyEffects && this.activeQuality.enableMoonPulses && comboCount >= 5) {
+            if (this.moonGlowPulses.length < this.activeQuality.maxMoonPulses) {
+                this.createMoonPulse(comboCount);
+            }
         }
 
-        // Draw constellation lines between stars (optimized count)
-        if (comboCount >= 6) {
-            this.createConstellationLines(comboCount);
+        // Draw constellation lines between stars (quality-based)
+        if (this.activeQuality.enableConstellationLines && comboCount >= 6) {
+            const now = Date.now();
+            if (allowHeavyEffects && now - this.lastConstellationTime > this.constellationCooldownMs) {
+                this.lastConstellationTime = now;
+                this.createConstellationLines(comboCount, throttleEffects);
+            }
         }
 
         // Make all stars twinkle more intensely
         this.intensifyStars(comboCount);
+
+        // Glow mountain tops with silver light
+        this.glowMountainTops(comboCount);
     }
 
     createStarBurst() {
@@ -453,7 +750,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.starBursts.push({
             x,
             y,
-            particles: this.createBurstParticles(x, y, 12),
+            particles: this.createBurstParticles(x, y, this.activeQuality.starBurstParticles),
             life: 1.0,
             decay: 0.015,
         });
@@ -489,7 +786,7 @@ export default class WolfhourTheme extends BaseTheme {
             maxRadius: 300 + Math.random() * 200,
             thickness: 3,
             opacity: 0.8,
-            hue: Math.random() * 40 + 200, // Blue-cyan range
+            hue: Math.random() * 20 + 200, // Cool silver hue
             growthRate: 4,
         });
     }
@@ -505,7 +802,7 @@ export default class WolfhourTheme extends BaseTheme {
             length: 0,
             maxLength: this.effectCanvas.height + 100,
             opacity: 0.7,
-            hue: Math.random() * 30 + 190,
+            hue: Math.random() * 20 + 200, // Cool silver hue (200-220)
             growthRate: 15,
             life: 1.0,
             decay: 0.008,
@@ -525,36 +822,66 @@ export default class WolfhourTheme extends BaseTheme {
         });
     }
 
-    createConstellationLines(comboCount) {
-        // Connect random stars with mystical lines (optimized)
-        const stars = document.querySelectorAll('.wolfhour-star');
-        if (stars.length < 2) return;
+    createConstellationLines(comboCount, throttled = false) {
+        // Connect random stars with mystical lines (quality-based)
+        // Cache star positions to avoid expensive getBoundingClientRect calls
+        const now = Date.now();
+        const cacheDuration = throttled ? this.starPositionsCacheDuration * 2 : this.starPositionsCacheDuration;
+        const needRefresh = now - this.starPositionsCacheTime > cacheDuration || this.cachedStarPositions.length === 0;
 
-        // Reduced line count for performance
-        const lineCount = Math.min(comboCount, 8);
-        const starArray = Array.from(stars);
+        if (needRefresh) {
+            if (throttled && this.cachedStarPositions.length > 0 && now - this.starPositionsCacheTime <= cacheDuration * 1.5) {
+                // Use stale cache to avoid heavy DOM queries during throttling
+            } else {
+                const stars = this.cachedStarElements.length > 0
+                    ? this.cachedStarElements
+                    : Array.from(document.querySelectorAll('.wolfhour-star'));
+                if (stars.length === 0) {
+                    return;
+                }
+                this.cachedStarElements = stars;
+                this.cachedStarPositions = stars.map(star => {
+                    const rect = star.getBoundingClientRect();
+                    return {
+                        x: rect.left + rect.width / 2,
+                        y: rect.top + rect.height / 2,
+                    };
+                });
+                this.starPositionsCacheTime = now;
+            }
+        }
+
+        if (this.cachedStarPositions.length < 2) return;
+
+        // Quality-based line count
+        const maxLines = this.activeQuality.maxConstellationLines - this.constellationLines.length;
+        let lineCount = Math.min(comboCount, this.activeQuality.maxConstellationLines, maxLines);
+        if (throttled) {
+            lineCount = Math.min(lineCount, 2);
+        }
+        if (lineCount <= 0) return;
 
         for (let i = 0; i < lineCount; i++) {
-            const star1 = starArray[Math.floor(Math.random() * starArray.length)];
-            const star2 = starArray[Math.floor(Math.random() * starArray.length)];
+            const idx1 = Math.floor(Math.random() * this.cachedStarPositions.length);
+            const idx2 = Math.floor(Math.random() * this.cachedStarPositions.length);
 
-            if (star1 === star2) continue;
+            if (idx1 === idx2) continue;
 
-            const rect1 = star1.getBoundingClientRect();
-            const rect2 = star2.getBoundingClientRect();
+            const pos1 = this.cachedStarPositions[idx1];
+            const pos2 = this.cachedStarPositions[idx2];
 
             // Calculate distance - skip if stars are too far apart (performance)
-            const dx = (rect2.left - rect1.left);
-            const dy = (rect2.top - rect1.top);
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            const dx = pos2.x - pos1.x;
+            const dy = pos2.y - pos1.y;
+            const distSq = dx * dx + dy * dy; // Use squared distance to avoid sqrt
 
-            if (distance > 400) continue; // Skip distant connections
+            if (distSq > 160000) continue; // 400^2 = 160000
 
             this.constellationLines.push({
-                x1: rect1.left + rect1.width / 2,
-                y1: rect1.top + rect1.height / 2,
-                x2: rect2.left + rect2.width / 2,
-                y2: rect2.top + rect2.height / 2,
+                x1: pos1.x,
+                y1: pos1.y,
+                x2: pos2.x,
+                y2: pos2.y,
                 opacity: 0.7,
                 life: 1.0,
                 decay: 0.012,
@@ -564,7 +891,7 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     triggerShootingStar() {
-        const starsContainer = document.getElementById('wolfhour-stars');
+        const starsContainer = this.cachedDOMElements.starsContainer;
         if (!starsContainer) return;
 
         const shootingStar = document.createElement('div');
@@ -585,46 +912,122 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     intensifyNebula(lineCount) {
-        const nebulaBack = document.getElementById('wolfhour-nebula-back');
-        const nebulaMid = document.getElementById('wolfhour-nebula-mid');
+        const nebulaBack = this.cachedDOMElements.nebulaBack;
+        const nebulaMid = this.cachedDOMElements.nebulaMid;
 
         const intensity = 1 + lineCount * 0.15 * this.comboMultiplier;
 
         if (nebulaBack) {
             nebulaBack.style.filter = `brightness(${intensity}) saturate(${1 + lineCount * 0.1})`;
             setTimeout(() => {
-                nebulaBack.style.filter = '';
+                if (nebulaBack) nebulaBack.style.filter = '';
             }, 800);
         }
 
         if (nebulaMid) {
             nebulaMid.style.filter = `brightness(${intensity}) saturate(${1 + lineCount * 0.1})`;
             setTimeout(() => {
-                nebulaMid.style.filter = '';
+                if (nebulaMid) nebulaMid.style.filter = '';
             }, 800);
         }
     }
 
     intensifyStars(comboCount) {
-        const stars = document.querySelectorAll('.wolfhour-star');
-        const intensity = Math.min(comboCount * 0.2, 1.5);
+        const starsContainer = this.cachedDOMElements.starsContainer;
+        if (!starsContainer) return;
 
-        stars.forEach((star) => {
-            star.style.filter = `brightness(${1 + intensity})`;
-            setTimeout(() => {
-                star.style.filter = '';
-            }, 600);
-        });
+        const now = Date.now();
+        if (now - this.lastStarBoostTime < 250) {
+            return;
+        }
+        this.lastStarBoostTime = now;
+
+        const intensity = Math.min(comboCount * 0.2, 1.4);
+        const brightness = 1 + intensity;
+        const glowSize = 6 + intensity * 6;
+
+        starsContainer.style.filter = `brightness(${brightness}) drop-shadow(0 0 ${glowSize}px rgba(200, 230, 255, ${0.35 + intensity * 0.25}))`;
+
+        if (this.starBoostTimeout) {
+            clearTimeout(this.starBoostTimeout);
+        }
+        this.starBoostTimeout = setTimeout(() => {
+            if (this.cachedDOMElements.starsContainer) {
+                this.cachedDOMElements.starsContainer.style.filter = '';
+            }
+            this.starBoostTimeout = null;
+        }, 650);
+    }
+
+    glowMountainTops(comboCount) {
+        const mountainsDistant = this.cachedDOMElements.mountainsDistant;
+        const mountainsFore = this.cachedDOMElements.mountainsFore;
+        const now = Date.now();
+        if (now - this.lastMountainGlowTime < this.mountainGlowCooldownMs) {
+            return;
+        }
+        this.lastMountainGlowTime = now;
+
+        // Silver glow intensity scales with combo count
+        const intensity = Math.min(comboCount * 0.25, 2.0);
+        const glowSize = Math.min(6 + comboCount * 1.8, 16);
+        const primaryOpacity = 0.45 + intensity * 0.25;
+        const secondaryOpacity = 0.35 + intensity * 0.2;
+        const brightness = (1 + intensity * 0.18).toFixed(3);
+
+        const silverGlow = `
+            brightness(${brightness})
+            drop-shadow(0 -${glowSize}px ${glowSize * 1.8}px rgba(233, 235, 255, ${primaryOpacity.toFixed(3)}))
+            drop-shadow(0 -${(glowSize * 0.6).toFixed(2)}px ${(glowSize * 1.2).toFixed(2)}px rgba(255, 255, 255, ${secondaryOpacity.toFixed(3)}))
+        `.replace(/\s+/g, ' ').trim();
+
+        const applyGlow = (element, duration, timeoutKey) => {
+            if (!element) return;
+            element.style.transition = 'filter 0.9s ease-out';
+            element.style.filter = silverGlow;
+            clearTimeout(this[timeoutKey]);
+            this[timeoutKey] = setTimeout(() => {
+                if (element) {
+                    element.style.filter = '';
+                }
+            }, duration);
+        };
+
+        applyGlow(mountainsDistant, 800, 'mountainGlowTimeoutDistant');
+        applyGlow(mountainsFore, 900, 'mountainGlowTimeoutFore');
+    }
+
+    shouldThrottleComboEffects() {
+        const now = Date.now();
+        const timeSinceLast = now - this.lastComboEffectTime;
+        this.lastComboEffectTime = now;
+        return timeSinceLast < this.comboEffectCooldownMs || this.averageFrameTime > 24;
     }
 
     startAnimation() {
-        const animate = () => {
+        const animate = (currentTime) => {
             // Don't stop animation, just don't process if not active
-            if (!this.effectCtx || !this.effectCanvas) {
+            if (!this.effectCtx || !this.effectCanvas || !this.beamsCtx || !this.beamsCanvas) {
                 this.animationFrameId = requestAnimationFrame(animate);
                 return;
             }
 
+            // Track frame time for performance monitoring
+            if (this.lastFrameTime > 0) {
+                const frameTime = currentTime - this.lastFrameTime;
+                this.frameTimeAccumulator += frameTime;
+                this.frameTimeCount++;
+
+                // Calculate average frame time every 30 frames
+                if (this.frameTimeCount >= 30) {
+                    this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
+                    this.frameTimeAccumulator = 0;
+                    this.frameTimeCount = 0;
+                }
+            }
+            this.lastFrameTime = currentTime;
+
+            this.frameCount++;
             this.animationTime += 0.016;
 
             // Decay energy over time
@@ -638,23 +1041,49 @@ export default class WolfhourTheme extends BaseTheme {
                 this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.008);
             }
 
-            // Clear canvas with transparent fill
-            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
+            // Periodic effect cleanup to prevent memory buildup
+            const now = Date.now();
+            if (now - this.lastEffectCleanup > 5000) {
+                this.trimEffectCollections();
+                this.lastEffectCleanup = now;
+            }
 
-            // Draw all effects
-            this.drawStarBursts();
-            this.drawCosmicWaves();
-            this.drawCelestialBeams();
-            this.drawMoonPulses();
-            this.drawConstellationLines();
+            // Clear canvases - only if there are effects to draw (performance optimization)
+            const hasEffects = this.starBursts.length > 0 || this.cosmicWaves.length > 0 ||
+                              this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
+            const hasBeams = this.celestialBeams.length > 0;
+
+            if (hasEffects) {
+                this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
+            }
+            if (hasBeams) {
+                this.beamsCtx.clearRect(0, 0, this.beamsCanvas.width, this.beamsCanvas.height);
+            }
+
+            // Draw effects - skip if performance is poor and no active effects
+            if (hasEffects || hasBeams) {
+                this.drawStarBursts();
+                this.drawCosmicWaves();
+                if (hasBeams) this.drawCelestialBeams();
+                this.drawMoonPulses();
+                this.drawConstellationLines();
+            }
 
             this.animationFrameId = requestAnimationFrame(animate);
         };
 
-        animate();
+        animate(performance.now());
     }
 
     drawStarBursts() {
+        if (this.starBursts.length === 0) return;
+
+        const useShadows = this.activeQuality.useShadows && this.averageFrameTime < 20; // Disable shadows if < 50 FPS
+        const useComplexGradients = this.activeQuality.useComplexGradients && this.averageFrameTime < 25;
+
+        // Batch canvas state changes
+        const ctx = this.effectCtx;
+
         for (let i = this.starBursts.length - 1; i >= 0; i--) {
             const burst = this.starBursts[i];
 
@@ -665,42 +1094,66 @@ export default class WolfhourTheme extends BaseTheme {
                 continue;
             }
 
-            // Update and draw particles
-            burst.particles.forEach((p) => {
+            const opacity = burst.life * 0.9;
+            const currentLife = burst.life;
+
+            // Update and draw particles - optimized batch version
+            for (let j = 0; j < burst.particles.length; j++) {
+                const p = burst.particles[j];
+
+                // Update position
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.12; // Slightly more gravity
+                p.vy += 0.12;
 
-                const opacity = burst.life * 0.9;
-                const currentSize = p.size * burst.life;
+                const currentSize = p.size * currentLife;
 
-                // Draw main particle with improved gradient
-                const gradient = this.effectCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, currentSize);
-                gradient.addColorStop(0, `hsla(${p.hue}, 90%, ${p.brightness + 20}%, ${opacity})`);
-                gradient.addColorStop(0.5, `hsla(${p.hue}, 85%, ${p.brightness}%, ${opacity * 0.7})`);
-                gradient.addColorStop(1, `hsla(${p.hue}, 70%, ${p.brightness - 10}%, 0)`);
+                // Simple fill for better performance - only use gradients on high performance
+                if (useComplexGradients) {
+                    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, currentSize);
+                    gradient.addColorStop(0, `hsla(${p.hue}, 90%, ${p.brightness + 20}%, ${opacity})`);
+                    gradient.addColorStop(0.5, `hsla(${p.hue}, 85%, ${p.brightness}%, ${opacity * 0.7})`);
+                    gradient.addColorStop(1, `hsla(${p.hue}, 70%, ${p.brightness - 10}%, 0)`);
+                    ctx.fillStyle = gradient;
+                } else {
+                    ctx.fillStyle = `hsla(${p.hue}, 85%, ${p.brightness}%, ${opacity})`;
+                }
 
-                this.effectCtx.fillStyle = gradient;
-                this.effectCtx.beginPath();
-                this.effectCtx.arc(p.x, p.y, currentSize * 1.5, 0, Math.PI * 2);
-                this.effectCtx.fill();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, currentSize * 1.5, 0, Math.PI * 2);
+                ctx.fill();
 
-                // Add subtle glow
-                this.effectCtx.shadowBlur = 20 * burst.life;
-                this.effectCtx.shadowColor = `hsla(${p.hue}, 90%, ${p.brightness}%, ${opacity * 0.5})`;
+                // Add glow only if enabled and performance is good
+                if (useShadows) {
+                    ctx.shadowBlur = 15 * currentLife;
+                    ctx.shadowColor = `hsla(${p.hue}, 90%, ${p.brightness}%, ${opacity * 0.4})`;
 
-                // Draw bright core
-                this.effectCtx.fillStyle = `hsla(${p.hue}, 100%, 95%, ${opacity})`;
-                this.effectCtx.beginPath();
-                this.effectCtx.arc(p.x, p.y, currentSize * 0.4, 0, Math.PI * 2);
-                this.effectCtx.fill();
-            });
+                    // Draw bright core with shadow
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, 95%, ${opacity})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, currentSize * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
 
-            this.effectCtx.shadowBlur = 0;
+                    ctx.shadowBlur = 0;
+                } else {
+                    // Draw bright core without shadow
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, 95%, ${opacity})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, currentSize * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
         }
     }
 
     drawCosmicWaves() {
+        if (this.cosmicWaves.length === 0) return;
+
+        // Adaptive quality based on performance
+        const ringCount = this.averageFrameTime > 25 ? 1 : this.activeQuality.waveRingCount;
+        const useShadows = this.activeQuality.useShadows && this.averageFrameTime < 20;
+        const ctx = this.effectCtx;
+
         for (let i = this.cosmicWaves.length - 1; i >= 0; i--) {
             const wave = this.cosmicWaves[i];
 
@@ -712,8 +1165,7 @@ export default class WolfhourTheme extends BaseTheme {
                 continue;
             }
 
-            // Draw multiple concentric rings for depth
-            const ringCount = 3;
+            // Draw concentric rings - reduce count if performance is poor
             for (let j = 0; j < ringCount; j++) {
                 const offset = j * 8;
                 const currentRadius = wave.radius + offset;
@@ -723,30 +1175,33 @@ export default class WolfhourTheme extends BaseTheme {
                 const innerRadius = Math.max(0, currentRadius - 6);
                 const outerRadius = currentRadius + 6;
 
-                const gradient = this.effectCtx.createRadialGradient(wave.x, wave.y, innerRadius, wave.x, wave.y, outerRadius);
-                gradient.addColorStop(0, `hsla(${wave.hue}, 70%, 60%, 0)`);
-                gradient.addColorStop(0.4, `hsla(${wave.hue}, 85%, 75%, ${ringOpacity * 0.6})`);
-                gradient.addColorStop(0.6, `hsla(${wave.hue}, 90%, 80%, ${ringOpacity})`);
-                gradient.addColorStop(1, `hsla(${wave.hue}, 70%, 60%, 0)`);
+                const gradient = ctx.createRadialGradient(wave.x, wave.y, innerRadius, wave.x, wave.y, outerRadius);
+                gradient.addColorStop(0, `hsla(${wave.hue}, 10%, 85%, 0)`);
+                gradient.addColorStop(0.4, `hsla(${wave.hue}, 15%, 90%, ${ringOpacity * 0.6})`);
+                gradient.addColorStop(0.6, `hsla(${wave.hue}, 18%, 92%, ${ringOpacity})`);
+                gradient.addColorStop(1, `hsla(${wave.hue}, 10%, 85%, 0)`);
 
-                this.effectCtx.strokeStyle = gradient;
-                this.effectCtx.lineWidth = wave.thickness;
-                this.effectCtx.beginPath();
-                this.effectCtx.arc(wave.x, wave.y, currentRadius, 0, Math.PI * 2);
-                this.effectCtx.stroke();
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = wave.thickness;
+                ctx.beginPath();
+                ctx.arc(wave.x, wave.y, currentRadius, 0, Math.PI * 2);
+                ctx.stroke();
 
-                // Add glow to outer ring only
-                if (j === 0) {
-                    this.effectCtx.shadowBlur = 25;
-                    this.effectCtx.shadowColor = `hsla(${wave.hue}, 90%, 80%, ${ringOpacity * 0.6})`;
-                    this.effectCtx.stroke();
-                    this.effectCtx.shadowBlur = 0;
+                // Add glow to outer ring only if performance is good
+                if (useShadows && j === 0) {
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = `hsla(${wave.hue}, 15%, 92%, ${ringOpacity * 0.5})`;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
                 }
             }
         }
     }
 
     drawCelestialBeams() {
+        const useShadows = this.activeQuality.useShadows;
+        const useComplexGradients = this.activeQuality.useComplexGradients;
+
         for (let i = this.celestialBeams.length - 1; i >= 0; i--) {
             const beam = this.celestialBeams[i];
 
@@ -763,43 +1218,49 @@ export default class WolfhourTheme extends BaseTheme {
 
             const opacity = beam.opacity * beam.life;
 
-            // Draw outer glow first
-            const glowGradient = this.effectCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
-            glowGradient.addColorStop(0, `hsla(${beam.hue}, 90%, 85%, ${opacity * 0.4})`);
-            glowGradient.addColorStop(0.2, `hsla(${beam.hue}, 80%, 75%, ${opacity * 0.3})`);
-            glowGradient.addColorStop(1, `hsla(${beam.hue}, 60%, 50%, 0)`);
+            if (useComplexGradients) {
+                // Draw outer glow first (complex version) - silver with low saturation
+                const glowGradient = this.beamsCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
+                glowGradient.addColorStop(0, `hsla(${beam.hue}, 20%, 92%, ${opacity * 0.3})`);
+                glowGradient.addColorStop(0.2, `hsla(${beam.hue}, 15%, 85%, ${opacity * 0.2})`);
+                glowGradient.addColorStop(1, `hsla(${beam.hue}, 10%, 75%, 0)`);
+                this.beamsCtx.fillStyle = glowGradient;
+                this.beamsCtx.fillRect(beam.x - beam.width, beam.y, beam.width * 2, beam.length);
+            }
 
-            this.effectCtx.fillStyle = glowGradient;
-            this.effectCtx.fillRect(beam.x - beam.width, beam.y, beam.width * 2, beam.length);
+            // Draw main beam with gradient - silver appearance
+            const gradient = this.beamsCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
+            gradient.addColorStop(0, `hsla(${beam.hue}, 15%, 95%, ${opacity})`);
+            gradient.addColorStop(0.15, `hsla(${beam.hue}, 12%, 90%, ${opacity * 0.9})`);
+            gradient.addColorStop(0.5, `hsla(${beam.hue}, 10%, 85%, ${opacity * 0.6})`);
+            gradient.addColorStop(1, `hsla(${beam.hue}, 5%, 75%, 0)`);
 
-            // Draw main beam with gradient
-            const gradient = this.effectCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
-            gradient.addColorStop(0, `hsla(${beam.hue}, 95%, 90%, ${opacity})`);
-            gradient.addColorStop(0.15, `hsla(${beam.hue}, 85%, 80%, ${opacity * 0.9})`);
-            gradient.addColorStop(0.5, `hsla(${beam.hue}, 75%, 70%, ${opacity * 0.6})`);
-            gradient.addColorStop(1, `hsla(${beam.hue}, 60%, 50%, 0)`);
+            this.beamsCtx.fillStyle = gradient;
+            this.beamsCtx.fillRect(beam.x - beam.width / 2, beam.y, beam.width, beam.length);
 
-            this.effectCtx.fillStyle = gradient;
-            this.effectCtx.fillRect(beam.x - beam.width / 2, beam.y, beam.width, beam.length);
+            // Add bright core - pure white/silver
+            if (useComplexGradients) {
+                const coreGradient = this.beamsCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length * 0.3);
+                coreGradient.addColorStop(0, `hsla(${beam.hue}, 10%, 98%, ${opacity * 0.9})`);
+                coreGradient.addColorStop(1, `hsla(${beam.hue}, 8%, 92%, 0)`);
+                this.beamsCtx.fillStyle = coreGradient;
+                this.beamsCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.3);
+            }
 
-            // Add bright core
-            const coreGradient = this.effectCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length * 0.3);
-            coreGradient.addColorStop(0, `hsla(${beam.hue}, 100%, 95%, ${opacity * 0.9})`);
-            coreGradient.addColorStop(1, `hsla(${beam.hue}, 90%, 85%, 0)`);
-
-            this.effectCtx.fillStyle = coreGradient;
-            this.effectCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.3);
-
-            // Add subtle shadow blur
-            this.effectCtx.shadowBlur = 35;
-            this.effectCtx.shadowColor = `hsla(${beam.hue}, 90%, 80%, ${opacity * 0.4})`;
-            this.effectCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.1);
+            // Add subtle shadow blur (quality-based) - silver glow
+            if (useShadows) {
+                this.beamsCtx.shadowBlur = 25;
+                this.beamsCtx.shadowColor = `hsla(${beam.hue}, 15%, 90%, ${opacity * 0.3})`;
+                this.beamsCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.1);
+                this.beamsCtx.shadowBlur = 0;
+            }
         }
-
-        this.effectCtx.shadowBlur = 0;
     }
 
     drawMoonPulses() {
+        const useShadows = this.activeQuality.useShadows;
+        const useComplexGradients = this.activeQuality.useComplexGradients;
+
         for (let i = this.moonGlowPulses.length - 1; i >= 0; i--) {
             const pulse = this.moonGlowPulses[i];
 
@@ -811,24 +1272,26 @@ export default class WolfhourTheme extends BaseTheme {
                 continue;
             }
 
-            // Draw outer ethereal glow
-            const outerGradient = this.effectCtx.createRadialGradient(
-                pulse.x,
-                pulse.y,
-                pulse.radius - 30,
-                pulse.x,
-                pulse.y,
-                pulse.radius + 40,
-            );
-            outerGradient.addColorStop(0, `hsla(${pulse.hue}, 70%, 85%, 0)`);
-            outerGradient.addColorStop(0.3, `hsla(${pulse.hue}, 80%, 90%, ${pulse.opacity * 0.3})`);
-            outerGradient.addColorStop(0.7, `hsla(${pulse.hue}, 75%, 85%, ${pulse.opacity * 0.5})`);
-            outerGradient.addColorStop(1, `hsla(${pulse.hue}, 60%, 80%, 0)`);
+            if (useComplexGradients) {
+                // Draw outer ethereal glow (complex version)
+                const outerGradient = this.effectCtx.createRadialGradient(
+                    pulse.x,
+                    pulse.y,
+                    pulse.radius - 30,
+                    pulse.x,
+                    pulse.y,
+                    pulse.radius + 40,
+                );
+                outerGradient.addColorStop(0, `hsla(${pulse.hue}, 70%, 85%, 0)`);
+                outerGradient.addColorStop(0.3, `hsla(${pulse.hue}, 80%, 90%, ${pulse.opacity * 0.25})`);
+                outerGradient.addColorStop(0.7, `hsla(${pulse.hue}, 75%, 85%, ${pulse.opacity * 0.4})`);
+                outerGradient.addColorStop(1, `hsla(${pulse.hue}, 60%, 80%, 0)`);
 
-            this.effectCtx.fillStyle = outerGradient;
-            this.effectCtx.beginPath();
-            this.effectCtx.arc(pulse.x, pulse.y, pulse.radius + 20, 0, Math.PI * 2);
-            this.effectCtx.fill();
+                this.effectCtx.fillStyle = outerGradient;
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(pulse.x, pulse.y, pulse.radius + 20, 0, Math.PI * 2);
+                this.effectCtx.fill();
+            }
 
             // Draw main pulse ring
             const gradient = this.effectCtx.createRadialGradient(
@@ -849,19 +1312,26 @@ export default class WolfhourTheme extends BaseTheme {
             this.effectCtx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
             this.effectCtx.fill();
 
-            // Add bright inner ring
-            this.effectCtx.shadowBlur = 30;
-            this.effectCtx.shadowColor = `hsla(${pulse.hue}, 90%, 95%, ${pulse.opacity * 0.6})`;
+            // Add bright inner ring (quality-based)
+            if (useShadows) {
+                this.effectCtx.shadowBlur = 25;
+                this.effectCtx.shadowColor = `hsla(${pulse.hue}, 90%, 95%, ${pulse.opacity * 0.5})`;
+            }
             this.effectCtx.strokeStyle = `hsla(${pulse.hue}, 95%, 95%, ${pulse.opacity})`;
             this.effectCtx.lineWidth = 2;
             this.effectCtx.beginPath();
             this.effectCtx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
             this.effectCtx.stroke();
-            this.effectCtx.shadowBlur = 0;
+            if (useShadows) {
+                this.effectCtx.shadowBlur = 0;
+            }
         }
     }
 
     drawConstellationLines() {
+        const useShadows = this.activeQuality.useShadows;
+        const useComplexGradients = this.activeQuality.useComplexGradients;
+
         for (let i = this.constellationLines.length - 1; i >= 0; i--) {
             const line = this.constellationLines[i];
 
@@ -874,44 +1344,54 @@ export default class WolfhourTheme extends BaseTheme {
 
             const opacity = line.opacity * line.life;
 
-            // Draw outer glow line
-            this.effectCtx.strokeStyle = `hsla(${line.hue}, 80%, 80%, ${opacity * 0.3})`;
-            this.effectCtx.lineWidth = 5;
-            this.effectCtx.beginPath();
-            this.effectCtx.moveTo(line.x1, line.y1);
-            this.effectCtx.lineTo(line.x2, line.y2);
-            this.effectCtx.stroke();
+            if (useComplexGradients) {
+                // Draw outer glow line (complex version)
+                this.effectCtx.strokeStyle = `hsla(${line.hue}, 80%, 80%, ${opacity * 0.25})`;
+                this.effectCtx.lineWidth = 4;
+                this.effectCtx.beginPath();
+                this.effectCtx.moveTo(line.x1, line.y1);
+                this.effectCtx.lineTo(line.x2, line.y2);
+                this.effectCtx.stroke();
+            }
 
             // Draw main mystical connecting line
             this.effectCtx.strokeStyle = `hsla(${line.hue}, 85%, 80%, ${opacity * 0.7})`;
-            this.effectCtx.lineWidth = 2.5;
+            this.effectCtx.lineWidth = 2;
             this.effectCtx.beginPath();
             this.effectCtx.moveTo(line.x1, line.y1);
             this.effectCtx.lineTo(line.x2, line.y2);
             this.effectCtx.stroke();
 
-            // Draw bright core line
+            // Draw bright core line (with optional shadow)
+            if (useShadows) {
+                this.effectCtx.shadowBlur = 10;
+                this.effectCtx.shadowColor = `hsla(${line.hue}, 90%, 85%, ${opacity * 0.6})`;
+            }
             this.effectCtx.strokeStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
             this.effectCtx.lineWidth = 1;
-            this.effectCtx.shadowBlur = 12;
-            this.effectCtx.shadowColor = `hsla(${line.hue}, 90%, 85%, ${opacity * 0.8})`;
             this.effectCtx.beginPath();
             this.effectCtx.moveTo(line.x1, line.y1);
             this.effectCtx.lineTo(line.x2, line.y2);
             this.effectCtx.stroke();
 
             // Draw star connection points
-            this.effectCtx.shadowBlur = 15;
-            this.effectCtx.fillStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
-            this.effectCtx.beginPath();
-            this.effectCtx.arc(line.x1, line.y1, 3, 0, Math.PI * 2);
-            this.effectCtx.fill();
-            this.effectCtx.beginPath();
-            this.effectCtx.arc(line.x2, line.y2, 3, 0, Math.PI * 2);
-            this.effectCtx.fill();
-        }
+            if (useComplexGradients) {
+                if (useShadows) {
+                    this.effectCtx.shadowBlur = 12;
+                }
+                this.effectCtx.fillStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(line.x1, line.y1, 3, 0, Math.PI * 2);
+                this.effectCtx.fill();
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(line.x2, line.y2, 3, 0, Math.PI * 2);
+                this.effectCtx.fill();
+            }
 
-        this.effectCtx.shadowBlur = 0;
+            if (useShadows) {
+                this.effectCtx.shadowBlur = 0;
+            }
+        }
     }
 
     stop() {
@@ -932,12 +1412,37 @@ export default class WolfhourTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
 
+        // Teardown quality listener
+        this.teardownQualityListener();
+
         // Clear all effect arrays
         this.starBursts = [];
         this.cosmicWaves = [];
         this.celestialBeams = [];
         this.moonGlowPulses = [];
         this.constellationLines = [];
+        this.cachedStarElements = [];
+        if (this.starBoostTimeout) {
+            clearTimeout(this.starBoostTimeout);
+            this.starBoostTimeout = null;
+        }
+        if (this.mountainGlowTimeoutDistant) {
+            clearTimeout(this.mountainGlowTimeoutDistant);
+            this.mountainGlowTimeoutDistant = null;
+        }
+        if (this.mountainGlowTimeoutFore) {
+            clearTimeout(this.mountainGlowTimeoutFore);
+            this.mountainGlowTimeoutFore = null;
+        }
+        if (this.cachedDOMElements.starsContainer) {
+            this.cachedDOMElements.starsContainer.style.filter = '';
+        }
+        if (this.cachedDOMElements.mountainsDistant) {
+            this.cachedDOMElements.mountainsDistant.style.filter = '';
+        }
+        if (this.cachedDOMElements.mountainsFore) {
+            this.cachedDOMElements.mountainsFore.style.filter = '';
+        }
 
         // Reset state
         this.comboMultiplier = 1.0;

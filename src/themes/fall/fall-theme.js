@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { FALL_TETROMINOS } from './fall-tetrominos.js';
 
 export default class FallTheme extends BaseTheme {
     constructor() {
@@ -45,9 +46,387 @@ export default class FallTheme extends BaseTheme {
 
         // Event bus unsubscribers
         this.eventUnsubscribers = [];
+
+        // Graphics quality presets
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                // Leaf particles
+                leafLayerBackCount: 12,
+                leafLayerMidCount: 8,
+                leafLayerFrontCount: 6,
+                groundLeavesCount: 30,
+                // Wind and atmospheric
+                windParticlesCount: 5,
+                // Embers and fireflies
+                maxEmbers: 12,
+                initialFireflies: 6,
+                maxFireflies: 10,
+                // Tree branches
+                treeBranchSystems: 1,
+                treeBranchDepth: 4,
+                // Combo effects scaling
+                comboEffectScale: 0.5,
+                leafBurstScale: 0.5,
+                emberBurstScale: 0.5,
+                maxFireRings: 2,
+                maxEmberBursts: 2,
+                maxLeafBurstParticles: 50,
+            },
+            'Medium': {
+                // Leaf particles
+                leafLayerBackCount: 16,
+                leafLayerMidCount: 12,
+                leafLayerFrontCount: 9,
+                groundLeavesCount: 50,
+                // Wind and atmospheric
+                windParticlesCount: 7,
+                // Embers and fireflies
+                maxEmbers: 18,
+                initialFireflies: 10,
+                maxFireflies: 15,
+                // Tree branches
+                treeBranchSystems: 2,
+                treeBranchDepth: 5,
+                // Combo effects scaling
+                comboEffectScale: 0.75,
+                leafBurstScale: 0.7,
+                emberBurstScale: 0.7,
+                maxFireRings: 3,
+                maxEmberBursts: 3,
+                maxLeafBurstParticles: 75,
+            },
+            'High': {
+                // Leaf particles
+                leafLayerBackCount: 22,
+                leafLayerMidCount: 16,
+                leafLayerFrontCount: 12,
+                groundLeavesCount: 70,
+                // Wind and atmospheric
+                windParticlesCount: 10,
+                // Embers and fireflies
+                maxEmbers: 25,
+                initialFireflies: 15,
+                maxFireflies: 20,
+                // Tree branches
+                treeBranchSystems: 3,
+                treeBranchDepth: 6,
+                // Combo effects scaling
+                comboEffectScale: 0.9,
+                leafBurstScale: 0.85,
+                emberBurstScale: 0.85,
+                maxFireRings: 4,
+                maxEmberBursts: 4,
+                maxLeafBurstParticles: 100,
+            },
+            'Ultra': {
+                // Leaf particles
+                leafLayerBackCount: 28,
+                leafLayerMidCount: 20,
+                leafLayerFrontCount: 15,
+                groundLeavesCount: 90,
+                // Wind and atmospheric
+                windParticlesCount: 15,
+                // Embers and fireflies
+                maxEmbers: 35,
+                initialFireflies: 20,
+                maxFireflies: 30,
+                // Tree branches
+                treeBranchSystems: 4,
+                treeBranchDepth: 7,
+                // Combo effects scaling
+                comboEffectScale: 1.0,
+                leafBurstScale: 1.0,
+                emberBurstScale: 1.0,
+                maxFireRings: 6,
+                maxEmberBursts: 6,
+                maxLeafBurstParticles: 120,
+            }
+        };
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+
+        // Apply default preset values
+        this.maxFireRings = this.activePreset.maxFireRings;
+        this.maxEmberBursts = this.activePreset.maxEmberBursts;
+        this.maxLeafBurstParticles = this.activePreset.maxLeafBurstParticles;
+        this.maxFirefliesLimit = this.activePreset.maxFireflies;
+    }
+
+    getTetrominoConfig() {
+        return FALL_TETROMINOS;
+    }
+
+    /**
+     * Get current graphics quality setting from game settings
+     * @returns {string} Current quality level ('Low' | 'Medium' | 'High' | 'Ultra')
+     */
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    /**
+     * Apply a graphics quality preset to the theme
+     * @param {string} quality - Quality level to apply
+     */
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`[FallTheme] Unknown preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+        const preset = this.activePreset;
+
+        // Update limits
+        this.maxEmbers = preset.maxEmbers;
+        this.maxFireRings = preset.maxFireRings;
+        this.maxEmberBursts = preset.maxEmberBursts;
+        this.maxLeafBurstParticles = preset.maxLeafBurstParticles;
+        this.maxFirefliesLimit = preset.maxFireflies;
+
+        // Trim existing particle collections to new limits
+        this.trimEffectCollections();
+
+        console.log(`[FallTheme] Applying ${quality} graphics preset`);
+    }
+
+    /**
+     * Trim effect collections to match current quality preset limits
+     */
+    trimEffectCollections() {
+        const clamp = (collection, limit) => {
+            if (!collection || typeof limit !== 'number' || limit <= 0) return;
+            if (collection.length > limit) {
+                collection.splice(0, collection.length - limit);
+            }
+        };
+
+        // Trim particle arrays to current limits
+        clamp(this.embers, this.maxEmbers * 4); // Allow some burst overhead
+        clamp(this.fireflies, this.maxFirefliesLimit);
+        clamp(this.leafBurstParticles, this.maxLeafBurstParticles);
+        clamp(this.fireRings, this.maxFireRings);
+        clamp(this.emberBursts, this.maxEmberBursts);
+    }
+
+    /**
+     * Setup listener for graphics quality changes
+     */
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.teardownQualityListener();
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            // Apply new preset and recreate quality-dependent elements
+            this.applyQualityPreset(newQuality);
+            this.recreateQualityDependentElements();
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    /**
+     * Remove graphics quality change listener
+     */
+    teardownQualityListener() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+    }
+
+    /**
+     * Recreate DOM elements that depend on quality settings
+     * Called when quality changes during runtime
+     */
+    recreateQualityDependentElements() {
+        const preset = this.activePreset;
+
+        // Recreate leaf layers with new counts
+        const leafLayers = [
+            {
+                container: document.getElementById('fall-leaves-back'),
+                count: preset.leafLayerBackCount,
+                minSize: 15,
+                maxSize: 25,
+                depthFactor: 0.3,
+            },
+            {
+                container: document.getElementById('fall-leaves-mid'),
+                count: preset.leafLayerMidCount,
+                minSize: 20,
+                maxSize: 35,
+                depthFactor: 0.6,
+            },
+            {
+                container: document.getElementById('fall-leaves-front'),
+                count: preset.leafLayerFrontCount,
+                minSize: 25,
+                maxSize: 45,
+                depthFactor: 1.0,
+            },
+        ];
+
+        // Clear and recreate leaf particles
+        this.leafParticles = [];
+
+        const leafShapes = [
+            'M15 0 C0 5, 5 25, 15 30 C25 25, 30 5, 15 0 Z',
+            'M15 0 L17 10 L30 12 L18 18 L22 30 L15 25 L8 30 L12 18 L0 12 L13 10 Z',
+            'M15 0 C 0 10, 0 20, 5 30 C 10 25, 20 25, 25 30 C 30 20, 30 10, 15 0 Z',
+        ];
+
+        const leafColors = [
+            '#ff5722', '#ff9100', '#ffb300', '#ff6f00', '#ff8a50',
+            '#ffa726', '#fb8c00', '#f4511e', '#ff7043', '#ffab40',
+        ];
+
+        leafLayers.forEach((layer) => {
+            if (!layer.container) return;
+
+            // Clear existing leaves
+            layer.container.innerHTML = '';
+
+            // Create new leaves based on quality
+            for (let i = 0; i < layer.count; i++) {
+                const leaf = document.createElement('div');
+                leaf.className = 'leaf';
+                const shape = leafShapes[Math.floor(Math.random() * leafShapes.length)];
+                const color = leafColors[Math.floor(Math.random() * leafColors.length)];
+
+                const isHeroLeaf = Math.random() < 0.15;
+                if (isHeroLeaf) {
+                    leaf.classList.add('hero-leaf');
+                }
+
+                leaf.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="${shape}" fill="${encodeURIComponent(color)}"/></svg>')`;
+
+                const size = Math.random() * (layer.maxSize - layer.minSize) + layer.minSize;
+                leaf.style.width = `${size}px`;
+                leaf.style.height = `${size}px`;
+
+                layer.container.appendChild(leaf);
+            }
+
+            // Recreate leaf particles
+            const leaves = Array.from(layer.container.querySelectorAll('.leaf'));
+            leaves.forEach((leafEl) => {
+                leafEl.style.animation = 'none';
+                this.leafParticles.push(this.createLeafParticle(leafEl, layer.depthFactor));
+            });
+        });
+
+        // Recreate ground leaves
+        const groundContainer = document.querySelector('.ground-leaves');
+        if (groundContainer) {
+            groundContainer.innerHTML = '';
+            for (let i = 0; i < preset.groundLeavesCount; i++) {
+                const leaf = document.createElement('div');
+                leaf.className = 'ground-leaf';
+                const shape = leafShapes[Math.floor(Math.random() * leafShapes.length)];
+                const color = leafColors[Math.floor(Math.random() * leafColors.length)];
+                leaf.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="${shape}" fill="${encodeURIComponent(color)}"/></svg>')`;
+
+                const size = Math.random() * 25 + 20;
+                leaf.style.width = `${size}px`;
+                leaf.style.height = `${size}px`;
+                leaf.style.left = `${Math.random() * 100}%`;
+                leaf.style.bottom = `${Math.random() * 40 - 10}px`;
+                leaf.style.opacity = Math.random() * 0.5 + 0.5;
+
+                leaf.style.setProperty('--r1', `${Math.random() * 20 - 10}deg`);
+                leaf.style.setProperty('--r2', `${Math.random() * 20 - 10}deg`);
+                leaf.style.animationDuration = `${Math.random() * 5 + 5}s`;
+                leaf.style.animationDelay = `-${Math.random() * 10}s`;
+
+                groundContainer.appendChild(leaf);
+            }
+        }
+
+        // Recreate wind particles
+        const windContainer = document.getElementById('fall-wind-particles');
+        if (windContainer) {
+            windContainer.innerHTML = '';
+            for (let i = 0; i < preset.windParticlesCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'fall-wind-particle';
+                particle.style.top = `${Math.random() * 100}%`;
+                const duration = Math.random() * 3 + 2;
+                particle.style.animationDuration = `${duration}s`;
+                particle.style.animationDelay = `-${Math.random() * duration}s`;
+                windContainer.appendChild(particle);
+            }
+        }
+
+        // Recreate tree branches with quality-based count
+        this.regenerateTreeBranches();
+
+        // Adjust firefly count
+        while (this.fireflies.length < preset.initialFireflies && this.fireflies.length < preset.maxFireflies) {
+            this.fireflies.push(this.createFirefly());
+        }
+
+        console.log(`[FallTheme] Recreated quality-dependent elements for ${this.currentQuality}`);
+    }
+
+    /**
+     * Regenerate tree branches based on current quality preset
+     */
+    regenerateTreeBranches() {
+        const container = document.getElementById('fall-tree-branches');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        const preset = this.activePreset;
+        const { width, height } = this.getViewportSize();
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '100%');
+        svg.setAttribute('height', '100%');
+        svg.style.position = 'absolute';
+        svg.style.top = '0';
+        svg.style.left = '0';
+        svg.style.pointerEvents = 'none';
+
+        const branchConfigs = [
+            { xPercent: 10, yPercent: 20, size: 0.8, opacity: 0.4, angle: 30 },
+            { xPercent: 85, yPercent: 15, size: 1.0, opacity: 0.5, angle: -25 },
+            { xPercent: 50, yPercent: 10, size: 0.6, opacity: 0.35, angle: 10 },
+            { xPercent: 30, yPercent: 5, size: 0.7, opacity: 0.38, angle: 15 },
+        ];
+
+        const systemsToCreate = Math.min(preset.treeBranchSystems, branchConfigs.length);
+
+        for (let i = 0; i < systemsToCreate; i++) {
+            const system = branchConfigs[i];
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            const x = (system.xPercent / 100) * width;
+            const y = (system.yPercent / 100) * height;
+            g.setAttribute('transform', `translate(${x}, ${y}) rotate(${system.angle}) scale(${system.size})`);
+            g.setAttribute('opacity', system.opacity);
+
+            this.drawBranch(g, 0, 0, -120 * system.size, preset.treeBranchDepth, 20);
+            svg.appendChild(g);
+        }
+
+        container.appendChild(svg);
     }
 
     async createScene() {
+        // Apply graphics quality preset at scene creation
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
+
+        const preset = this.activePreset;
+
         // Define leaf shapes and colors - more vibrant, glowing autumn palette
         const leafShapes = [
             'M15 0 C0 5, 5 25, 15 30 C25 25, 30 5, 15 0 Z', // Simple teardrop
@@ -69,11 +448,11 @@ export default class FallTheme extends BaseTheme {
             '#ffab40', // Light golden orange
         ];
 
-        // Multi-layered falling leaves - optimized counts for performance
+        // Multi-layered falling leaves - using quality preset counts
         const leafLayers = [
             {
                 container: document.getElementById('fall-leaves-back'),
-                count: 22,
+                count: preset.leafLayerBackCount,
                 minSize: 15,
                 maxSize: 25,
                 minDuration: 15,
@@ -82,7 +461,7 @@ export default class FallTheme extends BaseTheme {
             },
             {
                 container: document.getElementById('fall-leaves-mid'),
-                count: 16,
+                count: preset.leafLayerMidCount,
                 minSize: 20,
                 maxSize: 35,
                 minDuration: 10,
@@ -91,7 +470,7 @@ export default class FallTheme extends BaseTheme {
             },
             {
                 container: document.getElementById('fall-leaves-front'),
-                count: 12,
+                count: preset.leafLayerFrontCount,
                 minSize: 25,
                 maxSize: 45,
                 minDuration: 7,
@@ -142,11 +521,11 @@ export default class FallTheme extends BaseTheme {
 
         this.updateLeafParticles(0);
 
-        // Dynamic Ground leaves - optimized count for performance
+        // Dynamic Ground leaves - using quality preset count
         const groundContainer = document.querySelector('.ground-leaves');
         if (groundContainer && groundContainer.children.length === 0) {
             groundContainer.style.backgroundImage = '';
-            for (let i = 0; i < 70; i++) {
+            for (let i = 0; i < preset.groundLeavesCount; i++) {
                 const leaf = document.createElement('div');
                 leaf.className = 'ground-leaf';
                 const shape = leafShapes[Math.floor(Math.random() * leafShapes.length)];
@@ -170,10 +549,10 @@ export default class FallTheme extends BaseTheme {
             this.registerContainer(groundContainer);
         }
 
-        // Wind Particles
+        // Wind Particles - using quality preset count
         const windContainer = document.getElementById('fall-wind-particles');
         if (windContainer && windContainer.children.length === 0) {
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < preset.windParticlesCount; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'fall-wind-particle';
                 particle.style.top = `${Math.random() * 100}%`;
@@ -202,8 +581,8 @@ export default class FallTheme extends BaseTheme {
             this.embers.push(this.createEmber());
         }
 
-        // Initialize fireflies (gentle floating glowing particles)
-        for (let i = 0; i < 15; i++) {
+        // Initialize fireflies (gentle floating glowing particles) - using quality preset count
+        for (let i = 0; i < preset.initialFireflies; i++) {
             this.fireflies.push(this.createFirefly());
         }
 
@@ -515,8 +894,12 @@ export default class FallTheme extends BaseTheme {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
-        // Spawn swirling leaves (more for more lines cleared)
-        const leafBurstCount = Math.min(lineCount * 15 + this.comboCount * 10, 100);
+        // Spawn swirling leaves (more for more lines cleared) - scaled by quality
+        const baseLeafBurst = lineCount * 15 + this.comboCount * 10;
+        const leafBurstCount = Math.min(
+            Math.ceil(baseLeafBurst * this.activePreset.leafBurstScale),
+            this.maxLeafBurstParticles
+        );
         for (let i = 0; i < leafBurstCount; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 4 + 2 + lineCount;
@@ -539,8 +922,8 @@ export default class FallTheme extends BaseTheme {
             });
         }
 
-        // Create expanding fire ring for big line clears
-        if (lineCount >= 2) {
+        // Create expanding fire ring for big line clears - quality limited
+        if (lineCount >= 2 && this.fireRings.length < this.maxFireRings) {
             this.fireRings.push({
                 x: centerX,
                 y: centerY,
@@ -554,8 +937,9 @@ export default class FallTheme extends BaseTheme {
             });
         }
 
-        // Massive ember burst - upward explosion
-        const emberCount = lineCount * 12 + this.comboCount * 8;
+        // Massive ember burst - upward explosion - scaled by quality
+        const baseEmberBurst = lineCount * 12 + this.comboCount * 8;
+        const emberCount = Math.ceil(baseEmberBurst * this.activePreset.emberBurstScale);
         for (let i = 0; i < emberCount; i++) {
             const angle = (Math.random() - 0.5) * Math.PI; // Upward cone
             const speed = Math.random() * 5 + 3 + lineCount;
@@ -603,8 +987,8 @@ export default class FallTheme extends BaseTheme {
             themeContainer.style.filter = `hue-rotate(${this.comboHueShift}deg) saturate(${this.currentSaturation}%) brightness(${this.currentBrightness}%)`;
         }
 
-        // Create ember burst spiral for high combos
-        if (comboCount >= 5) {
+        // Create ember burst spiral for high combos - quality limited
+        if (comboCount >= 5 && this.emberBursts.length < this.maxEmberBursts) {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
 
@@ -622,9 +1006,10 @@ export default class FallTheme extends BaseTheme {
             });
         }
 
-        // Spawn extra fireflies on big combos
+        // Spawn extra fireflies on big combos - quality limited
         if (comboCount >= 3) {
-            for (let i = 0; i < Math.min(comboCount * 2, 10); i++) {
+            const firefliesToSpawn = Math.min(comboCount * 2, 10);
+            for (let i = 0; i < firefliesToSpawn && this.fireflies.length < this.maxFirefliesLimit; i++) {
                 this.fireflies.push(this.createFirefly());
             }
         }
@@ -910,9 +1295,9 @@ export default class FallTheme extends BaseTheme {
             this.ctx.fill();
         }
 
-        // Limit firefly count (remove extras after combos)
-        if (this.fireflies.length > 20) {
-            this.fireflies = this.fireflies.slice(0, 20);
+        // Limit firefly count (remove extras after combos) - use quality limit
+        if (this.fireflies.length > this.maxFirefliesLimit) {
+            this.fireflies = this.fireflies.slice(0, this.maxFirefliesLimit);
         }
 
         // Update and draw embers
@@ -982,6 +1367,9 @@ export default class FallTheme extends BaseTheme {
 
         // Remove event bus listeners
         this.teardownEventListeners();
+
+        // Remove graphics quality listener
+        this.teardownQualityListener();
 
         // Reset combo filter
         const themeContainer = document.getElementById('fall-theme');

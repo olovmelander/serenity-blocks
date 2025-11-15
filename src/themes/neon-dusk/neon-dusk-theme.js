@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { NEON_DUSK_TETROMINOS } from './neon-dusk-tetrominos.js';
 
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
@@ -28,59 +29,246 @@ export default class NeonDuskTheme extends BaseTheme {
         this.effectsAnimationFrame = null;
         this.lastEffectsFrameTime = 0;
         this.eventUnsubscribers = [];
+
+        // DOM references for rebuilds
+        this.starsContainer = null;
+        this.cloudsContainer = null;
+        this.particlesContainer = null;
+
+        // Graphics quality state
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                starCount: 80,
+                cloudCount: 4,
+                meteorCount: 3,
+                floatingParticles: 18,
+                maxParticles: 100,
+                maxArcs: 3,
+                maxScanlines: 5,
+                maxRings: 3,
+                maxVortexes: 1,
+                maxGlitches: 6,
+            },
+            'Medium': {
+                starCount: 120,
+                cloudCount: 6,
+                meteorCount: 5,
+                floatingParticles: 28,
+                maxParticles: 140,
+                maxArcs: 5,
+                maxScanlines: 8,
+                maxRings: 5,
+                maxVortexes: 2,
+                maxGlitches: 10,
+            },
+            'High': {
+                starCount: 150,
+                cloudCount: 8,
+                meteorCount: 6,
+                floatingParticles: 40,
+                maxParticles: 180,
+                maxArcs: 6,
+                maxScanlines: 12,
+                maxRings: 8,
+                maxVortexes: 3,
+                maxGlitches: 15,
+            },
+            'Ultra': {
+                starCount: 220,
+                cloudCount: 10,
+                meteorCount: 8,
+                floatingParticles: 60,
+                maxParticles: 240,
+                maxArcs: 10,
+                maxScanlines: 18,
+                maxRings: 12,
+                maxVortexes: 5,
+                maxGlitches: 22,
+            }
+        };
+
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Neon Dusk: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        const preset = this.activePreset;
+        this.MAX_PARTICLES = preset.maxParticles;
+        this.MAX_ARCS = preset.maxArcs;
+        this.MAX_SCANLINES = preset.maxScanlines;
+        this.MAX_RINGS = preset.maxRings;
+        this.MAX_VORTEXES = preset.maxVortexes;
+        this.MAX_GLITCHES = preset.maxGlitches;
+
+        this.trimEffectCollections();
+
+        console.log(`🌆 Neon Dusk: Applying ${quality} quality preset`);
+    }
+
+    trimEffectCollections() {
+        const clamp = (collection, limit) => {
+            if (!collection || typeof limit !== 'number') return;
+            if (collection.length > limit) {
+                collection.splice(0, collection.length - limit);
+            }
+        };
+
+        clamp(this.neonBurstParticles, this.MAX_PARTICLES);
+        clamp(this.electricArcs, this.MAX_ARCS);
+        clamp(this.digitalScanLines, this.MAX_SCANLINES);
+        clamp(this.hologramRings, this.MAX_RINGS);
+        clamp(this.cyberVortexes, this.MAX_VORTEXES);
+        clamp(this.glitchPulses, this.MAX_GLITCHES);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+            this.refreshQualityDependentElements();
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createStars(true);
+        this.createClouds(true);
+        this.createFloatingParticles(true);
+        this.rebuildMeteorPool();
+        this.trimEffectCollections();
+    }
+
+    createStars(force = false) {
+        if (!this.starsContainer) {
+            this.starsContainer = this.getContainer('neon-dusk-stars');
+        }
+
+        const container = this.starsContainer;
+        if (!container) return;
+        if (!force && container.children.length > 0) return;
+
+        container.textContent = '';
+        const starCount = this.activePreset?.starCount ?? 150;
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < starCount; i++) {
+            const star = document.createElement('div');
+            star.className = 'neon-dusk-star';
+            const size = Math.random() * 2.5 + 1;
+            star.style.width = `${size}px`;
+            star.style.height = `${size}px`;
+            star.style.left = `${Math.random() * 100}%`;
+            star.style.top = `${Math.random() * 60}%`;
+            star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
+            star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
+            fragment.appendChild(star);
+        }
+
+        container.appendChild(fragment);
+    }
+
+    createClouds(force = false) {
+        if (!this.cloudsContainer) {
+            this.cloudsContainer = this.getContainer('neon-dusk-clouds');
+        }
+
+        const container = this.cloudsContainer;
+        if (!container) return;
+        if (!force && container.children.length > 0) return;
+
+        container.textContent = '';
+        const cloudCount = this.activePreset?.cloudCount ?? 8;
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < cloudCount; i++) {
+            const cloud = document.createElement('div');
+            cloud.className = 'neon-dusk-cloud';
+            cloud.style.top = `${10 + Math.random() * 50}%`;
+            const duration = Math.random() * 40 + 60;
+            cloud.style.setProperty('--cloud-duration', `${duration}s`);
+            cloud.style.setProperty('--cloud-delay', `-${Math.random() * duration}s`);
+            fragment.appendChild(cloud);
+        }
+
+        container.appendChild(fragment);
+    }
+
+    createFloatingParticles(force = false) {
+        if (!this.particlesContainer) {
+            this.particlesContainer = this.getContainer('neon-dusk-particles');
+        }
+
+        const container = this.particlesContainer;
+        if (!container) return;
+        if (!force && container.children.length > 0) return;
+
+        container.textContent = '';
+        const particleCount = this.activePreset?.floatingParticles ?? 40;
+        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'neon-dusk-particle';
+            particle.style.left = `${Math.random() * 100}%`;
+            particle.style.bottom = `${Math.random() * 100}%`;
+            const particleColor = colors[Math.floor(Math.random() * colors.length)];
+            particle.style.setProperty('--particle-color', particleColor);
+            particle.style.setProperty('--particle-duration', `${Math.random() * 10 + 15}s`);
+            particle.style.setProperty('--particle-delay', `${Math.random() * 10}s`);
+            particle.style.setProperty('--drift-x', `${Math.random() * 200 - 100}px`);
+            fragment.appendChild(particle);
+        }
+
+        container.appendChild(fragment);
+    }
+
+    rebuildMeteorPool() {
+        if (!this.meteorsContainer) {
+            this.meteorsContainer = this.getContainer('neon-dusk-meteors');
+        }
+
+        const container = this.meteorsContainer;
+        if (!container) return;
+
+        container.textContent = '';
+        this.stopMeteorLoop();
+        this.meteorPool = [];
+        this.initializeMeteors(container, this.activePreset?.meteorCount ?? 6);
     }
 
     async createScene() {
-        // Stars
-        const starsContainer = document.getElementById('neon-dusk-stars');
-        if (starsContainer && starsContainer.children.length === 0) {
-            const starCount = 150;
-            const fragment = document.createDocumentFragment();
-            for (let i = 0; i < starCount; i++) {
-                const star = document.createElement('div');
-                star.className = 'neon-dusk-star';
-                const size = Math.random() * 2.5 + 1;
-                star.style.width = `${size}px`;
-                star.style.height = `${size}px`;
-                star.style.left = `${Math.random() * 100}%`;
-                star.style.top = `${Math.random() * 60}%`;
-                star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
-                star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
-                fragment.appendChild(star);
-            }
-            starsContainer.appendChild(fragment);
-            this.registerContainer(starsContainer);
-        }
+        // Apply graphics quality preset before building the scene
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
 
-        // Clouds
-        const cloudsContainer = document.getElementById('neon-dusk-clouds');
-        if (cloudsContainer && cloudsContainer.children.length === 0) {
-            const cloudCount = 8;
-            const fragment = document.createDocumentFragment();
-            for (let i = 0; i < cloudCount; i++) {
-                const cloud = document.createElement('div');
-                cloud.className = 'neon-dusk-cloud';
-                cloud.style.top = `${10 + Math.random() * 50}%`;
-                const duration = Math.random() * 40 + 60;
-                cloud.style.setProperty('--cloud-duration', `${duration}s`);
-                cloud.style.setProperty('--cloud-delay', `-${Math.random() * duration}s`);
-                fragment.appendChild(cloud);
-            }
-            cloudsContainer.appendChild(fragment);
-            this.registerContainer(cloudsContainer);
-        }
-
-        // Meteors
-        const meteorsContainer = document.getElementById('neon-dusk-meteors');
-        if (meteorsContainer) {
-            this.meteorsContainer = meteorsContainer;
-            if (this.meteorPool.length === 0 || meteorsContainer.children.length === 0) {
-                this.initializeMeteors(meteorsContainer);
-            } else {
-                this.resumeMeteorPool();
-            }
-            this.registerContainer(meteorsContainer);
-        }
+        // Stars, clouds, meteors, and particles respond to quality levels
+        this.createStars(true);
+        this.createClouds(true);
+        this.rebuildMeteorPool();
 
         // Mountain Silhouettes - Back Layer
         const mountainsBack = document.getElementById('neon-dusk-mountains-back');
@@ -173,31 +361,14 @@ export default class NeonDuskTheme extends BaseTheme {
             this.registerContainer(mountainsFront);
         }
 
-        // Floating Neon Particles / Polygons
-        const particlesContainer = document.getElementById('neon-dusk-particles');
-        if (particlesContainer && particlesContainer.children.length === 0) {
-            const particleCount = 40;
-            const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
-            const fragment = document.createDocumentFragment();
-
-            for (let i = 0; i < particleCount; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'neon-dusk-particle';
-                particle.style.left = `${Math.random() * 100}%`;
-                particle.style.bottom = `${Math.random() * 100}%`;
-                const particleColor = colors[Math.floor(Math.random() * colors.length)];
-                particle.style.setProperty('--particle-color', particleColor);
-                particle.style.setProperty('--particle-duration', `${Math.random() * 10 + 15}s`);
-                particle.style.setProperty('--particle-delay', `${Math.random() * 10}s`);
-                particle.style.setProperty('--drift-x', `${Math.random() * 200 - 100}px`);
-                fragment.appendChild(particle);
-            }
-            particlesContainer.appendChild(fragment);
-            this.registerContainer(particlesContainer);
-        }
+        // Floating neon particles / polygons respond to quality level
+        this.createFloatingParticles(true);
 
         // Setup gameplay effects
         this.setupGameplayEffects();
+
+        // Listen for runtime changes to graphics quality
+        this.setupQualityListener();
     }
 
     setupGameplayEffects() {
@@ -690,6 +861,11 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         this.pauseMeteorPool();
         this.stopEffectsLoop();
         super.stop();
@@ -725,8 +901,8 @@ export default class NeonDuskTheme extends BaseTheme {
         }
     }
 
-    initializeMeteors(container) {
-        const meteorCount = 6;
+    initializeMeteors(container, meteorCount = 6) {
+        this.meteorsContainer = container;
         const fragment = document.createDocumentFragment();
 
         for (let i = 0; i < meteorCount; i++) {
@@ -895,5 +1071,13 @@ export default class NeonDuskTheme extends BaseTheme {
 
         const normalized = (progress - 0.1) / 0.8; // 0 at 10%, 1 at 90%
         return 1 - normalized * 0.5;
+    }
+
+    /**
+     * Provide neon-themed tetromino styling so blocks match the skyline palette
+     * @returns {Object} Neon Dusk tetromino configuration
+     */
+    getTetrominoConfig() {
+        return NEON_DUSK_TETROMINOS;
     }
 }

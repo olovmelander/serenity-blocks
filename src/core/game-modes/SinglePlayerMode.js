@@ -11,7 +11,12 @@ import {
     ROWS,
     BLOCK_SIZE,
 } from '../constants.js';
-import { draw, updateStats } from '../../rendering/draw.js';
+import {
+    draw,
+    updateStats,
+    triggerLineClearFlash as triggerLineClearFlashCanvas,
+    triggerBackgroundPulse as triggerBackgroundPulseCanvas,
+} from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 
@@ -330,6 +335,31 @@ export class SinglePlayerMode extends BaseGameMode {
                 if (boardScene && boardScene.sharedEffects) {
                     boardScene.sharedEffects.showCascadeWave(cascadeCount);
                     console.log(`[SinglePlayer] Cascade wave ${cascadeCount} triggered`);
+                }
+            },
+            // Line clear flash effect
+            triggerFlash: (fullLines) => {
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.triggerLineClearFlash) {
+                    boardScene.triggerLineClearFlash(fullLines);
+                } else {
+                    triggerLineClearFlashCanvas(fullLines);
+                }
+            },
+            // Camera shake + particle impact
+            onLineClearImpact: (lineCount, cascadeCount) => {
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.playLineClearImpact) {
+                    boardScene.playLineClearImpact(lineCount, cascadeCount);
+                }
+            },
+            // Background pulse / ambience
+            triggerBackgroundPulse: (lineCount) => {
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.triggerBackgroundPulse) {
+                    boardScene.triggerBackgroundPulse(lineCount);
+                } else {
+                    triggerBackgroundPulseCanvas(lineCount);
                 }
             },
             // Piece lock ripple effect

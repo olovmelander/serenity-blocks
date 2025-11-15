@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { SINGING_BOWL_TETROMINOS } from './singing-bowl-tetrominos.js';
 
 export default class SingingBowlTheme extends BaseTheme {
     constructor() {
@@ -35,5 +36,13 @@ export default class SingingBowlTheme extends BaseTheme {
             }
             this.registerContainer(motesContainer);
         }
+    }
+
+    /**
+     * Provide Singing Bowl themed tetromino styling (tranquil palette)
+     * @returns {Object} Singing Bowl tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SINGING_BOWL_TETROMINOS;
     }
 }

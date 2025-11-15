@@ -4,6 +4,7 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { crystalCaveCache } from '../../utils/cache.js';
+import { CRYSTAL_CAVE_TETROMINOS } from './crystal-cave-tetrominos.js';
 
 /**
  * Crystal Cave Theme
@@ -240,5 +241,13 @@ export default class CrystalCaveTheme extends BaseTheme {
                 refractionContainer.appendChild(ray);
             }
         }
+    }
+
+    /**
+     * Provide Crystal Cave themed tetromino styling (jewel-toned glow palette)
+     * @returns {Object} Crystal Cave tetromino configuration
+     */
+    getTetrominoConfig() {
+        return CRYSTAL_CAVE_TETROMINOS;
     }
 }

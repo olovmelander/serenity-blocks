@@ -71,6 +71,29 @@ export class SharedEffects {
     }
 
     /**
+     * Resolve the correct color for a piece, honoring theme-based tetrominos
+     * @param {Object} piece - Piece reference
+     * @param {string} fallback - Optional fallback color
+     * @returns {string} Hex color string (e.g. '#00ffaa')
+     */
+    getPieceColor(piece, fallback = '#ffffff') {
+        if (!piece) {
+            return fallback;
+        }
+
+        const baseColor = typeof piece.color === 'string' ? piece.color : fallback;
+
+        if (typeof this.scene?.getThemedColor === 'function' && (piece.type || piece.shapeKey)) {
+            const themed = this.scene.getThemedColor(piece.type || piece.shapeKey, baseColor);
+            if (typeof themed === 'string') {
+                return themed;
+            }
+        }
+
+        return baseColor || fallback;
+    }
+
+    /**
      * Trigger line clear flash effect
      * @param {Array<number>} clearedRows - Array of row indices that were cleared
      */
@@ -182,7 +205,8 @@ export class SharedEffects {
 
             debugLog('[SharedEffects] Drawing ripple at screen position:', { x: centerX, y: centerY });
 
-            const colorInt = parseInt(piece.color.replace('#', ''), 16);
+            const rippleHex = this.getPieceColor(piece, '#ffffff');
+            const colorInt = parseInt(rippleHex.replace('#', ''), 16) || 0xffffff;
 
             // Create a data object to tween
             const rippleData = { radius: 0, alpha: 0.6 };
@@ -394,6 +418,10 @@ export class SharedEffects {
      * @returns {number} Hex color value
      */
     getComboTint(comboCount, index = 0) {
+        if (typeof this.scene?.getComboTint === 'function') {
+            return this.scene.getComboTint(comboCount, index);
+        }
+
         if (comboCount === 0) {
             return 0x00ffff; // Default cyan
         } else if (comboCount === 2) {
@@ -829,7 +857,7 @@ export class SharedEffects {
                         gravityY: 200,
                         blendMode: 'ADD',
                         on: false,
-                        tint: parseInt(piece.color.replace('#', ''), 16) || 0xffffff,
+                        tint: parseInt(this.getPieceColor(piece, '#ffffff').replace('#', ''), 16) || 0xffffff,
                     }
                 );
 

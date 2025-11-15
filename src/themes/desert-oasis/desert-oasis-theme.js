@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { DESERT_OASIS_TETROMINOS } from './desert-oasis-tetrominos.js';
 
 export default class DesertOasisTheme extends BaseTheme {
     constructor() {
@@ -55,5 +56,13 @@ export default class DesertOasisTheme extends BaseTheme {
             this.shootingStarTimeout = null;
         }
         super.stop();
+    }
+
+    /**
+     * Provide Desert Oasis themed tetromino styling (sunset sands palette)
+     * @returns {Object} Desert Oasis tetromino configuration
+     */
+    getTetrominoConfig() {
+        return DESERT_OASIS_TETROMINOS;
     }
 }

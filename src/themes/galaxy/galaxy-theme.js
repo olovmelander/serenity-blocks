@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { GALAXY_TETROMINOS } from './galaxy-tetrominos.js';
 
 export default class GalaxyTheme extends BaseTheme {
     constructor() {
@@ -22,5 +23,13 @@ export default class GalaxyTheme extends BaseTheme {
             }
             this.registerContainer(starsContainer);
         }
+    }
+
+    /**
+     * Provide Galaxy themed tetromino styling (starlit nebula palette)
+     * @returns {Object} Galaxy tetromino configuration
+     */
+    getTetrominoConfig() {
+        return GALAXY_TETROMINOS;
     }
 }

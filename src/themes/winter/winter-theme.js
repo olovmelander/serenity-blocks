@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { WINTER_TETROMINOS } from './winter-tetrominos.js';
 
 export default class WinterTheme extends BaseTheme {
     constructor() {
@@ -57,9 +58,199 @@ export default class WinterTheme extends BaseTheme {
         this.offscreenMargin = 150; // Tighter culling boundary
         this.frameSkip = 0;
         this.particleBatchSize = 50; // Process particles in batches
+
+        // Graphics quality presets
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                // Snow particles
+                maxParticles: 400,
+                initialParticlePercent: 0.5,
+                groundSnowCount: 20,
+                // Combo effects
+                iceBurstCap: 75,
+                maxFrozenLightning: 2,
+                maxComboVortexes: 2,
+                // Gust effects
+                streakParticlesCount: 10,
+                vortexParticlesCount: 10,
+                spiralSystemsCount: 1,
+                // Rendering
+                enableTrails: false,
+                trailComplexity: 0,
+                enableFrozenLightning: false,
+                // Performance
+                particleSortInterval: 15,
+                windIndicatorInterval: 4,
+            },
+            'Medium': {
+                // Snow particles
+                maxParticles: 800,
+                initialParticlePercent: 0.6,
+                groundSnowCount: 35,
+                // Combo effects
+                iceBurstCap: 150,
+                maxFrozenLightning: 4,
+                maxComboVortexes: 4,
+                // Gust effects
+                streakParticlesCount: 20,
+                vortexParticlesCount: 20,
+                spiralSystemsCount: 2,
+                // Rendering
+                enableTrails: true,
+                trailComplexity: 1, // Simplified trails
+                enableFrozenLightning: true,
+                // Performance
+                particleSortInterval: 10,
+                windIndicatorInterval: 2,
+            },
+            'High': {
+                // Snow particles
+                maxParticles: 1200,
+                initialParticlePercent: 0.7,
+                groundSnowCount: 50,
+                // Combo effects
+                iceBurstCap: 200,
+                maxFrozenLightning: 6,
+                maxComboVortexes: 6,
+                // Gust effects
+                streakParticlesCount: 30,
+                vortexParticlesCount: 30,
+                spiralSystemsCount: 3,
+                // Rendering
+                enableTrails: true,
+                trailComplexity: 2, // Full trails
+                enableFrozenLightning: true,
+                // Performance
+                particleSortInterval: 10,
+                windIndicatorInterval: 2,
+            },
+            'Ultra': {
+                // Snow particles
+                maxParticles: 1600,
+                initialParticlePercent: 0.8,
+                groundSnowCount: 70,
+                // Combo effects
+                iceBurstCap: 250,
+                maxFrozenLightning: 8,
+                maxComboVortexes: 8,
+                // Gust effects
+                streakParticlesCount: 40,
+                vortexParticlesCount: 40,
+                spiralSystemsCount: 4,
+                // Rendering
+                enableTrails: true,
+                trailComplexity: 3, // Enhanced trails
+                enableFrozenLightning: true,
+                // Performance
+                particleSortInterval: 8,
+                windIndicatorInterval: 1,
+            }
+        };
+        this.currentQuality = 'Medium';
+        this.activePreset = this.qualityPresets['Medium'];
+
+        // Apply default preset values
+        this.maxFrozenLightning = this.activePreset.maxFrozenLightning;
+        this.maxComboVortexes = this.activePreset.maxComboVortexes;
+        this.iceBurstCap = this.activePreset.iceBurstCap;
+        this.enableFrozenLightning = this.activePreset.enableFrozenLightning;
+    }
+
+    getTetrominoConfig() {
+        return WINTER_TETROMINOS;
+    }
+
+    /**
+     * Get current graphics quality setting from game settings
+     * @returns {string} Current quality level ('Low' | 'Medium' | 'High' | 'Ultra')
+     */
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'Medium';
+    }
+
+    /**
+     * Apply a graphics quality preset to the theme
+     * @param {string} quality - Quality level to apply
+     */
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`[WinterTheme] Unknown preset "${quality}", defaulting to Medium`);
+            quality = 'Medium';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+        const preset = this.activePreset;
+
+        // Update limits
+        this.maxParticles = preset.maxParticles;
+        this.iceBurstCap = preset.iceBurstCap;
+        this.maxFrozenLightning = preset.maxFrozenLightning;
+        this.maxComboVortexes = preset.maxComboVortexes;
+        this.enableFrozenLightning = preset.enableFrozenLightning;
+
+        // Trim existing particle collections to new limits
+        this.trimEffectCollections();
+
+        console.log(`[WinterTheme] Applying ${quality} graphics preset`);
+    }
+
+    /**
+     * Trim effect collections to match current quality preset limits
+     */
+    trimEffectCollections() {
+        const clamp = (collection, limit) => {
+            if (!collection || typeof limit !== 'number' || limit <= 0) return;
+            if (collection.length > limit) {
+                collection.splice(0, collection.length - limit);
+            }
+        };
+
+        // Trim particle arrays to current limits
+        clamp(this.snowParticles, this.maxParticles);
+        clamp(this.iceBurstParticles, this.iceBurstCap);
+        clamp(this.frozenLightning, this.maxFrozenLightning);
+        clamp(this.comboVortexes, this.maxComboVortexes);
+    }
+
+    /**
+     * Setup listener for graphics quality changes
+     */
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.teardownQualityListener();
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            // Apply new preset
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    /**
+     * Remove graphics quality change listener
+     */
+    teardownQualityListener() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
     }
 
     async createScene() {
+        // Apply graphics quality preset at scene creation
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
+
+        const preset = this.activePreset;
+
         this.canvas = document.getElementById('winter-canvas');
         if (!this.canvas) return;
 
@@ -71,14 +262,14 @@ export default class WinterTheme extends BaseTheme {
 
         // Initialize snow particles progressively for better startup performance
         this.snowParticles = [];
-        const initialParticles = Math.floor(this.maxParticles * 0.6); // Start with 60%
+        const initialParticles = Math.floor(this.maxParticles * preset.initialParticlePercent);
         for (let i = 0; i < initialParticles; i++) {
             this.snowParticles.push(this.createSnowParticle(true));
         }
 
-        // Initialize ground snow accumulation (reduced count)
+        // Initialize ground snow accumulation - using quality preset count
         this.groundSnow = [];
-        for (let i = 0; i < 35; i++) { // Reduced from 50
+        for (let i = 0; i < preset.groundSnowCount; i++) {
             this.groundSnow.push({
                 x: Math.random() * this.canvas.width,
                 y: this.canvas.height - Math.random() * 100,
@@ -270,8 +461,8 @@ export default class WinterTheme extends BaseTheme {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
-        // More particles for more lines (optimized count)
-        const burstCount = Math.min(lineCount * 20 + comboCount * 15, 150); // Cap at 150
+        // More particles for more lines - using quality preset cap
+        const burstCount = Math.min(lineCount * 20 + comboCount * 15, this.iceBurstCap);
         for (let i = 0; i < burstCount; i++) {
             this.iceBurstParticles.push(this.createIceBurstParticle(centerX, centerY, lineCount));
         }
@@ -287,14 +478,15 @@ export default class WinterTheme extends BaseTheme {
             this.cameraShake.intensity = Math.min(comboCount * 2, 15);
         }
 
-        // Create frozen lightning on big combos
-        if (comboCount >= 5) {
+        // Create frozen lightning on big combos - quality check
+        if (comboCount >= 5 && this.enableFrozenLightning && this.frozenLightning.length < this.maxFrozenLightning) {
             this.createFrozenLightning(centerX, centerY);
         }
 
-        // Spawn combo vortexes for massive combos
-        if (comboCount >= 8) {
-            for (let i = 0; i < Math.floor(comboCount / 4); i++) {
+        // Spawn combo vortexes for massive combos - quality limited
+        if (comboCount >= 8 && this.comboVortexes.length < this.maxComboVortexes) {
+            const vortexesToSpawn = Math.min(Math.floor(comboCount / 4), this.maxComboVortexes - this.comboVortexes.length);
+            for (let i = 0; i < vortexesToSpawn; i++) {
                 const vortex = this.createComboVortex(
                     Math.random() * this.canvas.width,
                     Math.random() * this.canvas.height * 0.5
@@ -516,25 +708,25 @@ export default class WinterTheme extends BaseTheme {
                 this.cameraShake.intensity = Math.min(gustStrength * 0.8, 12);
             }
 
-            // Spawn horizontal streak particles during strong gusts (reduced count)
+            // Spawn horizontal streak particles during strong gusts - using quality preset count
             if (gustStrength > 8) {
-                for (let i = 0; i < 20; i++) { // Reduced from 30
+                for (let i = 0; i < this.activePreset.streakParticlesCount; i++) {
                     this.streakParticles.push(this.createStreakParticle());
                 }
             }
 
-            // Spawn vortex particles during strong gusts (reduced count)
+            // Spawn vortex particles during strong gusts - using quality preset count
             if (gustStrength > 7) {
-                for (let i = 0; i < 20; i++) { // Reduced from 30
+                for (let i = 0; i < this.activePreset.vortexParticlesCount; i++) {
                     const x = Math.random() * this.canvas.width;
                     const y = Math.random() * this.canvas.height * 0.7;
                     this.vortexParticles.push(this.createVortexParticle(x, y));
                 }
             }
 
-            // Create spiral systems during extreme gusts
+            // Create spiral systems during extreme gusts - using quality preset count
             if (gustStrength > 11) {
-                for (let i = 0; i < 2; i++) { // Reduced from 3
+                for (let i = 0; i < this.activePreset.spiralSystemsCount; i++) {
                     const spiral = this.createSpiralSystem(
                         Math.random() * this.canvas.width,
                         Math.random() * this.canvas.height * 0.6
@@ -880,8 +1072,8 @@ export default class WinterTheme extends BaseTheme {
             this.snowParticles.push(this.createSnowParticle(false));
         }
 
-        // Sort only occasionally for performance (every 10 frames)
-        if (this.time % 10 === 0) {
+        // Sort only occasionally for performance - using quality preset interval
+        if (this.time % this.activePreset.particleSortInterval === 0) {
             this.snowParticles.sort((a, b) => a.z - b.z);
         }
 
@@ -929,20 +1121,35 @@ export default class WinterTheme extends BaseTheme {
                 continue;
             }
 
-            // Optimize: Skip trail rendering for far particles and reduce trail complexity
-            if (particle.z > 0.5 && particle.trail.length > 2) { // Only render trails for very near particles
-                // Draw simplified trail using line instead of circles (much faster)
-                this.ctx.globalAlpha = particle.opacity * 0.3;
-                this.ctx.strokeStyle = 'rgba(180, 195, 220, 1)';
-                this.ctx.lineWidth = particle.size * 0.5;
-                this.ctx.lineCap = 'round';
-                this.ctx.beginPath();
-                this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
-                for (let j = 2; j < particle.trail.length; j += 3) { // Skip more points
-                    this.ctx.lineTo(particle.trail[j].x, particle.trail[j].y);
+            // Trail rendering based on quality settings
+            if (this.activePreset.enableTrails && particle.trail.length > 2) {
+                const trailComplexity = this.activePreset.trailComplexity;
+
+                // Quality 0: no trails
+                // Quality 1: only very near particles with simplified trails
+                // Quality 2: near particles with full trails
+                // Quality 3: all particles with enhanced trails
+                const shouldRenderTrail = trailComplexity === 3 ||
+                    (trailComplexity === 2 && particle.z > 0.4) ||
+                    (trailComplexity === 1 && particle.z > 0.5);
+
+                if (shouldRenderTrail) {
+                    // Draw simplified trail using line instead of circles (much faster)
+                    this.ctx.globalAlpha = particle.opacity * 0.3;
+                    this.ctx.strokeStyle = 'rgba(180, 195, 220, 1)';
+                    this.ctx.lineWidth = particle.size * 0.5;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
+
+                    // Skip more points for lower complexity
+                    const skipPoints = trailComplexity === 3 ? 2 : 3;
+                    for (let j = skipPoints; j < particle.trail.length; j += skipPoints) {
+                        this.ctx.lineTo(particle.trail[j].x, particle.trail[j].y);
+                    }
+                    this.ctx.stroke();
+                    this.ctx.globalAlpha = 1;
                 }
-                this.ctx.stroke();
-                this.ctx.globalAlpha = 1;
             }
 
             // Draw main particle with rotation (optimized - no shadow blur)
@@ -984,8 +1191,8 @@ export default class WinterTheme extends BaseTheme {
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
-        // Add wind direction indicators (optimized - render less frequently)
-        if (Math.abs(this.windForce) > 4 && this.time % 2 === 0) {
+        // Add wind direction indicators - using quality preset interval
+        if (Math.abs(this.windForce) > 4 && this.time % this.activePreset.windIndicatorInterval === 0) {
             const streakCount = Math.floor(Math.abs(this.windForce) * 1.5 * Math.min(this.comboMultiplier, 1.3)); // Reduced count
             const angle = Math.atan2(1, this.windForce);
 
@@ -1021,6 +1228,9 @@ export default class WinterTheme extends BaseTheme {
 
         this.teardownEventListeners();
         this.pendingComboCount = 0;
+
+        // Remove graphics quality listener
+        this.teardownQualityListener();
 
         super.stop();
     }
