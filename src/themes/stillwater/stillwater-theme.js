@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { STILLWATER_TETROMINOS } from './stillwater-tetrominos.js';
 
 export default class StillwaterTheme extends BaseTheme {
     constructor() {
@@ -22,6 +23,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.midTreesContainer = null;
         this.closeTreesContainer = null;
         this.foregroundTreesContainer = null;
+        this.waterContainer = null; // For water horizon glow
 
         // Performance limits
         this.MAX_RIPPLES = 6;
@@ -29,15 +31,135 @@ export default class StillwaterTheme extends BaseTheme {
         this.MAX_SPARKLES = 120;
         this.MAX_FIREFLY_SWARMS = 3;
         this.MAX_LIGHT_BEAMS = 5;
+
+        // Graphics quality presets
+        this.qualityPresets = {
+            'Low': {
+                staticWaterRipples: 4,
+                distantTreeClusters: 3,
+                midTrees: 6,
+                closeTrees: 3,
+                foregroundTrees: 4,
+                rocks: 8,
+                dustMotes: 25,
+                fireflies: 8,
+                mysticalOrbs: 4,
+                lightRays: 3,
+                maxRipples: 4,
+                maxWisps: 2,
+                maxSparkles: 60,
+                maxFireflySwarms: 2,
+                maxLightBeams: 3,
+                wispPoints: 12,
+                glowIntensity: 0.7
+            },
+            'Medium': {
+                staticWaterRipples: 6,
+                distantTreeClusters: 4,
+                midTrees: 8,
+                closeTrees: 4,
+                foregroundTrees: 5,
+                rocks: 12,
+                dustMotes: 35,
+                fireflies: 12,
+                mysticalOrbs: 6,
+                lightRays: 4,
+                maxRipples: 5,
+                maxWisps: 3,
+                maxSparkles: 90,
+                maxFireflySwarms: 2,
+                maxLightBeams: 4,
+                wispPoints: 16,
+                glowIntensity: 0.85
+            },
+            'High': {
+                staticWaterRipples: 8,
+                distantTreeClusters: 4,
+                midTrees: 10,
+                closeTrees: 5,
+                foregroundTrees: 6,
+                rocks: 15,
+                dustMotes: 50,
+                fireflies: 15,
+                mysticalOrbs: 8,
+                lightRays: 5,
+                maxRipples: 6,
+                maxWisps: 4,
+                maxSparkles: 120,
+                maxFireflySwarms: 3,
+                maxLightBeams: 5,
+                wispPoints: 20,
+                glowIntensity: 1.0
+            },
+            'Ultra': {
+                staticWaterRipples: 12,
+                distantTreeClusters: 5,
+                midTrees: 15,
+                closeTrees: 7,
+                foregroundTrees: 8,
+                rocks: 25,
+                dustMotes: 80,
+                fireflies: 25,
+                mysticalOrbs: 12,
+                lightRays: 8,
+                maxRipples: 10,
+                maxWisps: 6,
+                maxSparkles: 200,
+                maxFireflySwarms: 5,
+                maxLightBeams: 8,
+                wispPoints: 30,
+                glowIntensity: 1.2
+            }
+        };
+
+        this.currentQuality = 'High'; // Default
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    /**
+     * Apply graphics quality preset
+     * @param {string} quality - Quality level: 'Low', 'Medium', 'High', or 'Ultra'
+     */
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Unknown quality preset: ${quality}, using High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        // Update max limits based on preset
+        this.MAX_RIPPLES = this.activePreset.maxRipples;
+        this.MAX_WISPS = this.activePreset.maxWisps;
+        this.MAX_SPARKLES = this.activePreset.maxSparkles;
+        this.MAX_FIREFLY_SWARMS = this.activePreset.maxFireflySwarms;
+        this.MAX_LIGHT_BEAMS = this.activePreset.maxLightBeams;
+
+        console.log(`🌊 Stillwater: Applying ${quality} quality preset`);
+    }
+
+    /**
+     * Get current graphics quality from settings
+     * @returns {string} Quality level
+     */
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
     }
 
     async createScene() {
         // NOTE: This is a simplified version - see script.js lines 5767-5954 for full implementation
 
+        // Apply graphics quality preset from settings
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
+        console.log(`🌊 Stillwater: Using ${quality} quality preset`);
+
         // Water Ripples
         const ripplesContainer = document.getElementById('stillwater-water-ripples');
         if (ripplesContainer && ripplesContainer.children.length === 0) {
-            const rippleCount = 8;
+            const rippleCount = this.activePreset.staticWaterRipples;
             for (let i = 0; i < rippleCount; i++) {
                 const ripple = document.createElement('div');
                 ripple.className = 'stillwater-water-ripple';
@@ -49,6 +171,9 @@ export default class StillwaterTheme extends BaseTheme {
             }
             this.registerContainer(ripplesContainer);
         }
+
+        // Store reference to water container for glow effects
+        this.waterContainer = document.getElementById('stillwater-water');
 
         // Mist layers
         ['stillwater-mist-back', 'stillwater-mist-mid', 'stillwater-mist-front'].forEach(
@@ -67,23 +192,23 @@ export default class StillwaterTheme extends BaseTheme {
         // Layer 1 - Distant Trees (Deep forest background)
         const distantTreesContainer = document.getElementById('stillwater-distant-trees');
         if (distantTreesContainer && distantTreesContainer.children.length === 0) {
-            const clusters = [
-                { start: 0, end: 20, baseHeight: 140 },
-                { start: 25, end: 45, baseHeight: 120 },
-                { start: 50, end: 70, baseHeight: 135 },
-                { start: 75, end: 95, baseHeight: 125 },
-            ];
+            const numClusters = this.activePreset.distantTreeClusters;
+            const clusterWidth = 100 / numClusters;
 
-            clusters.forEach((cluster) => {
+            for (let i = 0; i < numClusters; i++) {
+                const start = i * clusterWidth;
+                const end = (i + 1) * clusterWidth - 5; // Small gap between clusters
+                const baseHeight = 120 + Math.random() * 20;
+
                 const tree = document.createElement('div');
                 tree.className = 'stillwater-distant-tree-cluster';
-                tree.style.left = `${cluster.start}%`;
-                tree.style.width = `${cluster.end - cluster.start}%`;
-                tree.style.setProperty('--height', `${cluster.baseHeight}px`);
+                tree.style.left = `${start}%`;
+                tree.style.width = `${end - start}%`;
+                tree.style.setProperty('--height', `${baseHeight}px`);
                 tree.style.setProperty('--sway-duration', `${Math.random() * 20 + 40}s`);
                 tree.style.setProperty('--sway-delay', `-${Math.random() * 20}s`);
                 distantTreesContainer.appendChild(tree);
-            });
+            }
             this.registerContainer(distantTreesContainer);
         }
         // Store reference for glow effects
@@ -92,8 +217,9 @@ export default class StillwaterTheme extends BaseTheme {
         // Layer 2 - Mid Trees (Varied organic silhouettes)
         const midTreesContainer = document.getElementById('stillwater-mid-trees');
         if (midTreesContainer && midTreesContainer.children.length === 0) {
-            const treePositions = [5, 12, 23, 35, 42, 56, 63, 71, 82, 90];
-            treePositions.forEach((pos, i) => {
+            const numTrees = this.activePreset.midTrees;
+            for (let i = 0; i < numTrees; i++) {
+                const pos = (i / numTrees) * 100 + Math.random() * (100 / numTrees) * 0.5;
                 const tree = document.createElement('div');
                 tree.className = 'stillwater-mid-tree';
                 const height = Math.random() * 80 + 160;
@@ -105,7 +231,7 @@ export default class StillwaterTheme extends BaseTheme {
                 tree.style.setProperty('--sway-delay', `-${Math.random() * 15}s`);
                 tree.style.setProperty('--sway-amount', `${Math.random() * 1 + 0.5}deg`);
                 midTreesContainer.appendChild(tree);
-            });
+            }
             this.registerContainer(midTreesContainer);
         }
         // Store reference for glow effects
@@ -114,8 +240,9 @@ export default class StillwaterTheme extends BaseTheme {
         // Layer 3 - Close Trees (Defined trunks)
         const closeTreesContainer = document.getElementById('stillwater-close-trees');
         if (closeTreesContainer && closeTreesContainer.children.length === 0) {
-            const treePosi = [8, 28, 48, 68, 88];
-            treePosi.forEach((pos, i) => {
+            const numTrees = this.activePreset.closeTrees;
+            for (let i = 0; i < numTrees; i++) {
+                const pos = (i / numTrees) * 100 + Math.random() * (100 / numTrees) * 0.3;
                 const tree = document.createElement('div');
                 tree.className = 'stillwater-close-tree';
                 const height = Math.random() * 100 + 200;
@@ -124,7 +251,7 @@ export default class StillwaterTheme extends BaseTheme {
                 tree.style.setProperty('--sway-duration', `${Math.random() * 12 + 25}s`);
                 tree.style.setProperty('--sway-delay', `-${Math.random() * 12}s`);
                 closeTreesContainer.appendChild(tree);
-            });
+            }
             this.registerContainer(closeTreesContainer);
         }
         // Store reference for glow effects
@@ -133,8 +260,9 @@ export default class StillwaterTheme extends BaseTheme {
         // Layer 4 - Foreground Trees (Large prominent trunks)
         const foregroundTreesContainer = document.getElementById('stillwater-foreground-trees');
         if (foregroundTreesContainer && foregroundTreesContainer.children.length === 0) {
-            const positions = [2, 18, 38, 62, 78, 94];
-            positions.forEach((pos, i) => {
+            const numTrees = this.activePreset.foregroundTrees;
+            for (let i = 0; i < numTrees; i++) {
+                const pos = (i / numTrees) * 100 + Math.random() * (100 / numTrees) * 0.2;
                 const tree = document.createElement('div');
                 tree.className = 'stillwater-foreground-tree';
                 const height = Math.random() * 150 + 250;
@@ -145,7 +273,7 @@ export default class StillwaterTheme extends BaseTheme {
                 tree.style.setProperty('--sway-duration', `${Math.random() * 10 + 20}s`);
                 tree.style.setProperty('--sway-delay', `-${Math.random() * 10}s`);
                 foregroundTreesContainer.appendChild(tree);
-            });
+            }
             this.registerContainer(foregroundTreesContainer);
         }
         // Store reference for glow effects
@@ -154,7 +282,7 @@ export default class StillwaterTheme extends BaseTheme {
         // Layer 5 - Rocks along waterline
         const rocksContainer = document.getElementById('stillwater-rocks');
         if (rocksContainer && rocksContainer.children.length === 0) {
-            const rockCount = 15;
+            const rockCount = this.activePreset.rocks;
             for (let i = 0; i < rockCount; i++) {
                 const rock = document.createElement('div');
                 rock.className = 'stillwater-rock';
@@ -172,7 +300,7 @@ export default class StillwaterTheme extends BaseTheme {
         const particlesContainer = document.getElementById('stillwater-particles');
         if (particlesContainer && particlesContainer.children.length === 0) {
             // Dust motes
-            const dustCount = 50;
+            const dustCount = this.activePreset.dustMotes;
             for (let i = 0; i < dustCount; i++) {
                 const dust = document.createElement('div');
                 dust.className = 'stillwater-dust-mote';
@@ -189,7 +317,7 @@ export default class StillwaterTheme extends BaseTheme {
             }
 
             // Fireflies (mystical blinking lights)
-            const fireflyCount = 15;
+            const fireflyCount = this.activePreset.fireflies;
             for (let i = 0; i < fireflyCount; i++) {
                 const firefly = document.createElement('div');
                 firefly.className = 'stillwater-firefly';
@@ -207,7 +335,7 @@ export default class StillwaterTheme extends BaseTheme {
             }
 
             // Mystical orbs (larger glowing particles)
-            const orbCount = 8;
+            const orbCount = this.activePreset.mysticalOrbs;
             for (let i = 0; i < orbCount; i++) {
                 const orb = document.createElement('div');
                 orb.className = 'stillwater-mystical-orb';
@@ -225,7 +353,7 @@ export default class StillwaterTheme extends BaseTheme {
             }
 
             // Light rays (mystical beams through mist)
-            const rayCount = 5;
+            const rayCount = this.activePreset.lightRays;
             for (let i = 0; i < rayCount; i++) {
                 const ray = document.createElement('div');
                 ray.className = 'stillwater-light-ray';
@@ -246,6 +374,9 @@ export default class StillwaterTheme extends BaseTheme {
         // Setup event listeners for combo effects
         this.setupEventListeners();
 
+        // Setup quality change listener
+        this.setupQualityListener();
+
         // Start animation loop
         this.animate();
     }
@@ -256,7 +387,7 @@ export default class StillwaterTheme extends BaseTheme {
         // Distant trees - Very subtle lavender glow (most subtle)
         if (this.distantTreesContainer) {
             if (this.treeGlowIntensity > 0) {
-                const glowBlur = this.treeGlowIntensity * 6;
+                const glowBlur = this.treeGlowIntensity * 6 * this.activePreset.glowIntensity;
                 this.distantTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #b39ddb)`;
             } else {
                 this.distantTreesContainer.style.filter = '';
@@ -266,7 +397,7 @@ export default class StillwaterTheme extends BaseTheme {
         // Mid trees - Soft cyan glow (subtle)
         if (this.midTreesContainer) {
             if (this.treeGlowIntensity > 0) {
-                const glowBlur = this.treeGlowIntensity * 8;
+                const glowBlur = this.treeGlowIntensity * 8 * this.activePreset.glowIntensity;
                 this.midTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #5fc3c1)`;
             } else {
                 this.midTreesContainer.style.filter = '';
@@ -276,7 +407,7 @@ export default class StillwaterTheme extends BaseTheme {
         // Close trees - Pale yellow glow (moderate)
         if (this.closeTreesContainer) {
             if (this.treeGlowIntensity > 0) {
-                const glowBlur = this.treeGlowIntensity * 10;
+                const glowBlur = this.treeGlowIntensity * 10 * this.activePreset.glowIntensity;
                 this.closeTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #fff9c4) drop-shadow(0 0 ${glowBlur * 0.5}px #fff9c4)`;
             } else {
                 this.closeTreesContainer.style.filter = '';
@@ -286,10 +417,23 @@ export default class StillwaterTheme extends BaseTheme {
         // Foreground trees - Brighter cyan-blue glow (most visible)
         if (this.foregroundTreesContainer) {
             if (this.treeGlowIntensity > 0) {
-                const glowBlur = this.treeGlowIntensity * 12;
+                const glowBlur = this.treeGlowIntensity * 12 * this.activePreset.glowIntensity;
                 this.foregroundTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #80deea) drop-shadow(0 0 ${glowBlur * 0.5}px #80deea)`;
             } else {
                 this.foregroundTreesContainer.style.filter = '';
+            }
+        }
+    }
+
+    updateWaterGlow() {
+        // Apply mystical glow to water horizon (same as tree glow effect)
+        if (this.waterContainer) {
+            if (this.treeGlowIntensity > 0) {
+                const glowBlur = this.treeGlowIntensity * 10 * this.activePreset.glowIntensity;
+                // Cyan-teal glow for water surface
+                this.waterContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #5fc3c1) drop-shadow(0 0 ${glowBlur * 0.7}px #80deea)`;
+            } else {
+                this.waterContainer.style.filter = '';
             }
         }
     }
@@ -343,6 +487,29 @@ export default class StillwaterTheme extends BaseTheme {
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+    }
+
+    /**
+     * Setup listener for graphics quality changes
+     */
+    setupQualityListener() {
+        const qualityChangeHandler = (event) => {
+            if (!this.isActive) return;
+
+            const newQuality = this.getGraphicsQuality();
+            if (newQuality !== this.currentQuality) {
+                console.log(`🌊 Stillwater: Quality changed from ${this.currentQuality} to ${newQuality}`);
+                this.applyQualityPreset(newQuality);
+
+                // Note: Existing scene elements won't be updated until theme is reloaded
+                // Only dynamic limits (MAX_RIPPLES, etc.) are updated immediately
+            }
+        };
+
+        window.addEventListener('settingsChanged', qualityChangeHandler);
+
+        // Store reference to remove later
+        this.qualityChangeHandler = qualityChangeHandler;
     }
 
     handleLineClear(data) {
@@ -721,6 +888,9 @@ export default class StillwaterTheme extends BaseTheme {
         // Update tree glow for combo effects
         this.updateTreeGlow();
 
+        // Update water horizon glow
+        this.updateWaterGlow();
+
         // Update and render combo effects
         this.updateEffects(0.016);
         this.renderEffects();
@@ -734,6 +904,12 @@ export default class StillwaterTheme extends BaseTheme {
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
+
+        // Remove quality change listener
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
 
         // Clear combo effects
         this.waterRipples = [];
@@ -756,7 +932,16 @@ export default class StillwaterTheme extends BaseTheme {
         this.midTreesContainer = null;
         this.closeTreesContainer = null;
         this.foregroundTreesContainer = null;
+        this.waterContainer = null;
 
         super.stop();
+    }
+
+    /**
+     * Get custom tetromino configuration for Stillwater theme
+     * @returns {Object} Tetromino configuration with mystical forest colors
+     */
+    getTetrominoConfig() {
+        return STILLWATER_TETROMINOS;
     }
 }

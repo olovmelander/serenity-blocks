@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 
 export default class SynthwaveSunsetTheme extends BaseTheme {
     constructor() {
@@ -32,12 +33,144 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.cityGlowIntensity = 0;
         this.frontCityPath = null;
         this.backCityPath = null;
+        this.qualityChangeHandler = null;
 
         // Performance limits
         this.MAX_BURSTS = 5;
         this.MAX_STREAKS = 8;
         this.MAX_PARTICLES = 150;
         this.MAX_WAVES = 4;
+
+        // Graphics quality presets
+        this.qualityPresets = {
+            'Low': {
+                maxBursts: 3,
+                maxStreaks: 5,
+                maxParticles: 80,
+                maxWaves: 2,
+                cityGlowBeams: 6,
+                sunGlowLayers: 2,
+                gridRows: 25,
+                gridCols: 25,
+                particlesPerBurstMin: 10,
+                particlesPerBurstMax: 20,
+                streakMultiplier: 1,
+                gridScrollSpeed: 25,
+                glowIntensity: 0.8
+            },
+            'Medium': {
+                maxBursts: 4,
+                maxStreaks: 6,
+                maxParticles: 120,
+                maxWaves: 3,
+                cityGlowBeams: 8,
+                sunGlowLayers: 3,
+                gridRows: 35,
+                gridCols: 35,
+                particlesPerBurstMin: 12,
+                particlesPerBurstMax: 25,
+                streakMultiplier: 1.5,
+                gridScrollSpeed: 28,
+                glowIntensity: 0.9
+            },
+            'High': {
+                maxBursts: 5,
+                maxStreaks: 8,
+                maxParticles: 150,
+                maxWaves: 4,
+                cityGlowBeams: 10,
+                sunGlowLayers: 3,
+                gridRows: 40,
+                gridCols: 40,
+                particlesPerBurstMin: 15,
+                particlesPerBurstMax: 35,
+                streakMultiplier: 2,
+                gridScrollSpeed: 30,
+                glowIntensity: 1.0
+            },
+            'Ultra': {
+                maxBursts: 8,
+                maxStreaks: 12,
+                maxParticles: 250,
+                maxWaves: 8,
+                cityGlowBeams: 15,
+                sunGlowLayers: 5,
+                gridRows: 60,
+                gridCols: 60,
+                particlesPerBurstMin: 20,
+                particlesPerBurstMax: 50,
+                streakMultiplier: 2.5,
+                gridScrollSpeed: 35,
+                glowIntensity: 1.2
+            }
+        };
+
+        this.currentQuality = 'High'; // Default
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Synthwave Sunset: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        const preset = this.activePreset;
+        this.MAX_BURSTS = preset.maxBursts;
+        this.MAX_STREAKS = preset.maxStreaks;
+        this.MAX_PARTICLES = preset.maxParticles;
+        this.MAX_WAVES = preset.maxWaves;
+
+        this.trimEffectCounts();
+
+        console.log(`🌇 Synthwave Sunset: Applying ${quality} quality preset`);
+    }
+
+    trimEffectCounts() {
+        const clampArray = (collection, maxSize) => {
+            if (!collection || typeof maxSize !== 'number') return;
+            if (collection.length > maxSize) {
+                collection.splice(0, collection.length - maxSize);
+            }
+        };
+
+        clampArray(this.horizonBursts, this.MAX_BURSTS);
+        clampArray(this.retroStreaks, this.MAX_STREAKS);
+        clampArray(this.retroParticles, this.MAX_PARTICLES);
+        clampArray(this.gridWaves, this.MAX_WAVES);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+            this.refreshQualityDependentElements();
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createSun();
+        this.createCityGlow();
+        this.resizeGrid();
+        this.trimEffectCounts();
     }
 
     async createScene() {
@@ -45,6 +178,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Create sky gradient background (handled by CSS)
         const sky = this.getContainer('synthwave-sunset-sky');
+
+        // Apply graphics quality preset based on user settings
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
 
         // Create sun
         this.createSun();
@@ -67,6 +204,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Setup event listeners for combo effects
         this.setupEventListeners();
 
+        // Listen for runtime quality changes
+        this.setupQualityListener();
+
         // Start animation loop
         this.animate();
     }
@@ -74,19 +214,36 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createSun() {
         const sunContainer = this.getContainer('synthwave-sunset-sun');
 
-        // Only create sun elements if container is empty
-        if (sunContainer && sunContainer.children.length === 0) {
-            // Create the sun element
-            const sun = document.createElement('div');
+        if (!sunContainer) {
+            this.sunContainer = null;
+            return;
+        }
+
+        // Ensure the sun core exists
+        let sun = sunContainer.querySelector('.synthwave-sun');
+        if (!sun) {
+            sun = document.createElement('div');
             sun.className = 'synthwave-sun';
             sunContainer.appendChild(sun);
+        }
 
-            // Create sun glow layers
-            for (let i = 0; i < 3; i++) {
-                const glow = document.createElement('div');
-                glow.className = `synthwave-sun-glow glow-layer-${i}`;
-                sunContainer.appendChild(glow);
+        // Remove existing glow layers so we can rebuild for the new preset
+        const existingGlows = sunContainer.querySelectorAll('.synthwave-sun-glow');
+        existingGlows.forEach(glow => glow.remove());
+
+        const layerCount = this.activePreset?.sunGlowLayers ?? 3;
+        for (let i = 0; i < layerCount; i++) {
+            const glow = document.createElement('div');
+            const classIndex = Math.min(i, 2);
+            glow.className = `synthwave-sun-glow glow-layer-${classIndex}`;
+
+            if (i > 2) {
+                const extraScale = 1 + (i - 2) * 0.2;
+                glow.style.transform = `translate(-50%, -50%) scale(${extraScale})`;
+                glow.style.opacity = `${Math.max(0.3, 0.8 - (i - 2) * 0.15)}`;
             }
+
+            sunContainer.appendChild(glow);
         }
 
         // Store reference to sun container for animation
@@ -187,24 +344,30 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createCityGlow() {
         const glowContainer = this.getContainer('synthwave-sunset-city-glow');
 
-        // Only create glow beams if container is empty
-        if (glowContainer && glowContainer.children.length === 0) {
-            // Create multiple glow beams at different positions to simulate light coming from between buildings
-            const glowPositions = [8, 18, 28, 38, 48, 58, 68, 78, 88, 95];
+        if (!glowContainer) return;
 
-            glowPositions.forEach((xPos) => {
-                const glow = document.createElement('div');
-                glow.className = 'synthwave-city-glow-beam';
-                glow.style.left = `${xPos}%`;
+        // Clear existing beams so we can rebuild based on the active preset
+        const existingBeams = glowContainer.querySelectorAll('.synthwave-city-glow-beam');
+        existingBeams.forEach(beam => beam.remove());
 
-                // Vary the width and intensity slightly for more organic look
-                const width = this.random(10, 18);
-                const delay = this.random(0, 3);
-                glow.style.width = `${width}%`;
-                glow.style.animationDelay = `${delay}s`;
+        const beamCount = this.activePreset?.cityGlowBeams ?? 8;
+        const spacing = 100 / (beamCount + 1);
 
-                glowContainer.appendChild(glow);
-            });
+        for (let i = 0; i < beamCount; i++) {
+            const glow = document.createElement('div');
+            glow.className = 'synthwave-city-glow-beam';
+
+            const jitter = this.random(-spacing * 0.25, spacing * 0.25);
+            const xPos = Math.max(2, Math.min(98, spacing * (i + 1) + jitter));
+            glow.style.left = `${xPos}%`;
+
+            // Vary the width and intensity slightly for a more organic look
+            const width = this.random(10, 18);
+            const delay = this.random(0, 3);
+            glow.style.width = `${width}%`;
+            glow.style.animationDelay = `${delay}s`;
+
+            glowContainer.appendChild(glow);
         }
     }
 
@@ -346,17 +509,18 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const vanishingPointY = height * 0.08; // Vanishing point very high for dramatic perspective
 
         // Grid configuration
-        const rows = 40; // Number of horizontal divisions
-        const cols = 40; // Number of vertical divisions
+        const rows = this.activePreset?.gridRows ?? 40; // Number of horizontal divisions
+        const cols = this.activePreset?.gridCols ?? 40; // Number of vertical divisions
         const cellSize = 40; // Base cell size in the foreground
 
         // Animation offset
-        const scrollSpeed = 30;
+        const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
         const animOffset = (this.animationTime * scrollSpeed) % cellSize;
 
         // Bright pink/magenta grid color
         const gridColor = '#ff0066';
-        const brightness = 0.8 + this.gridPulseIntensity * 0.2;
+        const baseGlow = this.activePreset?.glowIntensity ?? 0.8;
+        const brightness = baseGlow + this.gridPulseIntensity * 0.2;
 
         ctx.strokeStyle = gridColor;
         ctx.lineWidth = 2;
@@ -584,10 +748,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const colors = ['#ff0066', '#ff4500', '#ff006e', '#b000ff', '#ff5e78'];
         const burstCount = Math.min(lineCount, this.MAX_BURSTS - this.horizonBursts.length);
 
+        const minParticles = this.activePreset?.particlesPerBurstMin ?? 12;
+        const maxParticles = this.activePreset?.particlesPerBurstMax ?? 24;
+
         for (let i = 0; i < burstCount; i++) {
             const x = Math.random() * width;
             const color = colors[Math.floor(Math.random() * colors.length)];
-            const particleCount = Math.floor(15 + Math.random() * 20) * this.comboMultiplier;
+            const baseParticles = this.random(minParticles, Math.max(minParticles, maxParticles));
+            const particleCount = Math.max(6, Math.floor(baseParticles * this.comboMultiplier));
 
             const particles = [];
             for (let j = 0; j < particleCount; j++) {
@@ -620,12 +788,18 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const height = this.effectsCanvas.height;
         // Sunset-themed colors: hot pink, orange-red, violet purple, deep pink
         const colors = ['#ff0066', '#ff4500', '#b000ff', '#ff006e'];
-        const streakCount = Math.min(count * 2, this.MAX_STREAKS - this.retroStreaks.length);
+        const streakIntensity = this.activePreset?.streakMultiplier ?? 1;
+        const targetCount = Math.ceil(count * 2 * streakIntensity);
+        const streakCount = Math.min(targetCount, this.MAX_STREAKS - this.retroStreaks.length);
 
         for (let i = 0; i < streakCount; i++) {
             const y = Math.random() * height * 0.7;
             const color = colors[Math.floor(Math.random() * colors.length)];
-            const speed = (Math.random() * 400 + 300) * (Math.random() > 0.5 ? 1 : -1);
+            const direction = Math.random() > 0.5 ? 1 : -1;
+            const baseSpeed = Math.random() * 400 + 300;
+            const speed = baseSpeed * (0.7 + streakIntensity * 0.3) * direction;
+            const widthScale = 0.85 + streakIntensity * 0.25;
+            const heightScale = 0.8 + streakIntensity * 0.2;
 
             this.retroStreaks.push({
                 x: Math.random() > 0.5 ? -50 : width + 50,
@@ -633,8 +807,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 speed,
                 life: 1.0,
                 maxLife: 0.6 + Math.random() * 0.4,
-                width: Math.random() * 150 + 100,
-                height: Math.random() * 3 + 2,
+                width: (Math.random() * 150 + 100) * widthScale,
+                height: (Math.random() * 3 + 2) * heightScale,
                 color,
             });
         }
@@ -851,6 +1025,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
@@ -879,5 +1058,13 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.backCityPath = null;
 
         super.stop();
+    }
+
+    /**
+     * Get custom tetromino configuration for Synthwave Sunset theme
+     * @returns {Object} Tetromino configuration with vibrant retro 80s neon colors
+     */
+    getTetrominoConfig() {
+        return SYNTHWAVE_SUNSET_TETROMINOS;
     }
 }

@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { KOI_POND_TETROMINOS } from './koi-pond-tetrominos.js';
 
 export default class KoiPondTheme extends BaseTheme {
     constructor() {
@@ -102,5 +103,13 @@ export default class KoiPondTheme extends BaseTheme {
             rippleLoop(0);
             this.registerContainer(rippleContainer);
         }
+    }
+
+    /**
+     * Provide Koi Pond themed tetromino styling (serene aquatic palette)
+     * @returns {Object} Koi Pond tetromino configuration
+     */
+    getTetrominoConfig() {
+        return KOI_POND_TETROMINOS;
     }
 }

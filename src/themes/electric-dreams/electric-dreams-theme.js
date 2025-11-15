@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { ELECTRIC_DREAMS_TETROMINOS } from './electric-dreams-tetrominos.js';
 
 export default class ElectricDreamsTheme extends BaseTheme {
     constructor() {
@@ -77,5 +78,13 @@ export default class ElectricDreamsTheme extends BaseTheme {
             }
             this.registerContainer(particleContainer);
         }
+    }
+
+    /**
+     * Provide Electric Dreams themed tetromino styling (vaporwave neon palette)
+     * @returns {Object} Electric Dreams tetromino configuration
+     */
+    getTetrominoConfig() {
+        return ELECTRIC_DREAMS_TETROMINOS;
     }
 }

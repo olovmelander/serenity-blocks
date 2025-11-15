@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MOONRISE_SUMMIT_TETROMINOS } from './moonrise-summit-tetrominos.js';
 
 export default class MoonriseSummitTheme extends BaseTheme {
     constructor() {
@@ -9,26 +10,108 @@ export default class MoonriseSummitTheme extends BaseTheme {
         this.clouds = [];
         this.shootingStars = [];
         this.animationFrame = null;
+        this.starsContainer = null;
+        this.cloudsContainer = null;
+        this.shootingStarTimeout = null;
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                starCount: 40,
+                cloudCount: 2,
+                shootingInitialDelay: [5000, 10000],
+                shootingRecurringDelay: [15000, 25000],
+            },
+            'Medium': {
+                starCount: 60,
+                cloudCount: 3,
+                shootingInitialDelay: [4000, 9000],
+                shootingRecurringDelay: [10000, 22000],
+            },
+            'High': {
+                starCount: 80,
+                cloudCount: 3,
+                shootingInitialDelay: [3000, 8000],
+                shootingRecurringDelay: [8000, 20000],
+            },
+            'Ultra': {
+                starCount: 110,
+                cloudCount: 4,
+                shootingInitialDelay: [2500, 6000],
+                shootingRecurringDelay: [7000, 16000],
+            }
+        };
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    applyQualityPreset(quality, { skipRefresh = false } = {}) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Moonrise Summit: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        if (!skipRefresh) {
+            this.refreshQualityDependentElements();
+        }
+
+        console.log(`🌄 Moonrise Summit: Applying ${quality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createStars(true);
+        this.createClouds(true);
+        this.restartShootingStars();
     }
 
     async createScene() {
         console.log('[MoonriseSummit] Creating scene...');
 
         try {
+            const quality = this.getGraphicsQuality();
+            this.applyQualityPreset(quality, { skipRefresh: true });
+
             // Create background stars
-            this.createStars();
+            this.createStars(true);
 
             // Create mountains
             this.createMountains();
 
             // Create clouds
-            this.createClouds();
+            this.createClouds(true);
 
             // Create shooting stars periodically
             this.startShootingStars();
 
             // Setup event listeners
             this.setupEventListeners();
+
+            // Listen for graphics quality changes
+            this.setupQualityListener();
 
             console.log('[MoonriseSummit] Scene created successfully!');
         } catch (error) {
@@ -40,12 +123,21 @@ export default class MoonriseSummitTheme extends BaseTheme {
     /**
      * Create background stars
      */
-    createStars() {
-        const starsContainer = document.getElementById('moonrise-stars');
-        if (!starsContainer || starsContainer.children.length > 0) return;
+    createStars(force = false) {
+        if (!this.starsContainer) {
+            this.starsContainer = document.getElementById('moonrise-stars');
+            if (this.starsContainer) {
+                this.registerContainer(this.starsContainer);
+            }
+        }
+        const starsContainer = this.starsContainer;
+        if (!starsContainer) return;
+        if (!force && starsContainer.children.length > 0) return;
 
+        starsContainer.textContent = '';
         const fragment = document.createDocumentFragment();
-        const starCount = 80;
+        const starCount = this.activePreset?.starCount ?? 80;
+        this.stars = [];
 
         for (let i = 0; i < starCount; i++) {
             const star = document.createElement('div');
@@ -92,12 +184,21 @@ export default class MoonriseSummitTheme extends BaseTheme {
     /**
      * Create clouds
      */
-    createClouds() {
-        const cloudsContainer = document.getElementById('moonrise-clouds');
-        if (!cloudsContainer || cloudsContainer.children.length > 0) return;
+    createClouds(force = false) {
+        if (!this.cloudsContainer) {
+            this.cloudsContainer = document.getElementById('moonrise-clouds');
+            if (this.cloudsContainer) {
+                this.registerContainer(this.cloudsContainer);
+            }
+        }
+        const cloudsContainer = this.cloudsContainer;
+        if (!cloudsContainer) return;
+        if (!force && cloudsContainer.children.length > 0) return;
 
-        const cloudCount = 3;
+        cloudsContainer.textContent = '';
+        const cloudCount = this.activePreset?.cloudCount ?? 3;
         const fragment = document.createDocumentFragment();
+        this.clouds = [];
 
         for (let i = 0; i < cloudCount; i++) {
             const cloud = document.createElement('div');
@@ -129,42 +230,57 @@ export default class MoonriseSummitTheme extends BaseTheme {
      * Start periodic shooting stars
      */
     startShootingStars() {
+        this.stopShootingStars();
         if (!this.isActive) return;
+        const initialDelay = this.randomDelay(this.activePreset?.shootingInitialDelay ?? [3000, 8000]);
+        this.shootingStarTimeout = setTimeout(() => this.spawnShootingStar(), initialDelay);
+    }
 
-        const createShootingStar = () => {
-            if (!this.isActive) return;
+    restartShootingStars() {
+        this.startShootingStars();
+    }
 
-            const container = document.getElementById('moonrise-shooting-stars');
-            if (!container) return;
+    stopShootingStars() {
+        if (this.shootingStarTimeout) {
+            clearTimeout(this.shootingStarTimeout);
+            this.shootingStarTimeout = null;
+        }
+    }
 
-            const star = document.createElement('div');
-            star.className = 'moonrise-shooting-star';
+    spawnShootingStar() {
+        if (!this.isActive) return;
+        const container = document.getElementById('moonrise-shooting-stars');
+        if (!container) return;
 
-            const startX = this.random(20, 80);
-            const startY = this.random(10, 40);
-            const angle = this.random(-50, -30);
-            const duration = this.random(1.5, 2.5);
+        const star = document.createElement('div');
+        star.className = 'moonrise-shooting-star';
 
-            star.style.left = `${startX}%`;
-            star.style.top = `${startY}%`;
-            star.style.setProperty('--shooting-angle', `${angle}deg`);
-            star.style.animationDuration = `${duration}s`;
+        const startX = this.random(20, 80);
+        const startY = this.random(10, 40);
+        const angle = this.random(-50, -30);
+        const duration = this.random(1.5, 2.5);
 
-            container.appendChild(star);
+        star.style.left = `${startX}%`;
+        star.style.top = `${startY}%`;
+        star.style.setProperty('--shooting-angle', `${angle}deg`);
+        star.style.animationDuration = `${duration}s`;
 
-            setTimeout(() => {
-                if (star.parentNode) {
-                    star.parentNode.removeChild(star);
-                }
-            }, duration * 1000);
+        container.appendChild(star);
 
-            // Schedule next shooting star
-            const nextDelay = this.random(8000, 20000);
-            setTimeout(createShootingStar, nextDelay);
-        };
+        setTimeout(() => {
+            if (star.parentNode) {
+                star.parentNode.removeChild(star);
+            }
+        }, duration * 1000);
 
-        // Start first shooting star
-        setTimeout(createShootingStar, this.random(3000, 8000));
+        const delayRange = this.activePreset?.shootingRecurringDelay ?? [8000, 20000];
+        const nextDelay = this.randomDelay(delayRange);
+        this.shootingStarTimeout = setTimeout(() => this.spawnShootingStar(), nextDelay);
+    }
+
+    randomDelay([min, max]) {
+        if (typeof min !== 'number' || typeof max !== 'number') return 10000;
+        return this.random(min, max);
     }
 
     /**
@@ -565,6 +681,13 @@ export default class MoonriseSummitTheme extends BaseTheme {
     }
 
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
+        this.stopShootingStars();
+
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
@@ -581,5 +704,13 @@ export default class MoonriseSummitTheme extends BaseTheme {
         }
 
         super.stop();
+    }
+
+    /**
+     * Provide Moonrise Summit themed tetromino styling (icy alpine palette)
+     * @returns {Object} Moonrise Summit tetromino configuration
+     */
+    getTetrominoConfig() {
+        return MOONRISE_SUMMIT_TETROMINOS;
     }
 }

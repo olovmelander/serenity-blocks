@@ -290,4 +290,23 @@ export class BaseTheme {
     resize(width, height) {
         // Override in subclass if resize handling is needed
     }
+
+    /**
+     * Get custom tetromino visual configuration for this theme
+     * Themes can override this to provide theme-specific tetromino styles
+     *
+     * @returns {Object|null} Tetromino configuration object or null for default styling
+     *
+     * Configuration Schema:
+     * {
+     *   version: 1,
+     *   colors: { I, O, T, S, Z, J, L, GARBAGE },
+     *   renderMode: 'solid' | 'glow' | 'gradient',
+     *   effects: { glowRadius, glowIntensity, outline, outlineWidth, ... },
+     *   rendererOverrides: { canvas: {...}, phaser: {...} }
+     * }
+     */
+    getTetrominoConfig() {
+        return null; // Default: no custom styling
+    }
 }

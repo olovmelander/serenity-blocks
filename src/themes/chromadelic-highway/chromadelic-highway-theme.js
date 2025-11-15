@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { CHROMADELIC_HIGHWAY_TETROMINOS } from './chromadelic-highway-tetrominos.js';
 
 export default class ChromadelicHighwayTheme extends BaseTheme {
     constructor() {
@@ -18,9 +19,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.colorSpeedTarget = 0;
 
         this.sparkles = [];
-        this.maxSparkles = 60; // Reduced from 80 for performance
+        this.maxSparkles = 60; // Will be set by quality preset
         this.stars = [];
-        this.maxStars = 40; // Reduced from 50 for performance
+        this.maxStars = 40; // Will be set by quality preset
         this.comboParticles = []; // Burst particles from combos
         this.shockwaves = []; // Rainbow shockwave rings
 
@@ -36,9 +37,126 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Random time offset for varied starting positions
         this.timeOffset = Math.random() * 10000;
+
+        // Graphics quality presets
+        this.qualityPresets = {
+            'Low': {
+                maxSparkles: 30,
+                maxStars: 20,
+                waveLayers: 3,
+                waveStep: 12,
+                maxShockwaves: 2,
+                maxComboParticles: 15,
+                particlesPerWave: 4,
+                trailSegments: 2,
+                shadowBlur: 0.5,
+                glowLayers: false,
+                waveGlowIntensity: 0.6
+            },
+            'Medium': {
+                maxSparkles: 45,
+                maxStars: 30,
+                waveLayers: 4,
+                waveStep: 10,
+                maxShockwaves: 2,
+                maxComboParticles: 22,
+                particlesPerWave: 6,
+                trailSegments: 2,
+                shadowBlur: 0.7,
+                glowLayers: true,
+                waveGlowIntensity: 0.8
+            },
+            'High': {
+                maxSparkles: 60,
+                maxStars: 40,
+                waveLayers: 5,
+                waveStep: 8,
+                maxShockwaves: 3,
+                maxComboParticles: 30,
+                particlesPerWave: 8,
+                trailSegments: 3,
+                shadowBlur: 1.0,
+                glowLayers: true,
+                waveGlowIntensity: 1.0
+            },
+            'Ultra': {
+                maxSparkles: 80,
+                maxStars: 50,
+                waveLayers: 6,
+                waveStep: 6,
+                maxShockwaves: 4,
+                maxComboParticles: 45,
+                particlesPerWave: 10,
+                trailSegments: 4,
+                shadowBlur: 1.2,
+                glowLayers: true,
+                waveGlowIntensity: 1.2
+            }
+        };
+
+        this.currentQuality = 'High'; // Default
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    /**
+     * Apply graphics quality preset
+     * @param {string} quality - Quality level: 'Low', 'Medium', 'High', or 'Ultra'
+     */
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Unknown quality preset: ${quality}, using High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        // Update max limits based on preset
+        this.maxSparkles = this.activePreset.maxSparkles;
+        this.maxStars = this.activePreset.maxStars;
+
+        console.log(`🌈 Chromadelic Highway: Applying ${quality} quality preset`);
+    }
+
+    /**
+     * Get current graphics quality from settings
+     * @returns {string} Quality level
+     */
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    /**
+     * Setup listener for graphics quality changes
+     */
+    setupQualityListener() {
+        const qualityChangeHandler = () => {
+            if (!this.isActive) return;
+
+            const newQuality = this.getGraphicsQuality();
+            if (newQuality !== this.currentQuality) {
+                console.log(`🌈 Chromadelic Highway: Quality changed from ${this.currentQuality} to ${newQuality}`);
+                this.applyQualityPreset(newQuality);
+
+                // Reinitialize particles with new quality settings
+                this.initSparkles();
+                this.initStars();
+            }
+        };
+
+        window.addEventListener('settingsChanged', qualityChangeHandler);
+
+        // Store reference to remove later
+        this.qualityChangeHandler = qualityChangeHandler;
     }
 
     async createScene() {
+        // Apply graphics quality preset from settings
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
+        console.log(`🌈 Chromadelic Highway: Using ${quality} quality preset`);
+
         const container = this.getContainer('chromadelic-highway-theme');
 
         // Create background gradient (handled by CSS)
@@ -52,6 +170,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Setup event listeners for combo effects
         this.setupEventListeners();
+
+        // Setup quality change listener
+        this.setupQualityListener();
 
         // Initialize sparkle and star positions
         this.initSparkles();
@@ -123,8 +244,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 0.5);
         const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
 
-        // Number of wave layers for depth
-        const numLayers = 5;
+        // Number of wave layers for depth (controlled by quality preset)
+        const numLayers = this.activePreset.waveLayers;
 
         // Draw waves from back to front
         for (let layer = 0; layer < numLayers; layer++) {
@@ -175,9 +296,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             ctx.fillStyle = gradient;
 
-            // PERFORMANCE: Reduce shadow blur intensity (still looks good but much faster)
-            const glowIntensity = 30 + layerDepth * 50; // Reduced from 50-130 to 30-80
-            ctx.shadowBlur = glowIntensity;
+            // Shadow blur intensity scaled by quality preset
+            const baseGlowIntensity = 30 + layerDepth * 50;
+            const glowIntensity = baseGlowIntensity * this.activePreset.waveGlowIntensity;
+            ctx.shadowBlur = glowIntensity * this.activePreset.shadowBlur;
 
             // More vibrant glow color that shifts with the rainbow
             const glowHue = (time * 60 + layer * 50) % 360;
@@ -192,9 +314,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Draw bottom edge
             ctx.lineTo(0, layerY + layerHeight);
 
-            // PERFORMANCE: Increased step from 5 to 8 pixels (still smooth but 37% fewer segments)
+            // Wave detail controlled by quality preset (step size in pixels)
             // Draw wavy top edge
-            for (let x = 0; x <= width; x += 8) {
+            for (let x = 0; x <= width; x += this.activePreset.waveStep) {
                 const waveOffset = Math.sin(x * frequency + phaseOffset) * amplitude * breathe * pulseEffect;
                 const waveY = layerY + waveOffset;
 
@@ -243,7 +365,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const effectiveSpeed = 0.0006 * (1 + this.colorSpeedBoost * 0.5);
         const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
 
-        const numLayers = 5;
+        const numLayers = this.activePreset.waveLayers;
         const layerDepth = layerIndex / numLayers;
         const layerSpeed = 0.4 + layerDepth * 0.7;
         const layerY = this.waveHeight * (0.3 + layerDepth * 0.35);
@@ -430,8 +552,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // PERFORMANCE: Use layered circles instead of heavy shadow blur for glow effect
             ctx.save();
 
-            // Outer glow layer (only for larger particles)
-            if (sparkle.size > 2) {
+            // Outer glow layer (only for larger particles and if quality allows)
+            if (sparkle.size > 2 && this.activePreset.glowLayers) {
                 const outerHue = (hue + 20) % 360;
                 ctx.globalAlpha = alpha * 0.2;
                 ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
@@ -446,10 +568,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 ctx.fill();
             }
 
-            // Main sparkle with minimal shadow blur
+            // Main sparkle with shadow blur scaled by quality
             ctx.globalAlpha = alpha;
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 1)`;
-            ctx.shadowBlur = Math.min(8, sparkle.glowSize * 0.5); // Drastically reduced
+            ctx.shadowBlur = Math.min(8, sparkle.glowSize * 0.5) * this.activePreset.shadowBlur;
             ctx.shadowColor = `hsla(${hue}, 100%, 75%, ${alpha})`;
 
             ctx.beginPath();
@@ -472,7 +594,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             ctx.save();
             ctx.globalAlpha = alpha;
             ctx.fillStyle = '#ffffff';
-            ctx.shadowBlur = 3; // Reduced from 4-7 to constant 3
+            ctx.shadowBlur = 3 * this.activePreset.shadowBlur;
             ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
 
             ctx.beginPath();
@@ -516,7 +638,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             ctx.strokeStyle = gradient;
             ctx.lineWidth = 80 * lifeFactor;
-            ctx.shadowBlur = 15; // PERFORMANCE: Reduced from 30
+            ctx.shadowBlur = 15 * this.activePreset.shadowBlur;
             ctx.shadowColor = `hsla(${hueOffset % 360}, 100%, 60%, ${lifeFactor * 0.6})`;
 
             ctx.beginPath();
@@ -562,9 +684,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             ctx.save();
 
-            // PERFORMANCE: Reduced trail segments from 5 to 3, removed shadow blur
+            // Trail segments controlled by quality preset
             if (particle.life < 2.0) {
-                const trailLength = 3; // Reduced from 5
+                const trailLength = this.activePreset.trailSegments;
                 for (let t = 0; t < trailLength; t++) {
                     const trailFactor = t / trailLength;
                     const trailX = prevScreenX + (x - prevScreenX) * trailFactor;
@@ -583,27 +705,29 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
             }
 
-            // PERFORMANCE: Use layered circles instead of heavy shadow blur
+            // Layered glow effect (only if quality allows)
             const outerHue = (particle.hue + 180) % 360;
 
-            // Outermost glow
-            ctx.globalAlpha = alpha * 0.25;
-            ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
-            ctx.beginPath();
-            ctx.arc(x, y, size * 2.4, 0, Math.PI * 2);
-            ctx.fill();
+            if (this.activePreset.glowLayers) {
+                // Outermost glow
+                ctx.globalAlpha = alpha * 0.25;
+                ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
+                ctx.beginPath();
+                ctx.arc(x, y, size * 2.4, 0, Math.PI * 2);
+                ctx.fill();
 
-            // Mid glow
-            ctx.globalAlpha = alpha * 0.4;
-            ctx.fillStyle = `hsla(${outerHue}, 100%, 75%, 1)`;
-            ctx.beginPath();
-            ctx.arc(x, y, size * 1.8, 0, Math.PI * 2);
-            ctx.fill();
+                // Mid glow
+                ctx.globalAlpha = alpha * 0.4;
+                ctx.fillStyle = `hsla(${outerHue}, 100%, 75%, 1)`;
+                ctx.beginPath();
+                ctx.arc(x, y, size * 1.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
 
-            // Main particle with minimal shadow
+            // Main particle with shadow scaled by quality
             ctx.globalAlpha = alpha;
             ctx.fillStyle = `hsla(${particle.hue}, 100%, ${75 + lifeFactor * 10}%, 1)`;
-            ctx.shadowBlur = 8; // Drastically reduced from 25-40
+            ctx.shadowBlur = 8 * this.activePreset.shadowBlur;
             ctx.shadowColor = `hsla(${particle.hue}, 100%, 70%, ${alpha * 0.6})`;
 
             ctx.beginPath();
@@ -667,8 +791,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         // 3. Rainbow color cycling (reduced from 0.4-1.0 to 0.2-0.5 for subtlety)
         this.colorSpeedTarget = Math.min(0.5, 0.2 + intensity * 0.3);
 
-        // 4. Create rainbow shockwave rings
-        const numShockwaves = Math.min(3, 1 + Math.floor(comboCount / 3));
+        // 4. Create rainbow shockwave rings (limited by quality preset)
+        const baseShockwaves = Math.min(this.activePreset.maxShockwaves, 1 + Math.floor(comboCount / 3));
+        const numShockwaves = Math.min(baseShockwaves, this.activePreset.maxShockwaves);
         for (let i = 0; i < numShockwaves; i++) {
             // Spawn shockwaves from different positions along the waves
             const xPos = 0.3 + (i / numShockwaves) * 0.4;
@@ -688,8 +813,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
 
         // 5. Spawn particles FROM the actual wave surfaces (integrated!)
-        // PERFORMANCE: Reduced particle count from max 45 to max 30
-        const particlesPerWave = Math.min(10, 6 + comboCount * 1.5);
+        // Particle count controlled by quality preset
+        const particlesPerWave = Math.min(
+            this.activePreset.particlesPerWave,
+            this.activePreset.particlesPerWave * 0.6 + comboCount * 0.5
+        );
         const numWaveLayers = 3; // Spawn from multiple wave layers
 
         console.log(`  ✨ Spawning ${Math.floor(particlesPerWave * numWaveLayers)} particles from wave surfaces...`);
@@ -731,6 +859,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
         }
 
+        // Limit total combo particles by quality preset
+        if (this.comboParticles.length > this.activePreset.maxComboParticles) {
+            this.comboParticles = this.comboParticles.slice(-this.activePreset.maxComboParticles);
+        }
+
         console.log(`  🌊 Wave surge target: ${(this.amplitudeBoostTarget * 100).toFixed(0)}%`);
         console.log(`  🎨 Rainbow speed target: ${(this.colorSpeedTarget * 100).toFixed(0)}%`);
     }
@@ -763,6 +896,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
+        // Remove quality change listener
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Clear references
         this.waveCanvas = null;
         this.waveCtx = null;
@@ -774,5 +913,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.shockwaves = [];
 
         super.stop();
+    }
+
+    /**
+     * Get custom tetromino configuration for Chromadelic Highway theme
+     * @returns {Object} Tetromino configuration with vibrant rainbow colors
+     */
+    getTetrominoConfig() {
+        return CHROMADELIC_HIGHWAY_TETROMINOS;
     }
 }

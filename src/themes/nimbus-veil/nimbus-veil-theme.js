@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { NIMBUS_VEIL_TETROMINOS } from './nimbus-veil-tetrominos.js';
 
 /**
  * Nimbus Veil Theme
@@ -67,6 +68,132 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         // Event state
         this.eventUnsubscribers = [];
+
+        // Combo/effect limits
+        this.MAX_COMBO_RINGS = 6;
+        this.MAX_SPARKLES = 50;
+        this.MAX_LIGHTNING_FLASHES = 3;
+        this.lightningChance = 0.0005;
+
+        // Graphics quality presets
+        this.qualityChangeHandler = null;
+        this.qualityPresets = {
+            'Low': {
+                cloudParticles: 3,
+                mistParticles: 2,
+                movingParticles: 6,
+                maxComboRings: 4,
+                maxSparkles: 25,
+                maxLightning: 1,
+                lightningChance: 0.0002,
+            },
+            'Medium': {
+                cloudParticles: 4,
+                mistParticles: 3,
+                movingParticles: 8,
+                maxComboRings: 5,
+                maxSparkles: 40,
+                maxLightning: 2,
+                lightningChance: 0.00035,
+            },
+            'High': {
+                cloudParticles: 5,
+                mistParticles: 4,
+                movingParticles: 12,
+                maxComboRings: 6,
+                maxSparkles: 50,
+                maxLightning: 3,
+                lightningChance: 0.0005,
+            },
+            'Ultra': {
+                cloudParticles: 6,
+                mistParticles: 5,
+                movingParticles: 16,
+                maxComboRings: 8,
+                maxSparkles: 70,
+                maxLightning: 4,
+                lightningChance: 0.0008,
+            }
+        };
+
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Nimbus Veil: Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        const preset = this.activePreset;
+        this.MAX_COMBO_RINGS = preset.maxComboRings;
+        this.MAX_SPARKLES = preset.maxSparkles;
+        this.MAX_LIGHTNING_FLASHES = preset.maxLightning;
+        this.lightningChance = preset.lightningChance;
+
+        this.trimEffectCollections();
+
+        console.log(`☁️ Nimbus Veil: Applying ${quality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+            this.refreshQualityDependentElements();
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    refreshQualityDependentElements() {
+        this.createCloudParticles(true);
+        this.createMistParticles(true);
+        this.trimEffectCollections();
+        this.forceLayerPrerender();
+    }
+
+    trimEffectCollections() {
+        this.trimCollection(this.comboRings, this.MAX_COMBO_RINGS);
+        this.trimCollection(this.sparkles, this.MAX_SPARKLES);
+        this.trimCollection(this.lightningFlashes, this.MAX_LIGHTNING_FLASHES);
+    }
+
+    trimCollection(collection, limit) {
+        if (!collection || typeof limit !== 'number') return;
+        if (limit <= 0) {
+            collection.length = 0;
+            return;
+        }
+        if (collection.length > limit) {
+            collection.splice(0, collection.length - limit);
+        }
+    }
+
+    forceLayerPrerender() {
+        if (this.mistLayerCtx && this.mistLayerCanvas) {
+            this.prerenderMistLayer();
+        }
+        if (this.cloudLayerCtx && this.cloudLayerCanvas) {
+            this.prerenderCloudLayer();
+        }
     }
 
     /**
@@ -100,17 +227,22 @@ export default class NimbusVeilTheme extends BaseTheme {
         console.log('[Nimbus Veil] Creating scene...');
 
         try {
+            const quality = this.getGraphicsQuality();
+            this.applyQualityPreset(quality);
+
             // Create floating cloud particles
-            this.createCloudParticles();
+            this.createCloudParticles(true);
 
             // Create mist overlay
-            this.createMistParticles();
+            this.createMistParticles(true);
 
             // Setup canvas for particle effects
             this.createCloudCanvas();
+            this.forceLayerPrerender();
 
             // Setup event listeners for reactive effects
             this.setupEventListeners();
+            this.setupQualityListener();
 
             console.log('[Nimbus Veil] Scene created successfully!');
             console.log(`[Nimbus Veil] Performance mode: ${this.cloudParticles.length} clouds, ${this.mistParticles.length} mist, ${this.movingParticles.length} particles`);
@@ -123,11 +255,18 @@ export default class NimbusVeilTheme extends BaseTheme {
     /**
      * Create background cloud particles
      */
-    createCloudParticles() {
+    createCloudParticles(force = false) {
         const colors = this.getCloudColors();
 
-        // Create 4 cloud particles - large, dynamic, visually stunning (heavily optimized)
-        for (let i = 0; i < 4; i++) {
+        if (force) {
+            this.cloudParticles = [];
+        }
+
+        const targetCount = this.activePreset?.cloudParticles ?? 4;
+        this.cloudParticles = [];
+
+        // Create cloud particles - large, dynamic, visually stunning (heavily optimized)
+        for (let i = 0; i < targetCount; i++) {
             const baseSize = Math.random() * 140 + 70; // Larger clouds to compensate (70-210px)
             this.cloudParticles.push({
                 x: Math.random() * window.innerWidth,
@@ -152,9 +291,18 @@ export default class NimbusVeilTheme extends BaseTheme {
     /**
      * Create mist/fog particles for depth
      */
-    createMistParticles() {
+    createMistParticles(force = false) {
+        if (force) {
+            this.mistParticles = [];
+            this.movingParticles = [];
+        }
+
+        const mistCount = this.activePreset?.mistParticles ?? 3;
+        const movingCount = this.activePreset?.movingParticles ?? 10;
+
+        this.mistParticles = [];
         // Create 3 larger mist particles for enhanced background depth (heavily optimized)
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < mistCount; i++) {
             const baseSize = Math.random() * 250 + 150; // Bigger mist to compensate (150-400px)
             this.mistParticles.push({
                 x: Math.random() * window.innerWidth,
@@ -174,8 +322,9 @@ export default class NimbusVeilTheme extends BaseTheme {
             });
         }
 
+        this.movingParticles = [];
         // Create 10 small moving particles (heavily optimized for max performance)
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < movingCount; i++) {
             this.movingParticles.push({
                 x: Math.random() * window.innerWidth,
                 y: Math.random() * window.innerHeight,
@@ -303,7 +452,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         const windY = this.cachedWindY;
 
         // Lightning (ultra rare) - check less frequently for performance
-        if (this.updateCounter % 60 === 0 && Math.random() < 0.0005) {
+        if (this.updateCounter % 60 === 0 && Math.random() < (this.lightningChance || 0.0005)) {
             this.createLightningFlash();
         }
 
@@ -579,6 +728,9 @@ export default class NimbusVeilTheme extends BaseTheme {
      * Create a lightning flash effect
      */
     createLightningFlash() {
+        if (this.MAX_LIGHTNING_FLASHES > 0 && this.lightningFlashes.length >= this.MAX_LIGHTNING_FLASHES) {
+            this.lightningFlashes.splice(0, this.lightningFlashes.length - this.MAX_LIGHTNING_FLASHES + 1);
+        }
         this.lightningFlashes.push({
             age: 0,
             duration: 0.15 + Math.random() * 0.1, // 0.15-0.25 seconds
@@ -590,6 +742,9 @@ export default class NimbusVeilTheme extends BaseTheme {
         // Sometimes create a double flash
         if (Math.random() < 0.3) {
             setTimeout(() => {
+                if (this.MAX_LIGHTNING_FLASHES > 0 && this.lightningFlashes.length >= this.MAX_LIGHTNING_FLASHES) {
+                    this.lightningFlashes.splice(0, this.lightningFlashes.length - this.MAX_LIGHTNING_FLASHES + 1);
+                }
                 this.lightningFlashes.push({
                     age: 0,
                     duration: 0.1 + Math.random() * 0.05,
@@ -674,6 +829,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                     age: 0,
                     lifetime: 1.5 + (comboCount * 0.1) // Longer for higher combos
                 });
+                this.trimCollection(this.comboRings, this.MAX_COMBO_RINGS);
             }
         }
 
@@ -701,6 +857,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                     age: 0,
                     lifetime: 0.8 + Math.random() * 0.4 // 0.8-1.2 seconds
                 });
+                this.trimCollection(this.sparkles, this.MAX_SPARKLES);
             }
         }
 
@@ -839,6 +996,11 @@ export default class NimbusVeilTheme extends BaseTheme {
      * Cleanup theme resources
      */
     stop() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         super.stop();
 
         // Cancel animation
@@ -885,5 +1047,13 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         // Clear cache
         this.colorCache.clear();
+    }
+
+    /**
+     * Provide Nimbus Veil themed tetromino styling (soft cloud palette)
+     * @returns {Object} Nimbus Veil tetromino configuration
+     */
+    getTetrominoConfig() {
+        return NIMBUS_VEIL_TETROMINOS;
     }
 }

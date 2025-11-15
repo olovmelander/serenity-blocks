@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { SPRING_TETROMINOS } from './spring-tetrominos.js';
 
 export default class SpringTheme extends BaseTheme {
     constructor() {
@@ -95,5 +96,13 @@ export default class SpringTheme extends BaseTheme {
             }
             this.registerContainer(sproutsContainer);
         }
+    }
+
+    /**
+     * Provide Spring themed tetrominos (pastel bloom palette)
+     * @returns {Object} Spring tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SPRING_TETROMINOS;
     }
 }

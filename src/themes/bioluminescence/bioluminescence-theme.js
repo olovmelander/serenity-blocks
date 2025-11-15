@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
 
 export default class BioluminescenceTheme extends BaseTheme {
     constructor() {
@@ -39,6 +40,135 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Cached gradients
         this.cachedGradients = {};
+
+        // Performance optimizations
+        this.staticCanvas = null;
+        this.staticCtx = null;
+        this.needsStaticRedraw = true;
+        this.frameCount = 0;
+
+        // Graphics quality presets
+        this.qualityPresets = {
+            'Low': {
+                groundGlow: 8,
+                biolumRocks: 10,
+                groundMushrooms: 8,
+                mushroomSpots: { min: 1, max: 2 },
+                glowingPlants: 12,
+                plantFronds: { min: 2, max: 3 },
+                crystalFormations: 6,
+                luminousVines: 5,
+                vineSegments: { min: 3, max: 4 },
+                fireflies: 25,
+                fireflyTrailLength: 3,
+                spores: 50,
+                ambientGlows: 15,
+                grassBlades: 3,
+                auroraWaves: { min: 1, max: 2 },
+                auroraResolution: 20,
+                vineOrbFrequency: 4,
+                tendrilNodeFrequency: 4,
+                mushroomGillSpacing: 8,
+                staticRedrawInterval: 4
+            },
+            'Medium': {
+                groundGlow: 12,
+                biolumRocks: 14,
+                groundMushrooms: 12,
+                mushroomSpots: { min: 2, max: 3 },
+                glowingPlants: 18,
+                plantFronds: { min: 3, max: 4 },
+                crystalFormations: 9,
+                luminousVines: 8,
+                vineSegments: { min: 4, max: 5 },
+                fireflies: 40,
+                fireflyTrailLength: 4,
+                spores: 75,
+                ambientGlows: 22,
+                grassBlades: 4,
+                auroraWaves: { min: 2, max: 3 },
+                auroraResolution: 18,
+                vineOrbFrequency: 3,
+                tendrilNodeFrequency: 3,
+                mushroomGillSpacing: 7,
+                staticRedrawInterval: 3
+            },
+            'High': {
+                groundGlow: 15,
+                biolumRocks: 18,
+                groundMushrooms: 15,
+                mushroomSpots: { min: 2, max: 4 },
+                glowingPlants: 22,
+                plantFronds: { min: 3, max: 4 },
+                crystalFormations: 12,
+                luminousVines: 10,
+                vineSegments: { min: 5, max: 6 },
+                fireflies: 50,
+                fireflyTrailLength: 5,
+                spores: 100,
+                ambientGlows: 28,
+                grassBlades: 4,
+                auroraWaves: { min: 2, max: 2 },
+                auroraResolution: 15,
+                vineOrbFrequency: 3,
+                tendrilNodeFrequency: 3,
+                mushroomGillSpacing: 6,
+                staticRedrawInterval: 3
+            },
+            'Ultra': {
+                groundGlow: 20,
+                biolumRocks: 25,
+                groundMushrooms: 20,
+                mushroomSpots: { min: 3, max: 6 },
+                glowingPlants: 30,
+                plantFronds: { min: 4, max: 5 },
+                crystalFormations: 15,
+                luminousVines: 12,
+                vineSegments: { min: 6, max: 8 },
+                fireflies: 80,
+                fireflyTrailLength: 8,
+                spores: 150,
+                ambientGlows: 40,
+                grassBlades: 5,
+                auroraWaves: { min: 3, max: 3 },
+                auroraResolution: 10,
+                vineOrbFrequency: 2,
+                tendrilNodeFrequency: 2,
+                mushroomGillSpacing: 4,
+                staticRedrawInterval: 2
+            }
+        };
+
+        this.currentQuality = 'High'; // Default
+        this.activePreset = this.qualityPresets['High'];
+    }
+
+    /**
+     * Apply graphics quality preset
+     * @param {string} quality - Quality level: 'Low', 'Medium', 'High', or 'Ultra'
+     */
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`Unknown quality preset: ${quality}, using High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        console.log(`🍄 Bioluminescence: Applying ${quality} quality preset`);
+
+        // Flag for redraw with new quality settings
+        this.needsStaticRedraw = true;
+    }
+
+    /**
+     * Get current graphics quality from settings
+     * @returns {string} Quality level
+     */
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
     }
 
     async createScene() {
@@ -71,18 +201,33 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: false,
-            desynchronized: true
+            desynchronized: true,
+            willReadFrequently: false
+        });
+
+        // Create static layer canvas for background elements
+        this.staticCanvas = document.createElement('canvas');
+        this.staticCtx = this.staticCanvas.getContext('2d', {
+            alpha: true,
+            willReadFrequently: false
         });
 
         // Set initial canvas size BEFORE creating elements
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        this.staticCanvas.width = window.innerWidth;
+        this.staticCanvas.height = window.innerHeight;
 
         this.resizeHandler = () => this.resizeCanvas();
         window.addEventListener('resize', this.resizeHandler, false);
 
         // Cache gradients after setting size
         this.cacheGradients();
+
+        // Apply graphics quality preset from settings
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
+        console.log(`🍄 Bioluminescence: Using ${quality} quality preset`);
 
         // Initialize scene elements (NOW canvas has proper dimensions)
         this.createGroundGlow();
@@ -98,15 +243,67 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Setup gameplay event listeners
         this.setupEventListeners();
 
+        // Listen for settings changes to update quality
+        this.setupQualityListener();
+
         console.log('🍄 Scene setup complete, starting animation. Plants:', this.glowingPlants.length, 'Fireflies:', this.fireflies.length);
         this.animate();
+    }
+
+    /**
+     * Setup listener for graphics quality changes
+     */
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.qualityChangeHandler = (event) => {
+            if (event.detail && event.detail.effectQuality) {
+                const newQuality = event.detail.effectQuality;
+                console.log(`🍄 Bioluminescence: Quality changed to ${newQuality}`);
+
+                // Clear existing elements
+                this.groundGlow = [];
+                this.biolumRocks = [];
+                this.groundMushrooms = [];
+                this.glowingPlants = [];
+                this.crystalFormations = [];
+                this.luminousVines = [];
+                this.fireflies = [];
+                this.spores = [];
+                this.ambientGlows = [];
+
+                // Apply new quality preset
+                this.applyQualityPreset(newQuality);
+
+                // Recreate scene elements with new quality
+                this.createGroundGlow();
+                this.createBiolumRocks();
+                this.createGroundMushrooms();
+                this.createGlowingPlants();
+                this.createCrystalFormations();
+                this.createLuminousVines();
+                this.createFireflies();
+                this.createSpores();
+                this.createAmbientGlows();
+
+                // Force static redraw
+                this.needsStaticRedraw = true;
+            }
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
     }
 
     resizeCanvas() {
         if (!this.canvas || !this.ctx) return;
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        if (this.staticCanvas) {
+            this.staticCanvas.width = window.innerWidth;
+            this.staticCanvas.height = window.innerHeight;
+        }
         this.cacheGradients();
+        this.needsStaticRedraw = true;
     }
 
     cacheGradients() {
@@ -123,28 +320,52 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.cachedGradients.background.addColorStop(0.4, '#061518');
         this.cachedGradients.background.addColorStop(0.7, '#040d12');
         this.cachedGradients.background.addColorStop(1, '#020508');
+
+        // Atmosphere gradient - reused every frame
+        const centerX = this.canvas.width * 0.5;
+        const centerY = this.canvas.height * 0.6;
+        this.cachedGradients.atmosphere = this.ctx.createRadialGradient(
+            centerX, centerY,
+            this.canvas.height * 0.2,
+            centerX, centerY,
+            this.canvas.height * 0.9
+        );
+        this.cachedGradients.atmosphere.addColorStop(0, 'rgba(20, 255, 200, 0.08)');
+        this.cachedGradients.atmosphere.addColorStop(0.4, 'rgba(10, 200, 150, 0.04)');
+        this.cachedGradients.atmosphere.addColorStop(0.7, 'rgba(5, 150, 100, 0.02)');
+        this.cachedGradients.atmosphere.addColorStop(1, 'rgba(0, 100, 80, 0)');
     }
 
     createGroundGlow() {
         // Create glowing patches on the ground for ambient lighting
-        const glowCount = 20;
+        const glowCount = this.activePreset.groundGlow;
         for (let i = 0; i < glowCount; i++) {
+            const hue = Math.random() * 40 + 165;
+            const radiusX = Math.random() * 100 + 80;
+
+            // Pre-cache gradient for each glow
+            const gradient = this.staticCtx.createRadialGradient(0, 0, 0, 0, 0, radiusX);
+            gradient.addColorStop(0, `hsla(${hue}, 100%, 60%, 1)`);
+            gradient.addColorStop(0.5, `hsla(${hue}, 90%, 50%, 0.5)`);
+            gradient.addColorStop(1, 'rgba(0, 150, 120, 0)');
+
             this.groundGlow.push({
                 x: Math.random() * this.canvas.width,
                 y: this.canvas.height - Math.random() * 100,
-                radiusX: Math.random() * 100 + 80,
+                radiusX: radiusX,
                 radiusY: Math.random() * 40 + 30,
                 opacity: Math.random() * 0.15 + 0.08,
                 pulseSpeed: Math.random() * 0.008 + 0.004,
                 pulsePhase: Math.random() * Math.PI * 2,
-                hue: Math.random() * 40 + 165
+                hue: hue,
+                gradient: gradient
             });
         }
     }
 
     createBiolumRocks() {
         // Create glowing rocks scattered on the ground
-        const rockCount = 25;
+        const rockCount = this.activePreset.biolumRocks;
         for (let i = 0; i < rockCount; i++) {
             const size = Math.random() * 30 + 20;
             this.biolumRocks.push({
@@ -165,9 +386,10 @@ export default class BioluminescenceTheme extends BaseTheme {
 
     createGroundMushrooms() {
         // Create traditional mushroom shapes with better silhouettes
-        const mushroomCount = 20;
+        const mushroomCount = this.activePreset.groundMushrooms;
         for (let i = 0; i < mushroomCount; i++) {
             const size = Math.random() * 60 + 40;
+            const spotRange = this.activePreset.mushroomSpots;
             this.groundMushrooms.push({
                 x: Math.random() * this.canvas.width,
                 y: this.canvas.height,
@@ -182,7 +404,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 hue: Math.random() * 50 + 160,
                 capShape: Math.random() > 0.5 ? 'dome' : 'flat', // Different cap styles
                 hasGills: Math.random() > 0.5,
-                spotCount: Math.floor(Math.random() * 6) + 3,
+                spotCount: Math.floor(Math.random() * (spotRange.max - spotRange.min + 1)) + spotRange.min,
                 spots: [],
                 layer: Math.random()
             });
@@ -202,7 +424,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createGlowingPlants() {
-        const plantCount = 30;
+        const plantCount = this.activePreset.glowingPlants;
         const plantTypes = ['fern', 'flower', 'grass', 'bulb', 'tendril'];
 
         for (let i = 0; i < plantCount; i++) {
@@ -228,7 +450,8 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Type-specific properties
             if (type === 'fern') {
-                plant.fronds = Math.floor(Math.random() * 5) + 4;
+                const frondRange = this.activePreset.plantFronds;
+                plant.fronds = Math.floor(Math.random() * (frondRange.max - frondRange.min + 1)) + frondRange.min;
             } else if (type === 'flower') {
                 plant.petals = Math.floor(Math.random() * 4) + 5;
                 plant.centerSize = Math.random() * 8 + 6;
@@ -247,7 +470,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createCrystalFormations() {
-        const formationCount = 15;
+        const formationCount = this.activePreset.crystalFormations;
 
         for (let i = 0; i < formationCount; i++) {
             const crystalCount = Math.floor(Math.random() * 4) + 3;
@@ -280,11 +503,12 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createLuminousVines() {
-        const vineCount = 12;
+        const vineCount = this.activePreset.luminousVines;
 
         for (let i = 0; i < vineCount; i++) {
             const segments = [];
-            const segmentCount = Math.floor(Math.random() * 8) + 6;
+            const segmentRange = this.activePreset.vineSegments;
+            const segmentCount = Math.floor(Math.random() * (segmentRange.max - segmentRange.min + 1)) + segmentRange.min;
             const startX = Math.random() * this.canvas.width;
 
             let currentX = startX;
@@ -319,7 +543,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createFireflies() {
-        const fireflyCount = 80;
+        const fireflyCount = this.activePreset.fireflies;
         for (let i = 0; i < fireflyCount; i++) {
             this.fireflies.push({
                 x: Math.random() * this.canvas.width,
@@ -337,7 +561,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createSpores() {
-        const sporeCount = 150;
+        const sporeCount = this.activePreset.spores;
         for (let i = 0; i < sporeCount; i++) {
             this.spores.push({
                 x: Math.random() * this.canvas.width,
@@ -353,7 +577,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createAmbientGlows() {
-        const glowCount = 40;
+        const glowCount = this.activePreset.ambientGlows;
         for (let i = 0; i < glowCount; i++) {
             this.ambientGlows.push({
                 x: Math.random() * this.canvas.width,
@@ -483,6 +707,9 @@ export default class BioluminescenceTheme extends BaseTheme {
             });
         });
 
+        // Flag for static elements redraw on next frame
+        this.needsStaticRedraw = true;
+
         // Spawn bioluminescent reaction particles around plants
         if (comboCount >= 2) {
             this.createBioReactionParticles(comboCount);
@@ -523,7 +750,8 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     createAurora() {
-        const waveCount = Math.floor(Math.random() * 3) + 3;
+        const waveRange = this.activePreset.auroraWaves;
+        const waveCount = Math.floor(Math.random() * (waveRange.max - waveRange.min + 1)) + waveRange.min;
         const waves = [];
 
         for (let i = 0; i < waveCount; i++) {
@@ -589,22 +817,11 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Add ambient bioluminescent atmosphere
-        const centerX = this.canvas.width * 0.5;
-        const centerY = this.canvas.height * 0.6;
-        const atmosphereGradient = this.ctx.createRadialGradient(
-            centerX, centerY,
-            this.canvas.height * 0.2,
-            centerX, centerY,
-            this.canvas.height * 0.9
-        );
-        atmosphereGradient.addColorStop(0, 'rgba(20, 255, 200, 0.08)');
-        atmosphereGradient.addColorStop(0.4, 'rgba(10, 200, 150, 0.04)');
-        atmosphereGradient.addColorStop(0.7, 'rgba(5, 150, 100, 0.02)');
-        atmosphereGradient.addColorStop(1, 'rgba(0, 100, 80, 0)');
-
-        this.ctx.fillStyle = atmosphereGradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        // Add ambient bioluminescent atmosphere using cached gradient
+        if (this.cachedGradients.atmosphere) {
+            this.ctx.fillStyle = this.cachedGradients.atmosphere;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
     }
 
     drawAmbientGlows() {
@@ -636,21 +853,18 @@ export default class BioluminescenceTheme extends BaseTheme {
             glow.pulsePhase += glow.pulseSpeed;
             const pulse = Math.sin(glow.pulsePhase) * 0.3 + 0.7;
 
-            // Create elliptical gradient for ground patches
+            // Use pre-cached gradient with dynamic opacity
             this.ctx.save();
             this.ctx.translate(glow.x, glow.y);
+            this.ctx.globalAlpha = glow.opacity * pulse * (1 + this.pulseIntensity * 0.2);
 
-            const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, glow.radiusX);
-            gradient.addColorStop(0, `hsla(${glow.hue}, 100%, 60%, ${glow.opacity * pulse * (1 + this.pulseIntensity * 0.2)})`);
-            gradient.addColorStop(0.5, `hsla(${glow.hue}, 90%, 50%, ${glow.opacity * pulse * 0.5})`);
-            gradient.addColorStop(1, 'rgba(0, 150, 120, 0)');
-
-            this.ctx.fillStyle = gradient;
+            this.ctx.fillStyle = glow.gradient;
             this.ctx.beginPath();
             this.ctx.ellipse(0, 0, glow.radiusX, glow.radiusY, 0, 0, Math.PI * 2);
             this.ctx.fill();
 
             this.ctx.restore();
+            this.ctx.globalAlpha = 1.0; // Reset
         }
     }
 
@@ -813,7 +1027,8 @@ export default class BioluminescenceTheme extends BaseTheme {
             if (mushroom.hasGills) {
                 this.ctx.strokeStyle = `hsla(${mushroom.hue}, 70%, 35%, 0.4)`;
                 this.ctx.lineWidth = 1;
-                for (let i = -mushroom.capWidth / 2 * 0.7; i < mushroom.capWidth / 2 * 0.7; i += 4) {
+                const spacing = this.activePreset.mushroomGillSpacing;
+                for (let i = -mushroom.capWidth / 2 * 0.7; i < mushroom.capWidth / 2 * 0.7; i += spacing) {
                     this.ctx.beginPath();
                     this.ctx.moveTo(i, capY);
                     this.ctx.lineTo(i * 0.8, capY + 3);
@@ -886,7 +1101,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 this.ctx.stroke();
 
                 // Add glowing orbs along vine
-                if (i % 2 === 0) {
+                if (i % this.activePreset.vineOrbFrequency === 0) {
                     const glowGradient = this.ctx.createRadialGradient(x2, y2, 0, x2, y2, segment.glowSize);
                     glowGradient.addColorStop(0, `hsla(${vine.hue}, 100%, 70%, ${0.7 * pulse})`);
                     glowGradient.addColorStop(0.5, `hsla(${vine.hue}, 100%, 60%, ${0.4 * pulse})`);
@@ -1101,7 +1316,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     }
 
     drawGrass(plant, sway, glowMult) {
-        const blades = 5;
+        const blades = this.activePreset.grassBlades;
 
         for (let i = 0; i < blades; i++) {
             const offsetX = (i - blades / 2) * 8;
@@ -1196,7 +1411,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.ctx.lineTo(currentX, currentY);
 
             // Add glowing nodes
-            if (i % 2 === 0) {
+            if (i % this.activePreset.tendrilNodeFrequency === 0) {
                 const nodeGradient = this.ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 10);
                 nodeGradient.addColorStop(0, `hsla(${plant.hue}, 100%, 75%, ${0.9 * glowMult})`);
                 nodeGradient.addColorStop(0.5, `hsla(${plant.hue}, 100%, 65%, ${0.5 * glowMult})`);
@@ -1274,7 +1489,7 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Draw trail
             firefly.trail.push({ x: firefly.x, y: firefly.y });
-            if (firefly.trail.length > 8) firefly.trail.shift();
+            if (firefly.trail.length > this.activePreset.fireflyTrailLength) firefly.trail.shift();
 
             for (let i = 0; i < firefly.trail.length; i++) {
                 const trailPoint = firefly.trail[i];
@@ -1325,6 +1540,29 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
     }
 
+    renderStaticElements() {
+        if (!this.staticCtx || !this.staticCanvas) return;
+
+        // Temporarily swap context to draw on static canvas
+        const originalCtx = this.ctx;
+        this.ctx = this.staticCtx;
+
+        // Clear static canvas
+        this.ctx.clearRect(0, 0, this.staticCanvas.width, this.staticCanvas.height);
+
+        // Draw static/slow-changing elements
+        this.drawAmbientGlows();
+        this.drawGroundGlow();
+        this.drawBiolumRocks();
+        this.drawGroundMushrooms();
+        this.drawLuminousVines();
+        this.drawCrystalFormations();
+        this.drawGlowingPlants();
+
+        // Restore original context
+        this.ctx = originalCtx;
+    }
+
     animate() {
         if (!this.isActive) {
             console.log('🍄 Animation stopped: theme not active');
@@ -1336,21 +1574,28 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
 
         this.time += 1;
+        this.frameCount++;
 
         // Decay pulse intensity
         if (this.pulseIntensity > 0) {
             this.pulseIntensity *= 0.95;
         }
 
-        // Clear and draw (back to front layering)
+        // Redraw static elements based on quality preset (or when flagged)
+        if (this.needsStaticRedraw || this.frameCount % this.activePreset.staticRedrawInterval === 0) {
+            this.renderStaticElements();
+            this.needsStaticRedraw = false;
+        }
+
+        // Clear main canvas and draw background
         this.drawBackground();
-        this.drawAmbientGlows();
-        this.drawGroundGlow();
-        this.drawBiolumRocks();
-        this.drawGroundMushrooms();
-        this.drawLuminousVines();
-        this.drawCrystalFormations();
-        this.drawGlowingPlants();
+
+        // Draw cached static layer
+        if (this.staticCanvas) {
+            this.ctx.drawImage(this.staticCanvas, 0, 0);
+        }
+
+        // Draw animated elements
         this.drawSpores();
 
         // Draw energy waves
@@ -1487,7 +1732,9 @@ export default class BioluminescenceTheme extends BaseTheme {
                 this.ctx.beginPath();
                 this.ctx.moveTo(aurora.x, aurora.y + wave.yOffset);
 
-                for (let x = 0; x <= aurora.width; x += 10) {
+                // Quality-based resolution
+                const step = this.activePreset.auroraResolution;
+                for (let x = 0; x <= aurora.width; x += step) {
                     const waveX = aurora.x + x;
                     const waveY = aurora.y + wave.yOffset + Math.sin(x * wave.frequency + wave.phase) * wave.amplitude;
                     this.ctx.lineTo(waveX, waveY);
@@ -1518,6 +1765,12 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.resizeHandler = null;
         }
 
+        // Remove quality change listener
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+
         // Unsubscribe from events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
@@ -1531,6 +1784,20 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.comboMultiplier = 1.0;
         this.pendingComboCount = 0;
 
+        // Clean up static canvas
+        if (this.staticCanvas) {
+            this.staticCanvas = null;
+            this.staticCtx = null;
+        }
+
         super.stop();
+    }
+
+    /**
+     * Get custom tetromino configuration for Bioluminescence theme
+     * @returns {Object} Tetromino configuration with glowing cyan-green colors
+     */
+    getTetrominoConfig() {
+        return BIOLUMINESCENCE_TETROMINOS;
     }
 }

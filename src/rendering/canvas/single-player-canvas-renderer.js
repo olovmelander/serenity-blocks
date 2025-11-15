@@ -13,7 +13,9 @@ import {
   drawLockedPieces,
   calculateGhostY,
   clearCanvas,
+  drawBlockStyled,
 } from './canvas-drawing-utils.js';
+import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 
 export class SinglePlayerCanvasRenderer {
   constructor(containerId) {
@@ -24,8 +26,15 @@ export class SinglePlayerCanvasRenderer {
     this.blockSize = 30;
     this.resizeHandler = null;
     this.resizeTimeout = null;
-    
-    console.log('🎨 Initializing SinglePlayerCanvasRenderer...');
+
+    // Initialize Tetromino Style Manager for theme-based tetromino colors
+    this.styleManager = new TetrominoStyleManager(
+      window.themeManager,
+      window.settingsManager
+    );
+    this.styleManager.init();
+
+    console.log('🎨 Initializing SinglePlayerCanvasRenderer with theme-based tetrominos...');
     this.init();
   }
   
@@ -133,23 +142,80 @@ export class SinglePlayerCanvasRenderer {
   }
   
   /**
+   * Draw a piece with theme-based styling
+   * @param {Object} piece - Piece to draw
+   * @param {boolean} isGhost - Whether this is a ghost piece
+   */
+  drawStyledPiece(piece, isGhost = false) {
+    if (!piece || !piece.shape) return;
+
+    piece.shape.forEach((row, localY) => {
+      row.forEach((cell, localX) => {
+        if (cell > 0) {
+          const worldY = piece.y + localY;
+          const x = (piece.x + localX) * this.blockSize;
+          const y = (worldY - HIDDEN_ROWS) * this.blockSize;
+
+          // Get themed style for this piece type
+          const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+
+          // Use styled drawing
+          drawBlockStyled(this.ctx, x, y, this.blockSize, styleConfig, isGhost);
+        }
+      });
+    });
+  }
+
+  /**
+   * Draw locked pieces with theme-based styling
+   * @param {Array} lockedPieces - Array of locked pieces
+   */
+  drawStyledLockedPieces(lockedPieces) {
+    if (!lockedPieces || lockedPieces.length === 0) return;
+
+    lockedPieces.forEach(piece => {
+      if (!piece.shape) return;
+
+      piece.shape.forEach((row, localY) => {
+        row.forEach((cell, localX) => {
+          if (cell > 0) {
+            const worldY = piece.y + localY;
+
+            // Only draw visible area (below hidden rows)
+            if (worldY >= HIDDEN_ROWS) {
+              const x = (piece.x + localX) * this.blockSize;
+              const y = (worldY - HIDDEN_ROWS) * this.blockSize;
+
+              // Get themed style for this piece type
+              const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+
+              // Use styled drawing
+              drawBlockStyled(this.ctx, x, y, this.blockSize, styleConfig, false);
+            }
+          }
+        });
+      });
+    });
+  }
+
+  /**
    * Main render function - draws the complete game state
    * @param {Object} gameState - Current game state
    */
   render(gameState) {
     if (!this.ctx || !this.canvas || !gameState) return;
-    
+
     // Clear canvas
     clearCanvas(this.ctx, this.canvas.width, this.canvas.height);
-    
+
     // Draw grid
     drawGrid(this.ctx, this.canvas.width, this.canvas.height, COLS, ROWS);
-    
-    // Draw locked pieces
+
+    // Draw locked pieces with theme-based styling
     if (gameState.lockedPieces && gameState.lockedPieces.length > 0) {
-      drawLockedPieces(this.ctx, gameState.lockedPieces, this.blockSize);
+      this.drawStyledLockedPieces(gameState.lockedPieces);
     }
-    
+
     // Draw current piece (with ghost piece)
     if (gameState.currentPiece) {
       // Draw ghost piece first (behind current piece)
@@ -163,11 +229,11 @@ export class SinglePlayerCanvasRenderer {
           ...gameState.currentPiece,
           y: ghostY
         };
-        drawPiece(this.ctx, ghostPiece, this.blockSize, true, false);
+        this.drawStyledPiece(ghostPiece, true);
       }
-      
-      // Draw current piece
-      drawPiece(this.ctx, gameState.currentPiece, this.blockSize, false, true);
+
+      // Draw current piece with theme-based styling
+      this.drawStyledPiece(gameState.currentPiece, false);
     }
   }
   
@@ -199,28 +265,34 @@ export class SinglePlayerCanvasRenderer {
    * Cleanup and destroy renderer
    */
   destroy() {
+    // Cleanup style manager
+    if (this.styleManager) {
+      this.styleManager.destroy();
+      this.styleManager = null;
+    }
+
     // Remove resize listener
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
-    
+
     // Clear timeout
     if (this.resizeTimeout) {
       clearTimeout(this.resizeTimeout);
       this.resizeTimeout = null;
     }
-    
+
     // Remove canvas
     if (this.canvas && this.canvas.parentNode) {
       this.canvas.parentNode.removeChild(this.canvas);
     }
-    
+
     // Clear references
     this.canvas = null;
     this.ctx = null;
     this.container = null;
-    
+
     console.log('🧹 SinglePlayerCanvasRenderer destroyed');
   }
 }

@@ -16,6 +16,7 @@ import {
     destroyParticleEmitter,
     logParticleSystemInfo,
 } from './utils/particle-compat.js';
+import { SharedEffects } from './shared-effects.js';
 
 const LINE_CLEAR_PARTICLE_KEY = 'line-clear-particle';
 const RIPPLE_PARTICLE_LIFESPAN = 650;
@@ -67,6 +68,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             this.activeTweens = [];
             this.activeTimers = [];
             this.activeGraphics = [];
+            this.sharedEffects = null;
         }
 
         createHud() {
@@ -111,6 +113,8 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         create() {
             super.create();
             this.attachGraphicsLayerAliases();
+            this.sharedEffects = new SharedEffects(this);
+            this.effects = this.sharedEffects;
 
             console.log('[BoardScene] Creating scene...');
             this.drawGrid();
@@ -122,6 +126,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {Array<number>} clearedRows - Array of row indices that were cleared
          */
         triggerLineClearFlash(clearedRows) {
+            if (this.sharedEffects) {
+                this.sharedEffects.triggerLineClearFlash(clearedRows);
+                return;
+            }
             if (!clearedRows || clearedRows.length === 0) return;
 
             // Flash effect for cleared lines
@@ -152,6 +160,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {Object} piece - The locked piece
          */
         createPieceLockRipple(piece) {
+            if (this.sharedEffects) {
+                this.sharedEffects.createPieceLockRipple(piece);
+                return;
+            }
             if (!piece) return;
 
             // Calculate center of piece
@@ -218,6 +230,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {number} comboCount - Combo count
          */
         showComboPopup(comboCount) {
+            if (this.sharedEffects) {
+                this.sharedEffects.showComboPopup(comboCount);
+                return;
+            }
             // Store combo count for enhanced particle effects
             this.currentComboCount = comboCount;
             
@@ -268,6 +284,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {number} lineCount - Number of lines cleared simultaneously
          */
         playLineClearImpact(lineCount = 1) {
+            if (this.sharedEffects) {
+                this.sharedEffects.playLineClearImpact(lineCount);
+                return;
+            }
             const clampedLineCount = Math.max(1, Math.min(4, lineCount));
             const qualityMultiplier = this.getQualityConfig()?.shakeMultiplier ?? 1;
             const intensity = CAMERA_SHAKE_BASE_INTENSITY * clampedLineCount * qualityMultiplier;
@@ -285,6 +305,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {Array<number>} clearedRows - World row indices that were cleared
          */
         spawnLineClearParticles(clearedRows) {
+            if (this.sharedEffects) {
+                this.sharedEffects.spawnLineClearParticles(clearedRows);
+                return;
+            }
             if (!clearedRows || clearedRows.length === 0) return;
             if (!this.textures.exists(this.lineClearParticleKey)) return;
 
@@ -370,20 +394,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @returns {number} Hex color value
          */
         getComboTint(comboCount, index = 0) {
-            if (comboCount === 0) {
-                return 0x00ffff; // Default cyan
-            } else if (comboCount === 2) {
-                return 0x00ff88; // Green-cyan
-            } else if (comboCount === 3) {
-                return 0xffaa00; // Orange
-            } else if (comboCount === 4) {
-                return 0xff00ff; // Magenta
-            } else if (comboCount >= 5) {
-                // Rainbow effect for high combos
-                const colors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x00ffff, 0x0088ff, 0xff00ff];
-                return colors[index % colors.length];
-            }
-            return 0x00ffff;
+            return super.getComboTint(comboCount, index);
         }
 
         /**
@@ -392,6 +403,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {number} comboCount - Current combo count
          */
         spawnComboExplosionParticles(comboCount) {
+            if (this.sharedEffects) {
+                this.sharedEffects.spawnComboExplosionParticles(comboCount);
+                return;
+            }
             if (!this.textures.exists(this.lineClearParticleKey)) return;
 
             // Optimization: Skip if particles disabled or budget exceeded
@@ -478,6 +493,10 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          * @param {number} comboCount - Current combo count
          */
         spawnRadialWave(comboCount) {
+            if (this.sharedEffects) {
+                this.sharedEffects.spawnRadialWave(comboCount);
+                return;
+            }
             if (!this.textures.exists(this.lineClearParticleKey)) return;
             if (!this.getQualityConfig()?.particles) return;
 
@@ -573,6 +592,12 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
          */
         shutdown() {
             console.log('[BoardScene] Starting comprehensive shutdown and cleanup...');
+
+            if (this.sharedEffects) {
+                this.sharedEffects.cleanup?.();
+                this.sharedEffects = null;
+                this.effects = null;
+            }
 
             // Destroy ALL particle emitters (both tracked and any stragglers)
             if (this.activeParticleSystems) {
