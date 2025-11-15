@@ -77,7 +77,7 @@ export function drawBlock(ctx, x, y, blockSize, color, isGhost = false, isCurren
     const time = Date.now() / 1000;
     const pulse = 0.5 + 0.5 * Math.sin(time * 2 + (x + y) * 0.1);
     const alpha = 0.1 + 0.25 * pulse;
-    
+
     ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     ctx.fillRect(x, y, blockSize, blockSize);
   } else {
@@ -85,6 +85,269 @@ export function drawBlock(ctx, x, y, blockSize, color, isGhost = false, isCurren
     ctx.fillStyle = color || '#808080';
     ctx.fillRect(x, y, blockSize, blockSize);
   }
+}
+
+// ============================================================================
+// THEME-BASED STYLED BLOCK RENDERING
+// ============================================================================
+
+/**
+ * Draw a styled block with theme-specific effects
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - X position in pixels
+ * @param {number} y - Y position in pixels
+ * @param {number} blockSize - Size of block
+ * @param {Object} styleConfig - Style configuration { color, renderMode, effects, rendererOverrides }
+ * @param {boolean} isGhost - Whether this is a ghost piece
+ * @param {number} alpha - Opacity (0-1)
+ */
+export function drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost = false, alpha = 1.0) {
+  if (isGhost) {
+    // Ghost pieces always use simple rendering for clarity
+    const time = Date.now() / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(time * 2 + (x + y) * 0.1);
+    const ghostAlpha = 0.1 + 0.25 * pulse;
+    ctx.fillStyle = `rgba(255, 255, 255, ${ghostAlpha})`;
+    ctx.fillRect(x, y, blockSize, blockSize);
+    return;
+  }
+
+  // Apply canvas-specific overrides if present
+  const effects = {
+    ...styleConfig.effects,
+    ...(styleConfig.rendererOverrides?.canvas || {})
+  };
+
+  const { color, renderMode } = styleConfig;
+
+  // Route to appropriate rendering function based on mode
+  switch (renderMode) {
+    case 'glow':
+      drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
+      break;
+    case 'gradient':
+      drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
+      break;
+    case 'solid':
+    default:
+      drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
+      break;
+  }
+}
+
+/**
+ * Draw a solid block with optional outline
+ * @private
+ */
+function drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Fill block
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, blockSize, blockSize);
+
+  // Draw outline if enabled
+  if (effects.outline && effects.outlineWidth > 0) {
+    const outlineColor = computeOutlineColor(color, effects.outlineColor);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = effects.outlineWidth;
+    ctx.strokeRect(x, y, blockSize, blockSize);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Draw a block with glow effect
+ * @private
+ */
+function drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha) {
+  ctx.save();
+
+  // Apply pulse animation if enabled
+  let intensity = effects.glowIntensity;
+  if (effects.pulse) {
+    const time = Date.now() / 1000;
+    const pulse = Math.sin(time * effects.pulseSpeed) * effects.pulseAmplitude;
+    intensity = effects.glowIntensity * (1 + pulse);
+  }
+
+  // Set up glow effect
+  const glowColor = effects.glowColor === 'auto' ? color : effects.glowColor;
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = effects.glowRadius;
+  ctx.globalAlpha = intensity * alpha;
+
+  // Draw main block with glow
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, blockSize, blockSize);
+
+  // Draw solid block on top (without glow but with full opacity)
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = alpha;
+  ctx.fillRect(x, y, blockSize, blockSize);
+
+  // Draw outline if enabled
+  if (effects.outline && effects.outlineWidth > 0) {
+    const outlineColor = computeOutlineColor(color, effects.outlineColor);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = effects.outlineWidth;
+    ctx.strokeRect(x, y, blockSize, blockSize);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Draw a block with gradient fill
+ * @private
+ */
+function drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Create gradient based on configuration
+  let gradient;
+  if (effects.gradientType === 'radial') {
+    const centerX = x + blockSize / 2;
+    const centerY = y + blockSize / 2;
+    gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, blockSize / 2);
+  } else {
+    // Linear gradient
+    gradient = ctx.createLinearGradient(x, y, x + blockSize, y + blockSize);
+  }
+
+  // Add color stops
+  if (effects.gradientStops && effects.gradientStops.length > 0) {
+    effects.gradientStops.forEach(stop => {
+      const stopColor = computeStopColor(color, stop.color, stop.opacity || 1);
+      gradient.addColorStop(stop.offset, stopColor);
+    });
+  } else {
+    // Default gradient if none specified
+    const lightColor = computeOutlineColor(color, 'lighten');
+    gradient.addColorStop(0, lightColor);
+    gradient.addColorStop(1, color);
+  }
+
+  // Fill with gradient
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, blockSize, blockSize);
+
+  // Draw outline if enabled
+  if (effects.outline && effects.outlineWidth > 0) {
+    const outlineColor = computeOutlineColor(color, effects.outlineColor);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = effects.outlineWidth;
+    ctx.strokeRect(x, y, blockSize, blockSize);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Compute outline color based on base color and mode
+ * @private
+ * @param {string} baseColor - Base color (hex)
+ * @param {string} mode - 'lighten', 'darken', or explicit hex color
+ * @returns {string} Computed color
+ */
+function computeOutlineColor(baseColor, mode) {
+  // If mode is already a color string (starts with # or rgb), use it directly
+  if (typeof mode === 'string' && (mode.startsWith('#') || mode.startsWith('rgb'))) {
+    return mode;
+  }
+
+  // Parse base color
+  const rgb = hexToRgb(baseColor);
+  if (!rgb) return mode; // Fallback to mode if parsing fails
+
+  let { r, g, b } = rgb;
+
+  // Apply lighten or darken
+  if (mode === 'lighten') {
+    const factor = 1.4;
+    r = Math.min(255, Math.round(r * factor));
+    g = Math.min(255, Math.round(g * factor));
+    b = Math.min(255, Math.round(b * factor));
+  } else if (mode === 'darken') {
+    const factor = 0.6;
+    r = Math.round(r * factor);
+    g = Math.round(g * factor);
+    b = Math.round(b * factor);
+  }
+
+  return rgbToHex(r, g, b);
+}
+
+/**
+ * Compute gradient stop color
+ * @private
+ * @param {string} baseColor - Base color (hex)
+ * @param {string} stopColorMode - 'base', 'lighten', 'darken', or explicit color
+ * @param {number} opacity - Opacity for this stop
+ * @returns {string} RGBA color string
+ */
+function computeStopColor(baseColor, stopColorMode, opacity = 1) {
+  let finalColor = baseColor;
+
+  if (stopColorMode === 'base') {
+    finalColor = baseColor;
+  } else if (stopColorMode === 'lighten' || stopColorMode === 'darken') {
+    finalColor = computeOutlineColor(baseColor, stopColorMode);
+  } else if (stopColorMode.startsWith('#') || stopColorMode.startsWith('rgb')) {
+    finalColor = stopColorMode;
+  }
+
+  // Convert to RGBA with opacity
+  const rgb = hexToRgb(finalColor);
+  if (rgb) {
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+  }
+
+  return finalColor;
+}
+
+/**
+ * Convert hex color to RGB
+ * @private
+ * @param {string} hex - Hex color string
+ * @returns {Object|null} { r, g, b } or null if invalid
+ */
+function hexToRgb(hex) {
+  // Remove # if present
+  hex = hex.replace('#', '');
+
+  // Handle 3-digit hex
+  if (hex.length === 3) {
+    hex = hex.split('').map(char => char + char).join('');
+  }
+
+  if (hex.length !== 6) return null;
+
+  const num = parseInt(hex, 16);
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255
+  };
+}
+
+/**
+ * Convert RGB to hex color
+ * @private
+ * @param {number} r - Red (0-255)
+ * @param {number} g - Green (0-255)
+ * @param {number} b - Blue (0-255)
+ * @returns {string} Hex color string
+ */
+function rgbToHex(r, g, b) {
+  const toHex = (n) => {
+    const hex = Math.round(n).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 /**

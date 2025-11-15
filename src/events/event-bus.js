@@ -46,4 +46,5 @@ export const EVENTS = {
     LINE_CLEAR: 'lineClear',
     COMBO: 'combo',
     PIECE_LOCK: 'pieceLock',
+    SETTINGS_CHANGED: 'settingsChanged',
 };

@@ -3,6 +3,7 @@
  */
 
 import { BaseTheme } from '../base-theme.js';
+import { WAVES_TETROMINOS } from './waves-tetrominos.js';
 
 /**
  * Waves Theme
@@ -37,5 +38,13 @@ export default class WavesTheme extends BaseTheme {
                 particleContainer.appendChild(particle);
             }
         }
+    }
+
+    /**
+     * Provide Waves themed tetromino styling (aquatic glow palette)
+     * @returns {Object} Waves tetromino configuration
+     */
+    getTetrominoConfig() {
+        return WAVES_TETROMINOS;
     }
 }

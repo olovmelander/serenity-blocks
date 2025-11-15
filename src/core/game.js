@@ -12,6 +12,30 @@ import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid } from './infinity-grid.js';
 
+function resolveActiveTetrominoColor(shapeKey) {
+    const defaultColor = COLORS[shapeKey] || '#808080';
+
+    if (typeof window === 'undefined') {
+        return defaultColor;
+    }
+
+    const settingsManager = window.settingsManager;
+    const themeManager = window.themeManager;
+    const settings = settingsManager?.get?.();
+    const themeBasedEnabled = settings?.themeBasedTetrominos ?? true;
+
+    if (!themeBasedEnabled || !themeManager?.activeTheme?.getTetrominoConfig) {
+        return defaultColor;
+    }
+
+    const config = themeManager.activeTheme.getTetrominoConfig();
+    if (!config) {
+        return defaultColor;
+    }
+
+    return config.colors?.[shapeKey] || defaultColor;
+}
+
 function createComboState() {
     return {
         depth: 0,
@@ -315,7 +339,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
         piece.y = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
     }
 
-    piece.color = COLORS[shapeKey];
+    piece.color = resolveActiveTetrominoColor(shapeKey);
 
     gameState.currentPiece = piece;
     invalidateGhostCache(gameState);
@@ -501,10 +525,12 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     if (playDropCallback) playDropCallback();
 
     // Trigger lock ripple effect
+    const themedColor = resolveActiveTetrominoColor(lockedPiece.shapeKey);
     const lockedPieceSnapshot = {
         ...lockedPiece,
         shape: lockedPiece.shape.map((row) => row.slice()),
         pieceId: Date.now() + Math.random(),
+        color: themedColor,
     };
 
     if (physicsCallbacks && physicsCallbacks.onPieceLock) {
@@ -535,7 +561,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     const comboState = createComboState();
     comboState.lockFootprint = lockFootprint;
     comboState.manualColumns = [...gameState.lastPlacedPieceX];
-    comboState.sourceColor = lockedPieceSnapshot.color || COLORS[lockedPieceSnapshot.shapeKey] || '#808080';
+    comboState.sourceColor = themedColor;
     comboState.sourcePiece = lockedPieceSnapshot.shapeKey;
     comboState.sequence = gameState.garbageAttackSequence++;
     gameState.comboState = comboState;

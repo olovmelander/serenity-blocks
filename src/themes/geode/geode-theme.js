@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { GEODE_TETROMINOS } from './geode-tetrominos.js';
 
 export default class GeodeTheme extends BaseTheme {
     constructor() {
@@ -34,7 +35,13 @@ export default class GeodeTheme extends BaseTheme {
         this.chromaticAberration = 0;
         this.crystalShakeIntensity = 0;
 
-        // Performance limits
+        // Performance limits (default to Medium)
+        this.wallCount = 6;
+        this.stalactiteCount = 8;
+        this.stalagmiteCount = 12;
+        this.mistCount = 10;
+        this.crystalClusterCount = 12;
+        this.ambientGlowCount = 8;
         this.maxDustParticles = 40;
         this.maxLightRays = 8;
         this.maxEnergyPulses = 15;
@@ -45,9 +52,85 @@ export default class GeodeTheme extends BaseTheme {
         // Event tracking
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+
+        this.qualityPresets = {
+            'Low': {
+                wallCount: 4,
+                stalactiteCount: 4,
+                stalagmiteCount: 6,
+                mistCount: 6,
+                crystalClusterCount: 7,
+                ambientGlowCount: 5,
+                maxDustParticles: 25,
+                maxLightRays: 4,
+                maxEnergyPulses: 8,
+            },
+            'Medium': {
+                wallCount: 6,
+                stalactiteCount: 8,
+                stalagmiteCount: 12,
+                mistCount: 10,
+                crystalClusterCount: 12,
+                ambientGlowCount: 8,
+                maxDustParticles: 40,
+                maxLightRays: 8,
+                maxEnergyPulses: 15,
+            },
+            'High': {
+                wallCount: 8,
+                stalactiteCount: 12,
+                stalagmiteCount: 16,
+                mistCount: 14,
+                crystalClusterCount: 16,
+                ambientGlowCount: 10,
+                maxDustParticles: 55,
+                maxLightRays: 12,
+                maxEnergyPulses: 22,
+            },
+            'Ultra': {
+                wallCount: 10,
+                stalactiteCount: 16,
+                stalagmiteCount: 20,
+                mistCount: 18,
+                crystalClusterCount: 22,
+                ambientGlowCount: 14,
+                maxDustParticles: 70,
+                maxLightRays: 16,
+                maxEnergyPulses: 30,
+            }
+        };
+        this.currentQuality = 'Medium';
+        this.activePreset = this.qualityPresets['Medium'];
+        this.applyQualityPreset('Medium');
+    }
+
+    applyQualityPreset(quality) {
+        const preset = this.qualityPresets[quality] ?? this.qualityPresets['Medium'];
+        this.currentQuality = quality in this.qualityPresets ? quality : 'Medium';
+        this.activePreset = preset;
+
+        this.wallCount = preset.wallCount;
+        this.stalactiteCount = preset.stalactiteCount;
+        this.stalagmiteCount = preset.stalagmiteCount;
+        this.mistCount = preset.mistCount;
+        this.crystalClusterCount = preset.crystalClusterCount;
+        this.ambientGlowCount = preset.ambientGlowCount;
+        this.maxDustParticles = preset.maxDustParticles;
+        this.maxLightRays = preset.maxLightRays;
+        this.maxEnergyPulses = preset.maxEnergyPulses;
+
+        console.log(`💎 Geode: Applying ${this.currentQuality} quality preset`);
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'Medium';
     }
 
     async createScene() {
+        const quality = this.getGraphicsQuality();
+        this.applyQualityPreset(quality);
+
         const themeContainer = document.getElementById('geode-theme');
         this.canvas = document.getElementById('geode-canvas');
 
@@ -131,7 +214,7 @@ export default class GeodeTheme extends BaseTheme {
 
     createCaveStructure() {
         // Create cave walls for depth and structure
-        const wallCount = 6;
+        const wallCount = this.wallCount ?? 6;
         for (let i = 0; i < wallCount; i++) {
             const side = i < wallCount / 2 ? 'left' : 'right';
             const x = side === 'left' ? Math.random() * this.canvas.width * 0.15 : this.canvas.width * 0.85 + Math.random() * this.canvas.width * 0.15;
@@ -158,7 +241,7 @@ export default class GeodeTheme extends BaseTheme {
         }
 
         // Create stalactites from ceiling
-        const stalactiteCount = 8;
+        const stalactiteCount = this.stalactiteCount ?? 8;
         for (let i = 0; i < stalactiteCount; i++) {
             const x = Math.random() * this.canvas.width;
             const length = Math.random() * 150 + 80;
@@ -235,7 +318,7 @@ export default class GeodeTheme extends BaseTheme {
 
     createStalagmites() {
         // Create stalagmites (growing up from floor) to match stalactites
-        const stalagmiteCount = 12;
+        const stalagmiteCount = this.stalagmiteCount ?? 12;
         for (let i = 0; i < stalagmiteCount; i++) {
             const x = Math.random() * this.canvas.width;
             const height = Math.random() * 120 + 60;
@@ -259,7 +342,7 @@ export default class GeodeTheme extends BaseTheme {
 
     createMist() {
         // Add low-lying mist for atmosphere
-        const mistCount = 10;
+        const mistCount = this.mistCount ?? 10;
         for (let i = 0; i < mistCount; i++) {
             this.mist.push({
                 x: Math.random() * this.canvas.width,
@@ -279,7 +362,7 @@ export default class GeodeTheme extends BaseTheme {
 
     createCrystalClusters() {
         // Create natural crystal formations - fewer but more impressive clusters
-        const clusterCount = 12;
+        const clusterCount = this.crystalClusterCount ?? 12;
 
         const crystalPalettes = [
             { hues: [280, 285, 275, 290], saturation: 65, lightness: [40, 50, 35], name: 'amethyst' },
@@ -387,7 +470,7 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     createAmbientGlows() {
-        const glowCount = 8;
+        const glowCount = this.ambientGlowCount ?? 8;
         for (let i = 0; i < glowCount; i++) {
             this.ambientGlows.push({
                 x: Math.random() * this.canvas.width,
@@ -1242,5 +1325,13 @@ export default class GeodeTheme extends BaseTheme {
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.chromaticAberration = 0;
         this.crystalShakeIntensity = 0;
+    }
+
+    /**
+     * Provide Geode themed tetromino styling (jewel-toned glow palette)
+     * @returns {Object} Geode tetromino configuration
+     */
+    getTetrominoConfig() {
+        return GEODE_TETROMINOS;
     }
 }

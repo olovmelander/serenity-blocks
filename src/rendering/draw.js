@@ -16,6 +16,8 @@ import {
     updateCanvasStyle,
     getLastRenderedLevel,
 } from './canvas-utils.js';
+import { drawBlockStyled } from './canvas/canvas-drawing-utils.js';
+import { TetrominoStyleManager } from './tetromino-style-manager.js';
 
 // Piece trail system for motion fluidity
 let pieceTrails = [];
@@ -55,6 +57,45 @@ function getComboColor(comboCount) {
         }
     }
     return COMBO_COLOR_STEPS[COMBO_COLOR_STEPS.length - 1].color;
+}
+
+let nextPieceStyleManager = null;
+
+function getNextPieceStyleManager() {
+    if (nextPieceStyleManager) {
+        return nextPieceStyleManager;
+    }
+
+    const hasWindow = typeof window !== 'undefined';
+    const themeManager = hasWindow ? window.themeManager : null;
+    const settingsManager = hasWindow ? window.settingsManager : null;
+
+    if (!themeManager || !settingsManager) {
+        return null;
+    }
+
+    nextPieceStyleManager = new TetrominoStyleManager(themeManager, settingsManager);
+    nextPieceStyleManager.init();
+    return nextPieceStyleManager;
+}
+
+function createFallbackStyle(color) {
+    return {
+        color,
+        renderMode: 'solid',
+        effects: {
+            glowRadius: 0,
+            glowIntensity: 0,
+            glowColor: color,
+            outline: false,
+            outlineWidth: 0,
+            outlineColor: color,
+            pulse: false,
+            pulseSpeed: 0,
+            pulseAmplitude: 0,
+        },
+        rendererOverrides: {},
+    };
 }
 
 /**
@@ -304,7 +345,9 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
         if (slot) slot.classList.remove('empty');
 
         const shape = SHAPES[nextKey];
-        const color = COLORS[nextKey] || '#808080';
+        const styleManager = getNextPieceStyleManager();
+        const fallbackColor = COLORS[nextKey] || '#808080';
+        const styleConfig = styleManager?.getStyleForPiece(nextKey) ?? createFallbackStyle(fallbackColor);
 
         const rows = shape.length;
         const cols = shape[0].length;
@@ -323,22 +366,15 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
         const offsetX = Math.round((displayWidth - pieceWidth) / 2);
         const offsetY = Math.round((displayHeight - pieceHeight) / 2);
 
-        // Draw as one solid path to avoid any gaps between blocks
-        ctx.fillStyle = color;
-        ctx.beginPath();
-
+        // Draw each block with theme styling for accurate previews
         shape.forEach((row, y) => {
             row.forEach((cell, x) => {
                 if (!cell) return;
-
                 const px = offsetX + x * blockSize;
                 const py = offsetY + y * blockSize;
-
-                ctx.rect(px, py, blockSize, blockSize);
+                drawBlockStyled(ctx, px, py, blockSize, styleConfig, false);
             });
         });
-
-        ctx.fill();
 
         ctx.imageSmoothingEnabled = true;
         ctx.restore();

@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { SUMMER_TETROMINOS } from './summer-tetrominos.js';
 
 export default class SummerTheme extends BaseTheme {
     constructor() {
@@ -60,5 +61,13 @@ export default class SummerTheme extends BaseTheme {
             }
             this.registerContainer(grassContainer);
         }
+    }
+
+    /**
+     * Provide Summer themed tetrominos (sunny seaside palette)
+     * @returns {Object} Summer tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SUMMER_TETROMINOS;
     }
 }

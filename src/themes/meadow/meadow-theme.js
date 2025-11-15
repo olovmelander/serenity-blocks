@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { MEADOW_TETROMINOS } from './meadow-tetrominos.js';
 
 export default class MeadowTheme extends BaseTheme {
     constructor() {
@@ -111,5 +112,13 @@ export default class MeadowTheme extends BaseTheme {
             }
             this.registerContainer(pollenContainer);
         }
+    }
+
+    /**
+     * Provide Meadow themed tetromino styling (blooming meadow palette)
+     * @returns {Object} Meadow tetromino configuration
+     */
+    getTetrominoConfig() {
+        return MEADOW_TETROMINOS;
     }
 }

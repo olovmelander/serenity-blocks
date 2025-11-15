@@ -1,4 +1,5 @@
 import { BaseTheme } from '../base-theme.js';
+import { STARLIGHT_TETROMINOS } from './starlight-tetrominos.js';
 
 export default class StarlightTheme extends BaseTheme {
     constructor() {
@@ -58,5 +59,13 @@ export default class StarlightTheme extends BaseTheme {
             }
             this.registerContainer(shootingStarContainer);
         }
+    }
+
+    /**
+     * Provide Starlight themed tetromino styling (starfield glow palette)
+     * @returns {Object} Starlight tetromino configuration
+     */
+    getTetrominoConfig() {
+        return STARLIGHT_TETROMINOS;
     }
 }

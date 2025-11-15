@@ -2,6 +2,7 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { BLACK_HOLE_TETROMINOS } from './black-hole-tetrominos.js';
 
 const QUALITY_PRESETS = {
     Ultra: {
@@ -1719,6 +1720,14 @@ export default class BlackHoleTheme extends BaseTheme {
         }
 
         super.stop();
+    }
+
+    /**
+     * Provide Black Hole themed tetromino styling (gravity stretched colors)
+     * @returns {Object} Black Hole tetromino configuration
+     */
+    getTetrominoConfig() {
+        return BLACK_HOLE_TETROMINOS;
     }
 
     obtainParticle(props) {

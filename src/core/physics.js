@@ -123,13 +123,15 @@ export function findConnectedComponents(boardData) {
                     shape[r - minR][c - minC] = 1;
                 });
 
-                const shapeKey = cellData.color;
+                const shapeKey = cellData.type || cellData.color;
+                const baseColor = COLORS[shapeKey] || cellData.color || '#808080';
                 pieces.push({
                     x: minC,
                     y: minR,
                     shape,
                     shapeKey,
-                    color: COLORS[shapeKey] || shapeKey,
+                    type: shapeKey,
+                    color: baseColor,
                     pieceId: cellData.id,
                 });
             }
