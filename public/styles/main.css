@@ -4679,35 +4679,137 @@ body {
     position: absolute;
     bottom: 0;
     left: 0;
-    width: 100%;
+    width: 200%; /* Match tree layers for parallax */
     height: 20%;
     z-index: 9;
+    will-change: transform;
+    animation: slide linear infinite;
+    animation-duration: 160s; /* Match front trees for grounded movement */
 }
 
 .glowing-mushroom {
     position: absolute;
-    bottom: 0;
-    width: 15px;
-    height: 20px;
+    bottom: 0; /* Anchored to ground */
+    width: 16px;
+    height: 24px;
+    filter: drop-shadow(0 0 4px rgba(0, 217, 255, 0.4));
+    transform-origin: bottom center; /* Scale from base for grounded feel */
 }
 
-.glowing-mushroom::before { /* Cap */
+/* Distribute mushrooms across depth layers for natural forest floor feel */
+.glowing-mushroom:nth-child(4n) {
+    transform: scale(0.65);
+    opacity: 0.5;
+    filter: drop-shadow(0 0 3px rgba(0, 217, 255, 0.25)) blur(1px);
+}
+
+.glowing-mushroom:nth-child(4n+1) {
+    transform: scale(0.8);
+    opacity: 0.7;
+    filter: drop-shadow(0 0 3.5px rgba(0, 217, 255, 0.3)) blur(0.5px);
+}
+
+.glowing-mushroom:nth-child(4n+2) {
+    transform: scale(0.95);
+    opacity: 0.85;
+}
+
+.glowing-mushroom:nth-child(4n+3) {
+    transform: scale(1.1);
+    opacity: 1.0;
+}
+
+/* Mushroom stem */
+.glowing-mushroom::after {
     content: '';
     position: absolute;
-    top: 0; left: 50%;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30%;
+    height: 50%;
+    background: linear-gradient(to bottom, rgba(180, 210, 220, 0.6), rgba(140, 170, 180, 0.4));
+    border-radius: 2px;
+    z-index: 1;
+}
+
+/* Mushroom cap - bioluminescent cyan/blue */
+.glowing-mushroom::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
     transform: translateX(-50%);
     width: 100%;
-    height: 60%;
-    background: radial-gradient(ellipse, #F9DC5C, #C8E86B);
-    border-radius: 50% 50% 10% 10%;
-    box-shadow: 0 0 6px #F9DC5C, 0 0 10px #F9DC5C, 0 0 15px #C8E86B;
+    height: 55%;
+    background: radial-gradient(ellipse at center,
+        rgba(0, 255, 255, 0.9) 0%,
+        rgba(100, 200, 255, 0.7) 30%,
+        rgba(80, 150, 200, 0.6) 60%,
+        rgba(60, 120, 160, 0.4) 100%
+    );
+    border-radius: 50% 50% 15% 15%;
+    box-shadow:
+        0 0 8px rgba(0, 255, 255, 0.6),
+        0 0 15px rgba(0, 200, 255, 0.4),
+        0 0 20px rgba(0, 150, 255, 0.2),
+        inset 0 -2px 4px rgba(255, 255, 255, 0.3);
     animation: mushroom-pulse-gentle 12s ease-in-out infinite alternate;
     animation-delay: var(--delay);
+    z-index: 2;
+}
+
+/* Purple variant mushrooms */
+.glowing-mushroom:nth-child(3n)::before {
+    background: radial-gradient(ellipse at center,
+        rgba(180, 100, 255, 0.9) 0%,
+        rgba(140, 120, 220, 0.7) 30%,
+        rgba(100, 100, 180, 0.6) 60%,
+        rgba(70, 80, 140, 0.4) 100%
+    );
+    box-shadow:
+        0 0 8px rgba(180, 100, 255, 0.6),
+        0 0 15px rgba(160, 100, 230, 0.4),
+        0 0 20px rgba(140, 100, 200, 0.2),
+        inset 0 -2px 4px rgba(255, 255, 255, 0.3);
+}
+
+.glowing-mushroom:nth-child(3n) {
+    filter: drop-shadow(0 0 4px rgba(180, 100, 255, 0.4));
+}
+
+/* Green variant mushrooms */
+.glowing-mushroom:nth-child(5n)::before {
+    background: radial-gradient(ellipse at center,
+        rgba(100, 255, 180, 0.9) 0%,
+        rgba(100, 220, 160, 0.7) 30%,
+        rgba(80, 180, 140, 0.6) 60%,
+        rgba(60, 140, 120, 0.4) 100%
+    );
+    box-shadow:
+        0 0 8px rgba(100, 255, 180, 0.6),
+        0 0 15px rgba(80, 220, 160, 0.4),
+        0 0 20px rgba(60, 180, 140, 0.2),
+        inset 0 -2px 4px rgba(255, 255, 255, 0.3);
+}
+
+.glowing-mushroom:nth-child(5n) {
+    filter: drop-shadow(0 0 4px rgba(100, 255, 180, 0.4));
 }
 
 @keyframes mushroom-pulse-gentle {
-    from { filter: brightness(0.8); transform: translateX(-50%) scale(0.98); }
-    to { filter: brightness(1.2); transform: translateX(-50%) scale(1.02); }
+    0% {
+        filter: brightness(0.85);
+        transform: translateX(-50%) scale(0.98);
+    }
+    50% {
+        filter: brightness(1.15);
+        transform: translateX(-50%) scale(1.0);
+    }
+    100% {
+        filter: brightness(0.85);
+        transform: translateX(-50%) scale(0.98);
+    }
 }
 
 .moonlit-leaf {
@@ -4729,7 +4831,7 @@ body {
     position: absolute;
     width: 18px;
     height: 4px;
-    z-index: 5;
+    z-index: 1; /* Behind the furthest back trees for mysterious depth */
     animation: eyes-blink-subtle 12s ease-in-out infinite;
 }
 
@@ -4759,19 +4861,255 @@ body {
 
 .flying-owl {
     position: absolute;
-    width: 45px;
-    height: 25px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 30"><path d="M25 0 C 10 0, 0 10, 0 20 L 50 20 C 50 10, 40 0, 25 0 M 15 15 A 5 5 0 1 1 15 14.9 M 35 15 A 5 5 0 1 1 35 14.9" fill="rgba(15, 26, 18, 0.9)"/></svg>');
+    width: 50px;
+    height: 35px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40"><g><path d="M5 20 Q 0 15, 5 10 L 15 15 Q 12 20, 15 25 Z" fill="rgba(40, 50, 60, 0.85)" opacity="0.9"><animate attributeName="d" values="M5 20 Q 0 15, 5 10 L 15 15 Q 12 20, 15 25 Z;M5 20 Q 0 12, 8 8 L 15 15 Q 12 20, 15 25 Z;M5 20 Q 0 15, 5 10 L 15 15 Q 12 20, 15 25 Z" dur="0.4s" repeatCount="indefinite"/></path><path d="M55 20 Q 60 15, 55 10 L 45 15 Q 48 20, 45 25 Z" fill="rgba(40, 50, 60, 0.85)" opacity="0.9"><animate attributeName="d" values="M55 20 Q 60 15, 55 10 L 45 15 Q 48 20, 45 25 Z;M55 20 Q 60 12, 52 8 L 45 15 Q 48 20, 45 25 Z;M55 20 Q 60 15, 55 10 L 45 15 Q 48 20, 45 25 Z" dur="0.4s" repeatCount="indefinite"/></path><ellipse cx="30" cy="20" rx="12" ry="15" fill="rgba(30, 40, 50, 0.95)"/><circle cx="25" cy="18" r="4" fill="rgba(255, 235, 100, 0.3)"/><circle cx="35" cy="18" r="4" fill="rgba(255, 235, 100, 0.3)"/><circle cx="25" cy="18" r="2" fill="rgba(20, 25, 30, 0.9)"/><circle cx="35" cy="18" r="2" fill="rgba(20, 25, 30, 0.9)"/><path d="M 28 24 Q 30 26, 32 24" stroke="rgba(50, 40, 30, 0.6)" stroke-width="1" fill="none"/></g></svg>');
     background-size: contain;
     background-repeat: no-repeat;
     z-index: 5;
-    animation: owl-fly-long 45s linear infinite;
-    filter: blur(0.5px);
+    animation: owl-fly-long 50s ease-in-out infinite;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    opacity: 0.85;
 }
 
 @keyframes owl-fly-long {
-    0% { transform: translateX(110vw) translateY(15vh) scale(0.9); opacity: 1; }
-    100% { transform: translateX(-10vw) translateY(20vh) scale(1.1); opacity: 1; }
+    0% {
+        transform: translateX(110vw) translateY(15vh) scale(0.8);
+        opacity: 0;
+    }
+    5% {
+        opacity: 0.85;
+    }
+    25% {
+        transform: translateX(60vw) translateY(12vh) scale(0.9);
+    }
+    50% {
+        transform: translateX(30vw) translateY(18vh) scale(1.0);
+    }
+    75% {
+        transform: translateX(10vw) translateY(14vh) scale(0.95);
+    }
+    95% {
+        opacity: 0.85;
+    }
+    100% {
+        transform: translateX(-15vw) translateY(20vh) scale(0.85);
+        opacity: 0;
+    }
+}
+
+/* Moonlit Forest Combo Effects Animations */
+@keyframes fireflyFloat {
+    0% {
+        opacity: 0;
+        transform: translateY(0) translateX(0) scale(1);
+    }
+    10% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+        transform: translateY(-30px) translateX(15px) scale(1.2);
+    }
+    90% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-60px) translateX(-10px) scale(0.8);
+    }
+}
+
+@keyframes sporeFloat {
+    0% {
+        opacity: 0;
+        transform: translateY(0) translateX(0) scale(0.5);
+    }
+    15% {
+        opacity: 0.9;
+    }
+    50% {
+        transform: translateY(-40vh) translateX(10px) scale(1);
+    }
+    85% {
+        opacity: 0.7;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-80vh) translateX(-15px) scale(0.6);
+    }
+}
+
+@keyframes enchantedLeafFall {
+    0% {
+        opacity: 0;
+        transform: translateY(0) translateX(0) rotate(0deg);
+    }
+    10% {
+        opacity: 1;
+    }
+    25% {
+        transform: translateY(25vh) translateX(15px) rotate(90deg);
+    }
+    50% {
+        transform: translateY(50vh) translateX(-10px) rotate(180deg);
+    }
+    75% {
+        transform: translateY(75vh) translateX(20px) rotate(270deg);
+    }
+    90% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(110vh) translateX(-5px) rotate(360deg);
+    }
+}
+
+@keyframes wispWeave {
+    0% {
+        opacity: 0;
+        transform: translateX(0) translateY(0) scale(0.5);
+    }
+    10% {
+        opacity: 0.8;
+    }
+    25% {
+        transform: translateX(25vw) translateY(-20px) scale(1);
+    }
+    50% {
+        transform: translateX(50vw) translateY(15px) scale(1.2);
+    }
+    75% {
+        transform: translateX(75vw) translateY(-10px) scale(1);
+    }
+    90% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(110vw) translateY(20px) scale(0.5);
+    }
+}
+
+@keyframes runeAppear {
+    0% {
+        opacity: 0;
+        transform: scale(0) rotate(0deg);
+    }
+    25% {
+        opacity: 1;
+        transform: scale(1.2) rotate(90deg);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1) rotate(180deg);
+    }
+    75% {
+        opacity: 0.8;
+        transform: scale(1.1) rotate(270deg);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.5) rotate(360deg);
+    }
+}
+
+@keyframes auroraShimmer {
+    0% {
+        opacity: 0;
+        transform: scaleY(0);
+    }
+    25% {
+        opacity: 0.5;
+        transform: scaleY(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scaleY(1.1);
+    }
+    75% {
+        opacity: 0.5;
+        transform: scaleY(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scaleY(0);
+    }
+}
+
+@keyframes shootingStar {
+    0% {
+        opacity: 0;
+        transform: translateX(0) translateY(0) rotate(-25deg);
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-200px) translateY(100px) rotate(-25deg);
+    }
+}
+
+@keyframes mistDrift {
+    0% {
+        opacity: 0;
+        transform: translateX(0);
+    }
+    25% {
+        opacity: 0.4;
+    }
+    75% {
+        opacity: 0.3;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(150vw);
+    }
+}
+
+@keyframes sparkleAppear {
+    0% {
+        opacity: 0;
+        transform: scale(0) rotate(0deg);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.5) rotate(180deg);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.5) rotate(360deg);
+    }
+}
+
+@keyframes tinySparkleFloat {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.5);
+    }
+}
+
+@keyframes mysticWaveExpand {
+    0% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(0);
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(8);
+    }
 }
 
 /* --- Moonlit Greenhouse Theme --- */

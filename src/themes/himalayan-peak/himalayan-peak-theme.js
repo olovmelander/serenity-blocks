@@ -4,6 +4,7 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { himalayanPeakCache } from '../../utils/cache.js';
+import { HIMALAYAN_PEAK_TETROMINOS } from './himalayan-peak-tetrominos.js';
 
 /**
  * Himalayan Peak Theme
@@ -145,5 +146,13 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 sunRayContainer.appendChild(ray);
             }
         }
+    }
+
+    /**
+     * Provide Himalayan Peak themed tetromino styling (prayer flag colors & high-altitude atmosphere)
+     * @returns {Object} Himalayan Peak tetromino configuration
+     */
+    getTetrominoConfig() {
+        return HIMALAYAN_PEAK_TETROMINOS;
     }
 }

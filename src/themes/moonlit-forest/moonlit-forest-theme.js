@@ -4,6 +4,8 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { moonlitForestTreeCache } from '../../utils/cache.js';
+import { MOONLIT_FOREST_TETROMINOS } from './moonlit-forest-tetrominos.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * Moonlit Forest Theme
@@ -17,6 +19,11 @@ import { moonlitForestTreeCache } from '../../utils/cache.js';
 export default class MoonlitForestTheme extends BaseTheme {
     constructor() {
         super('moonlit-forest');
+        this.eventUnsubscribers = [];
+        this.currentComboLevel = 0;
+        this.mushrooms = [];
+        this.moonbeams = [];
+        this.eyes = [];
     }
 
     async init() {
@@ -25,44 +32,47 @@ export default class MoonlitForestTheme extends BaseTheme {
 
     async createScene() {
         // Define tree colors for different layers
+        // OPTIMIZED: Reduced tree counts significantly for better performance
         const treeLayers = [
             {
                 el: document.getElementById('moonlit-forest-back'),
                 color: '#7A9B7E',
                 foliageColor: '#5A8067',
-                count: 40,
+                count: 20, // Reduced from 40
                 height: window.innerHeight * 0.7,
             },
             {
                 el: document.getElementById('moonlit-forest-mid'),
                 color: '#3D5F4A',
                 foliageColor: '#4A6B56',
-                count: 30,
+                count: 15, // Reduced from 30
                 height: window.innerHeight * 0.85,
             },
             {
                 el: document.getElementById('moonlit-forest-front'),
                 color: '#1A2820',
                 foliageColor: '#2F4A3A',
-                count: 20,
+                count: 10, // Reduced from 20
                 height: window.innerHeight,
             },
         ];
 
         // Helper function to draw a more realistic tree
-        const drawTree = (ctx, x, y, len, angle, width, foliageColor) => {
-            if (width < 1 && len < 20) {
-                // Stop recursion for tiny branches
-                // Draw a leaf cluster at the end of small branches
+        // OPTIMIZED: Simplified recursion with depth limit for better performance
+        const drawTree = (ctx, x, y, len, angle, width, foliageColor, depth = 0) => {
+            const maxDepth = 4; // OPTIMIZED: Limit recursion depth (was unlimited)
+
+            if (depth > maxDepth || width < 1.5 || len < 15) {
+                // Stop recursion earlier
+                // Draw a simple leaf cluster
                 ctx.beginPath();
-                ctx.arc(x, y, this.random(5, 15), 0, Math.PI * 2);
+                ctx.arc(x, y, this.random(4, 10), 0, Math.PI * 2);
                 ctx.fillStyle = foliageColor;
-                ctx.globalAlpha = this.random(0.3, 0.6);
+                ctx.globalAlpha = this.random(0.3, 0.5);
                 ctx.fill();
                 ctx.globalAlpha = 1;
                 return;
             }
-            if (len < 10) return;
 
             ctx.beginPath();
             ctx.lineWidth = width;
@@ -72,29 +82,33 @@ export default class MoonlitForestTheme extends BaseTheme {
             ctx.lineTo(x2, y2);
             ctx.stroke();
 
-            const newLen = len * (0.7 + Math.random() * 0.15);
-            const newWidth = width * 0.75;
+            const newLen = len * (0.72 + Math.random() * 0.1);
+            const newWidth = width * 0.7;
+
             // Main branch continues somewhat straight
-            drawTree(ctx, x2, y2, newLen, angle + this.random(-15, 15), newWidth, foliageColor);
-            // Side branch forks off
-            if (width > 1) {
+            drawTree(ctx, x2, y2, newLen, angle + this.random(-12, 12), newWidth, foliageColor, depth + 1);
+
+            // OPTIMIZED: Only add side branches if not too deep
+            if (width > 2 && depth < maxDepth - 1) {
                 drawTree(
                     ctx,
                     x2,
                     y2,
-                    newLen * 0.8,
-                    angle + this.random(20, 50),
-                    newWidth * 0.8,
+                    newLen * 0.75,
+                    angle + this.random(25, 45),
+                    newWidth * 0.75,
                     foliageColor,
+                    depth + 1
                 );
                 drawTree(
                     ctx,
                     x2,
                     y2,
-                    newLen * 0.8,
-                    angle - this.random(20, 50),
-                    newWidth * 0.8,
+                    newLen * 0.75,
+                    angle - this.random(25, 45),
+                    newWidth * 0.75,
                     foliageColor,
+                    depth + 1
                 );
             }
         };
@@ -104,8 +118,8 @@ export default class MoonlitForestTheme extends BaseTheme {
             if (layer.el) {
                 this.registerContainer(layer.el);
                 // Create a cache key based on layer properties and window dimensions
-                // v2: Added gradient fade at top for smooth sky blending
-                const cacheKey = `v2-${layerIndex}-${layer.color}-${layer.foliageColor}-${layer.count}-${layer.height}`;
+                // v3: PERFORMANCE OPTIMIZED - reduced canvas size, tree count, and recursion depth
+                const cacheKey = `v3-${layerIndex}-${layer.color}-${layer.foliageColor}-${layer.count}-${layer.height}`;
 
                 // Check if we have a cached version
                 if (moonlitForestTreeCache.has(cacheKey)) {
@@ -114,7 +128,8 @@ export default class MoonlitForestTheme extends BaseTheme {
                     layer.el.style.backgroundSize = cachedData.backgroundSize;
                 } else {
                     // Generate the tree background
-                    const C_WIDTH = 4096; // Wider canvas for more variety in parallax
+                    // OPTIMIZED: Reduced from 4096 to 2048 for 4x less pixels to process
+                    const C_WIDTH = 2048;
                     const C_HEIGHT = layer.height;
                     const canvas = document.createElement('canvas');
                     canvas.width = C_WIDTH;
@@ -123,11 +138,13 @@ export default class MoonlitForestTheme extends BaseTheme {
                     ctx.strokeStyle = layer.color;
 
                     // Draw ground/undergrowth silhouette
+                    // OPTIMIZED: Sample every 4 pixels instead of every pixel
                     ctx.fillStyle = layer.foliageColor;
                     ctx.beginPath();
                     ctx.moveTo(0, C_HEIGHT);
                     let groundY = C_HEIGHT * 0.95;
-                    for (let x = 0; x < C_WIDTH; x++) {
+                    const step = 4; // Sample every 4 pixels for better performance
+                    for (let x = 0; x < C_WIDTH; x += step) {
                         groundY += (Math.random() - 0.5) * 2;
                         ctx.lineTo(x, groundY);
                     }
@@ -171,25 +188,30 @@ export default class MoonlitForestTheme extends BaseTheme {
         });
 
         // 2. Glowing Mushrooms
+        // OPTIMIZED: Reduced from 30 to 20 for better performance
         const mushroomContainer = this.getContainer('glowing-mushrooms');
         if (mushroomContainer && mushroomContainer.children.length === 0) {
-            for (let i = 0; i < 30; i++) {
+            this.mushrooms = [];
+            for (let i = 0; i < 20; i++) {
                 const mushroom = document.createElement('div');
                 mushroom.className = 'glowing-mushroom';
                 mushroom.style.left = `${Math.random() * 98}%`;
-                mushroom.style.bottom = `${Math.random() * 90}%`; // Spread them out more vertically
-                mushroom.style.transform = `scale(${Math.random() * 0.4 + 0.6})`;
+                // FIXED: Anchor mushrooms to the forest floor (0-3% from bottom)
+                mushroom.style.bottom = `${Math.random() * 3}%`;
                 mushroom.style.setProperty('--delay', `-${Math.random() * 12}s`);
                 mushroomContainer.appendChild(mushroom);
+                this.mushrooms.push(mushroom); // Store reference for reactive effects
             }
         }
 
         // 3. Moonbeams
+        // OPTIMIZED: Reduced from 10 to 7 for better performance
         const moonbeamContainer = document.querySelector('.moonbeam-container');
         if (moonbeamContainer) {
             this.registerContainer(moonbeamContainer);
             if (moonbeamContainer.children.length === 0) {
-                for (let i = 0; i < 10; i++) {
+                this.moonbeams = [];
+                for (let i = 0; i < 7; i++) {
                     const beam = document.createElement('div');
                     beam.className = 'moonbeam';
                     const angle = Math.random() * 20 - 10;
@@ -199,21 +221,25 @@ export default class MoonlitForestTheme extends BaseTheme {
                     beam.style.setProperty('--opacity', `${Math.random() * 0.3 + 0.1}`);
                     beam.style.animationDelay = `-${Math.random() * 45}s`;
                     moonbeamContainer.appendChild(beam);
+                    this.moonbeams.push(beam); // Store reference for reactive effects
                 }
             }
         }
 
         // 4. Wildlife and Leaves
+        // OPTIMIZED: Reduced glowing eyes from 7 to 5 for better performance
         const wildlifeContainer = this.getContainer('moonlit-wildlife');
         if (wildlifeContainer && wildlifeContainer.children.length === 0) {
             // Glowing Eyes
-            for (let i = 0; i < 7; i++) {
+            this.eyes = [];
+            for (let i = 0; i < 5; i++) {
                 const eyes = document.createElement('div');
                 eyes.className = 'glowing-eyes';
                 eyes.style.left = `${Math.random() * 95}%`;
-                eyes.style.bottom = `${Math.random() * 40}%`; // Keep them in the undergrowth
+                eyes.style.bottom = `${Math.random() * 40}%`;
                 eyes.style.animationDelay = `-${Math.random() * 12}s`;
                 wildlifeContainer.appendChild(eyes);
+                this.eyes.push(eyes); // Store reference for reactive effects
             }
             // Flying Owl
             const owl = document.createElement('div');
@@ -222,13 +248,13 @@ export default class MoonlitForestTheme extends BaseTheme {
             wildlifeContainer.appendChild(owl);
         }
 
+        // OPTIMIZED: Reduced falling leaves from 10 to 6 for better performance
         const themeContainer = this.getContainer('moonlit-forest-theme');
         if (themeContainer) {
             // Clear old leaves before adding new ones
             themeContainer.querySelectorAll('.moonlit-leaf').forEach((e) => e.remove());
             // Falling Leaves
-            for (let i = 0; i < 10; i++) {
-                // Fewer, more subtle leaves
+            for (let i = 0; i < 6; i++) {
                 const leaf = document.createElement('div');
                 leaf.className = 'moonlit-leaf';
                 const xStart = Math.random() * 100;
@@ -242,5 +268,576 @@ export default class MoonlitForestTheme extends BaseTheme {
                 themeContainer.appendChild(leaf);
             }
         }
+
+        // Setup event listeners for reactive effects
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        // Listen for line clear events
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.onLineClear(data.lineCount);
+            }
+        });
+
+        // Listen for combo events
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.onCombo(data.comboCount);
+            }
+        });
+
+        // Listen for piece lock events
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.onPieceLock(data.piece);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    /**
+     * React to line clears with mystical forest effects
+     */
+    onLineClear(lineCount) {
+        // Brighten mushrooms
+        this.brightenMushrooms(lineCount);
+
+        // Intensify moonbeams
+        this.intensifyMoonbeams(lineCount);
+
+        // Spawn fireflies for bigger line clears
+        if (lineCount >= 2) {
+            this.spawnFireflies(lineCount * 3);
+        }
+
+        // Release glowing spores
+        this.releaseGlowingSpores(lineCount * 4);
+
+        // Drop enchanted leaves for big clears
+        if (lineCount >= 3) {
+            this.spawnEnchantedLeaves(lineCount * 2);
+        }
+    }
+
+    /**
+     * React to combos with intense mystical effects
+     */
+    onCombo(comboCount) {
+        this.currentComboLevel = comboCount;
+
+        // Make wildlife eyes glow
+        this.glowWildlifeEyes(comboCount);
+
+        // Create magical sparkles
+        this.createMagicalSparkles(comboCount);
+
+        // Intensify forest atmosphere
+        this.intensifyForestAtmosphere(comboCount);
+
+        // Spawn mystical wisps
+        this.spawnMysticalWisps(comboCount * 2);
+
+        // For high combos, create special effects
+        if (comboCount >= 3) {
+            this.createAuroraShimmer(comboCount);
+        }
+
+        // Epic effects for very high combos
+        if (comboCount >= 5) {
+            this.spawnShootingStars(comboCount);
+        }
+    }
+
+    /**
+     * React to piece locks with subtle mystical touches
+     */
+    onPieceLock(piece) {
+        // Small firefly sparkle on piece lock (30% chance)
+        if (Math.random() < 0.3) {
+            this.createSmallSparkle();
+        }
+
+        // Subtle mist particles (20% chance)
+        if (Math.random() < 0.2) {
+            this.spawnMistParticle();
+        }
+    }
+
+    /**
+     * Brighten glowing mushrooms
+     */
+    brightenMushrooms(intensity) {
+        const mushroomsToBrighten = Math.min(Math.floor(intensity * 4), this.mushrooms.length);
+
+        for (let i = 0; i < mushroomsToBrighten; i++) {
+            const mushroom = this.mushrooms[Math.floor(Math.random() * this.mushrooms.length)];
+            if (mushroom) {
+                const originalFilter = mushroom.style.filter || '';
+                mushroom.style.transition = 'filter 0.4s ease-out';
+                mushroom.style.filter = `brightness(${1.5 + intensity * 0.3}) drop-shadow(0 0 ${8 + intensity * 4}px cyan)`;
+
+                setTimeout(() => {
+                    mushroom.style.filter = originalFilter;
+                }, 400 + Math.random() * 200);
+            }
+        }
+    }
+
+    /**
+     * Intensify moonbeams
+     */
+    intensifyMoonbeams(intensity) {
+        const beamsToIntensify = Math.min(Math.floor(intensity * 2), this.moonbeams.length);
+
+        for (let i = 0; i < beamsToIntensify; i++) {
+            const beam = this.moonbeams[Math.floor(Math.random() * this.moonbeams.length)];
+            if (beam) {
+                const currentOpacity = parseFloat(beam.style.getPropertyValue('--opacity') || '0.2');
+                beam.style.transition = 'opacity 0.5s ease-out';
+                beam.style.setProperty('--opacity', Math.min(currentOpacity * 2.5, 0.6).toString());
+
+                setTimeout(() => {
+                    beam.style.setProperty('--opacity', currentOpacity.toString());
+                }, 500);
+            }
+        }
+    }
+
+    /**
+     * Make wildlife eyes glow brighter
+     */
+    glowWildlifeEyes(comboCount) {
+        this.eyes.forEach((eyes) => {
+            eyes.style.transition = 'filter 0.6s ease-out, transform 0.6s ease-out';
+            eyes.style.filter = `brightness(${1.5 + comboCount * 0.2}) drop-shadow(0 0 ${10 + comboCount * 3}px gold)`;
+            eyes.style.transform = `scale(${1 + comboCount * 0.1})`;
+
+            setTimeout(() => {
+                eyes.style.filter = '';
+                eyes.style.transform = '';
+            }, 600 + comboCount * 100);
+        });
+    }
+
+    /**
+     * Spawn magical fireflies
+     */
+    spawnFireflies(count) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const firefly = document.createElement('div');
+                firefly.className = 'forest-firefly';
+                firefly.style.position = 'absolute';
+                firefly.style.width = '4px';
+                firefly.style.height = '4px';
+                firefly.style.borderRadius = '50%';
+                firefly.style.backgroundColor = '#ffeb3b';
+                firefly.style.boxShadow = '0 0 8px 2px rgba(255, 235, 59, 0.8)';
+                firefly.style.left = `${20 + Math.random() * 60}%`;
+                firefly.style.bottom = `${20 + Math.random() * 60}%`;
+                firefly.style.opacity = '0';
+                firefly.style.animation = 'fireflyFloat 2s ease-in-out forwards';
+                firefly.style.pointerEvents = 'none';
+                firefly.style.zIndex = '8';
+
+                theme.appendChild(firefly);
+
+                setTimeout(() => {
+                    if (firefly.parentNode) {
+                        firefly.parentNode.removeChild(firefly);
+                    }
+                }, 2000);
+            }, i * 100);
+        }
+    }
+
+    /**
+     * Create magical sparkles
+     */
+    createMagicalSparkles(comboCount) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const sparkleCount = Math.min(comboCount * 2, 10);
+
+        for (let i = 0; i < sparkleCount; i++) {
+            setTimeout(() => {
+                const sparkle = document.createElement('div');
+                sparkle.className = 'forest-sparkle';
+                sparkle.style.position = 'absolute';
+                sparkle.style.width = '6px';
+                sparkle.style.height = '6px';
+                sparkle.style.left = `${Math.random() * 100}%`;
+                sparkle.style.top = `${Math.random() * 100}%`;
+                sparkle.style.opacity = '0';
+                sparkle.style.pointerEvents = 'none';
+                sparkle.style.zIndex = '11';
+                sparkle.innerHTML = '✨';
+                sparkle.style.animation = 'sparkleAppear 1s ease-out forwards';
+
+                theme.appendChild(sparkle);
+
+                setTimeout(() => {
+                    if (sparkle.parentNode) {
+                        sparkle.parentNode.removeChild(sparkle);
+                    }
+                }, 1000);
+            }, i * 80);
+        }
+    }
+
+    /**
+     * Create small sparkle on piece lock
+     */
+    createSmallSparkle() {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const sparkle = document.createElement('div');
+        sparkle.className = 'forest-tiny-sparkle';
+        sparkle.style.position = 'absolute';
+        sparkle.style.width = '3px';
+        sparkle.style.height = '3px';
+        sparkle.style.borderRadius = '50%';
+        sparkle.style.backgroundColor = '#a0d8ff';
+        sparkle.style.boxShadow = '0 0 4px 1px rgba(160, 216, 255, 0.6)';
+        sparkle.style.left = `${45 + Math.random() * 10}%`;
+        sparkle.style.top = `${40 + Math.random() * 20}%`;
+        sparkle.style.opacity = '1';
+        sparkle.style.pointerEvents = 'none';
+        sparkle.style.zIndex = '11';
+        sparkle.style.animation = 'tinySparkleFloat 0.8s ease-out forwards';
+
+        theme.appendChild(sparkle);
+
+        setTimeout(() => {
+            if (sparkle.parentNode) {
+                sparkle.parentNode.removeChild(sparkle);
+            }
+        }, 800);
+    }
+
+    /**
+     * Intensify forest atmosphere
+     */
+    intensifyForestAtmosphere(comboCount) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const saturation = 100 + Math.min(comboCount * 15, 60);
+        const brightness = 100 + Math.min(comboCount * 10, 40);
+
+        theme.style.filter = `saturate(${saturation}%) brightness(${brightness}%)`;
+
+        setTimeout(() => {
+            theme.style.filter = '';
+        }, 800 + comboCount * 100);
+    }
+
+    /**
+     * Create mystic wave for high combos
+     */
+    createMysticWave(comboCount) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const wave = document.createElement('div');
+        wave.className = 'forest-mystic-wave';
+        wave.style.position = 'absolute';
+        wave.style.left = '50%';
+        wave.style.top = '50%';
+        wave.style.width = '100px';
+        wave.style.height = '100px';
+        wave.style.borderRadius = '50%';
+        wave.style.border = '2px solid rgba(160, 216, 255, 0.6)';
+        wave.style.transform = 'translate(-50%, -50%) scale(0)';
+        wave.style.opacity = '0.8';
+        wave.style.pointerEvents = 'none';
+        wave.style.zIndex = '99';
+        wave.style.animation = `mysticWaveExpand ${1.2 + comboCount * 0.1}s ease-out forwards`;
+
+        theme.appendChild(wave);
+
+        setTimeout(() => {
+            if (wave.parentNode) {
+                wave.parentNode.removeChild(wave);
+            }
+        }, (1.2 + comboCount * 0.1) * 1000);
+    }
+
+    /**
+     * Release glowing spores that float upward
+     */
+    releaseGlowingSpores(count) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const colors = ['#00d9ff', '#a78bfa', '#6ee7b7']; // Cyan, purple, aqua
+
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const spore = document.createElement('div');
+                spore.className = 'forest-spore';
+                spore.style.position = 'absolute';
+                spore.style.width = '5px';
+                spore.style.height = '5px';
+                spore.style.borderRadius = '50%';
+                spore.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                spore.style.boxShadow = `0 0 6px 2px ${colors[Math.floor(Math.random() * colors.length)]}`;
+                spore.style.left = `${10 + Math.random() * 80}%`;
+                spore.style.bottom = `${Math.random() * 20}%`;
+                spore.style.opacity = '0';
+                spore.style.pointerEvents = 'none';
+                spore.style.zIndex = '7';
+                spore.style.animation = 'sporeFloat 3s ease-out forwards';
+
+                theme.appendChild(spore);
+
+                setTimeout(() => {
+                    if (spore.parentNode) {
+                        spore.parentNode.removeChild(spore);
+                    }
+                }, 3000);
+            }, i * 80);
+        }
+    }
+
+    /**
+     * Spawn enchanted glowing leaves that fall gently
+     */
+    spawnEnchantedLeaves(count) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const leaf = document.createElement('div');
+                leaf.className = 'enchanted-leaf';
+                leaf.style.position = 'absolute';
+                leaf.style.width = '12px';
+                leaf.style.height = '12px';
+                leaf.style.left = `${Math.random() * 100}%`;
+                leaf.style.top = '-20px';
+                leaf.style.fontSize = '12px';
+                leaf.style.opacity = '0';
+                leaf.style.pointerEvents = 'none';
+                leaf.style.zIndex = '10';
+                leaf.style.filter = 'drop-shadow(0 0 4px #6ee7b7)';
+                leaf.innerHTML = '🍃';
+                leaf.style.animation = `enchantedLeafFall ${3 + Math.random() * 2}s ease-in-out forwards`;
+
+                theme.appendChild(leaf);
+
+                setTimeout(() => {
+                    if (leaf.parentNode) {
+                        leaf.parentNode.removeChild(leaf);
+                    }
+                }, 5000);
+            }, i * 150);
+        }
+    }
+
+    /**
+     * Spawn mystical wisps that weave through the forest
+     */
+    spawnMysticalWisps(count) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const wisp = document.createElement('div');
+                wisp.className = 'mystical-wisp';
+                wisp.style.position = 'absolute';
+                wisp.style.width = '8px';
+                wisp.style.height = '8px';
+                wisp.style.borderRadius = '50%';
+                wisp.style.background = 'radial-gradient(circle, rgba(192, 216, 240, 0.9) 0%, rgba(167, 139, 250, 0.6) 50%, transparent 100%)';
+                wisp.style.boxShadow = '0 0 12px 4px rgba(192, 216, 240, 0.6)';
+                wisp.style.left = Math.random() < 0.5 ? '-20px' : '110%';
+                wisp.style.top = `${20 + Math.random() * 60}%`;
+                wisp.style.opacity = '0';
+                wisp.style.pointerEvents = 'none';
+                wisp.style.zIndex = '6';
+                wisp.style.animation = `wispWeave ${4 + Math.random() * 2}s ease-in-out forwards`;
+
+                theme.appendChild(wisp);
+
+                setTimeout(() => {
+                    if (wisp.parentNode) {
+                        wisp.parentNode.removeChild(wisp);
+                    }
+                }, 6000);
+            }, i * 200);
+        }
+    }
+
+    /**
+     * Show ancient mystical runes that appear and fade
+     */
+    showAncientRunes(comboCount) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const runes = ['ᚠ', 'ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚲ', 'ᚷ', 'ᚹ', 'ᚺ', 'ᚾ'];
+        const runeCount = Math.min(comboCount * 2, 8);
+
+        for (let i = 0; i < runeCount; i++) {
+            setTimeout(() => {
+                const rune = document.createElement('div');
+                rune.className = 'ancient-rune';
+                rune.style.position = 'absolute';
+                rune.style.fontSize = '24px';
+                rune.style.fontWeight = 'bold';
+                rune.style.color = '#c0d8f0';
+                rune.style.textShadow = '0 0 10px rgba(192, 216, 240, 0.8), 0 0 20px rgba(167, 139, 250, 0.6)';
+                rune.style.left = `${15 + Math.random() * 70}%`;
+                rune.style.top = `${15 + Math.random() * 70}%`;
+                rune.style.opacity = '0';
+                rune.style.pointerEvents = 'none';
+                rune.style.zIndex = '98';
+                rune.textContent = runes[Math.floor(Math.random() * runes.length)];
+                rune.style.animation = 'runeAppear 2s ease-in-out forwards';
+
+                theme.appendChild(rune);
+
+                setTimeout(() => {
+                    if (rune.parentNode) {
+                        rune.parentNode.removeChild(rune);
+                    }
+                }, 2000);
+            }, i * 120);
+        }
+    }
+
+    /**
+     * Create aurora shimmer effect across the sky
+     */
+    createAuroraShimmer(comboCount) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const aurora = document.createElement('div');
+        aurora.className = 'aurora-shimmer';
+        aurora.style.position = 'absolute';
+        aurora.style.top = '0';
+        aurora.style.left = '0';
+        aurora.style.width = '100%';
+        aurora.style.height = '40%';
+        aurora.style.background = 'linear-gradient(180deg, rgba(0, 217, 255, 0.3) 0%, rgba(167, 139, 250, 0.25) 50%, transparent 100%)';
+        aurora.style.opacity = '0';
+        aurora.style.pointerEvents = 'none';
+        aurora.style.zIndex = '4';
+        aurora.style.animation = `auroraShimmer ${2 + comboCount * 0.2}s ease-in-out forwards`;
+        aurora.style.mixBlendMode = 'screen';
+
+        theme.appendChild(aurora);
+
+        setTimeout(() => {
+            if (aurora.parentNode) {
+                aurora.parentNode.removeChild(aurora);
+            }
+        }, (2 + comboCount * 0.2) * 1000);
+    }
+
+    /**
+     * Spawn shooting stars that streak across the sky
+     */
+    spawnShootingStars(comboCount) {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const starCount = Math.min(comboCount, 6);
+
+        for (let i = 0; i < starCount; i++) {
+            setTimeout(() => {
+                const star = document.createElement('div');
+                star.className = 'shooting-star';
+                star.style.position = 'absolute';
+                star.style.width = '80px';
+                star.style.height = '2px';
+                star.style.background = 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%)';
+                star.style.boxShadow = '0 0 8px 2px rgba(192, 216, 240, 0.8)';
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.top = `${Math.random() * 20}%`;
+                star.style.transform = 'rotate(-25deg)';
+                star.style.opacity = '0';
+                star.style.pointerEvents = 'none';
+                star.style.zIndex = '2';
+                star.style.animation = 'shootingStar 1.2s ease-out forwards';
+
+                theme.appendChild(star);
+
+                setTimeout(() => {
+                    if (star.parentNode) {
+                        star.parentNode.removeChild(star);
+                    }
+                }, 1200);
+            }, i * 300);
+        }
+    }
+
+    /**
+     * Spawn subtle mist particles that drift
+     */
+    spawnMistParticle() {
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const mist = document.createElement('div');
+        mist.className = 'forest-mist';
+        mist.style.position = 'absolute';
+        mist.style.width = `${20 + Math.random() * 40}px`;
+        mist.style.height = `${10 + Math.random() * 20}px`;
+        mist.style.borderRadius = '50%';
+        mist.style.background = 'radial-gradient(ellipse, rgba(192, 216, 240, 0.15) 0%, transparent 70%)';
+        mist.style.left = Math.random() < 0.5 ? '-50px' : '110%';
+        mist.style.bottom = `${10 + Math.random() * 40}%`;
+        mist.style.opacity = '0';
+        mist.style.pointerEvents = 'none';
+        mist.style.zIndex = '3';
+        mist.style.filter = 'blur(8px)';
+        mist.style.animation = `mistDrift ${6 + Math.random() * 4}s linear forwards`;
+
+        theme.appendChild(mist);
+
+        setTimeout(() => {
+            if (mist.parentNode) {
+                mist.parentNode.removeChild(mist);
+            }
+        }, 10000);
+    }
+
+    stop() {
+        // Unsubscribe from all events
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // Reset combo level
+        this.currentComboLevel = 0;
+
+        // Clear references
+        this.mushrooms = [];
+        this.moonbeams = [];
+        this.eyes = [];
+
+        super.stop();
+    }
+
+    /**
+     * Provide Moonlit Forest themed tetromino styling (mystical glowing forest)
+     * @returns {Object} Moonlit Forest tetromino configuration
+     */
+    getTetrominoConfig() {
+        return MOONLIT_FOREST_TETROMINOS;
     }
 }

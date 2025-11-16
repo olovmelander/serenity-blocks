@@ -1,6 +1,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { SunsetSolarState } from './solar-state.js';
 import { PhaserSunEmitter } from './phaser-sun-emitter.js';
+import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
 
 // REMOVED: DUST_STAGE_COLORS - Dust particles permanently removed for performance
 
@@ -645,5 +646,13 @@ export default class SunsetTheme extends BaseTheme {
             || body.dataset?.uiState === 'intro'
             || modalVisible
         );
+    }
+
+    /**
+     * Provide Sunset themed tetromino styling (warm golden hour radiance)
+     * @returns {Object} Sunset tetromino configuration
+     */
+    getTetrominoConfig() {
+        return SUNSET_TETROMINOS;
     }
 }
