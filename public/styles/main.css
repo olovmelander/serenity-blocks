@@ -2290,6 +2290,381 @@ body {
     to { opacity: 1; transform: scale(1); }
 }
 
+/* --- Sakura Twilight Theme --- */
+#sakura-twilight-theme {
+    background: linear-gradient(to bottom,
+        #6B4E71 0%,      /* Deep purple-pink at top */
+        #54465E 25%,     /* Darker purple transition */
+        #3D3449 50%,     /* Deep twilight mid */
+        #2A2438 75%,     /* Very dark purple */
+        #1A1625 100%);   /* Almost black at bottom */
+    overflow: hidden;
+}
+
+.sakura-sunset-sky {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(255, 150, 180, 0.15) 0%, transparent 50%);
+    z-index: 1;
+    animation: sunset-glow 15s ease-in-out infinite alternate;
+}
+
+@keyframes sunset-glow {
+    0% { opacity: 0.3; }
+    50% { opacity: 0.5; }
+    100% { opacity: 0.3; }
+}
+
+/* Sakura tree layers with parallax */
+.sakura-layer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-repeat: repeat-x;
+    background-position: bottom left;
+}
+
+#sakura-back {
+    z-index: 2;
+    animation: sakura-sway-back 280s linear infinite;
+    opacity: 0.5;
+}
+
+#sakura-mid {
+    z-index: 4;
+    animation: sakura-sway-mid 200s linear infinite;
+    opacity: 0.7;
+}
+
+#sakura-front {
+    z-index: 7;
+    animation: sakura-sway-front 120s linear infinite;
+    opacity: 0.9;
+}
+
+@keyframes sakura-sway-back {
+    from { background-position: 0 bottom; }
+    to { background-position: 2048px bottom; }
+}
+
+@keyframes sakura-sway-mid {
+    from { background-position: 0 bottom; }
+    to { background-position: 2048px bottom; }
+}
+
+@keyframes sakura-sway-front {
+    from { background-position: 0 bottom; }
+    to { background-position: 2048px bottom; }
+}
+
+/* Glowing paper lanterns */
+#sakura-lanterns {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 6;
+}
+
+.sakura-lantern {
+    position: absolute;
+    width: 20px;
+    height: 28px;
+    background: linear-gradient(to bottom, #FFB347 0%, #FF9A66 100%);
+    border-radius: 50% 50% 40% 40%;
+    box-shadow:
+        0 0 15px 5px rgba(255, 179, 71, 0.6),
+        inset 0 -3px 8px rgba(0, 0, 0, 0.2);
+    animation: lantern-float var(--duration, 10s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+}
+
+.sakura-lantern::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 3px;
+    background: #8B5A3C;
+    border-radius: 2px;
+}
+
+.sakura-lantern::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    height: 8px;
+    background: rgba(139, 90, 60, 0.6);
+}
+
+@keyframes lantern-float {
+    0%, 100% { transform: translateY(0) translateX(0); }
+    25% { transform: translateY(-10px) translateX(5px); }
+    50% { transform: translateY(-5px) translateX(-5px); }
+    75% { transform: translateY(-12px) translateX(3px); }
+}
+
+/* Flying birds */
+#sakura-birds {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+}
+
+.sakura-bird {
+    position: absolute;
+    width: 30px;
+    height: 8px;
+    animation: bird-fly linear infinite;
+}
+
+.sakura-bird::before,
+.sakura-bird::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 15px;
+    height: 8px;
+    background: #4A2F2F;
+    border-radius: 50% 50% 0 0;
+    animation: wing-flap 0.8s ease-in-out infinite;
+}
+
+.sakura-bird::before {
+    left: 0;
+    transform-origin: right center;
+}
+
+.sakura-bird::after {
+    right: 0;
+    transform-origin: left center;
+    animation-delay: 0.4s;
+}
+
+@keyframes bird-fly {
+    from { left: -50px; }
+    to { left: calc(100% + 50px); }
+}
+
+@keyframes wing-flap {
+    0%, 100% { transform: rotateX(0deg); }
+    50% { transform: rotateX(60deg); }
+}
+
+/* Falling cherry blossom petals */
+.sakura-petal {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: linear-gradient(135deg, #FFB7C5 0%, #FFA6B9 100%);
+    border-radius: 50% 0% 50% 0%;
+    top: -20px;
+    z-index: 8;
+    animation: petal-fall linear infinite;
+    opacity: 0;
+}
+
+@keyframes petal-fall {
+    0% {
+        opacity: 0;
+        transform: translateX(var(--x-start)) translateY(-20px) rotate(var(--r-start));
+    }
+    10% {
+        opacity: 0.8;
+    }
+    90% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(var(--x-end)) translateY(100vh) rotate(var(--r-end));
+    }
+}
+
+/* Combo effect animations */
+@keyframes petalBurst {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) rotate(0deg) scale(1);
+    }
+    20% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--burst-x), var(--burst-y)) rotate(var(--burst-rotate)) scale(0.3);
+    }
+}
+
+@keyframes petalGlowFall {
+    0% {
+        opacity: 0;
+        transform: translateY(-20px) rotate(0deg);
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(100vh) rotate(720deg);
+    }
+}
+
+@keyframes sakuraSparkle {
+    0% {
+        opacity: 0;
+        transform: scale(0) rotate(0deg);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.5) rotate(180deg);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0) rotate(360deg);
+    }
+}
+
+@keyframes windSweep {
+    0% {
+        opacity: 0;
+        transform: translateX(-100%);
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+@keyframes auraExpand {
+    0% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(8);
+    }
+}
+
+@keyframes petalSwirl {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(0deg) translateX(0) rotate(0deg);
+    }
+    30% {
+        opacity: 1;
+    }
+    70% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(var(--swirl-angle)) translateX(var(--swirl-radius)) rotate(720deg);
+    }
+}
+
+@keyframes petalVortex {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(0deg) translateY(0) scale(1);
+    }
+    20% {
+        opacity: 1;
+    }
+    80% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(1080deg) translateY(-200px) scale(0.2);
+    }
+}
+
+@keyframes celestialBurst {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(0);
+        filter: blur(0px);
+    }
+    50% {
+        opacity: 0.9;
+        filter: blur(20px);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(15);
+        filter: blur(40px);
+    }
+}
+
+@keyframes tinyPetalFloat {
+    0% {
+        opacity: 1;
+        transform: translateY(0) rotate(0deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(60px) rotate(360deg);
+    }
+}
+
+@keyframes softGlowPulse {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.5);
+    }
+}
+
+/* Additional firefly and sparkle animations for line clears */
+@keyframes fireflyFloat {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0);
+    }
+    30% {
+        opacity: 1;
+    }
+    70% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate(
+            calc((var(--random-x, 0.5) - 0.5) * 100px),
+            calc((var(--random-y, 0.5) - 0.5) * 100px)
+        );
+    }
+}
+
 /* --- Aurora Theme --- */
 #aurora-theme {
     background: linear-gradient(to bottom,

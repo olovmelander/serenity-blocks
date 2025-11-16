@@ -75,6 +75,12 @@ export const THEME_REGISTRY = [
         group: 'biomes',
     },
     {
+        id: 'sakura-twilight',
+        displayName: 'Sakura Twilight',
+        module: './sakura-twilight/sakura-twilight-theme.js',
+        group: 'biomes',
+    },
+    {
         id: 'aurora',
         displayName: 'Aurora',
         module: './aurora/aurora-theme.js',
