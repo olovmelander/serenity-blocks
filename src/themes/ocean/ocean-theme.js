@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { OCEAN_TETROMINOS } from './ocean-tetrominos.js';
 
 // Cache buster v2024-10-12-23:30
 export default class OceanTheme extends BaseTheme {
@@ -9,11 +10,281 @@ export default class OceanTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.currentComboLevel = 0;
         this.godRays = [];
+        this.lastEffectTime = 0;
+        this.comboCooldownMs = 220;
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67;
+        this.adaptiveScale = 1;
+        this.severeScaleThreshold = 0.6;
+        this.activeShockwaves = 0;
+        this.maxShockwaves = 1;
+        this.activeBiolumGlows = 0;
+        this.maxBiolumGlows = 12;
+        this.effectCanvas = null;
+        this.effectCtx = null;
+        this.effectRafId = null;
+        this.effectLastFrame = 0;
+        this.shockwaveEffects = [];
+        this.glowParticles = [];
+        this.bubbleBurstParticles = [];
+        this.presets = {
+            Low: {
+                burstMultiplier: 0.5,
+                shockwaveScale: 0.7,
+                bioluminescenceLimit: 6,
+                fishCount: 1,
+                bubbleBurstCap: 12,
+                brightDurationMs: 450,
+                comboCooldownMs: 260,
+                sedimentCount: 60,
+                bubbleCount: 90,
+                planktonCount: 120,
+                jellyCount: 6,
+            },
+            Medium: {
+                burstMultiplier: 0.75,
+                shockwaveScale: 0.85,
+                bioluminescenceLimit: 10,
+                fishCount: 2,
+                bubbleBurstCap: 18,
+                brightDurationMs: 550,
+                comboCooldownMs: 230,
+                sedimentCount: 80,
+                bubbleCount: 120,
+                planktonCount: 160,
+                jellyCount: 8,
+            },
+            High: {
+                burstMultiplier: 1,
+                shockwaveScale: 1,
+                bioluminescenceLimit: 14,
+                fishCount: 3,
+                bubbleBurstCap: 24,
+                brightDurationMs: 650,
+                comboCooldownMs: 210,
+                sedimentCount: 100,
+                bubbleCount: 150,
+                planktonCount: 200,
+                jellyCount: 10,
+            },
+            Ultra: {
+                burstMultiplier: 1.15,
+                shockwaveScale: 1.1,
+                bioluminescenceLimit: 18,
+                fishCount: 3,
+                bubbleBurstCap: 30,
+                brightDurationMs: 750,
+                comboCooldownMs: 200,
+                sedimentCount: 120,
+                bubbleCount: 180,
+                planktonCount: 240,
+                jellyCount: 12,
+            },
+        };
+        this.currentPreset = this.presets.High;
         console.log('[Ocean] Constructor complete!');
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    applyGraphicsPreset(quality) {
+        const preset = this.presets[quality] || this.presets.High;
+        this.currentPreset = preset;
+        this.comboCooldownMs = preset.comboCooldownMs ?? 220;
+        this.maxShockwaves = 1;
+        this.maxBiolumGlows = preset.bioluminescenceLimit ?? 12;
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+        this.teardownQualityListener();
+
+        this.qualityListener = (event) => {
+            const next = event.detail?.effectQuality;
+            if (!next) return;
+            this.applyGraphicsPreset(next);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityListener);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityListener && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityListener);
+            this.qualityListener = null;
+        }
+    }
+
+    calculateAdaptiveScale() {
+        const ft = this.averageFrameTime;
+        if (ft <= 18) return 1;
+        if (ft <= 20) return 0.92;
+        if (ft <= 23) return 0.8;
+        if (ft <= 26) return 0.68;
+        if (ft <= 30) return 0.55;
+        return 0.4;
+    }
+
+    isSeverelyStressed() {
+        return this.adaptiveScale <= this.severeScaleThreshold || this.averageFrameTime > 26;
+    }
+
+    startPerformanceMonitor() {
+        if (this.perfMonitorId) return;
+        const step = (ts) => {
+            if (!this.isActive) {
+                this.perfMonitorId = null;
+                return;
+            }
+            if (this.lastFrameTime === 0) {
+                this.lastFrameTime = ts;
+            }
+            const dt = ts - this.lastFrameTime;
+            this.lastFrameTime = ts;
+            this.frameTimeAccumulator += dt;
+            this.frameTimeCount += 1;
+            if (this.frameTimeCount >= 30) {
+                this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
+                this.frameTimeAccumulator = 0;
+                this.frameTimeCount = 0;
+            }
+            this.adaptiveScale = this.calculateAdaptiveScale();
+            this.perfMonitorId = requestAnimationFrame(step);
+        };
+        this.perfMonitorId = requestAnimationFrame(step);
+    }
+
+    setupEffectCanvas() {
+        const theme = document.getElementById('ocean-theme');
+        if (!theme) return;
+        this.effectCanvas = theme.querySelector('.ocean-effects-canvas');
+        if (!this.effectCanvas) {
+            this.effectCanvas = document.createElement('canvas');
+            this.effectCanvas.className = 'ocean-effects-canvas';
+            Object.assign(this.effectCanvas.style, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: '120',
+            });
+            theme.appendChild(this.effectCanvas);
+        }
+        this.resizeEffectCanvas();
+        this.effectCtx = this.effectCanvas.getContext('2d', { alpha: true });
+        window.addEventListener('resize', () => this.resizeEffectCanvas());
+    }
+
+    resizeEffectCanvas() {
+        if (!this.effectCanvas) return;
+        const theme = document.getElementById('ocean-theme');
+        const rect = theme ? theme.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
+        this.effectCanvas.width = rect.width;
+        this.effectCanvas.height = rect.height;
+    }
+
+    startEffectLoop() {
+        if (!this.effectCanvas) return;
+        const loop = (ts) => {
+            if (!this.isActive || !this.effectCanvas || !this.effectCtx) {
+                this.effectRafId = null;
+                return;
+            }
+            if (!this.effectLastFrame) this.effectLastFrame = ts;
+            const dt = (ts - this.effectLastFrame) / 1000;
+            this.effectLastFrame = ts;
+
+            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
+            this.updateShockwaveEffects(dt);
+            this.updateGlowParticles(dt);
+            this.updateBubbleParticles(dt);
+
+            this.effectRafId = requestAnimationFrame(loop);
+        };
+        this.effectRafId = requestAnimationFrame(loop);
+    }
+
+    updateShockwaveEffects(dt) {
+        for (let i = this.shockwaveEffects.length - 1; i >= 0; i--) {
+            const sw = this.shockwaveEffects[i];
+            sw.life -= dt / sw.duration;
+            if (sw.life <= 0) {
+                this.shockwaveEffects.splice(i, 1);
+                this.activeShockwaves = Math.max(0, this.activeShockwaves - 1);
+                continue;
+            }
+            const progress = 1 - sw.life;
+            const radius = sw.startRadius + (sw.maxRadius - sw.startRadius) * progress;
+            const alpha = sw.life * 0.6;
+            const ctx = this.effectCtx;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = 'rgba(170, 230, 255, 0.7)';
+            ctx.lineWidth = Math.max(2, sw.width * (1 - progress));
+            ctx.beginPath();
+            ctx.arc(sw.x, sw.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    updateGlowParticles(dt) {
+        for (let i = this.glowParticles.length - 1; i >= 0; i--) {
+            const p = this.glowParticles[i];
+            p.life -= dt / p.duration;
+            if (p.life <= 0) {
+                this.glowParticles.splice(i, 1);
+                this.activeBiolumGlows = Math.max(0, this.activeBiolumGlows - 1);
+                continue;
+            }
+            const alpha = p.life * 0.9;
+            const size = p.size * (1 + (1 - p.life) * 0.5);
+            const ctx = this.effectCtx;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
+            grad.addColorStop(0, 'rgba(120, 255, 220, 0.8)');
+            grad.addColorStop(1, 'rgba(120, 255, 220, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    updateBubbleParticles(dt) {
+        for (let i = this.bubbleBurstParticles.length - 1; i >= 0; i--) {
+            const b = this.bubbleBurstParticles[i];
+            b.life -= dt / b.duration;
+            if (b.life <= 0) {
+                this.bubbleBurstParticles.splice(i, 1);
+                continue;
+            }
+            b.y -= b.speed * dt * 60;
+            const alpha = b.life * 0.7;
+            const ctx = this.effectCtx;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = 'rgba(200, 230, 255, 0.8)';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
     }
 
     async createScene() {
         console.log('[Ocean] createScene() called!');
+        this.applyGraphicsPreset(this.getGraphicsQuality());
+        this.startPerformanceMonitor();
         // Caustics
         const causticsContainer = document.querySelector('#ocean-theme .caustics-container');
         if (causticsContainer && causticsContainer.children.length === 0) {
@@ -49,7 +320,8 @@ export default class OceanTheme extends BaseTheme {
         if (sedimentContainer) {
             sedimentContainer.innerHTML = ''; // Clear old sediment
             const sedimentFragment = document.createDocumentFragment();
-            for (let i = 0; i < 100; i++) {
+            const sedimentCount = this.currentPreset?.sedimentCount ?? 100;
+            for (let i = 0; i < sedimentCount; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'ocean-sediment';
                 const size = Math.random() * 3 + 1;
@@ -74,7 +346,8 @@ export default class OceanTheme extends BaseTheme {
         if (bubblesContainer) {
             bubblesContainer.innerHTML = ''; // Clear old bubbles
             const bubbleFragment = document.createDocumentFragment();
-            for (let i = 0; i < 150; i++) {
+            const bubbleCount = this.currentPreset?.bubbleCount ?? 150;
+            for (let i = 0; i < bubbleCount; i++) {
                 const el = document.createElement('div');
                 el.className = 'bubble';
                 const size = Math.random() * 12 + 3;
@@ -96,7 +369,8 @@ export default class OceanTheme extends BaseTheme {
         if (planktonContainer) {
             planktonContainer.innerHTML = ''; // Clear old plankton
             const planktonFragment = document.createDocumentFragment();
-            for (let i = 0; i < 200; i++) {
+            const planktonCount = this.currentPreset?.planktonCount ?? 200;
+            for (let i = 0; i < planktonCount; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'ocean-plankton';
                 const size = Math.random() * 2 + 0.5;
@@ -119,7 +393,8 @@ export default class OceanTheme extends BaseTheme {
         if (jellyfishContainer) {
             jellyfishContainer.innerHTML = ''; // Clear old jellyfish
             const jellyfishFragment = document.createDocumentFragment();
-            for (let i = 0; i < 12; i++) {
+            const jellyCount = this.currentPreset?.jellyCount ?? 12;
+            for (let i = 0; i < jellyCount; i++) {
                 const fish = document.createElement('div');
                 fish.className = 'jellyfish';
                 const body = document.createElement('div');
@@ -273,6 +548,9 @@ export default class OceanTheme extends BaseTheme {
         console.log('[Ocean] About to setup event listeners...');
         this.setupEventListeners();
         console.log('[Ocean] Event listeners setup complete!');
+        this.setupEffectCanvas();
+        this.startEffectLoop();
+        this.startPerformanceMonitor();
         console.log('[Ocean] createScene() completed successfully!');
     }
     
@@ -308,14 +586,14 @@ export default class OceanTheme extends BaseTheme {
         
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
         console.log('[Ocean] Event listeners set up successfully');
+
+        this.setupQualityListener();
     }
     
     /**
      * React to line clears with underwater effects
      */
     onLineClear(lineCount) {
-        console.log('[Ocean] onLineClear called with lineCount:', lineCount);
-        
         // Create bubble bursts
         this.createBubbleBurst(lineCount);
         
@@ -335,18 +613,35 @@ export default class OceanTheme extends BaseTheme {
      * React to combos with intense ocean effects
      */
     onCombo(comboCount) {
-        console.log('[Ocean] onCombo called with comboCount:', comboCount);
         this.currentComboLevel = comboCount;
+        const now = Date.now();
+        const timeSinceLast = now - this.lastEffectTime;
+        const performanceDrop = this.averageFrameTime > 24;
+        const throttled = performanceDrop || timeSinceLast < this.comboCooldownMs;
+        const severelyStressed = this.isSeverelyStressed();
+        this.lastEffectTime = now;
+        this.adaptiveScale = this.calculateAdaptiveScale();
+        const scale = this.adaptiveScale;
+        const preset = this.currentPreset;
         
-        // Create underwater shockwave
-        this.createShockwave(comboCount);
+        // Create underwater shockwave (canvas-based)
+        if (!severelyStressed && this.activeShockwaves < this.maxShockwaves) {
+            this.createShockwave(Math.max(1, Math.floor(comboCount * (preset.shockwaveScale ?? 1) * scale)));
+        }
         
         // Intensify ocean colors
         this.intensifyOcean(comboCount);
         
-        // Create bioluminescence for big combos
-        if (comboCount >= 3) {
-            this.createBioluminescence(comboCount);
+        // Create bioluminescence for big combos (canvas-based)
+        if (comboCount >= 3 && this.activeBiolumGlows < this.maxBiolumGlows && !severelyStressed) {
+            const cap = preset.bioluminescenceLimit ?? 12;
+            const count = Math.min(Math.floor(comboCount * 2 * scale), cap);
+            this.createBioluminescence(count);
+        }
+
+        // Light bubble burst to keep feedback when throttled
+        if (throttled || severelyStressed) {
+            this.createBubbleBurst(Math.max(1, Math.floor(comboCount * 0.5 * scale)), true);
         }
     }
     
@@ -363,36 +658,34 @@ export default class OceanTheme extends BaseTheme {
     /**
      * Create bubble burst effects
      */
-    createBubbleBurst(intensity) {
+    createBubbleBurst(intensity, throttled = false) {
         const bubblesContainer = document.getElementById('bubbles');
         if (!bubblesContainer) {
             console.warn('[Ocean] Bubbles container not found!');
             return;
         }
-        
-        const burstCount = Math.min(intensity * 8, 30);
-        console.log('[Ocean] Creating', burstCount, 'burst bubbles');
-        
+        const presetCap = this.currentPreset?.bubbleBurstCap ?? 24;
+        const adaptiveCap = Math.max(8, Math.floor(presetCap * this.adaptiveScale));
+        const burstCount = Math.min(Math.max(1, intensity * 5), adaptiveCap);
+
+        const spacing = throttled ? 110 : 55;
+        const durationBase = throttled ? 1.15 : 0.85;
+
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
-                const bubble = document.createElement('div');
-                bubble.className = 'burst-bubble';
-                
-                const size = Math.random() * 15 + 5;
-                bubble.style.width = `${size}px`;
-                bubble.style.height = `${size}px`;
-                bubble.style.left = `${Math.random() * 100}%`;
-                bubble.style.bottom = `${Math.random() * 30}%`;
-                bubble.style.animationDuration = `${Math.random() * 1 + 0.8}s`;
-                
-                bubblesContainer.appendChild(bubble);
-                
-                setTimeout(() => {
-                    if (bubble.parentNode) {
-                        bubble.parentNode.removeChild(bubble);
-                    }
-                }, 1500);
-            }, i * 50);
+                if (!this.effectCanvas) return;
+                const size = Math.random() * 10 + 4;
+                const baseX = Math.random() * this.effectCanvas.width;
+                const baseY = this.effectCanvas.height * 0.7 + Math.random() * this.effectCanvas.height * 0.1;
+                this.bubbleBurstParticles.push({
+                    x: baseX,
+                    y: baseY,
+                    size,
+                    life: 1,
+                    duration: Math.max(0.7, Math.random() * 1 + durationBase),
+                    speed: Math.random() * 1.5 + 1,
+                });
+            }, i * spacing);
         }
     }
     
@@ -418,18 +711,19 @@ export default class OceanTheme extends BaseTheme {
      * Brighten god rays
      */
     brightenGodRays(intensity) {
-        const raysToBrighten = Math.min(Math.floor(intensity * 3), this.godRays.length);
-        
+        const raysToBrighten = Math.min(Math.floor(intensity * 2), this.godRays.length);
+        const duration = (this.currentPreset?.brightDurationMs ?? 600) * this.adaptiveScale;
+
         for (let i = 0; i < raysToBrighten; i++) {
             const ray = this.godRays[Math.floor(Math.random() * this.godRays.length)];
             if (ray) {
                 const originalOpacity = ray.style.opacity;
-                ray.style.transition = 'opacity 0.4s ease-out';
-                ray.style.opacity = `${Math.min(parseFloat(originalOpacity) * 3, 0.3)}`;
+                ray.style.transition = 'opacity 0.35s ease-out';
+                ray.style.opacity = `${Math.min(parseFloat(originalOpacity) * 2.6, 0.28)}`;
                 
                 setTimeout(() => {
                     ray.style.opacity = originalOpacity;
-                }, 400 + Math.random() * 200);
+                }, duration);
             }
         }
     }
@@ -440,8 +734,8 @@ export default class OceanTheme extends BaseTheme {
     spawnFish(intensity) {
         const theme = document.getElementById('ocean-theme');
         if (!theme) return;
-        
-        const fishCount = Math.min(intensity, 3);
+        const presetFish = this.currentPreset?.fishCount ?? 2;
+        const fishCount = Math.min(intensity, presetFish);
         
         for (let i = 0; i < fishCount; i++) {
             setTimeout(() => {
@@ -473,20 +767,24 @@ export default class OceanTheme extends BaseTheme {
     createShockwave(comboCount) {
         const theme = document.getElementById('ocean-theme');
         if (!theme) return;
-        
-        const shockwave = document.createElement('div');
-        shockwave.className = 'ocean-shockwave';
-        
-        shockwave.style.setProperty('--shockwave-scale', 2 + comboCount * 0.5);
-        shockwave.style.animationDuration = `${1.5 + comboCount * 0.2}s`;
-        
-        theme.appendChild(shockwave);
-        
-        setTimeout(() => {
-            if (shockwave.parentNode) {
-                shockwave.parentNode.removeChild(shockwave);
-            }
-        }, (1.5 + comboCount * 0.2) * 1000);
+        const scale = this.adaptiveScale;
+        const baseScale = 2 + comboCount * 0.5;
+        const radius = (80 + comboCount * 30) * Math.max(0.6, scale);
+        const duration = (1.5 + comboCount * 0.2) * Math.max(0.6, scale);
+        const rect = theme.getBoundingClientRect();
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+
+        this.shockwaveEffects.push({
+            x: cx,
+            y: cy,
+            startRadius: radius * 0.4,
+            maxRadius: radius,
+            life: 1,
+            duration,
+            width: 12 * Math.max(0.6, scale),
+        });
+        this.activeShockwaves += 1;
     }
     
     /**
@@ -495,44 +793,35 @@ export default class OceanTheme extends BaseTheme {
     intensifyOcean(comboCount) {
         const theme = document.getElementById('ocean-theme');
         if (!theme) return;
-        
-        const saturation = 100 + Math.min(comboCount * 20, 80);
-        const brightness = 100 + Math.min(comboCount * 15, 50);
+        const scale = this.adaptiveScale;
+        const saturation = 100 + Math.min(comboCount * 18 * scale, 70);
+        const brightness = 100 + Math.min(comboCount * 12 * scale, 40);
         
         theme.style.filter = `saturate(${saturation}%) brightness(${brightness}%)`;
         
         setTimeout(() => {
             theme.style.filter = '';
-        }, 1000 + comboCount * 150);
+        }, (this.currentPreset?.brightDurationMs ?? 600) + comboCount * 120);
     }
     
     /**
      * Create bioluminescent glow
      */
     createBioluminescence(comboCount) {
-        const planktonContainer = document.getElementById('ocean-plankton-layer');
-        if (!planktonContainer) return;
-        
-        const glowCount = Math.min(comboCount * 3, 15);
-        
+        if (!this.effectCanvas) return;
+        const cap = this.currentPreset?.bioluminescenceLimit ?? 12;
+        const glowCount = Math.min(comboCount, cap, Math.max(0, this.maxBiolumGlows - this.activeBiolumGlows));
+        const scale = this.adaptiveScale;
         for (let i = 0; i < glowCount; i++) {
-            setTimeout(() => {
-                const glow = document.createElement('div');
-                glow.className = 'bioluminescent-glow';
-                
-                glow.style.left = `${Math.random() * 100}%`;
-                glow.style.top = `${Math.random() * 100}%`;
-                glow.style.animationDuration = `${1 + Math.random() * 0.5}s`;
-                glow.style.animationDelay = `${Math.random() * 0.3}s`;
-                
-                planktonContainer.appendChild(glow);
-                
-                setTimeout(() => {
-                    if (glow.parentNode) {
-                        glow.parentNode.removeChild(glow);
-                    }
-                }, 2000);
-            }, i * 100);
+            const size = (Math.random() * 12 + 8) * Math.max(0.6, scale);
+            this.glowParticles.push({
+                x: Math.random() * this.effectCanvas.width,
+                y: Math.random() * this.effectCanvas.height * 0.8,
+                size,
+                life: 1,
+                duration: 1 + Math.random() * 0.6,
+            });
+            this.activeBiolumGlows += 1;
         }
     }
     
@@ -611,17 +900,51 @@ export default class OceanTheme extends BaseTheme {
         // Unsubscribe from all events
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
-        
+        this.teardownQualityListener();
+
         // Reset combo level
         this.currentComboLevel = 0;
-        
+
         // Clear any active effects
         const theme = document.getElementById('ocean-theme');
         if (theme) {
             theme.style.filter = '';
         }
         this.godRays = [];
-        
+        this.lastEffectTime = 0;
+        this.lastFrameTime = 0;
+        this.frameTimeAccumulator = 0;
+        this.frameTimeCount = 0;
+        this.averageFrameTime = 16.67;
+        this.adaptiveScale = 1;
+        this.activeShockwaves = 0;
+        this.activeBiolumGlows = 0;
+        this.maxShockwaves = 1;
+        this.maxBiolumGlows = 12;
+        if (this.perfMonitorId) {
+            cancelAnimationFrame(this.perfMonitorId);
+            this.perfMonitorId = null;
+        }
+        if (this.effectRafId) {
+            cancelAnimationFrame(this.effectRafId);
+            this.effectRafId = null;
+        }
+        this.effectLastFrame = 0;
+        this.shockwaveEffects = [];
+        this.glowParticles = [];
+        this.bubbleBurstParticles = [];
+        if (this.effectCtx && this.effectCanvas) {
+            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
+        }
+
         super.stop();
+    }
+
+    /**
+     * Provide Ocean themed tetromino styling (vibrant underwater bioluminescence)
+     * @returns {Object} Ocean tetromino configuration
+     */
+    getTetrominoConfig() {
+        return OCEAN_TETROMINOS;
     }
 }

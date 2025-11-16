@@ -56,17 +56,20 @@ export default class IceTempleTheme extends BaseTheme {
         this.frameTimeAccumulator = 0;
         this.frameTimeCount = 0;
         this.averageFrameTime = 16.67;
+        this.adaptiveScale = 1;
 
         this.spawnScales = {
             shards: 1,
             crystals: 1,
             rings: 1,
-            sparkles: 1,
-            embers: 1,
-            lava: 1,
             lightning: 1,
             storm: 1,
             aurora: 1,
+        };
+
+        this.effectToggles = {
+            glacialLightning: true,
+            iceStorm: true,
         };
 
         this.qualityPresets = {
@@ -82,9 +85,6 @@ export default class IceTempleTheme extends BaseTheme {
                     shards: 0.55,
                     crystals: 0.5,
                     rings: 0.55,
-                    sparkles: 0.6,
-                    embers: 0.6,
-                    lava: 0.6,
                     lightning: 0.55,
                     storm: 0.4,
                     aurora: 0.9,
@@ -105,9 +105,6 @@ export default class IceTempleTheme extends BaseTheme {
                     shards: 0.75,
                     crystals: 0.7,
                     rings: 0.8,
-                    sparkles: 0.85,
-                    embers: 0.85,
-                    lava: 0.85,
                     lightning: 0.8,
                     storm: 0.7,
                     aurora: 1,
@@ -128,9 +125,6 @@ export default class IceTempleTheme extends BaseTheme {
                     shards: 1,
                     crystals: 1,
                     rings: 1,
-                    sparkles: 1,
-                    embers: 1,
-                    lava: 1,
                     lightning: 1,
                     storm: 1,
                     aurora: 1.05,
@@ -151,9 +145,6 @@ export default class IceTempleTheme extends BaseTheme {
                     shards: 1.15,
                     crystals: 1.1,
                     rings: 1.1,
-                    sparkles: 1.1,
-                    embers: 1.1,
-                    lava: 1.1,
                     lightning: 1.15,
                     storm: 1.15,
                     aurora: 1.1,
@@ -208,6 +199,8 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     async createScene() {
+        this.applyQualityPreset(this.getGraphicsQuality());
+
         this.createStars();
         this.createAurora();
         this.createIceField();
@@ -222,6 +215,9 @@ export default class IceTempleTheme extends BaseTheme {
 
         // Start animation loop
         this.startEffectsAnimation();
+
+        // Listen for graphics quality changes
+        this.setupQualityListener();
     }
 
     setupEventListeners() {
@@ -261,6 +257,56 @@ export default class IceTempleTheme extends BaseTheme {
         return settings?.backgroundComboEffects === true;
     }
 
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'Ultra';
+    }
+
+    applyQualityPreset(quality) {
+        const preset = this.qualityPresets[quality] || this.qualityPresets['Ultra'];
+        const presetName = this.qualityPresets[quality] ? quality : 'Ultra';
+        this.currentQuality = presetName;
+        this.activePreset = preset;
+
+        if (preset.effectLimits) {
+            Object.assign(this.effectLimits, preset.effectLimits);
+        }
+        if (preset.spawnScale) {
+            Object.assign(this.spawnScales, preset.spawnScale);
+        }
+
+        this.effectToggles.glacialLightning = preset.enableGlacialLightning !== false;
+        this.effectToggles.iceStorm = preset.enableIceStorm !== false;
+
+        if (typeof preset.comboCooldownMs === 'number') {
+            this.comboCooldownMs = preset.comboCooldownMs;
+        }
+
+        this.trimEffectCollections();
+    }
+
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.teardownQualityListener();
+        this.qualityListener = (event) => {
+            const nextQuality = event.detail?.effectQuality;
+            if (!nextQuality || nextQuality === this.currentQuality) {
+                return;
+            }
+            this.applyQualityPreset(nextQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityListener);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityListener && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityListener);
+            this.qualityListener = null;
+        }
+    }
+
     shouldThrottleEffects() {
         const now = Date.now();
         const timeSinceLast = now - this.lastLineClearTime;
@@ -271,8 +317,30 @@ export default class IceTempleTheme extends BaseTheme {
             performanceDrop ||
             shardPressure ||
             stormPressure ||
+            (this.adaptiveScale ?? 1) < 0.65 ||
             timeSinceLast < this.comboCooldownMs
         );
+    }
+
+    isPerformanceStressed(threshold = 24) {
+        return this.averageFrameTime > threshold;
+    }
+
+    calculateAdaptiveScale() {
+        const frame = this.averageFrameTime;
+        if (frame <= 18) return 1;
+        if (frame <= 20) return 0.92;
+        if (frame <= 23) return 0.8;
+        if (frame <= 26) return 0.68;
+        if (frame <= 30) return 0.56;
+        return 0.45;
+    }
+
+    getSpawnScale(type) {
+        const presetScale = this.spawnScales?.[type] ?? 1;
+        const adaptive = this.adaptiveScale ?? 1;
+        const scale = presetScale * adaptive;
+        return Math.max(0.35, Math.min(scale, 1.4));
     }
 
     normalizeEventPayload(payload = {}) {
@@ -321,11 +389,13 @@ export default class IceTempleTheme extends BaseTheme {
         const centerY = this.effectsCanvas.height / 2;
 
         // Aurora pulse effect
-        this.targetAuroraIntensity = Math.min(0.85 + lineCount * 0.1 + comboCount * 0.05, 1.5);
+        const auroraScale = this.getSpawnScale('aurora');
+        this.targetAuroraIntensity = Math.min((0.85 + lineCount * 0.1 + comboCount * 0.05) * auroraScale, 1.7);
         this.pulseAurora(lineCount, comboCount);
 
         // Ice shard burst
-        let shardCount = Math.floor((lineCount * 35 + comboCount * 18) * (throttled ? 0.55 : 1));
+        const shardScale = this.getSpawnScale('shards');
+        let shardCount = Math.floor((lineCount * 35 + comboCount * 18) * shardScale * (throttled ? 0.55 : 1));
         const shardCapacity = Math.max(this.effectLimits.maxIceShards - this.iceShardBurst.length, 0);
         shardCount = Math.max(0, Math.min(shardCount, shardCapacity));
         for (let i = 0; i < shardCount; i++) {
@@ -341,7 +411,8 @@ export default class IceTempleTheme extends BaseTheme {
         // Frozen crystals for multi-line clears
         if (lineCount >= 2) {
             const crystalCapacity = Math.max(this.effectLimits.maxFrozenCrystals - this.frozenCrystals.length, 0);
-            let crystalCount = Math.floor(lineCount * 12 * (throttled ? 0.6 : 1));
+            const crystalScale = this.getSpawnScale('crystals');
+            let crystalCount = Math.floor(lineCount * 12 * crystalScale * (throttled ? 0.6 : 1));
             crystalCount = Math.max(0, Math.min(crystalCount, crystalCapacity));
             for (let i = 0; i < crystalCount; i++) {
                 this.frozenCrystals.push(this.createFrozenCrystal(centerX, centerY));
@@ -351,7 +422,8 @@ export default class IceTempleTheme extends BaseTheme {
         // Combo rings
         if (comboCount >= 2) {
             const ringCapacity = Math.max(this.effectLimits.maxComboRings - this.comboRings.length, 0);
-            let ringCount = Math.min(comboCount, 5, ringCapacity);
+            const ringScale = this.getSpawnScale('rings');
+            let ringCount = Math.min(Math.max(1, Math.floor(comboCount * ringScale)), 5, ringCapacity);
             if (throttled) {
                 ringCount = Math.min(ringCount, 1);
             }
@@ -362,13 +434,19 @@ export default class IceTempleTheme extends BaseTheme {
 
         // Glacial lightning for big combos
         const lightningThreshold = throttled ? 6 : 5;
-        if (comboCount >= lightningThreshold && this.glacialLightning.length < this.effectLimits.maxGlacialLightning) {
+        const lightningCap = Math.max(1, Math.floor(this.effectLimits.maxGlacialLightning * this.getSpawnScale('lightning')));
+        if (
+            this.effectToggles.glacialLightning &&
+            comboCount >= lightningThreshold &&
+            this.glacialLightning.length < lightningCap
+        ) {
             this.createGlacialLightning(centerX, centerY, comboCount, throttled);
         }
 
         // Ice storm for massive combos
         const stormThreshold = throttled ? 9 : 8;
-        if (comboCount >= stormThreshold) {
+        const stormCap = Math.max(1, Math.floor(this.effectLimits.maxIceStormParticles * this.getSpawnScale('storm')));
+        if (this.effectToggles.iceStorm && comboCount >= stormThreshold && this.iceStorm.length < stormCap) {
             this.triggerIceStorm(comboCount, throttled);
         }
 
@@ -381,11 +459,12 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     pulseAurora(lineCount, comboCount) {
-        const intensity = 0.3 + lineCount * 0.1 + comboCount * 0.15;
+        const auroraScale = this.getSpawnScale('aurora');
+        const intensity = (0.3 + lineCount * 0.1 + comboCount * 0.15) * auroraScale;
         const duration = 60 + comboCount * 20;
 
         this.auroraWaves.push({
-            intensity: intensity,
+            intensity: Math.min(intensity, 1.8),
             life: 1.0,
             duration: duration,
             phase: 0,
@@ -447,7 +526,12 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     createGlacialLightning(x, y, comboCount, throttled = false) {
-        if (this.glacialLightning.length >= this.effectLimits.maxGlacialLightning) {
+        if (!this.effectToggles.glacialLightning) {
+            return;
+        }
+        const lightningScale = this.getSpawnScale('lightning');
+        const dynamicCap = Math.max(1, Math.floor(this.effectLimits.maxGlacialLightning * lightningScale));
+        if (this.glacialLightning.length >= dynamicCap) {
             return;
         }
 
@@ -484,14 +568,23 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     triggerIceStorm(comboCount, throttled = false) {
-        const capacity = Math.max(this.effectLimits.maxIceStormParticles - this.iceStorm.length, 0);
+        if (!this.effectToggles.iceStorm) {
+            return;
+        }
+        const stormScale = this.getSpawnScale('storm');
+        const dynamicLimit = Math.max(1, Math.floor(this.effectLimits.maxIceStormParticles * stormScale));
+        const remainingAllowance = dynamicLimit - this.iceStorm.length;
+        if (remainingAllowance <= 0) return;
+
+        const baseCapacity = Math.max(this.effectLimits.maxIceStormParticles - this.iceStorm.length, 0);
+        const capacity = Math.min(baseCapacity, remainingAllowance);
         if (capacity <= 0) return;
 
-        let stormCount = Math.min(comboCount * 18, 220);
+        let stormCount = Math.min(comboCount * 18, capacity, 220);
         if (throttled) {
             stormCount = Math.min(stormCount, 100);
         }
-        stormCount = Math.max(0, Math.min(stormCount, capacity));
+        stormCount = Math.max(0, stormCount);
 
         for (let i = 0; i < stormCount; i++) {
             this.iceStorm.push({
@@ -547,6 +640,7 @@ export default class IceTempleTheme extends BaseTheme {
             }
         }
         this.lastFrameTime = now;
+        this.adaptiveScale = this.calculateAdaptiveScale();
 
         this.time += 1;
 
@@ -622,6 +716,9 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     updateAuroraWaves() {
+        if (this.auroraWaves.length === 0) return;
+
+        const lowPerf = this.isPerformanceStressed(25);
         for (let i = this.auroraWaves.length - 1; i >= 0; i--) {
             const wave = this.auroraWaves[i];
             wave.phase += wave.speed;
@@ -637,8 +734,10 @@ export default class IceTempleTheme extends BaseTheme {
                 this.effectsCanvas.width / 2, this.effectsCanvas.height * 0.3, 0,
                 this.effectsCanvas.width / 2, this.effectsCanvas.height * 0.3, this.effectsCanvas.width * 0.6
             );
-            gradient.addColorStop(0, `rgba(116, 185, 255, ${opacity * 0.6})`);
-            gradient.addColorStop(0.5, `rgba(85, 239, 196, ${opacity * 0.4})`);
+            const innerOpacity = lowPerf ? opacity * 0.4 : opacity * 0.6;
+            const midOpacity = lowPerf ? opacity * 0.25 : opacity * 0.4;
+            gradient.addColorStop(0, `rgba(116, 185, 255, ${innerOpacity})`);
+            gradient.addColorStop(0.5, `rgba(85, 239, 196, ${midOpacity})`);
             gradient.addColorStop(1, 'rgba(162, 155, 254, 0)');
 
             this.effectsCtx.fillStyle = gradient;
@@ -647,6 +746,9 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     updateGlacialLightning() {
+        if (this.glacialLightning.length === 0) return;
+
+        const lowPerf = this.isPerformanceStressed(23);
         for (let i = this.glacialLightning.length - 1; i >= 0; i--) {
             const lightning = this.glacialLightning[i];
             lightning.life -= 0.012;
@@ -662,29 +764,28 @@ export default class IceTempleTheme extends BaseTheme {
 
             for (const branch of lightning.branches) {
                 for (const segment of branch) {
-                    // Outer glow
-                    this.effectsCtx.beginPath();
-                    this.effectsCtx.moveTo(segment.x1, segment.y1);
-                    this.effectsCtx.lineTo(segment.x2, segment.y2);
-                    this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.35})`;
-                    this.effectsCtx.lineWidth = 10;
-                    this.effectsCtx.lineCap = 'round';
-                    this.effectsCtx.stroke();
+                    if (!lowPerf) {
+                        this.effectsCtx.beginPath();
+                        this.effectsCtx.moveTo(segment.x1, segment.y1);
+                        this.effectsCtx.lineTo(segment.x2, segment.y2);
+                        this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.35})`;
+                        this.effectsCtx.lineWidth = 10;
+                        this.effectsCtx.lineCap = 'round';
+                        this.effectsCtx.stroke();
 
-                    // Middle glow
-                    this.effectsCtx.beginPath();
-                    this.effectsCtx.moveTo(segment.x1, segment.y1);
-                    this.effectsCtx.lineTo(segment.x2, segment.y2);
-                    this.effectsCtx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.65})`;
-                    this.effectsCtx.lineWidth = 5;
-                    this.effectsCtx.stroke();
+                        this.effectsCtx.beginPath();
+                        this.effectsCtx.moveTo(segment.x1, segment.y1);
+                        this.effectsCtx.lineTo(segment.x2, segment.y2);
+                        this.effectsCtx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.65})`;
+                        this.effectsCtx.lineWidth = 5;
+                        this.effectsCtx.stroke();
+                    }
 
-                    // Core
                     this.effectsCtx.beginPath();
                     this.effectsCtx.moveTo(segment.x1, segment.y1);
                     this.effectsCtx.lineTo(segment.x2, segment.y2);
                     this.effectsCtx.strokeStyle = `rgba(230, 250, 255, ${pulseOpacity})`;
-                    this.effectsCtx.lineWidth = 2;
+                    this.effectsCtx.lineWidth = lowPerf ? 1.4 : 2;
                     this.effectsCtx.stroke();
                 }
             }
@@ -692,6 +793,9 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     updateComboRings() {
+        if (this.comboRings.length === 0) return;
+
+        const lowPerf = this.isPerformanceStressed(23);
         for (let i = this.comboRings.length - 1; i >= 0; i--) {
             const ring = this.comboRings[i];
             ring.radius += ring.expansionSpeed;
@@ -706,23 +810,26 @@ export default class IceTempleTheme extends BaseTheme {
 
             const pulseOpacity = ring.opacity * (0.7 + Math.sin(ring.pulsePhase) * 0.3);
 
-            // Outer ring glow
-            this.effectsCtx.beginPath();
-            this.effectsCtx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
-            this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.4})`;
-            this.effectsCtx.lineWidth = ring.thickness + 6;
-            this.effectsCtx.stroke();
+            if (!lowPerf) {
+                this.effectsCtx.beginPath();
+                this.effectsCtx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+                this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.4})`;
+                this.effectsCtx.lineWidth = ring.thickness + 6;
+                this.effectsCtx.stroke();
+            }
 
-            // Main ring
             this.effectsCtx.beginPath();
             this.effectsCtx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
             this.effectsCtx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity})`;
-            this.effectsCtx.lineWidth = ring.thickness;
+            this.effectsCtx.lineWidth = lowPerf ? ring.thickness * 0.8 : ring.thickness;
             this.effectsCtx.stroke();
         }
     }
 
     updateIceShardBurst() {
+        if (this.iceShardBurst.length === 0) return;
+
+        const lowPerf = this.isPerformanceStressed(26);
         for (let i = this.iceShardBurst.length - 1; i >= 0; i--) {
             const particle = this.iceShardBurst[i];
 
@@ -804,15 +911,15 @@ export default class IceTempleTheme extends BaseTheme {
             this.effectsCtx.translate(crystal.x, crystal.y);
             this.effectsCtx.rotate(crystal.rotation);
 
-            // Glow
-            const glowSize = crystal.size * 2.5;
-            const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-            glowGradient.addColorStop(0, `rgba(180, 220, 255, ${crystal.opacity * 0.6 * sparkleIntensity})`);
-            glowGradient.addColorStop(1, 'rgba(160, 200, 240, 0)');
-            this.effectsCtx.fillStyle = glowGradient;
-            this.effectsCtx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+            if (!lowPerf) {
+                const glowSize = crystal.size * 2.5;
+                const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
+                glowGradient.addColorStop(0, `rgba(180, 220, 255, ${crystal.opacity * 0.6 * sparkleIntensity})`);
+                glowGradient.addColorStop(1, 'rgba(160, 200, 240, 0)');
+                this.effectsCtx.fillStyle = glowGradient;
+                this.effectsCtx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+            }
 
-            // Crystal
             this.effectsCtx.beginPath();
             this.effectsCtx.moveTo(0, -crystal.size);
             this.effectsCtx.lineTo(crystal.size * 0.5, 0);
@@ -827,6 +934,9 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     updateIceStorm() {
+        if (this.iceStorm.length === 0) return;
+
+        const lowPerf = this.isPerformanceStressed(26);
         for (let i = this.iceStorm.length - 1; i >= 0; i--) {
             const particle = this.iceStorm[i];
 
@@ -845,14 +955,14 @@ export default class IceTempleTheme extends BaseTheme {
             this.effectsCtx.translate(particle.x, particle.y);
             this.effectsCtx.rotate(particle.rotation);
 
-            // Glow
-            const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2);
-            glowGradient.addColorStop(0, `rgba(200, 230, 255, ${particle.opacity * 0.5})`);
-            glowGradient.addColorStop(1, 'rgba(180, 210, 240, 0)');
-            this.effectsCtx.fillStyle = glowGradient;
-            this.effectsCtx.fillRect(-particle.size * 2, -particle.size * 2, particle.size * 4, particle.size * 4);
+            if (!lowPerf) {
+                const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2);
+                glowGradient.addColorStop(0, `rgba(200, 230, 255, ${particle.opacity * 0.5})`);
+                glowGradient.addColorStop(1, 'rgba(180, 210, 240, 0)');
+                this.effectsCtx.fillStyle = glowGradient;
+                this.effectsCtx.fillRect(-particle.size * 2, -particle.size * 2, particle.size * 4, particle.size * 4);
+            }
 
-            // Particle
             this.effectsCtx.beginPath();
             this.effectsCtx.arc(0, 0, particle.size, 0, Math.PI * 2);
             this.effectsCtx.fillStyle = `rgba(240, 250, 255, ${particle.opacity})`;
@@ -1129,6 +1239,8 @@ export default class IceTempleTheme extends BaseTheme {
             this.animationId = null;
         }
 
+        this.teardownQualityListener();
+
         // Teardown event listeners
         this.teardownEventListeners();
         this.pendingComboCount = 0;
@@ -1161,6 +1273,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.frameTimeCount = 0;
         this.averageFrameTime = 16.67;
         this.lastLineClearTime = 0;
+        this.adaptiveScale = 1;
 
         super.stop();
     }
