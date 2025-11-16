@@ -7,6 +7,7 @@
  * These caches prevent regenerating expensive canvas operations on every theme switch
  */
 export const moonlitForestTreeCache = new Map();
+export const sakuraTwilightTreeCache = new Map();
 export const wolfhourBackgroundCache = new Map();
 export const himalayanPeakCache = new Map();
 export const iceTempleCache = new Map();
@@ -45,6 +46,7 @@ export function getGridCache() {
  */
 export function clearThemeCaches() {
     moonlitForestTreeCache.clear();
+    sakuraTwilightTreeCache.clear();
     wolfhourBackgroundCache.clear();
     himalayanPeakCache.clear();
     iceTempleCache.clear();
