@@ -27,14 +27,17 @@ export class ThemeManager {
         // LRU cache management
         this.maxCachedThemes = 5; // Limit cache size to prevent memory growth
         this.themeLRU = []; // Track theme access order (oldest to newest)
-        
+
+        // Theme shuffle deck for better random distribution
+        this.themeShuffleDeck = []; // Shuffled deck of themes
+
         // Asset and Audio managers (shared across all themes for efficient caching)
         this.assetManager = assetManager;
         this.audioManager = audioManager;
 
         // Initialize theme registry
         this.initializeRegistry();
-        
+
         console.log('[ThemeManager] Initialized with asset and audio managers');
     }
 
@@ -414,13 +417,40 @@ export class ThemeManager {
     }
 
     /**
-     * Get a random theme (excluding current)
+     * Shuffle the theme deck to ensure all themes are visited before repeating
+     * Uses Fisher-Yates shuffle algorithm
+     * @private
+     */
+    _shuffleThemeDeck() {
+        // Get all themes except the current one
+        const availableThemes = THEMES.filter((name) => name !== this.activeThemeName);
+
+        // Fisher-Yates shuffle
+        for (let i = availableThemes.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [availableThemes[i], availableThemes[j]] = [availableThemes[j], availableThemes[i]];
+        }
+
+        this.themeShuffleDeck = availableThemes;
+        console.log(`[ThemeManager] Shuffled theme deck with ${this.themeShuffleDeck.length} themes`);
+    }
+
+    /**
+     * Get a random theme (excluding current) using shuffle deck system
+     * Ensures all themes are visited before any theme repeats
      * @returns {string} Theme name
      */
     getRandomTheme() {
-        const availableThemes = THEMES.filter((name) => name !== this.activeThemeName);
-        const randomIndex = Math.floor(Math.random() * availableThemes.length);
-        return availableThemes[randomIndex];
+        // If deck is empty or doesn't exist, reshuffle
+        if (!this.themeShuffleDeck || this.themeShuffleDeck.length === 0) {
+            this._shuffleThemeDeck();
+        }
+
+        // Draw from the top of the deck
+        const nextTheme = this.themeShuffleDeck.pop();
+        console.log(`[ThemeManager] Drew theme from deck: ${nextTheme} (${this.themeShuffleDeck.length} remaining)`);
+
+        return nextTheme;
     }
 
     /**
