@@ -890,6 +890,10 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     updateFrozenCrystals() {
+        if (this.frozenCrystals.length === 0) return;
+
+        const lowPerf = this.isPerformanceStressed(23);
+
         for (let i = this.frozenCrystals.length - 1; i >= 0; i--) {
             const crystal = this.frozenCrystals[i];
 
