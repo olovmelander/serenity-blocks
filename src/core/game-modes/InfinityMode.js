@@ -8,6 +8,10 @@ import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { TranceStateEffects } from '../../rendering/phaser/trance-state-effects.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    triggerLineClearFlash as triggerLineClearFlashCanvas,
+    triggerBackgroundPulse as triggerBackgroundPulseCanvas
+} from '../../rendering/draw.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -461,6 +465,9 @@ export class InfinityMode extends BaseGameMode {
         const phaserGame = this.deps.phaserGame;
         if (!phaserGame?.scene) return;
 
+        // Clear cached physics callbacks so they get recreated with fresh BoardScene references
+        this.physicsCallbacks = null;
+
         this.boardScene = phaserGame.scene.getScene('BoardScene');
 
         if (this.boardScene) {
@@ -619,6 +626,32 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
+     * Get BoardScene (fresh reference each time to ensure sharedEffects is available)
+     * @private
+     */
+    _getBoardScene() {
+        const scene = this.deps.phaserGame?.scene?.getScene('BoardScene') || null;
+
+        // Debug logging (only log if scene state changed or sharedEffects missing)
+        if (!scene) {
+            if (!this._lastSceneCheckFailed) {
+                console.warn('[Infinity] _getBoardScene: scene is NULL');
+                this._lastSceneCheckFailed = true;
+            }
+        } else {
+            this._lastSceneCheckFailed = false;
+            if (!scene.sharedEffects && !this._lastSharedEffectsWarning) {
+                console.warn('[Infinity] _getBoardScene: scene exists but sharedEffects is NULL');
+                this._lastSharedEffectsWarning = true;
+            } else if (scene.sharedEffects) {
+                this._lastSharedEffectsWarning = false;
+            }
+        }
+
+        return scene;
+    }
+
+    /**
      * Get physics callbacks for sound effects and piece spawning
      * @private
      */
@@ -681,15 +714,17 @@ export class InfinityMode extends BaseGameMode {
                 eventBus.emit(EVENTS.COMBO, { comboCount });
 
                 const settings = this.deps.settingsManager.get();
-                if (settings.comboPopupEffect && this.boardScene) {
-                    this.boardScene.showComboPopup(comboCount);
+                const boardScene = this._getBoardScene();
+                if (settings.comboPopupEffect && boardScene) {
+                    boardScene.showComboPopup(comboCount);
                     console.log(`[Infinity] Combo popup triggered: ${comboCount}x`);
                 }
             },
             // Trigger cascade wave visual effect
             triggerCascadeWave: (cascadeCount) => {
-                if (this.boardScene && this.boardScene.sharedEffects) {
-                    this.boardScene.sharedEffects.showCascadeWave(cascadeCount);
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.sharedEffects) {
+                    boardScene.sharedEffects.showCascadeWave(cascadeCount);
                     console.log(`[Infinity] Cascade wave ${cascadeCount} triggered`);
                 }
 
@@ -700,6 +735,8 @@ export class InfinityMode extends BaseGameMode {
             },
             // Line clear flash effect
             triggerFlash: (fullLines) => {
+                console.log('[Infinity] triggerFlash called with fullLines:', fullLines);
+
                 // Store cleared line positions for camera following
                 this.lastClearedLines = fullLines;
                 if (fullLines && fullLines.length > 0) {
@@ -711,26 +748,37 @@ export class InfinityMode extends BaseGameMode {
                     console.log(`[Infinity] Lines cleared at rows ${minRow}-${maxRow}, center: ${this.lastClearedLinesCenter}`);
                 }
 
-                if (this.boardScene && this.boardScene.triggerLineClearFlash) {
-                    this.boardScene.triggerLineClearFlash(fullLines);
+                const boardScene = this._getBoardScene();
+                console.log('[Infinity] triggerFlash: boardScene:', !!boardScene, 'triggerLineClearFlash:', !!boardScene?.triggerLineClearFlash);
+
+                // Trigger flash effect with Phaser or Canvas fallback
+                if (boardScene && boardScene.triggerLineClearFlash) {
+                    console.log('[Infinity] Calling boardScene.triggerLineClearFlash');
+                    boardScene.triggerLineClearFlash(fullLines);
+                } else {
+                    console.log('[Infinity] Using canvas fallback for line clear flash');
+                    triggerLineClearFlashCanvas(fullLines);
                 }
             },
             // Line clear impact (camera shake and particles)
             onLineClearImpact: (lineCount, _cascadeCount) => {
-                if (this.boardScene && this.boardScene.playLineClearImpact) {
-                    this.boardScene.playLineClearImpact(lineCount);
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.playLineClearImpact) {
+                    boardScene.playLineClearImpact(lineCount);
                 }
             },
             // Background pulse effect
             triggerBackgroundPulse: (lineCount) => {
-                const boardScene = this.boardScene;
+                const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.triggerBackgroundPulse) {
                     boardScene.triggerBackgroundPulse(lineCount);
+                } else {
+                    triggerBackgroundPulseCanvas(lineCount);
                 }
             },
             // Score addition animation
             onScoreAdd: (points) => {
-                const boardScene = this.boardScene;
+                const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.showScorePopup) {
                     boardScene.showScorePopup(points);
                 }
@@ -744,8 +792,12 @@ export class InfinityMode extends BaseGameMode {
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });
 
-                if (this.boardScene && this.boardScene.createPieceLockRipple) {
-                    this.boardScene.createPieceLockRipple(piece);
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.createPieceLockRipple) {
+                    boardScene.createPieceLockRipple(piece);
+                    console.log('[Infinity] Piece lock ripple triggered for piece:', piece.type);
+                } else {
+                    console.warn('[Infinity] BoardScene or createPieceLockRipple not available');
                 }
 
                 // Update infinity stats

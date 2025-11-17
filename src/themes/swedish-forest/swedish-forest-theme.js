@@ -23,11 +23,11 @@ export default class SwedishForestTheme extends BaseTheme {
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.magicGlow = 0;
 
-        // Performance limits
-        this.maxFireflies = 30;
-        this.maxLeaves = 15;
-        this.maxGodRays = 12;
-        this.maxSpirits = 8;
+        // Performance limits - reduced for better FPS
+        this.maxFireflies = 20;
+        this.maxLeaves = 10;
+        this.maxGodRays = 8;
+        this.maxSpirits = 6;
 
         // Gradient cache for performance
         this.gradientCache = new Map();
@@ -301,19 +301,21 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     onCombo(comboCount) {
-        this.comboMultiplier = Math.min(1 + comboCount * 0.12, 1.6);
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.2 * comboCount, 1.0);
+        // More visible combo effects with better multipliers
+        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3 * comboCount, 1.0);
 
-        // Subtle magic glow for combos
-        if (comboCount >= 4) {
-            this.magicGlow = Math.min(0.2 + comboCount * 0.05, 0.6);
+        // More visible magic glow for combos
+        if (comboCount >= 2) {
+            this.magicGlow = Math.min(0.3 + comboCount * 0.1, 0.8);
         }
 
-        // Make spirits more active during combos - but don't permanently increase their properties
-        if (comboCount >= 3) {
+        // Make spirits more active during combos
+        if (comboCount >= 2) {
             this.forestSpirits.forEach((spirit) => {
-                // Temporarily boost instead of permanent growth
-                spirit.pulseSpeed = Math.min(spirit.pulseSpeed * 1.15, 0.04);
+                spirit.pulseSpeed = Math.min(spirit.pulseSpeed * 1.2, 0.04);
+                // Boost opacity for visibility
+                spirit.opacity = Math.min(spirit.opacity * 1.3, 0.7);
             });
         }
     }
@@ -367,12 +369,15 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawGodRays() {
+        // Skip god rays update every other frame for performance
+        if (this.frameCount % 2 !== 0) return;
+
         this.godRays.forEach((ray, index) => {
-            ray.pulsePhase += ray.pulseSpeed;
+            ray.pulsePhase += ray.pulseSpeed * 2; // Compensate for skipping frames
             ray.angle = ray.baseAngle + Math.sin(this.animationTime * ray.rotationSpeed) * 0.1;
 
             const pulse = Math.sin(ray.pulsePhase) * 0.3 + 0.7;
-            const comboBoost = 1 + this.pulseIntensity * 0.6 + this.comboMultiplier * 0.4;
+            const comboBoost = 1 + this.pulseIntensity * 0.8 + this.comboMultiplier * 0.6;
             const opacity = ray.opacity * pulse * comboBoost;
 
             this.ctx.save();
@@ -489,6 +494,7 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawFireflies() {
+        // Batch rendering without individual save/restore for better performance
         for (let i = this.fireflies.length - 1; i >= 0; i--) {
             const firefly = this.fireflies[i];
 
@@ -518,17 +524,19 @@ export default class SwedishForestTheme extends BaseTheme {
             // Pulse effect
             firefly.pulsePhase += firefly.pulseSpeed;
             const pulse = Math.sin(firefly.pulsePhase) * 0.5 + 0.5;
-            const opacity = firefly.opacity * pulse * (1 + this.comboMultiplier * 0.3);
+            const opacity = firefly.opacity * pulse * (1 + this.comboMultiplier * 0.5);
 
-            // Use shadowBlur instead of gradient for better performance
-            this.ctx.save();
-            this.ctx.shadowBlur = firefly.size * 3;
-            this.ctx.shadowColor = `hsla(${firefly.hue}, 100%, 70%, ${opacity * 0.6})`;
-            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 90%, ${opacity})`;
+            // Draw without shadow blur for better performance - use simple circles
+            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 85%, ${opacity})`;
             this.ctx.beginPath();
-            this.ctx.arc(firefly.x, firefly.y, firefly.size * 0.5, 0, Math.PI * 2);
+            this.ctx.arc(firefly.x, firefly.y, firefly.size * 0.8, 0, Math.PI * 2);
             this.ctx.fill();
-            this.ctx.restore();
+
+            // Add outer glow as second circle (faster than shadowBlur)
+            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 70%, ${opacity * 0.3})`;
+            this.ctx.beginPath();
+            this.ctx.arc(firefly.x, firefly.y, firefly.size * 1.5, 0, Math.PI * 2);
+            this.ctx.fill();
         }
     }
 
@@ -592,61 +600,66 @@ export default class SwedishForestTheme extends BaseTheme {
             if (spirit.y < -50) spirit.y = this.canvas.height + 50;
             if (spirit.y > this.canvas.height + 50) spirit.y = -50;
 
-            // Add to trail every 3 frames for better performance
-            if (this.frameCount % 3 === 0) {
+            // Add to trail every 4 frames for better performance
+            if (this.frameCount % 4 === 0) {
                 spirit.trail.push({ x: spirit.x, y: spirit.y });
                 if (spirit.trail.length > spirit.maxTrailLength) {
                     spirit.trail.shift();
                 }
             }
 
-            // Pulse effect
+            // Pulse effect with better visibility
             spirit.pulsePhase += spirit.pulseSpeed;
-            const pulse = Math.sin(spirit.pulsePhase) * 0.4 + 0.6;
-            const comboBoost = this.comboMultiplier > 1 ? 1 + (this.comboMultiplier - 1) * 0.5 : 1;
-            const glowBoost = this.magicGlow > 0 ? 1 + this.magicGlow * 0.8 : 1;
+            const pulse = Math.sin(spirit.pulsePhase) * 0.5 + 0.5;
+            const comboBoost = this.comboMultiplier > 1 ? 1 + (this.comboMultiplier - 1) * 0.8 : 1;
+            const glowBoost = this.magicGlow > 0 ? 1 + this.magicGlow * 1.2 : 1;
             const opacity = spirit.opacity * pulse * comboBoost * glowBoost * spirit.life;
 
-            // Skip trail during high combos for performance
-            if (spirit.trail.length > 1 && this.comboMultiplier < 1.5) {
-                this.ctx.save();
-                this.ctx.globalAlpha = opacity * 0.3;
+            // Draw trail without save/restore for performance
+            if (spirit.trail.length > 1) {
+                this.ctx.globalAlpha = opacity * 0.4;
                 this.ctx.strokeStyle = `hsl(${spirit.hue}, 80%, 70%)`;
-                this.ctx.lineWidth = spirit.size * 0.4;
+                this.ctx.lineWidth = spirit.size * 0.3;
                 this.ctx.lineCap = 'round';
-                this.ctx.lineJoin = 'round';
 
                 this.ctx.beginPath();
                 this.ctx.moveTo(spirit.trail[0].x, spirit.trail[0].y);
-                for (let i = 1; i < spirit.trail.length; i += 2) {
+                for (let i = 1; i < spirit.trail.length; i++) {
                     this.ctx.lineTo(spirit.trail[i].x, spirit.trail[i].y);
                 }
                 this.ctx.stroke();
-                this.ctx.restore();
+                this.ctx.globalAlpha = 1;
             }
 
-            // Simplified spirit rendering - single draw call with shadowBlur
-            this.ctx.save();
-            this.ctx.shadowBlur = spirit.size * 1.5;
-            this.ctx.shadowColor = `hsla(${spirit.hue}, 80%, 70%, ${opacity * 0.5})`;
+            // Draw spirit core - no shadowBlur for performance
             this.ctx.fillStyle = `hsla(${spirit.hue}, 95%, 85%, ${opacity})`;
             this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.25, 0, Math.PI * 2);
+            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.3, 0, Math.PI * 2);
             this.ctx.fill();
-            this.ctx.restore();
 
-            // Skip particles during high combos for performance - they cause major slowdown
-            if (this.comboMultiplier > 1.3 && this.comboMultiplier < 1.5) {
-                const particleCount = 2;
-                this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 90%, ${opacity * 0.4})`;
+            // Outer glow circles (faster than shadowBlur)
+            this.ctx.fillStyle = `hsla(${spirit.hue}, 90%, 75%, ${opacity * 0.5})`;
+            this.ctx.beginPath();
+            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.5, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.fillStyle = `hsla(${spirit.hue}, 85%, 65%, ${opacity * 0.2})`;
+            this.ctx.beginPath();
+            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.8, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Show particles when comboing - but simplified
+            if (this.comboMultiplier > 1.2) {
+                const particleCount = 3;
+                this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 90%, ${opacity * 0.6})`;
                 for (let i = 0; i < particleCount; i++) {
                     const angle = (i / particleCount) * Math.PI * 2 + this.animationTime * 2;
-                    const distance = spirit.size * 0.6;
+                    const distance = spirit.size * 0.7;
                     const px = spirit.x + Math.cos(angle) * distance;
                     const py = spirit.y + Math.sin(angle) * distance;
 
                     this.ctx.beginPath();
-                    this.ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+                    this.ctx.arc(px, py, 2, 0, Math.PI * 2);
                     this.ctx.fill();
                 }
             }
@@ -656,10 +669,10 @@ export default class SwedishForestTheme extends BaseTheme {
     drawMagicGlow() {
         if (this.magicGlow <= 0) return;
 
-        // Very subtle mystical blue glow
+        // More visible mystical blue glow for combos
         this.ctx.save();
         this.ctx.globalCompositeOperation = 'screen';
-        this.ctx.fillStyle = `rgba(180, 210, 240, ${this.magicGlow * 0.1})`;
+        this.ctx.fillStyle = `rgba(180, 210, 240, ${this.magicGlow * 0.25})`;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.restore();
     }

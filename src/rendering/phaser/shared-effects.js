@@ -102,15 +102,24 @@ export class SharedEffects {
 
         const PhaserRef = window.Phaser;
         const width = this.scene.cols * this.scene.blockSize;
+        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
 
         if (PhaserRef?.GameObjects) {
             clearedRows.forEach((row, index) => {
-                const visibleRow = row - this.scene.hiddenRows;
-                if (visibleRow < 0) {
-                    return;
+                // In infinity mode, use world coordinates; in standard mode, use screen coordinates
+                let centerY;
+                if (isInfinityMode) {
+                    // World coordinates: row * blockSize (will follow camera)
+                    centerY = (row * this.scene.blockSize) + (this.scene.blockSize / 2);
+                } else {
+                    // Screen coordinates: (row - hiddenRows) * blockSize
+                    const visibleRow = row - this.scene.hiddenRows;
+                    if (visibleRow < 0) {
+                        return;
+                    }
+                    centerY = (visibleRow * this.scene.blockSize) + (this.scene.blockSize / 2);
                 }
 
-                const centerY = (visibleRow * this.scene.blockSize) + (this.scene.blockSize / 2);
                 const tint = this.getComboTint(this.currentComboCount, index);
 
                 const stripe = this.scene.add.rectangle(
@@ -122,7 +131,8 @@ export class SharedEffects {
                     0.55,
                 );
 
-                stripe.setScrollFactor(0);
+                // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
+                stripe.setScrollFactor(isInfinityMode ? 1 : 0);
                 stripe.setBlendMode(PhaserRef.BlendModes.ADD);
 
                 this.scene.tweens.add({
@@ -161,8 +171,9 @@ export class SharedEffects {
     createPieceLockRipple(piece) {
         if (!piece) return;
 
+        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+
         // Calculate center of piece
-        // piece.y is in grid coordinates (0-23 including hidden rows)
         let centerX = 0;
         let centerY = 0;
         let blockCount = 0;
@@ -171,10 +182,16 @@ export class SharedEffects {
             row.forEach((cell, x) => {
                 if (cell > 0) {
                     centerX += (piece.x + x) * this.scene.blockSize + this.scene.blockSize / 2;
-                    // piece.y is in grid coordinates (0-23 including hidden rows)
-                    // Convert to screen coordinates by subtracting hidden rows
-                    const screenRow = (piece.y + y) - this.scene.hiddenRows;
-                    centerY += screenRow * this.scene.blockSize + this.scene.blockSize / 2;
+
+                    // In infinity mode, use world coordinates; in standard mode, use screen coordinates
+                    if (isInfinityMode) {
+                        // World coordinates: piece.y * blockSize (will follow camera)
+                        centerY += (piece.y + y) * this.scene.blockSize + this.scene.blockSize / 2;
+                    } else {
+                        // Screen coordinates: (piece.y - hiddenRows) * blockSize
+                        const screenRow = (piece.y + y) - this.scene.hiddenRows;
+                        centerY += screenRow * this.scene.blockSize + this.scene.blockSize / 2;
+                    }
                     blockCount++;
                 }
             });
@@ -185,11 +202,11 @@ export class SharedEffects {
             centerY /= blockCount;
 
             debugLog('[SharedEffects] Piece lock ripple:', {
+                mode: isInfinityMode ? 'infinity' : 'standard',
                 pieceGridY: piece.y,
                 hiddenRows: this.scene.hiddenRows,
-                screenY: centerY,
-                blockSize: this.scene.blockSize,
-                calculation: `(piece.y - hiddenRows) * blockSize + blockSize/2`
+                centerY: centerY,
+                blockSize: this.scene.blockSize
             });
 
             // Create expanding circle effect using tweens
@@ -199,9 +216,8 @@ export class SharedEffects {
             // after 400ms via tween onComplete. Tracking them causes premature cleanup
             // when activeGraphics limit is reached, making ripples get stuck.
 
-            // IMPORTANT: Set the graphics to ignore camera scroll
-            // This way we can position it in screen coordinates directly
-            ripple.setScrollFactor(0);
+            // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
+            ripple.setScrollFactor(isInfinityMode ? 1 : 0);
 
             debugLog('[SharedEffects] Drawing ripple at screen position:', { x: centerX, y: centerY });
 
@@ -250,6 +266,7 @@ export class SharedEffects {
                 color: '#fff',
                 stroke: '#000',
                 strokeThickness: 4,
+                backgroundColor: 'transparent', // No background
             },
         );
 
@@ -337,13 +354,23 @@ export class SharedEffects {
             debugLog(`[SharedEffects] Large cascade batching: ${clearedRows.length} → ${processedRows.length} rows (2x sampling)`);
         }
 
+        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+
         processedRows.forEach((row, index) => {
-            const zoneY = (row - this.scene.hiddenRows) * this.scene.blockSize;
+            // In infinity mode, use world coordinates; in standard mode, use screen coordinates
+            let zoneY;
+            if (isInfinityMode) {
+                // World coordinates: row * blockSize (will follow camera)
+                zoneY = row * this.scene.blockSize;
+            } else {
+                // Screen coordinates: (row - hiddenRows) * blockSize
+                zoneY = (row - this.scene.hiddenRows) * this.scene.blockSize;
+            }
 
             debugLog('[SharedEffects] Spawning particles for row', row, {
+                mode: isInfinityMode ? 'infinity' : 'standard',
                 hiddenRows: this.scene.hiddenRows,
                 blockSize: this.scene.blockSize,
-                calculation: `(${row} - ${this.scene.hiddenRows}) * ${this.scene.blockSize}`,
                 zoneY,
                 boardWidth,
             });
@@ -379,9 +406,9 @@ export class SharedEffects {
                 emitter.setDepth(5);
             }
 
-            // Particles ignore camera scroll - they're positioned in screen coordinates
+            // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
             if (emitter.setScrollFactor) {
-                emitter.setScrollFactor(0);
+                emitter.setScrollFactor(isInfinityMode ? 1 : 0);
             }
 
             // More particles for bigger combos, scaled by intensity boost
@@ -617,45 +644,9 @@ export class SharedEffects {
             return;
         }
 
-        const boardWidth = this.scene.cols * this.scene.blockSize;
-        const boardHeight = this.scene.rows * this.scene.blockSize;
-
-        // Create a sweeping gradient wave from top to bottom
-        const waveGraphics = this.scene.add.graphics();
-        waveGraphics.setScrollFactor(0);
-
-        // Color based on cascade count
-        const baseColor = this.getComboTint(cascadeCount);
-        const waveHeight = this.scene.blockSize * 2;
-
-        let waveY = -waveHeight;
-        const targetY = boardHeight + waveHeight;
-        const duration = 400; // Fast sweep
-
-        this.scene.tweens.add({
-            targets: { y: waveY },
-            y: targetY,
-            duration: duration,
-            ease: 'Cubic.easeIn',
-            onUpdate: (tween, target) => {
-                waveGraphics.clear();
-
-                // Draw gradient wave
-                const currentY = target.y;
-
-                // Create a gradient effect using multiple rectangles
-                for (let i = 0; i < 10; i++) {
-                    const alpha = (1 - (i / 10)) * 0.4; // Fade from 0.4 to 0
-                    const offsetY = currentY + (i * (waveHeight / 10));
-
-                    waveGraphics.fillStyle(baseColor, alpha);
-                    waveGraphics.fillRect(0, offsetY, boardWidth, waveHeight / 10);
-                }
-            },
-            onComplete: () => {
-                waveGraphics.destroy();
-            }
-        });
+        // DISABLED: Cascade wave effect removed per user request
+        // The sweeping gradient wave is disabled to reduce visual clutter
+        return;
     }
 
     /**
@@ -669,56 +660,10 @@ export class SharedEffects {
 
         debugLog(`[SharedEffects] MEGA CASCADE x${cascadeCount}!`);
 
-        // Screen flash effect - more intense for higher cascades
-        const flashGraphics = this.scene.add.graphics();
-        flashGraphics.setScrollFactor(0);
-        flashGraphics.setDepth(10); // On top of everything
-
-        const flashColor = this.getComboTint(cascadeCount);
-        const flashIntensity = Math.min(cascadeCount / 10, 3); // Scale up to 3x
-
-        flashGraphics.fillStyle(flashColor, 0.5 * Math.min(flashIntensity, 1.5));
-        flashGraphics.fillRect(0, 0, boardWidth, boardHeight);
-
-        // Pulse the flash
-        this.scene.tweens.add({
-            targets: flashGraphics,
-            alpha: { from: 0.7, to: 0 },
-            duration: 500,
-            ease: 'Cubic.easeOut',
-            onComplete: () => {
-                flashGraphics.destroy();
-            }
-        });
-
-        // Expanding ring effect
-        const ringGraphics = this.scene.add.graphics();
-        ringGraphics.setScrollFactor(0);
-        ringGraphics.setDepth(9);
-
         const centerX = boardWidth / 2;
         const centerY = boardHeight / 2;
 
-        const ringData = { radius: 0, alpha: 0.8, thickness: 8 };
-
-        this.scene.tweens.add({
-            targets: ringData,
-            radius: Math.max(boardWidth, boardHeight) * 1.5,
-            alpha: 0,
-            thickness: 2,
-            duration: 800,
-            ease: 'Cubic.easeOut',
-            onUpdate: () => {
-                ringGraphics.clear();
-                ringGraphics.lineStyle(ringData.thickness, flashColor, ringData.alpha);
-                ringGraphics.strokeCircle(centerX, centerY, ringData.radius);
-            },
-            onComplete: () => {
-                ringGraphics.destroy();
-            }
-        });
-
-        // Display cascade count text
+        // Display cascade count text (no background flash or rings)
         const megaText = this.scene.add.text(
             centerX,
             centerY,
@@ -730,6 +675,7 @@ export class SharedEffects {
                 stroke: '#000000',
                 strokeThickness: 6,
                 fontStyle: 'bold',
+                backgroundColor: 'transparent', // No background
             }
         );
 
@@ -749,15 +695,6 @@ export class SharedEffects {
                 megaText.destroy();
             }
         });
-
-        // Multiple shockwave rings for cascades 15+
-        if (cascadeCount >= 15) {
-            for (let i = 1; i <= 3; i++) {
-                this.scene.time.delayedCall(i * 150, () => {
-                    this.createShockwaveRing(centerX, centerY, flashColor, i);
-                });
-            }
-        }
 
         // Camera shake - more intense for mega cascades
         if (this.scene.shakeCamera) {

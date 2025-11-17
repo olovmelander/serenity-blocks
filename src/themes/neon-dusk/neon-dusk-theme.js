@@ -18,6 +18,10 @@ export default class NeonDuskTheme extends BaseTheme {
         this.MAX_VORTEXES = 3;
         this.MAX_GLITCHES = 15;
 
+        // Pre-calculated color cache for performance
+        this.colorCache = new Map();
+        this.initColorCache();
+
         // Gameplay effects
         this.neonBurstParticles = [];
         this.electricArcs = [];
@@ -90,6 +94,27 @@ export default class NeonDuskTheme extends BaseTheme {
 
         this.currentQuality = 'High';
         this.activePreset = this.qualityPresets['High'];
+    }
+
+    // Initialize color cache to avoid repeated hex conversions
+    initColorCache() {
+        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
+        // Pre-calculate alpha variations for common values
+        for (const color of colors) {
+            for (let alpha = 0; alpha <= 255; alpha += 5) {
+                const key = `${color}-${alpha}`;
+                const hex = alpha.toString(16).padStart(2, '0');
+                this.colorCache.set(key, `${color}${hex}`);
+            }
+        }
+    }
+
+    // Fast color with alpha lookup
+    getColorWithAlpha(color, alpha) {
+        const alphaValue = Math.floor(alpha * 255);
+        const quantized = Math.floor(alphaValue / 5) * 5; // Quantize to nearest 5
+        const key = `${color}-${quantized}`;
+        return this.colorCache.get(key) || `${color}${alphaValue.toString(16).padStart(2, '0')}`;
     }
 
     applyQualityPreset(quality) {
@@ -461,16 +486,20 @@ export default class NeonDuskTheme extends BaseTheme {
     createNeonBurst(lineCount) {
         if (!this.effectsCanvas) return;
 
-        // Enforce particle limit
+        // Enforce particle limit more strictly
         if (this.neonBurstParticles.length >= this.MAX_PARTICLES) {
-            // Remove oldest particles
-            this.neonBurstParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
+            // Remove oldest particles (40% instead of 30%)
+            this.neonBurstParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.4));
         }
 
         const centerX = this.effectsCanvas.width / 2;
         const centerY = this.effectsCanvas.height / 2;
         const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00', '#ff0088'];
-        const burstCount = Math.min(lineCount * 20 + this.comboMultiplier * 15, this.MAX_PARTICLES);
+        // Reduced particle count: was lineCount * 20, now lineCount * 12
+        const burstCount = Math.min(
+            lineCount * 12 + this.comboMultiplier * 8,
+            this.MAX_PARTICLES - this.neonBurstParticles.length
+        );
 
         for (let i = 0; i < burstCount; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -629,7 +658,8 @@ export default class NeonDuskTheme extends BaseTheme {
         for (let i = 0; i < vortexCount; i++) {
             const color = colors[i % colors.length];
             const particles = [];
-            const particleCount = 60; // Reduced from 80
+            // Reduced from 60 to 40 for better performance
+            const particleCount = 40;
 
             for (let j = 0; j < particleCount; j++) {
                 const angle = (j / particleCount) * Math.PI * 2;
@@ -687,87 +717,105 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     updateEffects(delta) {
-        // Update neon burst particles
-        for (let i = this.neonBurstParticles.length - 1; i >= 0; i--) {
+        // Update neon burst particles - batch removal for better performance
+        let writeIndex = 0;
+        for (let i = 0; i < this.neonBurstParticles.length; i++) {
             const p = this.neonBurstParticles[i];
             p.x += p.vx;
             p.y += p.vy;
             p.vy += 0.15; // Gravity
             p.life -= delta / p.maxLife;
 
-            if (p.life <= 0) {
-                this.neonBurstParticles.splice(i, 1);
+            if (p.life > 0) {
+                this.neonBurstParticles[writeIndex++] = p;
             }
         }
+        this.neonBurstParticles.length = writeIndex;
 
-        // Update electric arcs
-        for (let i = this.electricArcs.length - 1; i >= 0; i--) {
+        // Update electric arcs - reduced flicker frequency for performance
+        writeIndex = 0;
+        for (let i = 0; i < this.electricArcs.length; i++) {
             const arc = this.electricArcs[i];
             arc.life -= delta / arc.maxLife;
 
-            // Regenerate segments for flickering effect
-            if (Math.random() > 0.7) {
+            // Regenerate segments less frequently (30% -> 15% chance)
+            if (Math.random() > 0.85) {
                 arc.segments = this.generateArcSegments(
                     arc.startX,
                     arc.startY,
                     arc.endX,
                     arc.endY,
-                    8
+                    6  // Reduced from 8 segments to 6 for performance
                 );
             }
 
-            if (arc.life <= 0) {
-                this.electricArcs.splice(i, 1);
+            if (arc.life > 0) {
+                this.electricArcs[writeIndex++] = arc;
             }
         }
+        this.electricArcs.length = writeIndex;
 
         // Update digital scan lines
-        for (let i = this.digitalScanLines.length - 1; i >= 0; i--) {
+        writeIndex = 0;
+        for (let i = 0; i < this.digitalScanLines.length; i++) {
             const line = this.digitalScanLines[i];
             line.y += line.speed * delta;
             line.life -= delta / line.maxLife;
 
-            if (line.life <= 0) {
-                this.digitalScanLines.splice(i, 1);
+            if (line.life > 0) {
+                this.digitalScanLines[writeIndex++] = line;
             }
         }
+        this.digitalScanLines.length = writeIndex;
 
         // Update hologram rings
-        for (let i = this.hologramRings.length - 1; i >= 0; i--) {
+        writeIndex = 0;
+        for (let i = 0; i < this.hologramRings.length; i++) {
             const ring = this.hologramRings[i];
             ring.radius += (ring.maxRadius / ring.maxLife) * delta;
             ring.life -= delta / ring.maxLife;
 
-            if (ring.life <= 0) {
-                this.hologramRings.splice(i, 1);
+            if (ring.life > 0) {
+                this.hologramRings[writeIndex++] = ring;
             }
         }
+        this.hologramRings.length = writeIndex;
 
-        // Update glitch pulses
-        for (let i = this.glitchPulses.length - 1; i >= 0; i--) {
+        // Update glitch pulses - reduce offset recalculation frequency
+        writeIndex = 0;
+        for (let i = 0; i < this.glitchPulses.length; i++) {
             const pulse = this.glitchPulses[i];
             pulse.life -= delta / pulse.maxLife;
-            pulse.offsetX = (Math.random() - 0.5) * 20;
+            // Only update offset 50% of the time for performance
+            if (Math.random() > 0.5) {
+                pulse.offsetX = (Math.random() - 0.5) * 20;
+            }
 
-            if (pulse.life <= 0) {
-                this.glitchPulses.splice(i, 1);
+            if (pulse.life > 0) {
+                this.glitchPulses[writeIndex++] = pulse;
             }
         }
+        this.glitchPulses.length = writeIndex;
 
         // Update cyber vortexes
-        for (let i = this.cyberVortexes.length - 1; i >= 0; i--) {
+        writeIndex = 0;
+        for (let i = 0; i < this.cyberVortexes.length; i++) {
             const vortex = this.cyberVortexes[i];
             vortex.life -= delta / vortex.maxLife;
 
-            vortex.particles.forEach((p) => {
+            // Optimize particle updates
+            const particles = vortex.particles;
+            for (let j = 0; j < particles.length; j++) {
+                const p = particles[j];
                 p.angle += p.angularSpeed * delta;
                 p.radius += p.radiusSpeed * delta;
-            });
+            }
 
-            if (vortex.life <= 0) {
-                this.cyberVortexes.splice(i, 1);
+            if (vortex.life > 0) {
+                this.cyberVortexes[writeIndex++] = vortex;
             }
         }
+        this.cyberVortexes.length = writeIndex;
     }
 
     renderEffects() {
@@ -780,10 +828,12 @@ export default class NeonDuskTheme extends BaseTheme {
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
+        // Batch render by effect type to reduce state changes
         // Render digital scan lines
-        this.digitalScanLines.forEach((line) => {
+        for (let i = 0; i < this.digitalScanLines.length; i++) {
+            const line = this.digitalScanLines[i];
             const alpha = line.life * line.opacity;
-            ctx.strokeStyle = `${line.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.strokeStyle = this.getColorWithAlpha(line.color, alpha);
             ctx.lineWidth = line.height;
             ctx.shadowBlur = 15;
             ctx.shadowColor = line.color;
@@ -791,70 +841,88 @@ export default class NeonDuskTheme extends BaseTheme {
             ctx.moveTo(0, line.y);
             ctx.lineTo(width, line.y);
             ctx.stroke();
-        });
+        }
 
         // Render hologram rings
-        this.hologramRings.forEach((ring) => {
-            const alpha = ring.life;
-            ctx.strokeStyle = `${ring.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+        for (let i = 0; i < this.hologramRings.length; i++) {
+            const ring = this.hologramRings[i];
+            ctx.strokeStyle = this.getColorWithAlpha(ring.color, ring.life);
             ctx.lineWidth = ring.width;
             ctx.shadowBlur = 20;
             ctx.shadowColor = ring.color;
             ctx.beginPath();
             ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
             ctx.stroke();
-        });
+        }
 
-        // Render neon burst particles
-        this.neonBurstParticles.forEach((p) => {
-            const alpha = p.life;
-            ctx.fillStyle = `${p.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
-            ctx.shadowBlur = p.glow;
-            ctx.shadowColor = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
+        // Render neon burst particles - group by color to reduce state changes
+        const particlesByColor = {};
+        for (let i = 0; i < this.neonBurstParticles.length; i++) {
+            const p = this.neonBurstParticles[i];
+            if (!particlesByColor[p.color]) {
+                particlesByColor[p.color] = [];
+            }
+            particlesByColor[p.color].push(p);
+        }
+
+        for (const color in particlesByColor) {
+            const particles = particlesByColor[color];
+            ctx.shadowColor = color;
+
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                ctx.fillStyle = this.getColorWithAlpha(p.color, p.life);
+                ctx.shadowBlur = p.glow;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
 
         // Render electric arcs
-        this.electricArcs.forEach((arc) => {
-            const alpha = arc.life;
-            ctx.strokeStyle = `${arc.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+        for (let i = 0; i < this.electricArcs.length; i++) {
+            const arc = this.electricArcs[i];
+            ctx.strokeStyle = this.getColorWithAlpha(arc.color, arc.life);
             ctx.lineWidth = arc.width;
             ctx.shadowBlur = 25;
             ctx.shadowColor = arc.color;
             ctx.beginPath();
             ctx.moveTo(arc.segments[0].x, arc.segments[0].y);
-            for (let i = 1; i < arc.segments.length; i++) {
-                ctx.lineTo(arc.segments[i].x, arc.segments[i].y);
+            for (let j = 1; j < arc.segments.length; j++) {
+                ctx.lineTo(arc.segments[j].x, arc.segments[j].y);
             }
             ctx.stroke();
-        });
+        }
 
         // Render glitch pulses
-        this.glitchPulses.forEach((pulse) => {
+        for (let i = 0; i < this.glitchPulses.length; i++) {
+            const pulse = this.glitchPulses[i];
             const alpha = pulse.life * 0.7;
-            ctx.fillStyle = `${pulse.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.fillStyle = this.getColorWithAlpha(pulse.color, alpha);
             ctx.shadowBlur = 10;
             ctx.shadowColor = pulse.color;
             ctx.fillRect(pulse.x + pulse.offsetX, pulse.y, pulse.width, pulse.height);
-        });
+        }
 
-        // Render cyber vortexes
-        this.cyberVortexes.forEach((vortex) => {
-            const alpha = vortex.life;
-            ctx.fillStyle = `${vortex.color}${Math.floor(alpha * 200).toString(16).padStart(2, '0')}`;
+        // Render cyber vortexes - optimized to reduce arc() calls
+        for (let i = 0; i < this.cyberVortexes.length; i++) {
+            const vortex = this.cyberVortexes[i];
+            const alpha = vortex.life * 0.78; // 200/255 ≈ 0.78
+            ctx.fillStyle = this.getColorWithAlpha(vortex.color, alpha);
             ctx.shadowBlur = 15;
             ctx.shadowColor = vortex.color;
 
-            vortex.particles.forEach((p) => {
+            // Use Path2D for better performance with many particles
+            const particles = vortex.particles;
+            for (let j = 0; j < particles.length; j++) {
+                const p = particles[j];
                 const x = vortex.x + Math.cos(p.angle) * p.radius;
                 const y = vortex.y + Math.sin(p.angle) * p.radius;
                 ctx.beginPath();
                 ctx.arc(x, y, 2, 0, Math.PI * 2);
                 ctx.fill();
-            });
-        });
+            }
+        }
 
         // Reset shadow
         ctx.shadowBlur = 0;
