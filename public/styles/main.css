@@ -2291,11 +2291,23 @@ body {
 }
 
 /* --- Sakura Twilight Theme --- */
+@property --lantern-shift {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
+}
+
+@property --lantern-scale {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 1;
+}
+
 #sakura-twilight-theme {
     background: linear-gradient(to bottom,
-        #6B4E71 0%,      /* Deep purple-pink at top */
-        #54465E 25%,     /* Darker purple transition */
-        #3D3449 50%,     /* Deep twilight mid */
+        #7A5578 0%,      /* More pink-purple at top */
+        #5D4661 25%,     /* Darker pink-purple transition */
+        #443A4D 50%,     /* Deep twilight mid with pink hint */
         #2A2438 75%,     /* Very dark purple */
         #1A1625 100%);   /* Almost black at bottom */
     overflow: hidden;
@@ -2307,15 +2319,15 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at 30% 20%, rgba(255, 150, 180, 0.15) 0%, transparent 50%);
+    background: radial-gradient(ellipse at 30% 20%, rgba(255, 150, 180, 0.25) 0%, rgba(255, 120, 160, 0.08) 40%, transparent 60%);
     z-index: 1;
     animation: sunset-glow 15s ease-in-out infinite alternate;
 }
 
 @keyframes sunset-glow {
-    0% { opacity: 0.3; }
-    50% { opacity: 0.5; }
-    100% { opacity: 0.3; }
+    0% { opacity: 0.4; }
+    50% { opacity: 0.6; }
+    100% { opacity: 0.4; }
 }
 
 /* Sakura tree layers with parallax */
@@ -2381,8 +2393,11 @@ body {
     box-shadow:
         0 0 15px 5px rgba(255, 179, 71, 0.6),
         inset 0 -3px 8px rgba(0, 0, 0, 0.2);
-    animation: lantern-float var(--duration, 10s) ease-in-out infinite;
-    animation-delay: var(--delay, 0s);
+    --lantern-shift: 0px;
+    --lantern-scale: 1;
+    transform: translateX(var(--lantern-shift)) scale(var(--lantern-scale));
+    transition: filter 0.5s ease-out, transform 0.5s ease-out;
+    will-change: transform, filter;
 }
 
 .sakura-lantern::before {
@@ -2413,6 +2428,21 @@ body {
     25% { transform: translateY(-10px) translateX(5px); }
     50% { transform: translateY(-5px) translateX(-5px); }
     75% { transform: translateY(-12px) translateX(3px); }
+}
+
+@keyframes sakura-lantern-parallax-back {
+    from { --lantern-shift: 0px; }
+    to { --lantern-shift: 2048px; }
+}
+
+@keyframes sakura-lantern-parallax-mid {
+    from { --lantern-shift: 0px; }
+    to { --lantern-shift: 2048px; }
+}
+
+@keyframes sakura-lantern-parallax-front {
+    from { --lantern-shift: 0px; }
+    to { --lantern-shift: 2048px; }
 }
 
 /* Flying birds */
@@ -2463,6 +2493,39 @@ body {
 @keyframes wing-flap {
     0%, 100% { transform: rotateX(0deg); }
     50% { transform: rotateX(60deg); }
+}
+
+/* Glowing mysterious eyes in the forest */
+#sakura-eyes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+}
+
+.sakura-eye {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: radial-gradient(circle, #FFE66D 0%, #FFB347 50%, transparent 100%);
+    border-radius: 50%;
+    box-shadow: 0 0 8px 2px rgba(255, 230, 109, 0.6);
+    animation: eye-twinkle var(--twinkle-duration, 3s) ease-in-out infinite;
+    animation-delay: var(--twinkle-delay, 0s);
+    opacity: 0;
+}
+
+@keyframes eye-twinkle {
+    0%, 100% { opacity: 0; }
+    5% { opacity: 0.9; }
+    10% { opacity: 0; }
+    15% { opacity: 0.9; }
+    20%, 80% { opacity: 0.7; }
+    85% { opacity: 0; }
+    90% { opacity: 0.8; }
+    95% { opacity: 0; }
 }
 
 /* Falling cherry blossom petals */
