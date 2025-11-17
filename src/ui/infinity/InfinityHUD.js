@@ -361,9 +361,6 @@ export class InfinityHUD {
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: linear-gradient(135deg, rgba(255, 100, 100, 0.95), rgba(255, 200, 100, 0.95));
-            border: 3px solid rgba(255, 255, 255, 0.9);
-            border-radius: 16px;
             padding: 24px 40px;
             font-family: 'Orbitron', monospace;
             font-size: 48px;
@@ -373,9 +370,6 @@ export class InfinityHUD {
                 0 0 20px rgba(255, 100, 100, 1.0),
                 0 0 40px rgba(255, 100, 100, 0.8),
                 2px 2px 4px rgba(0, 0, 0, 0.8);
-            box-shadow:
-                0 20px 60px rgba(255, 100, 100, 0.6),
-                inset 0 0 30px rgba(255, 255, 255, 0.3);
             z-index: 10000;
             pointer-events: none;
             display: none;
@@ -418,18 +412,14 @@ export class InfinityHUD {
             this.cascadeCounter.textContent = `CASCADE x${cascadeCount}`;
             this.cascadeCounter.style.display = 'block';
 
-            // Update colors based on cascade count
+            // Update font size based on cascade count
             if (cascadeCount >= 20) {
-                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(255, 50, 255, 0.95), rgba(100, 50, 255, 0.95))';
                 this.cascadeCounter.style.fontSize = '56px';
             } else if (cascadeCount >= 10) {
-                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(255, 100, 50, 0.95), rgba(255, 200, 50, 0.95))';
                 this.cascadeCounter.style.fontSize = '52px';
             } else if (cascadeCount >= 5) {
-                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(255, 150, 100, 0.95), rgba(255, 220, 100, 0.95))';
                 this.cascadeCounter.style.fontSize = '48px';
             } else {
-                this.cascadeCounter.style.background = 'linear-gradient(135deg, rgba(100, 200, 255, 0.95), rgba(100, 255, 200, 0.95))';
                 this.cascadeCounter.style.fontSize = '48px';
             }
 

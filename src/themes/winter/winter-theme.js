@@ -10,9 +10,9 @@ export default class WinterTheme extends BaseTheme {
         this.snowParticles = [];
         this.windForce = 0;
         this.targetWindForce = 0;
-        this.nextWindChange = 600; // Start calm, first wind change after 10 seconds
+        this.nextWindChange = 1800; // Start calm, first wind change after 10 seconds
         this.gustIntensity = 0;
-        this.nextGust = 1800; // Start calm, first gust after 30 seconds
+        this.nextGust = 3600; // Start calm, first gust after 30 seconds
         this.gustDuration = 0;
         this.time = 0;
         this.maxParticles = 800; // Reduced from 1200
@@ -34,6 +34,7 @@ export default class WinterTheme extends BaseTheme {
         this.comboVortexes = [];
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+        this.comboWindTimer = 0;
 
         // Performance optimization: Cache gradients and reusable objects
         this.gradientCache = {
@@ -468,10 +469,23 @@ export default class WinterTheme extends BaseTheme {
         }
 
         // Trigger wind gust based on line count
-        const gustBonus = lineCount * 2 + comboCount;
-        this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (8 + gustBonus);
-        this.gustIntensity = Math.min(0.5 + lineCount * 0.15, 1.0);
-        this.gustDuration = 40 + lineCount * 20;
+        if (comboCount > 0) {
+            const gustBonus = lineCount * 2 + comboCount;
+            this.comboWindTimer = Math.max(this.comboWindTimer, 240 + comboCount * 60); // Only keep wind alive during combos
+            this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (8 + gustBonus);
+            this.gustIntensity = Math.min(0.5 + lineCount * 0.15, 1.0);
+            this.gustDuration = 40 + lineCount * 20;
+            this.nextWindChange = this.time + Math.random() * 240 + 240; // Rare follow-up shifts while combo wind is active
+            this.nextGust = this.time + Math.random() * 480 + 360; // Rare secondary gusts tied to combos
+        } else {
+            // Calm down when not in a combo streak
+            this.comboWindTimer = 0;
+            this.targetWindForce = 0;
+            this.gustIntensity = 0;
+            this.gustDuration = 0;
+            this.nextWindChange = Infinity;
+            this.nextGust = Infinity;
+        }
 
         // Screen shake based on combo
         if (comboCount >= 3) {
@@ -688,54 +702,70 @@ export default class WinterTheme extends BaseTheme {
             }
         }
 
-        // Dynamic wind system with powerful gusts (amplified by combos)
-        if (this.time >= this.nextWindChange) {
-            this.targetWindForce = (Math.random() - 0.5) * 8 * this.comboMultiplier; // Affected by combo
-            this.nextWindChange = this.time + Math.random() * 150 + 100;
-        }
+        // Dynamic wind now driven only by combo activity
+        const comboWindActive = this.comboWindTimer > 0 || this.gustDuration > 0;
 
-        // Wind gust system (more frequent and MORE intense with combos)
-        if (this.time >= this.nextGust && this.gustDuration <= 0) {
-            const gustStrength = (Math.random() * 8 + 6) * this.comboMultiplier; // Combo makes it stronger
-            const gustDirection = Math.random() < 0.5 ? -1 : 1;
-            this.targetWindForce = gustDirection * gustStrength;
-            this.gustIntensity = 1.0;
-            this.gustDuration = Math.random() * 80 + 50;
-            this.nextGust = this.time + Math.random() * 250 + 150;
-
-            // SCREEN SHAKE during powerful gusts
-            if (gustStrength > 10) {
-                this.cameraShake.intensity = Math.min(gustStrength * 0.8, 12);
+        if (comboWindActive) {
+            if (this.comboWindTimer > 0) {
+                this.comboWindTimer -= 1;
             }
 
-            // Spawn horizontal streak particles during strong gusts - using quality preset count
-            if (gustStrength > 8) {
-                for (let i = 0; i < this.activePreset.streakParticlesCount; i++) {
-                    this.streakParticles.push(this.createStreakParticle());
-                }
+            if (this.time >= this.nextWindChange && this.comboWindTimer > 0) {
+                this.targetWindForce = (Math.random() - 0.5) * 6 * this.comboMultiplier; // Small, rare shifts
+                this.nextWindChange = this.time + Math.random() * 240 + 240; // ~4-8 seconds between shifts
             }
 
-            // Spawn vortex particles during strong gusts - using quality preset count
-            if (gustStrength > 7) {
-                for (let i = 0; i < this.activePreset.vortexParticlesCount; i++) {
-                    const x = Math.random() * this.canvas.width;
-                    const y = Math.random() * this.canvas.height * 0.7;
-                    this.vortexParticles.push(this.createVortexParticle(x, y));
-                }
-            }
+            if (this.time >= this.nextGust && this.gustDuration <= 0 && this.comboWindTimer > 0) {
+                const gustStrength = (Math.random() * 4 + 5) * this.comboMultiplier;
+                const gustDirection = Math.random() < 0.5 ? -1 : 1;
+                this.targetWindForce = gustDirection * gustStrength;
+                this.gustIntensity = 0.8;
+                this.gustDuration = Math.random() * 50 + 30;
+                this.nextGust = this.time + Math.random() * 480 + 360; // Far less frequent follow-up gusts
 
-            // Create spiral systems during extreme gusts - using quality preset count
-            if (gustStrength > 11) {
-                for (let i = 0; i < this.activePreset.spiralSystemsCount; i++) {
-                    const spiral = this.createSpiralSystem(
-                        Math.random() * this.canvas.width,
-                        Math.random() * this.canvas.height * 0.6
-                    );
-                    this.spiralSystems.push(spiral);
+                // SCREEN SHAKE during powerful gusts
+                if (gustStrength > 10) {
+                    this.cameraShake.intensity = Math.min(gustStrength * 0.8, 12);
                 }
 
-                // Distortion waves disabled - vertical pillar flashes removed for comfort
+                // Spawn horizontal streak particles during strong gusts - using quality preset count
+                if (gustStrength > 8) {
+                    for (let i = 0; i < this.activePreset.streakParticlesCount; i++) {
+                        this.streakParticles.push(this.createStreakParticle());
+                    }
+                }
+
+                // Spawn vortex particles during strong gusts - using quality preset count
+                if (gustStrength > 7) {
+                    for (let i = 0; i < this.activePreset.vortexParticlesCount; i++) {
+                        const x = Math.random() * this.canvas.width;
+                        const y = Math.random() * this.canvas.height * 0.7;
+                        this.vortexParticles.push(this.createVortexParticle(x, y));
+                    }
+                }
+
+                // Create spiral systems during extreme gusts - using quality preset count
+                if (gustStrength > 11) {
+                    for (let i = 0; i < this.activePreset.spiralSystemsCount; i++) {
+                        const spiral = this.createSpiralSystem(
+                            Math.random() * this.canvas.width,
+                            Math.random() * this.canvas.height * 0.6
+                        );
+                        this.spiralSystems.push(spiral);
+                    }
+
+                    // Distortion waves disabled - vertical pillar flashes removed for comfort
+                }
             }
+        } else {
+            // No combo activity: quickly return to calm
+            this.targetWindForce *= 0.9;
+            this.windForce *= 0.9;
+            if (Math.abs(this.targetWindForce) < 0.05) {
+                this.targetWindForce = 0;
+            }
+            this.nextWindChange = Infinity;
+            this.nextGust = Infinity;
         }
 
         // Fade gust intensity
