@@ -482,6 +482,7 @@ class SerenityBlocks {
             render: {
                 antialias: true,    // Smooth edges for blocks
                 pixelArt: false,    // Not pixel art style
+                powerPreference: 'high-performance', // Prefer discrete GPU (e.g., NVIDIA over integrated)
             },
             
             // Post-boot callback for scene initialization

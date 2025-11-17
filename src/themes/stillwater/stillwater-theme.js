@@ -25,42 +25,73 @@ export default class StillwaterTheme extends BaseTheme {
         this.foregroundTreesContainer = null;
         this.waterContainer = null; // For water horizon glow
 
-        // Performance limits
+        // Performance limits - optimized defaults
         this.MAX_RIPPLES = 6;
         this.MAX_WISPS = 4;
         this.MAX_SPARKLES = 120;
         this.MAX_FIREFLY_SWARMS = 3;
         this.MAX_LIGHT_BEAMS = 5;
 
-        // Graphics quality presets
+        // Performance optimization flags
+        this.useSimplifiedGlow = true;
+        this.batchRender = true;
+        this.frameCounter = 0;
+        this.lastTreeGlowUpdate = 0;
+
+        // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
             'Low': {
-                staticWaterRipples: 4,
+                staticWaterRipples: 3,
                 distantTreeClusters: 3,
-                midTrees: 6,
+                midTrees: 5,
                 closeTrees: 3,
+                foregroundTrees: 3,
+                rocks: 6,
+                dustMotes: 20,
+                fireflies: 6,
+                mysticalOrbs: 3,
+                lightRays: 2,
+                maxRipples: 3,
+                maxWisps: 2,
+                maxSparkles: 40,
+                maxFireflySwarms: 1,
+                maxLightBeams: 2,
+                wispPoints: 8,
+                glowIntensity: 0.5,
+                useShadowBlur: false,
+                useDropShadow: false,
+                glowUpdateInterval: 3 // Update every 3 frames
+            },
+            'Medium': {
+                staticWaterRipples: 5,
+                distantTreeClusters: 4,
+                midTrees: 7,
+                closeTrees: 4,
                 foregroundTrees: 4,
-                rocks: 8,
-                dustMotes: 25,
-                fireflies: 8,
-                mysticalOrbs: 4,
+                rocks: 10,
+                dustMotes: 30,
+                fireflies: 10,
+                mysticalOrbs: 5,
                 lightRays: 3,
                 maxRipples: 4,
-                maxWisps: 2,
-                maxSparkles: 60,
+                maxWisps: 3,
+                maxSparkles: 70,
                 maxFireflySwarms: 2,
                 maxLightBeams: 3,
                 wispPoints: 12,
-                glowIntensity: 0.7
+                glowIntensity: 0.7,
+                useShadowBlur: false,
+                useDropShadow: true,
+                glowUpdateInterval: 2 // Update every 2 frames
             },
-            'Medium': {
+            'High': {
                 staticWaterRipples: 6,
                 distantTreeClusters: 4,
-                midTrees: 8,
-                closeTrees: 4,
+                midTrees: 9,
+                closeTrees: 5,
                 foregroundTrees: 5,
                 rocks: 12,
-                dustMotes: 35,
+                dustMotes: 40,
                 fireflies: 12,
                 mysticalOrbs: 6,
                 lightRays: 4,
@@ -69,51 +100,38 @@ export default class StillwaterTheme extends BaseTheme {
                 maxSparkles: 90,
                 maxFireflySwarms: 2,
                 maxLightBeams: 4,
-                wispPoints: 16,
-                glowIntensity: 0.85
-            },
-            'High': {
-                staticWaterRipples: 8,
-                distantTreeClusters: 4,
-                midTrees: 10,
-                closeTrees: 5,
-                foregroundTrees: 6,
-                rocks: 15,
-                dustMotes: 50,
-                fireflies: 15,
-                mysticalOrbs: 8,
-                lightRays: 5,
-                maxRipples: 6,
-                maxWisps: 4,
-                maxSparkles: 120,
-                maxFireflySwarms: 3,
-                maxLightBeams: 5,
-                wispPoints: 20,
-                glowIntensity: 1.0
+                wispPoints: 15,
+                glowIntensity: 0.9,
+                useShadowBlur: true,
+                useDropShadow: true,
+                glowUpdateInterval: 1 // Update every frame
             },
             'Ultra': {
-                staticWaterRipples: 12,
+                staticWaterRipples: 10,
                 distantTreeClusters: 5,
-                midTrees: 15,
-                closeTrees: 7,
-                foregroundTrees: 8,
-                rocks: 25,
-                dustMotes: 80,
-                fireflies: 25,
-                mysticalOrbs: 12,
-                lightRays: 8,
-                maxRipples: 10,
-                maxWisps: 6,
-                maxSparkles: 200,
-                maxFireflySwarms: 5,
-                maxLightBeams: 8,
-                wispPoints: 30,
-                glowIntensity: 1.2
+                midTrees: 12,
+                closeTrees: 6,
+                foregroundTrees: 7,
+                rocks: 18,
+                dustMotes: 60,
+                fireflies: 18,
+                mysticalOrbs: 10,
+                lightRays: 6,
+                maxRipples: 8,
+                maxWisps: 5,
+                maxSparkles: 150,
+                maxFireflySwarms: 4,
+                maxLightBeams: 6,
+                wispPoints: 25,
+                glowIntensity: 1.2,
+                useShadowBlur: true,
+                useDropShadow: true,
+                glowUpdateInterval: 1 // Update every frame
             }
         };
 
-        this.currentQuality = 'High'; // Default
-        this.activePreset = this.qualityPresets['High'];
+        this.currentQuality = 'Medium'; // Default to Medium for better performance
+        this.activePreset = this.qualityPresets['Medium'];
     }
 
     /**
@@ -382,11 +400,22 @@ export default class StillwaterTheme extends BaseTheme {
     }
 
     updateTreeGlow() {
+        // PERFORMANCE: Only update tree glow based on quality interval
+        if (this.frameCounter % this.activePreset.glowUpdateInterval !== 0) {
+            return;
+        }
+
+        // Only apply filters if drop-shadow is enabled in quality preset
+        if (!this.activePreset.useDropShadow) {
+            return;
+        }
+
         // Apply subtle mystical glow to tree layers with increasing intensity from back to front
+        const glowActive = this.treeGlowIntensity > 0.05; // Threshold to avoid micro-updates
 
         // Distant trees - Very subtle lavender glow (most subtle)
         if (this.distantTreesContainer) {
-            if (this.treeGlowIntensity > 0) {
+            if (glowActive) {
                 const glowBlur = this.treeGlowIntensity * 6 * this.activePreset.glowIntensity;
                 this.distantTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #b39ddb)`;
             } else {
@@ -396,7 +425,7 @@ export default class StillwaterTheme extends BaseTheme {
 
         // Mid trees - Soft cyan glow (subtle)
         if (this.midTreesContainer) {
-            if (this.treeGlowIntensity > 0) {
+            if (glowActive) {
                 const glowBlur = this.treeGlowIntensity * 8 * this.activePreset.glowIntensity;
                 this.midTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #5fc3c1)`;
             } else {
@@ -404,21 +433,21 @@ export default class StillwaterTheme extends BaseTheme {
             }
         }
 
-        // Close trees - Pale yellow glow (moderate)
+        // Close trees - Pale yellow glow (moderate) - single drop-shadow for performance
         if (this.closeTreesContainer) {
-            if (this.treeGlowIntensity > 0) {
+            if (glowActive) {
                 const glowBlur = this.treeGlowIntensity * 10 * this.activePreset.glowIntensity;
-                this.closeTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #fff9c4) drop-shadow(0 0 ${glowBlur * 0.5}px #fff9c4)`;
+                this.closeTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #fff9c4)`;
             } else {
                 this.closeTreesContainer.style.filter = '';
             }
         }
 
-        // Foreground trees - Brighter cyan-blue glow (most visible)
+        // Foreground trees - Brighter cyan-blue glow (most visible) - single drop-shadow for performance
         if (this.foregroundTreesContainer) {
-            if (this.treeGlowIntensity > 0) {
+            if (glowActive) {
                 const glowBlur = this.treeGlowIntensity * 12 * this.activePreset.glowIntensity;
-                this.foregroundTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #80deea) drop-shadow(0 0 ${glowBlur * 0.5}px #80deea)`;
+                this.foregroundTreesContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #80deea)`;
             } else {
                 this.foregroundTreesContainer.style.filter = '';
             }
@@ -426,12 +455,23 @@ export default class StillwaterTheme extends BaseTheme {
     }
 
     updateWaterGlow() {
-        // Apply mystical glow to water horizon (same as tree glow effect)
+        // PERFORMANCE: Only update water glow based on quality interval
+        if (this.frameCounter % this.activePreset.glowUpdateInterval !== 0) {
+            return;
+        }
+
+        // Only apply filters if drop-shadow is enabled in quality preset
+        if (!this.activePreset.useDropShadow) {
+            return;
+        }
+
+        // Apply mystical glow to water horizon
         if (this.waterContainer) {
-            if (this.treeGlowIntensity > 0) {
+            const glowActive = this.treeGlowIntensity > 0.05;
+            if (glowActive) {
                 const glowBlur = this.treeGlowIntensity * 10 * this.activePreset.glowIntensity;
-                // Cyan-teal glow for water surface
-                this.waterContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #5fc3c1) drop-shadow(0 0 ${glowBlur * 0.7}px #80deea)`;
+                // Single drop-shadow for performance (removed double shadow)
+                this.waterContainer.style.filter = `drop-shadow(0 0 ${glowBlur}px #5fc3c1)`;
             } else {
                 this.waterContainer.style.filter = '';
             }
@@ -588,11 +628,11 @@ export default class StillwaterTheme extends BaseTheme {
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
 
-        // Create flowing wisp trail
+        // Create flowing wisp trail with point count based on quality
         const startX = Math.random() * width;
         const startY = height * 0.3 + Math.random() * height * 0.4;
         const points = [];
-        const pointCount = 20;
+        const pointCount = this.activePreset.wispPoints; // Use quality-based point count
 
         for (let i = 0; i < pointCount; i++) {
             const t = i / pointCount;
@@ -785,18 +825,20 @@ export default class StillwaterTheme extends BaseTheme {
         const ctx = this.effectsCtx;
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
+        const useShadowBlur = this.activePreset.useShadowBlur;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
-        // Render light beams
+        // Render light beams (optimized - no save/restore)
         this.lightBeams.forEach(beam => {
             const alpha = beam.life * beam.opacity;
-            ctx.save();
+
+            ctx.globalAlpha = alpha;
             ctx.translate(beam.x, beam.y);
             ctx.rotate((beam.angle * Math.PI) / 180);
-            ctx.globalAlpha = alpha;
 
+            // Create gradient (could be cached but beams are infrequent)
             const gradient = ctx.createLinearGradient(0, 0, 0, beam.height);
             gradient.addColorStop(0, `${beam.color}00`);
             gradient.addColorStop(0.3, beam.color);
@@ -805,37 +847,55 @@ export default class StillwaterTheme extends BaseTheme {
 
             ctx.fillStyle = gradient;
             ctx.fillRect(-beam.width / 2, 0, beam.width, beam.height);
-            ctx.restore();
+
+            // Reset transform
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.globalAlpha = 1;
         });
 
-        // Render water ripples (elliptical for perspective view)
+        // Render water ripples (elliptical for perspective view) - optimized
         this.waterRipples.forEach(ripple => {
             const alpha = ripple.life * 0.6;
-            ctx.save();
+
             ctx.globalAlpha = alpha;
             ctx.strokeStyle = ripple.color;
             ctx.lineWidth = ripple.width;
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = ripple.color;
+
+            // Only use shadow blur if quality allows
+            if (useShadowBlur) {
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = ripple.color;
+            }
+
             ctx.beginPath();
             // Draw ellipse to simulate viewing water surface at an angle
-            // radiusX is full, radiusY is compressed to create perspective
             ctx.ellipse(ripple.x, ripple.y, ripple.radius, ripple.radius * 0.3, 0, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.restore();
+
+            // Reset shadow blur
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
 
-        // Render mystical wisps
+        // Reset alpha
+        ctx.globalAlpha = 1;
+
+        // Render mystical wisps - optimized
         this.mysticalWisps.forEach(wisp => {
             const alpha = wisp.life * 0.5;
-            ctx.save();
+
             ctx.globalAlpha = alpha;
             ctx.strokeStyle = wisp.color;
             ctx.lineWidth = 3;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = wisp.color;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
+
+            // Only use shadow blur if quality allows
+            if (useShadowBlur) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = wisp.color;
+            }
 
             ctx.beginPath();
             wisp.points.forEach((p, idx) => {
@@ -846,49 +906,82 @@ export default class StillwaterTheme extends BaseTheme {
                 }
             });
             ctx.stroke();
-            ctx.restore();
+
+            // Reset shadow blur
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
 
-        // Render tranquil sparkles
+        // Reset alpha
+        ctx.globalAlpha = 1;
+
+        // Render tranquil sparkles - optimized batch rendering
         this.tranquilSparkles.forEach(sparkle => {
             const twinkleAlpha = (Math.sin(sparkle.twinkle) + 1) / 2;
             const alpha = sparkle.life * twinkleAlpha * 0.8;
-            ctx.save();
+
             ctx.globalAlpha = alpha;
             ctx.fillStyle = sparkle.color;
-            ctx.shadowBlur = 6;
-            ctx.shadowColor = sparkle.color;
+
+            // Only use shadow blur if quality allows
+            if (useShadowBlur) {
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = sparkle.color;
+            }
+
             ctx.beginPath();
             ctx.arc(sparkle.x, sparkle.y, sparkle.size, 0, Math.PI * 2);
             ctx.fill();
-            ctx.restore();
+
+            // Reset shadow blur
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
 
-        // Render firefly swarms
+        // Reset alpha
+        ctx.globalAlpha = 1;
+
+        // Render firefly swarms - optimized batch rendering
         this.fireflySwarms.forEach(swarm => {
+            // Set shadow blur once per swarm if quality allows
+            if (useShadowBlur) {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = swarm.color;
+            }
+
+            ctx.fillStyle = swarm.color;
+
             swarm.fireflies.forEach(f => {
                 const blinkAlpha = (Math.sin(f.blink) + 1) / 2;
                 const alpha = swarm.life * blinkAlpha * 0.9;
-                ctx.save();
+
                 ctx.globalAlpha = alpha;
-                ctx.fillStyle = swarm.color;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = swarm.color;
                 ctx.beginPath();
                 ctx.arc(f.x, f.y, 2.5, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.restore();
             });
+
+            // Reset shadow blur after swarm
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
+
+        // Final reset
+        ctx.globalAlpha = 1;
     }
 
     animate() {
         if (!this.isActive) return;
 
-        // Update tree glow for combo effects
+        this.frameCounter++;
+
+        // Update tree glow for combo effects (throttled by quality preset)
         this.updateTreeGlow();
 
-        // Update water horizon glow
+        // Update water horizon glow (throttled by quality preset)
         this.updateWaterGlow();
 
         // Update and render combo effects
