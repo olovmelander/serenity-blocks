@@ -8936,6 +8936,17 @@ body {
     pointer-events: none;
 }
 
+.lunara-combo-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 11;
+    pointer-events: none;
+    overflow: hidden;
+}
+
 .lunara-star {
     position: absolute;
     background: white;
@@ -8946,9 +8957,43 @@ body {
     will-change: opacity, transform;
 }
 
+.lunara-shooting-star {
+    position: absolute;
+    top: var(--start-y, 20%);
+    left: var(--start-x, 50%);
+    width: 220px;
+    height: 3px;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0),
+        rgba(255, 255, 255, 0.9),
+        rgba(215, 190, 255, 0.85));
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(var(--angle, -18deg));
+    filter: drop-shadow(0 0 10px rgba(230, 210, 255, 0.95)) drop-shadow(0 0 18px rgba(194, 154, 255, 0.5));
+    animation: lunara-shooting-star 2.1s ease-out forwards;
+    mix-blend-mode: screen;
+    z-index: 12;
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+
 @keyframes lunara-star-twinkle {
     0%, 100% { opacity: 0.3; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes lunara-shooting-star {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 0, 0) rotate(var(--angle, -18deg)) scaleX(0.6);
+    }
+    12% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(var(--distance-x, -320px), var(--distance-y, 140px), 0) rotate(var(--angle, -18deg)) scaleX(1);
+    }
 }
 
 #lunara-aurora {
@@ -8957,6 +9002,7 @@ body {
     width: 100%; height: 50%;
     z-index: 3;
     pointer-events: none;
+    display: none; /* Aurora disabled by request */
 }
 
 .lunara-aurora {
