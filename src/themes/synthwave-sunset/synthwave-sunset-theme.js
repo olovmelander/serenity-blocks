@@ -174,41 +174,49 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     async createScene() {
-        const container = this.getContainer('synthwave-sunset-theme');
+        try {
+            const container = this.getContainer('synthwave-sunset-theme');
+            if (!container) {
+                console.error('Synthwave Sunset: Main theme container not found');
+                return;
+            }
 
-        // Create sky gradient background (handled by CSS)
-        const sky = this.getContainer('synthwave-sunset-sky');
+            // Create sky gradient background (handled by CSS)
+            const sky = this.getContainer('synthwave-sunset-sky');
 
-        // Apply graphics quality preset based on user settings
-        const quality = this.getGraphicsQuality();
-        this.applyQualityPreset(quality);
+            // Apply graphics quality preset based on user settings
+            const quality = this.getGraphicsQuality();
+            this.applyQualityPreset(quality);
 
-        // Create sun
-        this.createSun();
+            // Create sun
+            this.createSun();
 
-        // Create city glow effect
-        this.createCityGlow();
+            // Create city glow effect
+            this.createCityGlow();
 
-        // Create city skyline
-        this.createCitySkyline();
+            // Create city skyline
+            this.createCitySkyline();
 
-        // Create perspective grid
-        this.createPerspectiveGrid();
+            // Create perspective grid
+            this.createPerspectiveGrid();
 
-        // Create scan lines overlay
-        this.createScanLines();
+            // Create scan lines overlay
+            this.createScanLines();
 
-        // Setup combo effects canvas
-        this.setupComboEffects();
+            // Setup combo effects canvas
+            this.setupComboEffects();
 
-        // Setup event listeners for combo effects
-        this.setupEventListeners();
+            // Setup event listeners for combo effects
+            this.setupEventListeners();
 
-        // Listen for runtime quality changes
-        this.setupQualityListener();
+            // Listen for runtime quality changes
+            this.setupQualityListener();
 
-        // Start animation loop
-        this.animate();
+            // Start animation loop
+            this.animate();
+        } catch (error) {
+            console.error('Synthwave Sunset: Error creating scene:', error);
+        }
     }
 
     createSun() {
@@ -455,54 +463,79 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     createPerspectiveGrid() {
         const gridContainer = this.getContainer('synthwave-sunset-grid');
 
-        // Only create canvas if container is empty
-        if (gridContainer && gridContainer.children.length === 0) {
-            // Create canvas for grid
-            this.gridCanvas = document.createElement('canvas');
-            this.gridCanvas.className = 'synthwave-grid-canvas';
-            this.gridCtx = this.gridCanvas.getContext('2d');
+        if (!gridContainer) {
+            console.warn('Synthwave Sunset: Grid container not found, skipping grid creation');
+            return;
+        }
 
-            gridContainer.appendChild(this.gridCanvas);
-
-            // Size canvas
-            this.resizeGrid();
-
-            // Handle resize
-            window.addEventListener('resize', () => this.resizeGrid());
-        } else if (gridContainer && gridContainer.children.length > 0) {
-            // Reuse existing canvas
-            this.gridCanvas = gridContainer.querySelector('.synthwave-grid-canvas');
-            if (this.gridCanvas) {
+        try {
+            // Only create canvas if container is empty
+            if (gridContainer.children.length === 0) {
+                // Create canvas for grid
+                this.gridCanvas = document.createElement('canvas');
+                this.gridCanvas.className = 'synthwave-grid-canvas';
                 this.gridCtx = this.gridCanvas.getContext('2d');
+
+                if (!this.gridCtx) {
+                    console.error('Synthwave Sunset: Failed to get 2D context for grid canvas');
+                    return;
+                }
+
+                gridContainer.appendChild(this.gridCanvas);
+
+                // Size canvas
                 this.resizeGrid();
+
+                // Handle resize
+                window.addEventListener('resize', () => this.resizeGrid());
+            } else {
+                // Reuse existing canvas
+                this.gridCanvas = gridContainer.querySelector('.synthwave-grid-canvas');
+                if (this.gridCanvas) {
+                    this.gridCtx = this.gridCanvas.getContext('2d');
+                    this.resizeGrid();
+                }
             }
+        } catch (error) {
+            console.error('Synthwave Sunset: Error creating perspective grid:', error);
         }
     }
 
     resizeGrid() {
-        if (!this.gridCanvas) return;
+        if (!this.gridCanvas || !this.gridCtx) return;
 
-        const dpr = window.devicePixelRatio || 1;
-        const rect = this.gridCanvas.getBoundingClientRect();
+        try {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = this.gridCanvas.getBoundingClientRect();
 
-        this.gridCanvas.width = rect.width * dpr;
-        this.gridCanvas.height = rect.height * dpr;
+            if (!rect || rect.width === 0 || rect.height === 0) {
+                console.warn('Synthwave Sunset: Invalid canvas dimensions, skipping resize');
+                return;
+            }
 
-        this.gridCtx.scale(dpr, dpr);
+            this.gridCanvas.width = rect.width * dpr;
+            this.gridCanvas.height = rect.height * dpr;
 
-        this.gridWidth = rect.width;
-        this.gridHeight = rect.height;
+            this.gridCtx.scale(dpr, dpr);
+
+            this.gridWidth = rect.width;
+            this.gridHeight = rect.height;
+        } catch (error) {
+            console.error('Synthwave Sunset: Error resizing grid:', error);
+        }
     }
 
     drawPerspectiveGrid() {
         if (!this.gridCtx || !this.gridCanvas) return;
+        if (!this.gridWidth || !this.gridHeight) return;
 
-        const ctx = this.gridCtx;
-        const width = this.gridWidth;
-        const height = this.gridHeight;
+        try {
+            const ctx = this.gridCtx;
+            const width = this.gridWidth;
+            const height = this.gridHeight;
 
-        // Clear canvas
-        ctx.clearRect(0, 0, width, height);
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
 
         // Grid parameters matching reference
         const vanishingPointX = width / 2;
@@ -606,6 +639,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.comboColorShift *= 0.95;
             if (Math.abs(this.comboColorShift) < 0.1) this.comboColorShift = 0;
         }
+        } catch (error) {
+            console.error('Synthwave Sunset: Error drawing perspective grid:', error);
+        }
     }
 
     createScanLines() {
@@ -621,35 +657,51 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     setupComboEffects() {
         const themeContainer = this.getContainer('synthwave-sunset-theme');
-        if (!themeContainer) return;
-
-        // Create canvas for combo effects
-        let canvas = themeContainer.querySelector('.synthwave-effects-canvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.className = 'synthwave-effects-canvas';
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.pointerEvents = 'none';
-            canvas.style.zIndex = '100';
-            themeContainer.appendChild(canvas);
+        if (!themeContainer) {
+            console.warn('Synthwave Sunset: Theme container not found, skipping combo effects');
+            return;
         }
 
-        this.effectsCanvas = canvas;
-        this.effectsCtx = canvas.getContext('2d', { alpha: true });
+        try {
+            // Create canvas for combo effects
+            let canvas = themeContainer.querySelector('.synthwave-effects-canvas');
+            if (!canvas) {
+                canvas = document.createElement('canvas');
+                canvas.className = 'synthwave-effects-canvas';
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.pointerEvents = 'none';
+                canvas.style.zIndex = '100';
+                themeContainer.appendChild(canvas);
+            }
 
-        // Size canvas
-        const resizeEffectsCanvas = () => {
-            if (!this.effectsCanvas || !themeContainer) return;
-            const rect = themeContainer.getBoundingClientRect();
-            this.effectsCanvas.width = rect.width;
-            this.effectsCanvas.height = rect.height;
-        };
-        resizeEffectsCanvas();
-        window.addEventListener('resize', resizeEffectsCanvas);
+            this.effectsCanvas = canvas;
+            this.effectsCtx = canvas.getContext('2d', { alpha: true });
+
+            if (!this.effectsCtx) {
+                console.error('Synthwave Sunset: Failed to get 2D context for effects canvas');
+                return;
+            }
+
+            // Size canvas
+            const resizeEffectsCanvas = () => {
+                if (!this.effectsCanvas || !themeContainer) return;
+                try {
+                    const rect = themeContainer.getBoundingClientRect();
+                    this.effectsCanvas.width = rect.width;
+                    this.effectsCanvas.height = rect.height;
+                } catch (error) {
+                    console.error('Synthwave Sunset: Error resizing effects canvas:', error);
+                }
+            };
+            resizeEffectsCanvas();
+            window.addEventListener('resize', resizeEffectsCanvas);
+        } catch (error) {
+            console.error('Synthwave Sunset: Error setting up combo effects:', error);
+        }
     }
 
     setupEventListeners() {
@@ -933,12 +985,13 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     renderEffects() {
         if (!this.effectsCanvas || !this.effectsCtx) return;
 
-        const ctx = this.effectsCtx;
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        try {
+            const ctx = this.effectsCtx;
+            const width = this.effectsCanvas.width;
+            const height = this.effectsCanvas.height;
 
-        // Clear canvas
-        ctx.clearRect(0, 0, width, height);
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
 
         // Render retro streaks
         this.retroStreaks.forEach(streak => {
@@ -988,30 +1041,37 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
             ctx.restore();
         });
+        } catch (error) {
+            console.error('Synthwave Sunset: Error rendering effects:', error);
+        }
     }
 
     animate() {
         if (!this.isActive) return;
 
-        this.animationTime += 0.016; // Approximately 60fps
+        try {
+            this.animationTime += 0.016; // Approximately 60fps
 
-        // Update sun position
-        this.updateSunPosition();
+            // Update sun position
+            this.updateSunPosition();
 
-        // Update sun glow for pulse effect
-        this.updateSunPulse();
+            // Update sun glow for pulse effect
+            this.updateSunPulse();
 
-        // Update city glow for combo effects
-        this.updateCityGlow();
+            // Update city glow for combo effects
+            this.updateCityGlow();
 
-        // Draw grid
-        this.drawPerspectiveGrid();
+            // Draw grid
+            this.drawPerspectiveGrid();
 
-        // Update and render combo effects
-        this.updateEffects(0.016);
-        this.renderEffects();
+            // Update and render combo effects
+            this.updateEffects(0.016);
+            this.renderEffects();
+        } catch (error) {
+            console.error('Synthwave Sunset: Error in animation loop:', error);
+        }
 
-        // Continue animation loop
+        // Continue animation loop even if there was an error
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
     }

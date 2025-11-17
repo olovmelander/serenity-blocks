@@ -22,6 +22,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         super('sakura-twilight');
         this.eventUnsubscribers = [];
         this.currentComboLevel = 0;
+        this.eyes = [];
         this.lanterns = [];
         this.birds = [];
         this.petals = [];
@@ -38,21 +39,21 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 el: document.getElementById('sakura-back'),
                 trunkColor: '#8B5A5A',
                 blossomColor: '#FFB7C5',
-                count: 15,
+                count: 22,
                 height: window.innerHeight * 0.65,
             },
             {
                 el: document.getElementById('sakura-mid'),
                 trunkColor: '#6B4444',
                 blossomColor: '#FFA6B9',
-                count: 12,
+                count: 18,
                 height: window.innerHeight * 0.80,
             },
             {
                 el: document.getElementById('sakura-front'),
                 trunkColor: '#4A2F2F',
                 blossomColor: '#FF95AD',
-                count: 8,
+                count: 14,
                 height: window.innerHeight,
             },
         ];
@@ -62,28 +63,51 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const maxDepth = 5;
 
             if (depth > maxDepth || width < 1.2 || len < 12) {
-                // Draw blossom cluster
-                const blossomCount = Math.floor(this.random(3, 8));
+                // Draw dense blossom cluster
+                const blossomCount = Math.floor(this.random(12, 20));
                 for (let i = 0; i < blossomCount; i++) {
-                    const offsetX = this.random(-10, 10);
-                    const offsetY = this.random(-10, 10);
-                    const size = this.random(5, 12);
+                    const offsetX = this.random(-15, 15);
+                    const offsetY = this.random(-15, 15);
+                    const size = this.random(6, 14);
 
                     ctx.beginPath();
                     ctx.arc(x + offsetX, y + offsetY, size, 0, Math.PI * 2);
                     ctx.fillStyle = blossomColor;
-                    ctx.globalAlpha = this.random(0.4, 0.7);
+                    ctx.globalAlpha = this.random(0.5, 0.8);
                     ctx.fill();
 
                     // Add white highlights for petals
                     ctx.beginPath();
                     ctx.arc(x + offsetX, y + offsetY, size * 0.5, 0, Math.PI * 2);
                     ctx.fillStyle = '#FFF';
-                    ctx.globalAlpha = this.random(0.2, 0.4);
+                    ctx.globalAlpha = this.random(0.25, 0.45);
                     ctx.fill();
                 }
                 ctx.globalAlpha = 1;
                 return;
+            }
+
+            // Draw blossoms along branches (for denser coverage)
+            if (depth > 2 && Math.random() < 0.4) {
+                const midBlossoms = Math.floor(this.random(3, 6));
+                for (let i = 0; i < midBlossoms; i++) {
+                    const offsetX = this.random(-8, 8);
+                    const offsetY = this.random(-8, 8);
+                    const size = this.random(5, 10);
+
+                    ctx.beginPath();
+                    ctx.arc(x + offsetX, y + offsetY, size, 0, Math.PI * 2);
+                    ctx.fillStyle = blossomColor;
+                    ctx.globalAlpha = this.random(0.3, 0.6);
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.arc(x + offsetX, y + offsetY, size * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#FFF';
+                    ctx.globalAlpha = this.random(0.2, 0.35);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
             }
 
             // Draw branch
@@ -130,7 +154,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         treeLayers.forEach((layer, layerIndex) => {
             if (layer.el) {
                 this.registerContainer(layer.el);
-                const cacheKey = `v1-${layerIndex}-${layer.trunkColor}-${layer.blossomColor}-${layer.count}-${layer.height}`;
+                const cacheKey = `v3-${layerIndex}-${layer.trunkColor}-${layer.blossomColor}-${layer.count}-${layer.height}`;
 
                 if (sakuraTwilightTreeCache.has(cacheKey)) {
                     const cachedData = sakuraTwilightTreeCache.get(cacheKey);
@@ -194,23 +218,63 @@ export default class SakuraTwilightTheme extends BaseTheme {
             }
         });
 
-        // 2. Glowing Paper Lanterns
-        const lanternContainer = this.getContainer('sakura-lanterns');
-        if (lanternContainer && lanternContainer.children.length === 0) {
-            this.lanterns = [];
-            for (let i = 0; i < 12; i++) {
-                const lantern = document.createElement('div');
-                lantern.className = 'sakura-lantern';
-                lantern.style.left = `${Math.random() * 95}%`;
-                lantern.style.top = `${Math.random() * 60}%`;
-                lantern.style.setProperty('--delay', `-${Math.random() * 10}s`);
-                lantern.style.setProperty('--duration', `${8 + Math.random() * 4}s`);
-                lanternContainer.appendChild(lantern);
-                this.lanterns.push(lantern);
+        // 2. Glowing Mysterious Eyes in the forest
+        const eyesContainer = this.getContainer('sakura-eyes');
+        if (eyesContainer && eyesContainer.children.length === 0) {
+            this.eyes = [];
+            // Create pairs of glowing eyes hidden in the back layer
+            for (let i = 0; i < 8; i++) {
+                // Left eye
+                const leftEye = document.createElement('div');
+                leftEye.className = 'sakura-eye';
+                const xPos = Math.random() * 95;
+                const yPos = 50 + Math.random() * 35; // Lower half of screen
+                leftEye.style.left = `${xPos}%`;
+                leftEye.style.top = `${yPos}%`;
+                leftEye.style.setProperty('--twinkle-duration', `${3 + Math.random() * 4}s`);
+                leftEye.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
+                eyesContainer.appendChild(leftEye);
+                this.eyes.push(leftEye);
+
+                // Right eye (paired, 8-12px apart)
+                const rightEye = document.createElement('div');
+                rightEye.className = 'sakura-eye';
+                rightEye.style.left = `calc(${xPos}% + ${8 + Math.random() * 4}px)`;
+                rightEye.style.top = `${yPos}%`;
+                rightEye.style.setProperty('--twinkle-duration', `${3 + Math.random() * 4}s`);
+                rightEye.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
+                eyesContainer.appendChild(rightEye);
+                this.eyes.push(rightEye);
             }
         }
 
-        // 3. Flying Birds
+        // 3. Glowing Paper Lanterns (attached to trees, moving with parallax)
+        const lanternContainer = this.getContainer('sakura-lanterns');
+        if (lanternContainer && lanternContainer.children.length === 0) {
+            this.lanterns = [];
+            // Distribute lanterns across tree layers with matching animations
+            const lanternLayers = [
+                { count: 4, zIndex: 3, animation: 'sakura-lantern-parallax-back 280s linear infinite' },
+                { count: 4, zIndex: 5, animation: 'sakura-lantern-parallax-mid 200s linear infinite' },
+                { count: 4, zIndex: 8, animation: 'sakura-lantern-parallax-front 120s linear infinite' },
+            ];
+
+            lanternLayers.forEach((layerConfig) => {
+                for (let i = 0; i < layerConfig.count; i++) {
+                    const lantern = document.createElement('div');
+                    lantern.className = 'sakura-lantern';
+                    lantern.style.left = `${Math.random() * 95}%`;
+                    lantern.style.top = `${40 + Math.random() * 30}%`; // Constrained to 40-70%
+                    lantern.style.zIndex = layerConfig.zIndex;
+                    lantern.style.setProperty('--lantern-scale', '1');
+                    lantern.style.animation = layerConfig.animation;
+                    lanternContainer.appendChild(lantern);
+                    this.lanterns.push(lantern);
+                }
+            });
+        }
+
+        // 4. Flying Birds
         const birdsContainer = this.getContainer('sakura-birds');
         if (birdsContainer && birdsContainer.children.length === 0) {
             this.birds = [];
@@ -225,7 +289,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             }
         }
 
-        // 4. Falling Cherry Blossom Petals (continuous)
+        // 5. Falling Cherry Blossom Petals (continuous)
         const themeContainer = this.getContainer('sakura-twilight-theme');
         if (themeContainer) {
             // Clear old petals
@@ -360,11 +424,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
             if (lantern) {
                 lantern.style.transition = 'filter 0.5s ease-out, transform 0.5s ease-out';
                 lantern.style.filter = `brightness(${2 + intensity * 0.4}) drop-shadow(0 0 ${12 + intensity * 6}px #FFB347)`;
-                lantern.style.transform = `scale(${1.1 + intensity * 0.1})`;
+                lantern.style.setProperty('--lantern-scale', `${1.1 + intensity * 0.1}`);
 
                 setTimeout(() => {
                     lantern.style.filter = '';
-                    lantern.style.transform = '';
+                    lantern.style.setProperty('--lantern-scale', '1');
                 }, 500);
             }
         }
@@ -743,6 +807,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.currentComboLevel = 0;
 
         // Clear references
+        this.eyes = [];
         this.lanterns = [];
         this.birds = [];
         this.petals = [];
