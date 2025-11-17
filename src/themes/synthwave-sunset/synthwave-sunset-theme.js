@@ -41,72 +41,85 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.MAX_PARTICLES = 150;
         this.MAX_WAVES = 4;
 
-        // Graphics quality presets
+        // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
             'Low': {
-                maxBursts: 3,
-                maxStreaks: 5,
-                maxParticles: 80,
+                maxBursts: 2,
+                maxStreaks: 4,
+                maxParticles: 50,
                 maxWaves: 2,
-                cityGlowBeams: 6,
+                cityGlowBeams: 5,
                 sunGlowLayers: 2,
-                gridRows: 25,
-                gridCols: 25,
-                particlesPerBurstMin: 10,
-                particlesPerBurstMax: 20,
-                streakMultiplier: 1,
+                gridRows: 20,
+                gridCols: 20,
+                particlesPerBurstMin: 8,
+                particlesPerBurstMax: 15,
+                streakMultiplier: 0.8,
                 gridScrollSpeed: 25,
-                glowIntensity: 0.8
+                glowIntensity: 0.7,
+                useShadowBlur: false,
+                useDropShadow: false,
+                cityGlowUpdateInterval: 3 // Update every 3 frames
             },
             'Medium': {
+                maxBursts: 3,
+                maxStreaks: 5,
+                maxParticles: 90,
+                maxWaves: 3,
+                cityGlowBeams: 7,
+                sunGlowLayers: 3,
+                gridRows: 30,
+                gridCols: 30,
+                particlesPerBurstMin: 10,
+                particlesPerBurstMax: 20,
+                streakMultiplier: 1.2,
+                gridScrollSpeed: 28,
+                glowIntensity: 0.85,
+                useShadowBlur: false,
+                useDropShadow: true,
+                cityGlowUpdateInterval: 2 // Update every 2 frames
+            },
+            'High': {
                 maxBursts: 4,
                 maxStreaks: 6,
                 maxParticles: 120,
                 maxWaves: 3,
-                cityGlowBeams: 8,
+                cityGlowBeams: 9,
                 sunGlowLayers: 3,
                 gridRows: 35,
                 gridCols: 35,
                 particlesPerBurstMin: 12,
-                particlesPerBurstMax: 25,
-                streakMultiplier: 1.5,
-                gridScrollSpeed: 28,
-                glowIntensity: 0.9
-            },
-            'High': {
-                maxBursts: 5,
-                maxStreaks: 8,
-                maxParticles: 150,
-                maxWaves: 4,
-                cityGlowBeams: 10,
-                sunGlowLayers: 3,
-                gridRows: 40,
-                gridCols: 40,
-                particlesPerBurstMin: 15,
-                particlesPerBurstMax: 35,
-                streakMultiplier: 2,
+                particlesPerBurstMax: 28,
+                streakMultiplier: 1.6,
                 gridScrollSpeed: 30,
-                glowIntensity: 1.0
+                glowIntensity: 1.0,
+                useShadowBlur: true,
+                useDropShadow: true,
+                cityGlowUpdateInterval: 1 // Update every frame
             },
             'Ultra': {
-                maxBursts: 8,
-                maxStreaks: 12,
-                maxParticles: 250,
-                maxWaves: 8,
-                cityGlowBeams: 15,
-                sunGlowLayers: 5,
-                gridRows: 60,
-                gridCols: 60,
-                particlesPerBurstMin: 20,
-                particlesPerBurstMax: 50,
-                streakMultiplier: 2.5,
+                maxBursts: 6,
+                maxStreaks: 10,
+                maxParticles: 200,
+                maxWaves: 6,
+                cityGlowBeams: 12,
+                sunGlowLayers: 4,
+                gridRows: 50,
+                gridCols: 50,
+                particlesPerBurstMin: 15,
+                particlesPerBurstMax: 40,
+                streakMultiplier: 2.2,
                 gridScrollSpeed: 35,
-                glowIntensity: 1.2
+                glowIntensity: 1.2,
+                useShadowBlur: true,
+                useDropShadow: true,
+                cityGlowUpdateInterval: 1 // Update every frame
             }
         };
 
-        this.currentQuality = 'High'; // Default
-        this.activePreset = this.qualityPresets['High'];
+        this.currentQuality = 'Medium'; // Default to Medium for better performance
+        this.activePreset = this.qualityPresets['Medium'];
+        this.frameCounter = 0;
     }
 
     applyQualityPreset(quality) {
@@ -315,15 +328,28 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     updateCityGlow() {
+        // PERFORMANCE: Only update city glow based on quality interval
+        if (this.frameCounter % this.activePreset.cityGlowUpdateInterval !== 0) {
+            return;
+        }
+
+        // Only apply filters if drop-shadow is enabled in quality preset
+        if (!this.activePreset.useDropShadow) {
+            return;
+        }
+
+        const glowActive = this.cityGlowIntensity > 0.05; // Threshold to avoid micro-updates
+
         // Apply hot pink glow effect to front city outline
         if (this.frontCityPath) {
-            if (this.cityGlowIntensity > 0) {
+            if (glowActive) {
                 const strokeWidth = this.cityGlowIntensity * 0.5;
                 const glowBlur = this.cityGlowIntensity * 15;
 
                 this.frontCityPath.setAttribute('stroke', '#ff0066');
                 this.frontCityPath.setAttribute('stroke-width', strokeWidth);
-                this.frontCityPath.style.filter = `drop-shadow(0 0 ${glowBlur}px #ff0066) drop-shadow(0 0 ${glowBlur * 0.5}px #ff0066)`;
+                // Single drop-shadow for performance (removed double shadow)
+                this.frontCityPath.style.filter = `drop-shadow(0 0 ${glowBlur}px #ff0066)`;
             } else {
                 this.frontCityPath.setAttribute('stroke', 'none');
                 this.frontCityPath.setAttribute('stroke-width', '0');
@@ -333,8 +359,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Apply subtle purple glow effect to back city outline
         if (this.backCityPath) {
-            if (this.cityGlowIntensity > 0) {
-                // More subtle effect - half the intensity
+            if (glowActive) {
                 const strokeWidth = this.cityGlowIntensity * 0.25;
                 const glowBlur = this.cityGlowIntensity * 8;
 
@@ -707,11 +732,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            console.log('LINE_CLEAR event:', {
-                isActive: this.isActive,
-                backgroundComboEffects: settings?.backgroundComboEffects,
-                data
-            });
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.handleLineClear(data);
             }
@@ -719,11 +739,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            console.log('COMBO event:', {
-                isActive: this.isActive,
-                backgroundComboEffects: settings?.backgroundComboEffects,
-                data
-            });
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.handleCombo(data);
             }
@@ -734,7 +749,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     handleLineClear(data) {
         const { lineCount } = data;
-        console.log('Synthwave Sunset: LINE_CLEAR event received', { lineCount, isActive: this.isActive });
 
         // Pulse the grid
         this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.3 * lineCount);
@@ -758,7 +772,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     handleCombo(data) {
         const { comboCount } = data;
-        console.log('Synthwave Sunset: COMBO event received', { comboCount, isActive: this.isActive });
 
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
 
@@ -784,17 +797,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     createHorizonBursts(lineCount) {
-        if (!this.effectsCanvas) {
-            console.warn('Synthwave Sunset: effectsCanvas not available for horizon bursts');
-            return;
-        }
+        if (!this.effectsCanvas) return;
         if (this.horizonBursts.length >= this.MAX_BURSTS) return;
 
         const width = this.effectsCanvas.width;
         const height = this.effectsCanvas.height;
         const horizonY = height * 0.65; // Position near city horizon
-
-        console.log('Creating horizon bursts:', { lineCount, width, height, horizonY });
 
         // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
         const colors = ['#ff0066', '#ff4500', '#ff006e', '#b000ff', '#ff5e78'];
@@ -989,46 +997,76 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const ctx = this.effectsCtx;
             const width = this.effectsCanvas.width;
             const height = this.effectsCanvas.height;
+            const useShadowBlur = this.activePreset.useShadowBlur;
 
             // Clear canvas
             ctx.clearRect(0, 0, width, height);
 
-        // Render retro streaks
+        // Render retro streaks - optimized (no save/restore)
         this.retroStreaks.forEach(streak => {
             const alpha = streak.life * 0.7;
-            ctx.save();
+
             ctx.globalAlpha = alpha;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = streak.color;
             ctx.fillStyle = streak.color;
+
+            // Only use shadow blur if quality allows
+            if (useShadowBlur) {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = streak.color;
+            }
+
             ctx.fillRect(streak.x, streak.y, streak.width, streak.height);
-            ctx.restore();
+
+            // Reset shadow blur
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
 
-        // Render horizon bursts
+        // Reset alpha
+        ctx.globalAlpha = 1;
+
+        // Render horizon bursts - optimized batch rendering
         this.horizonBursts.forEach(burst => {
-            burst.particles.forEach(p => {
-                const alpha = p.life * burst.life;
-                ctx.save();
-                ctx.globalAlpha = alpha;
+            // Set shadow blur once per burst if quality allows
+            if (useShadowBlur) {
                 ctx.shadowBlur = 12;
                 ctx.shadowColor = burst.color;
-                ctx.fillStyle = burst.color;
+            }
+
+            ctx.fillStyle = burst.color;
+
+            burst.particles.forEach(p => {
+                const alpha = p.life * burst.life;
+
+                ctx.globalAlpha = alpha;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.restore();
             });
+
+            // Reset shadow blur after burst
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
 
-        // Render retro particles
+        // Reset alpha
+        ctx.globalAlpha = 1;
+
+        // Render retro particles - optimized
         this.retroParticles.forEach(p => {
             const alpha = p.life;
-            ctx.save();
+
             ctx.globalAlpha = alpha;
-            ctx.shadowBlur = p.glow;
-            ctx.shadowColor = p.color;
             ctx.fillStyle = p.color;
+
+            // Only use shadow blur if quality allows
+            if (useShadowBlur) {
+                ctx.shadowBlur = p.glow;
+                ctx.shadowColor = p.color;
+            }
+
             ctx.translate(p.x, p.y);
             ctx.rotate(p.rotation);
 
@@ -1039,8 +1077,18 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 ctx.arc(0, 0, p.size, 0, Math.PI * 2);
                 ctx.fill();
             }
-            ctx.restore();
+
+            // Reset transform
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // Reset shadow blur
+            if (useShadowBlur) {
+                ctx.shadowBlur = 0;
+            }
         });
+
+        // Final reset
+        ctx.globalAlpha = 1;
         } catch (error) {
             console.error('Synthwave Sunset: Error rendering effects:', error);
         }
@@ -1051,6 +1099,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         try {
             this.animationTime += 0.016; // Approximately 60fps
+            this.frameCounter++;
 
             // Update sun position
             this.updateSunPosition();
@@ -1058,7 +1107,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             // Update sun glow for pulse effect
             this.updateSunPulse();
 
-            // Update city glow for combo effects
+            // Update city glow for combo effects (throttled by quality preset)
             this.updateCityGlow();
 
             // Draw grid

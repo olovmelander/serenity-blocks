@@ -12,6 +12,14 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-webgl');
 app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
 
+// Force high-performance GPU on multi-GPU systems (e.g., NVIDIA over integrated graphics)
+app.commandLine.appendSwitch('force_high_performance_gpu');
+app.commandLine.appendSwitch('use-angle', 'gl'); // Use native OpenGL/Direct3D
+app.commandLine.appendSwitch('use-gl', 'desktop'); // Use desktop GL instead of ANGLE
+app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+app.commandLine.appendSwitch('enable-accelerated-video-decode');
+app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
+
 let mainWindow;
 let currentVSyncEnabled = null;
 

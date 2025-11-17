@@ -671,12 +671,14 @@ export class WebGLRenderer {
             depth: true,
             antialias: true,
             premultipliedAlpha: false,
+            powerPreference: 'high-performance',
         })
             || this.canvas.getContext('experimental-webgl', {
                 alpha: true,
                 depth: true,
                 antialias: true,
                 premultipliedAlpha: false,
+                powerPreference: 'high-performance',
             });
 
         if (!this.gl) {
