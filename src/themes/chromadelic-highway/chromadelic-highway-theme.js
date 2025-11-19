@@ -112,6 +112,21 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 waveGlowIntensity: 1.0,
                 skipFrames: 0, // Render every frame
                 useSimpleGlow: false
+            },
+            'Extreme': {
+                maxSparkles: 90,
+                maxStars: 50,
+                waveLayers: 7,
+                waveStep: 6,
+                maxShockwaves: 5,
+                maxComboParticles: 50,
+                particlesPerWave: 12,
+                trailSegments: 5,
+                shadowBlur: 0.5,
+                glowLayers: true,
+                waveGlowIntensity: 1.3,
+                skipFrames: 0, // Render every frame
+                useSimpleGlow: false
             }
         };
 

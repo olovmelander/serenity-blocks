@@ -40,6 +40,28 @@ export default class StillwaterTheme extends BaseTheme {
 
         // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
+            'Minimal': {
+                staticWaterRipples: 2,
+                distantTreeClusters: 2,
+                midTrees: 3,
+                closeTrees: 2,
+                foregroundTrees: 2,
+                rocks: 4,
+                dustMotes: 12,
+                fireflies: 4,
+                mysticalOrbs: 2,
+                lightRays: 1,
+                maxRipples: 2,
+                maxWisps: 1,
+                maxSparkles: 25,
+                maxFireflySwarms: 1,
+                maxLightBeams: 1,
+                wispPoints: 6,
+                glowIntensity: 0.4,
+                useShadowBlur: false,
+                useDropShadow: false,
+                glowUpdateInterval: 4 // Update every 4 frames
+            },
             'Low': {
                 staticWaterRipples: 3,
                 distantTreeClusters: 3,
@@ -124,6 +146,28 @@ export default class StillwaterTheme extends BaseTheme {
                 maxLightBeams: 6,
                 wispPoints: 25,
                 glowIntensity: 1.2,
+                useShadowBlur: true,
+                useDropShadow: true,
+                glowUpdateInterval: 1 // Update every frame
+            },
+            'Extreme': {
+                staticWaterRipples: 15,
+                distantTreeClusters: 7,
+                midTrees: 16,
+                closeTrees: 8,
+                foregroundTrees: 10,
+                rocks: 25,
+                dustMotes: 90,
+                fireflies: 25,
+                mysticalOrbs: 15,
+                lightRays: 9,
+                maxRipples: 12,
+                maxWisps: 8,
+                maxSparkles: 220,
+                maxFireflySwarms: 6,
+                maxLightBeams: 9,
+                wispPoints: 35,
+                glowIntensity: 1.5,
                 useShadowBlur: true,
                 useDropShadow: true,
                 glowUpdateInterval: 1 // Update every frame

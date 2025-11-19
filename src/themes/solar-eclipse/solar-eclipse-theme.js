@@ -36,6 +36,14 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.cmeContainer = null;
         this.burstContainer = null;
         this.qualityPresets = {
+            'Minimal': {
+                starCount: 40,
+                coronaParticles: 80,
+                solarFlares: 3,
+                cmeLimit: 1,
+                burstLimit: 1,
+                driftRadiusScale: 0.25,
+            },
             'Low': {
                 starCount: 60,
                 coronaParticles: 120,
@@ -67,6 +75,14 @@ export default class SolarEclipseTheme extends BaseTheme {
                 cmeLimit: 4,
                 burstLimit: 5,
                 driftRadiusScale: 0.8,
+            },
+            'Extreme': {
+                starCount: 250,
+                coronaParticles: 480,
+                solarFlares: 14,
+                cmeLimit: 6,
+                burstLimit: 7,
+                driftRadiusScale: 1.0,
             }
         };
         this.currentQuality = 'Medium';

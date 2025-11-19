@@ -52,6 +52,17 @@ export default class PyrestormTheme extends BaseTheme {
         // Graphics quality state
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                lavaRivers: 2,
+                emberCount: 40,
+                smokePlumes: 4,
+                maxBursts: 1,
+                maxGeysers: 2,
+                maxSparkles: 30,
+                maxLightning: 0,
+                maxSwarms: 12,
+                maxLavaBursts: 1,
+            },
             'Low': {
                 lavaRivers: 4,
                 emberCount: 60,
@@ -95,6 +106,17 @@ export default class PyrestormTheme extends BaseTheme {
                 maxLightning: 3,
                 maxSwarms: 60,
                 maxLavaBursts: 6,
+            },
+            'Extreme': {
+                lavaRivers: 16,
+                emberCount: 250,
+                smokePlumes: 30,
+                maxBursts: 8,
+                maxGeysers: 10,
+                maxSparkles: 160,
+                maxLightning: 5,
+                maxSwarms: 90,
+                maxLavaBursts: 9,
             }
         };
 

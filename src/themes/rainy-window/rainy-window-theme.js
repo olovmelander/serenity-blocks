@@ -58,6 +58,26 @@ export default class RainyWindowTheme extends BaseTheme {
         // Graphics quality
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                maxDrops: 50,
+                dropSpawnProbability: 0.15,
+                currentDropCap: 25,
+                maxRipples: 30,
+                maxMistParticles: 80,
+                maxSplashes: 12,
+                maxActiveDrops: 100,
+                maxRainBurstDrops: 20,
+                maxThunderStrikes: 0,
+                maxComboRainCurtains: 0,
+                maxLightningBolts: 0,
+                lightningEnabled: false,
+                lightningIntervalMin: 900,
+                lightningIntervalMax: 1200,
+                gustIntensityMultiplier: 0.5,
+                comboEffectScale: 0.3,
+                mistSpawnMultiplier: 0.4,
+                splashSpawnMultiplier: 0.5,
+            },
             'Low': {
                 maxDrops: 80,
                 dropSpawnProbability: 0.22,
@@ -137,6 +157,26 @@ export default class RainyWindowTheme extends BaseTheme {
                 comboEffectScale: 1,
                 mistSpawnMultiplier: 1,
                 splashSpawnMultiplier: 1,
+            },
+            'Extreme': {
+                maxDrops: 250,
+                dropSpawnProbability: 0.55,
+                currentDropCap: 85,
+                maxRipples: 140,
+                maxMistParticles: 350,
+                maxSplashes: 70,
+                maxActiveDrops: 500,
+                maxRainBurstDrops: 150,
+                maxThunderStrikes: 10,
+                maxComboRainCurtains: 6,
+                maxLightningBolts: 6,
+                lightningEnabled: true,
+                lightningIntervalMin: 150,
+                lightningIntervalMax: 400,
+                gustIntensityMultiplier: 1.2,
+                comboEffectScale: 1.3,
+                mistSpawnMultiplier: 1.3,
+                splashSpawnMultiplier: 1.3,
             }
         };
         this.currentQuality = 'Ultra';
