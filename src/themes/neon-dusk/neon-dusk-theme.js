@@ -42,6 +42,18 @@ export default class NeonDuskTheme extends BaseTheme {
         // Graphics quality state
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                starCount: 50,
+                cloudCount: 3,
+                meteorCount: 2,
+                floatingParticles: 12,
+                maxParticles: 60,
+                maxArcs: 2,
+                maxScanlines: 3,
+                maxRings: 2,
+                maxVortexes: 0,
+                maxGlitches: 4,
+            },
             'Low': {
                 starCount: 80,
                 cloudCount: 4,
@@ -89,6 +101,18 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxRings: 12,
                 maxVortexes: 5,
                 maxGlitches: 22,
+            },
+            'Extreme': {
+                starCount: 300,
+                cloudCount: 14,
+                meteorCount: 12,
+                floatingParticles: 85,
+                maxParticles: 350,
+                maxArcs: 15,
+                maxScanlines: 25,
+                maxRings: 18,
+                maxVortexes: 8,
+                maxGlitches: 35,
             }
         };
 

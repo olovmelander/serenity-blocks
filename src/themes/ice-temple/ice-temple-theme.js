@@ -73,6 +73,26 @@ export default class IceTempleTheme extends BaseTheme {
         };
 
         this.qualityPresets = {
+            Minimal: {
+                effectLimits: {
+                    maxIceShards: 130,
+                    maxFrozenCrystals: 55,
+                    maxComboRings: 2,
+                    maxGlacialLightning: 1,
+                    maxIceStormParticles: 55,
+                },
+                spawnScale: {
+                    shards: 0.33,
+                    crystals: 0.3,
+                    rings: 0.33,
+                    lightning: 0.33,
+                    storm: 0.24,
+                    aurora: 0.54,
+                },
+                enableGlacialLightning: true,
+                enableIceStorm: false,
+                comboCooldownMs: 280,
+            },
             Low: {
                 effectLimits: {
                     maxIceShards: 220,
@@ -152,6 +172,26 @@ export default class IceTempleTheme extends BaseTheme {
                 enableGlacialLightning: true,
                 enableIceStorm: true,
                 comboCooldownMs: 200,
+            },
+            Extreme: {
+                effectLimits: {
+                    maxIceShards: 880,
+                    maxFrozenCrystals: 350,
+                    maxComboRings: 9,
+                    maxGlacialLightning: 5,
+                    maxIceStormParticles: 380,
+                },
+                spawnScale: {
+                    shards: 1.55,
+                    crystals: 1.5,
+                    rings: 1.5,
+                    lightning: 1.55,
+                    storm: 1.55,
+                    aurora: 1.5,
+                },
+                enableGlacialLightning: true,
+                enableIceStorm: true,
+                comboCooldownMs: 150,
             },
         };
     }

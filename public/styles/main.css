@@ -2305,11 +2305,13 @@ body {
 
 #sakura-twilight-theme {
     background: linear-gradient(to bottom,
-        #7A5578 0%,      /* More pink-purple at top */
-        #5D4661 25%,     /* Darker pink-purple transition */
-        #443A4D 50%,     /* Deep twilight mid with pink hint */
-        #2A2438 75%,     /* Very dark purple */
-        #1A1625 100%);   /* Almost black at bottom */
+        #0A0E1A 0%,      /* Deep night blue at top */
+        #151828 15%,     /* Dark midnight blue */
+        #1A1530 30%,     /* Deep purple-blue */
+        #1F1838 50%,     /* Rich midnight purple */
+        #231940 70%,     /* Slightly lighter purple for depth */
+        #1D1534 85%,     /* Dark purple shadow */
+        #0F0A18 100%);   /* Very dark purple-black at bottom */
     overflow: hidden;
 }
 
@@ -2319,15 +2321,51 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at 30% 20%, rgba(255, 150, 180, 0.25) 0%, rgba(255, 120, 160, 0.08) 40%, transparent 60%);
+    background:
+        /* Subtle purple glow near horizon */
+        radial-gradient(ellipse 120% 30% at 50% 100%, rgba(80, 50, 120, 0.15) 0%, transparent 50%),
+        /* Soft moonlight glow */
+        radial-gradient(ellipse 60% 40% at 70% 20%, rgba(180, 190, 220, 0.08) 0%, rgba(150, 160, 200, 0.04) 30%, transparent 50%),
+        /* Deep space atmosphere */
+        radial-gradient(ellipse 100% 60% at 50% 40%, rgba(30, 30, 60, 0.3) 0%, transparent 60%);
     z-index: 1;
-    animation: sunset-glow 15s ease-in-out infinite alternate;
+    animation: night-atmosphere 20s ease-in-out infinite alternate;
 }
 
-@keyframes sunset-glow {
-    0% { opacity: 0.4; }
-    50% { opacity: 0.6; }
-    100% { opacity: 0.4; }
+@keyframes night-atmosphere {
+    0% { opacity: 0.7; filter: brightness(0.95); }
+    50% { opacity: 0.85; filter: brightness(1.02); }
+    100% { opacity: 0.7; filter: brightness(0.95); }
+}
+
+/* Starfield container */
+#sakura-stars {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 70%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.sakura-star {
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+    animation: star-twinkle ease-in-out infinite;
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+@keyframes star-twinkle {
+    0%, 100% { 
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% { 
+        opacity: 1;
+        transform: scale(1.2);
+    }
 }
 
 /* Sakura tree layers with parallax */
@@ -2388,16 +2426,24 @@ body {
     position: absolute;
     width: 20px;
     height: 28px;
-    background: linear-gradient(to bottom, #FFB347 0%, #FF9A66 100%);
+    background: linear-gradient(to bottom, #FFB8A0 0%, #FFAA88 50%, #FF9C78 100%);
     border-radius: 50% 50% 40% 40%;
     box-shadow:
-        0 0 15px 5px rgba(255, 179, 71, 0.6),
-        inset 0 -3px 8px rgba(0, 0, 0, 0.2);
+        0 0 20px 6px rgba(255, 180, 150, 0.5),
+        0 0 8px 2px rgba(255, 200, 170, 0.3),
+        inset 0 -3px 8px rgba(0, 0, 0, 0.25),
+        inset 0 1px 3px rgba(255, 220, 200, 0.4);
     --lantern-shift: 0px;
     --lantern-scale: 1;
     transform: translateX(var(--lantern-shift)) scale(var(--lantern-scale));
     transition: filter 0.5s ease-out, transform 0.5s ease-out;
     will-change: transform, filter;
+    animation: lantern-gentle-glow 4s ease-in-out infinite alternate;
+}
+
+@keyframes lantern-gentle-glow {
+    0% { filter: brightness(0.9); }
+    100% { filter: brightness(1.1); }
 }
 
 .sakura-lantern::before {
@@ -2509,9 +2555,9 @@ body {
     position: absolute;
     width: 6px;
     height: 6px;
-    background: radial-gradient(circle, #FFE66D 0%, #FFB347 50%, transparent 100%);
+    background: radial-gradient(circle, #E8C5E8 0%, #D8A8D8 30%, #C890C8 60%, transparent 100%);
     border-radius: 50%;
-    box-shadow: 0 0 8px 2px rgba(255, 230, 109, 0.6);
+    box-shadow: 0 0 10px 3px rgba(220, 180, 220, 0.5), 0 0 5px 1px rgba(232, 197, 232, 0.3);
     animation: eye-twinkle var(--twinkle-duration, 3s) ease-in-out infinite;
     animation-delay: var(--twinkle-delay, 0s);
     opacity: 0;
@@ -2533,28 +2579,30 @@ body {
     position: absolute;
     width: 10px;
     height: 10px;
-    background: linear-gradient(135deg, #FFB7C5 0%, #FFA6B9 100%);
+    background: linear-gradient(135deg, #FFBCC8 0%, #FFB0BE 50%, #FFA8B8 100%);
     border-radius: 50% 0% 50% 0%;
     top: -20px;
-    z-index: 8;
+    /* z-index set by JS for depth layers */
     animation: petal-fall linear infinite;
-    opacity: 0;
+    filter: drop-shadow(0 0 3px rgba(255, 190, 200, 0.4));
+    /* opacity and transform scale set by JS for depth layers */
+    will-change: transform, opacity;
 }
 
 @keyframes petal-fall {
     0% {
         opacity: 0;
-        transform: translateX(var(--x-start)) translateY(-20px) rotate(var(--r-start));
+        transform: translateX(var(--x-start)) translateY(-20px) rotate(var(--r-start)) scale(var(--petal-scale, 1));
     }
     10% {
-        opacity: 0.8;
+        opacity: var(--petal-opacity, 0.8);
     }
     90% {
-        opacity: 0.8;
+        opacity: var(--petal-opacity, 0.8);
     }
     100% {
         opacity: 0;
-        transform: translateX(var(--x-end)) translateY(100vh) rotate(var(--r-end));
+        transform: translateX(var(--x-end)) translateY(100vh) rotate(var(--r-end)) scale(var(--petal-scale, 1));
     }
 }
 
@@ -5113,6 +5161,79 @@ body {
     }
 }
 
+/* Ground/base layer for moonlit forest - forest floor with moss and earth */
+#moonlit-forest-ground {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 200px;
+    background:
+        /* Top: moss and grass layer */
+        linear-gradient(
+            to bottom,
+            rgba(30, 50, 40, 0) 0%,
+            rgba(28, 48, 38, 0.3) 15%,
+            rgba(26, 45, 36, 0.6) 30%,
+            rgba(24, 42, 34, 0.85) 50%,
+            /* Bottom: rich forest soil layer */
+            rgba(40, 35, 30, 0.9) 70%,
+            rgba(35, 30, 25, 0.95) 100%
+        );
+    z-index: 8.5;
+    pointer-events: none;
+}
+
+/* Forest floor moss and grass texture */
+#moonlit-forest-ground::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 70%;
+    background-image:
+        /* Organic moss/grass patches */
+        repeating-linear-gradient(
+            88deg,
+            transparent,
+            transparent 3px,
+            rgba(45, 75, 60, 0.3) 3px,
+            rgba(45, 75, 60, 0.3) 4px
+        ),
+        /* Varied ground texture */
+        repeating-linear-gradient(
+            2deg,
+            transparent,
+            transparent 4px,
+            rgba(35, 65, 50, 0.2) 4px,
+            rgba(35, 65, 50, 0.2) 5px
+        );
+    background-size: 10px 100%, 100% 6px;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Forest soil and leaf litter texture at bottom */
+#moonlit-forest-ground::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 35%;
+    background-image:
+        radial-gradient(circle at 15% 25%, rgba(50, 40, 32, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 55% 65%, rgba(48, 38, 30, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 35% 45%, rgba(45, 36, 28, 0.2) 1px, transparent 1px),
+        radial-gradient(circle at 75% 80%, rgba(52, 42, 34, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 85% 35%, rgba(47, 37, 29, 0.2) 1px, transparent 1px);
+    background-size: 18px 18px, 22px 22px, 14px 14px, 16px 16px, 20px 20px;
+    background-position: 0 0, 9px 12px, 4px 6px, 11px 8px, 5px 14px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 #glowing-mushrooms {
     position: absolute;
     bottom: 0;
@@ -5257,12 +5378,54 @@ body {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M10 0C5 5, 5 15, 10 20C15 15, 15 5, 10 0Z" fill="rgba(15, 26, 18, 0.6)"/></svg>');
     background-size: contain;
     animation: fall-leaf-gentle linear infinite;
-    z-index: 10;
+    /* z-index set by JS for depth layers */
+    /* opacity, scale, and blur set by JS for depth layers */
+    will-change: transform, opacity;
 }
 
 @keyframes fall-leaf-gentle {
-    0% { transform: translateY(-10vh) translateX(var(--x-start)) rotate(var(--r-start)); opacity: 1; }
-    100% { transform: translateY(110vh) translateX(var(--x-end)) rotate(var(--r-end)); opacity: 0; }
+    0% { 
+        transform: translateY(-10vh) translateX(var(--x-start)) rotate(var(--r-start)) scale(var(--leaf-scale, 1)); 
+        opacity: 0; 
+    }
+    10% {
+        opacity: var(--leaf-opacity, 1);
+    }
+    90% {
+        opacity: var(--leaf-opacity, 1);
+    }
+    100% { 
+        transform: translateY(110vh) translateX(var(--x-end)) rotate(var(--r-end)) scale(var(--leaf-scale, 1)); 
+        opacity: 0; 
+    }
+}
+
+/* Ambient firefly animation */
+@keyframes fireflyWander {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0);
+    }
+    10% {
+        opacity: 0.8;
+    }
+    25% {
+        transform: translate(50px, -30px);
+    }
+    50% {
+        transform: translate(-30px, -60px);
+        opacity: 1;
+    }
+    75% {
+        transform: translate(40px, -90px);
+    }
+    90% {
+        opacity: 0.6;
+    }
+    100% {
+        transform: translate(-20px, -120px);
+        opacity: 0;
+    }
 }
 
 .glowing-eyes {
@@ -5621,11 +5784,45 @@ body {
     background-repeat: no-repeat;
     background-position: bottom center;
     animation: plant-sway 10s ease-in-out infinite alternate;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 @keyframes plant-sway {
     from { transform: rotate(-2deg); }
     to { transform: rotate(2deg); }
+}
+
+/* Small undergrowth vegetation scattered on ground */
+#greenhouse-ground {
+    overflow: visible;
+}
+
+/* Add small grass tufts and ground cover using CSS */
+.greenhouse-plant-layer::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    background-image:
+        /* Small grass tufts */
+        radial-gradient(ellipse 4px 10px at 10% 90%, rgba(55, 100, 70, 0.6), transparent),
+        radial-gradient(ellipse 3px 8px at 25% 85%, rgba(50, 95, 65, 0.5), transparent),
+        radial-gradient(ellipse 5px 12px at 40% 92%, rgba(60, 105, 75, 0.6), transparent),
+        radial-gradient(ellipse 4px 9px at 55% 88%, rgba(52, 97, 68, 0.5), transparent),
+        radial-gradient(ellipse 3px 11px at 70% 91%, rgba(58, 103, 73, 0.6), transparent),
+        radial-gradient(ellipse 5px 10px at 85% 87%, rgba(54, 99, 70, 0.5), transparent),
+        radial-gradient(ellipse 4px 8px at 15% 86%, rgba(56, 101, 71, 0.5), transparent),
+        radial-gradient(ellipse 3px 10px at 35% 93%, rgba(51, 96, 66, 0.6), transparent),
+        radial-gradient(ellipse 5px 11px at 50% 89%, rgba(59, 104, 74, 0.5), transparent),
+        radial-gradient(ellipse 4px 9px at 65% 94%, rgba(53, 98, 69, 0.6), transparent),
+        radial-gradient(ellipse 3px 12px at 80% 90%, rgba(57, 102, 72, 0.5), transparent),
+        radial-gradient(ellipse 5px 10px at 95% 88%, rgba(55, 100, 70, 0.6), transparent);
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 1;
 }
 
 #greenhouse-dewdrops {
@@ -5675,6 +5872,89 @@ body {
     0% { transform: translate(var(--x-start), var(--y-start)) rotate(0deg); }
     50% { transform: translate(var(--x-end), var(--y-end)) rotate(360deg); }
     100% { transform: translate(var(--x-start), var(--y-start)) rotate(0deg); }
+}
+
+/* Ground/base layer for greenhouse - green grass and soil */
+#greenhouse-ground {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 180px;
+    background:
+        /* Top: grass layer */
+        linear-gradient(
+            to bottom,
+            rgba(45, 85, 60, 0) 0%,
+            rgba(40, 75, 55, 0.3) 15%,
+            rgba(35, 70, 50, 0.6) 30%,
+            rgba(30, 60, 45, 0.85) 50%,
+            /* Bottom: soil/dirt layer */
+            rgba(50, 40, 30, 0.9) 70%,
+            rgba(45, 35, 25, 0.95) 100%
+        );
+    z-index: 8.5;
+    pointer-events: none;
+}
+
+/* Grass blades texture */
+#greenhouse-ground::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 70%;
+    background-image:
+        /* Vertical grass blades */
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 2px,
+            rgba(55, 95, 70, 0.4) 2px,
+            rgba(55, 95, 70, 0.4) 3px
+        ),
+        /* Horizontal texture variation */
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 3px,
+            rgba(45, 85, 60, 0.2) 3px,
+            rgba(45, 85, 60, 0.2) 4px
+        );
+    background-size: 8px 100%, 100% 5px;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Soil/dirt texture at bottom */
+#greenhouse-ground::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 30%;
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(60, 45, 35, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 60% 70%, rgba(55, 40, 30, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 40% 50%, rgba(50, 38, 28, 0.2) 1px, transparent 1px);
+    background-size: 15px 15px, 20px 20px, 12px 12px;
+    background-position: 0 0, 7px 10px, 3px 5px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Combo effects canvas */
+#greenhouse-combo-canvas {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
+    display: block !important;
 }
 
 /* --- Ice Temple Theme (Frostborn Sanctum) --- */
@@ -6031,7 +6311,7 @@ body {
 
 /* --- Himalayan Peak Theme --- */
 #himalayan-peak-theme {
-    background-color: #a7c5d9;
+    background-color: #6a8199;
     overflow: hidden;
 }
 
@@ -6040,13 +6320,13 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     background: linear-gradient(to top,
-        #5a7fa5 0%,
-        #7394b8 15%,
-        #9eb4cd 30%,
-        #c4d3e5 50%,
-        #dce6f2 70%,
-        #e8f0f7 85%,
-        #f0f4f8 100%);
+        #3a5570 0%,
+        #4a6580 15%,
+        #5a7590 30%,
+        #6a85a0 50%,
+        #7a95b0 70%,
+        #8aa5c0 85%,
+        #9ab5d0 100%);
     z-index: 1;
 }
 
@@ -6054,16 +6334,16 @@ body {
     position: absolute;
     top: 10%; left: 50%;
     transform: translateX(-50%);
-    width: 180px; height: 180px;
-    background: radial-gradient(circle, #ffffff 0%, #fff9e6 30%, #ffe4b3 60%, #ffd89b 100%);
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, #ffe6cc 0%, #ffd9b3 30%, #ffcc99 60%, #ffbf80 100%);
     border-radius: 50%;
     box-shadow:
-        0 0 40px 10px rgba(255, 245, 200, 0.8),
-        0 0 80px 20px rgba(255, 230, 150, 0.6),
-        0 0 120px 30px rgba(255, 220, 120, 0.4);
+        0 0 35px 8px rgba(255, 220, 180, 0.6),
+        0 0 70px 15px rgba(255, 200, 130, 0.4),
+        0 0 100px 20px rgba(255, 180, 100, 0.3);
     animation: sun-pulse 12s ease-in-out infinite alternate;
     z-index: 2;
-    filter: brightness(1.1);
+    filter: brightness(0.95);
 }
 
 #himalayan-clouds {
@@ -6076,7 +6356,7 @@ body {
 .himalayan-cloud {
     position: absolute;
     width: 400px; height: 100px;
-    background: radial-gradient(ellipse, rgba(255, 255, 255, 0.5) 0%, rgba(255, 250, 240, 0.3) 60%, transparent 100%);
+    background: radial-gradient(ellipse, rgba(200, 210, 220, 0.4) 0%, rgba(180, 190, 200, 0.25) 60%, transparent 100%);
     border-radius: 50px;
     filter: blur(25px);
 }
@@ -6091,15 +6371,86 @@ body {
     position: absolute;
     width: 100%;
     height: 30px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 2"><path d="M 0 1 C 25 2, 75 0, 100 1" fill="none" stroke="rgba(40,30,20,0.5)" stroke-width="0.5"/></svg>');
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 2"><path d="M 0 1 C 25 2, 75 0, 100 1" fill="none" stroke="rgba(40,30,20,0.6)" stroke-width="0.8"/></svg>');
     background-size: 100px 2px;
+    animation: strand-sway 6s ease-in-out infinite;
+}
+
+/* Gentle strand swaying in mountain breeze */
+@keyframes strand-sway {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    25% {
+        transform: translateY(-1px);
+    }
+    50% {
+        transform: translateY(1px);
+    }
+    75% {
+        transform: translateY(-0.5px);
+    }
 }
 .himalayan-prayer-flag {
     position: absolute;
     top: 1px;
     width: 15px; height: 20px;
     transform-origin: top center;
-    animation: flutter-flag 3s ease-in-out infinite;
+    animation: flag-dance 4s ease-in-out infinite;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    border-radius: 1px;
+    opacity: 0.95;
+    backdrop-filter: blur(0.5px);
+}
+
+/* Stagger animation for natural wave effect across flags */
+.himalayan-prayer-flag:nth-child(1) { animation-delay: 0s; }
+.himalayan-prayer-flag:nth-child(2) { animation-delay: 0.1s; }
+.himalayan-prayer-flag:nth-child(3) { animation-delay: 0.2s; }
+.himalayan-prayer-flag:nth-child(4) { animation-delay: 0.3s; }
+.himalayan-prayer-flag:nth-child(5) { animation-delay: 0.4s; }
+.himalayan-prayer-flag:nth-child(6) { animation-delay: 0.5s; }
+.himalayan-prayer-flag:nth-child(7) { animation-delay: 0.6s; }
+.himalayan-prayer-flag:nth-child(8) { animation-delay: 0.7s; }
+.himalayan-prayer-flag:nth-child(9) { animation-delay: 0.8s; }
+.himalayan-prayer-flag:nth-child(10) { animation-delay: 0.9s; }
+.himalayan-prayer-flag:nth-child(n+11) { animation-delay: 1.0s; }
+
+/* Combined natural flag dancing animation - flutter and sway together */
+@keyframes flag-dance {
+    0% {
+        transform: perspective(100px) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scaleY(1);
+    }
+    10% {
+        transform: perspective(100px) rotateX(-5deg) rotateY(8deg) rotateZ(2deg) scaleY(0.97);
+    }
+    20% {
+        transform: perspective(100px) rotateX(3deg) rotateY(10deg) rotateZ(2.5deg) scaleY(1.02);
+    }
+    30% {
+        transform: perspective(100px) rotateX(-4deg) rotateY(6deg) rotateZ(1.5deg) scaleY(0.98);
+    }
+    40% {
+        transform: perspective(100px) rotateX(2deg) rotateY(-3deg) rotateZ(-1deg) scaleY(1.01);
+    }
+    50% {
+        transform: perspective(100px) rotateX(-3deg) rotateY(-5deg) rotateZ(-1.5deg) scaleY(0.99);
+    }
+    60% {
+        transform: perspective(100px) rotateX(4deg) rotateY(-2deg) rotateZ(-0.5deg) scaleY(1.02);
+    }
+    70% {
+        transform: perspective(100px) rotateX(-2deg) rotateY(5deg) rotateZ(1deg) scaleY(0.98);
+    }
+    80% {
+        transform: perspective(100px) rotateX(3deg) rotateY(7deg) rotateZ(1.5deg) scaleY(1.01);
+    }
+    90% {
+        transform: perspective(100px) rotateX(-4deg) rotateY(3deg) rotateZ(0.5deg) scaleY(0.99);
+    }
+    100% {
+        transform: perspective(100px) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scaleY(1);
+    }
 }
 
 #himalayan-sun-rays {
@@ -6110,6 +6461,7 @@ body {
     transform-origin: 50% 15%; /* Centered on the sun */
     animation: sun-ray-pan 90s ease-in-out infinite alternate;
     mix-blend-mode: screen;
+    display: none; /* DISABLED - sun rays removed per user request */
 }
 
 @keyframes sun-ray-pan {
@@ -6122,7 +6474,7 @@ body {
     top: 0; left: 50%;
     width: 2px;
     height: 120%;
-    background: linear-gradient(to bottom, rgba(255, 255, 240, 0.2), transparent 70%);
+    background: linear-gradient(to bottom, rgba(255, 240, 220, 0.15), transparent 70%);
     transform-origin: top center;
     animation: sun-ray-fade 12s ease-in-out infinite;
 }
@@ -6137,6 +6489,282 @@ body {
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: 8;
+}
+
+/* Himalayan Peak - Combo Effect Animations */
+
+/* Avalanche snow particles cascading down */
+@keyframes avalancheFall {
+    0% {
+        transform: translateY(0) translateX(0) rotate(0deg);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateY(100vh) translateX(var(--avalanche-x-drift, 0)) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Ice crystals twinkling */
+@keyframes crystalTwinkle {
+    0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    20% {
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.2) rotate(180deg);
+        opacity: 1;
+    }
+    80% {
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(0) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Wind gust overlay sweeping across */
+@keyframes windGustSweep {
+    0% {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    20% {
+        opacity: 1;
+    }
+    80% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Wind-blown snow particles */
+@keyframes windSnowSweep {
+    0% {
+        transform: translateX(0) translateY(0);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateX(110vw) translateY(calc(var(--wind-drift-y, 0) * 1px));
+        opacity: 0;
+    }
+}
+
+/* Mountain spirits rising from peaks */
+@keyframes spiritRise {
+    0% {
+        transform: translateY(0) translateX(0) scale(0.5);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-50vh) translateX(var(--spirit-drift, 0)) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100vh) translateX(calc(var(--spirit-drift, 0) * 1.5)) scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* Sacred light orbs pulsing */
+@keyframes sacredOrbPulse {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    15% {
+        transform: scale(1.3);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    85% {
+        transform: scale(1.2);
+        opacity: 0.9;
+    }
+    100% {
+        transform: scale(0);
+        opacity: 0;
+    }
+}
+
+/* Thunder flash at peaks */
+@keyframes thunderFlash {
+    0% {
+        opacity: 0;
+    }
+    20% {
+        opacity: 1;
+    }
+    40% {
+        opacity: 0.3;
+    }
+    60% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+/* Minimalistic bird soaring - subtle and distant */
+@keyframes eagleSoar {
+    0% {
+        left: -50px;
+        transform: translateY(0) scale(0.8);
+        opacity: 0;
+    }
+    10% {
+        opacity: 0.5;
+        left: 10vw;
+        transform: translateY(0) scale(0.85);
+    }
+    30% {
+        opacity: 0.55;
+        left: 30vw;
+        transform: translateY(-1vh) scale(0.9);
+    }
+    50% {
+        left: 50vw;
+        transform: translateY(-1.5vh) scale(0.95);
+        opacity: 0.6;
+    }
+    70% {
+        opacity: 0.55;
+        left: 70vw;
+        transform: translateY(-1vh) scale(0.9);
+    }
+    90% {
+        opacity: 0.4;
+        left: 95vw;
+        transform: translateY(0) scale(0.85);
+    }
+    100% {
+        left: 110vw;
+        transform: translateY(0.5vh) scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* Slow, realistic wing flapping with up and down motion */
+@keyframes wingFlapMinimal {
+    0% {
+        transform: scaleY(1) translateY(0);
+    }
+    25% {
+        transform: scaleY(0.7) translateY(-2px);
+    }
+    50% {
+        transform: scaleY(0.5) translateY(-3px);
+    }
+    75% {
+        transform: scaleY(0.7) translateY(-2px);
+    }
+    100% {
+        transform: scaleY(1) translateY(0);
+    }
+}
+
+/* Sacred mandala geometry */
+@keyframes mandalaAppear {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    15% {
+        transform: translate(-50%, -50%) scale(1.1) rotate(90deg);
+        opacity: 1;
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1) rotate(180deg);
+        opacity: 1;
+    }
+    85% {
+        transform: translate(-50%, -50%) scale(1.05) rotate(270deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Epic blizzard intensifying */
+@keyframes blizzardIntensify {
+    0% {
+        opacity: 0;
+        filter: blur(0px);
+    }
+    20% {
+        opacity: 0.5;
+        filter: blur(2px);
+    }
+    50% {
+        opacity: 0.8;
+        filter: blur(3px);
+    }
+    80% {
+        opacity: 0.6;
+        filter: blur(2px);
+    }
+    100% {
+        opacity: 0;
+        filter: blur(0px);
+    }
+}
+
+/* Blizzard snow falling */
+@keyframes blizzardSnowFall {
+    0% {
+        transform: translateY(0) translateX(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(110vh) translateX(calc((var(--random, 0.5) - 0.5) * 100px));
+        opacity: 0;
+    }
+}
+
+/* Gentle snowflake drift on piece lock */
+@keyframes gentleSnowDrift {
+    0% {
+        transform: translateY(0) translateX(0) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(80vh) translateX(30px) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Subtle breeze drift */
+@keyframes breezeDrift {
+    0% {
+        transform: translateX(0);
+        opacity: 0.6;
+    }
+    100% {
+        transform: translateX(110vw);
+        opacity: 0;
+    }
 }
 
 /* --- Electric Dreams Theme --- */

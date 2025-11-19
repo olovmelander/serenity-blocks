@@ -30,6 +30,19 @@ export default class OceanTheme extends BaseTheme {
         this.glowParticles = [];
         this.bubbleBurstParticles = [];
         this.presets = {
+            Minimal: {
+                burstMultiplier: 0.3,
+                shockwaveScale: 0.5,
+                bioluminescenceLimit: 3,
+                fishCount: 0,
+                bubbleBurstCap: 6,
+                brightDurationMs: 350,
+                comboCooldownMs: 300,
+                sedimentCount: 40,
+                bubbleCount: 60,
+                planktonCount: 80,
+                jellyCount: 4,
+            },
             Low: {
                 burstMultiplier: 0.5,
                 shockwaveScale: 0.7,
@@ -81,6 +94,19 @@ export default class OceanTheme extends BaseTheme {
                 bubbleCount: 180,
                 planktonCount: 240,
                 jellyCount: 12,
+            },
+            Extreme: {
+                burstMultiplier: 1.4,
+                shockwaveScale: 1.3,
+                bioluminescenceLimit: 24,
+                fishCount: 4,
+                bubbleBurstCap: 40,
+                brightDurationMs: 850,
+                comboCooldownMs: 180,
+                sedimentCount: 150,
+                bubbleCount: 220,
+                planktonCount: 300,
+                jellyCount: 16,
             },
         };
         this.currentPreset = this.presets.High;

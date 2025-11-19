@@ -42,6 +42,13 @@ export default class SupernovaTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                starCount: 40,
+                shockwaveParticles: 100,
+                energyRays: 4,
+                coreFilaments: 6,
+                driftRadiusScale: 0.15,
+            },
             'Low': {
                 starCount: 60,
                 shockwaveParticles: 160,
@@ -69,6 +76,13 @@ export default class SupernovaTheme extends BaseTheme {
                 energyRays: 14,
                 coreFilaments: 20,
                 driftRadiusScale: 0.35,
+            },
+            'Extreme': {
+                starCount: 200,
+                shockwaveParticles: 450,
+                energyRays: 20,
+                coreFilaments: 30,
+                driftRadiusScale: 0.42,
             }
         };
 

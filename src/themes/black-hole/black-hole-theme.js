@@ -5,6 +5,27 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { BLACK_HOLE_TETROMINOS } from './black-hole-tetrominos.js';
 
 const QUALITY_PRESETS = {
+    Extreme: {
+        starCount: 450,
+        initialParticles: 360,
+        maxParticles: 1000,
+        minParticles: 600,
+        adaptiveStep: 50,
+        targetFps: 60,
+        renderScale: 1.0,
+        effectIntensity: 1.3,
+        pulseCoverage: 1.0,
+        comboBurstLimit: 85,
+        eruptionLimit: 110,
+        allowEruptions: true,
+        lineEffectCooldown: 70,
+        comboEffectCooldown: 110,
+        smallBurstLimit: 14,
+        starBurstLimit: 6,
+        trailDetail: 1.0,
+        useCanvasStars: false,
+        skipPhysicsDistance: 1.6,
+    },
     Ultra: {
         starCount: 320,  // Reduced from 320
         initialParticles: 260,  // Reduced from 260
@@ -88,6 +109,27 @@ const QUALITY_PRESETS = {
         trailDetail: 0.2,  // Reduced from 0.45
         useCanvasStars: true,
         skipPhysicsDistance: 2.5,  // Skip even more distant particles
+    },
+    Minimal: {
+        starCount: 35,
+        initialParticles: 45,
+        maxParticles: 80,
+        minParticles: 45,
+        adaptiveStep: 20,
+        targetFps: 30,
+        renderScale: 0.4,
+        effectIntensity: 0.2,
+        pulseCoverage: 0.15,
+        comboBurstLimit: 6,
+        eruptionLimit: 8,
+        allowEruptions: false,
+        lineEffectCooldown: 380,
+        comboEffectCooldown: 500,
+        smallBurstLimit: 2,
+        starBurstLimit: 1,
+        trailDetail: 0.1,
+        useCanvasStars: true,
+        skipPhysicsDistance: 3.0,
     },
 };
 

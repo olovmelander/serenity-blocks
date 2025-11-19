@@ -49,6 +49,28 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Graphics quality presets
         this.qualityPresets = {
+            'Minimal': {
+                groundGlow: 5,
+                biolumRocks: 6,
+                groundMushrooms: 5,
+                mushroomSpots: { min: 1, max: 1 },
+                glowingPlants: 8,
+                plantFronds: { min: 2, max: 2 },
+                crystalFormations: 4,
+                luminousVines: 3,
+                vineSegments: { min: 2, max: 3 },
+                fireflies: 15,
+                fireflyTrailLength: 2,
+                spores: 30,
+                ambientGlows: 10,
+                grassBlades: 2,
+                auroraWaves: { min: 1, max: 1 },
+                auroraResolution: 25,
+                vineOrbFrequency: 5,
+                tendrilNodeFrequency: 5,
+                mushroomGillSpacing: 10,
+                staticRedrawInterval: 5
+            },
             'Low': {
                 groundGlow: 8,
                 biolumRocks: 10,
@@ -136,6 +158,28 @@ export default class BioluminescenceTheme extends BaseTheme {
                 tendrilNodeFrequency: 2,
                 mushroomGillSpacing: 4,
                 staticRedrawInterval: 2
+            },
+            'Extreme': {
+                groundGlow: 28,
+                biolumRocks: 35,
+                groundMushrooms: 28,
+                mushroomSpots: { min: 4, max: 8 },
+                glowingPlants: 40,
+                plantFronds: { min: 5, max: 6 },
+                crystalFormations: 20,
+                luminousVines: 16,
+                vineSegments: { min: 8, max: 10 },
+                fireflies: 120,
+                fireflyTrailLength: 10,
+                spores: 200,
+                ambientGlows: 55,
+                grassBlades: 6,
+                auroraWaves: { min: 4, max: 4 },
+                auroraResolution: 8,
+                vineOrbFrequency: 1,
+                tendrilNodeFrequency: 1,
+                mushroomGillSpacing: 3,
+                staticRedrawInterval: 1
             }
         };
 
