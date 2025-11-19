@@ -329,13 +329,25 @@ class ParticleSystem {
                 this.centers[i * 2] = rect.left + rect.width / 2;
                 this.centers[i * 2 + 1] = rect.top + rect.height / 2;
             } else {
-                this.centers[i * 2] = Math.random() * width;
-                this.centers[i * 2 + 1] = Math.random() * height;
+                const presetCenters = config.centerPoints;
+                if (presetCenters && presetCenters.length > 0) {
+                    const chosen = presetCenters[Math.floor(Math.random() * presetCenters.length)];
+                    this.centers[i * 2] = chosen.x;
+                    this.centers[i * 2 + 1] = chosen.y;
+                } else {
+                    this.centers[i * 2] = Math.random() * width;
+                    this.centers[i * 2 + 1] = Math.random() * height;
+                }
             }
-            this.radii[i * 3] = Math.random() * 80 + 40; // x-radius
-            this.radii[i * 3 + 1] = Math.random() * 40 + 20; // y-radius
+
+            const [minRadiusX, maxRadiusX] = config.radiusXRange || [40, 120];
+            const [minRadiusY, maxRadiusY] = config.radiusYRange || [20, 80];
+            this.radii[i * 3] = Math.random() * (maxRadiusX - minRadiusX) + minRadiusX; // x-radius
+            this.radii[i * 3 + 1] = Math.random() * (maxRadiusY - minRadiusY) + minRadiusY; // y-radius
             this.angles[i] = Math.random() * Math.PI * 2;
-            this.speeds[i] = (Math.random() * 0.01 + 0.005) * (Math.random() > 0.5 ? 1 : -1);
+            const [minSpeed, maxSpeed] = config.speedRange || [0.005, 0.015];
+            const direction = Math.random() < (config.clockwiseProbability ?? 0.5) ? 1 : -1;
+            this.speeds[i] = (Math.random() * (maxSpeed - minSpeed) + minSpeed) * direction;
             this.alphas[i] = Math.random() * (config.maxAlpha - config.minAlpha) + config.minAlpha;
         } else if (this.behavior === 'horizontal-drift') {
             const fromLeft = Math.random() > 0.5;
@@ -671,12 +683,14 @@ export class WebGLRenderer {
             depth: true,
             antialias: true,
             premultipliedAlpha: false,
+            powerPreference: 'high-performance',
         })
             || this.canvas.getContext('experimental-webgl', {
                 alpha: true,
                 depth: true,
                 antialias: true,
                 premultipliedAlpha: false,
+                powerPreference: 'high-performance',
             });
 
         if (!this.gl) {
@@ -938,6 +952,36 @@ export class WebGLRenderer {
         }
     }
 
+    /**
+     * Add a custom particle system at runtime (for dynamic theme responses).
+     * Starts the renderer if it is not running.
+     * @param {number} numParticles
+     * @param {Object} themeConfig
+     * @returns {ParticleSystem|null}
+     */
+    addCustomParticles(numParticles, themeConfig) {
+        if (!this.gl) return null;
+        const system = new ParticleSystem(this.gl, numParticles, themeConfig);
+        this.particleSystems.push(system);
+        this.start();
+        return system;
+    }
+
+    /**
+     * Remove and dispose a dynamically added particle system.
+     * @param {ParticleSystem} system
+     */
+    removeParticleSystem(system) {
+        if (!system) return;
+        const idx = this.particleSystems.indexOf(system);
+        if (idx !== -1) {
+            if (system.positionBuffer) this.gl.deleteBuffer(system.positionBuffer);
+            if (system.sizeBuffer) this.gl.deleteBuffer(system.sizeBuffer);
+            if (system.alphaBuffer) this.gl.deleteBuffer(system.alphaBuffer);
+            this.particleSystems.splice(idx, 1);
+        }
+    }
+
     loadTheme(themeName, themeData = null) {
         console.log('[WebGLRenderer] loadTheme called:', themeName);
         
@@ -1049,6 +1093,43 @@ export class WebGLRenderer {
                 color: [0.8, 0.9, 1.0],
             };
             this.particleSystems.push(new ParticleSystem(this.gl, 100, iceGrowthConfig));
+
+            this.start();
+        } else if (themeName === 'lunara') {
+            const orbitCenters = [
+                { x: window.innerWidth * 0.35, y: window.innerHeight * 0.25 },
+                { x: window.innerWidth * 0.55, y: window.innerHeight * 0.2 },
+            ];
+
+            const orbitingDust = {
+                behavior: 'spiraling-debris',
+                lifetime: Infinity,
+                minSize: 1.4,
+                maxSize: 3.6,
+                minAlpha: 0.25,
+                maxAlpha: 0.8,
+                radiusXRange: [60, 180],
+                radiusYRange: [30, 120],
+                speedRange: [0.004, 0.012],
+                clockwiseProbability: 0.6,
+                centerPoints: orbitCenters,
+                zIndex: -0.25,
+                color: [0.86, 0.78, 1.0], // Lavender glow
+            };
+            this.particleSystems.push(new ParticleSystem(this.gl, 70, orbitingDust));
+
+            const driftingMist = {
+                behavior: 'horizontal-drift',
+                speed: 0.35,
+                minSize: 1.3,
+                maxSize: 3.2,
+                minAlpha: 0.18,
+                maxAlpha: 0.45,
+                lifetime: Infinity,
+                zIndex: -0.35,
+                color: [0.78, 0.7, 1.0], // Soft purple mist
+            };
+            this.particleSystems.push(new ParticleSystem(this.gl, 140, driftingMist));
 
             this.start();
         } else if (themeName === 'moonlit-forest') {
