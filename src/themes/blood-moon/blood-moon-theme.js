@@ -49,6 +49,21 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Graphics quality presets
         this.qualityPresets = {
+            'Minimal': {
+                stars: 100,
+                nebulaClouds: 5,
+                craterData: 10,
+                moonTexture: 150,
+                maxParticles: 50,
+                maxLightning: 1,
+                maxWaves: 2,
+                maxOrbs: 5,
+                maxVortexes: 1,
+                lightningBranches: 3,
+                lightningSegments: 4,
+                vortexParticleLimit: 15,
+                vortexSpawnRate: 0.2
+            },
             'Low': {
                 stars: 150,
                 nebulaClouds: 8,
@@ -108,6 +123,21 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningSegments: 10,
                 vortexParticleLimit: 60,
                 vortexSpawnRate: 0.5
+            },
+            'Extreme': {
+                stars: 700,
+                nebulaClouds: 28,
+                craterData: 50,
+                moonTexture: 1200,
+                maxParticles: 350,
+                maxLightning: 7,
+                maxWaves: 15,
+                maxOrbs: 35,
+                maxVortexes: 6,
+                lightningBranches: 12,
+                lightningSegments: 12,
+                vortexParticleLimit: 80,
+                vortexSpawnRate: 0.6
             }
         };
 

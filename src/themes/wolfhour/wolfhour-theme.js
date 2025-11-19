@@ -74,6 +74,30 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Quality presets - current settings are considered Ultra
         this.qualityPresets = {
+            'Minimal': {
+                starCount: 25,
+                shootingStarInterval: 20000,
+                lightRayCount: 3,
+                cosmicRiftCount: 1,
+                spiritCount: 1,
+                nebulaBackBlobs: 10,
+                nebulaMidBlobs: 8,
+                maxStarBursts: 4,
+                maxCosmicWaves: 2,
+                maxCelestialBeams: 0,
+                maxMoonPulses: 0,
+                maxConstellationLines: 0,
+                enableConstellationLines: false,
+                enableMoonPulses: false,
+                enableCelestialBeams: false,
+                starBurstParticles: 4,
+                burstCountMultiplier: 0.5,  // lineCount * 0.5
+                shootingStarMultiplier: 0.25,  // lineCount * 0.25
+                useShadows: false,
+                useComplexGradients: false,
+                waveRingCount: 1,
+                effectUpdateInterval: 3,  // Update effects every 3 frames
+            },
             'Low': {
                 starCount: 50,
                 shootingStarInterval: 15000,
@@ -169,6 +193,30 @@ export default class WolfhourTheme extends BaseTheme {
                 useComplexGradients: true,
                 waveRingCount: 3,
                 effectUpdateInterval: 1,  // Update every frame
+            },
+            'Extreme': {
+                starCount: 200,
+                shootingStarInterval: 5000,
+                lightRayCount: 15,
+                cosmicRiftCount: 10,
+                spiritCount: 8,
+                nebulaBackBlobs: 60,
+                nebulaMidBlobs: 50,
+                maxStarBursts: 25,
+                maxCosmicWaves: 15,
+                maxCelestialBeams: 10,
+                maxMoonPulses: 10,
+                maxConstellationLines: 10,
+                enableConstellationLines: true,
+                enableMoonPulses: true,
+                enableCelestialBeams: true,
+                starBurstParticles: 15,
+                burstCountMultiplier: 2.5,  // lineCount * 2.5
+                shootingStarMultiplier: 1.5,  // lineCount * 1.5
+                useShadows: true,
+                useComplexGradients: true,
+                waveRingCount: 4,
+                effectUpdateInterval: 1,  // Update every frame
             }
         };
 
@@ -196,7 +244,7 @@ export default class WolfhourTheme extends BaseTheme {
 
     getGraphicsQuality() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.visualQuality || 'Ultra';
+        return settings?.effectQuality || 'Ultra';
     }
 
     applyQualityPreset() {
@@ -212,7 +260,7 @@ export default class WolfhourTheme extends BaseTheme {
 
     setupQualityListener() {
         this.qualityListener = (event) => {
-            if (event.detail?.visualQuality !== undefined) {
+            if (event.detail?.effectQuality !== undefined) {
                 this.applyQualityPreset();
             }
         };

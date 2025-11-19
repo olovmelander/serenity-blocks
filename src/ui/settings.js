@@ -36,7 +36,7 @@ const DEFAULT_CONFIG = {
     customResolution: null,         // { width: number, height: number } or null
     vsyncEnabled: true,
     targetFrameRate: 60,            // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
-    effectQuality: 'High',          // 'Low' | 'Medium' | 'High' | 'Ultra' | 'Custom'
+    effectQuality: 'High',          // 'Minimal' | 'Low' | 'Medium' | 'High' | 'Ultra' | 'Extreme' | 'Custom'
     // Advanced Graphics Settings
     enableAntialiasing: true,
     enableMotionBlur: false,
