@@ -274,6 +274,13 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
         icon: './blood-moon/blood-moon-icon.png',
     },
+    {
+        id: 'astral-weave',
+        displayName: 'Astral Weave',
+        module: './astral-weave/astral-weave-theme.js',
+        group: 'cosmic',
+        icon: './astral-weave/astral-weave-icon.png',
+    },
 ];
 
 const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));

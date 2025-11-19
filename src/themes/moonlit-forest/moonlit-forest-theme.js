@@ -24,56 +24,222 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.mushrooms = [];
         this.moonbeams = [];
         this.eyes = [];
+        this.leaves = [];
+        this.qualityConfig = null;
     }
 
     async init() {
         // Theme resources are created on-demand in createScene()
     }
 
+    /**
+     * Get quality setting from game settings
+     */
+    getQualitySetting() {
+        if (typeof window !== 'undefined' && window.settings) {
+            const quality = window.settings.effectQuality || 'High';
+            return quality.toLowerCase();
+        }
+        return 'high';
+    }
+
+    /**
+     * Get quality-specific configuration for Moonlit Forest
+     * Balanced presets from Minimal to Extreme for optimal visual quality and performance
+     */
+    getQualityConfig(quality) {
+        const configs = {
+            minimal: {
+                trees: { back: 5, mid: 4, front: 3 },      // Sparse forest
+                leaves: 5,                                   // Minimal falling leaves
+                mushrooms: 5,                               // Few DOM mushrooms (canvas mushrooms scale with trees)
+                moonbeams: 2,                               // Just a couple of beams
+                eyes: 1,                                    // Single glowing eyes
+                fireflies: 3,                               // Very few ambient fireflies
+                comboEffects: {
+                    fireflyMultiplier: 0.2,                 // Minimal combo effects
+                    sporesMultiplier: 0.2,
+                    wispsMultiplier: 0,                     // No wisps
+                    auroraEnabled: false,                   // No aurora
+                    shootingStarsEnabled: false,            // No shooting stars
+                },
+            },
+            low: {
+                trees: { back: 10, mid: 8, front: 6 },     // Light forest
+                leaves: 12,
+                mushrooms: 10,
+                moonbeams: 3,
+                eyes: 2,
+                fireflies: 8,
+                comboEffects: {
+                    fireflyMultiplier: 0.4,
+                    sporesMultiplier: 0.4,
+                    wispsMultiplier: 0.3,                   // Minimal wisps
+                    auroraEnabled: false,
+                    shootingStarsEnabled: false,
+                },
+            },
+            medium: {
+                trees: { back: 15, mid: 12, front: 8 },    // Balanced forest
+                leaves: 25,
+                mushrooms: 15,
+                moonbeams: 5,
+                eyes: 3,
+                fireflies: 15,
+                comboEffects: {
+                    fireflyMultiplier: 0.65,
+                    sporesMultiplier: 0.65,
+                    wispsMultiplier: 0.65,
+                    auroraEnabled: true,                    // Aurora enabled from medium
+                    shootingStarsEnabled: false,
+                },
+            },
+            high: {
+                trees: { back: 20, mid: 16, front: 11 },   // Dense forest
+                leaves: 40,
+                mushrooms: 22,
+                moonbeams: 7,
+                eyes: 5,
+                fireflies: 22,
+                comboEffects: {
+                    fireflyMultiplier: 0.85,
+                    sporesMultiplier: 0.85,
+                    wispsMultiplier: 0.85,
+                    auroraEnabled: true,
+                    shootingStarsEnabled: true,             // Shooting stars from high
+                },
+            },
+            ultra: {
+                trees: { back: 26, mid: 20, front: 14 },   // Very dense forest
+                leaves: 60,
+                mushrooms: 30,
+                moonbeams: 9,
+                eyes: 7,
+                fireflies: 30,
+                comboEffects: {
+                    fireflyMultiplier: 1.1,
+                    sporesMultiplier: 1.1,
+                    wispsMultiplier: 1.1,
+                    auroraEnabled: true,
+                    shootingStarsEnabled: true,
+                },
+            },
+            extreme: {
+                trees: { back: 35, mid: 28, front: 18 },   // Maximum density forest
+                leaves: 85,
+                mushrooms: 45,
+                moonbeams: 12,
+                eyes: 10,
+                fireflies: 45,
+                comboEffects: {
+                    fireflyMultiplier: 1.5,                 // Maximum effects
+                    sporesMultiplier: 1.5,
+                    wispsMultiplier: 1.5,
+                    auroraEnabled: true,
+                    shootingStarsEnabled: true,
+                },
+            },
+        };
+
+        return configs[quality] || configs.high;
+    }
+
     async createScene() {
-        // Define tree colors for different layers
-        // OPTIMIZED: Reduced tree counts significantly for better performance
+        // Get quality setting and configuration
+        const qualitySetting = this.getQualitySetting();
+        this.qualityConfig = this.getQualityConfig(qualitySetting);
+
+        console.log('[MoonlitForest] Creating scene with quality:', qualitySetting, this.qualityConfig);
+
+        // Define tree colors for different layers (quality-based counts)
         const treeLayers = [
             {
                 el: document.getElementById('moonlit-forest-back'),
                 color: '#7A9B7E',
                 foliageColor: '#5A8067',
-                count: 20, // Reduced from 40
+                count: this.qualityConfig.trees.back,
                 height: window.innerHeight * 0.7,
             },
             {
                 el: document.getElementById('moonlit-forest-mid'),
                 color: '#3D5F4A',
                 foliageColor: '#4A6B56',
-                count: 15, // Reduced from 30
+                count: this.qualityConfig.trees.mid,
                 height: window.innerHeight * 0.85,
             },
             {
                 el: document.getElementById('moonlit-forest-front'),
                 color: '#1A2820',
                 foliageColor: '#2F4A3A',
-                count: 10, // Reduced from 20
+                count: this.qualityConfig.trees.front,
                 height: window.innerHeight,
             },
         ];
 
-        // Helper function to draw a more realistic tree
-        // OPTIMIZED: Simplified recursion with depth limit for better performance
+        // Helper function to draw an elegant, sparse tree with refined foliage
         const drawTree = (ctx, x, y, len, angle, width, foliageColor, depth = 0) => {
-            const maxDepth = 4; // OPTIMIZED: Limit recursion depth (was unlimited)
+            const maxDepth = 5;
 
             if (depth > maxDepth || width < 1.5 || len < 15) {
-                // Stop recursion earlier
-                // Draw a simple leaf cluster
+                // Draw refined, sparse leaf cluster at branch endpoints
+                const clusterCount = Math.floor(this.random(4, 7)); // Lighter amount
+                const clusterRadius = this.random(12, 20); // Tighter spread
+                
+                for (let i = 0; i < clusterCount; i++) {
+                    const offsetX = this.random(-clusterRadius, clusterRadius);
+                    const offsetY = this.random(-clusterRadius, clusterRadius);
+                    const size = this.random(6, 11); // Smaller leaves
+                    
+                    // Single layer for crisp, clean look
                 ctx.beginPath();
-                ctx.arc(x, y, this.random(4, 10), 0, Math.PI * 2);
+                    ctx.arc(
+                        x + offsetX, 
+                        y + offsetY, 
+                        size, 
+                        0, 
+                        Math.PI * 2
+                    );
                 ctx.fillStyle = foliageColor;
-                ctx.globalAlpha = this.random(0.3, 0.5);
+                    ctx.globalAlpha = this.random(0.5, 0.7);
                 ctx.fill();
+                    
+                    // Very selective highlights for key leaves only
+                    if (Math.random() < 0.2) {
+                        ctx.beginPath();
+                        ctx.arc(
+                            x + offsetX + this.random(-2, 2),
+                            y + offsetY + this.random(-2, 2),
+                            size * 0.4,
+                            0,
+                            Math.PI * 2
+                        );
+                        ctx.fillStyle = foliageColor;
+                        ctx.globalAlpha = this.random(0.25, 0.4);
+                        ctx.fill();
+                    }
+                }
                 ctx.globalAlpha = 1;
                 return;
             }
 
+            // Very selective foliage along branches (sparse placement)
+            if (depth >= 4 && Math.random() < 0.3) { // Only deepest branches, rarely
+                const branchFoliageCount = Math.floor(this.random(1, 3)); // Minimal leaves
+                for (let i = 0; i < branchFoliageCount; i++) {
+                    const offsetX = this.random(-8, 8);
+                    const offsetY = this.random(-8, 8);
+                    const size = this.random(5, 9);
+                    
+                    ctx.beginPath();
+                    ctx.arc(x + offsetX, y + offsetY, size, 0, Math.PI * 2);
+                    ctx.fillStyle = foliageColor;
+                    ctx.globalAlpha = this.random(0.45, 0.6);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // Draw branch
             ctx.beginPath();
             ctx.lineWidth = width;
             ctx.moveTo(x, y);
@@ -88,7 +254,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             // Main branch continues somewhat straight
             drawTree(ctx, x2, y2, newLen, angle + this.random(-12, 12), newWidth, foliageColor, depth + 1);
 
-            // OPTIMIZED: Only add side branches if not too deep
+            // Standard side branches
             if (width > 2 && depth < maxDepth - 1) {
                 drawTree(
                     ctx,
@@ -110,6 +276,20 @@ export default class MoonlitForestTheme extends BaseTheme {
                     foliageColor,
                     depth + 1
                 );
+                
+                // Rare extra branches for occasional variety
+                if (depth >= 3 && Math.random() < 0.25) { // Further reduced from 0.4 to 0.25
+                    drawTree(
+                        ctx,
+                        x2,
+                        y2,
+                        newLen * 0.6,
+                        angle + this.random(40, 70),
+                        newWidth * 0.6,
+                    foliageColor,
+                    depth + 1
+                );
+                }
             }
         };
 
@@ -118,8 +298,8 @@ export default class MoonlitForestTheme extends BaseTheme {
             if (layer.el) {
                 this.registerContainer(layer.el);
                 // Create a cache key based on layer properties and window dimensions
-                // v3: PERFORMANCE OPTIMIZED - reduced canvas size, tree count, and recursion depth
-                const cacheKey = `v3-${layerIndex}-${layer.color}-${layer.foliageColor}-${layer.count}-${layer.height}`;
+                // v10: MUSHROOM POSITIONING - mushrooms now properly positioned on ground line behind trees
+                const cacheKey = `v10-${layerIndex}-${layer.color}-${layer.foliageColor}-${layer.count}-${layer.height}`;
 
                 // Check if we have a cached version
                 if (moonlitForestTreeCache.has(cacheKey)) {
@@ -137,25 +317,227 @@ export default class MoonlitForestTheme extends BaseTheme {
                     const ctx = canvas.getContext('2d');
                     ctx.strokeStyle = layer.color;
 
-                    // Draw ground/undergrowth silhouette
-                    // OPTIMIZED: Sample every 4 pixels instead of every pixel
-                    ctx.fillStyle = layer.foliageColor;
+                    // Draw solid ground silhouette with gentle hills (aligned with trees)
+                    // Use darker shade for clear ground definition
+                    const groundColors = {
+                        back: '#1A2820',    // Dark forest ground (matches front tree color)
+                        mid: '#14201A',     // Slightly darker
+                        front: '#0D1512',   // Darkest for front layer
+                    };
+                    const groundColorKey = layerIndex === 0 ? 'back' : layerIndex === 1 ? 'mid' : 'front';
+                    ctx.fillStyle = groundColors[groundColorKey];
                     ctx.beginPath();
                     ctx.moveTo(0, C_HEIGHT);
-                    let groundY = C_HEIGHT * 0.95;
-                    const step = 4; // Sample every 4 pixels for better performance
+                    let groundY = C_HEIGHT * 0.92; // Match Sakura ground height
+                    const step = 4;
                     for (let x = 0; x < C_WIDTH; x += step) {
-                        groundY += (Math.random() - 0.5) * 2;
+                        groundY += (Math.random() - 0.5) * 3; // Gentle terrain variation
                         ctx.lineTo(x, groundY);
                     }
                     ctx.lineTo(C_WIDTH, C_HEIGHT);
                     ctx.closePath();
                     ctx.fill();
 
-                    // Draw trees
+                    // Add light, scattered undergrowth for subtle forest floor detail
+                    const bushCount = Math.floor(layer.count * 0.8); // Lighter undergrowth
+                    for (let i = 0; i < bushCount; i++) {
+                        const bushX = Math.random() * C_WIDTH;
+                        const bushY = C_HEIGHT * (0.92 + Math.random() * 0.04);
+                        const bushSize = this.random(10, 24);
+                        const foliageCount = Math.floor(this.random(3, 5)); // Sparse clusters
+                        
+                        // Draw subtle, refined bush clusters
+                        for (let j = 0; j < foliageCount; j++) {
+                            ctx.beginPath();
+                            ctx.arc(
+                                bushX + this.random(-bushSize * 0.5, bushSize * 0.5),
+                                bushY + this.random(-bushSize * 0.25, bushSize * 0.25),
+                                this.random(5, 11),
+                                0,
+                                Math.PI * 2
+                            );
+                            ctx.fillStyle = layer.foliageColor;
+                            ctx.globalAlpha = this.random(0.5, 0.65);
+                            ctx.fill();
+                            
+                            // Rare highlights for accent
+                            if (Math.random() < 0.15) {
+                                ctx.beginPath();
+                                ctx.arc(
+                                    bushX + this.random(-bushSize * 0.3, bushSize * 0.3),
+                                    bushY + this.random(-bushSize * 0.15, bushSize * 0.15),
+                                    this.random(3, 6),
+                                    0,
+                                    Math.PI * 2
+                                );
+                                ctx.fillStyle = layer.foliageColor;
+                                ctx.globalAlpha = this.random(0.35, 0.5);
+                                ctx.fill();
+                            }
+                        }
+                    }
+                    ctx.globalAlpha = 1;
+
+                    // Add glowing mushrooms on the ground (layered depth effect)
+                    // Matching the beautiful glowing DOM mushroom style
+                    // Mushrooms are drawn BEFORE trees so they appear behind trees
+                    const mushroomCount = Math.floor(layer.count * 1.2); // More mushrooms than bushes
+                    const groundLineY = C_HEIGHT * 0.92; // Base ground line for this layer
+                    
+                    for (let i = 0; i < mushroomCount; i++) {
+                        const mushroomX = Math.random() * C_WIDTH;
+                        // Position mushrooms on the ground line (same as trees)
+                        const mushroomGroundY = groundLineY + Math.random() * (C_HEIGHT * 0.08);
+                        const mushroomSize = this.random(6, 16);
+                        
+                        // Determine mushroom color variant (matching DOM mushrooms)
+                        // Using same logic as CSS: default (cyan/blue), 3n (purple), 5n (green)
+                        const variant = i % 15; // Using 15 for LCM of 3 and 5
+                        let capGradientColors, glowColor, shadowColor;
+                        
+                        if (variant % 5 === 0) {
+                            // Green variant (every 5th)
+                            capGradientColors = [
+                                'rgba(100, 255, 180, 0.9)',
+                                'rgba(100, 220, 160, 0.7)',
+                                'rgba(80, 180, 140, 0.6)',
+                                'rgba(60, 140, 120, 0.4)'
+                            ];
+                            glowColor = 'rgba(100, 255, 180, 0.6)';
+                            shadowColor = 'rgba(100, 255, 180, 0.8)';
+                        } else if (variant % 3 === 0) {
+                            // Purple variant (every 3rd, not 5th)
+                            capGradientColors = [
+                                'rgba(180, 100, 255, 0.9)',
+                                'rgba(140, 120, 220, 0.7)',
+                                'rgba(100, 100, 180, 0.6)',
+                                'rgba(70, 80, 140, 0.4)'
+                            ];
+                            glowColor = 'rgba(180, 100, 255, 0.6)';
+                            shadowColor = 'rgba(180, 100, 255, 0.8)';
+                        } else {
+                            // Cyan/blue variant (default)
+                            capGradientColors = [
+                                'rgba(0, 255, 255, 0.9)',
+                                'rgba(100, 200, 255, 0.7)',
+                                'rgba(80, 150, 200, 0.6)',
+                                'rgba(60, 120, 160, 0.4)'
+                            ];
+                            glowColor = 'rgba(0, 255, 255, 0.6)';
+                            shadowColor = 'rgba(0, 255, 255, 0.8)';
+                        }
+                        
+                        const stemWidth = mushroomSize * 0.3;
+                        const stemHeight = mushroomSize * 0.8;
+                        const capWidth = mushroomSize * 0.8;
+                        const capHeight = mushroomSize * 0.6;
+                        
+                        // Draw mushroom stem with gradient (matching DOM style)
+                        const stemGradient = ctx.createLinearGradient(
+                            mushroomX, mushroomGroundY - stemHeight,
+                            mushroomX, mushroomGroundY
+                        );
+                        stemGradient.addColorStop(0, 'rgba(180, 210, 220, 0.6)');
+                        stemGradient.addColorStop(1, 'rgba(140, 170, 180, 0.4)');
+                        
+                        ctx.fillStyle = stemGradient;
+                        ctx.globalAlpha = 1;
+                        ctx.fillRect(
+                            mushroomX - stemWidth / 2,
+                            mushroomGroundY - stemHeight,
+                            stemWidth,
+                            stemHeight
+                        );
+                        
+                        // Draw glowing cap with radial gradient (matching DOM style)
+                        const capGradient = ctx.createRadialGradient(
+                            mushroomX, mushroomGroundY - stemHeight,
+                            0,
+                            mushroomX, mushroomGroundY - stemHeight,
+                            capWidth
+                        );
+                        capGradient.addColorStop(0, capGradientColors[0]);      // Center
+                        capGradient.addColorStop(0.3, capGradientColors[1]);    // Mid
+                        capGradient.addColorStop(0.6, capGradientColors[2]);    // Outer
+                        capGradient.addColorStop(1, capGradientColors[3]);      // Edge
+                        
+                        // Apply shadow glow effect
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = shadowColor;
+                        
+                        ctx.beginPath();
+                        ctx.ellipse(
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
+                            capWidth,
+                            capHeight,
+                            0,
+                            0,
+                            Math.PI * 2
+                        );
+                        ctx.fillStyle = capGradient;
+                        ctx.globalAlpha = 1;
+                        ctx.fill();
+                        
+                        // Reset shadow
+                        ctx.shadowBlur = 0;
+                        
+                        // Add outer glow halo effect
+                        const glowGradient = ctx.createRadialGradient(
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
+                            0,
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
+                            mushroomSize * 1.8
+                        );
+                        glowGradient.addColorStop(0, glowColor);
+                        glowGradient.addColorStop(0.3, glowColor.replace('0.6', '0.4'));
+                        glowGradient.addColorStop(0.6, glowColor.replace('0.6', '0.2'));
+                        glowGradient.addColorStop(1, 'transparent');
+                        
+                        ctx.beginPath();
+                        ctx.arc(
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
+                            mushroomSize * 1.8,
+                            0,
+                            Math.PI * 2
+                        );
+                        ctx.fillStyle = glowGradient;
+                        ctx.globalAlpha = 0.5;
+                        ctx.fill();
+                        
+                        // Add subtle white highlight on cap (matching DOM inset highlight)
+                        const highlightGradient = ctx.createRadialGradient(
+                            mushroomX,
+                            mushroomGroundY - stemHeight - capHeight * 0.3,
+                            0,
+                            mushroomX,
+                            mushroomGroundY - stemHeight - capHeight * 0.3,
+                            capWidth * 0.4
+                        );
+                        highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+                        highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                        
+                        ctx.beginPath();
+                        ctx.arc(
+                            mushroomX,
+                            mushroomGroundY - stemHeight - capHeight * 0.3,
+                            capWidth * 0.4,
+                            0,
+                            Math.PI * 2
+                        );
+                        ctx.fillStyle = highlightGradient;
+                        ctx.globalAlpha = 1;
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+
+                    // Draw trees (positioned on ground at 0.92, matching Sakura alignment)
                     for (let i = 0; i < layer.count; i++) {
                         const x = Math.random() * C_WIDTH;
-                        const y = C_HEIGHT * (0.95 + Math.random() * 0.05);
+                        const y = C_HEIGHT * (0.92 + Math.random() * 0.08); // Align with ground at 0.92
                         const len = C_HEIGHT * (0.2 + Math.random() * 0.3);
                         const angle = -90 + this.random(-10, 10);
                         const width = 10 + Math.random() * (layer.height / 30);
@@ -187,16 +569,15 @@ export default class MoonlitForestTheme extends BaseTheme {
             }
         });
 
-        // 2. Glowing Mushrooms
-        // OPTIMIZED: Reduced from 30 to 20 for better performance
+        // 2. Glowing Mushrooms (quality-based)
         const mushroomContainer = this.getContainer('glowing-mushrooms');
         if (mushroomContainer && mushroomContainer.children.length === 0) {
             this.mushrooms = [];
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < this.qualityConfig.mushrooms; i++) {
                 const mushroom = document.createElement('div');
                 mushroom.className = 'glowing-mushroom';
                 mushroom.style.left = `${Math.random() * 98}%`;
-                // FIXED: Anchor mushrooms to the forest floor (0-3% from bottom)
+                // Anchor mushrooms to the forest floor (0-3% from bottom)
                 mushroom.style.bottom = `${Math.random() * 3}%`;
                 mushroom.style.setProperty('--delay', `-${Math.random() * 12}s`);
                 mushroomContainer.appendChild(mushroom);
@@ -204,14 +585,13 @@ export default class MoonlitForestTheme extends BaseTheme {
             }
         }
 
-        // 3. Moonbeams
-        // OPTIMIZED: Reduced from 10 to 7 for better performance
+        // 3. Moonbeams (quality-based)
         const moonbeamContainer = document.querySelector('.moonbeam-container');
         if (moonbeamContainer) {
             this.registerContainer(moonbeamContainer);
             if (moonbeamContainer.children.length === 0) {
                 this.moonbeams = [];
-                for (let i = 0; i < 7; i++) {
+                for (let i = 0; i < this.qualityConfig.moonbeams; i++) {
                     const beam = document.createElement('div');
                     beam.className = 'moonbeam';
                     const angle = Math.random() * 20 - 10;
@@ -226,13 +606,12 @@ export default class MoonlitForestTheme extends BaseTheme {
             }
         }
 
-        // 4. Wildlife and Leaves
-        // OPTIMIZED: Reduced glowing eyes from 7 to 5 for better performance
+        // 4. Wildlife (quality-based)
         const wildlifeContainer = this.getContainer('moonlit-wildlife');
         if (wildlifeContainer && wildlifeContainer.children.length === 0) {
             // Glowing Eyes
             this.eyes = [];
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < this.qualityConfig.eyes; i++) {
                 const eyes = document.createElement('div');
                 eyes.className = 'glowing-eyes';
                 eyes.style.left = `${Math.random() * 95}%`;
@@ -248,29 +627,146 @@ export default class MoonlitForestTheme extends BaseTheme {
             wildlifeContainer.appendChild(owl);
         }
 
-        // OPTIMIZED: Reduced falling leaves from 10 to 6 for better performance
+        // 5. Falling Leaves with Depth Layers (quality-based, parallax effect)
         const themeContainer = this.getContainer('moonlit-forest-theme');
         if (themeContainer) {
             // Clear old leaves before adding new ones
             themeContainer.querySelectorAll('.moonlit-leaf').forEach((e) => e.remove());
-            // Falling Leaves
-            for (let i = 0; i < 6; i++) {
+            this.leaves = [];
+
+            // Define depth layers for leaves to create parallax effect
+            const leafDepthLayers = [
+                {
+                    name: 'far-back',
+                    count: Math.ceil(this.qualityConfig.leaves * 0.2),  // 20% furthest back
+                    zIndex: 2,
+                    size: 0.5,  // Small (far away)
+                    opacity: 0.4,
+                    blur: 1.5,
+                    durationMultiplier: 1.6,  // Slower fall (parallax)
+                    driftRange: 12,
+                },
+                {
+                    name: 'back',
+                    count: Math.ceil(this.qualityConfig.leaves * 0.25),  // 25% back layer
+                    zIndex: 4,
+                    size: 0.7,
+                    opacity: 0.6,
+                    blur: 1.0,
+                    durationMultiplier: 1.4,
+                    driftRange: 15,
+                },
+                {
+                    name: 'mid',
+                    count: Math.ceil(this.qualityConfig.leaves * 0.3),  // 30% middle layer
+                    zIndex: 7,
+                    size: 0.9,
+                    opacity: 0.8,
+                    blur: 0.5,
+                    durationMultiplier: 1.2,
+                    driftRange: 18,
+                },
+                {
+                    name: 'front',
+                    count: Math.ceil(this.qualityConfig.leaves * 0.25),  // 25% front layer
+                    zIndex: 11,
+                    size: 1.0,
+                    opacity: 1.0,
+                    blur: 0,
+                    durationMultiplier: 1.0,  // Normal speed
+                    driftRange: 20,
+                },
+            ];
+
+            // Create leaves for each depth layer
+            leafDepthLayers.forEach((layer) => {
+                for (let i = 0; i < layer.count; i++) {
                 const leaf = document.createElement('div');
                 leaf.className = 'moonlit-leaf';
+                    
+                    // Position and movement
                 const xStart = Math.random() * 100;
                 leaf.style.setProperty('--x-start', `${xStart}vw`);
-                leaf.style.setProperty('--x-end', `${xStart + (Math.random() * 15 - 7.5)}vw`);
+                    leaf.style.setProperty('--x-end', `${xStart + (Math.random() * layer.driftRange - layer.driftRange / 2)}vw`);
                 leaf.style.setProperty('--r-start', `${Math.random() * 360}deg`);
                 leaf.style.setProperty('--r-end', `${Math.random() * 540 - 270}deg`);
-                const duration = Math.random() * 12 + 12;
+                    
+                    // Depth-based properties
+                    leaf.style.setProperty('--leaf-scale', layer.size.toString());
+                    leaf.style.setProperty('--leaf-opacity', layer.opacity.toString());
+                    leaf.style.zIndex = layer.zIndex;
+                    
+                    // Apply blur for depth of field effect
+                    if (layer.blur > 0) {
+                        leaf.style.filter = `blur(${layer.blur}px)`;
+                    }
+                    
+                    // Duration varies by depth for parallax effect
+                    const baseDuration = Math.random() * 12 + 12;
+                    const duration = baseDuration * layer.durationMultiplier;
                 leaf.style.animationDuration = `${duration}s`;
                 leaf.style.animationDelay = `-${Math.random() * duration}s`;
+                    
                 themeContainer.appendChild(leaf);
+                    this.leaves.push(leaf);
+                }
+            });
+        }
+
+        // 6. Ambient Fireflies (quality-based, continuous)
+        if (themeContainer && this.qualityConfig.fireflies > 0) {
+            for (let i = 0; i < this.qualityConfig.fireflies; i++) {
+                setTimeout(() => {
+                    this.spawnAmbientFirefly();
+                }, i * 1000); // Stagger initial spawn
             }
         }
 
         // Setup event listeners for reactive effects
         this.setupEventListeners();
+    }
+
+    /**
+     * Spawn a single ambient firefly that continuously respawns
+     */
+    spawnAmbientFirefly() {
+        if (!this.isActive) return;
+
+        const theme = document.getElementById('moonlit-forest-theme');
+        if (!theme) return;
+
+        const firefly = document.createElement('div');
+        firefly.className = 'ambient-firefly';
+        firefly.style.position = 'absolute';
+        firefly.style.width = '3px';
+        firefly.style.height = '3px';
+        firefly.style.borderRadius = '50%';
+        firefly.style.backgroundColor = '#ffeb3b';
+        firefly.style.boxShadow = '0 0 6px 2px rgba(255, 235, 59, 0.6)';
+        firefly.style.left = `${Math.random() * 100}%`;
+        firefly.style.top = `${30 + Math.random() * 50}%`;
+        firefly.style.opacity = '0';
+        firefly.style.pointerEvents = 'none';
+        firefly.style.zIndex = '9';
+        
+        // Random movement pattern
+        const duration = 8 + Math.random() * 8; // 8-16 seconds
+        firefly.style.animation = `fireflyWander ${duration}s ease-in-out forwards`;
+        
+        theme.appendChild(firefly);
+
+        // Remove and respawn after animation
+        setTimeout(() => {
+            if (firefly.parentNode) {
+                firefly.parentNode.removeChild(firefly);
+            }
+            // Respawn if theme is still active
+            if (this.isActive) {
+                setTimeout(() => {
+                    this.spawnAmbientFirefly();
+                }, Math.random() * 3000); // Random delay before respawn
+            }
+        }, duration * 1000);
     }
 
     setupEventListeners() {
@@ -302,9 +798,13 @@ export default class MoonlitForestTheme extends BaseTheme {
     }
 
     /**
-     * React to line clears with mystical forest effects
+     * React to line clears with mystical forest effects (quality-scaled)
      */
     onLineClear(lineCount) {
+        if (!this.qualityConfig) return;
+
+        const comboEffects = this.qualityConfig.comboEffects;
+
         // Brighten mushrooms
         this.brightenMushrooms(lineCount);
 
@@ -312,12 +812,16 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.intensifyMoonbeams(lineCount);
 
         // Spawn fireflies for bigger line clears
-        if (lineCount >= 2) {
-            this.spawnFireflies(lineCount * 3);
+        if (lineCount >= 2 && comboEffects.fireflyMultiplier > 0) {
+            const fireflyCount = Math.ceil(lineCount * 3 * comboEffects.fireflyMultiplier);
+            this.spawnFireflies(fireflyCount);
         }
 
         // Release glowing spores
-        this.releaseGlowingSpores(lineCount * 4);
+        if (comboEffects.sporesMultiplier > 0) {
+            const sporesCount = Math.ceil(lineCount * 4 * comboEffects.sporesMultiplier);
+            this.releaseGlowingSpores(sporesCount);
+        }
 
         // Drop enchanted leaves for big clears
         if (lineCount >= 3) {
@@ -326,10 +830,13 @@ export default class MoonlitForestTheme extends BaseTheme {
     }
 
     /**
-     * React to combos with intense mystical effects
+     * React to combos with intense mystical effects (quality-scaled)
      */
     onCombo(comboCount) {
+        if (!this.qualityConfig) return;
+
         this.currentComboLevel = comboCount;
+        const comboEffects = this.qualityConfig.comboEffects;
 
         // Make wildlife eyes glow
         this.glowWildlifeEyes(comboCount);
@@ -341,15 +848,18 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.intensifyForestAtmosphere(comboCount);
 
         // Spawn mystical wisps
-        this.spawnMysticalWisps(comboCount * 2);
+        if (comboEffects.wispsMultiplier > 0) {
+            const wispCount = Math.ceil(comboCount * 2 * comboEffects.wispsMultiplier);
+            this.spawnMysticalWisps(wispCount);
+        }
 
         // For high combos, create special effects
-        if (comboCount >= 3) {
+        if (comboCount >= 3 && comboEffects.auroraEnabled) {
             this.createAuroraShimmer(comboCount);
         }
 
         // Epic effects for very high combos
-        if (comboCount >= 5) {
+        if (comboCount >= 5 && comboEffects.shootingStarsEnabled) {
             this.spawnShootingStars(comboCount);
         }
     }
@@ -829,6 +1339,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.mushrooms = [];
         this.moonbeams = [];
         this.eyes = [];
+        this.leaves = [];
 
         super.stop();
     }

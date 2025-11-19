@@ -1,4 +1,25 @@
 const QUALITY_CONFIG = {
+    Extreme: {
+        id: 'Extreme',
+        renderFrameSkip: 0,
+        renderScale: 1.0,
+        shakeMultiplier: 1.2,
+        particles: true,
+        particleBudget: {
+            maxTotal: 900,
+            lineClear: 90,
+            combo: 180,
+            trail: 150,
+            background: 120,
+        },
+        effectsEnabled: {
+            bloom: true,
+            trails: true,
+            ripples: true,
+            comboPopups: true,
+            backgroundEffects: true,
+        },
+    },
     Ultra: {
         id: 'Ultra',
         renderFrameSkip: 0,
@@ -83,14 +104,38 @@ const QUALITY_CONFIG = {
             backgroundEffects: false,
         },
     },
+    Minimal: {
+        id: 'Minimal',
+        renderFrameSkip: 3,
+        renderScale: 0.4,
+        shakeMultiplier: 0.3,
+        particles: false,
+        particleBudget: {
+            maxTotal: 20,
+            lineClear: 2,
+            combo: 5,
+            trail: 0,
+            background: 3,
+        },
+        effectsEnabled: {
+            bloom: false,
+            trails: false,
+            ripples: false,
+            comboPopups: true,
+            backgroundEffects: false,
+        },
+    },
 };
 
 export function normalizeQuality(level) {
     if (!level) return 'High';
     const normalized = String(level).trim().toLowerCase();
+    if (normalized === 'minimal') return 'Minimal';
     if (normalized === 'low') return 'Low';
     if (normalized === 'medium') return 'Medium';
+    if (normalized === 'high') return 'High';
     if (normalized === 'ultra') return 'Ultra';
+    if (normalized === 'extreme') return 'Extreme';
     return 'High';
 }
 
