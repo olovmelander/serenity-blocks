@@ -40,6 +40,19 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Graphics quality presets
         this.qualityPresets = {
+            'Minimal': {
+                maxSparkles: 20,
+                maxStars: 12,
+                waveLayers: 2,
+                waveStep: 15,
+                maxShockwaves: 1,
+                maxComboParticles: 10,
+                particlesPerWave: 3,
+                trailSegments: 1,
+                shadowBlur: 0.3,
+                glowLayers: false,
+                waveGlowIntensity: 0.4
+            },
             'Low': {
                 maxSparkles: 30,
                 maxStars: 20,
@@ -91,6 +104,19 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 shadowBlur: 1.2,
                 glowLayers: true,
                 waveGlowIntensity: 1.2
+            },
+            'Extreme': {
+                maxSparkles: 110,
+                maxStars: 70,
+                waveLayers: 8,
+                waveStep: 5,
+                maxShockwaves: 6,
+                maxComboParticles: 65,
+                particlesPerWave: 12,
+                trailSegments: 5,
+                shadowBlur: 1.5,
+                glowLayers: true,
+                waveGlowIntensity: 1.5
             }
         };
 

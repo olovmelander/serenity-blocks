@@ -54,6 +54,17 @@ export default class GeodeTheme extends BaseTheme {
         this.pendingComboCount = 0;
 
         this.qualityPresets = {
+            'Minimal': {
+                wallCount: 2,
+                stalactiteCount: 2,
+                stalagmiteCount: 4,
+                mistCount: 4,
+                crystalClusterCount: 4,
+                ambientGlowCount: 3,
+                maxDustParticles: 15,
+                maxLightRays: 2,
+                maxEnergyPulses: 5,
+            },
             'Low': {
                 wallCount: 4,
                 stalactiteCount: 4,
@@ -97,6 +108,17 @@ export default class GeodeTheme extends BaseTheme {
                 maxDustParticles: 70,
                 maxLightRays: 16,
                 maxEnergyPulses: 30,
+            },
+            'Extreme': {
+                wallCount: 14,
+                stalactiteCount: 22,
+                stalagmiteCount: 27,
+                mistCount: 24,
+                crystalClusterCount: 30,
+                ambientGlowCount: 19,
+                maxDustParticles: 95,
+                maxLightRays: 22,
+                maxEnergyPulses: 40,
             }
         };
         this.currentQuality = 'Medium';

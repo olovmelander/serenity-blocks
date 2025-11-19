@@ -50,6 +50,34 @@ export default class FallTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                // Leaf particles
+                leafLayerBackCount: 7,
+                leafLayerMidCount: 5,
+                leafLayerFrontCount: 4,
+                groundLeavesCount: 18,
+                // Wind and atmospheric
+                windParticlesCount: 3,
+                // Embers and fireflies
+                maxEmbers: 7,
+                initialFireflies: 4,
+                maxFireflies: 6,
+                // Tree branches
+                treeBranchSystems: 1,
+                treeBranchDepth: 3,
+                // Combo effects scaling
+                comboEffectScale: 0.3,
+                leafBurstScale: 0.3,
+                emberBurstScale: 0.3,
+                maxFireRings: 1,
+                maxEmberBursts: 1,
+                maxLeafBurstParticles: 30,
+                // Combo interaction multipliers
+                comboColorShiftIntensity: 0.4,
+                comboWindGustMultiplier: 0.5,
+                comboFireflySpawnMultiplier: 0.5,
+                comboMultiplierGain: 0.15,
+            },
             'Low': {
                 // Leaf particles
                 leafLayerBackCount: 12,
@@ -72,6 +100,11 @@ export default class FallTheme extends BaseTheme {
                 maxFireRings: 2,
                 maxEmberBursts: 2,
                 maxLeafBurstParticles: 50,
+                // Combo interaction multipliers
+                comboColorShiftIntensity: 0.6,
+                comboWindGustMultiplier: 0.7,
+                comboFireflySpawnMultiplier: 0.7,
+                comboMultiplierGain: 0.17,
             },
             'Medium': {
                 // Leaf particles
@@ -95,6 +128,11 @@ export default class FallTheme extends BaseTheme {
                 maxFireRings: 3,
                 maxEmberBursts: 3,
                 maxLeafBurstParticles: 75,
+                // Combo interaction multipliers
+                comboColorShiftIntensity: 0.8,
+                comboWindGustMultiplier: 0.85,
+                comboFireflySpawnMultiplier: 0.85,
+                comboMultiplierGain: 0.19,
             },
             'High': {
                 // Leaf particles
@@ -118,6 +156,11 @@ export default class FallTheme extends BaseTheme {
                 maxFireRings: 4,
                 maxEmberBursts: 4,
                 maxLeafBurstParticles: 100,
+                // Combo interaction multipliers
+                comboColorShiftIntensity: 0.95,
+                comboWindGustMultiplier: 0.95,
+                comboFireflySpawnMultiplier: 1.0,
+                comboMultiplierGain: 0.2,
             },
             'Ultra': {
                 // Leaf particles
@@ -141,6 +184,39 @@ export default class FallTheme extends BaseTheme {
                 maxFireRings: 6,
                 maxEmberBursts: 6,
                 maxLeafBurstParticles: 120,
+                // Combo interaction multipliers
+                comboColorShiftIntensity: 1.0,
+                comboWindGustMultiplier: 1.0,
+                comboFireflySpawnMultiplier: 1.0,
+                comboMultiplierGain: 0.2,
+            },
+            'Extreme': {
+                // Leaf particles
+                leafLayerBackCount: 38,
+                leafLayerMidCount: 27,
+                leafLayerFrontCount: 20,
+                groundLeavesCount: 120,
+                // Wind and atmospheric
+                windParticlesCount: 20,
+                // Embers and fireflies
+                maxEmbers: 48,
+                initialFireflies: 27,
+                maxFireflies: 40,
+                // Tree branches
+                treeBranchSystems: 4,
+                treeBranchDepth: 9,
+                // Combo effects scaling
+                comboEffectScale: 1.35,
+                leafBurstScale: 1.35,
+                emberBurstScale: 1.35,
+                maxFireRings: 8,
+                maxEmberBursts: 8,
+                maxLeafBurstParticles: 160,
+                // Combo interaction multipliers
+                comboColorShiftIntensity: 1.4,
+                comboWindGustMultiplier: 1.3,
+                comboFireflySpawnMultiplier: 1.5,
+                comboMultiplierGain: 0.25,
             }
         };
         this.currentQuality = 'High';
@@ -886,8 +962,9 @@ export default class FallTheme extends BaseTheme {
     onLineClear(lineCount) {
         console.log(`[FallTheme] Processing line clear: ${lineCount} lines`);
 
-        // Increase combo multiplier
-        this.comboMultiplier = Math.min(1 + this.comboCount * 0.2, 2.5);
+        // Increase combo multiplier - scaled by quality preset
+        const multiplierGain = this.activePreset.comboMultiplierGain || 0.2;
+        this.comboMultiplier = Math.min(1 + this.comboCount * multiplierGain, 2.5);
         this.comboDecay = 300; // 5 seconds at 60fps
 
         // Create massive leaf burst effect - leaves swirl up and outward
@@ -959,8 +1036,9 @@ export default class FallTheme extends BaseTheme {
             });
         }
 
-        // Trigger strong wind gust based on line count
-        const gustBonus = lineCount * 3 + this.comboCount * 2;
+        // Trigger strong wind gust based on line count - scaled by quality preset
+        const windMultiplier = this.activePreset.comboWindGustMultiplier || 1.0;
+        const gustBonus = (lineCount * 3 + this.comboCount * 2) * windMultiplier;
         this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (1.5 + gustBonus * 0.5);
 
         // Keep ember count reasonable
@@ -974,13 +1052,15 @@ export default class FallTheme extends BaseTheme {
         console.log(`[FallTheme] Combo multiplier: ${this.comboMultiplier}x`);
 
         // Progressive color shift based on combo - shift toward golden/amber tones
-        const maxHueShift = -30; // Shift toward golden yellow (negative = counter-clockwise on hue wheel)
-        const maxSaturation = 50; // Moderate saturation boost for richness
-        const maxBrightness = 25; // Gentle brightness increase
+        // Scaled by quality preset for more or less dramatic effects
+        const colorIntensity = this.activePreset.comboColorShiftIntensity || 1.0;
+        const maxHueShift = -30 * colorIntensity; // Shift toward golden yellow (negative = counter-clockwise on hue wheel)
+        const maxSaturation = 50 * colorIntensity; // Moderate saturation boost for richness
+        const maxBrightness = 25 * colorIntensity; // Gentle brightness increase
 
-        this.comboHueShift = Math.max(comboCount * -5, maxHueShift); // Gentle shift toward gold
-        this.currentSaturation = 100 + Math.min(comboCount * 8, maxSaturation);
-        this.currentBrightness = 100 + Math.min(comboCount * 4, maxBrightness);
+        this.comboHueShift = Math.max(comboCount * -5 * colorIntensity, maxHueShift); // Gentle shift toward gold
+        this.currentSaturation = 100 + Math.min(comboCount * 8 * colorIntensity, maxSaturation);
+        this.currentBrightness = 100 + Math.min(comboCount * 4 * colorIntensity, maxBrightness);
 
         const themeContainer = document.getElementById('fall-theme');
         if (themeContainer) {
@@ -1006,9 +1086,10 @@ export default class FallTheme extends BaseTheme {
             });
         }
 
-        // Spawn extra fireflies on big combos - quality limited
+        // Spawn extra fireflies on big combos - quality limited and scaled by preset
         if (comboCount >= 3) {
-            const firefliesToSpawn = Math.min(comboCount * 2, 10);
+            const fireflyMultiplier = this.activePreset.comboFireflySpawnMultiplier || 1.0;
+            const firefliesToSpawn = Math.min(Math.ceil(comboCount * 2 * fireflyMultiplier), 10);
             for (let i = 0; i < firefliesToSpawn && this.fireflies.length < this.maxFirefliesLimit; i++) {
                 this.fireflies.push(this.createFirefly());
             }

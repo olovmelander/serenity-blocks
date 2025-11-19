@@ -42,6 +42,17 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.MAX_BLOBS = 1;
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                blobCount: 4,
+                bubbleCount: 8,
+                ribbonCount: 2,
+                maxParticles: 35,
+                maxWaves: 2,
+                maxRipples: 2,
+                maxStreams: 1,
+                maxBursts: 1,
+                maxBlobs: 1,
+            },
             'Low': {
                 blobCount: 6,
                 bubbleCount: 14,
@@ -85,6 +96,17 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxStreams: 5,
                 maxBursts: 2,
                 maxBlobs: 2,
+            },
+            'Extreme': {
+                blobCount: 14,
+                bubbleCount: 35,
+                ribbonCount: 8,
+                maxParticles: 150,
+                maxWaves: 8,
+                maxRipples: 11,
+                maxStreams: 7,
+                maxBursts: 3,
+                maxBlobs: 3,
             }
         };
         this.currentQuality = 'Ultra';

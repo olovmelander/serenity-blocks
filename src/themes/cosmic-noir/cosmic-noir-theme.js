@@ -30,6 +30,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.waveContainer = null;
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                starCount: 50,
+                galaxyParticles: 80,
+                dustParticles: 40,
+                maxWaveBursts: 1,
+            },
             'Low': {
                 starCount: 80,
                 galaxyParticles: 120,
@@ -53,6 +59,12 @@ export default class CosmicNoirTheme extends BaseTheme {
                 galaxyParticles: 260,
                 dustParticles: 150,
                 maxWaveBursts: 4,
+            },
+            'Extreme': {
+                starCount: 250,
+                galaxyParticles: 350,
+                dustParticles: 200,
+                maxWaveBursts: 6,
             }
         };
         this.currentQuality = 'High';
