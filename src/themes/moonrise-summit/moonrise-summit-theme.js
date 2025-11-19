@@ -15,6 +15,12 @@ export default class MoonriseSummitTheme extends BaseTheme {
         this.shootingStarTimeout = null;
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                starCount: 25,
+                cloudCount: 1,
+                shootingInitialDelay: [7000, 12000],
+                shootingRecurringDelay: [20000, 35000],
+            },
             'Low': {
                 starCount: 40,
                 cloudCount: 2,
@@ -38,6 +44,12 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 cloudCount: 4,
                 shootingInitialDelay: [2500, 6000],
                 shootingRecurringDelay: [7000, 16000],
+            },
+            'Extreme': {
+                starCount: 150,
+                cloudCount: 6,
+                shootingInitialDelay: [2000, 5000],
+                shootingRecurringDelay: [5000, 12000],
             }
         };
         this.currentQuality = 'High';

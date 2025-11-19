@@ -78,6 +78,15 @@ export default class NimbusVeilTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                cloudParticles: 2,
+                mistParticles: 1,
+                movingParticles: 4,
+                maxComboRings: 3,
+                maxSparkles: 15,
+                maxLightning: 0,
+                lightningChance: 0.0001,
+            },
             'Low': {
                 cloudParticles: 3,
                 mistParticles: 2,
@@ -113,6 +122,15 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxSparkles: 70,
                 maxLightning: 4,
                 lightningChance: 0.0008,
+            },
+            'Extreme': {
+                cloudParticles: 8,
+                mistParticles: 7,
+                movingParticles: 24,
+                maxComboRings: 12,
+                maxSparkles: 100,
+                maxLightning: 6,
+                lightningChance: 0.0012,
             }
         };
 

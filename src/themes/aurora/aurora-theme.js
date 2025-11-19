@@ -43,6 +43,20 @@ export default class AuroraTheme extends BaseTheme {
             starTwinkleCooldownMs: this.starTwinkleCooldownMs,
         };
         this.graphicsQualityPresets = {
+            Minimal: {
+                starCount: 50,
+                starOpacityMultiplier: 0.6,
+                starTwinkleChance: 0.05,
+                starTwinkleCooldownMs: 300,
+                maxConcurrentWaves: 1,
+                waveCooldownMs: 320,
+                waveStaggerMs: 280,
+                maxConcurrentShootingStars: 1,
+                shootingStarCooldownMs: 650,
+                curtainLayers: 2,
+                curtainOpacityMultiplier: 0.6,
+                enableShimmers: false,
+            },
             Low: {
                 starCount: 80,
                 starOpacityMultiplier: 0.75,
@@ -97,6 +111,20 @@ export default class AuroraTheme extends BaseTheme {
                 shootingStarCooldownMs: 260,
                 curtainLayers: 5,
                 curtainOpacityMultiplier: 1.08,
+                enableShimmers: true,
+            },
+            Extreme: {
+                starCount: 200,
+                starOpacityMultiplier: 1.25,
+                starTwinkleChance: 0.22,
+                starTwinkleCooldownMs: 120,
+                maxConcurrentWaves: 6,
+                waveCooldownMs: 140,
+                waveStaggerMs: 140,
+                maxConcurrentShootingStars: 4,
+                shootingStarCooldownMs: 200,
+                curtainLayers: 6,
+                curtainOpacityMultiplier: 1.15,
                 enableShimmers: true,
             },
         };

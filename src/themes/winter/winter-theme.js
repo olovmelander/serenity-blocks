@@ -63,6 +63,27 @@ export default class WinterTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
+            'Minimal': {
+                // Snow particles
+                maxParticles: 250,
+                initialParticlePercent: 0.4,
+                groundSnowCount: 12,
+                // Combo effects
+                iceBurstCap: 40,
+                maxFrozenLightning: 0,
+                maxComboVortexes: 1,
+                // Gust effects
+                streakParticlesCount: 5,
+                vortexParticlesCount: 5,
+                spiralSystemsCount: 0,
+                // Rendering
+                enableTrails: false,
+                trailComplexity: 0,
+                enableFrozenLightning: false,
+                // Performance
+                particleSortInterval: 20,
+                windIndicatorInterval: 6,
+            },
             'Low': {
                 // Snow particles
                 maxParticles: 400,
@@ -145,6 +166,27 @@ export default class WinterTheme extends BaseTheme {
                 enableFrozenLightning: true,
                 // Performance
                 particleSortInterval: 8,
+                windIndicatorInterval: 1,
+            },
+            'Extreme': {
+                // Snow particles
+                maxParticles: 2200,
+                initialParticlePercent: 0.9,
+                groundSnowCount: 100,
+                // Combo effects
+                iceBurstCap: 350,
+                maxFrozenLightning: 12,
+                maxComboVortexes: 12,
+                // Gust effects
+                streakParticlesCount: 60,
+                vortexParticlesCount: 60,
+                spiralSystemsCount: 6,
+                // Rendering
+                enableTrails: true,
+                trailComplexity: 4, // Maximum trails
+                enableFrozenLightning: true,
+                // Performance
+                particleSortInterval: 6,
                 windIndicatorInterval: 1,
             }
         };
