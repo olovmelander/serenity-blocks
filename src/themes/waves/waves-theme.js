@@ -21,6 +21,19 @@ export default class WavesTheme extends BaseTheme {
 
         // Quality presets for performance scaling
         this.qualityPresets = {
+            'Minimal': {
+                maxRipples: 2,
+                maxBubbles: 8,
+                maxWaveSwells: 1,
+                comboEffectScale: 0.4,
+                maxComboOrbs: 8,
+                bloomParticleCap: 3,
+                maxBloomSize: 550,
+                maxMaelstromRings: 2,
+                maxMaelstromSize: 400,
+                comboPressureDamping: 0.16,
+                minComboScale: 0.3,
+            },
             'Low': {
                 maxRipples: 3,
                 maxBubbles: 12,
@@ -72,6 +85,19 @@ export default class WavesTheme extends BaseTheme {
                 maxMaelstromSize: 940,
                 comboPressureDamping: 0.09,
                 minComboScale: 0.46,
+            },
+            'Extreme': {
+                maxRipples: 12,
+                maxBubbles: 45,
+                maxWaveSwells: 8,
+                comboEffectScale: 1.15,
+                maxComboOrbs: 35,
+                bloomParticleCap: 9,
+                maxBloomSize: 1350,
+                maxMaelstromRings: 8,
+                maxMaelstromSize: 1100,
+                comboPressureDamping: 0.08,
+                minComboScale: 0.5,
             }
         };
 

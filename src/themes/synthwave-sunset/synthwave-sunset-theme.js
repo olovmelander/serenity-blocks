@@ -43,6 +43,24 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
+            'Minimal': {
+                maxBursts: 1,
+                maxStreaks: 2,
+                maxParticles: 30,
+                maxWaves: 1,
+                cityGlowBeams: 3,
+                sunGlowLayers: 1,
+                gridRows: 15,
+                gridCols: 15,
+                particlesPerBurstMin: 5,
+                particlesPerBurstMax: 10,
+                streakMultiplier: 0.6,
+                gridScrollSpeed: 22,
+                glowIntensity: 0.5,
+                useShadowBlur: false,
+                useDropShadow: false,
+                cityGlowUpdateInterval: 4 // Update every 4 frames
+            },
             'Low': {
                 maxBursts: 2,
                 maxStreaks: 4,
@@ -111,6 +129,24 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 streakMultiplier: 2.2,
                 gridScrollSpeed: 35,
                 glowIntensity: 1.2,
+                useShadowBlur: true,
+                useDropShadow: true,
+                cityGlowUpdateInterval: 1 // Update every frame
+            },
+            'Extreme': {
+                maxBursts: 8,
+                maxStreaks: 15,
+                maxParticles: 300,
+                maxWaves: 9,
+                cityGlowBeams: 18,
+                sunGlowLayers: 6,
+                gridRows: 70,
+                gridCols: 70,
+                particlesPerBurstMin: 20,
+                particlesPerBurstMax: 60,
+                streakMultiplier: 3.0,
+                gridScrollSpeed: 40,
+                glowIntensity: 1.5,
                 useShadowBlur: true,
                 useDropShadow: true,
                 cityGlowUpdateInterval: 1 // Update every frame
