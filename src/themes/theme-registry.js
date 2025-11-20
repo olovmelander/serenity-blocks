@@ -281,6 +281,12 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
         icon: './astral-weave/astral-weave-icon.png',
     },
+    {
+        id: 'stellar-velocity',
+        displayName: 'Stellar Velocity',
+        module: './stellar-velocity/stellar-velocity-theme.js',
+        group: 'cosmic',
+    },
 ];
 
 const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
