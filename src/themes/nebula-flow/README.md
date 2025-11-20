@@ -15,8 +15,13 @@ Nebula Flow creates organic, flowing visual effects using a Navier-Stokes solver
     - **Sunrays**: God-ray effects that shine through the fluid.
     - **Vorticity Confinement**: Enhanced swirling and turbulence.
 - **Autonomous Motion**: Self-animating fluid with multiple wandering emitters.
-- **Multiple Color Schemes**: Cosmic, Ocean, Aurora, and Prismatic palettes.
+- **Multiple Color Schemes**: Cosmic, Ocean, Aurora, Fire, and Prismatic palettes.
+- **Themed Tetrominos**: Vibrant, glowing game pieces with pulse, shimmer, and trail effects that match the nebula aesthetic.
 - **Game Event Reactions**: Spectacular visual effects triggered by combos, line clears, and piece locks.
+  - **Regular Combos (1-3)**: Single spiral pattern
+  - **High Combos (4-7)**: Dual counter-rotating spirals
+  - **Epic Combos (8+)**: Triple spiral explosion with central burst
+  - **Tetris (4 lines)**: Dual mirrored wave effect
 - **Performance Optimized**: Quality settings automatically adjust simulation resolution and toggle expensive effects (Bloom, Sunrays).
 - **Black Background**: High contrast vibrant fluid on pure black.
 
@@ -50,15 +55,48 @@ The simulation is highly configurable via the `FluidSimulator` class:
 }
 ```
 
+## Themed Tetrominos
+
+Nebula Flow features custom-designed glowing tetrominos that complement the fluid simulation:
+
+- **Electric Cyan (I)** - Flowing water energy
+- **Bright Magenta (O)** - Cosmic energy burst
+- **Deep Purple (T)** - Nebula core
+- **Spring Green (S)** - Aurora flow
+- **Hot Pink (Z)** - Stellar burst
+- **Sky Blue (J)** - Cosmic vapor
+- **Bright Orange (L)** - Solar flare
+
+Each piece includes:
+- **Glow effects** with auto-derived colors
+- **Pulse animation** synced with nebula flow
+- **Shimmer overlay** for liquid appearance
+- **Motion trails** during piece movement
+
+See [TETROMINO_CONFIG.md](./TETROMINO_CONFIG.md) for detailed configuration.
+
 ## Performance
 
 ### Quality Settings
 
-| Quality | Sim Resolution | Dye Resolution | Iterations | Bloom | Sunrays |
-|---------|----------------|----------------|------------|-------|---------|
-| Low     | 64x64          | 512x512        | 10         | Off   | Off     |
-| Medium  | 128x128        | 512x512        | 15         | On    | Off     |
-| High    | 128x128        | 1024x1024      | 20         | On    | On      |
+The fluid simulation is highly optimized and performs exceptionally well. **All quality settings use the same extreme configuration** for the best possible experience:
+
+| Quality Setting | Configuration |
+|----------------|---------------|
+| **All Levels** (Minimal → Extreme) | 320x320 sim, 1280x1280 dye, 25 iterations |
+
+**Why the same for all?**
+- The simulation performs excellently on modern hardware
+- GPU acceleration makes high-resolution fluid dynamics fast
+- No need to compromise on quality - everyone gets the best experience
+- Smooth 60+ FPS across all settings
+
+**Technical Specs:**
+- **Simulation Resolution**: 320×320
+- **Dye Resolution**: 1280×1280
+- **Pressure Iterations**: 25
+- **Curl Strength**: 45
+- **Performance**: Smooth 60+ FPS on modern GPUs
 
 ## References
 
