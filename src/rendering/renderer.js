@@ -115,6 +115,12 @@ class TexturedQuad {
         this.updateTexture();
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+        
+        // Disable vertex attributes after drawing to prevent WebGL errors
+        if (this.attribLocations) {
+            gl.disableVertexAttribArray(this.attribLocations.position);
+            gl.disableVertexAttribArray(this.attribLocations.texcoord);
+        }
     }
 
     updateTexture() {
@@ -671,6 +677,13 @@ class ParticleSystem {
 
     draw() {
         this.gl.drawArrays(this.gl.POINTS, 0, this.numParticles);
+        
+        // Disable vertex attributes after drawing to prevent WebGL errors
+        if (this.attribLocations) {
+            this.gl.disableVertexAttribArray(this.attribLocations.position);
+            this.gl.disableVertexAttribArray(this.attribLocations.size);
+            this.gl.disableVertexAttribArray(this.attribLocations.alpha);
+        }
     }
 }
 
