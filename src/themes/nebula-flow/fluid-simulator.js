@@ -346,6 +346,9 @@ export default class FluidSimulator {
 
         // Draw
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Disable vertex attribute after drawing to prevent WebGL errors
+        gl.disableVertexAttribArray(posLoc);
     }
 
     /**
@@ -580,6 +583,9 @@ export default class FluidSimulator {
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Disable vertex attribute after drawing to prevent WebGL errors
+        gl.disableVertexAttribArray(posLoc);
 
         gl.disable(gl.BLEND);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
