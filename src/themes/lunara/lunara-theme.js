@@ -26,6 +26,10 @@ export default class LunaraTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
 
+        // Initialize combo particle arrays
+        this.comboParticleSystems = [];
+        this.comboParticleTimeouts = [];
+
         // Cached containers for combo-driven adjustments
         this.skyContainer = null;
         this.starsContainer = null;
@@ -321,8 +325,6 @@ export default class LunaraTheme extends BaseTheme {
         this.snowfield = this.getContainer('lunara-snowfield');
         this.fog = this.getContainer('lunara-fog');
         this.comboLayer = this.ensureComboLayer();
-        this.comboParticleSystems = [];
-        this.comboParticleTimeouts = [];
 
         this.setupEventListeners();
         this.startComboLoop();

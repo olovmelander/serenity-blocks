@@ -8,85 +8,97 @@ export const COLOR_SCHEMES = {
     cosmic: {
         name: 'Cosmic Nebula',
         description: 'Deep space purples and blues',
-        primary: [0.6, 0.3, 0.9],      // Purple
-        secondary: [0.2, 0.5, 1.0],     // Blue
-        tertiary: [0.9, 0.4, 0.6],      // Pink
+        primary: [0.7, 0.2, 1.0],      // Vibrant Purple
+        secondary: [0.2, 0.4, 1.0],     // Electric Blue
+        tertiary: [1.0, 0.3, 0.7],      // Hot Pink
         ambient: [0.05, 0.05, 0.15],    // Dark space
         palette: [
-            [0.64, 0.38, 0.82],
-            [0.36, 0.48, 0.92],
-            [0.74, 0.42, 0.68],
-            [0.48, 0.32, 0.88],
-            [0.28, 0.55, 0.86],
-            [0.58, 0.36, 0.76],
+            [0.8, 0.2, 1.0],    // Bright Purple
+            [0.2, 0.5, 1.0],    // Sky Blue
+            [1.0, 0.2, 0.6],    // Magenta
+            [0.5, 0.2, 1.0],    // Deep Purple
+            [0.2, 0.7, 1.0],    // Cyan
+            [0.9, 0.4, 0.8],    // Pink
+            [0.3, 0.3, 1.0],    // Royal Blue
+            [1.0, 0.5, 0.9],    // Light Magenta
         ],
     },
 
     ocean: {
         name: 'Ocean Depths',
         description: 'Cool aquatic colors',
-        primary: [0.1, 0.6, 0.8],       // Cyan
-        secondary: [0.2, 0.8, 0.6],     // Teal
-        tertiary: [0.0, 0.4, 0.7],      // Deep blue
+        primary: [0.0, 0.8, 1.0],       // Bright Cyan
+        secondary: [0.2, 1.0, 0.7],     // Aqua
+        tertiary: [0.0, 0.5, 1.0],      // Ocean Blue
         ambient: [0.02, 0.08, 0.12],    // Dark water
         palette: [
-            [0.18, 0.64, 0.74],
-            [0.16, 0.56, 0.82],
-            [0.22, 0.72, 0.58],
-            [0.08, 0.46, 0.68],
-            [0.14, 0.62, 0.66],
-            [0.10, 0.52, 0.78],
+            [0.0, 0.9, 1.0],    // Electric Cyan
+            [0.2, 1.0, 0.8],    // Turquoise
+            [0.0, 0.7, 1.0],    // Azure
+            [0.1, 1.0, 0.6],    // Teal
+            [0.0, 0.6, 0.9],    // Sky Blue
+            [0.3, 0.9, 1.0],    // Light Cyan
+            [0.1, 0.8, 0.7],    // Sea Green
+            [0.0, 1.0, 0.9],    // Bright Aqua
         ],
     },
 
     aurora: {
         name: 'Aurora Borealis',
         description: 'Northern lights greens and purples',
-        primary: [0.3, 0.9, 0.5],       // Green
-        secondary: [0.5, 0.3, 0.9],     // Purple
-        tertiary: [0.2, 0.7, 0.8],      // Cyan
+        primary: [0.2, 1.0, 0.4],       // Bright Green
+        secondary: [0.6, 0.2, 1.0],     // Vibrant Purple
+        tertiary: [0.2, 0.8, 1.0],      // Bright Cyan
         ambient: [0.05, 0.1, 0.15],     // Night sky
         palette: [
-            [0.28, 0.78, 0.58],
-            [0.22, 0.68, 0.82],
-            [0.46, 0.42, 0.86],
-            [0.36, 0.76, 0.66],
-            [0.24, 0.62, 0.74],
-            [0.52, 0.48, 0.88],
+            [0.3, 1.0, 0.5],    // Lime Green
+            [0.7, 0.3, 1.0],    // Violet
+            [0.2, 0.9, 1.0],    // Ice Blue
+            [0.4, 1.0, 0.6],    // Spring Green
+            [0.5, 0.2, 0.9],    // Purple
+            [0.1, 1.0, 0.8],    // Teal
+            [0.6, 1.0, 0.4],    // Yellow-Green
+            [0.8, 0.4, 1.0],    // Lavender
         ],
     },
 
     fire: {
         name: 'Solar Flare',
         description: 'Warm oranges and reds',
-        primary: [1.0, 0.5, 0.1],       // Orange
-        secondary: [1.0, 0.2, 0.2],     // Red
-        tertiary: [1.0, 0.8, 0.2],      // Yellow
+        primary: [1.0, 0.5, 0.0],       // Bright Orange
+        secondary: [1.0, 0.1, 0.0],     // Fiery Red
+        tertiary: [1.0, 0.9, 0.0],      // Golden Yellow
         ambient: [0.1, 0.05, 0.02],     // Dark embers
         palette: [
-            [0.92, 0.44, 0.18],
-            [0.88, 0.32, 0.24],
-            [0.96, 0.58, 0.22],
-            [0.84, 0.28, 0.18],
-            [0.90, 0.48, 0.26],
-            [0.86, 0.36, 0.20],
+            [1.0, 0.0, 0.0],    // Pure Red
+            [1.0, 0.3, 0.0],    // Red-Orange
+            [1.0, 0.6, 0.0],    // Orange
+            [1.0, 0.8, 0.0],    // Amber
+            [1.0, 1.0, 0.2],    // Yellow
+            [1.0, 0.4, 0.1],    // Flame
+            [1.0, 0.2, 0.0],    // Crimson
+            [1.0, 0.7, 0.3],    // Peach
         ],
     },
 
     prismatic: {
         name: 'Prismatic',
         description: 'Rainbow spectrum',
-        primary: [1.0, 0.3, 0.5],       // Pink
-        secondary: [0.3, 0.8, 1.0],     // Sky blue
-        tertiary: [0.5, 1.0, 0.3],      // Lime
+        primary: [1.0, 0.2, 0.5],       // Hot Pink
+        secondary: [0.2, 0.9, 1.0],     // Cyan
+        tertiary: [0.5, 1.0, 0.2],      // Lime
         ambient: [0.08, 0.08, 0.08],    // Neutral dark
         palette: [
-            [0.88, 0.34, 0.54],
-            [0.34, 0.74, 0.96],
-            [0.52, 0.92, 0.42],
-            [0.78, 0.42, 0.74],
-            [0.42, 0.86, 0.82],
-            [0.92, 0.56, 0.38],
+            [1.0, 0.0, 0.0],    // Pure Red
+            [1.0, 0.5, 0.0],    // Orange
+            [1.0, 1.0, 0.0],    // Yellow
+            [0.5, 1.0, 0.0],    // Lime
+            [0.0, 1.0, 0.5],    // Spring Green
+            [0.0, 1.0, 1.0],    // Cyan
+            [0.0, 0.5, 1.0],    // Sky Blue
+            [0.5, 0.0, 1.0],    // Purple
+            [1.0, 0.0, 0.5],    // Magenta
+            [1.0, 0.3, 0.8],    // Pink
         ],
     },
 };
@@ -97,8 +109,8 @@ export const COLOR_SCHEMES = {
 export function getRandomColor(scheme) {
     const palette = scheme.palette || [scheme.primary, scheme.secondary, scheme.tertiary];
     const base = palette[Math.floor(Math.random() * palette.length)];
-    const ambientMix = 0.25 + Math.random() * 0.25; // Soften with ambient tones
-    const variation = 0.85 + Math.random() * 0.25; // Gentle brightness variation
+    const ambientMix = 0.02 + Math.random() * 0.05; // Minimal ambient mixing for pure, vibrant colors
+    const variation = 0.75 + Math.random() * 0.15; // Moderate brightness for rich colors
 
     const clamp = (value) => Math.max(0, Math.min(1, value));
 
