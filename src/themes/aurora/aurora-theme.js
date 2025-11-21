@@ -39,9 +39,13 @@ export default class AuroraTheme extends BaseTheme {
         this.stars = [];
         this.shootingStars = [];
 
+        // Graphics quality
+        this.qualityChangeHandler = null;
+        this.currentQuality = 'High';
+
         // Quality Presets
-        this.presets = {
-            minimum: {
+        this.qualityPresets = {
+            Minimum: {
                 starCount: 50,
                 layerCount: 1,
                 stripWidth: 100,
@@ -49,23 +53,23 @@ export default class AuroraTheme extends BaseTheme {
                 noiseDetail: 1,
                 shootingStars: false
             },
-            low: {
+            Low: {
                 starCount: 100,
-                layerCount: 1,   // Keep 1 layer for clean look
-                stripWidth: 90,  // Slightly finer
-                overlap: 0.75,   // Smoother
-                noiseDetail: 2,  // Better curves
+                layerCount: 1,
+                stripWidth: 90,
+                overlap: 0.75,
+                noiseDetail: 2,
                 shootingStars: false
             },
-            medium: {
+            Medium: {
                 starCount: 200,
-                layerCount: 2,   // Introduce depth
+                layerCount: 2,
                 stripWidth: 80,
                 overlap: 0.8,
                 noiseDetail: 2,
                 shootingStars: true
             },
-            high: {
+            High: {
                 starCount: 350,
                 layerCount: 3,
                 stripWidth: 65,
@@ -73,17 +77,17 @@ export default class AuroraTheme extends BaseTheme {
                 noiseDetail: 2,
                 shootingStars: true
             },
-            ultra: {
+            Ultra: {
                 starCount: 600,
-                layerCount: 3,   // Reduced from 4 to avoid clutter
+                layerCount: 3,
                 stripWidth: 50,
                 overlap: 0.9,
                 noiseDetail: 3,
                 shootingStars: true
             },
-            extreme: {
+            Extreme: {
                 starCount: 1000,
-                layerCount: 4,   // Reduced from 5
+                layerCount: 4,
                 stripWidth: 40,
                 overlap: 0.95,
                 noiseDetail: 3,
@@ -93,7 +97,7 @@ export default class AuroraTheme extends BaseTheme {
 
         // Current Configuration
         this.config = {
-            ...this.presets.high,
+            ...this.qualityPresets[this.currentQuality],
             baseSpeed: 0.0002,
             comboIntensity: 0,
             targetComboIntensity: 0
@@ -101,31 +105,66 @@ export default class AuroraTheme extends BaseTheme {
     }
 
     async createScene() {
-        this.applyQualitySetting();
         this.setupCanvas();
         this.createPillarTexture();
         this.initStars();
+
+        // Apply quality preset and setup listener
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
+
         this.setupEventListeners();
 
         this.isRunning = true;
         this.lastTime = performance.now();
         this.animate(this.lastTime);
 
-        console.log(`[AuroraTheme] Living Sky scene initialized. Quality: ${this.getCurrentQuality()}`);
+        console.log(`[AuroraTheme] Living Sky scene initialized. Quality: ${this.currentQuality}`);
     }
 
-    getCurrentQuality() {
-        if (typeof window !== 'undefined' && window.settings && window.settings.effectQuality) {
-            return window.settings.effectQuality.toLowerCase();
+    // Quality system methods
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`[AuroraTheme] Unknown preset "${quality}", defaulting to High`);
+            quality = 'High';
         }
-        return 'high';
+
+        this.currentQuality = quality;
+        const preset = this.qualityPresets[quality];
+        Object.assign(this.config, preset);
+
+        // Re-initialize stars if already created
+        if (this.stars.length > 0) {
+            this.initStars();
+        }
+
+        console.log(`[AuroraTheme] Applied ${quality} graphics preset`);
     }
 
-    applyQualitySetting() {
-        const quality = this.getCurrentQuality();
-        const preset = this.presets[quality] || this.presets.high;
-        Object.assign(this.config, preset);
-        if (this.stars.length > 0) this.initStars();
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+
+        this.teardownQualityListener();
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
     }
 
     setupCanvas() {
@@ -229,12 +268,7 @@ export default class AuroraTheme extends BaseTheme {
             this.config.targetComboIntensity += 0.4;
         });
 
-        const settingsUnsub = eventBus.on('SETTINGS_CHANGED', () => {
-            if (!this.isActive) return;
-            this.applyQualitySetting();
-        });
-
-        this.eventUnsubscribers.push(comboUnsub, lineClearUnsub, settingsUnsub);
+        this.eventUnsubscribers.push(comboUnsub, lineClearUnsub);
     }
 
     spawnShootingStar() {
@@ -433,6 +467,7 @@ export default class AuroraTheme extends BaseTheme {
         }
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
+        this.teardownQualityListener();
         super.stop();
     }
 
