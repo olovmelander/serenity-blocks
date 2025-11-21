@@ -6,177 +6,278 @@ export default class PyrestormTheme extends BaseTheme {
     constructor() {
         super('pyrestorm');
 
-        // Canvas references
-        this.effectsCanvas = null;
-        this.effectsCtx = null;
+        // Canvas & Context
+        this.canvas = null;
+        this.ctx = null;
+        this.width = 0;
+        this.height = 0;
 
-        // Animation state
-        this.animationTime = 0;
-        this.eventUnsubscribers = [];
+        // Animation Loop
+        this.animationFrameId = null;
+        this.lastTime = 0;
+        this.time = 0; // Global animation time
 
-        // Combo effects arrays
-        this.eruptionBursts = [];
-        this.flameGeysers = [];
-        this.moltenSparkles = [];
-        this.lightningBolts = [];
-        this.emberSwarms = [];
-        this.lavaBursts = []; // Volcanic lava bursts from peaks
+        // Game State
+        this.comboCount = 0;
+        this.intensity = 0; // 0 to 1, based on game pace/combo
+        this.shake = 0; // Screen shake intensity
 
-        // Effect intensities
-        this.volcanoGlowIntensity = 0;
-        this.heatIntensity = 0;
-        this.comboMultiplier = 1.0;
-        this.comboCooldownMs = 220;
-        this.lastEffectEventTime = 0;
+        // Visual Elements
+        this.bgMountainPoints = []; // Distant mountains
+        this.mountainPoints = [];   // Foreground mountains
+        this.lavaPaths = [];        // River path data
 
-        // Frame timing for adaptive throttling
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.averageFrameTime = 16.67;
+        // Particle Systems
+        this.riverParticles = [];   // Floating lava chunks (fluid)
+        this.particles = [];        // Standard air particles (embers, smoke)
+        this.sparkles = [];         // High-priority combo sparkles
+        this.geysers = [];          // Vertical lava eruptions
+        this.lightningBolts = [];   // Lightning
 
-        // Mountain layer references for glow effects
-        this.mountainLayers = [];
-        this.lavaRiversContainer = null;
-        this.embersContainer = null;
-        this.smokeContainer = null;
+        this.lightningTimer = 0;
+        this.lightningFlash = 0;
 
-        // Performance limits - optimized for better FPS
-        this.MAX_BURSTS = 3;
-        this.MAX_GEYSERS = 5;
-        this.MAX_SPARKLES = 80;
-        this.MAX_LIGHTNING = 2;
-        this.MAX_SWARMS = 40;
-        this.MAX_LAVA_BURSTS = 4;
-
-        // Graphics quality state
+        // Graphics quality
         this.qualityChangeHandler = null;
+        this.currentQuality = 'Extreme';
+
+        // Graphical Presets - Enhanced visuals across all quality levels
         this.qualityPresets = {
-            'Minimal': {
-                lavaRivers: 2,
-                emberCount: 40,
-                smokePlumes: 4,
-                maxBursts: 1,
-                maxGeysers: 2,
-                maxSparkles: 30,
-                maxLightning: 0,
-                maxSwarms: 12,
-                maxLavaBursts: 1,
+            Minimum: {
+                maxParticles: 40,
+                enableRiverParticles: true,
+                enableSparkles: true,
+                enableGeysers: false,
+                enableLightning: true,
+                enableShake: true,
+                bgMountainDetail: 3,
+                fgMountainDetail: 4,
+                riverDetail: 15,
+                shadows: false,
+                // Effect multipliers - increased for better combo effects
+                effectMultiplier: 0.25,
+                explosionMultiplier: 0.3,
+                sparkleMultiplier: 0.2,
+                geyserMultiplier: 0,
+                ambientSpawnRate: 1.0,
+                smokeRate: 0.04,
+                // River quality settings
+                riverLayers: 2,
+                riverGlow: false,
+                riverAnimation: true,
+                riverWidthMult: 0.7,
+                riverBrightness: 0.5
             },
-            'Low': {
-                lavaRivers: 4,
-                emberCount: 60,
-                smokePlumes: 6,
-                maxBursts: 2,
-                maxGeysers: 3,
-                maxSparkles: 50,
-                maxLightning: 1,
-                maxSwarms: 20,
-                maxLavaBursts: 2,
+            Low: {
+                maxParticles: 80,
+                enableRiverParticles: true,
+                enableSparkles: true,
+                enableGeysers: false,
+                enableLightning: true,
+                enableShake: true,
+                bgMountainDetail: 3,
+                fgMountainDetail: 5,
+                riverDetail: 20,
+                shadows: false,
+                effectMultiplier: 0.35,
+                explosionMultiplier: 0.4,
+                sparkleMultiplier: 0.3,
+                geyserMultiplier: 0.15,
+                ambientSpawnRate: 1.3,
+                smokeRate: 0.05,
+                riverLayers: 3,
+                riverGlow: true,
+                riverAnimation: true,
+                riverWidthMult: 0.8,
+                riverBrightness: 0.6
             },
-            'Medium': {
-                lavaRivers: 6,
-                emberCount: 90,
-                smokePlumes: 10,
-                maxBursts: 3,
-                maxGeysers: 4,
-                maxSparkles: 70,
-                maxLightning: 2,
-                maxSwarms: 30,
-                maxLavaBursts: 3,
+            Medium: {
+                maxParticles: 150,
+                enableRiverParticles: true,
+                enableSparkles: true,
+                enableGeysers: true,
+                enableLightning: true,
+                enableShake: true,
+                bgMountainDetail: 4,
+                fgMountainDetail: 7,
+                riverDetail: 30,
+                shadows: false,
+                effectMultiplier: 0.5,
+                explosionMultiplier: 0.55,
+                sparkleMultiplier: 0.45,
+                geyserMultiplier: 0.3,
+                ambientSpawnRate: 1.8,
+                smokeRate: 0.07,
+                riverLayers: 4,
+                riverGlow: true,
+                riverAnimation: true,
+                riverWidthMult: 0.9,
+                riverBrightness: 0.7
             },
-            'High': {
-                lavaRivers: 8,
-                emberCount: 120,
-                smokePlumes: 15,
-                maxBursts: 3,
-                maxGeysers: 5,
-                maxSparkles: 80,
-                maxLightning: 2,
-                maxSwarms: 40,
-                maxLavaBursts: 4,
+            High: {
+                maxParticles: 300,
+                enableRiverParticles: true,
+                enableSparkles: true,
+                enableGeysers: true,
+                enableLightning: true,
+                enableShake: true,
+                bgMountainDetail: 5,
+                fgMountainDetail: 10,
+                riverDetail: 45,
+                shadows: true,
+                effectMultiplier: 0.7,
+                explosionMultiplier: 0.75,
+                sparkleMultiplier: 0.65,
+                geyserMultiplier: 0.55,
+                ambientSpawnRate: 2.2,
+                smokeRate: 0.1,
+                riverLayers: 5,
+                riverGlow: true,
+                riverAnimation: true,
+                riverWidthMult: 1.0,
+                riverBrightness: 0.85
             },
-            'Ultra': {
-                lavaRivers: 12,
-                emberCount: 180,
-                smokePlumes: 22,
-                maxBursts: 5,
-                maxGeysers: 7,
-                maxSparkles: 110,
-                maxLightning: 3,
-                maxSwarms: 60,
-                maxLavaBursts: 6,
+            Ultra: {
+                maxParticles: 550,
+                enableRiverParticles: true,
+                enableSparkles: true,
+                enableGeysers: true,
+                enableLightning: true,
+                enableShake: true,
+                bgMountainDetail: 6,
+                fgMountainDetail: 14,
+                riverDetail: 65,
+                shadows: true,
+                effectMultiplier: 0.9,
+                explosionMultiplier: 0.95,
+                sparkleMultiplier: 0.85,
+                geyserMultiplier: 0.8,
+                ambientSpawnRate: 2.8,
+                smokeRate: 0.13,
+                riverLayers: 6,
+                riverGlow: true,
+                riverAnimation: true,
+                riverWidthMult: 1.2,
+                riverBrightness: 0.95
             },
-            'Extreme': {
-                lavaRivers: 16,
-                emberCount: 250,
-                smokePlumes: 30,
-                maxBursts: 8,
-                maxGeysers: 10,
-                maxSparkles: 160,
-                maxLightning: 5,
-                maxSwarms: 90,
-                maxLavaBursts: 9,
+            Extreme: {
+                maxParticles: 900,
+                enableRiverParticles: true,
+                enableSparkles: true,
+                enableGeysers: true,
+                enableLightning: true,
+                enableShake: true,
+                bgMountainDetail: 7,
+                fgMountainDetail: 18,
+                riverDetail: 90,
+                shadows: true,
+                effectMultiplier: 1.2,
+                explosionMultiplier: 1.2,
+                sparkleMultiplier: 1.2,
+                geyserMultiplier: 1.2,
+                ambientSpawnRate: 3.5,
+                smokeRate: 0.18,
+                riverLayers: 7,
+                riverGlow: true,
+                riverAnimation: true,
+                riverWidthMult: 1.4,
+                riverBrightness: 1.0
             }
         };
 
-        this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        // Current Quality Setting
+        this.config = this.qualityPresets[this.currentQuality];
+
+        // Colors (Static across presets)
+        this.colors = {
+            mountain: '#120202',
+            skyTop: '#050000',
+            skyBottom: '#2d0a0a',
+            lava: '#ff4500',
+            ember: '#ffaa00',
+        };
+
+        // Bind methods
+        this.handleResize = this.handleResize.bind(this);
+        this.animate = this.animate.bind(this);
     }
 
+    /**
+     * Initialize the theme
+     */
+    async createScene() {
+        // 1. Setup Container
+        const container = this.getContainer('pyrestorm-theme');
+        if (!container) return;
+
+        // Clear any existing DOM elements
+        container.innerHTML = '';
+        container.style.background = '#000';
+        container.style.overflow = 'hidden';
+
+        // 2. Create Canvas
+        this.canvas = document.createElement('canvas');
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.zIndex = '1';
+        container.appendChild(this.canvas);
+
+        this.ctx = this.canvas.getContext('2d', { alpha: false });
+
+        // 3. Initial Resize & Setup
+        this.handleResize();
+        window.addEventListener('resize', this.handleResize);
+
+        // 4. Apply quality preset and setup listener
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
+
+        // 5. Setup Event Listeners
+        this.setupEventListeners();
+
+        // 6. Start Animation
+        this.isActive = true;
+        this.lastTime = performance.now();
+        this.animate(this.lastTime);
+
+        console.log(`🔥 Pyrestorm: Inferno Engine 2.5.4 Started [Quality: ${this.currentQuality}]`);
+    }
+
+    // Quality system methods
     applyQualityPreset(quality) {
         if (!this.qualityPresets[quality]) {
-            console.warn(`Pyrestorm: Unknown quality preset "${quality}", defaulting to High`);
+            console.warn(`[Pyrestorm] Unknown preset "${quality}", defaulting to High`);
             quality = 'High';
         }
 
         this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
+        this.config = this.qualityPresets[quality];
 
-        const preset = this.activePreset;
-        this.MAX_BURSTS = preset.maxBursts;
-        this.MAX_GEYSERS = preset.maxGeysers;
-        this.MAX_SPARKLES = preset.maxSparkles;
-        this.MAX_LIGHTNING = preset.maxLightning;
-        this.MAX_SWARMS = preset.maxSwarms;
-        this.MAX_LAVA_BURSTS = preset.maxLavaBursts;
-
+        // Trim existing particle arrays to new limits
         this.trimEffectCollections();
 
-        console.log(`🔥 Pyrestorm: Applying ${quality} quality preset`);
+        // Re-generate static elements with new detail settings
+        this.generateMountains();
+
+        console.log(`🔥 Pyrestorm: Applied ${quality} graphics preset`);
     }
 
     trimEffectCollections() {
         const clamp = (collection, limit) => {
-            if (!collection || typeof limit !== 'number') return;
+            if (!collection || typeof limit !== 'number' || limit <= 0) return;
             if (collection.length > limit) {
                 collection.splice(0, collection.length - limit);
             }
         };
 
-        clamp(this.eruptionBursts, this.MAX_BURSTS);
-        clamp(this.flameGeysers, this.MAX_GEYSERS);
-        clamp(this.moltenSparkles, this.MAX_SPARKLES);
-        clamp(this.lightningBolts, this.MAX_LIGHTNING);
-        clamp(this.emberSwarms, this.MAX_SWARMS);
-        clamp(this.lavaBursts, this.MAX_LAVA_BURSTS);
-    }
-
-    shouldThrottleEffects() {
-        const now = Date.now();
-        const timeSinceLastEffect = now - this.lastEffectEventTime;
-        const performanceDrop = this.averageFrameTime > 24;
-        const sparklePressure = this.moltenSparkles.length >= this.MAX_SPARKLES * 0.85;
-        const emberPressure = this.emberSwarms.length >= this.MAX_SWARMS * 0.85;
-        const burstPressure = this.eruptionBursts.length >= this.MAX_BURSTS;
-
-        return (
-            performanceDrop ||
-            sparklePressure ||
-            emberPressure ||
-            burstPressure ||
-            timeSinceLastEffect < this.comboCooldownMs
-        );
+        clamp(this.particles, this.config.maxParticles);
+        clamp(this.sparkles, Math.round(20 * this.config.sparkleMultiplier));
+        clamp(this.riverParticles, Math.round(100 * this.config.effectMultiplier));
+        clamp(this.geysers, 5);
+        clamp(this.lightningBolts, 3);
     }
 
     getGraphicsQuality() {
@@ -187,999 +288,1103 @@ export default class PyrestormTheme extends BaseTheme {
     setupQualityListener() {
         if (typeof window === 'undefined') return;
 
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-        }
+        this.teardownQualityListener();
 
         this.qualityChangeHandler = (event) => {
             const newQuality = event.detail?.effectQuality;
             if (!newQuality || newQuality === this.currentQuality) return;
-
             this.applyQualityPreset(newQuality);
-            this.refreshQualityDependentElements();
         };
 
         window.addEventListener('settingsChanged', this.qualityChangeHandler);
     }
 
-    refreshQualityDependentElements() {
-        this.createLavaRivers(true);
-        this.createEmbers(true);
-        this.createSmokePlumes(true);
-        this.trimEffectCollections();
-    }
-
-    async createScene() {
-        const quality = this.getGraphicsQuality();
-        this.applyQualityPreset(quality);
-
-        // Create all base scene elements
-        this.createVolcanoes();
-        this.createLavaRivers(true);
-        this.createEmbers(true);
-        this.createSmokePlumes(true);
-
-        // Setup combo effects canvas
-        this.setupComboEffects();
-
-        // Setup event listeners for gameplay effects
-        this.setupEventListeners();
-
-        // Listen for graphics quality changes
-        this.setupQualityListener();
-
-        // Start animation loop
-        this.animate();
-    }
-
-    createVolcanoes() {
-        const volcanoContainer = this.getContainer('pyrestorm-volcano-peaks');
-        if (!volcanoContainer || volcanoContainer.children.length > 0) return;
-
-        // Create layered volcanic mountains with depth (inspired by mountain theme)
-        const volcanoLayers = [
-            {
-                color: '#2d1810', // Distant volcanic brown
-                glowColor: '#ff4500',
-                height: 0.5,
-                peaks: 4,
-                jaggedness: 0.4,
-                opacity: 0.7,
-                zIndex: 1
-            },
-            {
-                color: '#1a0f08', // Mid-distance volcanic rock
-                glowColor: '#ff6b1a',
-                height: 0.65,
-                peaks: 6,
-                jaggedness: 0.6,
-                opacity: 0.85,
-                zIndex: 2
-            },
-            {
-                color: '#0a0000', // Closest darkest volcanic silhouette
-                glowColor: '#ff8c00',
-                height: 0.8,
-                peaks: 8,
-                jaggedness: 0.8,
-                opacity: 1.0,
-                zIndex: 3
-            }
-        ];
-
-        volcanoLayers.forEach((layer, layerIndex) => {
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('width', '100%');
-            svg.setAttribute('height', '100%');
-            svg.setAttribute('viewBox', '0 0 100 60');
-            svg.setAttribute('preserveAspectRatio', 'none');
-            svg.style.position = 'absolute';
-            svg.style.bottom = '0';
-            svg.style.left = '0';
-            svg.style.width = '100%';
-            svg.style.height = '100%';
-            svg.style.zIndex = layer.zIndex;
-            svg.style.opacity = layer.opacity;
-
-            // Generate volcanic peaks for this layer
-            const peaks = this.generateVolcanicPeaks(layer.height, layer.peaks, layer.jaggedness);
-
-            // Create main mountain path
-            const mountainPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            mountainPath.setAttribute('d', peaks.pathData);
-            mountainPath.setAttribute('fill', layer.color);
-            mountainPath.setAttribute('stroke', 'none');
-            svg.appendChild(mountainPath);
-
-            // Add subtle glowing edge to suggest volcanic heat (only on front two layers)
-            if (layerIndex >= 1) {
-                const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                glowPath.setAttribute('d', peaks.pathData);
-                glowPath.setAttribute('fill', 'none');
-                glowPath.setAttribute('stroke', layer.glowColor);
-                glowPath.setAttribute('stroke-width', '0.3');
-                glowPath.setAttribute('opacity', '0.4');
-                glowPath.style.filter = 'blur(1.5px)';
-                svg.appendChild(glowPath);
-            }
-
-            volcanoContainer.appendChild(svg);
-
-            // Store reference for glow effects
-            this.mountainLayers.push({
-                svg,
-                glowColor: layer.glowColor,
-                layerIndex
-            });
-        });
-    }
-
-    generateVolcanicPeaks(heightMultiplier, peakCount, jaggedness) {
-        const peakPositions = [];
-        let pathData = 'M 0 60 '; // Start at bottom left
-
-        const baseY = 60;
-        const spacing = 100 / peakCount;
-        let currentX = 0;
-
-        // Generate peaks with semi-smooth curves and volcanic edges
-        for (let i = 0; i < peakCount; i++) {
-            const peakX = (i + 0.5) * spacing;
-            const peakHeight = (22 + Math.random() * 20) * heightMultiplier;
-            const peakY = baseY - peakHeight;
-            const peakWidth = spacing * (0.7 + Math.random() * 0.3);
-
-            const leftX = peakX - peakWidth / 2;
-            const rightX = peakX + peakWidth / 2;
-
-            // Ascent to peak - use mix of curves and lines for semi-smooth look
-            const ascentPoints = 2;
-            for (let j = 0; j < ascentPoints; j++) {
-                const progress = (j + 1) / (ascentPoints + 1);
-                const x = currentX + (leftX - currentX) * progress;
-                const y = baseY - (baseY - peakY) * progress * progress; // Ease curve
-
-                // Add controlled jitter for volcanic roughness
-                const jitter = (Math.random() - 0.5) * jaggedness * 3;
-
-                if (j === 0) {
-                    // Use quadratic curve for smoother transitions
-                    const cpx = (currentX + x) / 2;
-                    const cpy = (baseY + y) / 2 + jitter;
-                    pathData += `Q ${cpx} ${cpy}, ${x} ${y + jitter} `;
-                } else {
-                    pathData += `L ${x + jitter} ${y + jitter} `;
-                }
-            }
-
-            // Sharp peak with slight curve
-            const peakJitter = (Math.random() - 0.5) * jaggedness * 1.5;
-            const prePeakX = leftX + (peakX - leftX) * 0.8;
-            const prePeakY = peakY + (baseY - peakY) * 0.2;
-            pathData += `L ${prePeakX} ${prePeakY} `;
-            pathData += `L ${peakX + peakJitter} ${peakY} `;
-            peakPositions.push({ x: peakX, y: peakY });
-
-            // Descent from peak - smoother on the way down
-            const descentPoints = 2;
-            for (let j = 0; j < descentPoints; j++) {
-                const progress = (j + 1) / (descentPoints + 1);
-                const x = peakX + (rightX - peakX) * progress;
-                const y = peakY + (baseY - peakY) * progress;
-
-                const jitter = (Math.random() - 0.5) * jaggedness * 2.5;
-
-                if (j === descentPoints - 1) {
-                    // Smooth curve into valley
-                    const cpx = (x + rightX) / 2;
-                    const cpy = (y + baseY) / 2 + jitter;
-                    pathData += `Q ${cpx} ${cpy}, ${x + jitter} ${y + jitter} `;
-                } else {
-                    pathData += `L ${x + jitter} ${y + jitter} `;
-                }
-            }
-
-            currentX = rightX;
+    teardownQualityListener() {
+        if (this.qualityChangeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
         }
-
-        // Close path
-        pathData += 'L 100 60 Z';
-
-        return { pathData, peakPositions };
-    }
-
-    updateMountainGlow() {
-        // Apply volcanic glow to mountain layers with increasing intensity from back to front
-
-        this.mountainLayers.forEach(({ svg, glowColor, layerIndex }) => {
-            if (this.volcanoGlowIntensity > 0) {
-                // Intensity increases for closer layers
-                const layerMultiplier = layerIndex === 0 ? 6 : layerIndex === 1 ? 10 : 15;
-                const glowBlur = this.volcanoGlowIntensity * layerMultiplier;
-
-                // Brightest layers get double drop-shadow for extra intensity
-                if (layerIndex >= 2) {
-                    svg.style.filter = `drop-shadow(0 0 ${glowBlur}px ${glowColor}) drop-shadow(0 0 ${glowBlur * 0.6}px ${glowColor})`;
-                } else if (layerIndex === 1) {
-                    svg.style.filter = `drop-shadow(0 0 ${glowBlur}px ${glowColor}) drop-shadow(0 0 ${glowBlur * 0.4}px ${glowColor})`;
-                } else {
-                    svg.style.filter = `drop-shadow(0 0 ${glowBlur}px ${glowColor})`;
-                }
-            } else {
-                svg.style.filter = '';
-            }
-        });
-    }
-
-    createLavaRivers(force = false) {
-        if (!this.lavaRiversContainer) {
-            this.lavaRiversContainer = this.getContainer('pyrestorm-lava-rivers');
-        }
-
-        const lavaRiversContainer = this.lavaRiversContainer;
-        if (!lavaRiversContainer) return;
-        if (!force && lavaRiversContainer.children.length > 0) return;
-
-        lavaRiversContainer.textContent = '';
-
-        // Position behind front mountains (z-index 3) and in front of mid mountains (z-index 2)
-        lavaRiversContainer.style.zIndex = '2.5';
-
-        const riverCount = this.activePreset?.lavaRivers ?? 8;
-        const spacing = riverCount > 1 ? 100 / (riverCount - 1) : 0;
-
-        for (let i = 0; i < riverCount; i++) {
-            const river = document.createElement('div');
-            river.className = 'pyrestorm-lava-river';
-            const left = riverCount > 1 ? Math.min(100, spacing * i) : 50;
-            river.style.left = `${left}%`;
-            river.style.setProperty('--flow-speed', `${10 + Math.random() * 10}s`);
-            river.style.animationDelay = `${Math.random() * 5}s`;
-            river.style.width = `${100 + Math.random() * 100}px`;
-
-            // Add lava splashes
-            const splashCount = 2 + Math.floor(Math.random() * 3);
-            for (let j = 0; j < splashCount; j++) {
-                const splash = document.createElement('div');
-                splash.className = 'pyrestorm-lava-splash';
-                splash.style.left = `${Math.random() * 100}%`;
-                splash.style.bottom = `${20 + Math.random() * 40}%`;
-                splash.style.setProperty('--splash-duration', `${2 + Math.random() * 3}s`);
-                splash.style.setProperty('--splash-delay', `${Math.random() * 4}s`);
-                river.appendChild(splash);
-            }
-
-            lavaRiversContainer.appendChild(river);
-        }
-    }
-
-    createForegroundRocks() {
-        const rocksContainer = this.getContainer('pyrestorm-foreground-rocks');
-        if (!rocksContainer || rocksContainer.children.length > 0) return;
-
-        const rockCount = 6;
-        const rockPositions = [5, 18, 35, 55, 72, 88];
-
-        for (let i = 0; i < rockCount; i++) {
-            const rock = document.createElement('div');
-            rock.className = 'pyrestorm-rock';
-            const width = 80 + Math.random() * 120;
-            const height = 100 + Math.random() * 150;
-            rock.style.width = `${width}px`;
-            rock.style.height = `${height}px`;
-            rock.style.left = `${rockPositions[i]}%`;
-
-            // Add glowing cracks
-            const crackCount = 1 + Math.floor(Math.random() * 3);
-            for (let j = 0; j < crackCount; j++) {
-                const crack = document.createElement('div');
-                crack.className = 'pyrestorm-rock-crack';
-                crack.style.top = `${20 + Math.random() * 60}%`;
-                crack.style.setProperty('--crack-duration', `${3 + Math.random() * 3}s`);
-                crack.style.setProperty('--crack-delay', `${Math.random() * 4}s`);
-                rock.appendChild(crack);
-            }
-
-            rocksContainer.appendChild(rock);
-        }
-    }
-
-    createEmbers(force = false) {
-        if (!this.embersContainer) {
-            this.embersContainer = this.getContainer('pyrestorm-embers');
-        }
-
-        const embersContainer = this.embersContainer;
-        if (!embersContainer) return;
-        if (!force && embersContainer.children.length > 0) return;
-
-        embersContainer.textContent = '';
-
-        const emberCount = this.activePreset?.emberCount ?? 100;
-
-        for (let i = 0; i < emberCount; i++) {
-            const ember = document.createElement('div');
-            ember.className = 'pyrestorm-ember';
-            const size = 2 + Math.random() * 4;
-            ember.style.width = `${size}px`;
-            ember.style.height = `${size}px`;
-            ember.style.left = `${Math.random() * 100}%`;
-            ember.style.bottom = `${Math.random() * 30}%`;
-            ember.style.setProperty('--ember-duration', `${8 + Math.random() * 12}s`);
-            ember.style.setProperty('--ember-delay', `${Math.random() * 10}s`);
-            ember.style.setProperty('--ember-drift', `${-50 + Math.random() * 100}px`);
-            embersContainer.appendChild(ember);
-        }
-    }
-
-    createSmokePlumes(force = false) {
-        if (!this.smokeContainer) {
-            this.smokeContainer = this.getContainer('pyrestorm-smoke');
-        }
-
-        const smokeContainer = this.smokeContainer;
-        if (!smokeContainer) return;
-        if (!force && smokeContainer.children.length > 0) return;
-
-        smokeContainer.textContent = '';
-
-        const smokeCount = this.activePreset?.smokePlumes ?? 15;
-
-        for (let i = 0; i < smokeCount; i++) {
-            const smoke = document.createElement('div');
-            smoke.className = 'pyrestorm-smoke-plume';
-            smoke.style.left = `${Math.random() * 100}%`;
-            smoke.style.bottom = `${Math.random() * 40}%`;
-            const width = 150 + Math.random() * 200;
-            const height = 250 + Math.random() * 150;
-            smoke.style.width = `${width}px`;
-            smoke.style.height = `${height}px`;
-            smoke.style.setProperty('--smoke-duration', `${12 + Math.random() * 15}s`);
-            smoke.style.setProperty('--smoke-delay', `${Math.random() * 12}s`);
-            smoke.style.setProperty('--smoke-drift', `${-100 + Math.random() * 200}px`);
-            smokeContainer.appendChild(smoke);
-        }
-    }
-
-    setupComboEffects() {
-        const themeContainer = this.getContainer('pyrestorm-theme');
-        if (!themeContainer) return;
-
-        // Create canvas for combo effects
-        let canvas = themeContainer.querySelector('.pyrestorm-effects-canvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.className = 'pyrestorm-effects-canvas';
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.pointerEvents = 'none';
-            canvas.style.zIndex = '100';
-            themeContainer.appendChild(canvas);
-        }
-
-        this.effectsCanvas = canvas;
-        this.effectsCtx = canvas.getContext('2d', { alpha: true });
-
-        // Size canvas
-        const resizeEffectsCanvas = () => {
-            if (!this.effectsCanvas || !themeContainer) return;
-            const rect = themeContainer.getBoundingClientRect();
-            this.effectsCanvas.width = rect.width;
-            this.effectsCanvas.height = rect.height;
-        };
-        resizeEffectsCanvas();
-        window.addEventListener('resize', resizeEffectsCanvas);
     }
 
     setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleLineClear(data);
+        // Line Clear - Bursts of fire & sparkles (scaled by quality)
+        this.onLineClear = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (!this.isActive) return;
+            const count = data.lines || data.count || 1;
+            const mult = this.config.effectMultiplier;
+
+            this.triggerExplosion(count);
+
+            if (this.config.enableSparkles && this.config.sparkleMultiplier > 0) {
+                // Scale sparkles: base of 2-4 per line, scaled by multiplier
+                const sparkleCount = Math.max(1, Math.round((2 + count) * this.config.sparkleMultiplier));
+                this.triggerSparkles(sparkleCount);
+            }
+
+            // Scale intensity gain by quality
+            this.intensity = Math.min(1, this.intensity + 0.15 * count * (0.5 + mult * 0.5));
+
+            if (this.config.enableShake) {
+                // Scale shake: 2-6 per line based on quality
+                this.shake += count * (2 + mult * 4);
             }
         });
 
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleCombo(data);
-            }
-        });
+        // Combo - Increasing heat, lightning, and geysers (heavily scaled)
+        this.onCombo = eventBus.on(EVENTS.COMBO, (data) => {
+            if (!this.isActive) return;
+            const count = data.combo || data.count || 0;
+            this.comboCount = count;
+            const mult = this.config.effectMultiplier;
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
-    }
+            if (count > 0) {
+                // Scale intensity gain
+                this.intensity = Math.min(1, this.intensity + 0.1 * count * (0.5 + mult * 0.5));
 
-    handleLineClear(data = {}) {
-        const lineCount = Math.max(1, data.lineCount ?? data.count ?? 1);
-        const throttled = this.shouldThrottleEffects();
-        this.lastEffectEventTime = Date.now();
+                if (this.config.enableShake) {
+                    // Much reduced shake for combos
+                    this.shake += count * (1 + mult * 2);
+                }
 
-        // Increase volcanic activity
-        const intensityScale = throttled ? 0.6 : 1;
-        this.volcanoGlowIntensity = Math.min(1, this.volcanoGlowIntensity + 0.3 * lineCount * intensityScale);
-        this.heatIntensity = Math.min(1, this.heatIntensity + 0.3 * lineCount * intensityScale);
+                if (this.config.enableSparkles && this.config.sparkleMultiplier > 0) {
+                    // Very limited sparkles on combo - max 3-8 based on quality
+                    const sparkleCount = Math.max(1, Math.round((1 + count * 0.5) * this.config.sparkleMultiplier));
+                    this.triggerSparkles(Math.min(sparkleCount, 8));
+                }
 
-        // Create eruption bursts from volcano peaks
-        this.createEruptionBursts(lineCount, throttled);
+                // Only trigger expensive effects on higher combos and quality
+                if (count > 1) { // Lowered threshold for visibility
+                    if (this.config.enableLightning && mult >= 0.15 && count > 2) {
+                        this.triggerLightning(count);
+                    }
+                    if (this.config.enableGeysers && this.config.geyserMultiplier > 0) {
+                        // Try to spawn geyser from a river
+                        let geyserX = null;
+                        if (this.lavaPaths.length > 0) {
+                            const randomPath = this.lavaPaths[Math.floor(Math.random() * this.lavaPaths.length)];
+                            if (randomPath.pathPoints && randomPath.pathPoints.length > 0) {
+                                // Pick a random point on the river
+                                const pt = randomPath.pathPoints[Math.floor(Math.random() * randomPath.pathPoints.length)];
+                                geyserX = pt.x;
+                            }
+                        }
+                        this.triggerGeyser(count, geyserX);
+                    }
+                }
 
-        // Removed lava waves - user didn't like the blue line effect
-
-        // Create molten sparkles (reduced for performance)
-        const sparkleCount = Math.max(4, Math.floor(lineCount * (throttled ? 6 : 10)));
-        this.createMoltenSparkles(sparkleCount, throttled);
-
-        this.trimEffectCollections();
-    }
-
-    handleCombo(data = {}) {
-        const comboCount = Math.max(0, data.comboCount ?? data.combo ?? data.count ?? 0);
-        const throttled = this.shouldThrottleEffects();
-        this.lastEffectEventTime = Date.now();
-
-        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.0);
-        const comboScale = throttled ? 0.7 : 1;
-        this.volcanoGlowIntensity = Math.min(1, 0.5 + comboCount * 0.15 * comboScale);
-        this.heatIntensity = Math.min(1, 0.5 + comboCount * 0.15 * comboScale);
-
-        // Create ember swarms (reduced for performance)
-        if (comboCount >= 2) {
-            this.createEmberSwarm(Math.min(comboCount, 4), throttled);
-        }
-
-        // Create lava bursts from mountain peaks for high combos
-        if (comboCount >= 4 && (!throttled || (comboCount >= 6 && Math.random() < 0.35))) {
-            this.createLavaBurst(throttled);
-        }
-
-        // Create extra sparkles (reduced for performance)
-        const extraSparkles = Math.max(4, comboCount * (throttled ? 5 : 8));
-        this.createMoltenSparkles(extraSparkles, throttled);
-
-        this.trimEffectCollections();
-    }
-
-    createEruptionBursts(lineCount, throttled = false) {
-        if (!this.effectsCanvas || this.eruptionBursts.length >= this.MAX_BURSTS) return;
-
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-        const volcanoY = height * 0.75; // Position at volcano peaks
-
-        // Fire colors: bright yellow, orange, red
-        const colors = ['#ffdc00', '#ff6b1a', '#ff4500', '#ffa500', '#ff0000'];
-        const burstCount = Math.min(Math.max(1, lineCount), this.MAX_BURSTS - this.eruptionBursts.length);
-
-        for (let i = 0; i < burstCount; i++) {
-            const x = Math.random() * width;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            let particleCount = Math.floor(10 + Math.random() * 12);
-            if (throttled) {
-                particleCount = Math.max(6, Math.floor(particleCount * 0.6));
-            }
-
-            const particles = [];
-            for (let j = 0; j < particleCount; j++) {
-                const angle = Math.random() * Math.PI - Math.PI / 2; // Upward burst
-                const speedBase = (Math.random() * 3 + 2) * Math.min(this.comboMultiplier, 2.0);
-                const speed = throttled ? speedBase * 0.8 : speedBase;
-                particles.push({
-                    x: x,
-                    y: volcanoY,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    life: 1.0,
-                    size: Math.random() * 3 + 2,
-                    trail: [],
+                // --- RIVER COMBO EFFECTS ---
+                // 1. Surge: Boost river intensity and flow
+                this.lavaPaths.forEach(path => {
+                    path.surgeIntensity = Math.min(2.0, (path.surgeIntensity || 0) + count * 0.3);
                 });
+
+                // 2. Magma Burst: Spawn fresh hot magma particles in the rivers
+                if (this.config.enableRiverParticles) {
+                    // Significantly increased burst count for visibility
+                    const burstCount = Math.min(40, count * 8);
+                    this.lavaPaths.forEach((path, index) => {
+                        for (let i = 0; i < burstCount; i++) {
+                            this.riverParticles.push({
+                                pathIndex: index,
+                                progress: Math.random() * 0.2, // Spawn strictly at top
+                                baseSpeed: 0.1 + Math.random() * 0.1, // Much faster
+                                size: path.baseWidth * (0.6 + Math.random() * 0.8) * mult, // Larger
+                                type: 'magma', // Always hot magma
+                                colorType: 0.9 + Math.random() * 0.1, // Pure white-hot
+                                offset: (Math.random() - 0.5) * path.baseWidth * 0.8,
+                                lateralDrift: (Math.random() - 0.5) * 0.2,
+                                wobblePhase: Math.random() * Math.PI * 2,
+                                wobbleSpeed: 2.0 + Math.random() * 2.0,
+                                wobbleAmplitude: 0.2,
+                                pulsePhase: Math.random() * Math.PI * 2,
+                                rotation: Math.random() * Math.PI * 2,
+                                rotationSpeed: (Math.random() - 0.5) * 0.5,
+                                stretch: 0.8 + Math.random() * 0.4
+                            });
+                        }
+                    });
+                }
             }
-
-            this.eruptionBursts.push({
-                particles,
-                color,
-                life: 1.0,
-                maxLife: 1.5 + Math.random() * 0.5,
-            });
-        }
-    }
-
-    createFlameGeysers(count) {
-        if (!this.effectsCanvas || this.flameGeysers.length >= this.MAX_GEYSERS) return;
-
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-        const colors = ['#ffdc00', '#ff9500', '#ff6b1a', '#ff4500'];
-        const geyserCount = Math.min(count * 2, this.MAX_GEYSERS - this.flameGeysers.length);
-
-        for (let i = 0; i < geyserCount; i++) {
-            const x = Math.random() * width;
-            const y = height * 0.6 + Math.random() * height * 0.3;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            this.flameGeysers.push({
-                x,
-                y,
-                height: 100 + Math.random() * 200,
-                width: 30 + Math.random() * 50,
-                life: 1.0,
-                maxLife: 0.8 + Math.random() * 0.4,
-                color,
-                intensity: Math.random() * 0.5 + 0.5,
-            });
-        }
-    }
-
-    createMoltenSparkles(count, throttled = false) {
-        if (!this.effectsCanvas) return;
-        if (this.moltenSparkles.length >= this.MAX_SPARKLES) {
-            this.moltenSparkles.splice(0, Math.floor(this.MAX_SPARKLES * 0.3));
-        }
-
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-        const colors = ['#ffdc00', '#ffcc00', '#ffa500', '#ff6347'];
-        let sparkleCount = Math.min(count, this.MAX_SPARKLES);
-        if (throttled) {
-            sparkleCount = Math.floor(sparkleCount * 0.6);
-        }
-        const capacity = Math.max(this.MAX_SPARKLES - this.moltenSparkles.length, 0);
-        sparkleCount = Math.max(0, Math.min(sparkleCount, capacity));
-        if (sparkleCount <= 0) return;
-
-        for (let i = 0; i < sparkleCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const baseSpeed = (Math.random() * 2 + 1) * this.comboMultiplier;
-            const speed = throttled ? baseSpeed * 0.8 : baseSpeed;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            this.moltenSparkles.push({
-                x: width / 2 + (Math.random() - 0.5) * width * 0.5,
-                y: height * 0.6,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed - 2, // Upward bias
-                life: 1.0,
-                maxLife: Math.random() * 0.8 + 0.6,
-                size: Math.random() * 3 + 1,
-                color,
-                glow: Math.random() * 15 + 10,
-                twinkle: Math.random() * Math.PI * 2,
-            });
-        }
-    }
-
-    createLavaBurst(throttled = false) {
-        if (!this.effectsCanvas || this.lavaBursts.length >= this.MAX_LAVA_BURSTS) return;
-
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-
-        // Create lava bursts from mountain peaks
-        const colors = ['#ff4500', '#ff6b1a', '#ff8c00'];
-        const burstX = Math.random() * width;
-        const burstY = height * 0.75; // Mountain peak area
-
-        const particles = [];
-        let particleCount = 15 + Math.floor(Math.random() * 10);
-        if (throttled) {
-            particleCount = Math.max(8, Math.floor(particleCount * 0.6));
-        }
-
-        for (let i = 0; i < particleCount; i++) {
-            // Create fountain-like spray
-            const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.4;
-            const speed = Math.random() * 4 + 3;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            particles.push({
-                x: burstX,
-                y: burstY,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                life: 1.0,
-                size: Math.random() * 6 + 3,
-                color,
-            });
-        }
-
-        this.lavaBursts.push({
-            particles,
-            life: 1.0,
-            maxLife: 1.2,
         });
     }
 
-    createLightningStrike() {
-        if (!this.effectsCanvas || this.lightningBolts.length >= this.MAX_LIGHTNING) return;
+    handleResize() {
+        if (!this.canvas || !this.canvas.parentElement) return;
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.width = rect.width;
+        this.height = rect.height;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-
-        // Create jagged lightning path
-        const segments = [];
-        const startX = Math.random() * width;
-        const startY = height * 0.2;
-        const endX = Math.random() * width;
-        const endY = height * 0.8;
-
-        const segmentCount = 8 + Math.floor(Math.random() * 6);
-
-        for (let i = 0; i <= segmentCount; i++) {
-            const progress = i / segmentCount;
-            const targetX = startX + (endX - startX) * progress;
-            const targetY = startY + (endY - startY) * progress;
-
-            const jitterX = (Math.random() - 0.5) * 60;
-            const jitterY = (Math.random() - 0.5) * 40;
-
-            segments.push({
-                x: i === segmentCount ? endX : targetX + jitterX,
-                y: i === segmentCount ? endY : targetY + jitterY,
-            });
-        }
-
-        // Use red-orange fire lightning color
-        this.lightningBolts.push({
-            segments,
-            life: 1.0,
-            maxLife: 0.3,
-            color: '#ff4500', // Bright orange-red fire
-            width: 3 + Math.random() * 3,
-        });
+        this.generateMountains();
     }
 
-    createEmberSwarm(comboCount, throttled = false) {
-        if (!this.effectsCanvas) return;
-        if (this.emberSwarms.length >= this.MAX_SWARMS) {
-            this.emberSwarms.splice(0, Math.floor(this.MAX_SWARMS * 0.3));
-        }
+    getBezierPoints(p0, p1, p2, p3, steps = 50) {
+        const points = [];
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const mt = 1 - t;
+            const mt2 = mt * mt;
+            const mt3 = mt2 * mt;
+            const t2 = t * t;
+            const t3 = t2 * t;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const colors = ['#ffdc00', '#ff6b1a', '#ff4500', '#ffa500'];
-        // Reduced particle count for better performance
-        let particleCount = Math.min(comboCount * 6, this.MAX_SWARMS);
-        if (throttled) {
-            particleCount = Math.max(4, Math.floor(particleCount * 0.6));
+            const x = mt3 * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t3 * p3.x;
+            const y = mt3 * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t3 * p3.y;
+            points.push({ x, y });
         }
-        const capacity = Math.max(this.MAX_SWARMS - this.emberSwarms.length, 0);
-        particleCount = Math.max(0, Math.min(particleCount, capacity));
-        if (particleCount <= 0) return;
+        return points;
+    }
 
-        for (let i = 0; i < particleCount; i++) {
+    generateMountains() {
+        this.bgMountainPoints = [];
+        this.mountainPoints = [];
+        this.lavaPaths = [];
+        this.riverParticles = [];
+
+        // --- 1. Background Mountains ---
+        const bgPeakCount = this.config.bgMountainDetail;
+        const bgStep = this.width / bgPeakCount;
+        this.bgMountainPoints.push({ x: 0, y: this.height });
+        this.bgMountainPoints.push({ x: 0, y: this.height * 0.65 });
+
+        for (let i = 1; i <= bgPeakCount; i++) {
+            const x = i * bgStep;
+            const y = this.height * (0.55 + Math.random() * 0.15);
+            const midX = x - bgStep / 2;
+            const midY = (this.bgMountainPoints[this.bgMountainPoints.length - 1].y + y) / 2 + (Math.random() - 0.5) * 30;
+
+            this.bgMountainPoints.push({ x: midX, y: midY });
+            this.bgMountainPoints.push({ x: x, y: y });
+        }
+        this.bgMountainPoints.push({ x: this.width, y: this.height });
+
+
+        // --- 2. Foreground Mountains ---
+        const peakCount = this.config.fgMountainDetail;
+        const step = this.width / peakCount;
+        this.mountainPoints.push({ x: 0, y: this.height });
+        this.mountainPoints.push({ x: 0, y: this.height * 0.65 });
+
+        for (let i = 1; i <= peakCount; i++) {
+            const x = i * step;
+            const y = this.height * (0.55 + Math.random() * 0.3);
+
+            const midX = x - step / 2;
+            const midY = (this.mountainPoints[this.mountainPoints.length - 1].y + y) / 2 + (Math.random() - 0.5) * 120;
+
+            this.mountainPoints.push({ x: midX, y: midY });
+            this.mountainPoints.push({ x: x, y: y });
+
+            // --- Magma Rivers ---
+            // Reduce river frequency on lower settings
+            const riverChance = this.currentQuality === 'Minimum' ? 0.1 : 0.25;
+
+            if (Math.random() > (1 - riverChance)) {
+                // Offset start position slightly down the slope for natural emergence
+                const slopeOffset = 8 + Math.random() * 15;
+                const startX = x + (Math.random() - 0.5) * 20;
+                const startY = y + slopeOffset;
+
+                // Create more organic flow path with multiple direction changes
+                const flowDirection = Math.random() > 0.5 ? 1 : -1;
+                const cp1x = startX + flowDirection * (30 + Math.random() * 60);
+                const cp1y = startY + (this.height - startY) * (0.25 + Math.random() * 0.15);
+                const cp2x = startX + flowDirection * (Math.random() - 0.3) * 180;
+                const cp2y = startY + (this.height - startY) * (0.6 + Math.random() * 0.2);
+                const endX = startX + (Math.random() - 0.5) * 350;
+                const endY = this.height + 50;
+
+                const pathPoints = this.getBezierPoints(
+                    { x: startX, y: startY },
+                    { x: cp1x, y: cp1y },
+                    { x: cp2x, y: cp2y },
+                    { x: endX, y: endY },
+                    this.config.riverDetail
+                );
+
+                // Calculate slope steepness at each point for speed variation
+                const slopeData = [];
+                for (let j = 0; j < pathPoints.length - 1; j++) {
+                    const dx = pathPoints[j + 1].x - pathPoints[j].x;
+                    const dy = pathPoints[j + 1].y - pathPoints[j].y;
+                    const steepness = Math.abs(dy) / (Math.abs(dx) + 1);
+                    slopeData.push(Math.min(2, 0.5 + steepness * 0.5));
+                }
+                slopeData.push(slopeData[slopeData.length - 1] || 1);
+
+                this.lavaPaths.push({
+                    startX, startY,
+                    cp1x, cp1y,
+                    cp2x, cp2y,
+                    endX, endY,
+                    baseWidth: 5 + Math.random() * 10,
+                    pathPoints: pathPoints,
+                    slopeData: slopeData,
+                    // Source pool properties for natural emergence
+                    sourceSize: 12 + Math.random() * 18,
+                    sourcePhase: Math.random() * Math.PI * 2,
+                    bubblePhase: Math.random() * Math.PI * 2,
+                    // Flow animation properties
+                    flowOffset: Math.random() * 1000,
+                    flowSpeed: 2 + Math.random() * 2, // Reduced speed slightly
+                    surgeIntensity: 0 // Initialize surge
+                });
+
+                // Pre-populate river with particles so it flows all the way down immediately
+                if (this.config.enableRiverParticles) {
+                    const particleCount = Math.floor(pathPoints.length * (0.5 + this.config.effectMultiplier * 0.5));
+                    for (let k = 0; k < particleCount; k++) {
+                        const progress = Math.random();
+                        const isCrust = Math.random() < 0.6;
+                        this.riverParticles.push({
+                            pathIndex: this.lavaPaths.length - 1,
+                            progress: progress,
+                            baseSpeed: 0.04 + Math.random() * 0.05 + this.intensity * 0.02,
+                            size: (5 + Math.random() * 10) * (isCrust ? 1.0 : 0.8) * this.config.effectMultiplier,
+                            type: isCrust ? 'crust' : 'magma',
+                            colorType: Math.random(),
+                            offset: (Math.random() - 0.5) * pathPoints[0].x * 0.0 // Placeholder, updated in loop
+                                + (Math.random() - 0.5) * 10, // Initial random offset
+                            lateralDrift: (Math.random() - 0.5) * 0.2,
+                            wobblePhase: Math.random() * Math.PI * 2,
+                            wobbleSpeed: 1.0 + Math.random() * 2.0,
+                            wobbleAmplitude: 0.1 + Math.random() * 0.3,
+                            pulsePhase: Math.random() * Math.PI * 2,
+                            rotation: Math.random() * Math.PI * 2,
+                            rotationSpeed: (Math.random() - 0.5) * 0.5,
+                            stretch: 0.8 + Math.random() * 0.4
+                        });
+                    }
+                }
+            }
+        }
+        this.mountainPoints.push({ x: this.width, y: this.height });
+    }
+
+    triggerExplosion(strength) {
+        // Scale explosion particles using preset multiplier
+        const mult = this.config.explosionMultiplier;
+        if (mult <= 0) return;
+
+        // Base count scaled: 5-25 particles depending on quality and strength
+        const baseCount = 5 + strength * 5;
+        const count = Math.max(2, Math.floor(baseCount * mult));
+
+        const centerX = this.width / 2;
+        const centerY = this.height * 0.5;
+
+        for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const baseSpeed = (Math.random() * 2.5 + 1.5) * Math.min(this.comboMultiplier, 2.0);
-            const speed = throttled ? baseSpeed * 0.85 : baseSpeed;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            this.emberSwarms.push({
+            const speed = (5 + Math.random() * 15 + strength * 3) * mult;
+            this.particles.push({
                 x: centerX,
                 y: centerY,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 life: 1.0,
-                maxLife: Math.random() * 1.0 + 0.6,
-                size: Math.random() * 5 + 2,
-                color,
-                glow: Math.random() * 20 + 10,
-                pulse: Math.random() * Math.PI * 2,
+                decay: 0.015 + Math.random() * 0.02,
+                size: (3 + Math.random() * 5) * (0.5 + mult * 0.5),
+                color: Math.random() > 0.3 ? '#ffcc00' : '#ff4500',
+                type: 'spark'
             });
         }
     }
 
-    updateEffects(delta) {
-        // Update eruption bursts
-        for (let i = this.eruptionBursts.length - 1; i >= 0; i--) {
-            const burst = this.eruptionBursts[i];
-            burst.life -= delta / burst.maxLife;
+    triggerSparkles(count) {
+        if (!this.config.enableSparkles || this.config.sparkleMultiplier <= 0) return;
 
-            burst.particles.forEach(p => {
-                // Store trail (reduced for performance)
-                if (p.trail.length < 3) {
-                    p.trail.push({ x: p.x, y: p.y, life: 1.0 });
-                }
-                p.trail.forEach(t => t.life -= delta * 3);
-                p.trail = p.trail.filter(t => t.life > 0);
+        // Cap sparkle count to prevent performance issues
+        const maxSparkles = Math.min(count, 10);
+        const mult = this.config.sparkleMultiplier;
 
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += 0.15; // Gravity
-                p.vx *= 0.99; // Air resistance
-                p.life -= delta / burst.maxLife;
+        for (let i = 0; i < maxSparkles; i++) {
+            this.sparkles.push({
+                x: Math.random() * this.width,
+                y: Math.random() * this.height,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: (Math.random() - 0.5) * 1.5,
+                life: 1.0,
+                decay: 0.01 + Math.random() * 0.02, // Faster decay
+                size: (2 + Math.random() * 4) * mult,
+                color: '#ffffff',
+                glowColor: Math.random() > 0.5 ? '#ffd700' : '#ff4500',
+                rotation: Math.random() * Math.PI,
+                rotSpeed: (Math.random() - 0.5) * 0.08
             });
+        }
+    }
 
-            if (burst.life <= 0) {
-                this.eruptionBursts.splice(i, 1);
+    triggerGeyser(strength, specificX = null) {
+        if (!this.config.enableGeysers || this.config.geyserMultiplier <= 0) return;
+
+        const mult = this.config.geyserMultiplier;
+        const x = specificX !== null ? specificX : Math.random() * this.width;
+        // Scale height by quality
+        // Scale height by quality - taller geysers
+        const height = this.height * (0.4 + Math.min(0.5, strength * 0.1)) * mult;
+
+        this.geysers.push({
+            x: x,
+            y: this.height,
+            targetHeight: height,
+            currentHeight: 0,
+            width: (35 + strength * 15) * mult, // Wider
+            life: 1.0,
+            decay: 0.015, // Slower decay
+            color: '#ff4500'
+        });
+
+        // Scale geyser particles by quality: 2-15 particles
+        const pCount = Math.max(2, Math.round(5 * mult + strength * mult));
+
+        for (let i = 0; i < pCount; i++) {
+            this.particles.push({
+                x: x + (Math.random() - 0.5) * 40 * mult,
+                y: this.height,
+                vx: (Math.random() - 0.5) * 5 * mult,
+                vy: (-10 - Math.random() * 10) * mult,
+                life: 1.0,
+                decay: 0.025,
+                size: 3 * mult,
+                color: '#ffaa00',
+                type: 'spark'
+            });
+        }
+    }
+
+    triggerLightning(combo) {
+        if (!this.config.enableLightning) return;
+
+        const mult = this.config.effectMultiplier;
+
+        // Flash intensity scaled by quality
+        this.lightningFlash = (0.5 + Math.min(0.4, combo * 0.08)) * (0.5 + mult * 0.5);
+
+        if (this.config.enableShake) {
+            // Reduced shake for lightning
+            this.shake += (5 + combo) * mult;
+        }
+
+        // On Low quality, only do flash (no bolt drawing)
+        if (mult < 0.3) return;
+
+        const startX = Math.random() * this.width;
+        const endX = startX + (Math.random() - 0.5) * 300 * mult;
+
+        this.lightningBolts.push({
+            startX: startX,
+            startY: 0,
+            endX: endX,
+            endY: this.height * (0.5 + mult * 0.3),
+            segments: [],
+            life: 1.0,
+            width: (2 + combo) * mult
+        });
+
+        const bolt = this.lightningBolts[this.lightningBolts.length - 1];
+        let currX = bolt.startX;
+        let currY = bolt.startY;
+        // Scale segment count by quality: 4-12 segments
+        const steps = Math.max(4, Math.round(8 * mult));
+        const dy = (bolt.endY - bolt.startY) / steps;
+
+        bolt.segments.push({ x: currX, y: currY });
+        for (let i = 0; i < steps; i++) {
+            currX += (bolt.endX - bolt.startX) / steps + (Math.random() - 0.5) * 100 * mult;
+            currY += dy + (Math.random() - 0.5) * 30;
+            bolt.segments.push({ x: currX, y: currY });
+        }
+    }
+
+    update(dt) {
+        this.time += dt;
+        this.intensity = Math.max(0, this.intensity - dt * 0.1);
+        this.shake = Math.max(0, this.shake - dt * 15);
+        this.lightningFlash = Math.max(0, this.lightningFlash - dt * 8);
+
+        const mult = this.config.effectMultiplier;
+
+        // --- Ambient Sparkles (very rare, scaled by quality) ---
+        if (this.config.enableSparkles && this.config.sparkleMultiplier > 0) {
+            // Only spawn ambient sparkles rarely: 0.5-2% chance per frame
+            if (Math.random() < 0.005 * this.config.sparkleMultiplier) {
+                this.triggerSparkles(1);
             }
         }
 
-        // Update molten sparkles
-        for (let i = this.moltenSparkles.length - 1; i >= 0; i--) {
-            const s = this.moltenSparkles[i];
+        // --- Update River Particles (Floating Magma Blobs & Crust) ---
+        // --- Update River Particles (Floating Magma Blobs & Crust) ---
+        if (this.config.enableRiverParticles) {
+            // Reduced spawn rate since we pre-populate, just need to maintain flow
+            const riverSpawnChance = (0.15 + this.intensity * 0.2) * mult;
+
+            this.lavaPaths.forEach((path, index) => {
+                // Decay surge
+                path.surgeIntensity = Math.max(0, (path.surgeIntensity || 0) - dt * 0.8);
+
+                // Update river flow offset - accelerated by surge
+                const surgeSpeedMult = 1 + (path.surgeIntensity || 0) * 2;
+                path.flowOffset += path.flowSpeed * dt * (1 + this.intensity * 0.5) * surgeSpeedMult;
+
+                if (Math.random() < riverSpawnChance) {
+                    const baseSpeed = 0.04 + Math.random() * 0.05;
+                    // Create clusters
+                    const clusterCount = Math.random() < 0.3 ? 2 : 1;
+
+                    for (let c = 0; c < clusterCount; c++) {
+                        const isCrust = Math.random() < 0.6;
+
+                        this.riverParticles.push({
+                            pathIndex: index,
+                            progress: c * 0.005,
+                            baseSpeed: baseSpeed + this.intensity * 0.02,
+                            size: path.baseWidth * (isCrust ? (0.4 + Math.random() * 0.5) : (0.3 + Math.random() * 0.6)) * mult,
+                            type: isCrust ? 'crust' : 'magma',
+                            colorType: Math.random(),
+                            offset: (Math.random() - 0.5) * path.baseWidth * 0.7,
+                            lateralDrift: (Math.random() - 0.5) * 0.2,
+                            wobblePhase: Math.random() * Math.PI * 2,
+                            wobbleSpeed: 1.0 + Math.random() * 2.0,
+                            wobbleAmplitude: 0.1 + Math.random() * 0.3,
+                            pulsePhase: Math.random() * Math.PI * 2,
+                            rotation: Math.random() * Math.PI * 2,
+                            rotationSpeed: (Math.random() - 0.5) * (isCrust ? 0.2 : 0.5),
+                            stretch: isCrust ? (0.8 + Math.random() * 0.4) : (0.7 + Math.random() * 0.6)
+                        });
+                    }
+                }
+            });
+
+            // Cap river particles - Reduced limit for performance
+            const maxRiverParticles = Math.round(100 * mult);
+            while (this.riverParticles.length > maxRiverParticles) {
+                this.riverParticles.shift();
+            }
+
+            for (let i = this.riverParticles.length - 1; i >= 0; i--) {
+                const p = this.riverParticles[i];
+                const path = this.lavaPaths[p.pathIndex];
+                if (!path) {
+                    this.riverParticles.splice(i, 1);
+                    continue;
+                }
+
+                // Get slope multiplier for current position
+                const slopeIndex = Math.floor(p.progress * (path.slopeData?.length - 1 || 0));
+                const slopeMult = path.slopeData?.[slopeIndex] || 1;
+
+                // Speed varies with slope - faster on steeper sections
+                p.progress += p.baseSpeed * slopeMult * dt;
+
+                // Update wobble and rotation for organic movement
+                p.wobblePhase += p.wobbleSpeed * dt;
+                p.rotation += p.rotationSpeed * dt;
+
+                // Lateral drift
+                p.offset += p.lateralDrift * dt;
+                const maxOffset = path.baseWidth * 0.65;
+                if (Math.abs(p.offset) > maxOffset) {
+                    p.lateralDrift *= -0.8;
+                    p.offset = Math.sign(p.offset) * maxOffset;
+                }
+
+                if (p.progress >= 1) this.riverParticles.splice(i, 1);
+            }
+        }
+
+        // --- Update Sparkles ---
+        for (let i = this.sparkles.length - 1; i >= 0; i--) {
+            const s = this.sparkles[i];
             s.x += s.vx;
             s.y += s.vy;
-            s.vy += 0.1; // Gravity
-            s.twinkle += 0.1;
-            s.life -= delta / s.maxLife;
+            s.rotation += s.rotSpeed;
+            s.life -= s.decay;
+            if (s.life <= 0) this.sparkles.splice(i, 1);
+        }
 
-            if (s.life <= 0) {
-                this.moltenSparkles.splice(i, 1);
+        // Cap sparkles to prevent buildup
+        const maxSparkles = Math.round(20 * this.config.sparkleMultiplier);
+        while (this.sparkles.length > maxSparkles) {
+            this.sparkles.shift();
+        }
+
+        // --- Update Geysers ---
+        for (let i = this.geysers.length - 1; i >= 0; i--) {
+            const g = this.geysers[i];
+            g.currentHeight += (g.targetHeight - g.currentHeight) * 5 * dt;
+            g.life -= g.decay;
+            if (g.life <= 0) this.geysers.splice(i, 1);
+        }
+
+        // --- Update Air Particles (scaled spawn rate) ---
+        const activeParticles = this.config.maxParticles * (1 + this.intensity * 0.5);
+        if (this.particles.length < activeParticles) {
+            // Spawn rate scaled by config: 0.5-3 base + intensity bonus
+            const baseSpawnRate = this.config.ambientSpawnRate;
+            const spawnRate = Math.max(1, Math.floor(baseSpawnRate + this.intensity * baseSpawnRate * 2));
+            for (let i = 0; i < spawnRate; i++) {
+                this.particles.push({
+                    x: Math.random() * this.width,
+                    y: this.height + 20,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: -(1.5 + Math.random() * 3 + this.intensity * 2),
+                    life: 1.0,
+                    decay: 0.004 + Math.random() * 0.012,
+                    size: (1.5 + Math.random() * 3 + this.intensity) * (0.5 + mult * 0.5),
+                    color: Math.random() > 0.6 ? '#ffaa00' : '#ff4400',
+                    type: 'ember',
+                    wobble: Math.random() * Math.PI * 2
+                });
             }
         }
 
-        // Update lightning bolts
-        for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
-            const bolt = this.lightningBolts[i];
-            bolt.life -= delta / bolt.maxLife;
-
-            if (bolt.life <= 0) {
-                this.lightningBolts.splice(i, 1);
-            }
+        // Smoke frequency scaled by config
+        if (Math.random() < this.config.smokeRate + this.intensity * this.config.smokeRate) {
+            this.particles.push({
+                x: Math.random() * this.width,
+                y: this.height + 50,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: -(0.8 + Math.random() * 1.5),
+                life: 1.0,
+                decay: 0.002,
+                size: (20 + Math.random() * 30) * (0.5 + mult * 0.5),
+                color: '#0a0202',
+                type: 'smoke'
+            });
         }
 
-        // Update ember swarms
-        for (let i = this.emberSwarms.length - 1; i >= 0; i--) {
-            const e = this.emberSwarms[i];
-            e.x += e.vx;
-            e.y += e.vy;
-            e.vy += 0.05; // Slight gravity
-            e.pulse += 0.15;
-            e.life -= delta / e.maxLife;
-
-            if (e.life <= 0) {
-                this.emberSwarms.splice(i, 1);
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.life -= p.decay;
+            if (p.life <= 0) {
+                this.particles.splice(i, 1);
+                continue;
             }
-        }
-
-        // Update lava bursts
-        for (let i = this.lavaBursts.length - 1; i >= 0; i--) {
-            const burst = this.lavaBursts[i];
-            burst.life -= delta / burst.maxLife;
-
-            burst.particles.forEach(p => {
+            if (p.type === 'ember') {
+                p.x += p.vx + Math.sin(this.time * 3 + p.wobble) * 0.8;
+                p.y += p.vy;
+                if (p.life < 0.3) p.size *= 0.95;
+            } else if (p.type === 'spark') {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.2; // Gravity
-                p.vx *= 0.98; // Air resistance
-                p.life -= delta / burst.maxLife;
-            });
-
-            if (burst.life <= 0) {
-                this.lavaBursts.splice(i, 1);
+                p.vy += 0.25;
+                p.vx *= 0.96;
+            } else if (p.type === 'smoke') {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.size += 0.15;
             }
         }
 
-        // Decay intensities
-        if (this.volcanoGlowIntensity > 0) {
-            this.volcanoGlowIntensity *= 0.93;
-            if (this.volcanoGlowIntensity < 0.01) this.volcanoGlowIntensity = 0;
-        }
-
-        if (this.heatIntensity > 0) {
-            this.heatIntensity *= 0.93;
-            if (this.heatIntensity < 0.01) this.heatIntensity = 0;
+        // Update Lightning
+        for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
+            const bolt = this.lightningBolts[i];
+            bolt.life -= dt * 5;
+            if (bolt.life <= 0) this.lightningBolts.splice(i, 1);
         }
     }
 
-    renderEffects() {
-        if (!this.effectsCanvas || !this.effectsCtx) return;
+    draw() {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+        const width = this.width;
+        const height = this.height;
 
-        const ctx = this.effectsCtx;
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        // --- 1. Background (Sky) ---
+        // Organic pulsing effect (breathing + flickering)
+        const t = this.time;
+        const breath = Math.sin(t * 0.8) * 0.5 + 0.5; // Slow breathing
+        const flicker = Math.sin(t * 3.5) * 0.3 + Math.sin(t * 8.2) * 0.1; // Fast fire flicker
+        // Amplified pulse: stronger base breath, much stronger flicker
+        const skyPulse = breath * 0.3 + flicker * 0.15;
 
-        // Clear canvas
-        ctx.clearRect(0, 0, width, height);
+        const fireGradient = ctx.createRadialGradient(
+            width / 2, height * 1.2, 0,
+            width / 2, height * 0.8, height * 1.2
+        );
 
-        // Render eruption bursts with trails (optimized)
-        this.eruptionBursts.forEach(burst => {
-            // Set burst color once
-            ctx.fillStyle = burst.color;
+        // Dynamic colors that shift with the pulse - Amplified multipliers
+        // Core: Bright orange/yellow, pulsing to white-hot
+        const coreG = Math.floor(100 + this.intensity * 80 + Math.max(0, skyPulse * 120));
+        const coreA = 0.4 + this.intensity * 0.3 + Math.max(0, skyPulse * 0.3);
 
-            burst.particles.forEach(p => {
-                // Draw trail without shadow for performance
-                p.trail.forEach((t, idx) => {
-                    const alpha = t.life * burst.life * (idx / p.trail.length);
-                    ctx.globalAlpha = alpha * 0.6;
-                    ctx.beginPath();
-                    ctx.arc(t.x, t.y, p.size * 0.4, 0, Math.PI * 2);
-                    ctx.fill();
-                });
+        // Mid: Deep red/orange, pulsing brightness
+        const midR = Math.floor(200 + Math.max(0, skyPulse * 55));
+        const midG = Math.floor(50 + this.intensity * 30 + Math.max(0, skyPulse * 30));
+        const midA = 0.3 + this.intensity * 0.2 + Math.max(0, skyPulse * 0.2);
 
-                // Draw particle with minimal shadow
-                const alpha = p.life * burst.life;
-                ctx.globalAlpha = alpha;
-                ctx.shadowBlur = 8;
-                ctx.shadowColor = burst.color;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
+        fireGradient.addColorStop(0, `rgba(255, ${Math.min(255, coreG)}, 0, ${Math.min(1, coreA)})`);
+        fireGradient.addColorStop(0.4, `rgba(${Math.min(255, midR)}, ${Math.min(255, midG)}, 0, ${Math.min(1, midA)})`);
+        fireGradient.addColorStop(1, '#050000');
 
-            // Reset shadow
-            ctx.shadowBlur = 0;
-            ctx.globalAlpha = 1;
-        });
+        ctx.fillStyle = fireGradient;
+        ctx.fillRect(0, 0, width, height);
 
-        // Render molten sparkles with twinkle effect (optimized)
-        // Only use shadow on some sparkles for performance
-        this.moltenSparkles.forEach((s, idx) => {
-            const twinkleScale = 0.7 + Math.sin(s.twinkle) * 0.3;
-            const alpha = s.life * twinkleScale;
+        if (this.lightningFlash > 0) {
+            ctx.fillStyle = `rgba(255, 220, 180, ${this.lightningFlash * 0.4})`;
+            ctx.fillRect(0, 0, width, height);
+        }
 
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = s.color;
+        // --- Screen Shake ---
+        let shakeX = 0;
+        let shakeY = 0;
+        if (this.config.enableShake && this.shake > 0) {
+            shakeX = (Math.random() - 0.5) * this.shake;
+            shakeY = (Math.random() - 0.5) * this.shake;
+            ctx.save();
+            ctx.translate(shakeX, shakeY);
+        }
 
-            // Only add shadow to every 3rd sparkle for performance
-            if (idx % 3 === 0) {
-                ctx.shadowBlur = s.glow * 0.5;
-                ctx.shadowColor = s.color;
-            }
+        // --- 2. Mountains ---
+        // Background
+        ctx.beginPath();
+        if (this.bgMountainPoints.length > 0) {
+            ctx.moveTo(this.bgMountainPoints[0].x, this.bgMountainPoints[0].y);
+            for (let i = 1; i < this.bgMountainPoints.length; i++) ctx.lineTo(this.bgMountainPoints[i].x, this.bgMountainPoints[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(20, 5, 5, 0.6)';
+        ctx.fill();
 
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, s.size * twinkleScale, 0, Math.PI * 2);
-            ctx.fill();
+        // Foreground
+        ctx.beginPath();
+        if (this.mountainPoints.length > 0) {
+            ctx.moveTo(this.mountainPoints[0].x, this.mountainPoints[0].y);
+            for (let i = 1; i < this.mountainPoints.length; i++) ctx.lineTo(this.mountainPoints[i].x, this.mountainPoints[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#0a0202';
+        ctx.fill();
 
-            if (idx % 3 === 0) {
-                ctx.shadowBlur = 0;
-            }
-        });
-        ctx.globalAlpha = 1;
-
-        // Render lightning bolts (simplified for performance)
-        this.lightningBolts.forEach(bolt => {
-            const alpha = Math.min(1, bolt.life * 3); // Quick flash
-
-            ctx.globalAlpha = alpha;
-            ctx.strokeStyle = bolt.color;
-            ctx.lineWidth = bolt.width;
-            ctx.shadowBlur = 15; // Reduced shadow
-            ctx.shadowColor = bolt.color;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            ctx.beginPath();
-            bolt.segments.forEach((seg, idx) => {
-                if (idx === 0) {
-                    ctx.moveTo(seg.x, seg.y);
-                } else {
-                    ctx.lineTo(seg.x, seg.y);
-                }
-            });
-            ctx.stroke();
-        });
+        // Rim Light
+        const rimWidth = 2 + this.comboCount * 1.5 + this.intensity * 5;
+        const rimAlpha = 0.3 + Math.min(0.7, this.comboCount * 0.1);
+        ctx.strokeStyle = `rgba(255, 80, 0, ${rimAlpha})`;
+        ctx.lineWidth = rimWidth;
+        if (this.config.shadows) {
+            ctx.shadowBlur = 10 + this.comboCount * 5;
+            ctx.shadowColor = '#ff4500';
+        }
+        ctx.stroke();
         ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
 
-        // Render ember swarms with pulse effect (optimized)
-        // Only use shadow on some embers for performance
-        this.emberSwarms.forEach((e, idx) => {
-            const pulseScale = 0.8 + Math.sin(e.pulse) * 0.2;
-            const alpha = e.life;
+        // --- 3. Magma Rivers (Quality-Scaled Rendering) ---
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
 
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = e.color;
+        const riverConfig = this.config;
+        const riverIntensityBase = 1 + this.intensity + (this.comboCount * 0.15);
+        const widthMult = riverConfig.riverWidthMult;
+        const brightness = riverConfig.riverBrightness;
+        const layers = riverConfig.riverLayers;
 
-            // Only add shadow to every 4th ember for performance
-            if (idx % 4 === 0) {
-                ctx.shadowBlur = e.glow * pulseScale * 0.6;
-                ctx.shadowColor = e.color;
+        // Animation pulse for higher quality rivers
+        const riverPulse = riverConfig.riverAnimation
+            ? 0.85 + Math.sin(this.time * 2) * 0.15
+            : 1.0;
+        const flowPulse = riverConfig.riverAnimation
+            ? 0.9 + Math.sin(this.time * 3 + Math.PI) * 0.1
+            : 1.0;
+
+        this.lavaPaths.forEach((path, pathIndex) => {
+            const surge = path.surgeIntensity || 0;
+            const baseWidth = path.baseWidth * widthMult * riverIntensityBase * (1 + surge * 0.2);
+
+            // Surge brightness boost
+            const surgeBright = 1 + surge * 0.5;
+
+            // === SOURCE POOL / CRATER at river origin ===
+            // Creates a natural-looking emergence point instead of a straight edge
+            const sourceSize = (path.sourceSize || 15) * widthMult;
+            const sourcePulse = 0.9 + Math.sin(this.time * 2.5 + (path.sourcePhase || 0)) * 0.1;
+            const bubblePulse = 0.8 + Math.sin(this.time * 4 + (path.bubblePhase || 0)) * 0.2;
+
+            // Outer crater glow (Medium+ only)
+            if (layers >= 3) {
+                const craterGlow = ctx.createRadialGradient(
+                    path.startX, path.startY - sourceSize * 0.3, 0,
+                    path.startX, path.startY - sourceSize * 0.3, sourceSize * 2.5 * sourcePulse
+                );
+                craterGlow.addColorStop(0, `rgba(255, 80, 0, ${0.4 * brightness})`);
+                craterGlow.addColorStop(0.4, `rgba(180, 30, 0, ${0.2 * brightness})`);
+                craterGlow.addColorStop(1, 'rgba(80, 0, 0, 0)');
+                ctx.fillStyle = craterGlow;
+                ctx.beginPath();
+                ctx.ellipse(path.startX, path.startY - sourceSize * 0.3, sourceSize * 2.5 * sourcePulse, sourceSize * 1.8 * sourcePulse, 0, 0, Math.PI * 2);
+                ctx.fill();
             }
 
+            // Source pool (all qualities)
+            const poolGrad = ctx.createRadialGradient(
+                path.startX, path.startY, 0,
+                path.startX, path.startY, sourceSize * 1.5
+            );
+            poolGrad.addColorStop(0, `rgba(255, ${200 + surge * 50}, ${80 + surge * 100}, ${0.9 * brightness * bubblePulse})`);
+            poolGrad.addColorStop(0.3, `rgba(255, ${120 + surge * 50}, ${20 + surge * 50}, ${0.7 * brightness})`);
+            poolGrad.addColorStop(0.7, `rgba(${200 + surge * 55}, 50, 0, ${0.5 * brightness})`);
+            poolGrad.addColorStop(1, 'rgba(100, 20, 0, 0)');
+            ctx.fillStyle = poolGrad;
             ctx.beginPath();
-            ctx.arc(e.x, e.y, e.size * pulseScale, 0, Math.PI * 2);
+            ctx.ellipse(path.startX, path.startY, sourceSize * 1.5, sourceSize * 1.0, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            if (idx % 4 === 0) {
+            // Bubbling effect in source (High+ only)
+            if (layers >= 4) {
+                const bubbleCount = 3;
+                for (let b = 0; b < bubbleCount; b++) {
+                    const bubbleAngle = this.time * 1.5 + b * (Math.PI * 2 / bubbleCount) + pathIndex;
+                    const bubbleR = sourceSize * 0.4 * (0.5 + Math.sin(bubbleAngle * 2) * 0.5);
+                    const bubbleX = path.startX + Math.cos(bubbleAngle) * sourceSize * 0.5;
+                    const bubbleY = path.startY + Math.sin(bubbleAngle * 0.7) * sourceSize * 0.3;
+                    const bubbleAlpha = 0.3 + Math.sin(bubbleAngle * 3) * 0.2;
+
+                    ctx.fillStyle = `rgba(255, 220, 120, ${bubbleAlpha * brightness})`;
+                    ctx.beginPath();
+                    ctx.arc(bubbleX, bubbleY, bubbleR, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // === RIVER FLOW ===
+            // Layer 1: Outer glow (Ultra/Extreme only)
+            if (layers >= 5) {
+                ctx.beginPath();
+                ctx.moveTo(path.startX, path.startY);
+                ctx.bezierCurveTo(path.cp1x, path.cp1y, path.cp2x, path.cp2y, path.endX, path.endY);
+                ctx.lineWidth = baseWidth * 4.0 * riverPulse;
+                ctx.strokeStyle = `rgba(80, 0, 0, ${0.15 * brightness})`;
+                if (this.config.shadows) {
+                    ctx.shadowBlur = 40;
+                    ctx.shadowColor = '#ff2200';
+                }
+                ctx.stroke();
                 ctx.shadowBlur = 0;
             }
-        });
-        ctx.globalAlpha = 1;
 
-        // Render lava bursts (volcanic fountain effect)
-        this.lavaBursts.forEach(burst => {
-            burst.particles.forEach(p => {
-                const alpha = p.life * burst.life;
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle = p.color;
+            // Layer 2: Wide glow (High+ only)
+            if (layers >= 4 && riverConfig.riverGlow) {
+                ctx.beginPath();
+                ctx.moveTo(path.startX, path.startY);
+                ctx.bezierCurveTo(path.cp1x, path.cp1y, path.cp2x, path.cp2y, path.endX, path.endY);
+                ctx.lineWidth = baseWidth * 3.0 * riverPulse;
+                ctx.strokeStyle = `rgba(120, 20, 0, ${0.25 * brightness})`;
+                if (this.config.shadows) {
+                    ctx.shadowBlur = 25;
+                    ctx.shadowColor = '#ff4400';
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            // Layer 3: Inner glow (Medium+ only)
+            if (layers >= 3 && riverConfig.riverGlow) {
+                ctx.beginPath();
+                ctx.moveTo(path.startX, path.startY);
+                ctx.bezierCurveTo(path.cp1x, path.cp1y, path.cp2x, path.cp2y, path.endX, path.endY);
+                ctx.lineWidth = baseWidth * 2.0 * flowPulse;
+                ctx.strokeStyle = `rgba(180, 40, 0, ${0.4 * brightness})`;
+                ctx.stroke();
+            }
+
+            // Layer 4: Base lava (all qualities)
+            ctx.beginPath();
+            ctx.moveTo(path.startX, path.startY);
+            ctx.bezierCurveTo(path.cp1x, path.cp1y, path.cp2x, path.cp2y, path.endX, path.endY);
+            ctx.lineWidth = baseWidth * 1.2;
+            ctx.strokeStyle = `rgba(200, 60, 0, ${0.7 * brightness})`;
+            ctx.stroke();
+
+            // Layer 5: Hot core (Low+ only)
+            if (layers >= 2) {
+                ctx.beginPath();
+                ctx.moveTo(path.startX, path.startY);
+                ctx.bezierCurveTo(path.cp1x, path.cp1y, path.cp2x, path.cp2y, path.endX, path.endY);
+                ctx.lineWidth = baseWidth * 0.6 * flowPulse;
+                ctx.strokeStyle = `rgba(255, 120, 20, ${0.8 * brightness})`;
+                ctx.stroke();
+            }
+
+            // Layer 6: Brightest center (High+ only)
+            if (layers >= 4) {
+                ctx.beginPath();
+                ctx.moveTo(path.startX, path.startY);
+                ctx.bezierCurveTo(path.cp1x, path.cp1y, path.cp2x, path.cp2y, path.endX, path.endY);
+                ctx.lineWidth = baseWidth * 0.25;
+                ctx.strokeStyle = `rgba(255, ${200 + surge * 55}, ${100 + surge * 100}, ${0.6 * brightness * riverPulse})`;
+                ctx.stroke();
+            }
+
+            // Layer 7: Moving Hot spots along the river (Extreme only)
+            if (layers >= 6 && path.pathPoints && path.pathPoints.length > 2) {
+                const hotSpotCount = Math.floor(path.pathPoints.length / 6);
+                const totalPoints = path.pathPoints.length;
+
+                for (let i = 0; i < hotSpotCount; i++) {
+                    // Calculate moving position based on flowOffset
+                    const spacing = totalPoints / hotSpotCount;
+                    const baseIdx = i * spacing;
+                    const flowIdx = (baseIdx + path.flowOffset) % totalPoints;
+
+                    const idx = Math.floor(flowIdx);
+                    const nextIdx = (idx + 1) % totalPoints;
+                    const sub = flowIdx - idx;
+
+                    const p1 = path.pathPoints[idx];
+                    const p2 = path.pathPoints[nextIdx];
+
+                    if (!p1 || !p2) continue;
+
+                    const x = p1.x + (p2.x - p1.x) * sub;
+                    const y = p1.y + (p2.y - p1.y) * sub;
+
+                    const hotPulse = 0.5 + Math.sin(this.time * 4 + pathIndex + i) * 0.5;
+                    const spotSize = baseWidth * 0.9 * hotPulse;
+
+                    // Hot spot glow
+                    const gradient = ctx.createRadialGradient(
+                        x, y, 0,
+                        x, y, spotSize * 2
+                    );
+                    gradient.addColorStop(0, `rgba(255, 240, 180, ${0.7 * hotPulse})`);
+                    gradient.addColorStop(0.4, `rgba(255, 120, 40, ${0.4 * hotPulse})`);
+                    gradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(x, y, spotSize * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        });
+
+        if (this.config.enableRiverParticles) {
+            const riverLayers = this.config.riverLayers;
+
+            this.riverParticles.forEach(p => {
+                const path = this.lavaPaths[p.pathIndex];
+                if (!path || !path.pathPoints || path.pathPoints.length < 2) return;
+
+                const pointCount = path.pathPoints.length;
+                const safeProgress = Math.max(0, Math.min(p.progress, 1));
+                const floatIndex = safeProgress * (pointCount - 1);
+                const index = Math.floor(floatIndex);
+                const nextIndex = Math.min(index + 1, pointCount - 1);
+                const subProgress = floatIndex - index;
+
+                const p1 = path.pathPoints[index];
+                const p2 = path.pathPoints[nextIndex];
+
+                if (!p1 || !p2) return;
+
+                const baseX = p1.x + (p2.x - p1.x) * subProgress;
+                const baseY = p1.y + (p2.y - p1.y) * subProgress;
+
+                // Enhanced wobble with variable amplitude
+                const wobbleAmp = p.wobbleAmplitude || 0.3;
+                const wobbleX = Math.sin(p.wobblePhase) * p.size * wobbleAmp;
+                const wobbleY = Math.cos(p.wobblePhase * 0.7) * p.size * wobbleAmp * 0.3;
+                const finalX = baseX + p.offset + wobbleX;
+                const finalY = baseY + wobbleY;
+
+                // Pulsing size effect
+                const pulseFactor = 0.85 + Math.sin(p.wobblePhase * 1.5 + p.pulsePhase) * 0.15;
+                const size = p.size * pulseFactor;
+
+                // Get stretch and rotation for elongated blob shape
+                const stretch = p.stretch || 1;
+                // Save context for rotation
+                ctx.save();
+                ctx.translate(finalX, finalY);
+                ctx.rotate(p.rotation);
+
+                // SIMPLIFIED RENDERING: Use ellipses instead of complex paths
+                if (p.type === 'crust') {
+                    // --- CRUST PARTICLE (Dark, solid) ---
+                    const crustVal = 20 + Math.floor(p.colorType * 30);
+                    ctx.fillStyle = `rgb(${crustVal + 20}, ${crustVal}, ${crustVal})`;
+
+                    // Simple ellipse for crust
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, size * stretch, size / stretch, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Simple crack (High+ only)
+                    if (riverLayers >= 4) {
+                        ctx.strokeStyle = `rgba(255, 60, 0, ${0.4 * pulseFactor})`;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(-size * 0.4, 0);
+                        ctx.lineTo(size * 0.4, 0);
+                        ctx.stroke();
+                    }
+
+                } else {
+                    // --- MAGMA PARTICLE (Bright, glowing) ---
+                    let r, g, b;
+                    if (p.colorType < 0.5) {
+                        r = 255; g = Math.floor(100 + p.colorType * 200); b = 0;
+                    } else {
+                        r = 255; g = Math.floor(200 + (p.colorType - 0.5) * 110); b = Math.floor((p.colorType - 0.5) * 150);
+                    }
+
+                    // Glow (Medium+ quality) - Single layer for performance
+                    if (riverLayers >= 3) {
+                        ctx.globalAlpha = 0.4;
+                        ctx.fillStyle = `rgba(${r}, ${Math.floor(g * 0.5)}, 0, 0.4)`;
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, size * 2.0 * stretch, size * 2.0 / stretch, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Core
+                    ctx.globalAlpha = 0.9;
+                    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, size * stretch, size / stretch, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Highlight (High+ quality)
+                    if (riverLayers >= 4) {
+                        ctx.globalAlpha = 0.7 * pulseFactor;
+                        ctx.fillStyle = `rgba(255, 255, ${150 + Math.floor(p.colorType * 100)}, 0.8)`;
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, size * 0.4 * stretch, size * 0.4 / stretch, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                ctx.restore();
+            });
+        }
+        ctx.restore();
+
+        // --- 4. Geysers ---
+        if (this.config.enableGeysers) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            this.geysers.forEach(g => {
+                const grad = ctx.createLinearGradient(g.x, this.height, g.x, this.height - g.currentHeight);
+                // Brighter core for visibility against lava
+                grad.addColorStop(0, '#ffffff');
+                grad.addColorStop(0.3, '#ffaa00');
+                grad.addColorStop(0.7, '#ff4500');
+                grad.addColorStop(1, 'rgba(255, 69, 0, 0)');
+
+                ctx.fillStyle = grad;
+                ctx.globalAlpha = g.life;
+                ctx.fillRect(g.x - g.width / 2, this.height - g.currentHeight, g.width, g.currentHeight);
+            });
+            ctx.restore();
+        }
+
+        // --- 5. Particles ---
+        ctx.save();
+        // Smoke
+        this.particles.forEach(p => {
+            if (p.type !== 'smoke') return;
+            ctx.globalAlpha = p.life * 0.5;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Fire/Sparks
+        ctx.globalCompositeOperation = 'lighter';
+        this.particles.forEach(p => {
+            if (p.type === 'smoke') return;
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            if (p.type === 'spark' && this.config.shadows) {
                 ctx.shadowBlur = 10;
                 ctx.shadowColor = p.color;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
+            }
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
         });
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
+
+        // Sparkles (High Priority)
+        if (this.config.enableSparkles) {
+            this.sparkles.forEach(s => {
+                ctx.globalAlpha = s.life;
+                ctx.fillStyle = s.color;
+                if (this.config.shadows) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = s.glowColor;
+                }
+
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                ctx.rotate(s.rotation);
+
+                // Draw star shape
+                ctx.beginPath();
+                const spikes = 4;
+                const outerRadius = s.size * 2;
+                const innerRadius = s.size * 0.5;
+                for (let i = 0; i < spikes * 2; i++) {
+                    const r = (i % 2 === 0) ? outerRadius : innerRadius;
+                    const a = (Math.PI * i) / spikes;
+                    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        // Lightning
+        if (this.config.enableLightning) {
+            this.lightningBolts.forEach(bolt => {
+                ctx.globalAlpha = bolt.life;
+                ctx.strokeStyle = '#fff5cc';
+                ctx.lineWidth = bolt.width;
+                if (this.config.shadows) {
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#ffaa00';
+                }
+                ctx.beginPath();
+                if (bolt.segments.length > 0) {
+                    ctx.moveTo(bolt.segments[0].x, bolt.segments[0].y);
+                    for (let i = 1; i < bolt.segments.length; i++) ctx.lineTo(bolt.segments[i].x, bolt.segments[i].y);
+                }
+                ctx.stroke();
+            });
+        }
+
+        ctx.restore();
+
+        if (this.config.enableShake && this.shake > 0) ctx.restore();
     }
 
     animate(timestamp) {
-        if (!this.isActive || !this.effectsCanvas || !this.effectsCtx) return;
-
-        if (typeof timestamp !== 'number') {
-            timestamp = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-                ? performance.now()
-                : Date.now();
-        }
-
-        if (this.lastFrameTime === 0) {
-            this.lastFrameTime = timestamp;
-        }
-
-        const deltaMs = timestamp - this.lastFrameTime;
-        const deltaSeconds = Math.min(deltaMs / 1000, 0.05);
-        this.lastFrameTime = timestamp;
-
-        this.frameTimeAccumulator += deltaMs;
-        this.frameTimeCount += 1;
-        if (this.frameTimeCount >= 30) {
-            this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
-            this.frameTimeAccumulator = 0;
-            this.frameTimeCount = 0;
-        }
-
-        this.animationTime += deltaSeconds;
-
-        // Update mountain glow for combo effects
-        this.updateMountainGlow();
-
-        // Update and render combo effects
-        this.updateEffects(deltaSeconds);
-        this.renderEffects();
-
-        // Continue animation loop
-        const animId = requestAnimationFrame((nextTimestamp) => this.animate(nextTimestamp));
-        this.registerAnimation(animId);
+        if (!this.isActive) return;
+        const dt = (timestamp - this.lastTime) / 1000;
+        this.lastTime = timestamp;
+        const safeDt = Math.min(dt, 0.1);
+        this.update(safeDt);
+        this.draw();
+        this.animationFrameId = requestAnimationFrame(this.animate);
     }
 
     stop() {
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
+        this.isActive = false;
+        if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+        if (this.onLineClear) this.onLineClear();
+        if (this.onCombo) this.onCombo();
+        this.teardownQualityListener();
+        window.removeEventListener('resize', this.handleResize);
+        if (this.canvas) {
+            this.canvas.remove();
+            this.canvas = null;
         }
-
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
-        this.eventUnsubscribers = [];
-
-        // Clear all effects
-        this.eruptionBursts = [];
-        this.flameGeysers = [];
-        this.moltenSparkles = [];
-        this.lightningBolts = [];
-        this.emberSwarms = [];
-        this.lavaBursts = [];
-
-        // Reset intensities
-        this.volcanoGlowIntensity = 0;
-        this.heatIntensity = 0;
-        this.comboMultiplier = 1.0;
-        this.lastEffectEventTime = 0;
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.averageFrameTime = 16.67;
-
-        // Clear effects canvas
-        if (this.effectsCanvas && this.effectsCtx) {
-            this.effectsCtx.clearRect(0, 0, this.effectsCanvas.width, this.effectsCanvas.height);
-        }
-
-        // Clear references
-        this.effectsCanvas = null;
-        this.effectsCtx = null;
-        this.mountainLayers = [];
-
         super.stop();
     }
 
-    /**
-     * Provide molten themed tetromino styling to match Pyrestorm visuals
-     * @returns {Object} Pyrestorm tetromino configuration
-     */
     getTetrominoConfig() {
         return PYRESTORM_TETROMINOS;
     }

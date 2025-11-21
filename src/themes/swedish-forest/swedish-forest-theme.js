@@ -9,27 +9,36 @@ export default class SwedishForestTheme extends BaseTheme {
         this.ctx = null;
         this.animationTime = 0;
 
+        // Offscreen buffers for performance
+        this.mistSprite = null;
+        this.godRaySprite = null;
+
         // Forest elements
         this.trees = [];
         this.mistLayers = [];
         this.fireflies = [];
         this.fallingLeaves = [];
         this.godRays = [];
+        this.godRays = [];
         this.forestSpirits = [];
+        this.auroraLayers = [];
+        this.spiritWinds = [];
 
         // Visual state
         this.comboMultiplier = 1.0;
         this.pulseIntensity = 0.0;
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.magicGlow = 0;
+        this.windSpeed = 0;
 
-        // Performance limits - reduced for better FPS
-        this.maxFireflies = 20;
-        this.maxLeaves = 10;
+        // Performance limits - Tuned for high FPS
+        this.maxFireflies = 30;
+        this.maxLeaves = 20;
         this.maxGodRays = 8;
-        this.maxSpirits = 6;
+        this.maxSpirits = 10;
+        this.maxSpiritWinds = 5;
 
-        // Gradient cache for performance
+        // Gradient cache
         this.gradientCache = new Map();
         this.frameCount = 0;
 
@@ -59,12 +68,16 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true,
+            desynchronized: true, // Hint for performance
         });
 
         // Set canvas size
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+
+        // Create offscreen sprites
+        this.createMistSprite();
+        this.createGodRaySprite();
 
         // Clear all existing elements
         this.trees = [];
@@ -73,36 +86,71 @@ export default class SwedishForestTheme extends BaseTheme {
         this.fallingLeaves = [];
         this.godRays = [];
         this.forestSpirits = [];
+        this.auroraLayers = [];
+        this.spiritWinds = [];
 
         // Initialize scene elements
         this.createTrees();
+        this.createMist();
         this.createGodRays();
+        this.createSpiritWinds();
         this.createFireflies();
         this.createForestSpirits();
-        // Removed for performance: mist, falling leaves
-        // this.createMist();
-        // this.createFallingLeaves();
+        this.createAurora();
 
         this.setupEventListeners();
         this.animate();
     }
 
+    createMistSprite() {
+        this.mistSprite = document.createElement('canvas');
+        this.mistSprite.width = 200;
+        this.mistSprite.height = 200;
+        const ctx = this.mistSprite.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(100, 100, 0, 100, 100, 100);
+        gradient.addColorStop(0, 'rgba(200, 220, 230, 0.4)');
+        gradient.addColorStop(1, 'rgba(200, 220, 230, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 200, 200);
+    }
+
+    createGodRaySprite() {
+        this.godRaySprite = document.createElement('canvas');
+        this.godRaySprite.width = 50;
+        this.godRaySprite.height = 500;
+        const ctx = this.godRaySprite.getContext('2d');
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, 500);
+        gradient.addColorStop(0, 'rgba(200, 255, 220, 0.5)');
+        gradient.addColorStop(1, 'rgba(200, 255, 220, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 50, 500);
+    }
+
     createTrees() {
-        // Create trees in parallax layers matching original style
+        this.trees = [];
+        // Create trees in parallax layers
         const layers = [
-            { count: 80, height: 150, color: 'rgba(20, 40, 50, 0.7)', spacing: 100 },
-            { count: 60, height: 250, color: 'rgba(30, 55, 70, 0.8)', spacing: 120 },
-            { count: 40, height: 400, color: 'rgba(40, 70, 90, 0.9)', spacing: 150 },
+            { count: 90, height: 180, color: '#0F1F26', spacing: 90, blur: 0 }, // Front
+            { count: 70, height: 300, color: '#162A33', spacing: 110, blur: 0 }, // Mid
+            { count: 50, height: 450, color: '#1C3642', spacing: 140, blur: 1 }, // Back
+            { count: 30, height: 600, color: '#224250', spacing: 200, blur: 2 }, // Far Back
         ];
 
         layers.forEach((layer, layerIndex) => {
             for (let i = 0; i < layer.count; i++) {
-                const h = layer.height * (0.6 + Math.random() * 0.4);
-                const tH = h * (0.1 + Math.random() * 0.05);
-                const x = i * layer.spacing + (Math.random() - 0.5) * 20;
+                const h = layer.height * (0.7 + Math.random() * 0.5);
+                const tH = h * (0.15 + Math.random() * 0.1);
+                const x = i * layer.spacing + (Math.random() - 0.5) * 40;
                 const y = this.canvas.height;
-                const w = layer.spacing * 0.9;
-                const numLayers = 5 + Math.floor(Math.random() * 3);
+                const w = layer.spacing * 0.8;
+                const numLayers = 6 + Math.floor(Math.random() * 4);
+
+                const hasRune = Math.random() < 0.4 && layerIndex < 2;
+                const runeType = Math.floor(Math.random() * 3);
 
                 this.trees.push({
                     x,
@@ -114,26 +162,40 @@ export default class SwedishForestTheme extends BaseTheme {
                     layer: layerIndex,
                     numFoliageLayers: numLayers,
                     swayPhase: Math.random() * Math.PI * 2,
-                    swaySpeed: Math.random() * 0.0002 + 0.00008,
-                    swayAmount: Math.random() * 0.008 + 0.003,
+                    swaySpeed: Math.random() * 0.001 + 0.0005, // Slightly faster for more "life"
+                    swayAmount: Math.random() * 0.015 + 0.005, // Visible sway
+                    baseSwayAmount: Math.random() * 0.015 + 0.005,
                     glowIntensity: 0,
+                    hasRune,
+                    runeType,
+                    runeY: -tH * 0.6,
                 });
             }
         });
     }
 
     createMist() {
-        const mistCount = 12;
+        const mistCount = 8;
         for (let i = 0; i < mistCount; i++) {
             this.mistLayers.push({
                 x: Math.random() * this.canvas.width,
-                y: this.canvas.height * 0.65 + Math.random() * this.canvas.height * 0.3,
-                width: Math.random() * 500 + 300,
-                height: Math.random() * 120 + 80,
-                opacity: Math.random() * 0.15 + 0.08,
-                driftSpeed: Math.random() * 0.08 + 0.03,
-                driftPhase: Math.random() * Math.PI * 2,
-                baseX: 0,
+                y: this.canvas.height - (Math.random() * 250),
+                width: this.canvas.width * 0.5,
+                height: 150,
+                opacity: Math.random() * 0.3 + 0.1,
+                speed: Math.random() * 0.3 + 0.1,
+            });
+        }
+    }
+
+    createAurora() {
+        for (let i = 0; i < 3; i++) {
+            this.auroraLayers.push({
+                points: [],
+                color: i === 0 ? 'rgba(50, 255, 150, 0.15)' : (i === 1 ? 'rgba(50, 200, 255, 0.1)' : 'rgba(150, 50, 255, 0.08)'),
+                offset: i * 100,
+                speed: 0.002 + i * 0.001,
+                intensity: 0,
             });
         }
     }
@@ -142,15 +204,12 @@ export default class SwedishForestTheme extends BaseTheme {
         for (let i = 0; i < this.maxGodRays; i++) {
             this.godRays.push({
                 x: Math.random() * this.canvas.width,
-                y: -50,
-                width: Math.random() * 3 + 1.5,
-                height: this.canvas.height * 1.2,
-                opacity: Math.random() * 0.12 + 0.04,
-                angle: (Math.random() - 0.5) * 0.15,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.015 + 0.005,
-                rotationSpeed: (Math.random() - 0.5) * 0.0002,
-                baseAngle: 0,
+                y: -100,
+                width: Math.random() * 40 + 20,
+                height: this.canvas.height * 1.5,
+                opacity: Math.random() * 0.15 + 0.05,
+                angle: (Math.random() - 0.5) * 0.3,
+                speed: Math.random() * 0.05 + 0.02,
             });
         }
     }
@@ -159,65 +218,36 @@ export default class SwedishForestTheme extends BaseTheme {
         for (let i = 0; i < this.maxFireflies; i++) {
             this.fireflies.push({
                 x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height * 0.7 + this.canvas.height * 0.15,
-                vx: (Math.random() - 0.5) * 0.25,
-                vy: (Math.random() - 0.5) * 0.25,
-                size: Math.random() * 2.5 + 1.5,
-                opacity: Math.random() * 0.6 + 0.3,
+                y: Math.random() * this.canvas.height * 0.8 + this.canvas.height * 0.2,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5,
+                size: Math.random() * 2 + 1,
+                opacity: Math.random() * 0.8 + 0.2,
                 pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.03 + 0.015,
-                hue: Math.random() * 15 + 55, // Soft yellow-green
+                pulseSpeed: Math.random() * 0.05 + 0.02,
+                hue: Math.random() * 20 + 50,
             });
         }
-    }
-
-    createFallingLeaves() {
-        for (let i = 0; i < this.maxLeaves; i++) {
-            this.addLeaf();
-        }
-    }
-
-    addLeaf() {
-        this.fallingLeaves.push({
-            x: Math.random() * this.canvas.width,
-            y: -20,
-            size: Math.random() * 8 + 4,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.05,
-            vx: (Math.random() - 0.5) * 0.3,
-            vy: Math.random() * 0.5 + 0.3,
-            swayPhase: Math.random() * Math.PI * 2,
-            swaySpeed: Math.random() * 0.03 + 0.01,
-            opacity: Math.random() * 0.6 + 0.3,
-            hue: Math.random() * 30 + 20, // Orange-brown
-        });
     }
 
     createForestSpirits() {
         for (let i = 0; i < this.maxSpirits; i++) {
             this.forestSpirits.push({
                 x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height * 0.7 + this.canvas.height * 0.1,
-                targetX: 0,
-                targetY: 0,
+                y: Math.random() * this.canvas.height * 0.6 + this.canvas.height * 0.2,
+                targetX: Math.random() * this.canvas.width,
+                targetY: Math.random() * this.canvas.height * 0.5,
                 vx: 0,
                 vy: 0,
-                size: Math.random() * 20 + 15, // Reduced from 30+20
-                opacity: Math.random() * 0.25 + 0.12, // Slightly reduced
+                size: Math.random() * 15 + 10,
+                opacity: Math.random() * 0.3 + 0.1,
                 pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.02 + 0.01,
-                basePulseSpeed: 0, // Store original speed
-                hue: Math.random() * 30 + 180, // Blue-cyan mystical colors
+                pulseSpeed: Math.random() * 0.03 + 0.01,
+                hue: Math.random() * 40 + 160,
                 trail: [],
-                maxTrailLength: 4, // Reduced from 8+5 to 4 for performance
-                wanderPhase: Math.random() * Math.PI * 2,
-                wanderSpeed: Math.random() * 0.005 + 0.003,
-                layer: Math.random() > 0.5 ? 'front' : 'back',
-                life: 1.0,
-                respawnTimer: 0,
+                maxTrailLength: 6, // Reduced trail length for performance
+                wanderPhase: Math.random() * 100,
             });
-            // Store base pulse speed
-            this.forestSpirits[i].basePulseSpeed = this.forestSpirits[i].pulseSpeed;
         }
     }
 
@@ -238,11 +268,13 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
 
-        window.addEventListener('resize', () => {
+        this.resizeHandler = () => {
             if (!this.canvas) return;
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
-        });
+            this.createTrees();
+        };
+        window.addEventListener('resize', this.resizeHandler);
     }
 
     handleLineClear(eventPayload) {
@@ -270,54 +302,49 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     onLineClear(lineCount, comboCount = 0) {
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.15 * lineCount, 0.8);
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.2 * lineCount, 1.0);
 
-        // Make trees glow very subtly
-        this.trees.forEach((tree) => {
-            tree.glowIntensity = Math.min(tree.glowIntensity + 0.2, 0.8);
-        });
-
-        // Brighten forest spirits on line clear
-        this.forestSpirits.forEach((spirit) => {
-            spirit.opacity = Math.min(spirit.opacity + 0.1, 0.6);
-        });
-
-        // Spawn extra fireflies sparingly
-        if (this.fireflies.length < this.maxFireflies && Math.random() < 0.5) {
-            for (let i = 0; i < Math.min(lineCount, 2); i++) {
-                this.fireflies.push({
-                    x: Math.random() * this.canvas.width,
-                    y: Math.random() * this.canvas.height * 0.7 + this.canvas.height * 0.15,
-                    vx: (Math.random() - 0.5) * 0.3,
-                    vy: (Math.random() - 0.5) * 0.3,
-                    size: Math.random() * 2.5 + 2,
-                    opacity: 0.8,
-                    pulsePhase: 0,
-                    pulseSpeed: Math.random() * 0.04 + 0.02,
-                    hue: Math.random() * 15 + 55,
-                });
+        const leavesToSpawn = Math.min(lineCount * 2, 8);
+        for (let i = 0; i < leavesToSpawn; i++) {
+            if (this.fallingLeaves.length < this.maxLeaves * 2) {
+                this.addLeaf();
             }
         }
+
+        this.forestSpirits.forEach(s => {
+            s.vx += (Math.random() - 0.5) * 2;
+            s.vy += (Math.random() - 0.5) * 2;
+            s.opacity = Math.min(s.opacity + 0.2, 0.8);
+        });
     }
 
     onCombo(comboCount) {
-        // More visible combo effects with better multipliers
-        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3 * comboCount, 1.0);
+        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3, 1.0);
 
-        // More visible magic glow for combos
-        if (comboCount >= 2) {
-            this.magicGlow = Math.min(0.3 + comboCount * 0.1, 0.8);
-        }
+        this.windSpeed = Math.min(comboCount * 0.003, 0.03); // Increased wind effect
+        this.magicGlow = Math.min(comboCount * 0.15, 1.0);
 
-        // Make spirits more active during combos
-        if (comboCount >= 2) {
-            this.forestSpirits.forEach((spirit) => {
-                spirit.pulseSpeed = Math.min(spirit.pulseSpeed * 1.2, 0.04);
-                // Boost opacity for visibility
-                spirit.opacity = Math.min(spirit.opacity * 1.3, 0.7);
+        if (comboCount >= 3) {
+            this.auroraLayers.forEach(layer => {
+                layer.intensity = Math.min(layer.intensity + 0.2, 1.0);
             });
         }
+    }
+
+    addLeaf() {
+        this.fallingLeaves.push({
+            x: Math.random() * this.canvas.width,
+            y: -20,
+            vx: (Math.random() - 0.5) * 2 + this.windSpeed * 100,
+            vy: Math.random() * 1 + 1,
+            size: Math.random() * 6 + 3,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.1,
+            hue: Math.random() * 40 + 30,
+            opacity: 1.0,
+            life: 1.0
+        });
     }
 
     animate() {
@@ -327,141 +354,126 @@ export default class SwedishForestTheme extends BaseTheme {
         this.frameCount++;
 
         // Decay effects
-        if (this.pulseIntensity > 0) {
-            this.pulseIntensity *= 0.98;
-        }
-        if (this.comboMultiplier > 1) {
-            this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.008);
-        }
-        if (this.magicGlow > 0) {
-            this.magicGlow *= 0.96;
-        }
+        this.pulseIntensity *= 0.97;
+        this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.005);
+        this.magicGlow *= 0.98;
+        this.windSpeed *= 0.98;
 
-        // Decay spirit effects back to base values
-        this.forestSpirits.forEach((spirit) => {
-            if (spirit.pulseSpeed > spirit.basePulseSpeed) {
-                spirit.pulseSpeed = Math.max(spirit.basePulseSpeed, spirit.pulseSpeed * 0.98);
-            }
-            if (spirit.opacity > 0.4) {
-                spirit.opacity *= 0.98;
-            }
+        this.auroraLayers.forEach(layer => {
+            layer.intensity *= 0.99;
         });
 
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Draw Background
+        this.drawBackground();
 
-        // Draw scene (back to front) - no screen shake for better performance
+        // Draw Scene - Order matters for depth
+        this.drawAurora();
         this.drawGodRays();
-        this.drawForestSpirits('back');
+        this.drawSpiritWinds();
         this.drawTrees();
-        this.drawForestSpirits('front');
+        this.drawMist();
+        this.drawForestSpirits();
         this.drawFireflies();
-        // Removed for performance: mist, falling leaves
-        // this.drawMist();
-        // this.drawFallingLeaves();
-
-        // Draw magic glow overlay
-        if (this.magicGlow > 0) {
-            this.drawMagicGlow();
-        }
+        this.drawFallingLeaves();
 
         this.registerAnimation(requestAnimationFrame(() => this.animate()));
     }
 
-    drawGodRays() {
-        // Skip god rays update every other frame for performance
-        if (this.frameCount % 2 !== 0) return;
-
-        this.godRays.forEach((ray, index) => {
-            ray.pulsePhase += ray.pulseSpeed * 2; // Compensate for skipping frames
-            ray.angle = ray.baseAngle + Math.sin(this.animationTime * ray.rotationSpeed) * 0.1;
-
-            const pulse = Math.sin(ray.pulsePhase) * 0.3 + 0.7;
-            const comboBoost = 1 + this.pulseIntensity * 0.8 + this.comboMultiplier * 0.6;
-            const opacity = ray.opacity * pulse * comboBoost;
-
-            this.ctx.save();
-            this.ctx.translate(ray.x, ray.y);
-            this.ctx.rotate(ray.angle);
-
-            // Use cached gradient or create new one
-            const cacheKey = `godray-${index}`;
-            let gradient = this.gradientCache.get(cacheKey);
-            if (!gradient) {
-                gradient = this.ctx.createLinearGradient(0, 0, 0, ray.height);
-                gradient.addColorStop(0, 'rgba(255, 250, 220, 0.5)');
-                gradient.addColorStop(0.3, 'rgba(255, 250, 220, 1)');
-                gradient.addColorStop(0.7, 'rgba(255, 240, 200, 0.7)');
-                gradient.addColorStop(1, 'rgba(255, 240, 200, 0)');
-                this.gradientCache.set(cacheKey, gradient);
-            }
-
-            this.ctx.globalAlpha = opacity;
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(-ray.width / 2, 0, ray.width, ray.height);
-
-            this.ctx.restore();
-        });
+    drawBackground() {
+        // Simple gradient background - very fast
+        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+        gradient.addColorStop(0, '#051015');
+        gradient.addColorStop(1, '#02080A');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
-    drawMist() {
-        this.mistLayers.forEach((mist, index) => {
-            if (!mist.baseX) mist.baseX = mist.x;
+    drawAurora() {
+        const maxIntensity = Math.max(...this.auroraLayers.map(l => l.intensity));
+        if (maxIntensity < 0.01) return;
 
-            mist.driftPhase += mist.driftSpeed * 0.001;
-            mist.x = mist.baseX + Math.sin(mist.driftPhase) * 100;
+        this.ctx.save();
+        this.ctx.globalCompositeOperation = 'screen';
 
-            // Wrap around
-            if (mist.x > this.canvas.width + mist.width) {
-                mist.x = -mist.width;
-                mist.baseX = mist.x;
-                // Invalidate cached gradient when mist wraps
-                this.gradientCache.delete(`mist-${index}`);
+        // Optimized Aurora: No shadowBlur, just transparency
+        this.auroraLayers.forEach((layer, i) => {
+            if (layer.intensity < 0.01) return;
+
+            this.ctx.beginPath();
+            const yBase = this.canvas.height * 0.2;
+
+            this.ctx.moveTo(0, yBase);
+
+            // Reduced resolution for sine wave calculation
+            for (let x = 0; x <= this.canvas.width; x += 100) {
+                const noise = Math.sin(x * 0.005 + this.animationTime * 0.5 + layer.offset)
+                    * Math.cos(x * 0.01 - this.animationTime * 0.2);
+                const y = yBase + noise * 100 - (layer.intensity * 50);
+                this.ctx.lineTo(x, y);
             }
 
-            const comboBoost = 1 + this.comboMultiplier * 0.3;
-            const opacity = mist.opacity * comboBoost;
+            this.ctx.lineTo(this.canvas.width, 0);
+            this.ctx.lineTo(0, 0);
+            this.ctx.closePath();
 
-            // Use solid color instead of gradient for better performance
-            const mistColor = this.magicGlow > 0
-                ? `rgba(180, 220, 255, ${opacity * (1 + this.magicGlow * 0.5)})`
-                : `rgba(200, 210, 220, ${opacity})`;
-
-            this.ctx.save();
-            this.ctx.fillStyle = mistColor;
-            this.ctx.globalAlpha = opacity;
-            this.ctx.translate(mist.x, mist.y);
-            this.ctx.scale(1, mist.height / mist.width);
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, mist.width / 2, 0, Math.PI * 2);
+            this.ctx.fillStyle = layer.color;
+            this.ctx.globalAlpha = layer.intensity * 0.5;
             this.ctx.fill();
-            this.ctx.restore();
+
+            // Simple stroke for definition
+            this.ctx.strokeStyle = layer.color;
+            this.ctx.globalAlpha = layer.intensity * 0.8;
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
         });
+
+        this.ctx.restore();
     }
 
     drawTrees() {
-        // Sort trees once and cache - no need to sort every frame
-        if (!this.sortedTrees) {
-            this.sortedTrees = [...this.trees].sort((a, b) => a.layer - b.layer);
-        }
+        // Sort trees by layer
+        const sortedTrees = [...this.trees].sort((a, b) => b.layer - a.layer);
 
-        this.sortedTrees.forEach((tree) => {
-            tree.swayPhase += tree.swaySpeed;
-            const sway = Math.sin(tree.swayPhase) * tree.swayAmount;
-
-            // Decay glow
-            if (tree.glowIntensity > 0) {
-                tree.glowIntensity *= 0.96;
-            }
+        sortedTrees.forEach((tree) => {
+            // Apply wind and sway
+            const currentSwayAmount = tree.baseSwayAmount + this.windSpeed;
+            tree.swayPhase += tree.swaySpeed + this.windSpeed * 0.5;
+            const sway = Math.sin(tree.swayPhase) * currentSwayAmount * tree.height;
 
             this.ctx.save();
             this.ctx.translate(tree.x, tree.y);
 
-            // Draw trunk
+            // Draw Trunk
             this.ctx.fillStyle = tree.color;
-            this.ctx.fillRect(-5, -tree.trunkHeight, 10, tree.trunkHeight);
+            this.ctx.beginPath();
+            this.ctx.moveTo(-tree.width / 4, 0);
+            this.ctx.lineTo(-tree.width / 8 + sway * 0.1, -tree.trunkHeight);
+            this.ctx.lineTo(tree.width / 8 + sway * 0.1, -tree.trunkHeight);
+            this.ctx.lineTo(tree.width / 4, 0);
+            this.ctx.fill();
 
-            // Draw foliage (classic pine tree triangular layers)
+            // Draw Runes (Optimized: No shadowBlur)
+            if (tree.hasRune && this.magicGlow > 0.05) {
+                this.ctx.save();
+                this.ctx.globalCompositeOperation = 'screen';
+                // Draw glow as thick transparent line
+                this.ctx.strokeStyle = `rgba(100, 255, 255, ${this.magicGlow * 0.3})`;
+                this.ctx.lineWidth = 6;
+                this.ctx.lineCap = 'round';
+
+                const ry = tree.runeY;
+                this.drawRunePath(tree.runeType, ry);
+                this.ctx.stroke();
+
+                // Draw core as thin bright line
+                this.ctx.strokeStyle = `rgba(200, 255, 255, ${this.magicGlow})`;
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+
+                this.ctx.restore();
+            }
+
+            // Draw Foliage
             const startY = -tree.trunkHeight;
             const layerHeight = (tree.height - tree.trunkHeight) / tree.numFoliageLayers;
 
@@ -469,242 +481,321 @@ export default class SwedishForestTheme extends BaseTheme {
                 const cY = startY - j * layerHeight;
                 const widthScale = (tree.numFoliageLayers - j) / tree.numFoliageLayers;
                 const cW = tree.width * widthScale;
-                const swayOffset = Math.sin(tree.swayPhase + j * 0.3) * sway * (tree.numFoliageLayers - j) * 3;
+                const layerSway = sway * ((j + 1) / tree.numFoliageLayers);
 
                 this.ctx.beginPath();
-                this.ctx.moveTo(swayOffset, cY - layerHeight);
-                this.ctx.lineTo(-cW / 2 + swayOffset, cY);
-                this.ctx.lineTo(cW / 2 + swayOffset, cY);
+                this.ctx.moveTo(layerSway, cY - layerHeight);
+                this.ctx.lineTo(-cW / 2 + layerSway * 0.8, cY);
+                this.ctx.lineTo(cW / 2 + layerSway * 0.8, cY);
                 this.ctx.closePath();
 
                 this.ctx.fillStyle = tree.color;
                 this.ctx.fill();
-
-                // Subtle glow on combos - very gentle
-                if (tree.glowIntensity > 0) {
-                    this.ctx.shadowBlur = 15 * tree.glowIntensity;
-                    this.ctx.shadowColor = `rgba(200, 230, 255, ${tree.glowIntensity * 0.4})`;
-                    this.ctx.fill();
-                    this.ctx.shadowBlur = 0;
-                }
             }
 
             this.ctx.restore();
         });
     }
 
-    drawFireflies() {
-        // Batch rendering without individual save/restore for better performance
-        for (let i = this.fireflies.length - 1; i >= 0; i--) {
-            const firefly = this.fireflies[i];
-
-            // Update position
-            firefly.x += firefly.vx;
-            firefly.y += firefly.vy;
-
-            // Random direction changes
-            if (Math.random() < 0.02) {
-                firefly.vx += (Math.random() - 0.5) * 0.2;
-                firefly.vy += (Math.random() - 0.5) * 0.2;
-            }
-
-            // Keep velocities reasonable
-            const speed = Math.sqrt(firefly.vx ** 2 + firefly.vy ** 2);
-            if (speed > 1) {
-                firefly.vx *= 0.8;
-                firefly.vy *= 0.8;
-            }
-
-            // Wrap around edges
-            if (firefly.x < -20) firefly.x = this.canvas.width + 20;
-            if (firefly.x > this.canvas.width + 20) firefly.x = -20;
-            if (firefly.y < 0) firefly.y = this.canvas.height;
-            if (firefly.y > this.canvas.height) firefly.y = 0;
-
-            // Pulse effect
-            firefly.pulsePhase += firefly.pulseSpeed;
-            const pulse = Math.sin(firefly.pulsePhase) * 0.5 + 0.5;
-            const opacity = firefly.opacity * pulse * (1 + this.comboMultiplier * 0.5);
-
-            // Draw without shadow blur for better performance - use simple circles
-            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 85%, ${opacity})`;
-            this.ctx.beginPath();
-            this.ctx.arc(firefly.x, firefly.y, firefly.size * 0.8, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Add outer glow as second circle (faster than shadowBlur)
-            this.ctx.fillStyle = `hsla(${firefly.hue}, 100%, 70%, ${opacity * 0.3})`;
-            this.ctx.beginPath();
-            this.ctx.arc(firefly.x, firefly.y, firefly.size * 1.5, 0, Math.PI * 2);
-            this.ctx.fill();
+    drawRunePath(type, ry) {
+        this.ctx.beginPath();
+        if (type === 0) {
+            this.ctx.moveTo(0, ry - 10);
+            this.ctx.lineTo(0, ry + 10);
+            this.ctx.moveTo(-5, ry);
+            this.ctx.lineTo(5, ry);
+        } else if (type === 1) {
+            this.ctx.moveTo(0, ry - 8);
+            this.ctx.lineTo(5, ry);
+            this.ctx.lineTo(0, ry + 8);
+            this.ctx.lineTo(-5, ry);
+            this.ctx.closePath();
+        } else {
+            this.ctx.moveTo(0, ry - 10);
+            this.ctx.lineTo(0, ry + 10);
+            this.ctx.moveTo(0, ry - 10);
+            this.ctx.lineTo(-5, ry - 5);
+            this.ctx.moveTo(0, ry - 10);
+            this.ctx.lineTo(5, ry - 5);
         }
+    }
+
+    drawMist() {
+        if (!this.mistSprite) return;
+
+        this.mistLayers.forEach((mist) => {
+            mist.x += mist.speed;
+            if (mist.x > this.canvas.width + mist.width) {
+                mist.x = -mist.width;
+            }
+
+            this.ctx.save();
+            this.ctx.globalAlpha = mist.opacity;
+            this.ctx.translate(mist.x, mist.y);
+            this.ctx.scale(mist.width / 200, mist.height / 200); // Scale sprite
+            this.ctx.drawImage(this.mistSprite, 0, 0);
+            this.ctx.restore();
+        });
+    }
+
+    drawGodRays() {
+        if (!this.godRaySprite) return;
+
+        this.ctx.save();
+        this.ctx.globalCompositeOperation = 'screen';
+
+        this.godRays.forEach(ray => {
+            ray.x += Math.sin(this.animationTime * 0.5) * 0.2;
+
+            this.ctx.save();
+            this.ctx.translate(ray.x, ray.y);
+            this.ctx.rotate(ray.angle);
+            this.ctx.globalAlpha = ray.opacity;
+            // Stretch sprite to fit ray dimensions
+            this.ctx.drawImage(this.godRaySprite, -ray.width / 2, 0, ray.width, ray.height);
+            this.ctx.restore();
+        });
+
+        this.ctx.restore();
+    }
+
+    drawForestSpirits() {
+        this.forestSpirits.forEach(spirit => {
+            // Logic update
+            spirit.wanderPhase += 0.01;
+            spirit.targetX += Math.cos(spirit.wanderPhase) * 2;
+            spirit.targetY += Math.sin(spirit.wanderPhase * 1.3) * 1;
+
+            const dx = spirit.targetX - spirit.x;
+            const dy = spirit.targetY - spirit.y;
+            spirit.vx += dx * 0.001;
+            spirit.vy += dy * 0.001;
+
+            if (this.comboMultiplier > 1.5) {
+                const cx = this.canvas.width / 2;
+                const cy = this.canvas.height / 2;
+                spirit.vx += (cx - spirit.x) * 0.0005 * this.comboMultiplier;
+                spirit.vy += (cy - spirit.y) * 0.0005 * this.comboMultiplier;
+            }
+
+            spirit.vx *= 0.96;
+            spirit.vy *= 0.96;
+            spirit.x += spirit.vx;
+            spirit.y += spirit.vy;
+
+            if (this.frameCount % 3 === 0) {
+                spirit.trail.push({ x: spirit.x, y: spirit.y });
+                if (spirit.trail.length > spirit.maxTrailLength) spirit.trail.shift();
+            }
+
+            // Draw Trail
+            if (spirit.trail.length > 1) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(spirit.trail[0].x, spirit.trail[0].y);
+                for (let i = 1; i < spirit.trail.length; i++) {
+                    this.ctx.lineTo(spirit.trail[i].x, spirit.trail[i].y);
+                }
+                this.ctx.strokeStyle = `hsla(${spirit.hue}, 80%, 70%, ${spirit.opacity * 0.5})`;
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+
+            // Draw Spirit (Optimized: No shadowBlur)
+            const pulse = Math.sin(this.animationTime * 5 + spirit.x) * 0.2 + 1;
+            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 85%, ${spirit.opacity})`;
+
+            // Draw outer glow as a larger, transparent circle
+            this.ctx.beginPath();
+            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.6 * pulse, 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 70%, ${spirit.opacity * 0.3})`;
+            this.ctx.fill();
+
+            // Draw core
+            this.ctx.beginPath();
+            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.3 * pulse, 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 90%, ${spirit.opacity})`;
+            this.ctx.fill();
+        });
+    }
+
+    drawFireflies() {
+        this.ctx.fillStyle = '#ccffaa';
+        this.fireflies.forEach(fly => {
+            fly.x += fly.vx + Math.sin(this.animationTime + fly.y * 0.01) * 0.5;
+            fly.y += fly.vy;
+
+            if (fly.x < 0) fly.x = this.canvas.width;
+            if (fly.x > this.canvas.width) fly.x = 0;
+            if (fly.y < 0) fly.y = this.canvas.height;
+            if (fly.y > this.canvas.height) fly.y = 0;
+
+            const opacity = Math.sin(this.animationTime * 5 + fly.x) * 0.5 + 0.5;
+            this.ctx.globalAlpha = opacity * fly.opacity;
+            this.ctx.beginPath();
+            this.ctx.arc(fly.x, fly.y, fly.size, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+        this.ctx.globalAlpha = 1;
     }
 
     drawFallingLeaves() {
         for (let i = this.fallingLeaves.length - 1; i >= 0; i--) {
             const leaf = this.fallingLeaves[i];
-
-            // Update position
-            leaf.swayPhase += leaf.swaySpeed;
-            leaf.x += leaf.vx + Math.sin(leaf.swayPhase) * 0.3;
+            leaf.life -= 0.005;
+            leaf.x += leaf.vx;
             leaf.y += leaf.vy;
             leaf.rotation += leaf.rotationSpeed;
 
-            // Remove if off screen and add new one
-            if (leaf.y > this.canvas.height + 20) {
+            if (leaf.life <= 0 || leaf.y > this.canvas.height) {
                 this.fallingLeaves.splice(i, 1);
-                if (Math.random() < 0.3) {
-                    this.addLeaf();
-                }
                 continue;
             }
 
             this.ctx.save();
             this.ctx.translate(leaf.x, leaf.y);
             this.ctx.rotate(leaf.rotation);
-
-            // Draw leaf shape (simple ellipse)
-            this.ctx.fillStyle = `hsla(${leaf.hue}, 70%, 45%, ${leaf.opacity})`;
+            this.ctx.fillStyle = `hsla(${leaf.hue}, 70%, 50%, ${leaf.opacity * leaf.life})`;
             this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, leaf.size, leaf.size * 0.6, 0, 0, Math.PI * 2);
+            this.ctx.ellipse(0, 0, leaf.size, leaf.size / 2, 0, 0, Math.PI * 2);
             this.ctx.fill();
-
             this.ctx.restore();
         }
     }
 
-    drawForestSpirits(layer) {
-        const layerSpirits = this.forestSpirits.filter(s => s.layer === layer);
-
-        layerSpirits.forEach((spirit) => {
-            // Update wander target
-            spirit.wanderPhase += spirit.wanderSpeed;
-            spirit.targetX = spirit.x + Math.cos(spirit.wanderPhase) * 3;
-            spirit.targetY = spirit.y + Math.sin(spirit.wanderPhase * 0.7) * 2;
-
-            // Smooth movement towards target
-            spirit.vx += (spirit.targetX - spirit.x) * 0.002;
-            spirit.vy += (spirit.targetY - spirit.y) * 0.002;
-
-            // Apply friction
-            spirit.vx *= 0.95;
-            spirit.vy *= 0.95;
-
-            // Update position
-            spirit.x += spirit.vx;
-            spirit.y += spirit.vy;
-
-            // Wrap around edges
-            if (spirit.x < -100) spirit.x = this.canvas.width + 100;
-            if (spirit.x > this.canvas.width + 100) spirit.x = -100;
-            if (spirit.y < -50) spirit.y = this.canvas.height + 50;
-            if (spirit.y > this.canvas.height + 50) spirit.y = -50;
-
-            // Add to trail every 4 frames for better performance
-            if (this.frameCount % 4 === 0) {
-                spirit.trail.push({ x: spirit.x, y: spirit.y });
-                if (spirit.trail.length > spirit.maxTrailLength) {
-                    spirit.trail.shift();
-                }
-            }
-
-            // Pulse effect with better visibility
-            spirit.pulsePhase += spirit.pulseSpeed;
-            const pulse = Math.sin(spirit.pulsePhase) * 0.5 + 0.5;
-            const comboBoost = this.comboMultiplier > 1 ? 1 + (this.comboMultiplier - 1) * 0.8 : 1;
-            const glowBoost = this.magicGlow > 0 ? 1 + this.magicGlow * 1.2 : 1;
-            const opacity = spirit.opacity * pulse * comboBoost * glowBoost * spirit.life;
-
-            // Draw trail without save/restore for performance
-            if (spirit.trail.length > 1) {
-                this.ctx.globalAlpha = opacity * 0.4;
-                this.ctx.strokeStyle = `hsl(${spirit.hue}, 80%, 70%)`;
-                this.ctx.lineWidth = spirit.size * 0.3;
-                this.ctx.lineCap = 'round';
-
-                this.ctx.beginPath();
-                this.ctx.moveTo(spirit.trail[0].x, spirit.trail[0].y);
-                for (let i = 1; i < spirit.trail.length; i++) {
-                    this.ctx.lineTo(spirit.trail[i].x, spirit.trail[i].y);
-                }
-                this.ctx.stroke();
-                this.ctx.globalAlpha = 1;
-            }
-
-            // Draw spirit core - no shadowBlur for performance
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 95%, 85%, ${opacity})`;
-            this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.3, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Outer glow circles (faster than shadowBlur)
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 90%, 75%, ${opacity * 0.5})`;
-            this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.5, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 85%, 65%, ${opacity * 0.2})`;
-            this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.8, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Show particles when comboing - but simplified
-            if (this.comboMultiplier > 1.2) {
-                const particleCount = 3;
-                this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 90%, ${opacity * 0.6})`;
-                for (let i = 0; i < particleCount; i++) {
-                    const angle = (i / particleCount) * Math.PI * 2 + this.animationTime * 2;
-                    const distance = spirit.size * 0.7;
-                    const px = spirit.x + Math.cos(angle) * distance;
-                    const py = spirit.y + Math.sin(angle) * distance;
-
-                    this.ctx.beginPath();
-                    this.ctx.arc(px, py, 2, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-            }
-        });
+    createSpiritWinds() {
+        this.spiritWinds = [];
+        for (let i = 0; i < this.maxSpiritWinds; i++) {
+            this.spiritWinds.push(this.createWindAgent(true));
+        }
     }
 
-    drawMagicGlow() {
-        if (this.magicGlow <= 0) return;
+    createWindAgent(randomX = false) {
+        return {
+            x: randomX ? Math.random() * this.canvas.width : -100 - Math.random() * 200,
+            y: Math.random() * this.canvas.height * 0.6 + 100,
+            speed: Math.random() * 1.0 + 1.5, // Slower for grace
+            angle: (Math.random() - 0.5) * 0.5,
+            trail: [],
+            maxTrailLength: 40 + Math.floor(Math.random() * 20), // Longer trails
+            life: 0,
+            maxLife: 400 + Math.random() * 200,
+            width: Math.random() * 2 + 1, // Thinner
+            swirlTimer: Math.floor(Math.random() * 200),
+            swirlDuration: 0,
+            color: `hsla(${160 + Math.random() * 30}, 70%, 65%,` // Less bright/saturated
+        };
+    }
 
-        // More visible mystical blue glow for combos
+    drawSpiritWinds() {
         this.ctx.save();
-        this.ctx.globalCompositeOperation = 'screen';
-        this.ctx.fillStyle = `rgba(180, 210, 240, ${this.magicGlow * 0.25})`;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+
+        this.spiritWinds.forEach((wind, index) => {
+            // --- UPDATE ---
+            wind.life++;
+
+            // 1. Movement Logic
+
+            // Base forward movement (Reduced speed for subtlety)
+            const speed = (wind.speed + this.windSpeed * 60) * 0.8;
+            wind.x += Math.cos(wind.angle) * speed;
+            wind.y += Math.sin(wind.angle) * speed;
+
+            // Wavy wandering motion (Layered Sine waves for organic feel)
+            const t = this.animationTime * 1.5 + index * 10;
+            wind.angle += Math.sin(t) * 0.02 + Math.cos(t * 2.3) * 0.01;
+
+            // 2. Swirl/Loop Logic
+            wind.swirlTimer++;
+            if (wind.swirlTimer > 400) { // Less frequent loops
+                wind.swirlDuration = 60; // Slower, larger loops
+                wind.swirlTimer = 0;
+            }
+
+            if (wind.swirlDuration > 0) {
+                // Execute loop: Gentle turn
+                wind.angle += 0.12;
+                wind.swirlDuration--;
+            } else {
+                // Return to horizontal-ish flow gently
+                wind.angle = wind.angle * 0.98;
+            }
+
+            // 3. Trail Management
+            wind.trail.push({ x: wind.x, y: wind.y });
+
+            // Prune trail
+            if (wind.trail.length > wind.maxTrailLength) {
+                wind.trail.shift();
+            }
+
+            // Reset if dead or far off screen
+            if (wind.life > wind.maxLife || wind.x > this.canvas.width + 200) {
+                this.spiritWinds[index] = this.createWindAgent();
+                return;
+            }
+
+            // --- DRAW ---
+            if (wind.trail.length < 3) return;
+
+            // Calculate opacity based on life (fade in/out)
+            const lifeOpacity = Math.min(1, wind.life / 100) * Math.min(1, (wind.maxLife - wind.life) / 100);
+            const maxOpacity = 0.35; // Much more subtle (was ~1.0 effectively)
+            const finalOpacity = lifeOpacity * maxOpacity;
+
+            // Draw Outer Glow
+            this.ctx.beginPath();
+            this.ctx.moveTo(wind.trail[0].x, wind.trail[0].y);
+
+            // Smooth curve through trail points
+            for (let i = 1; i < wind.trail.length - 1; i++) {
+                const xc = (wind.trail[i].x + wind.trail[i + 1].x) / 2;
+                const yc = (wind.trail[i].y + wind.trail[i + 1].y) / 2;
+                this.ctx.quadraticCurveTo(wind.trail[i].x, wind.trail[i].y, xc, yc);
+            }
+            this.ctx.lineTo(wind.trail[wind.trail.length - 1].x, wind.trail[wind.trail.length - 1].y);
+
+            this.ctx.strokeStyle = wind.color + `${finalOpacity})`;
+            this.ctx.lineWidth = wind.width;
+            this.ctx.shadowBlur = 20; // Softer blur
+            this.ctx.shadowColor = wind.color + '0.4)';
+            this.ctx.stroke();
+
+            // Draw Inner Core (Tinted, not pure white, and more transparent)
+            this.ctx.strokeStyle = `rgba(200, 240, 230, ${finalOpacity * 0.6})`; // Pale Cyan/Green
+            this.ctx.lineWidth = 1; // Thinner core
+            this.ctx.shadowBlur = 0;
+            this.ctx.stroke();
+        });
+
         this.ctx.restore();
     }
 
     stop() {
-        // Unsubscribe from events
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
-        this.pendingComboCount = 0;
+
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
 
         super.stop();
         this.animationTime = 0;
-        this.pulseIntensity = 0;
-        this.comboMultiplier = 1.0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-        this.magicGlow = 0;
-
         this.trees = [];
         this.mistLayers = [];
         this.fireflies = [];
         this.fallingLeaves = [];
         this.godRays = [];
         this.forestSpirits = [];
-        this.sortedTrees = null;
+        this.auroraLayers = [];
+        this.spiritWinds = [];
         this.gradientCache.clear();
-        this.frameCount = 0;
+        this.mistSprite = null;
+        this.godRaySprite = null;
     }
 
-    /**
-     * Provide Swedish Forest themed tetromino styling (boreal glow palette)
-     * @returns {Object} Swedish Forest tetromino configuration
-     */
     getTetrominoConfig() {
         return SWEDISH_FOREST_TETROMINOS;
     }

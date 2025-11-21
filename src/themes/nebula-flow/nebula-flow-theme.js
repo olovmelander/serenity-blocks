@@ -33,9 +33,10 @@ export default class NebulaFlowTheme extends BaseTheme {
         // Autonomous animation timers
         this.colorCycleTimeout = null;
 
-        // Autonomous Emitters
+        // Autonomous Emitters (will be scaled by quality in initEmitters)
         this.emitters = [];
-        this.MAX_EMITTERS = 4; // Fewer emitters for calmer appearance
+        this.BASE_MAX_EMITTERS = 4; // Base count, scaled by quality
+        this.MAX_EMITTERS = 4;
 
         // Color animation state
         this.colorState = null;
@@ -156,31 +157,92 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Get configuration based on quality setting
      */
     getConfig(quality) {
-        // All quality levels use extreme settings for best experience
-        // The simulation performs excellently, so no need to compromise
-        const extremeConfig = {
-            SIM_RESOLUTION: 320,
-            DYE_RESOLUTION: 1280,
-            DENSITY_DISSIPATION: 1.2,
-            VELOCITY_DISSIPATION: 0.8,
-            PRESSURE: 0.8,
-            PRESSURE_ITERATIONS: 25,
-            CURL: 45,
-            SPLAT_RADIUS: 0.2,
-            SPLAT_FORCE: 2500,
-            SHADING: false,
-            COLORFUL: true,
-            BLOOM: false,
-            SUNRAYS: false,
+        // Quality presets with distinct visual differences
+        const presets = {
+            low: {
+                SIM_RESOLUTION: 128,
+                DYE_RESOLUTION: 512,
+                DENSITY_DISSIPATION: 1.4,
+                VELOCITY_DISSIPATION: 0.9,
+                PRESSURE: 0.6,
+                PRESSURE_ITERATIONS: 10,
+                CURL: 20,
+                SPLAT_RADIUS: 0.15,
+                SPLAT_FORCE: 1500,
+                SHADING: false,
+                COLORFUL: true,
+                BLOOM: false,
+                SUNRAYS: false,
+                BLOOM_ITERATIONS: 4,
+                BLOOM_RESOLUTION: 128,
+            },
+            medium: {
+                SIM_RESOLUTION: 192,
+                DYE_RESOLUTION: 768,
+                DENSITY_DISSIPATION: 1.3,
+                VELOCITY_DISSIPATION: 0.85,
+                PRESSURE: 0.7,
+                PRESSURE_ITERATIONS: 15,
+                CURL: 30,
+                SPLAT_RADIUS: 0.18,
+                SPLAT_FORCE: 2000,
+                SHADING: false,
+                COLORFUL: true,
+                BLOOM: false,
+                SUNRAYS: false,
+                BLOOM_ITERATIONS: 6,
+                BLOOM_RESOLUTION: 192,
+            },
+            high: {
+                SIM_RESOLUTION: 256,
+                DYE_RESOLUTION: 1024,
+                DENSITY_DISSIPATION: 1.25,
+                VELOCITY_DISSIPATION: 0.82,
+                PRESSURE: 0.75,
+                PRESSURE_ITERATIONS: 20,
+                CURL: 38,
+                SPLAT_RADIUS: 0.19,
+                SPLAT_FORCE: 2250,
+                SHADING: false,
+                COLORFUL: true,
+                BLOOM: false,
+                SUNRAYS: false,
+                BLOOM_ITERATIONS: 7,
+                BLOOM_RESOLUTION: 224,
+            },
+            extreme: {
+                SIM_RESOLUTION: 320,
+                DYE_RESOLUTION: 1280,
+                DENSITY_DISSIPATION: 1.2,
+                VELOCITY_DISSIPATION: 0.8,
+                PRESSURE: 0.8,
+                PRESSURE_ITERATIONS: 25,
+                CURL: 45,
+                SPLAT_RADIUS: 0.2,
+                SPLAT_FORCE: 2500,
+                SHADING: false,
+                COLORFUL: true,
+                BLOOM: false,
+                SUNRAYS: false,
+                BLOOM_ITERATIONS: 8,
+                BLOOM_RESOLUTION: 256,
+            },
         };
 
-        // All quality settings use the same extreme configuration
-        const config = extremeConfig;
+        // Store quality multiplier for scaling effects
+        this.qualityMultipliers = {
+            low: 0.4,
+            medium: 0.65,
+            high: 0.85,
+            extreme: 1.0,
+        };
+        this.currentQualityMultiplier = this.qualityMultipliers[quality] || this.qualityMultipliers.medium;
+
+        const config = presets[quality] || presets.medium;
+        console.log(`[NebulaFlow] Applying ${quality} quality preset (multiplier: ${this.currentQualityMultiplier})`);
 
         return {
             ...config,
-            BLOOM_ITERATIONS: 8,
-            BLOOM_RESOLUTION: 256,
             BLOOM_INTENSITY: 0.8,
             BLOOM_THRESHOLD: 0.6,
             BLOOM_SOFT_KNEE: 0.7,
@@ -258,11 +320,12 @@ export default class NebulaFlowTheme extends BaseTheme {
     /**
      * Simple line clear effect
      */
-    createSimpleLineEffect(lineCount) {
-        const splatCount = 4;
+    createSimpleLineEffect() {
+        const q = this.currentQualityMultiplier || 0.65;
+        const splatCount = Math.max(1, Math.round(4 * q));
         for (let i = 0; i < splatCount; i++) {
             setTimeout(() => {
-                this.addFlowingSplat(0.25);
+                this.addFlowingSplat(0.25 * q);
             }, i * 100);
         }
     }
@@ -271,15 +334,16 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Cascading effect for double/triple line clears
      */
     createCascadeEffect(lineCount) {
-        const splatCount = lineCount * 3;
-        const intensity = 0.3 + (lineCount * 0.03);
+        const q = this.currentQualityMultiplier || 0.65;
+        const splatCount = Math.max(2, Math.round(lineCount * 3 * q));
+        const intensity = (0.3 + (lineCount * 0.03)) * q;
 
         for (let i = 0; i < splatCount; i++) {
             setTimeout(() => {
                 // Create horizontal wave pattern
                 const x = (i / splatCount) + Math.random() * 0.2;
                 const y = 0.3 + Math.random() * 0.4;
-                
+
                 const angle = Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
                 const force = intensity * 500;
                 const dx = Math.cos(angle) * force;
@@ -295,8 +359,9 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Wave effect for Tetris (4 lines)
      */
     createWaveEffect(lineCount) {
-        const waveCount = 16;
-        const intensity = 0.4 + (lineCount * 0.04);
+        const q = this.currentQualityMultiplier || 0.65;
+        const waveCount = Math.max(4, Math.round(16 * q));
+        const intensity = (0.4 + (lineCount * 0.04)) * q;
 
         for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
@@ -304,7 +369,7 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const progress = i / waveCount;
                 const x = progress;
                 const y = 0.5 + Math.sin(progress * Math.PI * 2) * 0.2;
-                
+
                 const angle = Math.PI * 0.25 + progress * Math.PI * 0.5;
                 const force = intensity * 600;
                 const dx = Math.cos(angle) * force;
@@ -313,11 +378,13 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const color = this.sampleColor(0.1, 0.07);
                 this.simulator.splat(x, y, dx, dy, color);
 
-                // Add mirrored wave
-                const yMirror = 0.5 - Math.sin(progress * Math.PI * 2) * 0.2;
-                const dyMirror = -Math.sin(angle) * force;
-                const color2 = this.sampleColor(0.1, 0.07);
-                this.simulator.splat(x, yMirror, dx, dyMirror, color2);
+                // Add mirrored wave only on higher quality
+                if (q >= 0.6) {
+                    const yMirror = 0.5 - Math.sin(progress * Math.PI * 2) * 0.2;
+                    const dyMirror = -Math.sin(angle) * force;
+                    const color2 = this.sampleColor(0.1, 0.07);
+                    this.simulator.splat(x, yMirror, dx, dyMirror, color2);
+                }
             }, i * 50);
         }
     }
@@ -328,24 +395,34 @@ export default class NebulaFlowTheme extends BaseTheme {
     onCombo(comboCount) {
         if (!this.simulator) return;
 
-        // Intensity increases with combo count
-        const intensity = Math.min(0.5, 0.25 + comboCount * 0.025);
-        const spiralCount = Math.min(comboCount + 4, 16);
+        const q = this.currentQualityMultiplier || 0.65;
+
+        // Intensity increases with combo count, scaled by quality
+        const intensity = Math.min(0.5, 0.25 + comboCount * 0.025) * q;
+        const spiralCount = Math.max(2, Math.round(Math.min(comboCount + 4, 16) * q));
 
         // Pattern type based on combo count
         if (comboCount >= 8) {
-            // Epic combo: Triple spiral explosion
-            this.createTripleSpiralEffect(comboCount, intensity, spiralCount);
+            // Epic combo: Triple spiral explosion (simplified on low quality)
+            if (q >= 0.6) {
+                this.createTripleSpiralEffect(comboCount, intensity, spiralCount);
+            } else {
+                this.createDualSpiralEffect(comboCount, intensity, spiralCount);
+            }
         } else if (comboCount >= 4) {
-            // High combo: Dual spiral with rings
-            this.createDualSpiralEffect(comboCount, intensity, spiralCount);
+            // High combo: Dual spiral with rings (single on low quality)
+            if (q >= 0.5) {
+                this.createDualSpiralEffect(comboCount, intensity, spiralCount);
+            } else {
+                this.createSingleSpiralEffect(comboCount, intensity, spiralCount);
+            }
         } else {
             // Regular combo: Single spiral
             this.createSingleSpiralEffect(comboCount, intensity, spiralCount);
         }
 
-        // Add central burst for combos 2+
-        if (comboCount >= 2) {
+        // Add central burst for combos 2+ (skip on lowest quality)
+        if (comboCount >= 2 && q >= 0.5) {
             setTimeout(() => {
                 this.createCentralBurst(comboCount, intensity);
             }, spiralCount * 40);
@@ -356,6 +433,7 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Single spiral effect for low combos
      */
     createSingleSpiralEffect(comboCount, intensity, spiralCount) {
+        const q = this.currentQualityMultiplier || 0.65;
         const centerX = 0.5;
         const centerY = 0.5;
 
@@ -368,8 +446,8 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const y = centerY + Math.sin(angle) * radius;
 
                 // Velocity creates swirling motion
-                const vx = -Math.sin(angle) * intensity * 700;
-                const vy = Math.cos(angle) * intensity * 700;
+                const vx = -Math.sin(angle) * intensity * 700 * q;
+                const vy = Math.cos(angle) * intensity * 700 * q;
 
                 const color = this.sampleColor(0.1, 0.08);
                 this.simulator.splat(x, y, vx, vy, color);
@@ -381,6 +459,7 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Dual spiral effect for medium combos
      */
     createDualSpiralEffect(comboCount, intensity, spiralCount) {
+        const q = this.currentQualityMultiplier || 0.65;
         const centerX = 0.5;
         const centerY = 0.5;
 
@@ -392,20 +471,22 @@ export default class NebulaFlowTheme extends BaseTheme {
                 // First spiral (clockwise)
                 const x1 = centerX + Math.cos(angle) * radius;
                 const y1 = centerY + Math.sin(angle) * radius;
-                const vx1 = -Math.sin(angle) * intensity * 750;
-                const vy1 = Math.cos(angle) * intensity * 750;
-
-                // Second spiral (counter-clockwise)
-                const x2 = centerX + Math.cos(-angle) * (radius * 0.6);
-                const y2 = centerY + Math.sin(-angle) * (radius * 0.6);
-                const vx2 = -Math.sin(-angle) * intensity * 650;
-                const vy2 = Math.cos(-angle) * intensity * 650;
+                const vx1 = -Math.sin(angle) * intensity * 750 * q;
+                const vy1 = Math.cos(angle) * intensity * 750 * q;
 
                 const color1 = this.sampleColor(0.12, 0.08);
-                const color2 = this.sampleColor(0.12, 0.08);
-
                 this.simulator.splat(x1, y1, vx1, vy1, color1);
-                this.simulator.splat(x2, y2, vx2, vy2, color2);
+
+                // Second spiral only on medium+ quality
+                if (q >= 0.6) {
+                    const x2 = centerX + Math.cos(-angle) * (radius * 0.6);
+                    const y2 = centerY + Math.sin(-angle) * (radius * 0.6);
+                    const vx2 = -Math.sin(-angle) * intensity * 650 * q;
+                    const vy2 = Math.cos(-angle) * intensity * 650 * q;
+
+                    const color2 = this.sampleColor(0.12, 0.08);
+                    this.simulator.splat(x2, y2, vx2, vy2, color2);
+                }
             }, i * 45);
         }
     }
@@ -414,22 +495,26 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Triple spiral effect for epic combos
      */
     createTripleSpiralEffect(comboCount, intensity, spiralCount) {
+        const q = this.currentQualityMultiplier || 0.65;
         const centerX = 0.5;
         const centerY = 0.5;
+
+        // Reduce rings on lower quality
+        const maxRings = q >= 0.85 ? 3 : 2;
 
         for (let i = 0; i < spiralCount; i++) {
             setTimeout(() => {
                 const angle = (i / spiralCount) * Math.PI * 2;
-                
-                // Three spirals at different radii
-                for (let ring = 0; ring < 3; ring++) {
+
+                // Spirals at different radii
+                for (let ring = 0; ring < maxRings; ring++) {
                     const radius = (0.2 + ring * 0.12) + (comboCount * 0.01);
                     const direction = ring % 2 === 0 ? 1 : -1; // Alternate direction
-                    
+
                     const x = centerX + Math.cos(angle * direction) * radius;
                     const y = centerY + Math.sin(angle * direction) * radius;
-                    const vx = -Math.sin(angle * direction) * intensity * (800 - ring * 100);
-                    const vy = Math.cos(angle * direction) * intensity * (800 - ring * 100);
+                    const vx = -Math.sin(angle * direction) * intensity * (800 - ring * 100) * q;
+                    const vy = Math.cos(angle * direction) * intensity * (800 - ring * 100) * q;
 
                     const color = this.sampleColor(0.15, 0.06);
                     this.simulator.splat(x, y, vx, vy, color);
@@ -442,15 +527,16 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Create a central burst explosion
      */
     createCentralBurst(comboCount, intensity) {
-        const burstCount = Math.min(comboCount * 2, 20);
+        const q = this.currentQualityMultiplier || 0.65;
+        const burstCount = Math.max(2, Math.round(Math.min(comboCount * 2, 20) * q));
         const centerX = 0.5;
         const centerY = 0.5;
 
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
                 const angle = (i / burstCount) * Math.PI * 2;
-                const force = intensity * 800;
-                
+                const force = intensity * 800 * q;
+
                 const vx = Math.cos(angle) * force;
                 const vy = Math.sin(angle) * force;
 
@@ -493,16 +579,18 @@ export default class NebulaFlowTheme extends BaseTheme {
     addInitialFluid() {
         if (!this.simulator) return;
 
-        // Add splats across the screen for initial presence
+        const q = this.currentQualityMultiplier || 0.65;
+
+        // Add splats across the screen for initial presence (scaled by quality)
         setTimeout(() => {
-            const numSplats = 6; // Fewer initial splats for calmer start
+            const numSplats = Math.max(2, Math.round(6 * q));
             for (let i = 0; i < numSplats; i++) {
                 setTimeout(() => {
                     // Distribute across screen
                     const x = 0.15 + Math.random() * 0.7;
                     const y = 0.15 + Math.random() * 0.7;
                     const angle = Math.random() * Math.PI * 2;
-                    const force = 150 + Math.random() * 150; // Gentler force
+                    const force = (150 + Math.random() * 150) * q; // Scaled force
                     const dx = Math.cos(angle) * force;
                     const dy = Math.sin(angle) * force;
 
@@ -517,10 +605,14 @@ export default class NebulaFlowTheme extends BaseTheme {
      * Initialize autonomous emitters
      */
     initEmitters() {
+        const q = this.currentQualityMultiplier || 0.65;
+        // Scale emitter count by quality: low=1, medium=2, high=3, extreme=4
+        this.MAX_EMITTERS = Math.max(1, Math.round(this.BASE_MAX_EMITTERS * q));
         this.emitters = [];
         for (let i = 0; i < this.MAX_EMITTERS; i++) {
             this.emitters.push(this.createEmitter());
         }
+        console.log(`[NebulaFlow] Initialized ${this.MAX_EMITTERS} emitters for quality multiplier ${q}`);
     }
 
     /**
@@ -587,19 +679,21 @@ export default class NebulaFlowTheme extends BaseTheme {
     addRandomScreenSplat() {
         if (!this.simulator) return;
 
+        const q = this.currentQualityMultiplier || 0.65;
+
         // Random position across entire screen
         const x = 0.15 + Math.random() * 0.7;
         const y = 0.15 + Math.random() * 0.7;
 
-        // Random direction and force (gentler)
+        // Random direction and force (scaled by quality)
         const angle = Math.random() * Math.PI * 2;
-        const force = 100 + Math.random() * 150; // Reduced force
+        const force = (100 + Math.random() * 150) * q;
         const dx = Math.cos(angle) * force;
         const dy = Math.sin(angle) * force;
 
         // Get a random color
         const color = this.sampleColor(0.08, 0.1);
-        
+
         this.simulator.splat(x, y, dx, dy, color);
     }
 
@@ -611,6 +705,8 @@ export default class NebulaFlowTheme extends BaseTheme {
 
         // Only emit dye during EMITTING state
         if (this.emissionState !== 'EMITTING') return;
+
+        const q = this.currentQualityMultiplier || 0.65;
 
         // deltaTime should be in milliseconds, normalize to seconds
         const dt = deltaTime / 1000;
@@ -640,10 +736,10 @@ export default class NebulaFlowTheme extends BaseTheme {
             if (emitter.y < 0) emitter.y += 1;
             if (emitter.y > 1) emitter.y -= 1;
 
-            // Add splat at emitter position with varied force
+            // Add splat at emitter position with varied force (scaled by quality)
             const forceVariation = 0.6 + Math.random() * 0.4; // Vary force 60-100% (gentler)
-            const forceX = Math.cos(emitter.phase) * 8 * forceVariation;
-            const forceY = Math.sin(emitter.phase) * 8 * forceVariation;
+            const forceX = Math.cos(emitter.phase) * 8 * forceVariation * q;
+            const forceY = Math.sin(emitter.phase) * 8 * forceVariation * q;
 
             // Advance color for this emitter
             const color = this.sampleColor(0.008, 0.12, emitter.colorState); // Faster color cycling

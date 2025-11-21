@@ -29,12 +29,12 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.baseSpeed = 0.03; // Ultra-slow peaceful drift
         this.currentSpeed = this.baseSpeed;
         this.targetSpeed = this.baseSpeed;
-        this.maxSpeed = 3.0; // Moderate max for smoother warp effect
-        this.acceleration = 0.012; // Even smoother acceleration
+        this.maxSpeed = 12.0; // Much higher max speed for intense warp
+        this.acceleration = 0.05; // Faster acceleration for snappier response
 
         // Star field settings
-        this.numStars = 1200; // Many more stars for immersive feeling
-        this.numBackgroundStars = 800; // Many more background stars for depth
+        this.numStars = 1800; // Many more stars for immersive feeling
+        this.numBackgroundStars = 1200; // Many more background stars for depth
         this.backgroundStars = [];
         this.fov = 250; // Wider FOV for gentler perspective
         this.targetFov = 250;
@@ -256,51 +256,51 @@ export default class StellarVelocityTheme extends BaseTheme {
      */
     onCombo(comboCount) {
         // Moderate speed multiplier for combos
-        this.comboMultiplier = 1.0 + (comboCount * 0.2); // Reduced from 0.3
+        this.comboMultiplier = 1.0 + (comboCount * 0.3);
 
         // WARP SPEED for combos!
         if (comboCount >= 8) {
             // MAXIMUM WARP!
-            this.targetSpeed = this.maxSpeed * 1.1; // Reduced from 1.2
-            this.targetTunnelRadius = 350; // Extreme tunnel vision
-            this.targetFov = 100;
-            this.trailOpacity = 0.8; // Bright trails at warp speed
+            this.targetSpeed = this.maxSpeed * 1.5;
+            this.targetTunnelRadius = 100; // Extreme tunnel vision
+            this.targetFov = 50; // Very narrow FOV for deep tunnel effect
+            this.trailOpacity = 0.9;
 
             // Massive star burst
-            for (let i = 0; i < 150; i++) {
+            for (let i = 0; i < 200; i++) {
                 this.addBurstStar();
             }
         } else if (comboCount >= 5) {
             // HIGH WARP SPEED
-            this.targetSpeed = this.maxSpeed * 0.85; // Reduced from 1.0
-            this.targetTunnelRadius = 600;
-            this.targetFov = 130;
-            this.trailOpacity = 0.7;
+            this.targetSpeed = this.maxSpeed * 1.0;
+            this.targetTunnelRadius = 300;
+            this.targetFov = 100;
+            this.trailOpacity = 0.8;
 
             // Large star burst
-            for (let i = 0; i < 80; i++) {
+            for (let i = 0; i < 100; i++) {
                 this.addBurstStar();
             }
         } else if (comboCount >= 3) {
             // MEDIUM WARP SPEED
-            this.targetSpeed = this.maxSpeed * 0.6; // Reduced from 0.7
-            this.targetTunnelRadius = 900;
-            this.targetFov = 170;
+            this.targetSpeed = this.maxSpeed * 0.6;
+            this.targetTunnelRadius = 600;
+            this.targetFov = 150;
             this.trailOpacity = 0.6;
 
             // Medium star burst
-            for (let i = 0; i < 40; i++) {
+            for (let i = 0; i < 50; i++) {
                 this.addBurstStar();
             }
         } else {
             // LOW WARP SPEED
-            this.targetSpeed = this.maxSpeed * 0.35; // Reduced from 0.4
-            this.targetTunnelRadius = 1200;
-            this.targetFov = 210;
-            this.trailOpacity = 0.5;
+            this.targetSpeed = this.maxSpeed * 0.3;
+            this.targetTunnelRadius = 1000;
+            this.targetFov = 200;
+            this.trailOpacity = 0.4;
 
             // Small star burst
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < 25; i++) {
                 this.addBurstStar();
             }
         }
@@ -312,7 +312,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.targetTunnelRadius = 1500;
             this.targetFov = 250;
             this.trailOpacity = 0.3; // Back to subtle
-        }, 2500 + comboCount * 400);
+        }, 2000 + comboCount * 300);
     }
 
     /**
@@ -337,7 +337,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         // Speed scales with current warp speed
         const baseSpeed = 3 + Math.random() * 10;
         const speedMultiplier = this.currentSpeed / this.baseSpeed;
-        const speed = baseSpeed * Math.min(speedMultiplier, 3);
+        const speed = baseSpeed * Math.min(speedMultiplier, 8); // Allow faster bursts
 
         this.burstStars.push({
             x: this.centerX,
@@ -376,6 +376,8 @@ export default class StellarVelocityTheme extends BaseTheme {
                 star.x = Math.cos(angle) * radius;
                 star.y = Math.sin(angle) * radius;
                 star.z = 3000; // Match the deeper space depth
+                star.prevScreenX = 0;
+                star.prevScreenY = 0;
             }
         }
 
@@ -405,6 +407,15 @@ export default class StellarVelocityTheme extends BaseTheme {
     renderStars() {
         const colorScheme = this.getCurrentColorScheme();
 
+        // Add camera shake at high speeds
+        let shakeX = 0;
+        let shakeY = 0;
+        if (this.currentSpeed > 2.0) {
+            const shakeIntensity = (this.currentSpeed - 2.0) * 2;
+            shakeX = (Math.random() - 0.5) * shakeIntensity;
+            shakeY = (Math.random() - 0.5) * shakeIntensity;
+        }
+
         // Clear canvas with background color
         this.ctx.fillStyle = colorScheme.bg;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -424,8 +435,8 @@ export default class StellarVelocityTheme extends BaseTheme {
         for (let star of this.stars) {
             // Project 3D to 2D
             const scale = this.fov / star.z;
-            const screenX = this.centerX + star.x * scale;
-            const screenY = this.centerY + star.y * scale;
+            const screenX = this.centerX + shakeX + star.x * scale;
+            const screenY = this.centerY + shakeY + star.y * scale;
             const size = star.size * scale;
 
             // Only draw if on screen
@@ -439,26 +450,36 @@ export default class StellarVelocityTheme extends BaseTheme {
             // Draw motion trail ONLY during warp speed (when speed > 5x base)
             const isWarpSpeed = this.currentSpeed > this.baseSpeed * 5;
             if (this.showTrails && isWarpSpeed && star.prevScreenX !== 0) {
-                const distance = Math.hypot(screenX - star.prevScreenX, screenY - star.prevScreenY);
+                // Calculate streak vector
+                const dx = screenX - star.prevScreenX;
+                const dy = screenY - star.prevScreenY;
+                const distance = Math.hypot(dx, dy);
 
                 // Only draw trail if moving fast enough
-                if (distance > 2) {
+                if (distance > 1) {
+                    // Exaggerate trail length based on speed
+                    const streakFactor = Math.min(this.currentSpeed * 2, 20);
+                    const tailX = screenX - dx * streakFactor;
+                    const tailY = screenY - dy * streakFactor;
+
                     // Parse RGB from trail color and apply dynamic opacity
-                    const trailAlpha = this.trailOpacity * (distance / 15); // Scales with speed
+                    const trailAlpha = this.trailOpacity * Math.min(1, distance / 5);
                     const gradient = this.ctx.createLinearGradient(
-                        star.prevScreenX, star.prevScreenY,
+                        tailX, tailY,
                         screenX, screenY
                     );
-                    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
 
-                    // Apply dynamic trail opacity
                     const rgb = colorScheme.star.match(/\w\w/g)?.map(x => parseInt(x, 16)) || [255, 255, 255];
+
+                    // Fade out at the tail
+                    gradient.addColorStop(0, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0)`);
+                    // Bright at the head
                     gradient.addColorStop(1, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.min(1, trailAlpha)})`);
 
                     this.ctx.strokeStyle = gradient;
-                    this.ctx.lineWidth = Math.max(0.8, size * 1.2);
+                    this.ctx.lineWidth = Math.max(0.5, size * (1 + this.currentSpeed * 0.5)); // Thicker trails at high speed
                     this.ctx.beginPath();
-                    this.ctx.moveTo(star.prevScreenX, star.prevScreenY);
+                    this.ctx.moveTo(tailX, tailY);
                     this.ctx.lineTo(screenX, screenY);
                     this.ctx.stroke();
                 }
@@ -492,23 +513,27 @@ export default class StellarVelocityTheme extends BaseTheme {
         for (let star of this.burstStars) {
             const alpha = star.life * star.brightness;
 
+            // Apply camera shake
+            const drawX = star.x + shakeX;
+            const drawY = star.y + shakeY;
+
             // Draw core
             this.ctx.globalAlpha = alpha;
             this.ctx.beginPath();
-            this.ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            this.ctx.arc(drawX, drawY, star.size, 0, Math.PI * 2);
             this.ctx.fill();
 
             // Draw inner glow
             this.ctx.globalAlpha = alpha * 0.5;
             this.ctx.beginPath();
-            this.ctx.arc(star.x, star.y, star.size * 2, 0, Math.PI * 2);
+            this.ctx.arc(drawX, drawY, star.size * 2, 0, Math.PI * 2);
             this.ctx.fill();
 
             // Draw outer glow (more prominent during warp speed)
             if (this.currentSpeed > this.baseSpeed * 2) {
                 this.ctx.globalAlpha = alpha * 0.25;
                 this.ctx.beginPath();
-                this.ctx.arc(star.x, star.y, star.size * 4, 0, Math.PI * 2);
+                this.ctx.arc(drawX, drawY, star.size * 4, 0, Math.PI * 2);
                 this.ctx.fill();
             }
         }
