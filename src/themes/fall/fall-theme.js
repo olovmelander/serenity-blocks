@@ -34,8 +34,12 @@ export default class FallTheme extends BaseTheme {
         this.emberBursts = [];
         this.fireflies = [];
 
-        // Resize handler
-        this.resizeHandler = null;
+        // Resize handler with debounce
+        this.resizeTimeout = null;
+        this.resizeHandler = () => {
+            if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = setTimeout(() => this.resizeCanvas(), 100);
+        };
 
         // Animation frame ID
         this.animFrameId = null;
@@ -52,10 +56,10 @@ export default class FallTheme extends BaseTheme {
         this.qualityPresets = {
             'Minimal': {
                 // Leaf particles
-                leafLayerBackCount: 7,
-                leafLayerMidCount: 5,
-                leafLayerFrontCount: 4,
-                groundLeavesCount: 18,
+                leafLayerBackCount: 60,
+                leafLayerMidCount: 40,
+                leafLayerFrontCount: 20,
+                groundLeavesCount: 0,
                 // Wind and atmospheric
                 windParticlesCount: 3,
                 // Embers and fireflies
@@ -80,38 +84,38 @@ export default class FallTheme extends BaseTheme {
             },
             'Low': {
                 // Leaf particles
-                leafLayerBackCount: 12,
-                leafLayerMidCount: 8,
-                leafLayerFrontCount: 6,
-                groundLeavesCount: 30,
+                leafLayerBackCount: 80,
+                leafLayerMidCount: 60,
+                leafLayerFrontCount: 40,
+                groundLeavesCount: 25,
                 // Wind and atmospheric
-                windParticlesCount: 5,
+                windParticlesCount: 4,
                 // Embers and fireflies
-                maxEmbers: 12,
-                initialFireflies: 6,
-                maxFireflies: 10,
+                maxEmbers: 10,
+                initialFireflies: 5,
+                maxFireflies: 8,
                 // Tree branches
                 treeBranchSystems: 1,
-                treeBranchDepth: 4,
+                treeBranchDepth: 3,
                 // Combo effects scaling
-                comboEffectScale: 0.5,
-                leafBurstScale: 0.5,
-                emberBurstScale: 0.5,
-                maxFireRings: 2,
-                maxEmberBursts: 2,
-                maxLeafBurstParticles: 50,
+                comboEffectScale: 0.4,
+                leafBurstScale: 0.4,
+                emberBurstScale: 0.4,
+                maxFireRings: 1,
+                maxEmberBursts: 1,
+                maxLeafBurstParticles: 40,
                 // Combo interaction multipliers
-                comboColorShiftIntensity: 0.6,
-                comboWindGustMultiplier: 0.7,
-                comboFireflySpawnMultiplier: 0.7,
-                comboMultiplierGain: 0.17,
+                comboColorShiftIntensity: 0.5,
+                comboWindGustMultiplier: 0.6,
+                comboFireflySpawnMultiplier: 0.6,
+                comboMultiplierGain: 0.16,
             },
             'Medium': {
                 // Leaf particles
-                leafLayerBackCount: 16,
-                leafLayerMidCount: 12,
-                leafLayerFrontCount: 9,
-                groundLeavesCount: 50,
+                leafLayerBackCount: 100,
+                leafLayerMidCount: 80,
+                leafLayerFrontCount: 60,
+                groundLeavesCount: 45,
                 // Wind and atmospheric
                 windParticlesCount: 7,
                 // Embers and fireflies
@@ -136,10 +140,10 @@ export default class FallTheme extends BaseTheme {
             },
             'High': {
                 // Leaf particles
-                leafLayerBackCount: 22,
-                leafLayerMidCount: 16,
-                leafLayerFrontCount: 12,
-                groundLeavesCount: 70,
+                leafLayerBackCount: 120,
+                leafLayerMidCount: 100,
+                leafLayerFrontCount: 80,
+                groundLeavesCount: 45,
                 // Wind and atmospheric
                 windParticlesCount: 10,
                 // Embers and fireflies
@@ -164,10 +168,10 @@ export default class FallTheme extends BaseTheme {
             },
             'Ultra': {
                 // Leaf particles
-                leafLayerBackCount: 28,
-                leafLayerMidCount: 20,
-                leafLayerFrontCount: 15,
-                groundLeavesCount: 90,
+                leafLayerBackCount: 140,
+                leafLayerMidCount: 120,
+                leafLayerFrontCount: 100,
+                groundLeavesCount: 45,
                 // Wind and atmospheric
                 windParticlesCount: 15,
                 // Embers and fireflies
@@ -192,10 +196,10 @@ export default class FallTheme extends BaseTheme {
             },
             'Extreme': {
                 // Leaf particles
-                leafLayerBackCount: 38,
-                leafLayerMidCount: 27,
-                leafLayerFrontCount: 20,
-                groundLeavesCount: 120,
+                leafLayerBackCount: 160,
+                leafLayerMidCount: 140,
+                leafLayerFrontCount: 120,
+                groundLeavesCount: 60,
                 // Wind and atmospheric
                 windParticlesCount: 20,
                 // Embers and fireflies
@@ -223,10 +227,55 @@ export default class FallTheme extends BaseTheme {
         this.activePreset = this.qualityPresets['High'];
 
         // Apply default preset values
-        this.maxFireRings = this.activePreset.maxFireRings;
-        this.maxEmberBursts = this.activePreset.maxEmberBursts;
         this.maxLeafBurstParticles = this.activePreset.maxLeafBurstParticles;
         this.maxFirefliesLimit = this.activePreset.maxFireflies;
+
+        // Generic object pool for canvas particles (embers, bursts, etc.)
+        this.particlePool = [];
+
+        // Pre-rendered leaf images for canvas rendering
+        this.leafImages = [];
+    }
+
+    /**
+     * Pre-render leaf shapes to offscreen canvases for high performance
+     */
+    preRenderLeaves() {
+        this.leafImages = [];
+        const leafShapes = [
+            'M15,0 C12,8 2,10 2,15 C5,18 2,24 6,26 C10,24 12,26 15,30 C18,26 20,24 24,26 C28,24 25,18 28,15 C28,10 18,8 15,0 Z',
+            'M15,0 C10,5 5,5 5,10 C2,12 5,15 2,20 C5,25 10,25 15,30 C20,25 25,25 28,20 C25,15 28,12 25,10 C25,5 20,5 15,0 Z',
+            'M15,0 C5,10 2,20 15,30 C28,20 25,10 15,0 M15,0 L15,30',
+            'M15,0 Q5,15 15,30 Q25,15 15,0',
+        ];
+
+        const leafColors = [
+            '#d32f2f', '#ff5722', '#ff9100', '#ffc107', '#ffeb3b',
+            '#795548', '#5d4037', '#e64a19', '#fbc02d', '#8e24aa'
+        ];
+
+        leafShapes.forEach(pathData => {
+            leafColors.forEach(color => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 40;
+                canvas.height = 40;
+                const ctx = canvas.getContext('2d');
+
+                // Scale and center
+                ctx.translate(5, 5);
+
+                const p = new Path2D(pathData);
+                ctx.fillStyle = color;
+                ctx.fill(p);
+
+                // Add stroke for definition
+                ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                ctx.lineWidth = 1;
+                ctx.stroke(p);
+
+                this.leafImages.push(canvas);
+            });
+        });
     }
 
     getTetrominoConfig() {
@@ -325,79 +374,52 @@ export default class FallTheme extends BaseTheme {
     recreateQualityDependentElements() {
         const preset = this.activePreset;
 
-        // Recreate leaf layers with new counts
-        const leafLayers = [
-            {
-                container: document.getElementById('fall-leaves-back'),
-                count: preset.leafLayerBackCount,
-                minSize: 15,
-                maxSize: 25,
-                depthFactor: 0.3,
-            },
-            {
-                container: document.getElementById('fall-leaves-mid'),
-                count: preset.leafLayerMidCount,
-                minSize: 20,
-                maxSize: 35,
-                depthFactor: 0.6,
-            },
-            {
-                container: document.getElementById('fall-leaves-front'),
-                count: preset.leafLayerFrontCount,
-                minSize: 25,
-                maxSize: 45,
-                depthFactor: 1.0,
-            },
-        ];
+        // Pre-render leaves if needed
+        if (this.leafImages.length === 0) {
+            this.preRenderLeaves();
+        }
 
-        // Clear and recreate leaf particles
+        // Clear existing DOM leaves
+        ['fall-leaves-back', 'fall-leaves-mid', 'fall-leaves-front'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        });
+
+        // Recreate leaf particles
         this.leafParticles = [];
 
-        const leafShapes = [
-            'M15 0 C0 5, 5 25, 15 30 C25 25, 30 5, 15 0 Z',
-            'M15 0 L17 10 L30 12 L18 18 L22 30 L15 25 L8 30 L12 18 L0 12 L13 10 Z',
-            'M15 0 C 0 10, 0 20, 5 30 C 10 25, 20 25, 25 30 C 30 20, 30 10, 15 0 Z',
+        const layers = [
+            { count: preset.leafLayerBackCount, depth: 0.3, minSize: 15, maxSize: 25 },
+            { count: preset.leafLayerMidCount, depth: 0.6, minSize: 20, maxSize: 35 },
+            { count: preset.leafLayerFrontCount, depth: 1.0, minSize: 25, maxSize: 45 }
         ];
 
-        const leafColors = [
-            '#ff5722', '#ff9100', '#ffb300', '#ff6f00', '#ff8a50',
-            '#ffa726', '#fb8c00', '#f4511e', '#ff7043', '#ffab40',
-        ];
-
-        leafLayers.forEach((layer) => {
-            if (!layer.container) return;
-
-            // Clear existing leaves
-            layer.container.innerHTML = '';
-
-            // Create new leaves based on quality
+        layers.forEach(layer => {
             for (let i = 0; i < layer.count; i++) {
-                const leaf = document.createElement('div');
-                leaf.className = 'leaf';
-                const shape = leafShapes[Math.floor(Math.random() * leafShapes.length)];
-                const color = leafColors[Math.floor(Math.random() * leafColors.length)];
-
-                const isHeroLeaf = Math.random() < 0.15;
-                if (isHeroLeaf) {
-                    leaf.classList.add('hero-leaf');
-                }
-
-                leaf.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="${shape}" fill="${encodeURIComponent(color)}"/></svg>')`;
-
+                const img = this.leafImages[Math.floor(Math.random() * this.leafImages.length)];
                 const size = Math.random() * (layer.maxSize - layer.minSize) + layer.minSize;
-                leaf.style.width = `${size}px`;
-                leaf.style.height = `${size}px`;
-
-                layer.container.appendChild(leaf);
+                this.leafParticles.push(this.createLeafParticle(img, layer.depth, size));
             }
-
-            // Recreate leaf particles
-            const leaves = Array.from(layer.container.querySelectorAll('.leaf'));
-            leaves.forEach((leafEl) => {
-                leafEl.style.animation = 'none';
-                this.leafParticles.push(this.createLeafParticle(leafEl, layer.depthFactor));
-            });
         });
+
+        // Create overlay for combo effects if not exists
+        let overlay = document.getElementById('fall-theme-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'fall-theme-overlay';
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.pointerEvents = 'none';
+            overlay.style.zIndex = '10'; // Above leaves
+            overlay.style.mixBlendMode = 'overlay';
+            overlay.style.transition = 'background-color 0.1s';
+
+            const themeContainer = document.getElementById('fall-theme');
+            if (themeContainer) themeContainer.appendChild(overlay);
+        }
 
         // Recreate ground leaves
         const groundContainer = document.querySelector('.ground-leaves');
@@ -503,101 +525,63 @@ export default class FallTheme extends BaseTheme {
 
         const preset = this.activePreset;
 
-        // Define leaf shapes and colors - more vibrant, glowing autumn palette
-        const leafShapes = [
-            'M15 0 C0 5, 5 25, 15 30 C25 25, 30 5, 15 0 Z', // Simple teardrop
-            'M15 0 L17 10 L30 12 L18 18 L22 30 L15 25 L8 30 L12 18 L0 12 L13 10 Z', // Maple-like
-            'M15 0 C 0 10, 0 20, 5 30 C 10 25, 20 25, 25 30 C 30 20, 30 10, 15 0 Z', // Oak-like
-        ];
+        // Initialize canvas for ember particles and effects - DO THIS FIRST
+        this.canvas = document.getElementById('fall-canvas');
+        if (!this.canvas) return;
 
-        // Brilliant, glowing autumn colors - oranges, reds, and golden yellows
-        const leafColors = [
-            '#ff5722', // Vibrant red-orange
-            '#ff9100', // Brilliant orange
-            '#ffb300', // Golden amber
-            '#ff6f00', // Deep vibrant orange
-            '#ff8a50', // Peachy orange
-            '#ffa726', // Warm orange
-            '#fb8c00', // Rich orange
-            '#f4511e', // Red-orange
-            '#ff7043', // Coral orange
-            '#ffab40', // Light golden orange
-        ];
+        this.ctx = this.canvas.getContext('2d');
+        // Resize handler with debounce
+        this.resizeHandler = () => {
+            if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = setTimeout(() => this.resizeCanvas(), 100);
+        };
+        window.addEventListener('resize', this.resizeHandler, false);
+        this.resizeCanvas();
 
-        // Multi-layered falling leaves - using quality preset counts
-        const leafLayers = [
-            {
-                container: document.getElementById('fall-leaves-back'),
-                count: preset.leafLayerBackCount,
-                minSize: 15,
-                maxSize: 25,
-                minDuration: 15,
-                maxDuration: 20,
-                depthFactor: 0.3, // Back = far away
-            },
-            {
-                container: document.getElementById('fall-leaves-mid'),
-                count: preset.leafLayerMidCount,
-                minSize: 20,
-                maxSize: 35,
-                minDuration: 10,
-                maxDuration: 15,
-                depthFactor: 0.6, // Mid depth
-            },
-            {
-                container: document.getElementById('fall-leaves-front'),
-                count: preset.leafLayerFrontCount,
-                minSize: 25,
-                maxSize: 45,
-                minDuration: 7,
-                maxDuration: 12,
-                depthFactor: 1.0, // Front = close
-            },
-        ];
+        // Pre-render leaves for canvas rendering
+        if (this.leafImages.length === 0) {
+            this.preRenderLeaves();
+        }
 
-        this.leafParticles = [];
-
-        leafLayers.forEach((layer) => {
-            if (!layer.container) {
-                return;
-            }
-
-            if (layer.container.children.length === 0) {
-                for (let i = 0; i < layer.count; i++) {
-                    const leaf = document.createElement('div');
-                    leaf.className = 'leaf';
-                    const shape = leafShapes[Math.floor(Math.random() * leafShapes.length)];
-
-                    // Depth-based color variation
-                    const color = leafColors[Math.floor(Math.random() * leafColors.length)];
-
-                    // Add occasional "hero" glowing leaf (extra bright)
-                    const isHeroLeaf = Math.random() < 0.15; // 15% chance
-                    if (isHeroLeaf) {
-                        leaf.classList.add('hero-leaf');
-                    }
-
-                    leaf.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="${shape}" fill="${encodeURIComponent(color)}"/></svg>')`;
-
-                    const size = Math.random() * (layer.maxSize - layer.minSize) + layer.minSize;
-                    leaf.style.width = `${size}px`;
-                    leaf.style.height = `${size}px`;
-
-                    layer.container.appendChild(leaf);
-                }
-                this.registerContainer(layer.container);
-            }
-
-            const leaves = Array.from(layer.container.querySelectorAll('.leaf'));
-            leaves.forEach((leafEl) => {
-                leafEl.style.animation = 'none';
-                this.leafParticles.push(this.createLeafParticle(leafEl, layer.depthFactor));
-            });
+        // Clear any existing DOM leaves (just in case)
+        ['fall-leaves-back', 'fall-leaves-mid', 'fall-leaves-front'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
         });
 
+        // Initialize leaf particles for canvas rendering
+        this.leafParticles = [];
+        const layers = [
+            { count: preset.leafLayerBackCount, depth: 0.3, minSize: 15, maxSize: 25 },
+            { count: preset.leafLayerMidCount, depth: 0.6, minSize: 20, maxSize: 35 },
+            { count: preset.leafLayerFrontCount, depth: 1.0, minSize: 25, maxSize: 45 }
+        ];
+
+        layers.forEach(layer => {
+            for (let i = 0; i < layer.count; i++) {
+                const img = this.leafImages[Math.floor(Math.random() * this.leafImages.length)];
+                const size = Math.random() * (layer.maxSize - layer.minSize) + layer.minSize;
+                this.leafParticles.push(this.createLeafParticle(img, layer.depth, size));
+            }
+        });
+
+        // Initial update to position leaves
         this.updateLeafParticles(0);
 
         // Dynamic Ground leaves - using quality preset count
+        // Note: Ground leaves are still DOM for now as they are static/CSS animated
+        const leafShapes = [
+            'M15,0 C12,8 2,10 2,15 C5,18 2,24 6,26 C10,24 12,26 15,30 C18,26 20,24 24,26 C28,24 25,18 28,15 C28,10 18,8 15,0 Z',
+            'M15,0 C10,5 5,5 5,10 C2,12 5,15 2,20 C5,25 10,25 15,30 C20,25 25,25 28,20 C25,15 28,12 25,10 C25,5 20,5 15,0 Z',
+            'M15,0 C5,10 2,20 15,30 C28,20 25,10 15,0 M15,0 L15,30',
+            'M15,0 Q5,15 15,30 Q25,15 15,0',
+        ];
+
+        const leafColors = [
+            '#d32f2f', '#ff5722', '#ff9100', '#ffc107', '#ffeb3b',
+            '#795548', '#5d4037', '#e64a19', '#fbc02d', '#8e24aa'
+        ];
+
         const groundContainer = document.querySelector('.ground-leaves');
         if (groundContainer && groundContainer.children.length === 0) {
             groundContainer.style.backgroundImage = '';
@@ -642,15 +626,6 @@ export default class FallTheme extends BaseTheme {
 
         // Generate procedural tree branches
         this.generateTreeBranches();
-
-        // Initialize canvas for ember particles and effects
-        this.canvas = document.getElementById('fall-canvas');
-        if (!this.canvas) return;
-
-        this.ctx = this.canvas.getContext('2d');
-        this.resizeHandler = () => this.resizeCanvas();
-        window.addEventListener('resize', this.resizeHandler, false);
-        this.resizeCanvas();
 
         // Initialize ember particles
         for (let i = 0; i < this.maxEmbers; i++) {
@@ -754,32 +729,77 @@ export default class FallTheme extends BaseTheme {
         };
     }
 
-    createLeafParticle(element, depth) {
+    createLeafParticle(image, depth, size) {
         const { height } = this.getViewportSize();
         const depthScale = 0.6 + depth * 0.8;
-        const particle = {
-            element,
+
+        // 3D Rotation axis (random vector)
+        const axisX = Math.random() * 2 - 1;
+        const axisY = Math.random() * 2 - 1;
+        const axisZ = Math.random() * 2 - 1;
+        const axisLen = Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
+
+        return {
+            image,
             depth,
+            size: size || (20 + Math.random() * 20),
             xPercent: Math.random() * 100,
             y: Math.random() * height - height * 0.2,
+
+            // Movement Physics
             swayPhase: Math.random() * Math.PI * 2,
-            swaySpeed: (0.35 + Math.random() * 0.8) * depthScale,
-            swayAmplitudeFactor: (0.006 + Math.random() * 0.012) * (0.6 + depth),
+            swaySpeed: (0.5 + Math.random() * 1.0) * depthScale,
+            swayAmplitude: (20 + Math.random() * 40) * depthScale,
+
+            // Flutter (fast wobble)
+            flutterPhase: Math.random() * Math.PI * 2,
+            flutterSpeed: (3 + Math.random() * 5) * depthScale,
+            flutterAmount: (2 + Math.random() * 3) * depthScale,
+
             driftSpeedFactor: (Math.random() * 0.006 + 0.002) * (Math.random() < 0.5 ? -1 : 1) * (0.6 + depth),
             driftOffset: 0,
-            baseFallSpeed: (45 + Math.random() * 35) * depthScale,
-            maxFallSpeed: (80 + Math.random() * 40) * depthScale,
-            gravity: (18 + Math.random() * 14) * depthScale,
+
+            baseFallSpeed: (35 + Math.random() * 25) * depthScale,
+            maxFallSpeed: (90 + Math.random() * 40) * depthScale,
+            gravity: (15 + Math.random() * 10) * depthScale,
             velocityY: 0,
+
             turbulencePhase: Math.random() * Math.PI * 2,
             turbulenceSpeed: Math.random() * 1.5 + 0.5,
             turbulenceAmount: 6 + Math.random() * 10,
-            rotation: Math.random() * 360,
-            rotationSpeed: (20 + Math.random() * 35) * (Math.random() < 0.5 ? -1 : 1),
-        };
 
-        particle.velocityY = particle.baseFallSpeed * (0.3 + Math.random() * 0.4);
-        return particle;
+            // 3D Rotation
+            rotation: Math.random() * 360,
+            rotationSpeed: (20 + Math.random() * 60) * (Math.random() < 0.5 ? -1 : 1),
+
+            // Tumble (3D flip)
+            tumblePhase: Math.random() * Math.PI * 2,
+            tumbleSpeed: (1 + Math.random() * 3) * depthScale,
+            axis: { x: axisX / axisLen, y: axisY / axisLen, z: axisZ / axisLen },
+
+            // State
+            isGroundGust: false,
+        };
+    }
+
+
+
+    /**
+     * Get a generic particle object from the pool
+     */
+    getParticle() {
+        if (this.particlePool.length > 0) {
+            return this.particlePool.pop();
+        }
+        return {};
+    }
+
+    /**
+     * Recycle a generic particle object
+     */
+    recycleParticle(p) {
+        // Optional: clear properties if needed, but usually overwriting is enough
+        this.particlePool.push(p);
     }
 
     resetLeafParticle(particle, viewportHeight) {
@@ -803,38 +823,87 @@ export default class FallTheme extends BaseTheme {
         this.leafParticles.forEach((leaf) => {
             const depthInfluence = 0.5 + leaf.depth;
 
-            leaf.velocityY = Math.min(
-                leaf.velocityY + leaf.gravity * dt,
-                leaf.maxFallSpeed,
-            );
+            // Gravity and Velocity
+            if (leaf.isGroundGust) {
+                // Ground gust particles have different physics (fly up then fall)
+                leaf.velocityY += leaf.gravity * dt * 2; // Heavier gravity for gust leaves
+                leaf.y += leaf.velocityY * dt;
 
-            leaf.turbulencePhase += leaf.turbulenceSpeed * dt;
-            const turbulence = Math.sin(leaf.turbulencePhase) * leaf.turbulenceAmount;
-            leaf.y += (leaf.velocityY + turbulence) * dt;
+                // Remove if fell back below screen
+                if (leaf.velocityY > 0 && leaf.y > height + 50) {
+                    leaf.needsRemoval = true;
+                }
+            } else {
+                // Normal falling leaves
+                leaf.velocityY = Math.min(
+                    leaf.velocityY + leaf.gravity * dt,
+                    leaf.maxFallSpeed
+                );
 
-            leaf.swayPhase += leaf.swaySpeed * dt;
-            const sway = Math.sin(leaf.swayPhase) * (leaf.swayAmplitudeFactor * width);
-
-            const driftSpeed = leaf.driftSpeedFactor * width;
-            const windPush = this.windForce * 35 * depthInfluence;
-            leaf.driftOffset += (driftSpeed + windPush) * dt;
-
-            const maxDrift = width * 0.25 * depthInfluence;
-            if (leaf.driftOffset > maxDrift) {
-                leaf.driftOffset = maxDrift;
-            } else if (leaf.driftOffset < -maxDrift) {
-                leaf.driftOffset = -maxDrift;
+                leaf.turbulencePhase += leaf.turbulenceSpeed * dt;
+                const turbulence = Math.sin(leaf.turbulencePhase) * leaf.turbulenceAmount;
+                leaf.y += (leaf.velocityY + turbulence) * dt;
             }
 
-            const x = (leaf.xPercent / 100) * width + sway + leaf.driftOffset;
+            // Horizontal Movement (Sway + Flutter + Wind)
+            leaf.swayPhase += leaf.swaySpeed * dt;
+            leaf.flutterPhase += leaf.flutterSpeed * dt;
+
+            // Complex sway: Main sway + fast flutter
+            const sway = Math.sin(leaf.swayPhase) * leaf.swayAmplitude;
+            const flutter = Math.sin(leaf.flutterPhase) * leaf.flutterAmount;
+
+            // Wind influence
+            const driftSpeed = leaf.driftSpeedFactor * width;
+            // Wind affects rotation and tumble too
+            const windPush = this.windForce * 50 * depthInfluence;
+            leaf.driftOffset += (driftSpeed + windPush) * dt;
+
+            // Clamp drift for normal leaves to keep them in play area roughly
+            if (!leaf.isGroundGust) {
+                const maxDrift = width * 0.3 * depthInfluence;
+                if (leaf.driftOffset > maxDrift) leaf.driftOffset = maxDrift;
+                else if (leaf.driftOffset < -maxDrift) leaf.driftOffset = -maxDrift;
+            }
+
+            const x = (leaf.xPercent / 100) * width + sway + flutter + leaf.driftOffset;
+
+            // Rotation and Tumble
             leaf.rotation += leaf.rotationSpeed * dt;
+            leaf.tumblePhase += leaf.tumbleSpeed * dt;
 
-            leaf.element.style.transform = `translate3d(${x}px, ${leaf.y}px, 0) rotate(${leaf.rotation}deg)`;
+            // 3D Transform Simulation on Canvas
+            const tumbleAngle = Math.sin(leaf.tumblePhase);
 
-            if (leaf.y > height + 120) {
+            // Simulate 3D tumble by scaling one axis
+            // If tumbling around X, Y scale changes. If Y, X scale changes.
+            // We'll simplify and just scale Y based on tumble to look like it's flipping
+            const tumbleScale = Math.cos(leaf.tumblePhase);
+
+            this.ctx.save();
+            this.ctx.translate(x, leaf.y);
+            this.ctx.rotate(leaf.rotation * Math.PI / 180);
+
+            // Apply tumble scale (simulate 3D)
+            if (this.currentQuality !== 'Minimal' && this.currentQuality !== 'Low') {
+                this.ctx.scale(1, tumbleScale);
+            }
+
+            this.ctx.drawImage(leaf.image, -leaf.size / 2, -leaf.size / 2, leaf.size, leaf.size);
+            this.ctx.restore();
+
+            // Reset normal leaves if they go off screen
+            if (!leaf.isGroundGust && leaf.y > height + 120) {
                 this.resetLeafParticle(leaf, height);
             }
         });
+
+        // Clean up gust particles
+        for (let i = this.leafParticles.length - 1; i >= 0; i--) {
+            if (this.leafParticles[i].needsRemoval) {
+                this.leafParticles.splice(i, 1);
+            }
+        }
     }
 
     createEmber() {
@@ -865,24 +934,24 @@ export default class FallTheme extends BaseTheme {
     }
 
     createFirefly() {
-        return {
-            x: Math.random() * this.canvas.width,
-            y: Math.random() * this.canvas.height,
-            baseX: Math.random() * this.canvas.width,
-            baseY: Math.random() * this.canvas.height,
-            vx: (Math.random() - 0.5) * 0.4,
-            vy: (Math.random() - 0.5) * 0.4,
-            wander: Math.random() * Math.PI * 2,
-            wanderSpeed: Math.random() * 0.02 + 0.01,
-            wanderRadius: Math.random() * 25 + 15,
-            size: Math.random() * 1.5 + 1,
-            glow: Math.random() * Math.PI * 2,
-            glowSpeed: Math.random() * 0.05 + 0.03,
-            opacity: Math.random() * 0.6 + 0.4,
-            hue: Math.random() * 20 + 40, // Yellow-green range
-            pulsePhase: Math.random() * Math.PI * 2,
-            pulseSpeed: Math.random() * 0.04 + 0.02,
-        };
+        const p = this.getParticle();
+        p.x = Math.random() * this.canvas.width;
+        p.y = Math.random() * this.canvas.height;
+        p.baseX = Math.random() * this.canvas.width;
+        p.baseY = Math.random() * this.canvas.height;
+        p.vx = (Math.random() - 0.5) * 0.4;
+        p.vy = (Math.random() - 0.5) * 0.4;
+        p.wander = Math.random() * Math.PI * 2;
+        p.wanderSpeed = Math.random() * 0.02 + 0.01;
+        p.wanderRadius = Math.random() * 25 + 15;
+        p.size = Math.random() * 1.5 + 1;
+        p.glow = Math.random() * Math.PI * 2;
+        p.glowSpeed = Math.random() * 0.05 + 0.03;
+        p.opacity = Math.random() * 0.6 + 0.4;
+        p.hue = Math.random() * 20 + 40; // Yellow-green range
+        p.pulsePhase = Math.random() * Math.PI * 2;
+        p.pulseSpeed = Math.random() * 0.04 + 0.02;
+        return p;
     }
 
     setupEventListeners() {
@@ -970,6 +1039,32 @@ export default class FallTheme extends BaseTheme {
         // Create massive leaf burst effect - leaves swirl up and outward
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
+        const { width, height } = this.getViewportSize();
+
+        // GROUND GUST EFFECT: Spawn leaves from the bottom
+        if (lineCount >= 1) {
+            const gustCount = Math.min(lineCount * 5 + this.comboCount * 3, 30);
+
+            for (let i = 0; i < gustCount; i++) {
+                // Get random pre-rendered image
+                const img = this.leafImages[Math.floor(Math.random() * this.leafImages.length)];
+                const size = Math.random() * 20 + 20;
+
+                // Create particle
+                const particle = this.createLeafParticle(img, 1.2, size); // High depth for front
+                particle.isGroundGust = true;
+                particle.y = height + Math.random() * 50; // Start below screen
+                particle.xPercent = Math.random() * 100;
+                particle.velocityY = -(Math.random() * 400 + 300 + lineCount * 50); // Shoot up
+                particle.vx = (Math.random() - 0.5) * 200; // Spread X
+                particle.gravity = 400; // Heavy gravity to fall back fast
+
+                // Override update logic to use vx
+                particle.driftOffset = (Math.random() - 0.5) * width * 0.5;
+
+                this.leafParticles.push(particle);
+            }
+        }
 
         // Spawn swirling leaves (more for more lines cleared) - scaled by quality
         const baseLeafBurst = lineCount * 15 + this.comboCount * 10;
@@ -982,21 +1077,22 @@ export default class FallTheme extends BaseTheme {
             const speed = Math.random() * 4 + 2 + lineCount;
             const distance = Math.random() * 50;
 
-            this.leafBurstParticles.push({
-                x: centerX + Math.cos(angle) * distance,
-                y: centerY + Math.sin(angle) * distance,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed - 2, // Upward bias
-                rotation: Math.random() * 360,
-                rotationSpeed: (Math.random() - 0.5) * 20,
-                size: Math.random() * 8 + 4,
-                life: 1.0,
-                opacity: Math.random() * 0.8 + 0.4,
-                hue: Math.random() * 60, // Autumn colors (orange-red range)
-                gravity: 0.15,
-                swirl: Math.random() * Math.PI * 2,
-                swirlSpeed: (Math.random() - 0.5) * 0.3,
-            });
+            const p = this.getParticle();
+            p.x = centerX + Math.cos(angle) * distance;
+            p.y = centerY + Math.sin(angle) * distance;
+            p.vx = Math.cos(angle) * speed;
+            p.vy = Math.sin(angle) * speed - 2; // Upward bias
+            p.rotation = Math.random() * 360;
+            p.rotationSpeed = (Math.random() - 0.5) * 20;
+            p.size = Math.random() * 8 + 4;
+            p.life = 1.0;
+            p.opacity = Math.random() * 0.8 + 0.4;
+            p.hue = Math.random() * 60; // Autumn colors
+            p.gravity = 0.15;
+            p.swirl = Math.random() * Math.PI * 2;
+            p.swirlSpeed = (Math.random() - 0.5) * 0.3;
+
+            this.leafBurstParticles.push(p);
         }
 
         // Create expanding fire ring for big line clears - quality limited
@@ -1020,20 +1116,22 @@ export default class FallTheme extends BaseTheme {
         for (let i = 0; i < emberCount; i++) {
             const angle = (Math.random() - 0.5) * Math.PI; // Upward cone
             const speed = Math.random() * 5 + 3 + lineCount;
-            this.embers.push({
-                x: centerX + (Math.random() - 0.5) * 100,
-                y: centerY,
-                vx: Math.cos(angle) * speed * 0.5,
-                vy: Math.sin(angle) * speed - 3, // Strong upward force
-                life: 1.0,
-                size: Math.random() * 4 + 2,
-                opacity: 1.0,
-                twinkle: Math.random() * Math.PI * 2,
-                twinkleSpeed: Math.random() * 0.08 + 0.04,
-                hue: Math.random() * 30 + 10, // Yellow-orange-red
-                isBurst: true,
-                gravity: -0.05, // Slight upward drift
-            });
+
+            const p = this.getParticle();
+            p.x = centerX + (Math.random() - 0.5) * 100;
+            p.y = centerY;
+            p.vx = Math.cos(angle) * speed * 0.5;
+            p.vy = Math.sin(angle) * speed - 3; // Strong upward force
+            p.life = 1.0;
+            p.size = Math.random() * 4 + 2;
+            p.opacity = 1.0;
+            p.twinkle = Math.random() * Math.PI * 2;
+            p.twinkleSpeed = Math.random() * 0.08 + 0.04;
+            p.hue = Math.random() * 30 + 10; // Yellow-orange-red
+            p.isBurst = true;
+            p.gravity = -0.05; // Slight upward drift
+
+            this.embers.push(p);
         }
 
         // Trigger strong wind gust based on line count - scaled by quality preset
@@ -1072,7 +1170,7 @@ export default class FallTheme extends BaseTheme {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
 
-            this.emberBursts.push({
+            const burst = {
                 x: centerX,
                 y: centerY,
                 particles: [],
@@ -1083,7 +1181,8 @@ export default class FallTheme extends BaseTheme {
                 expansionRate: 4,
                 life: 1.0,
                 direction: Math.random() < 0.5 ? 1 : -1,
-            });
+            };
+            this.emberBursts.push(burst);
         }
 
         // Spawn extra fireflies on big combos - quality limited and scaled by preset
@@ -1094,6 +1193,9 @@ export default class FallTheme extends BaseTheme {
                 this.fireflies.push(this.createFirefly());
             }
         }
+
+        // Add wind impulse
+        this.targetWindForce += comboCount * 0.5;
     }
 
     onPieceLock(detail) {
@@ -1123,7 +1225,7 @@ export default class FallTheme extends BaseTheme {
     }
 
     animate(timestamp) {
-        if (!this.isActive) {
+        if (!this.isActive || !this.ctx || !this.canvas) {
             return;
         }
 
@@ -1153,16 +1255,16 @@ export default class FallTheme extends BaseTheme {
         this.currentSaturation += (100 - this.currentSaturation) * colorDecaySpeed;
         this.currentBrightness += (100 - this.currentBrightness) * colorDecaySpeed;
 
-        // Update theme filter with smooth interpolation
-        const themeContainer = document.getElementById('fall-theme');
-        if (themeContainer && (Math.abs(this.comboHueShift) > 0.5 || Math.abs(this.currentSaturation - 100) > 0.5 || Math.abs(this.currentBrightness - 100) > 0.5)) {
-            themeContainer.style.filter = `hue-rotate(${this.comboHueShift}deg) saturate(${this.currentSaturation}%) brightness(${this.currentBrightness}%)`;
-        } else if (themeContainer && Math.abs(this.comboHueShift) <= 0.5) {
-            // Fully reset when close enough
-            themeContainer.style.filter = '';
-            this.comboHueShift = 0;
-            this.currentSaturation = 100;
-            this.currentBrightness = 100;
+        // Update theme overlay for combo effects (Golden Hour effect)
+        const overlay = document.getElementById('fall-theme-overlay');
+        if (overlay) {
+            if (this.comboMultiplier > 1.0) {
+                // Calculate amber/gold tint intensity
+                const intensity = Math.min((this.comboMultiplier - 1.0) * 0.3, 0.6);
+                overlay.style.backgroundColor = `rgba(255, 160, 0, ${intensity})`; // Amber tint
+            } else {
+                overlay.style.backgroundColor = 'transparent';
+            }
         }
 
         // Enhanced wind physics with smooth transitions (boosted by combos)
@@ -1176,11 +1278,11 @@ export default class FallTheme extends BaseTheme {
         const windTransitionSpeed = 0.02 * frameFactor;
         this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
 
-        // Update DOM leaf particles with physics-driven motion
-        this.updateLeafParticles(deltaSeconds);
-
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Update and draw leaf particles (after clearing canvas)
+        this.updateLeafParticles(deltaSeconds);
 
         // Draw and update fire rings
         for (let i = this.fireRings.length - 1; i >= 0; i--) {
@@ -1218,20 +1320,21 @@ export default class FallTheme extends BaseTheme {
             burst.radius += burst.expansionRate;
             burst.life -= 0.008;
 
-            // Spawn particles along the spiral
             if (Math.random() < 0.6 && burst.radius < burst.maxRadius) {
                 const particleAngle = burst.angle + Math.random() * Math.PI * 0.4;
                 const particleRadius = burst.radius + Math.random() * 30;
-                burst.particles.push({
-                    x: burst.x + Math.cos(particleAngle) * particleRadius,
-                    y: burst.y + Math.sin(particleAngle) * particleRadius,
-                    size: Math.random() * 3 + 1.5,
-                    opacity: Math.random() * 0.9 + 0.3,
-                    vx: Math.cos(particleAngle) * 2,
-                    vy: Math.sin(particleAngle) * 2 - 1.5,
-                    life: 1.0,
-                    hue: Math.random() * 30 + 15,
-                });
+
+                const p = this.getParticle();
+                p.x = burst.x + Math.cos(particleAngle) * particleRadius;
+                p.y = burst.y + Math.sin(particleAngle) * particleRadius;
+                p.size = Math.random() * 3 + 1.5;
+                p.opacity = Math.random() * 0.9 + 0.3;
+                p.vx = Math.cos(particleAngle) * 2;
+                p.vy = Math.sin(particleAngle) * 2 - 1.5;
+                p.life = 1.0;
+                p.hue = Math.random() * 30 + 15;
+
+                burst.particles.push(p);
             }
 
             // Update and draw burst particles
@@ -1243,6 +1346,7 @@ export default class FallTheme extends BaseTheme {
                 p.opacity = p.life;
 
                 if (p.life <= 0) {
+                    this.recycleParticle(p);
                     burst.particles.splice(j, 1);
                     continue;
                 }
@@ -1284,6 +1388,7 @@ export default class FallTheme extends BaseTheme {
             leaf.opacity = leaf.life * 0.9;
 
             if (leaf.life <= 0 || leaf.y > this.canvas.height + 100) {
+                this.recycleParticle(leaf);
                 this.leafBurstParticles.splice(i, 1);
                 continue;
             }
@@ -1377,8 +1482,9 @@ export default class FallTheme extends BaseTheme {
         }
 
         // Limit firefly count (remove extras after combos) - use quality limit
-        if (this.fireflies.length > this.maxFirefliesLimit) {
-            this.fireflies = this.fireflies.slice(0, this.maxFirefliesLimit);
+        while (this.fireflies.length > this.maxFirefliesLimit) {
+            const p = this.fireflies.pop();
+            this.recycleParticle(p);
         }
 
         // Update and draw embers
@@ -1405,6 +1511,7 @@ export default class FallTheme extends BaseTheme {
             // Reset or remove
             if (ember.life <= 0 || ember.y < -50) {
                 if (ember.isBurst) {
+                    this.recycleParticle(ember);
                     this.embers.splice(i, 1);
                 } else {
                     this.resetEmber(ember);
@@ -1472,6 +1579,9 @@ export default class FallTheme extends BaseTheme {
         this.comboHueShift = 0;
         this.currentSaturation = 100;
         this.currentBrightness = 100;
+
+        // Clear pool
+        this.particlePool = [];
 
         super.stop();
     }

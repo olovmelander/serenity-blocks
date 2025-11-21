@@ -458,10 +458,10 @@ class SerenityBlocks {
                 target: 60,
                 forceSetTimeOut: false,
             },
-            
+
             // Register initial scenes (multiplayer scenes added dynamically)
             scene: [BoardScene, BackgroundScene],
-            
+
             // Scale Manager: NONE mode for pixel-perfect rendering
             scale: {
                 mode: PhaserRef.Scale?.NONE ?? 0, // NONE = 0 (no scaling, exact pixel size)
@@ -469,37 +469,37 @@ class SerenityBlocks {
                 width: singleBoardWidth,
                 height: singleBoardHeight,
             },
-            
+
             // High DPI support for crisp rendering on Retina displays
             resolution: window.devicePixelRatio || 1,
-            
+
             // Disable Phaser physics (using custom physics system)
             physics: {
                 default: false,
             },
-            
+
             // WebGL render settings
             render: {
                 antialias: true,    // Smooth edges for blocks
                 pixelArt: false,    // Not pixel art style
                 powerPreference: 'high-performance', // Prefer discrete GPU (e.g., NVIDIA over integrated)
             },
-            
+
             // Post-boot callback for scene initialization
             callbacks: {
                 postBoot: (game) => {
                     console.log('[Phaser 4 Init] Post-boot callback started');
-                    
+
                     // Validate scene manager
                     if (!game.scene) {
                         console.error('[Phaser 4 Init] Scene manager not available');
                         return;
                     }
-                    
+
                     // Get scene references
                     this.backgroundScene = game.scene.getScene('BackgroundScene');
                     this.boardScene = game.scene.getScene('BoardScene');
-                    
+
                     // Validate scenes loaded correctly
                     if (!this.boardScene || !this.backgroundScene) {
                         console.error('[Phaser 4 Init] Scenes not found:', {
@@ -508,14 +508,14 @@ class SerenityBlocks {
                         });
                         return;
                     }
-                    
+
                     // Store scene classes for dynamic instantiation
                     // Store on both game object (for mode access) and this (for internal use)
                     game.BoardSceneClass = BoardScene;
                     this.BoardSceneClass = BoardScene;
                     game.MultiplayerBoardSceneClass = MultiplayerBoardScene;
                     this.MultiplayerBoardSceneClass = MultiplayerBoardScene;
-                    
+
                     // Log successful initialization
                     console.log('✅ Phaser 4 game initialized successfully');
                     console.log('  ├─ Canvas dimensions:', game.canvas.width, 'x', game.canvas.height);
@@ -523,16 +523,16 @@ class SerenityBlocks {
                     console.log('  ├─ Device pixel ratio:', window.devicePixelRatio || 1);
                     console.log('  ├─ Board config: ROWS:', ROWS, 'HIDDEN_ROWS:', HIDDEN_ROWS);
                     console.log('  └─ Scenes loaded: BoardScene, BackgroundScene');
-                    
+
                     // Add CSS class for HUD styling
                     document.body.classList.add('phaser-hud-ready');
-                    
+
                     // Initialize HUD if game already started
                     if (this.gameState) {
                         this.updatePhaserStats();
                         this.refreshNextQueue();
                     }
-                    
+
                     // Apply quality settings to all scenes
                     this.applyEffectQuality(
                         this.settingsManager?.get().effectQuality ?? this.currentEffectQuality,
@@ -548,7 +548,7 @@ class SerenityBlocks {
             type: 'WEBGL',
             transparent: config.transparent,
         });
-        
+
         try {
             this.phaserGame = new PhaserRef.Game(config);
             console.log('[Phaser 4 Init] Game instance created successfully');
@@ -818,7 +818,7 @@ class SerenityBlocks {
     resizePhaserGame(width, height, disableAutoCenter = false) {
         if (this.phaserGame) {
             const PhaserRef = Phaser;
-            
+
             // Disable auto-centering for multiplayer mode to allow proper viewport positioning
             if (disableAutoCenter && PhaserRef) {
                 this.phaserGame.scale.autoCenter = PhaserRef.Scale.NO_CENTER;
@@ -826,14 +826,14 @@ class SerenityBlocks {
                 // Re-enable auto-centering for single-player mode
                 this.phaserGame.scale.autoCenter = PhaserRef.Scale.CENTER_BOTH;
             }
-            
+
             this.phaserGame.scale.resize(width, height);
         }
     }
 
     movePhaserGameToContainer(containerId) {
         if (!this.phaserGame || !this.phaserGame.canvas) return;
-        
+
         const targetContainer = document.getElementById(containerId);
         if (targetContainer && this.phaserGame.canvas.parentElement) {
             // Move the Phaser canvas to the new container
@@ -859,7 +859,7 @@ class SerenityBlocks {
         const height = this.phaserBaseHeight;
         const gap = this.multiplayerBoardGap;
         const borderWidth = 4; // Border width from CSS
-        
+
         // Viewports define where on the canvas each scene renders
         // The borders are overlays on top of the content, so we need to position
         // the viewports to account for the border width to prevent clipping
@@ -916,7 +916,7 @@ class SerenityBlocks {
             // Add the scene instances to Phaser
             const addResult1 = sceneManager.add('MultiplayerBoardScene1', scene1, false);
             const addResult2 = sceneManager.add('MultiplayerBoardScene2', scene2, false);
-            
+
             console.log('[Multiplayer] Add results:', addResult1, addResult2);
 
             // Store scene references
@@ -945,7 +945,7 @@ class SerenityBlocks {
             sceneManager.start('MultiplayerBoardScene2', scene2Config);
 
             console.log('[Multiplayer] Scenes started');
-            console.log('[Multiplayer] Active scenes:', 
+            console.log('[Multiplayer] Active scenes:',
                 sceneManager.isActive('MultiplayerBoardScene1'),
                 sceneManager.isActive('MultiplayerBoardScene2')
             );
@@ -953,13 +953,13 @@ class SerenityBlocks {
             // Scenes are created synchronously, so they're already ready!
             // Just do the setup immediately
             console.log('[Multiplayer] Both scenes created successfully');
-            
+
             // Debug: Check canvas state
             if (this.phaserGame.canvas) {
                 const canvas = this.phaserGame.canvas;
                 const computedStyle = window.getComputedStyle(canvas);
                 const rect = canvas.getBoundingClientRect();
-                
+
                 console.log('[Multiplayer] Canvas dimensions:', canvas.width, 'x', canvas.height);
                 console.log('[Multiplayer] Canvas style:', canvas.style.width, 'x', canvas.style.height);
                 console.log('[Multiplayer] Canvas parent:', canvas.parentElement?.id);
@@ -968,14 +968,14 @@ class SerenityBlocks {
                 console.log('[Multiplayer] Canvas opacity:', computedStyle.opacity);
                 console.log('[Multiplayer] Canvas position on screen:', rect);
                 console.log('[Multiplayer] Canvas z-index:', computedStyle.zIndex);
-                
+
                 // Check viewport settings
-                console.log('[Multiplayer] Scene 1 viewport:', scene1.cameras?.main?.x, scene1.cameras?.main?.y, 
+                console.log('[Multiplayer] Scene 1 viewport:', scene1.cameras?.main?.x, scene1.cameras?.main?.y,
                     scene1.cameras?.main?.width, scene1.cameras?.main?.height);
                 console.log('[Multiplayer] Scene 2 viewport:', scene2.cameras?.main?.x, scene2.cameras?.main?.y,
                     scene2.cameras?.main?.width, scene2.cameras?.main?.height);
             }
-            
+
             // Set effect quality
             this.multiplayerBoardScenes.forEach((sceneInstance) => {
                 sceneInstance?.setEffectQuality?.(this.currentEffectQuality);
@@ -983,7 +983,7 @@ class SerenityBlocks {
 
             // Initial sync
             this.syncMultiplayerBoardScenes();
-            
+
             // Resolve immediately
             resolve();
         });
@@ -1096,16 +1096,16 @@ class SerenityBlocks {
         // Gamepad controller
         this.gamepadController = new GamepadController();
         this.gamepadController.initialize();
-        
+
         // Connect gamepad controller to modal manager
         this.modalManager.setGamepadController(this.gamepadController);
-        
+
         // Set pause/resume callbacks for gamepad
         this.gamepadController.setPauseCallbacks(
             () => this.pauseGame(),
             () => this.resumeGame()
         );
-        
+
         // Initialize gamepad with custom bindings from settings
         const settings = this.settingsManager.get();
         this.gamepadController.updateBindings(
@@ -1268,16 +1268,16 @@ class SerenityBlocks {
         let initialTheme = 'forest'; // default
 
         switch (settings.backgroundMode) {
-        case 'Specific':
-            initialTheme = settings.backgroundTheme || 'forest';
-            break;
-        case 'Level':
-            initialTheme = this.themeManager.getThemeForLevel(1);
-            break;
-        case 'Random':
-            initialTheme = this.themeManager.getRandomTheme();
-            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-            break;
+            case 'Specific':
+                initialTheme = settings.backgroundTheme || 'forest';
+                break;
+            case 'Level':
+                initialTheme = this.themeManager.getThemeForLevel(1);
+                break;
+            case 'Random':
+                initialTheme = this.themeManager.getRandomTheme();
+                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+                break;
         }
 
         await this.themeManager.switchTheme(initialTheme);
@@ -1300,6 +1300,27 @@ class SerenityBlocks {
             const settings = this.settingsManager.get();
             if (settings.themeLinkedMode) {
                 this.soundManager.applyThemeLinkedMusic(themeName);
+            }
+
+            // Update sound set based on theme
+            const themeSoundMap = {
+                'pyrestorm': 'Pyrestorm',
+                'nebula-flow': 'Nebula',
+                'galaxy': 'Galaxy',
+                'black-hole': 'Cosmic',
+                'supernova': 'Cosmic',
+                'cosmic-noir': 'Cosmic',
+                'starlight': 'Cosmic',
+                'swedish-forest': 'SwedishForest',
+                'bioluminescence': 'Bioluminescence',
+                'wolfhour': 'Wolfhour',
+                'neon-dusk': 'NeonDusk',
+                'blood-moon': 'BloodMoon'
+            };
+
+            if (themeSoundMap[themeName]) {
+                console.log(`[Main] Auto-switching sound set to ${themeSoundMap[themeName]} for theme ${themeName}`);
+                this.soundManager.setSoundSet(themeSoundMap[themeName]);
             }
         });
 
@@ -1645,7 +1666,7 @@ class SerenityBlocks {
             onLineClear: (count, holeColumns) => {
                 // Visual feedback handled in draw
                 // holeColumns parameter not used in single-player mode
-                
+
                 // Emit event for theme reactions
                 console.log('[Main] Emitting LINE_CLEAR event, count:', count);
                 eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count });
@@ -1685,7 +1706,7 @@ class SerenityBlocks {
                         showComboPopup(comboCount);
                     }
                 }
-                
+
                 // Emit event for theme reactions
                 console.log('[Main] Emitting COMBO event, comboCount:', comboCount);
                 eventBus.emit(EVENTS.COMBO, { comboCount });
@@ -1701,7 +1722,7 @@ class SerenityBlocks {
                         createPieceLockRipple(piece, gameState.lockedPieces);
                     }
                 }
-                
+
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });
             },
@@ -1760,7 +1781,7 @@ class SerenityBlocks {
         window.move = (dir) => {
             const gameState = getCurrentGameState();
             if (!gameState || !gameState.currentPiece) return;
-            
+
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
@@ -1776,7 +1797,7 @@ class SerenityBlocks {
         window.rotate = (dir) => {
             const gameState = getCurrentGameState();
             if (!gameState || !gameState.currentPiece) return;
-            
+
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
@@ -1795,10 +1816,10 @@ class SerenityBlocks {
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
-            
+
             // Check if game is paused (important for multiplayer round transitions)
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
-            
+
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
                 : this.getPhysicsCallbacks();
@@ -1816,10 +1837,10 @@ class SerenityBlocks {
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
-            
+
             // Check if game is paused (important for multiplayer round transitions)
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
-            
+
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
                 : this.getPhysicsCallbacks();
@@ -1887,7 +1908,7 @@ class SerenityBlocks {
         const getPlayerState = (playerNum) => {
             const multiplayerState = getMultiplayerState();
             if (!multiplayerState) return null;
-            
+
             // New structure uses players array (0-based), old structure uses player1/player2
             if (multiplayerState.players) {
                 return multiplayerState.players[playerNum - 1];
@@ -1902,7 +1923,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreMove(
                 player2State,
                 dir,
@@ -1916,7 +1937,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreRotate(
                 player2State,
                 dir,
@@ -1930,7 +1951,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreSoftDrop(
                 player2State,
                 () => this.soundManager.sfxPlayer.playDrop(),
@@ -1943,7 +1964,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreHardDrop(
                 player2State,
                 () => this.soundManager.sfxPlayer.playDrop(),
@@ -1957,7 +1978,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreMove(
                 player3State,
                 dir,
@@ -1971,7 +1992,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreRotate(
                 player3State,
                 dir,
@@ -1985,7 +2006,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreSoftDrop(
                 player3State,
                 () => this.soundManager.sfxPlayer.playDrop(),
@@ -1998,7 +2019,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreHardDrop(
                 player3State,
                 () => this.soundManager.sfxPlayer.playDrop(),
@@ -2012,7 +2033,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreMove(
                 player4State,
                 dir,
@@ -2026,7 +2047,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreRotate(
                 player4State,
                 dir,
@@ -2040,7 +2061,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreSoftDrop(
                 player4State,
                 () => this.soundManager.sfxPlayer.playDrop(),
@@ -2053,7 +2074,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            
+
             coreHardDrop(
                 player4State,
                 () => this.soundManager.sfxPlayer.playDrop(),
@@ -2142,7 +2163,7 @@ class SerenityBlocks {
             // Only process in local multiplayer mode
             const currentGameMode = this.gameModeUI.getMode();
             if (currentGameMode !== GAME_MODES.LOCAL_MULTIPLAYER) return;
-            
+
             // Get multiplayer state from active mode
             const multiplayerState = this.getMultiplayerState();
             if (
@@ -2226,7 +2247,7 @@ class SerenityBlocks {
      * Handle window resize
      */
     handleResize() {
-    // Use fixed block size (40) as elsewhere
+        // Use fixed block size (40) as elsewhere
         setBlockSize(40);
 
         // Update legacy canvas if it exists (for fallback rendering)
@@ -2251,7 +2272,7 @@ class SerenityBlocks {
      */
     handleSettingsChange(changes) {
         const settings = this.settingsManager.get();
-        
+
         // Update global settings reference
         window.settings = settings;
 
@@ -2383,15 +2404,15 @@ class SerenityBlocks {
     startSinglePlayerGame() {
         this.deactivatePhaserMultiplayerUI();
         this.teardownMultiplayerBoardScenes();
-        
+
         // Ensure Phaser canvas is in single-player container
         this.movePhaserGameToContainer('phaser-game-container');
-        
+
         // Ensure single-player dimensions
         const singleBoardWidth = COLS * BLOCK_SIZE;
         const singleBoardHeight = ROWS * BLOCK_SIZE;
         this.resizePhaserGame(singleBoardWidth, singleBoardHeight);
-        
+
         this.resumeSinglePlayerScene();
         this.applyEffectQuality(this.currentEffectQuality);
 
@@ -2440,10 +2461,10 @@ class SerenityBlocks {
         this.multiplayerBoardGap = boardGap;
         const multiBoardWidth = singleBoardWidth * 2 + boardGap;
         const multiBoardHeight = ROWS * BLOCK_SIZE;
-        
+
         // Move Phaser canvas to multiplayer container
         this.movePhaserGameToContainer('phaser-multiplayer-container');
-        
+
         this.resizePhaserGame(multiBoardWidth, multiBoardHeight, true); // Disable auto-center for multiplayer
         console.log('[Multiplayer] Resizing Phaser game to:', multiBoardWidth, multiBoardHeight);
 
@@ -2835,14 +2856,14 @@ class SerenityBlocks {
         // Get multiplayerState from the active mode
         const currentMode = this.gameModeManager?.getCurrentMode();
         const multiplayerState = currentMode?.multiplayerState || this.multiplayerState;
-        
+
         if (!multiplayerState) {
             console.error('[Main] getMultiplayerPhysicsCallbacks called but no multiplayerState available');
             return this.getPhysicsCallbacks(); // Fallback to single player callbacks
         }
-        
+
         // Support both old structure (player1/player2) and new structure (players array)
-        const playerState = multiplayerState.players 
+        const playerState = multiplayerState.players
             ? multiplayerState.players[playerNum - 1]  // New array-based structure
             : (playerNum === 1 ? multiplayerState.player1 : multiplayerState.player2);  // Old structure
         const sceneRef = () => {
@@ -2876,16 +2897,16 @@ class SerenityBlocks {
                 console.log(
                     `[Multiplayer] Player ${playerNum} cascade wave cleared ${count} line(s) → holes [${holes.join(', ')}] ${maskSummary ? `masks ${maskSummary}` : ''}`,
                 );
-                
+
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, player: playerNum });
             },
             onGarbageReady: (summary) => {
                 // Convert playerNum to appropriate format based on multiplayerState structure
-                const playerIdentifier = multiplayerState.players 
+                const playerIdentifier = multiplayerState.players
                     ? playerNum - 1  // New structure uses 0-based index
                     : playerNum;     // Old structure uses 1-based player number
-                
+
                 multiplayerState.handleGarbageSummary(
                     playerIdentifier,
                     summary,
@@ -2932,7 +2953,7 @@ class SerenityBlocks {
                         scene.showComboPopup(comboCount);
                     }
                 }
-                
+
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.COMBO, { comboCount, player: playerNum });
             },
@@ -2942,7 +2963,7 @@ class SerenityBlocks {
                 if (settings.pieceLockRipple && scene?.createPieceLockRipple) {
                     scene.createPieceLockRipple(piece);
                 }
-                
+
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece, player: playerNum });
             },
@@ -3054,12 +3075,12 @@ class SerenityBlocks {
         // Get multiplayerState from the current mode or fallback to legacy
         const currentMode = this.gameModeManager?.getCurrentMode();
         const multiplayerState = currentMode?.multiplayerState || this.multiplayerState;
-        
+
         if (!multiplayerState) {
             console.error('[Main] endMultiplayerGame called but no multiplayerState exists!');
             return;
         }
-        
+
         if (multiplayerState.isGameOver) return;
 
         // New MultiPlayerState uses handlePlayerDeath with 0-based index
@@ -3068,7 +3089,7 @@ class SerenityBlocks {
             // New structure: Convert 1-based losingPlayer to 0-based index
             const losingPlayerIndex = losingPlayer - 1;
             multiplayerState.handlePlayerDeath(losingPlayerIndex);
-            
+
             // If using new game mode system, call its handler
             if (currentMode && typeof currentMode._handleGameOver === 'function') {
                 // Call LocalMultiplayerMode's round-end handler
@@ -3088,7 +3109,7 @@ class SerenityBlocks {
 
         const { winner } = multiplayerState;
         const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
-        
+
         console.log(`🏆 Round over! ${winnerName} wins this round!`);
 
         // If using new game mode system, let it handle the round end
@@ -3125,15 +3146,15 @@ class SerenityBlocks {
 
         this.deactivatePhaserMultiplayerUI();
         this.teardownMultiplayerBoardScenes();
-        
+
         // Move Phaser canvas back to single-player container
         this.movePhaserGameToContainer('phaser-game-container');
-        
+
         // Resize back to single-player dimensions
         const singleBoardWidth = COLS * BLOCK_SIZE;
         const singleBoardHeight = ROWS * BLOCK_SIZE;
         this.resizePhaserGame(singleBoardWidth, singleBoardHeight);
-        
+
         this.resumeSinglePlayerScene();
         this.applyEffectQuality(this.currentEffectQuality);
     }
@@ -3250,12 +3271,12 @@ async function bootstrap() {
         if (typeof window !== 'undefined') {
             window.serenityBlocks = app;
             window.performanceMonitor = performanceMonitor;
-            
+
             // Add test/debug functions
             window.testMultiplayer = async (numPlayers = 4) => {
                 try {
                     console.log(`🧪 [TEST] Creating test lobby with ${numPlayers} players...`);
-                    
+
                     // Switch to online multiplayer mode if not already
                     const currentMode = app.gameModeManager.getCurrentModeId();
                     if (currentMode !== GAME_MODES.ONLINE_MULTIPLAYER) {
@@ -3263,17 +3284,17 @@ async function bootstrap() {
                         await app.gameModeManager.stopCurrentMode();
                         await app.gameModeManager.deactivateCurrentMode();
                         await app.gameModeManager.activateMode(GAME_MODES.ONLINE_MULTIPLAYER);
-                        
+
                         // Wait for mode to initialize
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
-                    
+
                     // Get the online multiplayer mode
                     const onlineMode = app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER);
                     if (!onlineMode) {
                         throw new Error('Online multiplayer mode not available');
                     }
-                    
+
                     // Create a test lobby
                     console.log('🧪 [TEST] Creating test lobby...');
                     const config = {
@@ -3284,15 +3305,15 @@ async function bootstrap() {
                         endConditionValue: 10,
                         boringRules: false,
                     };
-                    
+
                     await onlineMode.handleCreateLobby(config);
-                    
+
                     // Get the FFA game state
                     const ffaGameState = onlineMode.ffaGameState;
                     if (!ffaGameState) {
                         throw new Error('Failed to create game state');
                     }
-                    
+
                     // Add dummy players
                     console.log('🧪 [TEST] Adding dummy players...');
                     const dummyNames = [
@@ -3304,24 +3325,24 @@ async function bootstrap() {
                         'TestBot_Zeta',
                         'TestBot_Eta'
                     ];
-                    
+
                     for (let i = 1; i < numPlayers; i++) {
                         const dummyId = `dummy_${i}_${Date.now()}`;
                         const dummyName = dummyNames[i - 1] || `DummyPlayer_${i}`;
-                        
+
                         ffaGameState.addPlayer(dummyId, dummyName, false);
-                        
+
                         // Auto-ready the dummy player
                         const player = ffaGameState.players.get(dummyId);
                         if (player) {
                             player.isReady = true;
                         }
                     }
-                    
+
                     console.log(`✅ [TEST] Test lobby created with ${numPlayers} players!`);
                     console.log('📋 [TEST] All dummy players are auto-ready');
                     console.log('🎮 [TEST] You can now click "Start Match" to begin');
-                    
+
                     return {
                         lobbyId: onlineMode.currentLobbyId,
                         players: Array.from(ffaGameState.players.values()).map(p => ({
@@ -3331,13 +3352,13 @@ async function bootstrap() {
                             color: p.color
                         }))
                     };
-                    
+
                 } catch (err) {
                     console.error('❌ [TEST] Failed to create test lobby:', err);
                     throw err;
                 }
             };
-            
+
             console.log('🧪 Test functions available:');
             console.log('  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players');
             console.log('    Example: testMultiplayer(5)');
