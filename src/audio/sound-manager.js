@@ -52,7 +52,7 @@ export class SoundManager {
     resumeAudioContext() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            this.soundSets = createSoundSets(this.createTone.bind(this));
+            this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
             this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
         }
         if (this.audioContext.state === 'suspended') {
@@ -99,6 +99,127 @@ export class SoundManager {
         osc.stop(this.audioContext.currentTime + duration);
 
         if (onended) osc.onended = onended;
+    }
+
+    /**
+     * Creates a rich, layered tone with multiple oscillators, noise, and filtering
+     * @param {Object} params - Sound parameters
+     */
+    createRichTone({
+        oscillators = [], // Array of { type, freq, detune, gain, delay }
+        noise = null,     // { type: 'white'|'pink', gain }
+        envelope = { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 },
+        filter = null,    // { type, frequency, Q, envAmount }
+        duration = 0.2,
+        volume = 1.0,
+        isMusic = false
+    }) {
+        if (!this.audioContext || this.isMuted) return;
+
+        const volumeMultiplier = isMusic ? this.musicVolume : this.sfxVolume;
+        const masterGainValue = volume * volumeMultiplier;
+        if (masterGainValue <= 0) return;
+
+        const now = this.audioContext.currentTime;
+        const masterGain = this.audioContext.createGain();
+        masterGain.connect(this.audioContext.destination);
+
+        // Master Envelope
+        masterGain.gain.setValueAtTime(0, now);
+        masterGain.gain.linearRampToValueAtTime(masterGainValue, now + envelope.attack);
+        masterGain.gain.exponentialRampToValueAtTime(
+            Math.max(0.001, masterGainValue * (envelope.sustain || 0)),
+            now + envelope.attack + envelope.decay
+        );
+
+        const releaseStart = now + duration;
+        if (envelope.release) {
+            masterGain.gain.exponentialRampToValueAtTime(0.001, releaseStart + envelope.release);
+        } else {
+            masterGain.gain.exponentialRampToValueAtTime(0.001, releaseStart + 0.01);
+        }
+
+        // Filter
+        let destination = masterGain;
+        if (filter) {
+            const biquadFilter = this.audioContext.createBiquadFilter();
+            biquadFilter.type = filter.type || 'lowpass';
+            biquadFilter.Q.value = filter.Q || 1;
+            biquadFilter.frequency.setValueAtTime(filter.frequency || 1000, now);
+
+            if (filter.envAmount) {
+                biquadFilter.frequency.linearRampToValueAtTime(
+                    (filter.frequency || 1000) + filter.envAmount,
+                    now + envelope.attack
+                );
+                biquadFilter.frequency.exponentialRampToValueAtTime(
+                    filter.frequency || 1000,
+                    now + envelope.attack + envelope.decay
+                );
+            }
+
+            biquadFilter.connect(masterGain);
+            destination = biquadFilter;
+        }
+
+        // Oscillators
+        oscillators.forEach(oscDef => {
+            const osc = this.audioContext.createOscillator();
+            const oscGain = this.audioContext.createGain();
+
+            osc.type = oscDef.type || 'sine';
+            osc.frequency.value = oscDef.freq || 440;
+            if (oscDef.detune) osc.detune.value = oscDef.detune;
+
+            oscGain.gain.value = oscDef.gain !== undefined ? oscDef.gain : 1;
+
+            osc.connect(oscGain);
+            oscGain.connect(destination);
+
+            const startTime = now + (oscDef.delay || 0);
+            osc.start(startTime);
+            osc.stop(releaseStart + (envelope.release || 0));
+        });
+
+        // Noise
+        if (noise) {
+            const totalDuration = duration + (envelope.release || 0);
+            const bufferSize = this.audioContext.sampleRate * totalDuration;
+            const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+
+            if (noise.type === 'pink') {
+                // Pink noise approximation
+                let b0, b1, b2, b3, b4, b5, b6;
+                b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                for (let i = 0; i < bufferSize; i++) {
+                    const white = Math.random() * 2 - 1;
+                    b0 = 0.99886 * b0 + white * 0.0555179;
+                    b1 = 0.99332 * b1 + white * 0.0750759;
+                    b2 = 0.96900 * b2 + white * 0.1538520;
+                    b3 = 0.86650 * b3 + white * 0.3104856;
+                    b4 = 0.55000 * b4 + white * 0.5329522;
+                    b5 = -0.7616 * b5 - white * 0.0168980;
+                    data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                    data[i] *= 0.11;
+                    b6 = white * 0.115926;
+                }
+            } else {
+                // White noise
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+            }
+
+            const noiseSource = this.audioContext.createBufferSource();
+            noiseSource.buffer = buffer;
+            const noiseGain = this.audioContext.createGain();
+            noiseGain.gain.value = noise.gain || 0.1;
+
+            noiseSource.connect(noiseGain);
+            noiseGain.connect(destination);
+            noiseSource.start(now);
+        }
     }
 
     /**
@@ -282,28 +403,28 @@ export class SoundManager {
     playGameOver() {
         if (this.sfxPlayer) this.sfxPlayer.playGameOver();
     }
-    
+
     /**
      * PHASE 3.4: Play garbage received sound
      */
     playGarbageReceived() {
         if (this.sfxPlayer) this.sfxPlayer.playGarbageReceived();
     }
-    
+
     /**
      * PHASE 3.4: Play garbage countered sound
      */
     playGarbageCountered() {
         if (this.sfxPlayer) this.sfxPlayer.playGarbageCountered();
     }
-    
+
     /**
      * PHASE 3.4: Play player death sound
      */
     playPlayerDeath() {
         if (this.sfxPlayer) this.sfxPlayer.playPlayerDeath();
     }
-    
+
     /**
      * Play garbage send sound (already exists in sound sets)
      */
