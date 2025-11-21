@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Serenity Blocks</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="/styles/intro-animation.css">
     <link rel="stylesheet" href="/styles/main.css">
     <link rel="stylesheet" href="/styles/next-queue.css">
@@ -14,40 +17,43 @@
     <link rel="stylesheet" href="/styles/match-config-styles.css">
     <link rel="stylesheet" href="/styles/serenity-hub.css">
 </head>
+
 <body>
     <svg width="0" height="0" style="position:absolute">
         <defs>
             <filter id="gooey-blobs">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
+                    result="goo" />
                 <feBlend in="SourceGraphic" in2="goo" />
             </filter>
             <!-- LAVA LAMP: Balanced gooey filter - merges smoothly but allows separation -->
             <filter id="gooey-lava" colorInterpolationFilters="sRGB">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 17 -7" result="goo" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 17 -7"
+                    result="goo" />
                 <feGaussianBlur in="goo" stdDeviation="1.5" result="smoothGoo" />
                 <feComposite in="SourceGraphic" in2="smoothGoo" operator="atop" />
             </filter>
             <!-- Clip path for multiplayer boards with rounded corners -->
             <clipPath id="multiplayer-clip-path" clipPathUnits="userSpaceOnUse">
                 <!-- Player 1 board: full 300x600 area with 12px rounded corners -->
-                <rect x="0" y="0" width="300" height="600" rx="12" ry="12"/>
+                <rect x="0" y="0" width="300" height="600" rx="12" ry="12" />
                 <!-- Player 2 board: full 300x600 area at x=390 with 12px rounded corners -->
-                <rect x="390" y="0" width="300" height="600" rx="12" ry="12"/>
+                <rect x="390" y="0" width="300" height="600" rx="12" ry="12" />
             </clipPath>
         </defs>
     </svg>
     <div class="background-container">
         <canvas id="background-canvas"></canvas>
         <div id="stars"></div>
-        
+
         <div id="forest-theme" class="theme-container">
             <div class="forest-moon"></div>
             <div id="enchanted-forest-back" class="enchanted-forest-layer"></div>
-        <div class="forest-mist" id="forest-mist-back"></div>
+            <div class="forest-mist" id="forest-mist-back"></div>
             <div id="enchanted-forest-mid" class="enchanted-forest-layer"></div>
-        <div class="forest-mist" id="forest-mist-front"></div>
+            <div class="forest-mist" id="forest-mist-front"></div>
             <div id="enchanted-forest-front" class="enchanted-forest-layer"></div>
         </div>
         <div id="ocean-theme" class="theme-container">
@@ -464,7 +470,8 @@
 
     <div class="single-player-stage" style="display: none;">
         <div class="game-container single-player-layout" id="single-player-container">
-            <div class="single-player-card player-card" id="single-player-card" data-player="solo" role="region" aria-label="Single Player Game Board">
+            <div class="single-player-card player-card" id="single-player-card" data-player="solo" role="region"
+                aria-label="Single Player Game Board">
                 <div class="single-player-body">
                     <div class="single-player-main">
                         <div id="next-queue-container" class="player-next-pieces single-player-next"></div>
@@ -479,8 +486,10 @@
             </div>
             <button id="settings-btn" class="floating-settings-btn" aria-label="Open Settings">
                 <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-                    <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2" />
+                    <path
+                        d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"
+                        stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
                 </svg>
             </button>
         </div>
@@ -606,7 +615,8 @@
             </div>
 
             <!-- Player 3 Card (Hidden by default) -->
-            <div class="player-card" id="player-3-card" data-player="3" style="display: none;" aria-label="Player 3 Game Board" role="region">
+            <div class="player-card" id="player-3-card" data-player="3" style="display: none;"
+                aria-label="Player 3 Game Board" role="region">
                 <!-- Next Pieces -->
                 <div class="player-next-pieces">
                     <div class="player-next-piece highlight">
@@ -653,7 +663,8 @@
             </div>
 
             <!-- Player 4 Card (Hidden by default) -->
-            <div class="player-card" id="player-4-card" data-player="4" style="display: none;" aria-label="Player 4 Game Board" role="region">
+            <div class="player-card" id="player-4-card" data-player="4" style="display: none;"
+                aria-label="Player 4 Game Board" role="region">
                 <!-- Next Pieces -->
                 <div class="player-next-pieces">
                     <div class="player-next-piece highlight">
@@ -704,8 +715,10 @@
         <!-- Floating Settings Button -->
         <button id="settings-btn-mp" class="floating-settings-btn">
             <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2" />
+                <path
+                    d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"
+                    stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
             </svg>
         </button>
     </div>
@@ -736,7 +749,8 @@
             <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn">
                 <div class="mode-card-icon">🧘</div>
                 <h2 class="mode-card-title">Serenity</h2>
-                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing guide</p>
+                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing guide
+                </p>
                 <div class="mode-card-glow"></div>
             </div>
 
@@ -751,7 +765,9 @@
         <!-- Headphone recommendation badge -->
         <div class="headphone-badge">
             <svg class="headphone-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z" fill="currentColor"/>
+                <path
+                    d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z"
+                    fill="currentColor" />
             </svg>
             <span class="headphone-text">Headphones recommended</span>
         </div>
@@ -759,14 +775,17 @@
         <!-- Floating Settings Button -->
         <button id="settings-btn-start" class="floating-settings-btn" aria-label="Open Settings">
             <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2" />
+                <path
+                    d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"
+                    stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
             </svg>
         </button>
     </div>
 
     <!-- Serenity Hub Icon - Outside modal so it's always visible -->
-    <div id="serenity-hub-icon" class="serenity-hub-icon visible" role="button" aria-label="Open Serenity Hub" tabindex="0">
+    <div id="serenity-hub-icon" class="serenity-hub-icon visible" role="button" aria-label="Open Serenity Hub"
+        tabindex="0">
         <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
             <!-- Lotus flower icon -->
             <g class="lotus">
@@ -815,13 +834,15 @@
                         <div class="setting">
                             <label for="das-delay">DAS Delay (ms):</label>
                             <div class="slider-container">
-                                <input type="range" id="das-delay" min="50" max="300" step="10"><span id="das-delay-value">150</span>
+                                <input type="range" id="das-delay" min="50" max="300" step="10"><span
+                                    id="das-delay-value">150</span>
                             </div>
                         </div>
                         <div class="setting">
                             <label for="das-interval">DAS Interval (ms):</label>
                             <div class="slider-container">
-                                <input type="range" id="das-interval" min="10" max="100" step="5"><span id="das-interval-value">50</span>
+                                <input type="range" id="das-interval" min="10" max="100" step="5"><span
+                                    id="das-interval-value">50</span>
                             </div>
                         </div>
                     </div>
@@ -885,9 +906,11 @@
                             </select>
                         </div>
                     </div>
-                    <div style="margin-top: 20px; padding: 15px; background: rgba(100, 200, 255, 0.1); border-radius: 8px; border-left: 3px solid #64c8ff;">
+                    <div
+                        style="margin-top: 20px; padding: 15px; background: rgba(100, 200, 255, 0.1); border-radius: 8px; border-left: 3px solid #64c8ff;">
                         <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
-                            <strong>💡 Tip:</strong> Changes will apply immediately. Some settings like display mode may require a moment to take effect.
+                            <strong>💡 Tip:</strong> Changes will apply immediately. Some settings like display mode may
+                            require a moment to take effect.
                         </p>
                     </div>
                 </div>
@@ -896,13 +919,15 @@
                         <div class="setting">
                             <label for="music-volume">Music Volume:</label>
                             <div class="slider-container">
-                                <input type="range" id="music-volume" min="0" max="100" step="1"><span id="music-volume-value">100</span>
+                                <input type="range" id="music-volume" min="0" max="100" step="1"><span
+                                    id="music-volume-value">100</span>
                             </div>
                         </div>
                         <div class="setting">
                             <label for="sfx-volume">SFX Volume:</label>
                             <div class="slider-container">
-                                <input type="range" id="sfx-volume" min="0" max="100" step="1"><span id="sfx-volume-value">100</span>
+                                <input type="range" id="sfx-volume" min="0" max="100" step="1"><span
+                                    id="sfx-volume-value">100</span>
                             </div>
                         </div>
                         <div class="setting">
@@ -918,6 +943,14 @@
                                 <option value="Retro">Retro</option>
                                 <option value="Pulse">Pulse</option>
                                 <option value="Nebula">Nebula</option>
+                                <option value="Cosmic">Cosmic</option>
+                                <option value="Galaxy">Galaxy</option>
+                                <option value="Pyrestorm">Pyrestorm</option>
+                                <option value="SwedishForest">Swedish Forest</option>
+                                <option value="Bioluminescence">Bioluminescence</option>
+                                <option value="Wolfhour">Wolfhour</option>
+                                <option value="NeonDusk">Neon Dusk</option>
+                                <option value="BloodMoon">Blood Moon</option>
                             </select>
                         </div>
                         <div class="setting">
@@ -949,7 +982,8 @@
                         <div class="setting" id="random-theme-interval-setting">
                             <label for="random-theme-interval">Random Theme Interval (seconds):</label>
                             <div class="slider-container">
-                                <input type="range" id="random-theme-interval" min="10" max="300" step="10"><span id="random-theme-interval-value">60</span>
+                                <input type="range" id="random-theme-interval" min="10" max="300" step="10"><span
+                                    id="random-theme-interval-value">60</span>
                             </div>
                         </div>
                         <div class="setting" id="theme-setting">
@@ -1071,33 +1105,38 @@
                                     <button class="controls-subtab" data-subtab="gamepad1">
                                         <span class="controls-subtab-icon">🎮</span>
                                         <span class="controls-subtab-label">Player 1</span>
-                                        <span class="controls-status-dot controller-1" data-controller-status="1"></span>
+                                        <span class="controls-status-dot controller-1"
+                                            data-controller-status="1"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="gamepad2">
                                         <span class="controls-subtab-icon">🎮</span>
                                         <span class="controls-subtab-label">Player 2</span>
-                                        <span class="controls-status-dot controller-2" data-controller-status="2"></span>
+                                        <span class="controls-status-dot controller-2"
+                                            data-controller-status="2"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="gamepad3">
                                         <span class="controls-subtab-icon">🎮</span>
                                         <span class="controls-subtab-label">Player 3</span>
-                                        <span class="controls-status-dot controller-3" data-controller-status="3"></span>
+                                        <span class="controls-status-dot controller-3"
+                                            data-controller-status="3"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="gamepad4">
                                         <span class="controls-subtab-icon">🎮</span>
                                         <span class="controls-subtab-label">Player 4</span>
-                                        <span class="controls-status-dot controller-4" data-controller-status="4"></span>
+                                        <span class="controls-status-dot controller-4"
+                                            data-controller-status="4"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="serenity-gamepad">
                                         <span class="controls-subtab-icon">🧘</span>
                                         <span class="controls-subtab-label">Serenity Mode</span>
-                                        
+
                                     </button>
                                 </div>
                             </div>
                             <div class="controls-nav-footer">
                                 <button class="controls-nav-action" id="detect-controllers">Detect Controllers</button>
-                                <button class="controls-nav-action ghost" id="reset-all-bindings">Reset All Bindings</button>
+                                <button class="controls-nav-action ghost" id="reset-all-bindings">Reset All
+                                    Bindings</button>
                             </div>
                         </aside>
                         <div class="controls-content">
@@ -1121,7 +1160,8 @@
                                         </div>
                                         <div class="setting" id="gamepad-status-display">
                                             <label>Connected Controllers:</label>
-                                            <div id="gamepad-status" style="color: rgba(224, 231, 255, 0.7); font-size: 14px;">
+                                            <div id="gamepad-status"
+                                                style="color: rgba(224, 231, 255, 0.7); font-size: 14px;">
                                                 <div id="controller-1-status">Controller 1: Not connected</div>
                                                 <div id="controller-2-status">Controller 2: Not connected</div>
                                                 <div id="controller-3-status">Controller 3: Not connected</div>
@@ -1153,17 +1193,20 @@
                                 </div>
                                 <div class="controls-helper-card" id="controls-binding-helper">
                                     <h5>How rebinding works</h5>
-                                    <p>Focus any binding tile, then press a key or button to remap instantly. Conflicts will prompt you to confirm or choose a different input.</p>
+                                    <p>Focus any binding tile, then press a key or button to remap instantly. Conflicts
+                                        will prompt you to confirm or choose a different input.</p>
                                 </div>
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Use Detect Controllers whenever you plug in a new pad or wake a wireless controller to refresh status indicators.
+                                    <strong>💡 Tip:</strong> Use Detect Controllers whenever you plug in a new pad or
+                                    wake a wireless controller to refresh status indicators.
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-serenity-gamepad">
                                 <div class="serenity-controls-header">
                                     <h3>🎮 Serenity Mode Gamepad Controls</h3>
-                                    <p class="controls-description">Relaxed navigation and playback tools tailored for a controller.</p>
+                                    <p class="controls-description">Relaxed navigation and playback tools tailored for a
+                                        controller.</p>
                                 </div>
 
                                 <div class="controls-section">
@@ -1255,18 +1298,21 @@
                                 </div>
 
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see an overlay of all available controls!
+                                    <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see an
+                                    overlay of all available controls!
                                 </div>
 
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-serenity">Reset Serenity Gamepad</button>
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-serenity">Reset
+                                        Serenity Gamepad</button>
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-serenity-keyboard">
                                 <div class="serenity-controls-header">
                                     <h3>⌨️ Serenity Mode Keyboard Controls</h3>
-                                    <p class="controls-description">Keyboard shortcuts for maintaining calm flow and quick adjustments.</p>
+                                    <p class="controls-description">Keyboard shortcuts for maintaining calm flow and
+                                        quick adjustments.</p>
                                 </div>
 
                                 <div class="controls-section">
@@ -1334,11 +1380,13 @@
                                 </div>
 
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an overlay of all available keyboard controls!
+                                    <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an overlay
+                                    of all available keyboard controls!
                                 </div>
 
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="keyboard-serenity">Reset Serenity Keys</button>
+                                    <button class="controls-subtab-action" data-reset-target="keyboard-serenity">Reset
+                                        Serenity Keys</button>
                                 </div>
                             </div>
 
@@ -1374,7 +1422,8 @@
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="keyboard-player1">Reset Player 1 Keys</button>
+                                    <button class="controls-subtab-action" data-reset-target="keyboard-player1">Reset
+                                        Player 1 Keys</button>
                                 </div>
                             </div>
 
@@ -1410,7 +1459,8 @@
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="keyboard-player2">Reset Player 2 Keys</button>
+                                    <button class="controls-subtab-action" data-reset-target="keyboard-player2">Reset
+                                        Player 2 Keys</button>
                                 </div>
                             </div>
 
@@ -1418,39 +1468,48 @@
                                 <div class="settings-grid">
                                     <div class="setting">
                                         <label for="gamepad-moveLeft">Move Left:</label>
-                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left
+                                        </div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-moveRight">Move Right:</label>
-                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right
+                                        </div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                        <div id="gamepad-rotateRight" class="gamepad-input key-input" tabindex="0">A
+                                            (Cross)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                        <div id="gamepad-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
+                                            (Triangle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-flip">Flip (180°):</label>
-                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)
+                                        </div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down
+                                        </div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                        <div id="gamepad-hardDrop" class="gamepad-input key-input" tabindex="0">B
+                                            (Circle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-pause">Pause:</label>
-                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start
+                                            (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player1">Reset Player 1 Gamepad</button>
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player1">Reset
+                                        Player 1 Gamepad</button>
                                 </div>
                             </div>
 
@@ -1458,39 +1517,48 @@
                                 <div class="settings-grid">
                                     <div class="setting">
                                         <label for="gamepad-p2-moveLeft">Move Left:</label>
-                                        <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                        <div id="gamepad-p2-moveLeft" class="gamepad-input key-input" tabindex="0">
+                                            D-Left</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-moveRight">Move Right:</label>
-                                        <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                        <div id="gamepad-p2-moveRight" class="gamepad-input key-input" tabindex="0">
+                                            D-Right</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                        <div id="gamepad-p2-rotateRight" class="gamepad-input key-input" tabindex="0">A
+                                            (Cross)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                        <div id="gamepad-p2-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
+                                            (Triangle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-flip">Flip (180°):</label>
-                                        <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                        <div id="gamepad-p2-flip" class="gamepad-input key-input" tabindex="0">X
+                                            (Square)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                        <div id="gamepad-p2-softDrop" class="gamepad-input key-input" tabindex="0">
+                                            D-Down</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                        <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B
+                                            (Circle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-pause">Pause:</label>
-                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start
+                                            (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player2">Reset Player 2 Gamepad</button>
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player2">Reset
+                                        Player 2 Gamepad</button>
                                 </div>
                             </div>
 
@@ -1498,39 +1566,48 @@
                                 <div class="settings-grid">
                                     <div class="setting">
                                         <label for="gamepad-p3-moveLeft">Move Left:</label>
-                                        <div id="gamepad-p3-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                        <div id="gamepad-p3-moveLeft" class="gamepad-input key-input" tabindex="0">
+                                            D-Left</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-moveRight">Move Right:</label>
-                                        <div id="gamepad-p3-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                        <div id="gamepad-p3-moveRight" class="gamepad-input key-input" tabindex="0">
+                                            D-Right</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-p3-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                        <div id="gamepad-p3-rotateRight" class="gamepad-input key-input" tabindex="0">A
+                                            (Cross)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-p3-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                        <div id="gamepad-p3-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
+                                            (Triangle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-flip">Flip (180°):</label>
-                                        <div id="gamepad-p3-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                        <div id="gamepad-p3-flip" class="gamepad-input key-input" tabindex="0">X
+                                            (Square)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-p3-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                        <div id="gamepad-p3-softDrop" class="gamepad-input key-input" tabindex="0">
+                                            D-Down</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-p3-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                        <div id="gamepad-p3-hardDrop" class="gamepad-input key-input" tabindex="0">B
+                                            (Circle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-pause">Pause:</label>
-                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Start
+                                            (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player3">Reset Player 3 Gamepad</button>
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player3">Reset
+                                        Player 3 Gamepad</button>
                                 </div>
                             </div>
 
@@ -1538,39 +1615,48 @@
                                 <div class="settings-grid">
                                     <div class="setting">
                                         <label for="gamepad-p4-moveLeft">Move Left:</label>
-                                        <div id="gamepad-p4-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left</div>
+                                        <div id="gamepad-p4-moveLeft" class="gamepad-input key-input" tabindex="0">
+                                            D-Left</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-moveRight">Move Right:</label>
-                                        <div id="gamepad-p4-moveRight" class="gamepad-input key-input" tabindex="0">D-Right</div>
+                                        <div id="gamepad-p4-moveRight" class="gamepad-input key-input" tabindex="0">
+                                            D-Right</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-rotateRight">Rotate Right:</label>
-                                        <div id="gamepad-p4-rotateRight" class="gamepad-input key-input" tabindex="0">A (Cross)</div>
+                                        <div id="gamepad-p4-rotateRight" class="gamepad-input key-input" tabindex="0">A
+                                            (Cross)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-rotateLeft">Rotate Left:</label>
-                                        <div id="gamepad-p4-rotateLeft" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                        <div id="gamepad-p4-rotateLeft" class="gamepad-input key-input" tabindex="0">Y
+                                            (Triangle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-flip">Flip (180°):</label>
-                                        <div id="gamepad-p4-flip" class="gamepad-input key-input" tabindex="0">X (Square)</div>
+                                        <div id="gamepad-p4-flip" class="gamepad-input key-input" tabindex="0">X
+                                            (Square)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-p4-softDrop" class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                        <div id="gamepad-p4-softDrop" class="gamepad-input key-input" tabindex="0">
+                                            D-Down</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-hardDrop">Hard Drop:</label>
-                                        <div id="gamepad-p4-hardDrop" class="gamepad-input key-input" tabindex="0">B (Circle)</div>
+                                        <div id="gamepad-p4-hardDrop" class="gamepad-input key-input" tabindex="0">B
+                                            (Circle)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-pause">Pause:</label>
-                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Start
+                                            (Options)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
-                                    <button class="controls-subtab-action" data-reset-target="gamepad-player4">Reset Player 4 Gamepad</button>
+                                    <button class="controls-subtab-action" data-reset-target="gamepad-player4">Reset
+                                        Player 4 Gamepad</button>
                                 </div>
                             </div>
                         </div>
@@ -1584,7 +1670,8 @@
             <h1>HIGH SCORES</h1>
             <div class="settings-scroll-container">
                 <div id="high-scores-list" style="padding: 20px;"></div>
-                <div id="statistics-section" style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 20px;"></div>
+                <div id="statistics-section"
+                    style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 20px;"></div>
             </div>
             <button id="close-high-scores" class="action-btn">Close</button>
         </div>
@@ -1603,4 +1690,5 @@
     <!-- <script src="renderer.js"></script> -->
     <!-- <script src="script.js"></script> -->
 </body>
+
 </html>
