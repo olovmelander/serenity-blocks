@@ -195,6 +195,12 @@ export const THEME_REGISTRY = [
         group: 'abstract',
     },
     {
+        id: 'voltage-storm',
+        displayName: 'Voltage Storm',
+        module: './voltage-storm/voltage-storm-theme.js',
+        group: 'abstract',
+    },
+    {
         id: 'lunara',
         displayName: 'Lunara',
         module: './lunara/lunara-theme.js',
