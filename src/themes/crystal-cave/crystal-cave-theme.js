@@ -36,6 +36,12 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.particles = [];
         this.particles = [];
         this.energyArcs = [];
+        this.orb = {
+            angle: 0,
+            targetSpeed: 0.005,
+            currentSpeed: 0.005,
+            energy: 0
+        };
         this.resonance = 0; // 0 to 1, drives intensity
         this.targetResonance = 0;
         this.comboActive = false;
@@ -280,10 +286,12 @@ export default class CrystalCaveTheme extends BaseTheme {
             // Trigger Flare
             crystal.flare = 1.0;
 
-            // Create Energy Arc to center
+            // Spin Orb
+            this.orb.energy = Math.min(this.orb.energy + 0.3, 3.0); // Grow larger
+            this.orb.targetSpeed = Math.min(this.orb.targetSpeed + 0.05, 0.4);
+
+            // Create Energy Arc to center (Orb)
             // Calculate start point (tip of crystal)
-            // Since we rotate context, we need to manually calculate tip world pos or just approximate
-            // Approximation:
             let sx = crystal.x;
             let sy = crystal.y;
             if (crystal.side === 'top') sy += crystal.length;
@@ -293,8 +301,8 @@ export default class CrystalCaveTheme extends BaseTheme {
 
             this.energyArcs.push({
                 sx, sy,
-                ex: this.canvas.width / 2 + (Math.random() - 0.5) * 100,
-                ey: this.canvas.height / 2 + (Math.random() - 0.5) * 100,
+                ex: this.canvas.width / 2,
+                ey: this.canvas.height / 2,
                 color: crystal.color.glow,
                 life: 1.0,
                 width: 2 + Math.random() * 3
@@ -315,6 +323,12 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.targetResonance *= 0.98; // Decay target
         if (this.resonance < 0.01) this.resonance = 0;
 
+        // Orb Physics
+        this.orb.currentSpeed += (this.orb.targetSpeed - this.orb.currentSpeed) * 0.05;
+        this.orb.targetSpeed = Math.max(0.005, this.orb.targetSpeed * 0.98); // Decay speed
+        this.orb.angle += this.orb.currentSpeed;
+        this.orb.energy *= 0.98; // Decay energy
+
         // Clear & Background
         const grad = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
         grad.addColorStop(0, this.config.colors.bgTop);
@@ -332,6 +346,9 @@ export default class CrystalCaveTheme extends BaseTheme {
 
         // Draw Energy Arcs
         this.drawEnergyArcs();
+
+        // Draw Orb
+        this.drawOrb();
 
         // Vignette / Atmosphere
         this.drawAtmosphere();
@@ -444,6 +461,117 @@ export default class CrystalCaveTheme extends BaseTheme {
             this.ctx.fill();
         }
         this.ctx.globalCompositeOperation = 'source-over';
+    }
+
+    drawOrb() {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const baseSize = 40;
+        // Dynamic size based on energy
+        const size = baseSize + (this.orb.energy * 20) + (this.resonance * 10);
+
+        this.ctx.save();
+        this.ctx.translate(cx, cy);
+
+        // 1. Solid Sphere Core (3D Shading)
+        // Shift color based on energy: Deep Blue -> White/Cyan
+        const energyRatio = Math.min(this.orb.energy / 2, 1);
+
+        const coreGrad = this.ctx.createRadialGradient(-size * 0.3, -size * 0.3, 0, 0, 0, size);
+        if (energyRatio > 0.5) {
+            // High Energy: White hot center, Cyan edge
+            coreGrad.addColorStop(0, '#ffffff');
+            coreGrad.addColorStop(0.4, '#81ecec');
+            coreGrad.addColorStop(1, '#00cec9');
+        } else {
+            // Low Energy: Light Blue center, Deep Blue edge
+            coreGrad.addColorStop(0, '#74b9ff');
+            coreGrad.addColorStop(0.5, '#0984e3');
+            coreGrad.addColorStop(1, '#2d3436');
+        }
+
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, size, 0, Math.PI * 2);
+        this.ctx.fillStyle = coreGrad;
+        this.ctx.shadowBlur = 20 * energyRatio;
+        this.ctx.shadowColor = '#81ecec';
+        this.ctx.fill();
+        this.ctx.shadowBlur = 0; // Reset
+
+        // Rim Highlight
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, size, 0, Math.PI * 2);
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // 2. Thick Energy Swirls (The "Liquid" bands)
+        this.ctx.rotate(this.orb.angle);
+        const swirlCount = 3;
+
+        for (let i = 0; i < swirlCount; i++) {
+            this.ctx.rotate(Math.PI * 2 / swirlCount);
+            this.ctx.save();
+
+            // Animate expansion
+            const breathe = 1 + Math.sin(this.time * 8 + i) * 0.05;
+            this.ctx.scale(breathe, breathe);
+
+            this.ctx.beginPath();
+            // Draw a swoosh shape wrapping around
+            this.ctx.moveTo(size * 0.9, -size * 0.2);
+            // Outer curve
+            this.ctx.bezierCurveTo(
+                size * 1.6, size * 0.5,
+                size * 0.5, size * 1.6,
+                -size * 0.5, size * 1.0
+            );
+            // Inner curve back to start (tapering)
+            this.ctx.bezierCurveTo(
+                size * 0.2, size * 1.2,
+                size * 1.2, size * 0.8,
+                size * 0.9, -size * 0.2
+            );
+
+            this.ctx.fillStyle = energyRatio > 0.5 ? 'rgba(255, 255, 255, 0.9)' : 'rgba(129, 236, 236, 0.7)';
+            this.ctx.shadowBlur = 15;
+            this.ctx.shadowColor = energyRatio > 0.5 ? '#ffffff' : '#00d2d3';
+            this.ctx.fill();
+
+            this.ctx.restore();
+        }
+
+        this.ctx.restore();
+
+        // 3. Sparkles (Ignition particles)
+        if (this.orb.energy > 0.2) {
+            this.spawnOrbSparkles(cx, cy, size);
+        }
+    }
+
+    spawnOrbSparkles(x, y, radius) {
+        // Spawn rate depends on energy
+        const count = Math.floor(this.orb.energy * 1.5);
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            // Start slightly inside the orb
+            const dist = (Math.random() * 0.5 + 0.2) * radius;
+            const px = x + Math.cos(angle) * dist;
+            const py = y + Math.sin(angle) * dist;
+
+            this.particles.push({
+                x: px,
+                y: py,
+                // Explode outwards
+                vx: Math.cos(angle) * (2 + Math.random() * 4),
+                vy: Math.sin(angle) * (2 + Math.random() * 4),
+                size: Math.random() * 3 + 1,
+                life: 1.0,
+                decay: 0.03 + Math.random() * 0.03,
+                color: Math.random() > 0.5 ? '#ffffff' : '#81ecec', // White or Cyan sparks
+                isAmbient: false
+            });
+        }
     }
 
     drawEnergyArcs() {
