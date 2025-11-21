@@ -86,10 +86,10 @@ export default class AuroraTheme extends BaseTheme {
                 shootingStars: true
             },
             Extreme: {
-                starCount: 1000,
+                starCount: 900,
                 layerCount: 4,
-                stripWidth: 40,
-                overlap: 0.95,
+                stripWidth: 50,
+                overlap: 0.9,
                 noiseDetail: 3,
                 shootingStars: true
             }
