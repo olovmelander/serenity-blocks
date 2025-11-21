@@ -89,15 +89,23 @@ export default class NebulaFlowTheme extends BaseTheme {
             // Set canvas size
             this.resize(window.innerWidth, window.innerHeight);
 
-            // Get the theme container and add canvas
-            const container = document.getElementById('nebula-flow-theme');
-            if (container) {
-                container.appendChild(this.canvas);
-                this.registerContainer(container);
-            } else {
-                console.error('[NebulaFlow] Theme container not found!');
-                return;
+            // Get or create the theme container and add canvas
+            let container = document.getElementById('nebula-flow-theme');
+            if (!container) {
+                // Container was removed during cache eviction, recreate it
+                container = document.createElement('div');
+                container.id = 'nebula-flow-theme';
+                container.className = 'theme-container';
+                const backgroundContainer = document.getElementById('background-container');
+                if (backgroundContainer) {
+                    backgroundContainer.appendChild(container);
+                } else {
+                    document.body.appendChild(container);
+                }
+                console.log('[NebulaFlow] Theme container recreated');
             }
+            container.appendChild(this.canvas);
+            this.registerContainer(container);
 
             // Get quality setting (all levels use same extreme config)
             const quality = this.getQualitySetting();
