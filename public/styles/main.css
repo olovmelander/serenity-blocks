@@ -3868,7 +3868,7 @@ body {
 #summer-wildflowers-mid,
 #summer-wildflowers-front {
     position: absolute;
-    bottom: 10%;
+    bottom: 0;
     left: 0;
     width: 100%;
     height: 30%;
@@ -4251,43 +4251,117 @@ body {
     }
 }
 
-/* === COMBO 15-20: Rainbow === */
+/* === COMBO 3-4: Rainbow === */
 .summer-rainbow {
     position: absolute;
-    top: 10%;
+    top: -15%;
     left: 50%;
     transform: translateX(-50%);
-    width: 900px;
-    height: 450px;
+    width: 2000px;
+    height: 1000px;
     border-radius: 50% 50% 0 0;
     background:
-        radial-gradient(ellipse 900px 450px at 50% 100%,
+        radial-gradient(ellipse 2000px 1000px at 50% 100%,
             transparent 35%,
-            rgba(255, 0, 0, 0.3) 36%,
-            rgba(255, 0, 0, 0.3) 38%,
-            rgba(255, 165, 0, 0.3) 39%,
-            rgba(255, 165, 0, 0.3) 41%,
-            rgba(255, 255, 0, 0.3) 42%,
-            rgba(255, 255, 0, 0.3) 44%,
-            rgba(0, 255, 0, 0.3) 45%,
-            rgba(0, 255, 0, 0.3) 47%,
-            rgba(0, 0, 255, 0.3) 48%,
-            rgba(0, 0, 255, 0.3) 50%,
-            rgba(75, 0, 130, 0.3) 51%,
-            rgba(75, 0, 130, 0.3) 53%,
-            rgba(238, 130, 238, 0.3) 54%,
-            rgba(238, 130, 238, 0.3) 56%,
+            rgba(255, 0, 0, 0.6) 36%,
+            rgba(255, 0, 0, 0.6) 38%,
+            rgba(255, 165, 0, 0.55) 39%,
+            rgba(255, 165, 0, 0.55) 41%,
+            rgba(255, 255, 0, 0.5) 42%,
+            rgba(255, 255, 0, 0.5) 44%,
+            rgba(0, 255, 0, 0.5) 45%,
+            rgba(0, 255, 0, 0.5) 47%,
+            rgba(0, 120, 255, 0.55) 48%,
+            rgba(0, 120, 255, 0.55) 50%,
+            rgba(75, 0, 130, 0.6) 51%,
+            rgba(75, 0, 130, 0.6) 53%,
+            rgba(238, 130, 238, 0.55) 54%,
+            rgba(238, 130, 238, 0.55) 56%,
             transparent 57%);
     z-index: 3;
     pointer-events: none;
     opacity: 0;
-    transform: translateX(-50%) scale(0.8);
-    transition: opacity 1s ease-out, transform 1s ease-out;
+    transform: translateX(-50%) translateY(30px) scale(0.7);
+    filter: blur(20px) brightness(0.5);
+    box-shadow:
+        0 0 80px rgba(255, 255, 255, 0),
+        0 0 120px rgba(255, 200, 255, 0);
 }
 
 .summer-rainbow-active {
-    opacity: 1;
-    transform: translateX(-50%) scale(1);
+    animation: summer-rainbow-appear 1.5s ease-out forwards,
+        summer-rainbow-shimmer 3s ease-in-out 1.5s infinite;
+}
+
+@keyframes summer-rainbow-appear {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(30px) scale(0.7);
+        filter: blur(8px) brightness(0.5);
+        box-shadow:
+            0 0 80px rgba(255, 255, 255, 0),
+            0 0 120px rgba(255, 200, 255, 0);
+    }
+
+    30% {
+        opacity: 0.3;
+        filter: blur(5px) brightness(0.8);
+    }
+
+    60% {
+        opacity: 0.8;
+        transform: translateX(-50%) translateY(0) scale(0.95);
+        filter: blur(1px) brightness(1.2);
+        box-shadow:
+            0 0 100px rgba(255, 255, 255, 0.6),
+            0 0 150px rgba(255, 200, 255, 0.4);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+        filter: blur(0px) brightness(1);
+        box-shadow:
+            0 0 120px rgba(255, 255, 255, 0.8),
+            0 0 180px rgba(255, 200, 255, 0.5),
+            inset 0 0 80px rgba(255, 255, 255, 0.3);
+    }
+}
+
+@keyframes summer-rainbow-shimmer {
+
+    0%,
+    100% {
+        filter: blur(0px) brightness(1) saturate(1.2);
+        box-shadow:
+            0 0 120px rgba(255, 255, 255, 0.8),
+            0 0 180px rgba(255, 200, 255, 0.5),
+            inset 0 0 80px rgba(255, 255, 255, 0.3);
+    }
+
+    25% {
+        filter: blur(0px) brightness(1.15) saturate(1.4);
+        box-shadow:
+            0 0 140px rgba(255, 255, 255, 0.9),
+            0 0 200px rgba(255, 150, 255, 0.6),
+            inset 0 0 100px rgba(255, 255, 255, 0.4);
+    }
+
+    50% {
+        filter: blur(0px) brightness(1.2) saturate(1.5);
+        box-shadow:
+            0 0 150px rgba(255, 255, 255, 1),
+            0 0 220px rgba(200, 150, 255, 0.7),
+            inset 0 0 120px rgba(255, 255, 255, 0.5);
+    }
+
+    75% {
+        filter: blur(0px) brightness(1.15) saturate(1.4);
+        box-shadow:
+            0 0 140px rgba(255, 255, 255, 0.9),
+            0 0 200px rgba(255, 100, 200, 0.6),
+            inset 0 0 100px rgba(255, 255, 255, 0.4);
+    }
 }
 
 /* === COMBO 20-25: Bees === */
