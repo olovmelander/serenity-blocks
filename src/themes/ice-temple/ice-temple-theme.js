@@ -34,6 +34,8 @@ export default class IceTempleTheme extends BaseTheme {
         this.glacialLightning = [];
         this.iceStorm = [];
 
+        this.sprites = {};
+
         // Dynamic state
         this.auroraIntensity = 0.85;
         this.targetAuroraIntensity = 0.85;
@@ -203,6 +205,7 @@ export default class IceTempleTheme extends BaseTheme {
     async init() {
         // Theme resources are created on-demand in createScene()
         this.setupEffectsCanvas();
+        this.initSprites();
     }
 
     setupEffectsCanvas() {
@@ -770,18 +773,16 @@ export default class IceTempleTheme extends BaseTheme {
             }
 
             const opacity = wave.intensity * wave.life * (0.7 + Math.sin(wave.phase) * 0.3);
-            const gradient = this.effectsCtx.createRadialGradient(
-                this.effectsCanvas.width / 2, this.effectsCanvas.height * 0.3, 0,
-                this.effectsCanvas.width / 2, this.effectsCanvas.height * 0.3, this.effectsCanvas.width * 0.6
-            );
-            const innerOpacity = lowPerf ? opacity * 0.4 : opacity * 0.6;
-            const midOpacity = lowPerf ? opacity * 0.25 : opacity * 0.4;
-            gradient.addColorStop(0, `rgba(116, 185, 255, ${innerOpacity})`);
-            gradient.addColorStop(0.5, `rgba(85, 239, 196, ${midOpacity})`);
-            gradient.addColorStop(1, 'rgba(162, 155, 254, 0)');
 
-            this.effectsCtx.fillStyle = gradient;
-            this.effectsCtx.fillRect(0, 0, this.effectsCanvas.width, this.effectsCanvas.height);
+            // Use sprite for better performance
+            const size = this.effectsCanvas.width * 1.2;
+            const x = this.effectsCanvas.width / 2 - size / 2;
+            const y = this.effectsCanvas.height * 0.3 - size / 2;
+
+            this.effectsCtx.save();
+            this.effectsCtx.globalAlpha = lowPerf ? opacity * 0.7 : opacity;
+            this.effectsCtx.drawImage(this.sprites.aurora, x, y, size, size);
+            this.effectsCtx.restore();
         }
     }
 
@@ -802,33 +803,42 @@ export default class IceTempleTheme extends BaseTheme {
 
             const pulseOpacity = lightning.opacity * (0.75 + Math.sin(lightning.pulsePhase) * 0.25);
 
+            // Batch drawing for better performance
+            if (!lowPerf) {
+                this.effectsCtx.beginPath();
+                for (const branch of lightning.branches) {
+                    for (const segment of branch) {
+                        this.effectsCtx.moveTo(segment.x1, segment.y1);
+                        this.effectsCtx.lineTo(segment.x2, segment.y2);
+                    }
+                }
+                this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.35})`;
+                this.effectsCtx.lineWidth = 10;
+                this.effectsCtx.lineCap = 'round';
+                this.effectsCtx.stroke();
+
+                this.effectsCtx.beginPath();
+                for (const branch of lightning.branches) {
+                    for (const segment of branch) {
+                        this.effectsCtx.moveTo(segment.x1, segment.y1);
+                        this.effectsCtx.lineTo(segment.x2, segment.y2);
+                    }
+                }
+                this.effectsCtx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.65})`;
+                this.effectsCtx.lineWidth = 5;
+                this.effectsCtx.stroke();
+            }
+
+            this.effectsCtx.beginPath();
             for (const branch of lightning.branches) {
                 for (const segment of branch) {
-                    if (!lowPerf) {
-                        this.effectsCtx.beginPath();
-                        this.effectsCtx.moveTo(segment.x1, segment.y1);
-                        this.effectsCtx.lineTo(segment.x2, segment.y2);
-                        this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.35})`;
-                        this.effectsCtx.lineWidth = 10;
-                        this.effectsCtx.lineCap = 'round';
-                        this.effectsCtx.stroke();
-
-                        this.effectsCtx.beginPath();
-                        this.effectsCtx.moveTo(segment.x1, segment.y1);
-                        this.effectsCtx.lineTo(segment.x2, segment.y2);
-                        this.effectsCtx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.65})`;
-                        this.effectsCtx.lineWidth = 5;
-                        this.effectsCtx.stroke();
-                    }
-
-                    this.effectsCtx.beginPath();
                     this.effectsCtx.moveTo(segment.x1, segment.y1);
                     this.effectsCtx.lineTo(segment.x2, segment.y2);
-                    this.effectsCtx.strokeStyle = `rgba(230, 250, 255, ${pulseOpacity})`;
-                    this.effectsCtx.lineWidth = lowPerf ? 1.4 : 2;
-                    this.effectsCtx.stroke();
                 }
             }
+            this.effectsCtx.strokeStyle = `rgba(230, 250, 255, ${pulseOpacity})`;
+            this.effectsCtx.lineWidth = lowPerf ? 1.4 : 2;
+            this.effectsCtx.stroke();
         }
     }
 
@@ -888,6 +898,8 @@ export default class IceTempleTheme extends BaseTheme {
             }
 
             const sparkleIntensity = Math.sin(particle.sparkle) * 0.35 + 0.65;
+            const glowSprite = particle.color === 'cyan' ? this.sprites.glowCyan : this.sprites.glowWhite;
+            const shardSprite = particle.color === 'cyan' ? this.sprites.shardCyan : this.sprites.shardWhite;
 
             this.effectsCtx.save();
             this.effectsCtx.translate(particle.x, particle.y);
@@ -895,35 +907,11 @@ export default class IceTempleTheme extends BaseTheme {
 
             // Glow
             const glowSize = particle.size * 3.5;
-            const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-            const glowColor = particle.color === 'cyan' ? '116, 185, 255' : '200, 230, 255';
-            glowGradient.addColorStop(0, `rgba(${glowColor}, ${particle.opacity * 0.7 * sparkleIntensity})`);
-            glowGradient.addColorStop(0.5, `rgba(${glowColor}, ${particle.opacity * 0.4 * sparkleIntensity})`);
-            glowGradient.addColorStop(1, `rgba(${glowColor}, 0)`);
-            this.effectsCtx.fillStyle = glowGradient;
-            this.effectsCtx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+            this.effectsCtx.globalAlpha = particle.opacity * sparkleIntensity;
+            this.effectsCtx.drawImage(glowSprite, -glowSize, -glowSize, glowSize * 2, glowSize * 2);
 
             // Ice shard shape (hexagon)
-            this.effectsCtx.beginPath();
-            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 3) {
-                const px = Math.cos(angle) * particle.size;
-                const py = Math.sin(angle) * particle.size;
-                if (angle === 0) {
-                    this.effectsCtx.moveTo(px, py);
-                } else {
-                    this.effectsCtx.lineTo(px, py);
-                }
-            }
-            this.effectsCtx.closePath();
-            const fillColor = particle.color === 'cyan' ? `rgba(150, 215, 255, ${particle.opacity * sparkleIntensity})` : `rgba(230, 245, 255, ${particle.opacity * sparkleIntensity})`;
-            this.effectsCtx.fillStyle = fillColor;
-            this.effectsCtx.fill();
-
-            // Highlight
-            this.effectsCtx.beginPath();
-            this.effectsCtx.arc(-particle.size * 0.2, -particle.size * 0.3, particle.size * 0.4, 0, Math.PI * 2);
-            this.effectsCtx.fillStyle = `rgba(255, 255, 255, ${particle.opacity * 0.9 * sparkleIntensity})`;
-            this.effectsCtx.fill();
+            this.effectsCtx.drawImage(shardSprite, -particle.size, -particle.size, particle.size * 2, particle.size * 2);
 
             this.effectsCtx.restore();
         }
@@ -957,21 +945,12 @@ export default class IceTempleTheme extends BaseTheme {
 
             if (!lowPerf) {
                 const glowSize = crystal.size * 2.5;
-                const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-                glowGradient.addColorStop(0, `rgba(180, 220, 255, ${crystal.opacity * 0.6 * sparkleIntensity})`);
-                glowGradient.addColorStop(1, 'rgba(160, 200, 240, 0)');
-                this.effectsCtx.fillStyle = glowGradient;
-                this.effectsCtx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+                this.effectsCtx.globalAlpha = crystal.opacity * sparkleIntensity;
+                this.effectsCtx.drawImage(this.sprites.crystalGlow, -glowSize, -glowSize, glowSize * 2, glowSize * 2);
             }
 
-            this.effectsCtx.beginPath();
-            this.effectsCtx.moveTo(0, -crystal.size);
-            this.effectsCtx.lineTo(crystal.size * 0.5, 0);
-            this.effectsCtx.lineTo(0, crystal.size);
-            this.effectsCtx.lineTo(-crystal.size * 0.5, 0);
-            this.effectsCtx.closePath();
-            this.effectsCtx.fillStyle = `rgba(220, 240, 255, ${crystal.opacity * sparkleIntensity})`;
-            this.effectsCtx.fill();
+            this.effectsCtx.globalAlpha = crystal.opacity * sparkleIntensity;
+            this.effectsCtx.drawImage(this.sprites.crystal, -crystal.size * 0.5, -crystal.size, crystal.size, crystal.size * 2);
 
             this.effectsCtx.restore();
         }
@@ -1000,22 +979,160 @@ export default class IceTempleTheme extends BaseTheme {
             this.effectsCtx.rotate(particle.rotation);
 
             if (!lowPerf) {
-                const glowGradient = this.effectsCtx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2);
-                glowGradient.addColorStop(0, `rgba(200, 230, 255, ${particle.opacity * 0.5})`);
-                glowGradient.addColorStop(1, 'rgba(180, 210, 240, 0)');
-                this.effectsCtx.fillStyle = glowGradient;
-                this.effectsCtx.fillRect(-particle.size * 2, -particle.size * 2, particle.size * 4, particle.size * 4);
+                this.effectsCtx.globalAlpha = particle.opacity;
+                this.effectsCtx.drawImage(this.sprites.stormGlow, -particle.size * 2, -particle.size * 2, particle.size * 4, particle.size * 4);
             }
 
-            this.effectsCtx.beginPath();
-            this.effectsCtx.arc(0, 0, particle.size, 0, Math.PI * 2);
-            this.effectsCtx.fillStyle = `rgba(240, 250, 255, ${particle.opacity})`;
-            this.effectsCtx.fill();
+            this.effectsCtx.globalAlpha = particle.opacity;
+            this.effectsCtx.drawImage(this.sprites.storm, -particle.size, -particle.size, particle.size * 2, particle.size * 2);
 
             this.effectsCtx.restore();
         }
     }
+    initSprites() {
+        this.sprites = {
+            shardCyan: this.createShardSprite('cyan'),
+            shardWhite: this.createShardSprite('white'),
+            glowCyan: this.createGlowSprite('cyan'),
+            glowWhite: this.createGlowSprite('white'),
+            crystal: this.createCrystalSprite(),
+            crystalGlow: this.createCrystalGlowSprite(),
+            storm: this.createStormSprite(),
+            stormGlow: this.createStormGlowSprite(),
+            aurora: this.createAuroraSprite(),
+        };
+    }
 
+    createShardSprite(type) {
+        const size = 20;
+        const canvas = document.createElement('canvas');
+        canvas.width = size * 2;
+        canvas.height = size * 2;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(size, size);
+
+        ctx.beginPath();
+        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 3) {
+            const px = Math.cos(angle) * (size - 2);
+            const py = Math.sin(angle) * (size - 2);
+            if (angle === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+
+        const color = type === 'cyan' ? 'rgba(150, 215, 255, 1)' : 'rgba(230, 245, 255, 1)';
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        // Highlight
+        ctx.beginPath();
+        ctx.arc(-(size - 2) * 0.2, -(size - 2) * 0.3, (size - 2) * 0.4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fill();
+
+        return canvas;
+    }
+
+    createGlowSprite(type) {
+        const size = 40;
+        const canvas = document.createElement('canvas');
+        canvas.width = size * 2;
+        canvas.height = size * 2;
+        const ctx = canvas.getContext('2d');
+
+        const glowColor = type === 'cyan' ? '116, 185, 255' : '200, 230, 255';
+        const gradient = ctx.createRadialGradient(size, size, 0, size, size, size);
+        gradient.addColorStop(0, `rgba(${glowColor}, 0.7)`);
+        gradient.addColorStop(0.5, `rgba(${glowColor}, 0.4)`);
+        gradient.addColorStop(1, `rgba(${glowColor}, 0)`);
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size * 2, size * 2);
+        return canvas;
+    }
+
+    createCrystalSprite() {
+        const size = 20;
+        const canvas = document.createElement('canvas');
+        canvas.width = size * 2;
+        canvas.height = size * 2;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(size, size);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.5, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size * 0.5, 0);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(220, 240, 255, 1)';
+        ctx.fill();
+
+        return canvas;
+    }
+
+    createCrystalGlowSprite() {
+        const size = 40;
+        const canvas = document.createElement('canvas');
+        canvas.width = size * 2;
+        canvas.height = size * 2;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(size, size, 0, size, size, size);
+        gradient.addColorStop(0, 'rgba(180, 220, 255, 0.6)');
+        gradient.addColorStop(1, 'rgba(160, 200, 240, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size * 2, size * 2);
+        return canvas;
+    }
+
+    createStormSprite() {
+        const size = 10;
+        const canvas = document.createElement('canvas');
+        canvas.width = size * 2;
+        canvas.height = size * 2;
+        const ctx = canvas.getContext('2d');
+
+        ctx.beginPath();
+        ctx.arc(size, size, size, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(240, 250, 255, 1)';
+        ctx.fill();
+        return canvas;
+    }
+
+    createStormGlowSprite() {
+        const size = 20;
+        const canvas = document.createElement('canvas');
+        canvas.width = size * 2;
+        canvas.height = size * 2;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(size, size, 0, size, size, size);
+        gradient.addColorStop(0, 'rgba(200, 230, 255, 0.5)');
+        gradient.addColorStop(1, 'rgba(180, 210, 240, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size * 2, size * 2);
+        return canvas;
+    }
+
+    createAuroraSprite() {
+        const size = 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        gradient.addColorStop(0, 'rgba(116, 185, 255, 0.6)');
+        gradient.addColorStop(0.5, 'rgba(85, 239, 196, 0.4)');
+        gradient.addColorStop(1, 'rgba(162, 155, 254, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+        return canvas;
+    }
     createStars() {
         const container = this.getContainer('ice-temple-stars');
         if (!container) return;
