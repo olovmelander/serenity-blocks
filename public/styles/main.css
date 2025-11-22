@@ -9846,25 +9846,30 @@ body {
 
 .game-container.single-player-layout.infinity-mode-active {
     flex-direction: row;
-    align-items: stretch;
+    align-items: center;  /* Center align all panels vertically */
     justify-content: center;
-    gap: clamp(24px, 4vw, 56px);
+    /* Reduced gap to fit all panels */
+    gap: clamp(16px, 2.5vw, 40px);
     width: 100%;
     min-width: 0;
-    padding: clamp(12px, 2vh, 28px) clamp(20px, 4vw, 72px);
+    /* More conservative padding */
+    padding: clamp(10px, 1.5vh, 24px) clamp(12px, 2vw, 48px);
     box-sizing: border-box;
 }
 
 .single-player-stage.infinity-mode-active {
-    gap: clamp(24px, 3vw, 48px);
-    align-items: stretch;
+    gap: clamp(16px, 2.5vw, 40px);
+    align-items: center;  /* Center align all panels vertically */
     width: 100%;
     max-width: none;
     margin: 0;
-    padding: clamp(12px, 2vh, 32px) clamp(10px, 3vw, 48px);
-    min-height: calc(100vh - clamp(120px, 16vh, 200px));
+    /* More conservative padding to fit all panels */
+    padding: clamp(10px, 1.5vh, 24px) clamp(8px, 2vw, 32px);
+    min-height: 100vh;
+    max-height: 100vh;
     /* leave breathing room at top/bottom */
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 #single-player-container.infinity-mode-active .floating-settings-btn {
@@ -9877,39 +9882,100 @@ body {
 /* Infinity HUD - Left side */
 #single-player-container.infinity-mode-active #infinity-hud {
     order: 1;
-    align-self: flex-start;
-    max-height: clamp(320px, 70vh, 640px);
-    overflow: visible;
-    margin-top: 130px !important;
+    align-self: center;
+    /* Fit within viewport, accounting for padding and spacing */
+    max-height: calc(100vh - 120px);
+    overflow: hidden;
+    margin: 0 !important;
+    /* Scale font size to fit content */
+    font-size: clamp(9px, 0.85vw, 13px);
+    box-sizing: border-box;
+    padding: clamp(12px, 1.5vw, 20px) !important;
+}
+
+/* HUD sections - compact spacing */
+#single-player-container.infinity-mode-active #infinity-hud .hud-section {
+    margin-bottom: clamp(8px, 1vh, 12px) !important;
+    padding-bottom: clamp(6px, 0.8vh, 10px) !important;
+}
+
+/* HUD title - smaller */
+#single-player-container.infinity-mode-active #infinity-hud .hud-title {
+    font-size: clamp(11px, 1vw, 14px) !important;
+    margin-bottom: clamp(8px, 1vh, 12px) !important;
 }
 
 /* Game board - Center */
 #single-player-container.infinity-mode-active .single-player-card {
     order: 2;
+    align-self: center;
     --player-primary: #3b82f6;
     --player-primary-light: #93c5fd;
     --player-glow: rgba(59, 130, 246, 0.35);
-    --board-width: min(clamp(320px, 42vw, 420px), calc(85vh / 2));
+    /* More conservative sizing for 3-panel layout (HUD + Board + Minimap) */
+    /* Account for: next pieces (~100px), padding, margins = ~200px vertical space */
+    --board-width: min(clamp(260px, 25vw, 360px), calc((100vh - 220px) / 2));
     --board-height: calc(var(--board-width) * 2);
     flex: 0 1 auto;
-    padding: clamp(6px, 1.2vw, 14px);
-    width: calc(var(--board-width) + clamp(8px, 1.2vw, 20px));
-    max-width: calc(var(--board-width) + clamp(8px, 1.2vw, 20px));
+    padding: clamp(4px, 1vw, 12px);
+    width: calc(var(--board-width) + clamp(6px, 1vw, 16px));
+    max-width: calc(var(--board-width) + clamp(6px, 1vw, 16px));
+    /* Ensure card doesn't overflow */
+    max-height: calc(100vh - 80px);
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 #single-player-container.infinity-mode-active .single-player-body {
-    gap: clamp(6px, 1vw, 12px);
+    gap: clamp(4px, 0.8vw, 10px);
+    max-height: 100%;
+    overflow: hidden;
 }
 
 #single-player-container.infinity-mode-active .single-player-main {
-    gap: clamp(10px, 1.4vw, 18px);
+    gap: clamp(6px, 1vw, 12px);
+    max-height: 100%;
+    overflow: hidden;
+}
+
+#single-player-container.infinity-mode-active .player-next-pieces {
+    gap: clamp(4px, 0.6vw, 8px);
+    padding: clamp(4px, 0.8vw, 10px);
+}
+
+#single-player-container.infinity-mode-active .player-next-piece {
+    width: clamp(50px, 6vw, 72px);
+    height: clamp(50px, 6vw, 72px);
 }
 
 /* Infinity Minimap - Right side */
 #single-player-container.infinity-mode-active #infinity-minimap {
     order: 3;
-    align-self: flex-start;
-    margin-top: 130px !important;
+    align-self: center;
+    /* Fit within viewport, accounting for padding and title */
+    max-height: calc(100vh - 120px);
+    overflow: hidden;
+    margin: 0 !important;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    /* Ensure content fits */
+    padding: clamp(8px, 1vw, 12px) !important;
+}
+
+/* Minimap canvas - scale to fit */
+#single-player-container.infinity-mode-active #infinity-minimap canvas {
+    max-height: calc(100vh - 200px) !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain;
+}
+
+/* Minimap title - ensure visible */
+#single-player-container.infinity-mode-active #infinity-minimap .minimap-title {
+    font-size: clamp(8px, 0.7vw, 10px) !important;
+    margin-top: 0 !important;
+    margin-bottom: clamp(6px, 0.8vh, 10px) !important;
 }
 
 .single-player-stage.infinity-mode-active .single-player-stats-bar {
@@ -10016,8 +10082,10 @@ body {
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.35);
-    --board-width: 400px;
-    --board-height: 800px;
+    /* Responsive board sizing that fits viewport at any zoom level */
+    /* Calculate based on available viewport height, leaving room for UI elements */
+    --board-width: min(clamp(300px, 35vw, 400px), calc((100vh - 200px) / 2));
+    --board-height: calc(var(--board-width) * 2);
     width: auto;
     align-items: stretch;
     gap: 18px;
@@ -10173,6 +10241,12 @@ body.phaser-multiplayer-active #p2-canvas {
     .single-player-stage {
         flex-direction: column;
         max-width: calc(100% - 40px);
+        padding: 10px;
+    }
+    
+    .single-player-card {
+        /* Smaller sizing for mobile */
+        --board-width: min(clamp(280px, 80vw, 350px), calc((100vh - 250px) / 2));
     }
 
     .single-player-stats-bar {
@@ -17836,8 +17910,9 @@ body.phaser-multiplayer-active #single-player-container {
 }
 
 .player-card.single-player-card {
-    --board-width: 400px;
-    --board-height: 800px;
+    /* Responsive sizing matching .single-player-card */
+    --board-width: min(clamp(300px, 35vw, 400px), calc((100vh - 200px) / 2));
+    --board-height: calc(var(--board-width) * 2);
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.35);
@@ -19271,15 +19346,17 @@ body.serenity-mode.cursor-hidden * {
 
 .single-player-stage {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     gap: 28px;
     margin: 0 auto;
-    padding-top: 20px;
-    padding-bottom: 20px;
+    padding: 20px;
     width: fit-content;
     max-width: calc(100% - 80px);
-    min-height: calc(100vh - 40px);
+    min-height: 100vh;
+    box-sizing: border-box;
+    /* Ensure proper vertical centering */
+    overflow: hidden;
 }
 
 /* === Floating Game Mode Cards (over intro animation) === */
