@@ -3375,50 +3375,301 @@ body {
 
 /* --- Summer Theme --- */
 #summer-theme {
-    background-color: #ffefd5;
+    background: linear-gradient(to bottom,
+            #4A90E2 0%,
+            /* Deep azure blue at top */
+            #87CEEB 30%,
+            /* Sky blue */
+            #FFE4B5 70%,
+            /* Warm horizon glow */
+            #FFD700 100%);
+    /* Golden at horizon */
     overflow: hidden;
+}
+
+.summer-sky-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
 }
 
 .summer-sky {
     position: absolute;
     width: 100%;
     height: 100%;
-    background: linear-gradient(to top, #fceabb, #f8b500, #ffdd77);
+    background: linear-gradient(to bottom,
+            #4A90E2 0%,
+            #87CEEB 40%,
+            #FFE4B5 80%,
+            #FFD700 100%);
     z-index: 1;
 }
 
-.god-rays-summer {
+/* ===== SUN WITH LENS EFFECTS ===== */
+.summer-sun {
     position: absolute;
-    top: -20%;
-    left: -20%;
-    width: 140%;
-    height: 140%;
-    transform-origin: center;
-    animation: summer-god-ray-anim 80s ease-in-out infinite alternate;
+    width: 180px;
+    height: 180px;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    pointer-events: none;
+}
+
+.summer-sun-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120px;
+    height: 120px;
+    background: radial-gradient(circle,
+            #FFFFFF 0%,
+            #FFFACD 30%,
+            #FFD700 60%,
+            #FFA500 100%);
+    border-radius: 50%;
+    box-shadow:
+        0 0 40px rgba(255, 255, 255, 1),
+        0 0 80px rgba(255, 215, 0, 0.8),
+        0 0 120px rgba(255, 165, 0, 0.6),
+        0 0 160px rgba(255, 140, 0, 0.4);
+    animation: summer-sun-glow 4s ease-in-out infinite alternate;
+}
+
+@keyframes summer-sun-glow {
+    0% {
+        box-shadow:
+            0 0 40px rgba(255, 255, 255, 1),
+            0 0 80px rgba(255, 215, 0, 0.8),
+            0 0 120px rgba(255, 165, 0, 0.6),
+            0 0 160px rgba(255, 140, 0, 0.4);
+    }
+
+    100% {
+        box-shadow:
+            0 0 50px rgba(255, 255, 255, 1),
+            0 0 100px rgba(255, 215, 0, 0.9),
+            0 0 150px rgba(255, 165, 0, 0.7),
+            0 0 200px rgba(255, 140, 0, 0.5);
+    }
+}
+
+.summer-sun-pulse-combo {
+    animation: summer-sun-pulse-intense 0.5s ease-out 4 !important;
+}
+
+@keyframes summer-sun-pulse-intense {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        filter: brightness(1);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.3);
+        filter: brightness(1.5);
+    }
+}
+
+/* Sun Flares */
+#summer-sunflares {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
     z-index: 2;
+}
+
+.summer-sunflare {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    mix-blend-mode: screen;
+    animation: summer-flare-pulse 6s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes summer-flare-pulse {
+    0% {
+        opacity: 0.6;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+}
+
+/* Lens Effects Stack */
+.summer-lens-stack {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px;
+    height: 400px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 4;
+}
+
+.summer-lens-halo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 300px;
+    height: 300px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle,
+            rgba(255, 255, 255, 0.3) 0%,
+            rgba(255, 220, 150, 0.2) 40%,
+            transparent 70%);
+    border-radius: 50%;
+    animation: summer-lens-breathe 5s ease-in-out infinite alternate;
+}
+
+.summer-lens-hex {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    transform: translate(-50%, -50%) rotate(30deg);
+    background: linear-gradient(135deg,
+            rgba(255, 255, 255, 0.15) 0%,
+            transparent 50%,
+            rgba(255, 200, 100, 0.1) 100%);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    animation: summer-hex-rotate 20s linear infinite;
+}
+
+.summer-lens-bokeh {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 150px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle,
+            rgba(255, 255, 255, 0.25) 0%,
+            rgba(255, 240, 200, 0.15) 50%,
+            transparent 70%);
+    filter: blur(15px);
+    animation: summer-bokeh-float 8s ease-in-out infinite;
+}
+
+.summer-lens-spikes {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px;
+    height: 400px;
+    transform: translate(-50%, -50%);
+    background:
+        linear-gradient(0deg, transparent 48%, rgba(255, 255, 255, 0.4) 49%, rgba(255, 255, 255, 0.4) 51%, transparent 52%),
+        linear-gradient(90deg, transparent 48%, rgba(255, 255, 255, 0.4) 49%, rgba(255, 255, 255, 0.4) 51%, transparent 52%),
+        linear-gradient(45deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, rgba(255, 255, 255, 0.3) 51%, transparent 52%),
+        linear-gradient(-45deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, rgba(255, 255, 255, 0.3) 51%, transparent 52%);
+    animation: summer-spikes-rotate 30s linear infinite;
+}
+
+@keyframes summer-lens-breathe {
+    0% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+}
+
+@keyframes summer-hex-rotate {
+    from {
+        transform: translate(-50%, -50%) rotate(30deg);
+    }
+
+    to {
+        transform: translate(-50%, -50%) rotate(390deg);
+    }
+}
+
+@keyframes summer-bokeh-float {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%);
+        opacity: 0.6;
+    }
+
+    50% {
+        transform: translate(-45%, -55%);
+        opacity: 0.9;
+    }
+}
+
+@keyframes summer-spikes-rotate {
+    from {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* ===== GOD RAYS ===== */
+.summer-god-rays {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform-origin: var(--sun-x, 50%) var(--sun-y, 25%);
+    animation: summer-god-ray-rotate 120s ease-in-out infinite alternate;
+    z-index: 2;
+    pointer-events: none;
 }
 
 .summer-god-ray {
     position: absolute;
-    top: 0;
-    background: linear-gradient(to bottom, rgba(255, 250, 220, 0.25) 0%, rgba(255, 250, 220, 0) 60%);
+    top: var(--sun-y, 25%);
+    left: var(--sun-x, 50%);
+    width: var(--ray-width, 4px);
+    height: var(--ray-length, 350px);
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.4) 0%,
+            rgba(255, 245, 200, 0.3) 20%,
+            rgba(255, 230, 150, 0.15) 50%,
+            transparent 80%);
     transform-origin: top center;
-    animation: ray-breathe 8s ease-in-out infinite alternate;
+    transform: rotate(var(--ray-angle, 0deg));
+    animation: summer-ray-shimmer 8s ease-in-out infinite alternate;
+    mix-blend-mode: screen;
 }
 
-@keyframes summer-god-ray-anim {
+@keyframes summer-god-ray-rotate {
     from {
-        transform: rotate(-15deg);
+        transform: rotate(-8deg);
     }
 
     to {
-        transform: rotate(15deg);
+        transform: rotate(8deg);
     }
 }
 
-@keyframes ray-breathe {
+@keyframes summer-ray-shimmer {
     from {
-        opacity: 0.5;
+        opacity: 0.6;
     }
 
     to {
@@ -3426,6 +3677,356 @@ body {
     }
 }
 
+/* ===== CLOUDS ===== */
+#summer-clouds {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.summer-cloud {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    filter: blur(20px);
+    animation: summer-cloud-drift linear infinite;
+    opacity: 0.8;
+}
+
+@keyframes summer-cloud-drift {
+    from {
+        transform: translateX(-20vw);
+    }
+
+    to {
+        transform: translateX(120vw);
+    }
+}
+
+/* ===== POLLEN PARTICLES ===== */
+#summer-pollen-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.summer-pollen {
+    position: absolute;
+    background: rgba(255, 235, 150, 0.9);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255, 235, 150, 0.8);
+    animation: summer-pollen-float ease-in-out infinite;
+}
+
+@keyframes summer-pollen-float {
+    0% {
+        left: var(--x-start);
+        top: var(--y-start);
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        left: var(--x-end);
+        top: var(--y-end);
+        opacity: 0;
+    }
+}
+
+.summer-pollen-burst {
+    animation: summer-pollen-burst-effect 3s ease-out forwards !important;
+}
+
+@keyframes summer-pollen-burst-effect {
+    0% {
+        filter: brightness(1);
+    }
+
+    50% {
+        filter: brightness(2) saturate(2);
+    }
+
+    100% {
+        filter: brightness(1);
+    }
+}
+
+/* ===== BUTTERFLIES ===== */
+#summer-butterflies {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 6;
+    pointer-events: none;
+}
+
+.summer-butterfly {
+    position: absolute;
+    width: 30px;
+    height: 20px;
+    animation: summer-butterfly-flight ease-in-out infinite;
+}
+
+@keyframes summer-butterfly-flight {
+    0% {
+        left: var(--x-start);
+        top: var(--y-start);
+        transform: scale(1) rotate(0deg);
+    }
+
+    25% {
+        left: var(--x-mid-1);
+        top: var(--y-mid-1);
+        transform: scale(1.1) rotate(-15deg);
+    }
+
+    50% {
+        left: var(--x-mid-2);
+        top: var(--y-mid-2);
+        transform: scale(0.9) rotate(10deg);
+    }
+
+    75% {
+        left: var(--x-mid-1);
+        top: var(--y-mid-1);
+        transform: scale(1.05) rotate(-10deg);
+    }
+
+    100% {
+        left: var(--x-end);
+        top: var(--y-end);
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+.butterfly-wing {
+    position: absolute;
+    width: 14px;
+    height: 18px;
+    background: radial-gradient(ellipse at center,
+            var(--butterfly-color-1, #FF6B35) 0%,
+            var(--butterfly-color-2, #F7931E) 70%,
+            transparent 100%);
+    border-radius: 50% 50% 60% 40%;
+    transform-origin: right center;
+    animation: summer-wing-flap 0.15s ease-in-out infinite alternate;
+}
+
+.butterfly-wing-left {
+    left: 1px;
+    top: 1px;
+}
+
+.butterfly-wing-right {
+    right: 1px;
+    top: 1px;
+    transform: scaleX(-1);
+    animation-delay: 0.075s;
+}
+
+.butterfly-body {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 16px;
+    background: linear-gradient(to bottom, #3a3a3a, #1a1a1a);
+    border-radius: 2px;
+    z-index: 1;
+}
+
+@keyframes summer-wing-flap {
+    from {
+        transform: rotateY(0deg);
+    }
+
+    to {
+        transform: rotateY(60deg);
+    }
+}
+
+/* ===== WILDFLOWERS ===== */
+#summer-wildflowers-back,
+#summer-wildflowers-mid,
+#summer-wildflowers-front {
+    position: absolute;
+    bottom: 10%;
+    left: 0;
+    width: 100%;
+    height: 30%;
+    pointer-events: none;
+}
+
+#summer-wildflowers-back {
+    z-index: 4;
+}
+
+#summer-wildflowers-mid {
+    z-index: 7;
+}
+
+#summer-wildflowers-front {
+    z-index: 10;
+}
+
+.summer-flower {
+    position: absolute;
+    animation: summer-flower-sway 6s ease-in-out infinite alternate;
+    transform-origin: bottom center;
+}
+
+@keyframes summer-flower-sway {
+    from {
+        transform: rotate(-2deg);
+    }
+
+    to {
+        transform: rotate(2deg);
+    }
+}
+
+/* Sunflower */
+.summer-flower-sunflower::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 40px;
+    background: linear-gradient(to top, #5a7a3a, #7a9a5a);
+}
+
+.summer-flower-sunflower::after {
+    content: '';
+    position: absolute;
+    bottom: 35px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 25px;
+    height: 25px;
+    background: radial-gradient(circle, #8B4513 30%, #FFD700 30%, #FFA500 80%, #FF8C00 100%);
+    border-radius: 50%;
+    box-shadow: 0 0 5px rgba(255, 215, 0, 0.6);
+}
+
+/* Poppy */
+.summer-flower-poppy::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 35px;
+    background: linear-gradient(to top, #4a6a3a, #6a8a5a);
+}
+
+.summer-flower-poppy::after {
+    content: '';
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 20px;
+    background: radial-gradient(circle, #000000 20%, #FF0000 20%, #FF4040 80%, #FF6060 100%);
+    border-radius: 50%;
+}
+
+/* Daisy */
+.summer-flower-daisy::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 30px;
+    background: linear-gradient(to top, #5a7a4a, #7a9a6a);
+}
+
+.summer-flower-daisy::after {
+    content: '';
+    position: absolute;
+    bottom: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 18px;
+    background:
+        radial-gradient(circle, #FFD700 30%, transparent 30%),
+        conic-gradient(from 0deg, #FFFFFF 0deg, #FFFFFF 30deg, transparent 30deg, transparent 60deg, #FFFFFF 60deg, #FFFFFF 90deg, transparent 90deg, transparent 120deg, #FFFFFF 120deg, #FFFFFF 150deg, transparent 150deg, transparent 180deg, #FFFFFF 180deg, #FFFFFF 210deg, transparent 210deg, transparent 240deg, #FFFFFF 240deg, #FFFFFF 270deg, transparent 270deg, transparent 300deg, #FFFFFF 300deg, #FFFFFF 330deg, transparent 330deg);
+    border-radius: 50%;
+}
+
+/* Lavender */
+.summer-flower-lavender::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 45px;
+    background: linear-gradient(to top, #5a7a4a, #6a8a5a);
+}
+
+.summer-flower-lavender::after {
+    content: '';
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 20px;
+    background: linear-gradient(to top, #9370DB, #8A2BE2, #7B1FA2);
+    border-radius: 4px;
+}
+
+/* Generic wildflower */
+.summer-flower-wildflower::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 25px;
+    background: linear-gradient(to top, #5a7a4a, #7a9a6a);
+}
+
+.summer-flower-wildflower::after {
+    content: '';
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    background: radial-gradient(circle, #FFB6C1, #FF69B4);
+    border-radius: 50%;
+}
+
+/* ===== DANDELION SEEDS ===== */
 .dandelion-seed {
     position: absolute;
     width: 20px;
@@ -3433,7 +4034,7 @@ body {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="1" fill="rgba(255,255,255,0.8)"/><line x1="10" y1="10" x2="5" y2="5" stroke="rgba(255,255,255,0.8)" stroke-width="0.5"/><line x1="10" y1="10" x2="15" y2="5" stroke="rgba(255,255,255,0.8)" stroke-width="0.5"/><line x1="10" y1="10" x2="5" y2="15" stroke="rgba(255,255,255,0.8)" stroke-width="0.5"/><line x1="10" y1="10" x2="15" y2="15" stroke="rgba(255,255,255,0.8)" stroke-width="0.5"/></svg>');
     background-size: contain;
     animation: float-seed-realistic 20s ease-in-out infinite;
-    z-index: 4;
+    z-index: 8;
 }
 
 @keyframes float-seed-realistic {
@@ -3460,60 +4061,97 @@ body {
     }
 }
 
+/* ===== HEAT HAZE ===== */
 .heat-haze {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="haze"><feTurbulence type="turbulence" baseFrequency="0.01 0.03" numOctaves="1" result="turbulence"/><feDisplacementMap in2="turbulence" in="SourceGraphic" scale="5" xChannelSelector="R" yChannelSelector="G"/></filter><rect width="200" height="200" fill="transparent" filter="url(%23haze)"/></svg>');
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="haze"><feTurbulence type="turbulence" baseFrequency="0.01 0.03" numOctaves="1" result="turbulence"/><feDisplacementMap in2="turbulence" in="SourceGraphic" scale="8" xChannelSelector="R" yChannelSelector="G"/></filter><rect width="200" height="200" fill="transparent" filter="url(%23haze)"/></svg>');
     background-size: 200px 200px;
-    animation: heat-haze-shimmer 10s linear infinite alternate;
-    z-index: 5;
+    animation: heat-haze-shimmer 12s linear infinite alternate;
+    z-index: 9;
+    pointer-events: none;
+    opacity: 0.3;
 }
 
 @keyframes heat-haze-shimmer {
     0% {
         background-position: 0% 0%;
-        opacity: 0.1;
+        opacity: 0.2;
     }
 
     50% {
-        opacity: 0.4;
+        opacity: 0.5;
     }
 
     100% {
         background-position: 100% 100%;
-        opacity: 0.1;
+        opacity: 0.2;
     }
 }
 
+/* ===== GRASS ===== */
 .summer-grass {
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 15%;
-    z-index: 3;
+    height: 20%;
+    z-index: 11;
+    pointer-events: none;
 }
 
 .summer-grass-blade {
     position: absolute;
     bottom: 0;
     width: 2px;
-    background: linear-gradient(to top, #c4a464, #e6d8a8);
+    background: linear-gradient(to top, #5a8a3a, #8ac66a, #b4e89a);
     border-radius: 2px 2px 0 0;
     transform-origin: bottom center;
-    animation: summer-sway 7s ease-in-out infinite alternate;
+    animation: summer-grass-sway 7s ease-in-out infinite alternate;
 }
 
-@keyframes summer-sway {
+@keyframes summer-grass-sway {
     from {
-        transform: rotate(-3deg);
+        transform: rotate(-4deg);
     }
 
     to {
-        transform: rotate(3deg);
+        transform: rotate(4deg);
+    }
+}
+
+/* ===== COMBO EFFECTS ===== */
+.summer-magic-mode .summer-sun-core {
+    animation: summer-magic-sun 1s ease-in-out infinite !important;
+}
+
+.summer-magic-mode .summer-pollen {
+    filter: brightness(2) saturate(2);
+}
+
+.summer-magic-mode .summer-butterfly {
+    filter: drop-shadow(0 0 10px rgba(255, 200, 100, 0.8));
+}
+
+.summer-magic-mode .summer-flower {
+    filter: brightness(1.5) saturate(1.5);
+    animation-duration: 2s !important;
+}
+
+@keyframes summer-magic-sun {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        filter: brightness(1) saturate(1);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.2);
+        filter: brightness(1.8) saturate(1.5);
     }
 }
 
