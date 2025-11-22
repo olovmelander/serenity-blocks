@@ -30,11 +30,12 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.stormBrightness = 0; // 0-1, current brightness
         this.targetBrightness = 0; // Target brightness to fade to
 
-        // Ambient wave state - puff pattern with reset
+        // Ambient wave state - puff pattern with natural dissipation
         this.ambientWaveTimer = 0;
-        this.AMBIENT_WAVE_INTERVAL = 8.0; // Longer interval for complete dissipation
+        this.AMBIENT_WAVE_INTERVAL = 30.0; // Time between wave cycles
         this.waveResetTimer = 0;
-        this.WAVE_RESET_INTERVAL = 7.5; // Reset slightly before next wave
+        this.WAVE_RESET_INTERVAL = 5.0; // Mark when waves have naturally dissipated
+        this.isCalm = true; // Track if ocean is in calm state
 
         console.log('[LuminousTides] Constructor called');
     }
@@ -141,9 +142,9 @@ export default class LuminousTidesTheme extends BaseTheme {
             DEEP_COLOR: { r: 0.02, g: 0.08, b: 0.15 },     // Very dark depths
 
             // Wave physics for puff pattern - stormy ocean waves
-            WAVE_DAMPING: 0.92,              // High damping for fast dissipation (like fluid)
-            SURFACE_TENSION: 0.03,           // Higher tension keeps waves localized
-            DISPLACEMENT_SCALE: 2.0,         // More dramatic wave height for storm feeling
+            WAVE_DAMPING: 0.82,              // Very high damping for fast dissipation
+            SURFACE_TENSION: 0.04,           // Higher tension keeps waves localized
+            DISPLACEMENT_SCALE: 2.2,         // Slightly more dramatic to compensate for faster fade
             GRAVITY: 9.8,
 
             // Minimal effects - focus on wave simulation
@@ -244,15 +245,20 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Simple ripple for single line clear - stormy wave puff
+     * Simple ripple for single line clear - stormy wave puff from random location
      */
     createSimpleRipple() {
-        const x = 0.3 + Math.random() * 0.4;
-        const y = 0.3 + Math.random() * 0.4;
+        // Spawn from completely random position - anywhere on screen
+        const x = 0.1 + Math.random() * 0.8;
+        const y = 0.1 + Math.random() * 0.8;
+
+        // Highly varied radius and amplitude for unique waves each time
+        const radius = 0.08 + Math.random() * 0.18; // 0.08-0.26 (much wider range)
+        const amplitude = 0.6 + Math.random() * 0.8; // 0.6-1.4 (more dramatic variation)
 
         this.simulator.createSwell(x, y, {
-            radius: 0.15,
-            amplitude: 1.0  // More dramatic for storm feeling
+            radius: radius,
+            amplitude: amplitude
         });
 
         // Flash storm light
@@ -260,92 +266,145 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Wave puffs for double/triple line clears - storm surge
+     * Wave puffs for double/triple line clears - storm surge from multiple directions
      */
     createMultiLineWaves(lineCount) {
-        const puffCount = lineCount * 3; // More waves for storm effect
+        const puffCount = lineCount * 2; // Reduced waves for faster dissipation
 
         // Stronger storm flash for multi-line
         this.flashStormLight(0.18);
 
         for (let i = 0; i < puffCount; i++) {
             setTimeout(() => {
-                const x = 0.2 + Math.random() * 0.6;
-                const y = 0.2 + Math.random() * 0.6;
+                // Random position across entire screen
+                const x = 0.05 + Math.random() * 0.9;
+                const y = 0.05 + Math.random() * 0.9;
+
+                // Wide variation for each wave - mix of small ripples and large swells
+                const radius = 0.08 + Math.random() * 0.20; // 0.08-0.28
+                const amplitude = 0.7 + Math.random() * 1.0; // 0.7-1.7
 
                 this.simulator.createSwell(x, y, {
-                    radius: 0.16,
-                    amplitude: 1.2  // Stormy intensity
+                    radius: radius,
+                    amplitude: amplitude
                 });
-            }, i * 100);  // Faster succession for storm feeling
+            }, i * 120);  // Slightly slower succession
         }
     }
 
     /**
-     * Dramatic puff cascade for Tetris (4 lines) - massive storm
+     * Dramatic puff cascade for Tetris (4 lines) - massive storm from all directions
      */
     createTetrisCascade() {
-        const puffCount = 15;  // More waves for dramatic storm
+        const puffCount = 10;  // Reduced for faster dissipation
 
         // Dramatic storm lightning for Tetris
         this.flashStormLight(0.3);
 
         for (let i = 0; i < puffCount; i++) {
             setTimeout(() => {
-                const x = 0.15 + Math.random() * 0.7;
-                const y = 0.15 + Math.random() * 0.7;
+                // Completely random positions - spawn from edges and center
+                const edgeRoll = Math.random();
+                let x, y;
+                
+                if (edgeRoll < 0.3) {
+                    // Spawn from edges (30% chance)
+                    const edge = Math.floor(Math.random() * 4);
+                    switch(edge) {
+                        case 0: x = Math.random(); y = 0.05; break; // Top
+                        case 1: x = Math.random(); y = 0.95; break; // Bottom
+                        case 2: x = 0.05; y = Math.random(); break; // Left
+                        case 3: x = 0.95; y = Math.random(); break; // Right
+                    }
+                } else {
+                    // Spawn randomly anywhere (70% chance)
+                    x = 0.05 + Math.random() * 0.9;
+                    y = 0.05 + Math.random() * 0.9;
+                }
+
+                // Extremely varied waves - from tiny ripples to massive swells
+                const radius = 0.10 + Math.random() * 0.28; // 0.10-0.38 (huge range)
+                const amplitude = 1.0 + Math.random() * 1.5; // 1.0-2.5 (dramatic variation)
 
                 this.simulator.createSwell(x, y, {
-                    radius: 0.22,
-                    amplitude: 1.8  // Massive storm waves
+                    radius: radius,
+                    amplitude: amplitude
                 });
 
                 // Additional flashes during cascade
                 if (i % 3 === 0) {
                     this.flashStormLight(0.2);
                 }
-            }, i * 80);  // Rapid succession for tempest effect
+            }, i * 100);  // Slightly slower for less overlap
         }
     }
 
     /**
-     * React to combos with bursts of storm wave puffs
+     * React to combos with bursts of storm wave puffs from all directions
      */
     onCombo(comboCount) {
         if (!this.simulator) return;
 
-        const puffCount = Math.min(comboCount + 5, 15);  // More waves for storm
+        const puffCount = Math.min(comboCount + 3, 10);  // Reduced for faster dissipation
 
         // Escalating storm flash based on combo
         this.flashStormLight(0.15 + (comboCount * 0.02));
 
-        // Random storm puffs across the screen
+        // Create waves radiating from different quadrants
         for (let i = 0; i < puffCount; i++) {
             setTimeout(() => {
-                const x = 0.2 + Math.random() * 0.6;
-                const y = 0.2 + Math.random() * 0.6;
+                // Choose random quadrant and position within it
+                const quadrant = Math.floor(Math.random() * 4);
+                let x, y;
+                
+                switch(quadrant) {
+                    case 0: // Top-left
+                        x = 0.05 + Math.random() * 0.45;
+                        y = 0.05 + Math.random() * 0.45;
+                        break;
+                    case 1: // Top-right
+                        x = 0.5 + Math.random() * 0.45;
+                        y = 0.05 + Math.random() * 0.45;
+                        break;
+                    case 2: // Bottom-left
+                        x = 0.05 + Math.random() * 0.45;
+                        y = 0.5 + Math.random() * 0.45;
+                        break;
+                    case 3: // Bottom-right
+                        x = 0.5 + Math.random() * 0.45;
+                        y = 0.5 + Math.random() * 0.45;
+                        break;
+                }
+
+                // Highly varied waves - each combo wave looks different
+                const radius = 0.09 + Math.random() * 0.18; // 0.09-0.27 (wide range)
+                const amplitude = 1.0 + (comboCount * 0.12) + (Math.random() * 0.8); // More variation
 
                 this.simulator.createSwell(x, y, {
-                    radius: 0.17,
-                    amplitude: 1.3 + (comboCount * 0.15)  // Escalating storm
+                    radius: radius,
+                    amplitude: amplitude
                 });
-            }, i * 70);  // Faster for storm urgency
+            }, i * 90);  // Slower to reduce overlap
         }
     }
 
     /**
-     * React to piece locks with ripple - like rain on water
+     * React to piece locks with ripple - like rain on water from random location
      */
     onPieceLock() {
         if (!this.simulator) return;
 
-        // Rain-like ripple on stormy ocean
-        const x = 0.3 + Math.random() * 0.4;
-        const y = 0.3 + Math.random() * 0.4;
+        // Rain-like ripple anywhere on stormy ocean
+        const x = 0.1 + Math.random() * 0.8;
+        const y = 0.1 + Math.random() * 0.8;
+
+        // Varied ripple sizes - from tiny droplets to larger splashes
+        const radius = 0.05 + Math.random() * 0.12; // 0.05-0.17 (wider range)
+        const amplitude = 0.4 + Math.random() * 0.6; // 0.4-1.0 (more variation)
 
         this.simulator.createSwell(x, y, {
-            radius: 0.10,
-            amplitude: 0.6  // More noticeable on dark water
+            radius: radius,
+            amplitude: amplitude
         });
 
         // Subtle light ripple
@@ -353,21 +412,33 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Add initial wave puffs for visual presence - stormy start
+     * Add initial wave puffs for visual presence - stormy start from different directions
      */
     addInitialWaves() {
         if (!this.simulator) return;
 
-        // Start with stormy wave presence
+        // Start with stormy wave presence from different corners
         setTimeout(() => {
-            for (let i = 0; i < 3; i++) {
+            const corners = [
+                [0.15, 0.15], // Top-left
+                [0.85, 0.15], // Top-right
+                [0.5, 0.85]   // Bottom-center
+            ];
+
+            for (let i = 0; i < corners.length; i++) {
                 setTimeout(() => {
-                    const x = 0.2 + Math.random() * 0.6;
-                    const y = 0.2 + Math.random() * 0.6;
+                    const [baseX, baseY] = corners[i];
+                    // Add small random offset from corner
+                    const x = baseX + (Math.random() - 0.5) * 0.2;
+                    const y = baseY + (Math.random() - 0.5) * 0.2;
+
+                    // Each initial wave looks different
+                    const radius = 0.12 + Math.random() * 0.15; // 0.12-0.27 (varied)
+                    const amplitude = 0.8 + Math.random() * 0.6; // 0.8-1.4 (varied)
 
                     this.simulator.createSwell(x, y, {
-                        radius: 0.18,
-                        amplitude: 1.0  // Immediate storm presence
+                        radius: radius,
+                        amplitude: amplitude
                     });
                 }, i * 180);
             }
@@ -375,27 +446,50 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Create ambient waves periodically - stormy ocean swells
+     * Create ambient waves periodically - stormy ocean swells from varied locations
      */
     createAmbientWave() {
         if (!this.simulator) return;
 
+        // Mark that we're no longer calm
+        this.isCalm = false;
+
         // Gentle ambient storm flash
         this.flashStormLight(0.10);
 
-        // Create storm swells that roll across the dark ocean
-        const puffCount = 3 + Math.floor(Math.random() * 3); // 3-5 puffs
+        // Create storm swells from different areas - fewer waves for cleaner dissipation
+        const puffCount = 2 + Math.floor(Math.random() * 2); // 2-3 puffs (reduced from 3-5)
 
         for (let i = 0; i < puffCount; i++) {
             setTimeout(() => {
-                const x = 0.2 + Math.random() * 0.6;
-                const y = 0.2 + Math.random() * 0.6;
+                // Sometimes spawn from edges, sometimes from center
+                const fromEdge = Math.random() < 0.4;
+                let x, y;
+                
+                if (fromEdge) {
+                    // Spawn near an edge
+                    const side = Math.floor(Math.random() * 4);
+                    switch(side) {
+                        case 0: x = 0.05 + Math.random() * 0.2; y = Math.random(); break; // Left edge
+                        case 1: x = 0.75 + Math.random() * 0.2; y = Math.random(); break; // Right edge
+                        case 2: x = Math.random(); y = 0.05 + Math.random() * 0.2; break; // Top edge
+                        case 3: x = Math.random(); y = 0.75 + Math.random() * 0.2; break; // Bottom edge
+                    }
+                } else {
+                    // Random center position
+                    x = 0.15 + Math.random() * 0.7;
+                    y = 0.15 + Math.random() * 0.7;
+                }
+
+                // Highly varied ambient waves - some gentle, some stronger
+                const radius = 0.10 + Math.random() * 0.15; // 0.10-0.25 (wider range)
+                const amplitude = 0.7 + Math.random() * 0.7; // 0.7-1.4 (more variation)
 
                 this.simulator.createSwell(x, y, {
-                    radius: 0.18,
-                    amplitude: 1.2  // Stronger ambient storm presence
+                    radius: radius,
+                    amplitude: amplitude
                 });
-            }, i * 140);
+            }, i * 160);
         }
     }
 
@@ -405,9 +499,10 @@ export default class LuminousTidesTheme extends BaseTheme {
     resetWaveField() {
         if (!this.simulator) return;
 
-        // The wave simulator will naturally dissipate with high damping
-        // This is just a marker for when we've completed a cycle
-        console.log('[LuminousTides] Wave cycle complete - ready for new puff');
+        // Let waves naturally dissipate - no forced clear
+        // The high damping will fade them out smoothly
+        this.isCalm = true;
+        console.log('[LuminousTides] Waves naturally dissipating...');
     }
 
     /**
@@ -512,6 +607,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.waveResetTimer = 0;
         this.stormBrightness = 0;
         this.targetBrightness = 0;
+        this.isCalm = true;
 
         // Call parent cleanup
         super.cleanup();
