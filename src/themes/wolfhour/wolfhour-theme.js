@@ -374,7 +374,7 @@ export default class WolfhourTheme extends BaseTheme {
         const nebulaBack = this.getContainer('wolfhour-nebula-back');
         if (nebulaBack) {
             const quality = this.getGraphicsQuality();
-            const cacheKey = `wolfhour-nebula-back-2000x800-${quality}-v2`;
+            const cacheKey = `wolfhour-nebula-back-2000x800-${quality}-v3`;
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -394,9 +394,9 @@ export default class WolfhourTheme extends BaseTheme {
                     const radius = rng() * 200 + 100;
                     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
                     const opacity = rng() * 0.15 + 0.05;
-                    gradient.addColorStop(0, `rgba(100, 120, 180, ${opacity})`);
-                    gradient.addColorStop(0.5, `rgba(80, 90, 140, ${opacity * 0.5})`);
-                    gradient.addColorStop(1, 'rgba(40, 40, 60, 0)');
+                    gradient.addColorStop(0, `rgba(180, 185, 190, ${opacity})`);
+                    gradient.addColorStop(0.5, `rgba(140, 145, 150, ${opacity * 0.5})`);
+                    gradient.addColorStop(1, 'rgba(50, 50, 55, 0)');
                     ctx.fillStyle = gradient;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
@@ -410,7 +410,7 @@ export default class WolfhourTheme extends BaseTheme {
         const nebulaMid = this.getContainer('wolfhour-nebula-mid');
         if (nebulaMid) {
             const quality = this.getGraphicsQuality();
-            const cacheKey = `wolfhour-nebula-mid-2000x800-${quality}-v2`;
+            const cacheKey = `wolfhour-nebula-mid-2000x800-${quality}-v3`;
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -430,9 +430,9 @@ export default class WolfhourTheme extends BaseTheme {
                     const radius = rng() * 250 + 150;
                     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
                     const opacity = rng() * 0.2 + 0.1;
-                    gradient.addColorStop(0, `rgba(140, 160, 220, ${opacity})`);
-                    gradient.addColorStop(0.5, `rgba(100, 110, 180, ${opacity * 0.6})`);
-                    gradient.addColorStop(1, 'rgba(60, 60, 90, 0)');
+                    gradient.addColorStop(0, `rgba(210, 215, 220, ${opacity})`);
+                    gradient.addColorStop(0.5, `rgba(170, 175, 180, ${opacity * 0.6})`);
+                    gradient.addColorStop(1, 'rgba(80, 80, 85, 0)');
                     ctx.fillStyle = gradient;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
@@ -510,7 +510,7 @@ export default class WolfhourTheme extends BaseTheme {
         // 6. Create jagged mountain silhouettes (with caching)
         const mountainsDistant = this.getContainer('wolfhour-mountains-distant');
         if (mountainsDistant) {
-            const cacheKey = 'wolfhour-mountains-distant-4000x800-v2';
+            const cacheKey = 'wolfhour-mountains-distant-4000x800-v3';
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -525,7 +525,7 @@ export default class WolfhourTheme extends BaseTheme {
                 canvas.height = 800;
                 const ctx = canvas.getContext('2d');
 
-                ctx.fillStyle = '#2b3040';
+                ctx.fillStyle = '#303030';
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
 
@@ -548,7 +548,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         const mountainsFore = this.getContainer('wolfhour-mountains-fore');
         if (mountainsFore) {
-            const cacheKey = 'wolfhour-mountains-fore-4000x600-v2';
+            const cacheKey = 'wolfhour-mountains-fore-4000x600-v3';
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -563,7 +563,7 @@ export default class WolfhourTheme extends BaseTheme {
                 canvas.height = 600;
                 const ctx = canvas.getContext('2d');
 
-                ctx.fillStyle = '#0f111a';
+                ctx.fillStyle = '#151515';
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
 
@@ -816,8 +816,8 @@ export default class WolfhourTheme extends BaseTheme {
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 size: Math.random() * 4 + 2,
-                hue: (Math.random() * 60 + 200) + (intensity * 15), // Blue -> Purple -> Pink based on intensity
-                brightness: Math.random() * 40 + 60,
+                hue: 210 + Math.random() * 20, // Silver/Cool White
+                brightness: Math.random() * 20 + 80,
             });
         }
         return particles;
@@ -1159,12 +1159,12 @@ export default class WolfhourTheme extends BaseTheme {
                 // Simple fill for better performance - only use gradients on high performance
                 if (useComplexGradients) {
                     const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, currentSize);
-                    gradient.addColorStop(0, `hsla(${p.hue}, 90%, ${p.brightness + 20}%, ${opacity})`);
-                    gradient.addColorStop(0.5, `hsla(${p.hue}, 85%, ${p.brightness}%, ${opacity * 0.7})`);
-                    gradient.addColorStop(1, `hsla(${p.hue}, 70%, ${p.brightness - 10}%, 0)`);
+                    gradient.addColorStop(0, `hsla(${p.hue}, 10%, ${p.brightness + 10}%, ${opacity})`);
+                    gradient.addColorStop(0.5, `hsla(${p.hue}, 5%, ${p.brightness}%, ${opacity * 0.7})`);
+                    gradient.addColorStop(1, `hsla(${p.hue}, 0%, ${p.brightness - 10}%, 0)`);
                     ctx.fillStyle = gradient;
                 } else {
-                    ctx.fillStyle = `hsla(${p.hue}, 85%, ${p.brightness}%, ${opacity})`;
+                    ctx.fillStyle = `hsla(${p.hue}, 5%, ${p.brightness}%, ${opacity})`;
                 }
 
                 ctx.beginPath();
@@ -1174,10 +1174,10 @@ export default class WolfhourTheme extends BaseTheme {
                 // Add glow only if enabled and performance is good
                 if (useShadows) {
                     ctx.shadowBlur = 15 * currentLife;
-                    ctx.shadowColor = `hsla(${p.hue}, 90%, ${p.brightness}%, ${opacity * 0.4})`;
+                    ctx.shadowColor = `hsla(${p.hue}, 10%, ${p.brightness}%, ${opacity * 0.4})`;
 
                     // Draw bright core with shadow
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, 95%, ${opacity})`;
+                    ctx.fillStyle = `hsla(${p.hue}, 0%, 95%, ${opacity})`;
                     ctx.beginPath();
                     ctx.arc(p.x, p.y, currentSize * 0.4, 0, Math.PI * 2);
                     ctx.fill();
@@ -1185,7 +1185,7 @@ export default class WolfhourTheme extends BaseTheme {
                     ctx.shadowBlur = 0;
                 } else {
                     // Draw bright core without shadow
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, 95%, ${opacity})`;
+                    ctx.fillStyle = `hsla(${p.hue}, 0%, 95%, ${opacity})`;
                     ctx.beginPath();
                     ctx.arc(p.x, p.y, currentSize * 0.4, 0, Math.PI * 2);
                     ctx.fill();
@@ -1224,10 +1224,10 @@ export default class WolfhourTheme extends BaseTheme {
                 const outerRadius = currentRadius + 6;
 
                 const gradient = ctx.createRadialGradient(wave.x, wave.y, innerRadius, wave.x, wave.y, outerRadius);
-                gradient.addColorStop(0, `hsla(${wave.hue}, 10%, 85%, 0)`);
-                gradient.addColorStop(0.4, `hsla(${wave.hue}, 15%, 90%, ${ringOpacity * 0.6})`);
-                gradient.addColorStop(0.6, `hsla(${wave.hue}, 18%, 92%, ${ringOpacity})`);
-                gradient.addColorStop(1, `hsla(${wave.hue}, 10%, 85%, 0)`);
+                gradient.addColorStop(0, `hsla(${wave.hue}, 0%, 85%, 0)`);
+                gradient.addColorStop(0.4, `hsla(${wave.hue}, 5%, 90%, ${ringOpacity * 0.6})`);
+                gradient.addColorStop(0.6, `hsla(${wave.hue}, 10%, 92%, ${ringOpacity})`);
+                gradient.addColorStop(1, `hsla(${wave.hue}, 0%, 85%, 0)`);
 
                 ctx.strokeStyle = gradient;
                 ctx.lineWidth = wave.thickness;
@@ -1330,10 +1330,10 @@ export default class WolfhourTheme extends BaseTheme {
                     pulse.y,
                     pulse.radius + 40,
                 );
-                outerGradient.addColorStop(0, `hsla(${pulse.hue}, 70%, 85%, 0)`);
-                outerGradient.addColorStop(0.3, `hsla(${pulse.hue}, 80%, 90%, ${pulse.opacity * 0.25})`);
-                outerGradient.addColorStop(0.7, `hsla(${pulse.hue}, 75%, 85%, ${pulse.opacity * 0.4})`);
-                outerGradient.addColorStop(1, `hsla(${pulse.hue}, 60%, 80%, 0)`);
+                outerGradient.addColorStop(0, `hsla(${pulse.hue}, 10%, 85%, 0)`);
+                outerGradient.addColorStop(0.3, `hsla(${pulse.hue}, 15%, 90%, ${pulse.opacity * 0.25})`);
+                outerGradient.addColorStop(0.7, `hsla(${pulse.hue}, 10%, 85%, ${pulse.opacity * 0.4})`);
+                outerGradient.addColorStop(1, `hsla(${pulse.hue}, 5%, 80%, 0)`);
 
                 this.effectCtx.fillStyle = outerGradient;
                 this.effectCtx.beginPath();
@@ -1350,10 +1350,10 @@ export default class WolfhourTheme extends BaseTheme {
                 pulse.y,
                 pulse.radius + 15,
             );
-            gradient.addColorStop(0, `hsla(${pulse.hue}, 70%, 85%, 0)`);
-            gradient.addColorStop(0.4, `hsla(${pulse.hue}, 85%, 92%, ${pulse.opacity * 0.8})`);
-            gradient.addColorStop(0.6, `hsla(${pulse.hue}, 85%, 90%, ${pulse.opacity})`);
-            gradient.addColorStop(1, `hsla(${pulse.hue}, 70%, 85%, 0)`);
+            gradient.addColorStop(0, `hsla(${pulse.hue}, 10%, 85%, 0)`);
+            gradient.addColorStop(0.4, `hsla(${pulse.hue}, 15%, 92%, ${pulse.opacity * 0.8})`);
+            gradient.addColorStop(0.6, `hsla(${pulse.hue}, 15%, 90%, ${pulse.opacity})`);
+            gradient.addColorStop(1, `hsla(${pulse.hue}, 10%, 85%, 0)`);
 
             this.effectCtx.fillStyle = gradient;
             this.effectCtx.beginPath();
@@ -1363,9 +1363,9 @@ export default class WolfhourTheme extends BaseTheme {
             // Add bright inner ring (quality-based)
             if (useShadows) {
                 this.effectCtx.shadowBlur = 25;
-                this.effectCtx.shadowColor = `hsla(${pulse.hue}, 90%, 95%, ${pulse.opacity * 0.5})`;
+                this.effectCtx.shadowColor = `hsla(${pulse.hue}, 10%, 95%, ${pulse.opacity * 0.5})`;
             }
-            this.effectCtx.strokeStyle = `hsla(${pulse.hue}, 95%, 95%, ${pulse.opacity})`;
+            this.effectCtx.strokeStyle = `hsla(${pulse.hue}, 5%, 95%, ${pulse.opacity})`;
             this.effectCtx.lineWidth = 2;
             this.effectCtx.beginPath();
             this.effectCtx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
@@ -1394,7 +1394,7 @@ export default class WolfhourTheme extends BaseTheme {
 
             if (useComplexGradients) {
                 // Draw outer glow line (complex version)
-                this.effectCtx.strokeStyle = `hsla(${line.hue}, 80%, 80%, ${opacity * 0.25})`;
+                this.effectCtx.strokeStyle = `hsla(${line.hue}, 10%, 80%, ${opacity * 0.25})`;
                 this.effectCtx.lineWidth = 4;
                 this.effectCtx.beginPath();
                 this.effectCtx.moveTo(line.x1, line.y1);
@@ -1403,7 +1403,7 @@ export default class WolfhourTheme extends BaseTheme {
             }
 
             // Draw main mystical connecting line
-            this.effectCtx.strokeStyle = `hsla(${line.hue}, 85%, 80%, ${opacity * 0.7})`;
+            this.effectCtx.strokeStyle = `hsla(${line.hue}, 15%, 80%, ${opacity * 0.7})`;
             this.effectCtx.lineWidth = 2;
             this.effectCtx.beginPath();
             this.effectCtx.moveTo(line.x1, line.y1);
@@ -1413,9 +1413,9 @@ export default class WolfhourTheme extends BaseTheme {
             // Draw bright core line (with optional shadow)
             if (useShadows) {
                 this.effectCtx.shadowBlur = 10;
-                this.effectCtx.shadowColor = `hsla(${line.hue}, 90%, 85%, ${opacity * 0.6})`;
+                this.effectCtx.shadowColor = `hsla(${line.hue}, 10%, 85%, ${opacity * 0.6})`;
             }
-            this.effectCtx.strokeStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
+            this.effectCtx.strokeStyle = `hsla(${line.hue}, 5%, 90%, ${opacity})`;
             this.effectCtx.lineWidth = 1;
             this.effectCtx.beginPath();
             this.effectCtx.moveTo(line.x1, line.y1);
@@ -1427,7 +1427,7 @@ export default class WolfhourTheme extends BaseTheme {
                 if (useShadows) {
                     this.effectCtx.shadowBlur = 12;
                 }
-                this.effectCtx.fillStyle = `hsla(${line.hue}, 95%, 90%, ${opacity})`;
+                this.effectCtx.fillStyle = `hsla(${line.hue}, 5%, 90%, ${opacity})`;
                 this.effectCtx.beginPath();
                 this.effectCtx.arc(line.x1, line.y1, 3, 0, Math.PI * 2);
                 this.effectCtx.fill();
