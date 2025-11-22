@@ -1057,29 +1057,9 @@ body {
     opacity: 0;
 }
 
-/* EXTREME PERFORMANCE: Disable expensive CSS operations that cause FPS drops during daylight */
-#sunset-theme .sunset-sunflare {
-    animation: none !important;
-    /* Disable sunflare-pulse animation - runs every 3s */
-    transform: translate(-50%, -50%) !important;
-    /* Static position, no pulsing */
-}
-
-#sunset-theme .sun {
-    filter: saturate(var(--sunset-sky-desaturate, 1)) !important;
-    /* Remove blur filter - very expensive */
-    box-shadow: none !important;
-    /* Remove box-shadow for better performance */
-}
-
-#sunset-theme .sunset-sun-core {
-    mix-blend-mode: normal !important;
-    /* Remove expensive screen blend mode */
-}
-
+/* Performance optimizations removed to restore visuals */
 #sunset-theme .sunset-god-rays {
-    display: none !important;
-    /* Completely hide god rays - they cause FPS drop in daylight */
+    display: block !important;
 }
 
 .sun-and-sky {
@@ -1282,16 +1262,34 @@ body {
 
 .sun {
     position: absolute;
-    width: 120px;
-    height: 120px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 228, 181, 0.7) 55%, rgba(255, 143, 80, 0.4) 100%);
+    width: 140px;
+    height: 140px;
+    background: radial-gradient(circle, #ffffff 0%, #fff4e0 30%, #ffdcb0 50%, #ffaf7b 70%, rgba(255, 143, 80, 0.4) 100%);
     border-radius: 50%;
-    filter: blur(1.2px) saturate(var(--sunset-sky-desaturate, 1));
-    box-shadow: 0 0 60px rgba(255, 190, 120, 0.35);
-    opacity: var(--sunset-sun-core-alpha, 0.85);
+    /* Reduced blur and simplified box-shadows */
+    filter: saturate(var(--sunset-sky-desaturate, 1));
+    box-shadow:
+        0 0 40px rgba(255, 200, 100, 0.4),
+        0 0 80px rgba(255, 150, 50, 0.2);
+    opacity: var(--sunset-sun-core-alpha, 0.95);
     animation: sun-journey 180s ease-in-out infinite;
     z-index: 2;
     overflow: visible;
+    will-change: transform, opacity;
+}
+
+.sun::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 180%;
+    height: 180%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(255, 200, 100, 0.1) 40%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    mix-blend-mode: screen;
 }
 
 .sunset-sun-core {
@@ -1424,8 +1422,9 @@ body {
     height: 160px;
     border-radius: 50%;
     pointer-events: none;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(255, 200, 140, 0.08) 70%, transparent 100%);
-    filter: blur(4px);
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.5), rgba(255, 220, 180, 0.2) 70%, transparent 100%);
+    filter: blur(3px);
+    /* Removed box-shadow for performance */
 }
 
 .sunset-lens-bokeh::before {
@@ -1821,13 +1820,14 @@ body {
     width: var(--ray-width, 4px);
     height: calc(var(--ray-length, 320px) * var(--sunset-ray-scale, 1));
     background: linear-gradient(to bottom,
-            rgba(255, 230, 180, 0.4) 0%,
-            rgba(255, 180, 120, 0.18) 55%,
-            rgba(255, 150, 90, 0) 100%);
+            rgba(255, 255, 255, 0.6) 0%,
+            rgba(255, 220, 150, 0.3) 20%,
+            rgba(255, 180, 100, 0.1) 60%,
+            transparent 100%);
     transform-origin: top center;
     transform: translate(-50%, 0) rotate(var(--ray-angle, 0deg));
     opacity: calc(var(--ray-opacity, 0.45) * var(--sunset-ray-opacity, 1) * var(--sunset-ray-flicker, 1));
-    filter: blur(0.5px);
+    /* Removed blur and box-shadow for performance */
     mix-blend-mode: screen;
     will-change: transform, opacity;
 }
@@ -1853,7 +1853,7 @@ body {
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 14;
+    z-index: 1;
     opacity: var(--sunset-star-alpha, 0);
     mix-blend-mode: normal;
     transition: opacity 1.4s ease;
