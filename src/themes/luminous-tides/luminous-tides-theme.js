@@ -245,6 +245,27 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
+     * Create a smooth wave that builds up gradually
+     */
+    createSmoothWave(x, y, radius, amplitude, steps = 5, duration = 150) {
+        const stepDelay = duration / steps;
+
+        for (let i = 0; i < steps; i++) {
+            setTimeout(() => {
+                // Ease-in curve for smooth start
+                const t = (i + 1) / steps;
+                const eased = t * t; // Quadratic ease-in
+                const currentAmplitude = amplitude * eased;
+
+                this.simulator.createSwell(x, y, {
+                    radius: radius,
+                    amplitude: currentAmplitude / steps // Divide to prevent over-accumulation
+                });
+            }, i * stepDelay);
+        }
+    }
+
+    /**
      * Simple ripple for single line clear - stormy wave puff from random location
      */
     createSimpleRipple() {
@@ -256,10 +277,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         const radius = 0.08 + Math.random() * 0.18; // 0.08-0.26 (much wider range)
         const amplitude = 0.6 + Math.random() * 0.8; // 0.6-1.4 (more dramatic variation)
 
-        this.simulator.createSwell(x, y, {
-            radius: radius,
-            amplitude: amplitude
-        });
+        this.createSmoothWave(x, y, radius, amplitude, 4, 120);
 
         // Flash storm light
         this.flashStormLight(0.12);
@@ -284,10 +302,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const radius = 0.08 + Math.random() * 0.20; // 0.08-0.28
                 const amplitude = 0.7 + Math.random() * 1.0; // 0.7-1.7
 
-                this.simulator.createSwell(x, y, {
-                    radius: radius,
-                    amplitude: amplitude
-                });
+                this.createSmoothWave(x, y, radius, amplitude, 4, 120);
             }, i * 120);  // Slightly slower succession
         }
     }
@@ -306,7 +321,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 // Completely random positions - spawn from edges and center
                 const edgeRoll = Math.random();
                 let x, y;
-                
+
                 if (edgeRoll < 0.3) {
                     // Spawn from edges (30% chance)
                     const edge = Math.floor(Math.random() * 4);
@@ -326,10 +341,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const radius = 0.10 + Math.random() * 0.28; // 0.10-0.38 (huge range)
                 const amplitude = 1.0 + Math.random() * 1.5; // 1.0-2.5 (dramatic variation)
 
-                this.simulator.createSwell(x, y, {
-                    radius: radius,
-                    amplitude: amplitude
-                });
+                this.createSmoothWave(x, y, radius, amplitude, 5, 150);
 
                 // Additional flashes during cascade
                 if (i % 3 === 0) {
@@ -356,7 +368,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 // Choose random quadrant and position within it
                 const quadrant = Math.floor(Math.random() * 4);
                 let x, y;
-                
+
                 switch(quadrant) {
                     case 0: // Top-left
                         x = 0.05 + Math.random() * 0.45;
@@ -380,10 +392,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const radius = 0.09 + Math.random() * 0.18; // 0.09-0.27 (wide range)
                 const amplitude = 1.0 + (comboCount * 0.12) + (Math.random() * 0.8); // More variation
 
-                this.simulator.createSwell(x, y, {
-                    radius: radius,
-                    amplitude: amplitude
-                });
+                this.createSmoothWave(x, y, radius, amplitude, 4, 120);
             }, i * 90);  // Slower to reduce overlap
         }
     }
@@ -402,10 +411,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         const radius = 0.05 + Math.random() * 0.12; // 0.05-0.17 (wider range)
         const amplitude = 0.4 + Math.random() * 0.6; // 0.4-1.0 (more variation)
 
-        this.simulator.createSwell(x, y, {
-            radius: radius,
-            amplitude: amplitude
-        });
+        this.createSmoothWave(x, y, radius, amplitude, 3, 100);
 
         // Subtle light ripple
         this.flashStormLight(0.06);
@@ -436,10 +442,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                     const radius = 0.12 + Math.random() * 0.15; // 0.12-0.27 (varied)
                     const amplitude = 0.8 + Math.random() * 0.6; // 0.8-1.4 (varied)
 
-                    this.simulator.createSwell(x, y, {
-                        radius: radius,
-                        amplitude: amplitude
-                    });
+                    this.createSmoothWave(x, y, radius, amplitude, 5, 200);
                 }, i * 180);
             }
         }, 300);
@@ -465,7 +468,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 // Sometimes spawn from edges, sometimes from center
                 const fromEdge = Math.random() < 0.4;
                 let x, y;
-                
+
                 if (fromEdge) {
                     // Spawn near an edge
                     const side = Math.floor(Math.random() * 4);
@@ -485,10 +488,7 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const radius = 0.10 + Math.random() * 0.15; // 0.10-0.25 (wider range)
                 const amplitude = 0.7 + Math.random() * 0.7; // 0.7-1.4 (more variation)
 
-                this.simulator.createSwell(x, y, {
-                    radius: radius,
-                    amplitude: amplitude
-                });
+                this.createSmoothWave(x, y, radius, amplitude, 4, 150);
             }, i * 160);
         }
     }
