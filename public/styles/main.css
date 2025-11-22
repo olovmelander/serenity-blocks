@@ -477,6 +477,9 @@ body {
     animation: ocean-ray-anim 90s ease-in-out infinite alternate;
     z-index: 7;
     pointer-events: none;
+    /* GPU acceleration */
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 .ocean-god-ray {
