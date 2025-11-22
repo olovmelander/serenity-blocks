@@ -418,8 +418,22 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(to top, #010810, #021B39, #0A4882);
+    /* Very deep, dark underwater gradient - true abyss feeling */
+    background: radial-gradient(circle at 50% -40%, #063853 0%, #032238 20%, #011528 45%, #000205 100%);
     z-index: 1;
+}
+
+.ocean-deep-vignette {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* Very strong vignette for deep ocean mystery */
+    background: radial-gradient(circle at 50% 50%, transparent 20%, rgba(0, 2, 5, 0.75) 60%, rgba(0, 0, 2, 0.98) 100%);
+    pointer-events: none;
+    /* Below particles so they're visible */
+    z-index: 2;
 }
 
 .ocean-parallax {
@@ -435,21 +449,21 @@ body {
 
 #ocean-floor-bg {
     animation: slide 320s linear infinite;
-    z-index: 2;
+    z-index: 3;
     filter: brightness(0.7);
     pointer-events: none;
 }
 
 #ocean-floor-mid {
     animation: slide 240s linear infinite;
-    z-index: 3;
+    z-index: 4;
     filter: brightness(0.85);
     pointer-events: none;
 }
 
 #ocean-floor-fg {
     animation: slide 160s linear infinite;
-    z-index: 4;
+    z-index: 5;
     pointer-events: none;
 }
 
@@ -468,8 +482,11 @@ body {
 .ocean-god-ray {
     position: absolute;
     top: 0;
-    background: linear-gradient(to bottom, rgba(173, 216, 230, 0.15) 0%, rgba(173, 216, 230, 0) 70%);
+    /* Much more subtle god rays - deeper blue tones */
+    background: linear-gradient(to bottom, rgba(80, 140, 180, 0.04) 0%, rgba(40, 100, 140, 0.02) 40%, transparent 75%);
     transform-origin: top center;
+    mix-blend-mode: overlay;
+    /* Removed blur for better performance */
 }
 
 @keyframes ocean-ray-anim {
@@ -492,6 +509,7 @@ body {
     animation: slow-pan 120s linear infinite alternate;
     z-index: 11;
     mix-blend-mode: screen;
+    /* Completely disabled - no caustics */
     display: none;
 }
 
@@ -507,15 +525,43 @@ body {
 
 .caustic-light {
     position: absolute;
-    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><defs><filter id="w"><feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="4" seed="8"/><feDiffuseLighting in="SourceGraphic" lighting-color="white" surfaceScale="8"><feDistantLight azimuth="45" elevation="50"/></feDiffuseLighting></filter></defs><rect width="300" height="300" fill="rgba(200,225,255,0.08)" filter="url(%23w)" fill-opacity="1"/></svg>');
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><defs><filter id="w"><feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="4" seed="8"/><feDiffuseLighting in="SourceGraphic" lighting-color="white" surfaceScale="5"><feDistantLight azimuth="45" elevation="50"/></feDiffuseLighting></filter></defs><rect width="300" height="300" fill="rgba(60,120,160,0.03)" filter="url(%23w)" fill-opacity="1"/></svg>');
     background-size: 300% 300%;
     width: 100%;
     height: 100%;
     animation: caustics-anim 25s ease-in-out infinite alternate;
-    opacity: 0.5;
+    /* Much more subtle - very low opacity */
+    opacity: 0.08;
+    mix-blend-mode: screen;
+    filter: blur(2px);
+}
+
+.caustic-light-2 {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><defs><filter id="w"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="5"/><feDiffuseLighting in="SourceGraphic" lighting-color="white" surfaceScale="3"><feDistantLight azimuth="135" elevation="60"/></feDiffuseLighting></filter></defs><rect width="300" height="300" fill="rgba(50,100,140,0.02)" filter="url(%23w)" fill-opacity="1"/></svg>');
+    background-size: 250% 250%;
+    animation: caustics-anim-2 35s ease-in-out infinite alternate-reverse;
+    /* Extremely subtle secondary caustics */
+    opacity: 0.05;
+    mix-blend-mode: screen;
+    pointer-events: none;
 }
 
 @keyframes caustics-anim {
+    from {
+        background-position: 0% 0%;
+    }
+
+    to {
+        background-position: 100% 100%;
+    }
+}
+
+@keyframes caustics-anim-2 {
     from {
         background-position: 0% 0%;
     }
@@ -601,35 +647,89 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 5;
+    /* Above vignette */
+    z-index: 8;
     pointer-events: none;
 }
 
 .ocean-sediment {
     position: absolute;
-    background: rgba(200, 200, 180, 0.3);
+    /* Bright, glowing marine snow - highly visible */
+    background: rgba(220, 240, 255, 0.9);
     border-radius: 50%;
     animation: drift-sediment ease-in-out infinite;
-    filter: blur(1px);
+    /* Strong glow for visibility */
+    box-shadow: 0 0 12px rgba(240, 255, 255, 0.8);
 }
 
 @keyframes drift-sediment {
     0% {
-        transform: translate(var(--x-start), var(--y-start)) rotate(0deg);
+        left: var(--x-start);
+        top: var(--y-start);
         opacity: 0;
     }
 
-    20% {
-        opacity: 0.4;
+    10% {
+        opacity: 1;
     }
 
-    80% {
-        opacity: 0.4;
+    90% {
+        opacity: 1;
     }
 
     100% {
-        transform: translate(var(--x-end), var(--y-end)) rotate(360deg);
+        left: var(--x-end);
+        top: var(--y-end);
         opacity: 0;
+    }
+}
+
+@keyframes godRayDrift {
+
+    0%,
+    100% {
+        transform: rotate(var(--ray-angle)) skewY(var(--ray-skew)) translateX(0);
+    }
+
+    50% {
+        transform: rotate(calc(var(--ray-angle) + 5deg)) skewY(calc(var(--ray-skew) + 2deg)) translateX(15px);
+    }
+}
+
+@keyframes kelpSway {
+
+    0%,
+    100% {
+        transform: rotate(-5deg);
+    }
+
+    50% {
+        transform: rotate(5deg);
+    }
+}
+
+/* Simple floating animation for particles */
+@keyframes simpleFloat {
+
+    0%,
+    100% {
+        transform: translate(0, 0);
+        opacity: 0.8;
+    }
+
+    25% {
+        transform: translate(10px, -15px);
+        opacity: 1;
+    }
+
+    50% {
+        transform: translate(-5px, -10px);
+        opacity: 0.9;
+    }
+
+    75% {
+        transform: translate(-10px, -5px);
+        opacity: 1;
     }
 }
 
@@ -639,29 +739,39 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 6;
+    /* Above vignette */
+    z-index: 9;
     pointer-events: none;
 }
 
 .ocean-plankton {
     position: absolute;
-    background: rgba(173, 216, 230, 0.7);
+    /* Very bright glowing plankton - cyan/blue-green */
+    background: rgba(100, 255, 230, 1.0);
     border-radius: 50%;
     animation: drift-plankton 10s ease-in-out infinite alternate;
+    /* Intense glow */
+    box-shadow: 0 0 16px rgba(120, 255, 240, 0.9);
 }
 
 @keyframes drift-plankton {
     from {
-        transform: translate(var(--x-start), var(--y-start));
+        left: var(--x-start);
+        top: var(--y-start);
         opacity: 0;
     }
 
-    50% {
-        opacity: 0.5;
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
     }
 
     to {
-        transform: translate(var(--x-end), var(--y-end));
+        left: var(--x-end);
+        top: var(--y-end);
         opacity: 0;
     }
 }
