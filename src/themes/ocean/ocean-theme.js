@@ -26,12 +26,12 @@ export default class OceanTheme extends BaseTheme {
         this.depthFog = [];
         this.marineCreatures = [];
         this.presets = {
-            Minimal: { biolumLimit: 8, fishCount: 2, kelpCount: 15, sedimentCount: 60, bubbleCount: 100, planktonCount: 120, jellyCount: 5 },
-            Low: { biolumLimit: 15, fishCount: 4, kelpCount: 25, sedimentCount: 100, bubbleCount: 150, planktonCount: 180, jellyCount: 8 },
-            Medium: { biolumLimit: 30, fishCount: 8, kelpCount: 40, sedimentCount: 150, bubbleCount: 250, planktonCount: 280, jellyCount: 12 },
-            High: { biolumLimit: 50, fishCount: 12, kelpCount: 60, sedimentCount: 220, bubbleCount: 400, planktonCount: 400, jellyCount: 18 },
-            Ultra: { biolumLimit: 80, fishCount: 18, kelpCount: 80, sedimentCount: 320, bubbleCount: 600, planktonCount: 600, jellyCount: 24 },
-            Extreme: { biolumLimit: 120, fishCount: 25, kelpCount: 100, sedimentCount: 450, bubbleCount: 900, planktonCount: 900, jellyCount: 32 },
+            Minimal: { biolumLimit: 8, fishCount: 2, kelpCount: 5, sedimentCount: 10, bubbleCount: 15, planktonCount: 15, jellyCount: 0 },
+            Low: { biolumLimit: 15, fishCount: 4, kelpCount: 8, sedimentCount: 15, bubbleCount: 20, planktonCount: 25, jellyCount: 0 },
+            Medium: { biolumLimit: 30, fishCount: 8, kelpCount: 12, sedimentCount: 25, bubbleCount: 30, planktonCount: 40, jellyCount: 0 },
+            High: { biolumLimit: 50, fishCount: 12, kelpCount: 18, sedimentCount: 40, bubbleCount: 45, planktonCount: 60, jellyCount: 0 },
+            Ultra: { biolumLimit: 80, fishCount: 18, kelpCount: 25, sedimentCount: 60, bubbleCount: 70, planktonCount: 90, jellyCount: 0 },
+            Extreme: { biolumLimit: 120, fishCount: 25, kelpCount: 35, sedimentCount: 90, bubbleCount: 100, planktonCount: 130, jellyCount: 0 },
         };
         this.currentPreset = this.presets.High;
     }
@@ -267,54 +267,26 @@ export default class OceanTheme extends BaseTheme {
         if (!theme.querySelector('.ocean-deep-vignette')) {
             const vignette = document.createElement('div');
             vignette.className = 'ocean-deep-vignette';
-            Object.assign(vignette.style, {
-                position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-                background: 'radial-gradient(ellipse at center 30%, transparent 10%, rgba(0, 8, 20, 0.5) 50%, rgba(0, 5, 15, 0.95) 100%)',
-                pointerEvents: 'none', zIndex: '15',
-            });
+            // Styles moved to CSS for better control
             theme.appendChild(vignette);
         }
 
+        // God rays removed for performance
         // Volumetric god rays
-        const godRayContainer = document.querySelector('.ocean-god-rays');
-        if (godRayContainer && godRayContainer.children.length === 0) {
-            this.godRays = [];
-            for (let i = 0; i < 20; i++) {
-                const ray = document.createElement('div');
-                ray.className = 'ocean-god-ray';
-                Object.assign(ray.style, {
-                    position: 'absolute',
-                    left: `${Math.random() * 120 - 10}%`,
-                    top: '-10%',
-                    width: `${Math.random() * 4 + 2}px`,
-                    height: '130%',
-                    background: `linear-gradient(180deg, rgba(120, 200, 255, ${Math.random() * 0.15 + 0.05}) 0%, rgba(80, 180, 240, ${Math.random() * 0.08}) 50%, transparent 100%)`,
-                    transform: `rotate(${Math.random() * 25 - 12.5}deg) skewY(${Math.random() * 4 - 2}deg)`,
-                    transformOrigin: 'top center',
-                    opacity: Math.random() * 0.3 + 0.2,
-                    animation: `godRayDrift ${15 + Math.random() * 10}s ease-in-out infinite`,
-                    animationDelay: `-${Math.random() * 15}s`,
-                    pointerEvents: 'none',
-                    mixBlendMode: 'screen',
-                });
-                godRayContainer.appendChild(ray);
-                this.godRays.push(ray);
-            }
-            this.registerContainer(godRayContainer);
-        }
 
         // Enhanced caustics
         const causticsContainer = document.querySelector('#ocean-theme .caustics-container');
         if (causticsContainer && causticsContainer.children.length === 0) {
-            const light = document.createElement('div');
-            light.className = 'caustic-light';
-            Object.assign(light.style, {
-                position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-                opacity: '0.25',
-                mixBlendMode: 'screen',
-                filter: 'blur(2px)',
-            });
-            causticsContainer.appendChild(light);
+            // Layer 1
+            const light1 = document.createElement('div');
+            light1.className = 'caustic-light';
+            causticsContainer.appendChild(light1);
+
+            // Layer 2 for interference/depth
+            const light2 = document.createElement('div');
+            light2.className = 'caustic-light-2';
+            causticsContainer.appendChild(light2);
+
             this.registerContainer(causticsContainer);
         }
 
@@ -337,7 +309,7 @@ export default class OceanTheme extends BaseTheme {
                     transformOrigin: 'bottom center',
                     animation: `kelpSway ${4 + Math.random() * 3}s ease-in-out infinite`,
                     animationDelay: `-${Math.random() * 7}s`,
-                    filter: 'blur(0.5px)',
+                    filter: 'blur(0px)',
                 });
                 kelpContainer.appendChild(kelp);
                 this.kelpStrands.push(kelp);
@@ -352,20 +324,22 @@ export default class OceanTheme extends BaseTheme {
             for (let i = 0; i < sedimentCount; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'ocean-sediment';
-                const size = Math.random() * 2.5 + 0.5;
+                const size = Math.random() * 2 + 1; // 1-3px - realistic marine snow size
                 Object.assign(particle.style, {
                     position: 'absolute',
+                    // Static position across screen
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
                     width: `${size}px`,
                     height: `${size}px`,
-                    background: `rgba(180, 200, 220, ${Math.random() * 0.4 + 0.2})`,
+                    // Realistic marine snow - soft white/gray
+                    background: `rgba(200, 210, 220, ${Math.random() * 0.4 + 0.3})`,
                     borderRadius: '50%',
-                    boxShadow: `0 0 ${size * 2}px rgba(200, 220, 240, 0.3)`,
-                    '--x-start': `${Math.random() * 100}vw`,
-                    '--y-start': `${Math.random() * 100}vh`,
-                    '--x-end': `${Math.random() * 100}vw`,
-                    '--y-end': `${Math.random() * 100}vh`,
-                    animation: `particleDrift ${30 + Math.random() * 25}s linear infinite`,
-                    animationDelay: `-${Math.random() * 40}s`,
+                    // Very subtle glow - natural organic particles
+                    boxShadow: `0 0 ${size * 2}px rgba(220, 230, 240, 0.3)`,
+                    // Simple float animation
+                    animation: `simpleFloat ${15 + Math.random() * 10}s ease-in-out infinite`,
+                    animationDelay: `-${Math.random() * 20}s`,
                 });
                 sedimentContainer.appendChild(particle);
             }
@@ -390,7 +364,7 @@ export default class OceanTheme extends BaseTheme {
                     background: `radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(200, 235, 255, 0.3))`,
                     borderRadius: '50%',
                     opacity: Math.random() * 0.7 + 0.3,
-                    animation: `bubbleRise ${10 + Math.random() * 12}s linear infinite`,
+                    animation: `rise-deep ${10 + Math.random() * 12}s linear infinite`,
                     animationDelay: `-${Math.random() * 20}s`,
                     '--x-drift': `${Math.random() * 8 - 4}vw`,
                 });
@@ -407,22 +381,23 @@ export default class OceanTheme extends BaseTheme {
             for (let i = 0; i < planktonCount; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'ocean-plankton';
-                const size = Math.random() * 1.5 + 0.3;
-                const hue = 170 + Math.random() * 40;
+                const size = Math.random() * 1.5 + 1.5; // 1.5-3px - realistic plankton size
+                const hue = 175 + Math.random() * 20; // Softer teal-blue range
                 Object.assign(particle.style, {
                     position: 'absolute',
+                    // Static position across screen
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
                     width: `${size}px`,
                     height: `${size}px`,
-                    background: `hsl(${hue}, 80%, 70%)`,
+                    // Natural bioluminescent glow - soft blue-green
+                    background: `hsla(${hue}, 70%, 65%, ${Math.random() * 0.4 + 0.4})`,
                     borderRadius: '50%',
-                    boxShadow: `0 0 ${size * 3}px hsla(${hue}, 90%, 60%, 0.6)`,
-                    '--x-start': `${Math.random() * 100}vw`,
-                    '--y-start': `${Math.random() * 100}vh`,
-                    '--x-end': `${Math.random() * 100}vw`,
-                    '--y-end': `${Math.random() * 100}vh`,
-                    animation: `planktonFloat ${18 + Math.random() * 15}s linear infinite`,
-                    animationDelay: `-${Math.random() * 25}s`,
-                    opacity: Math.random() * 0.7 + 0.3,
+                    // Soft organic bioluminescence
+                    boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 60%, 0.5)`,
+                    // Simple float animation
+                    animation: `simpleFloat ${12 + Math.random() * 8}s ease-in-out infinite`,
+                    animationDelay: `-${Math.random() * 15}s`,
                 });
                 planktonContainer.appendChild(particle);
             }
@@ -432,58 +407,63 @@ export default class OceanTheme extends BaseTheme {
         // Jellyfish
         const jellyfishContainer = document.getElementById('jellyfish-layer');
         if (jellyfishContainer) {
+            // Always clear to remove any stuck jellyfish
             jellyfishContainer.innerHTML = '';
-            const jellyCount = this.currentPreset.jellyCount || 16;
-            for (let i = 0; i < jellyCount; i++) {
-                const fish = document.createElement('div');
-                fish.className = 'jellyfish';
-                const bodySize = 15 + Math.random() * 25;
-                const body = document.createElement('div');
-                body.className = 'jelly-body';
-                Object.assign(body.style, {
-                    width: `${bodySize}px`,
-                    height: `${bodySize}px`,
-                    background: `radial-gradient(circle, rgba(150, 200, 255, 0.6), rgba(100, 180, 240, 0.3))`,
-                    borderRadius: '50% 50% 40% 40%',
-                    boxShadow: `0 0 ${bodySize}px rgba(120, 200, 255, 0.5), inset 0 0 ${bodySize * 0.5}px rgba(200, 230, 255, 0.4)`,
-                    animation: `jellyPulse ${2 + Math.random() * 1.5}s ease-in-out infinite`,
-                });
+            const jellyCount = this.currentPreset.jellyCount || 0;
 
-                const tentacles = document.createElement('div');
-                tentacles.className = 'jelly-tentacles';
-                for (let j = 0; j < 6; j++) {
-                    const tentacle = document.createElement('div');
-                    tentacle.className = 'tentacle';
-                    const tHeight = 25 + Math.random() * 35;
-                    Object.assign(tentacle.style, {
-                        position: 'absolute',
-                        top: `${bodySize}px`,
-                        left: `${j * (bodySize / 6)}px`,
-                        width: '1px',
-                        height: `${tHeight}px`,
-                        background: `linear-gradient(180deg, rgba(120, 180, 240, 0.5), transparent)`,
-                        transformOrigin: 'top',
-                        animation: `tentacleWave ${1.5 + Math.random() * 1}s ease-in-out infinite`,
-                        animationDelay: `-${Math.random() * 3}s`,
+            // Only create if count > 0
+            if (jellyCount > 0) {
+                for (let i = 0; i < jellyCount; i++) {
+                    const fish = document.createElement('div');
+                    fish.className = 'jellyfish';
+                    const bodySize = 15 + Math.random() * 25;
+                    const body = document.createElement('div');
+                    body.className = 'jelly-body';
+                    Object.assign(body.style, {
+                        width: `${bodySize}px`,
+                        height: `${bodySize}px`,
+                        background: `radial-gradient(circle, rgba(150, 200, 255, 0.6), rgba(100, 180, 240, 0.3))`,
+                        borderRadius: '50% 50% 40% 40%',
+                        boxShadow: `0 0 ${bodySize}px rgba(120, 200, 255, 0.5), inset 0 0 ${bodySize * 0.5}px rgba(200, 230, 255, 0.4)`,
+                        animation: `pulse-jelly ${2 + Math.random() * 1.5}s ease-in-out infinite`,
                     });
-                    tentacles.appendChild(tentacle);
+
+                    const tentacles = document.createElement('div');
+                    tentacles.className = 'jelly-tentacles';
+                    for (let j = 0; j < 3; j++) {
+                        const tentacle = document.createElement('div');
+                        tentacle.className = 'tentacle';
+                        const tHeight = 25 + Math.random() * 35;
+                        Object.assign(tentacle.style, {
+                            position: 'absolute',
+                            top: `${bodySize}px`,
+                            left: `${j * (bodySize / 6)}px`,
+                            width: '1px',
+                            height: `${tHeight}px`,
+                            background: `linear-gradient(180deg, rgba(120, 180, 240, 0.5), transparent)`,
+                            transformOrigin: 'top',
+                            animation: `wave-tentacle ${1.5 + Math.random() * 1}s ease-in-out infinite`,
+                            animationDelay: `-${Math.random() * 3}s`,
+                        });
+                        tentacles.appendChild(tentacle);
+                    }
+
+                    fish.appendChild(body);
+                    fish.appendChild(tentacles);
+                    Object.assign(fish.style, {
+                        position: 'absolute',
+                        '--x-start': `${Math.random() * 120 - 10}vw`,
+                        '--y-start': `${110}vh`,
+                        '--x-end': `${Math.random() * 120 - 10}vw`,
+                        '--y-end': `${-20}vh`,
+                        animation: `swim-jellyfish ${18 + Math.random() * 15}s linear infinite`,
+                        animationDelay: `-${Math.random() * 30}s`,
+                    });
+
+                    jellyfishContainer.appendChild(fish);
                 }
-
-                fish.appendChild(body);
-                fish.appendChild(tentacles);
-                Object.assign(fish.style, {
-                    position: 'absolute',
-                    '--x-start': `${Math.random() * 120 - 10}vw`,
-                    '--y-start': `${110}vh`,
-                    '--x-end': `${Math.random() * 120 - 10}vw`,
-                    '--y-end': `${-20}vh`,
-                    animation: `jellyfishFloat ${18 + Math.random() * 15}s linear infinite`,
-                    animationDelay: `-${Math.random() * 30}s`,
-                });
-
-                jellyfishContainer.appendChild(fish);
+                this.registerContainer(jellyfishContainer);
             }
-            this.registerContainer(jellyfishContainer);
         }
 
         this.setupEventListeners();
