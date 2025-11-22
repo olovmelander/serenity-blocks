@@ -19501,13 +19501,27 @@ body.serenity-mode.cursor-hidden * {
 }
 
 .mode-card-icon {
-    font-size: 2rem;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     margin-bottom: 8px;
     filter: drop-shadow(0 4px 12px rgba(100, 200, 255, 0.5));
     position: relative;
     z-index: 1;
     animation: iconBreathe 3s ease-in-out infinite;
+}
+
+.mode-card-icon svg {
+    width: 42px;
+    height: 42px;
+    stroke: #64c8ff;
+    transition: all 0.3s ease;
+}
+
+.game-mode-card:hover .mode-card-icon svg {
+    stroke: #ffffff;
+    filter: drop-shadow(0 0 8px rgba(100, 200, 255, 0.8));
+    transform: scale(1.1);
 }
 
 @keyframes iconBreathe {
@@ -19567,8 +19581,12 @@ body.serenity-mode.cursor-hidden * {
     }
 
     .mode-card-icon {
-        font-size: 1.8rem;
         margin-bottom: 8px;
+    }
+
+    .mode-card-icon svg {
+        width: 36px;
+        height: 36px;
     }
 
     .mode-card-title {
@@ -19602,8 +19620,12 @@ body.serenity-mode.cursor-hidden * {
     }
 
     .mode-card-icon {
-        font-size: 2.2rem;
         margin-bottom: 8px;
+    }
+
+    .mode-card-icon svg {
+        width: 32px;
+        height: 32px;
     }
 
     .mode-card-title {
