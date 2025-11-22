@@ -9,7 +9,7 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import FluidSimulator from '../nebula-flow/fluid-simulator.js';
+import FluidSimulator from '../../utils/webgl/fluid-simulator.js';
 import { VOLTAGE_STORM_TETROMINOS } from './voltage-storm-tetrominos.js';
 
 export default class VoltageStormTheme extends BaseTheme {

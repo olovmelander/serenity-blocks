@@ -31,7 +31,7 @@ export default class OceanTheme extends BaseTheme {
             Medium: { biolumLimit: 30, fishCount: 8, kelpCount: 18, sedimentCount: 50, bubbleCount: 18, planktonCount: 80, jellyCount: 0 },
             High: { biolumLimit: 50, fishCount: 12, kelpCount: 25, sedimentCount: 80, bubbleCount: 25, planktonCount: 120, jellyCount: 0 },
             Ultra: { biolumLimit: 80, fishCount: 18, kelpCount: 35, sedimentCount: 120, bubbleCount: 35, planktonCount: 180, jellyCount: 0 },
-            Extreme: { biolumLimit: 120, fishCount: 25, kelpCount: 50, sedimentCount: 180, bubbleCount: 50, planktonCount: 250, jellyCount: 0 },
+            Extreme: { biolumLimit: 100, fishCount: 25, kelpCount: 100, sedimentCount: 60, bubbleCount: 40, planktonCount: 150, jellyCount: 0 },
         };
         this.currentPreset = this.presets.High;
     }
@@ -245,42 +245,263 @@ export default class OceanTheme extends BaseTheme {
                 continue;
             }
 
-            c.x += c.vx * dt * 50;
+            // Initialize behavior state
+            if (!c.behaviorTime) {
+                c.behaviorTime = 0;
+                c.targetSpeed = c.vx;
+                c.currentSpeed = c.vx;
+                c.verticalDrift = 0;
+            }
 
-            // Subtle swimming motion
-            const swimPhase = c.life * 8;
-            const swimOffset = Math.sin(swimPhase) * 2;
-            c.y += swimOffset * dt * 10;
+            c.behaviorTime += dt;
 
-            // Fade in/out
-            const alpha = Math.min(c.life * 3, 1, (1 - c.life) * 3) * 0.7;
+            // Random behavior changes every 2-4 seconds
+            if (c.behaviorTime > (c.nextBehaviorChange || 2)) {
+                c.nextBehaviorChange = 2 + Math.random() * 2;
+                c.behaviorTime = 0;
+
+                // Random speed variation (0.6x to 1.4x base speed)
+                c.targetSpeed = c.vx * (0.6 + Math.random() * 0.8);
+
+                // Random vertical drift
+                c.verticalDrift = (Math.random() - 0.5) * 20;
+            }
+
+            // Smooth speed transitions
+            c.currentSpeed += (c.targetSpeed - c.currentSpeed) * dt * 2;
+            c.x += c.currentSpeed * dt * 50;
+
+            // Natural swimming motion with random element
+            c.swimTime = (c.swimTime || 0) + dt * (3 + Math.random() * 2);
+            const swimPhase = c.swimTime;
+
+            // Combine smooth wave with vertical drift
+            const swimOffset = Math.sin(swimPhase) * 3;
+            c.y += (swimOffset + c.verticalDrift * 0.1) * dt * 15;
+
+            // Occasional small depth changes (like fish adjusting buoyancy)
+            if (Math.random() < dt * 0.3) {
+                c.y += (Math.random() - 0.5) * 2;
+            }
+
+            // Fade in/out smoothly
+            const fadeIn = Math.min(c.life * 3, 1);
+            const fadeOut = Math.min((1 - c.life) * 3, 1);
+            const alpha = Math.min(fadeIn, fadeOut) * 0.65;
 
             const ctx = this.effectCtx;
             ctx.save();
             ctx.globalAlpha = alpha;
             ctx.fillStyle = c.color;
 
-            // Draw fish shape
-            ctx.beginPath();
-            if (c.fishType === 'elongated') {
-                // Elongated fish (like barracuda)
-                ctx.ellipse(c.x, c.y, c.size * 2, c.size * 0.4, 0, 0, Math.PI * 2);
-            } else {
-                // Normal fish silhouette
-                ctx.ellipse(c.x, c.y, c.size, c.size * 0.5, 0, 0, Math.PI * 2);
-            }
-            ctx.fill();
+            // Flip fish based on direction
+            const flipX = c.currentSpeed > 0 ? 1 : -1;
+            ctx.translate(c.x, c.y);
+            ctx.scale(flipX, 1);
 
-            // Add subtle tail
-            const tailX = c.x - (c.vx > 0 ? c.size * 0.8 : -c.size * 0.8);
-            const tailOffset = Math.sin(swimPhase * 2) * c.size * 0.3;
-            ctx.beginPath();
-            ctx.moveTo(c.x - (c.vx > 0 ? c.size * 0.6 : -c.size * 0.6), c.y);
-            ctx.lineTo(tailX, c.y + tailOffset);
-            ctx.lineTo(c.x - (c.vx > 0 ? c.size * 0.6 : -c.size * 0.6), c.y);
-            ctx.fill();
+            // Draw realistic fish shape
+            this.drawFish(ctx, c, swimPhase);
 
             ctx.restore();
+        }
+    }
+    drawFish(ctx, fish, swimPhase) {
+        const size = fish.size;
+        const tailWave = Math.sin(swimPhase * 2) * 0.4; // Tail animation
+        const bodyWave = Math.sin(swimPhase) * 0.15; // Body undulation
+
+        if (fish.fishType === 'seahorse') {
+            this.drawSeahorse(ctx, size, swimPhase);
+        } else if (fish.fishType === 'shrimp') {
+            this.drawShrimp(ctx, size, swimPhase);
+        } else if (fish.fishType === 'elongated') {
+            // Elongated fish (barracuda-like)
+            this.drawElongatedFish(ctx, size, tailWave, bodyWave);
+        } else {
+            // Standard fish shape
+            this.drawStandardFish(ctx, size, tailWave, bodyWave);
+        }
+    }
+
+    drawStandardFish(ctx, size, tailWave, bodyWave) {
+        // Body - fish-like shape using bezier curves
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.6, 0);
+
+        // Top of body
+        ctx.bezierCurveTo(
+            -size * 0.2, -size * 0.5 + bodyWave * size,
+            size * 0.2, -size * 0.5 + bodyWave * size,
+            size * 0.7, -size * 0.1
+        );
+
+        // Bottom of body
+        ctx.bezierCurveTo(
+            size * 0.2, size * 0.5 - bodyWave * size,
+            -size * 0.2, size * 0.5 - bodyWave * size,
+            -size * 0.6, 0
+        );
+        ctx.fill();
+
+        // Tail fin
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.6, 0);
+        ctx.lineTo(-size * 1.0, -size * 0.4 + tailWave * size);
+        ctx.lineTo(-size * 0.8, 0);
+        ctx.lineTo(-size * 1.0, size * 0.4 + tailWave * size);
+        ctx.lineTo(-size * 0.6, 0);
+        ctx.fill();
+
+        // Dorsal fin
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 0.5);
+        ctx.lineTo(size * 0.1, -size * 0.9);
+        ctx.lineTo(size * 0.3, -size * 0.5);
+        ctx.fill();
+
+        // Pectoral fin
+        ctx.globalAlpha *= 0.7;
+        ctx.beginPath();
+        ctx.ellipse(size * 0.1, size * 0.3, size * 0.3, size * 0.2, Math.PI / 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawElongatedFish(ctx, size, tailWave, bodyWave) {
+        // Elongated torpedo-shaped fish
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.8, 0);
+
+        // Top
+        ctx.bezierCurveTo(
+            -size * 0.3, -size * 0.3,
+            size * 0.5, -size * 0.3,
+            size * 1.2, -size * 0.1
+        );
+
+        // Bottom
+        ctx.bezierCurveTo(
+            size * 0.5, size * 0.3,
+            -size * 0.3, size * 0.3,
+            -size * 0.8, 0
+        );
+        ctx.fill();
+
+        // Tail
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.8, 0);
+        ctx.lineTo(-size * 1.3, -size * 0.3 + tailWave * size * 0.8);
+        ctx.lineTo(-size * 1.0, 0);
+        ctx.lineTo(-size * 1.3, size * 0.3 + tailWave * size * 0.8);
+        ctx.lineTo(-size * 0.8, 0);
+        ctx.fill();
+
+        // Small dorsal fin
+        ctx.beginPath();
+        ctx.moveTo(size * 0.2, -size * 0.3);
+        ctx.lineTo(size * 0.25, -size * 0.6);
+        ctx.lineTo(size * 0.4, -size * 0.3);
+        ctx.fill();
+    }
+
+    drawSeahorse(ctx, size, swimPhase) {
+        // Seahorse - distinctive S-shaped vertical creature
+        const sway = Math.sin(swimPhase) * 0.2;
+
+        // Rotate to vertical orientation
+        ctx.rotate(Math.PI / 2);
+
+        // Head
+        ctx.beginPath();
+        ctx.arc(size * 0.8, 0, size * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Snout
+        ctx.beginPath();
+        ctx.moveTo(size * 1.0, -size * 0.1);
+        ctx.lineTo(size * 1.3, 0);
+        ctx.lineTo(size * 1.0, size * 0.1);
+        ctx.fill();
+
+        // S-curved body
+        ctx.beginPath();
+        ctx.moveTo(size * 0.6, -size * 0.2);
+        ctx.bezierCurveTo(
+            size * 0.3, -size * 0.3 + sway * size,
+            size * 0.1, size * 0.1 + sway * size,
+            -size * 0.2, size * 0.3 + sway * size * 0.5
+        );
+        ctx.bezierCurveTo(
+            size * 0.1, size * 0.1 + sway * size * 0.5,
+            size * 0.3, -size * 0.1 - sway * size * 0.5,
+            size * 0.6, size * 0.2
+        );
+        ctx.fill();
+
+        // Dorsal fin
+        ctx.globalAlpha *= 0.7;
+        for (let i = 0; i < 4; i++) {
+            const finY = size * (0.4 - i * 0.2);
+            ctx.beginPath();
+            ctx.moveTo(finY, -size * 0.15);
+            ctx.lineTo(finY - size * 0.15, -size * 0.3);
+            ctx.lineTo(finY - size * 0.1, -size * 0.15);
+            ctx.fill();
+        }
+
+        // Tail curl
+        ctx.globalAlpha /= 0.7;
+        ctx.beginPath();
+        ctx.arc(-size * 0.3, size * 0.4, size * 0.25, Math.PI, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawShrimp(ctx, size, swimPhase) {
+        // Shrimp - segmented body with tail fan
+        const curve = Math.sin(swimPhase * 3) * 0.3;
+
+        // Main body segments
+        for (let i = 0; i < 4; i++) {
+            const segX = -size * 0.5 + i * size * 0.3;
+            const segCurve = curve * (1 - i * 0.2);
+
+            ctx.beginPath();
+            ctx.ellipse(segX, segCurve * size * 0.5, size * 0.25, size * 0.2, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Head with antennae
+        ctx.beginPath();
+        ctx.ellipse(size * 0.6, 0, size * 0.3, size * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Antennae
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(size * 0.7, -size * 0.1);
+        ctx.lineTo(size * 1.0, -size * 0.4);
+        ctx.moveTo(size * 0.7, size * 0.1);
+        ctx.lineTo(size * 1.0, size * 0.4);
+        ctx.stroke();
+
+        // Tail fan
+        ctx.globalAlpha *= 0.6;
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.7, 0);
+        ctx.lineTo(-size * 1.0, -size * 0.4);
+        ctx.lineTo(-size * 0.9, 0);
+        ctx.lineTo(-size * 1.0, size * 0.4);
+        ctx.lineTo(-size * 0.7, 0);
+        ctx.fill();
+
+        // Legs (simple lines)
+        ctx.globalAlpha *= 1.67;
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < 3; i++) {
+            const legX = -size * 0.2 + i * size * 0.25;
+            ctx.beginPath();
+            ctx.moveTo(legX, size * 0.2);
+            ctx.lineTo(legX, size * 0.5);
+            ctx.stroke();
         }
     }
 
@@ -577,18 +798,19 @@ export default class OceanTheme extends BaseTheme {
             this.createBioluminescence(Math.floor(comboCount * 8 * scale), 'small');
         }
 
-        // Medium combo (4-6): School of fish + More light
+        // Medium combo (4-6): Small fish + More light
         else if (comboCount <= 6) {
-            this.spawnSchoolOfFish(Math.min(comboCount * 2, 15));
+            // Small school of tiny fish instead of big ones
+            this.spawnSmallFishBurst(Math.min(comboCount * 2, 8));
             this.createBioluminescence(Math.floor(comboCount * 12 * scale), 'medium');
             this.intensifyOcean(comboCount);
         }
 
-        // High combo (7-10): Whale encounter
+        // High combo (7-10): No whale, just more effects
         else if (comboCount <= 10) {
-            this.spawnWhale();
-            this.createBioluminescence(Math.floor(comboCount * 15 * scale), 'large');
+            this.createBioluminescence(Math.floor(comboCount * 18 * scale), 'large');
             this.intensifyOcean(comboCount);
+            this.createShockwave(comboCount);
         }
 
         // Epic combo (11+): Bioluminescent bloom
@@ -720,6 +942,38 @@ export default class OceanTheme extends BaseTheme {
         }
     }
 
+    spawnSmallFishBurst(count) {
+        // Small, quick fish burst for combos
+        const schoolSize = Math.min(count, 8);
+        const startY = 30 + Math.random() * 40;
+        const direction = Math.random() > 0.5 ? 1 : -1;
+
+        for (let i = 0; i < schoolSize; i++) {
+            setTimeout(() => {
+                if (!this.effectCanvas) return;
+                const offsetY = (Math.random() - 0.5) * 10;
+                const size = 4 + Math.random() * 4; // Very small: 4-8px
+                const hue = 195 + Math.random() * 30;
+
+                this.marineCreatures.push({
+                    x: direction > 0 ? -30 : this.effectCanvas.width + 30,
+                    y: this.effectCanvas.height * (startY / 100 + offsetY / 100),
+                    size,
+                    vx: direction * (2.5 + Math.random() * 1), // Faster
+                    life: 1,
+                    duration: 4 + Math.random() * 2, // Quick across screen
+                    color: `hsla(${hue}, 50%, 35%, 0.5)`, // More transparent
+                    isAmbient: false,
+                    fishType: 'normal',
+                    behaviorTime: 0,
+                    targetSpeed: direction * 3,
+                    currentSpeed: direction * 3,
+                    verticalDrift: (Math.random() - 0.5) * 5,
+                });
+            }, i * 80);
+        }
+    }
+
     spawnSchoolOfFish(count) {
         const schoolSize = Math.min(count, 18);
         const startY = 15 + Math.random() * 70;
@@ -798,14 +1052,47 @@ export default class OceanTheme extends BaseTheme {
     spawnAmbientFish() {
         if (!this.effectCanvas) return;
 
+        // Random creature type selection
+        const rand = Math.random();
+        let creatureType;
+
+        if (rand < 0.6) {
+            creatureType = 'fish'; // 60% fish
+        } else if (rand < 0.8) {
+            creatureType = 'seahorse'; // 20% seahorse
+        } else {
+            creatureType = 'shrimp'; // 20% shrimp
+        }
+
         const direction = Math.random() > 0.5 ? 1 : -1;
         const depth = 20 + Math.random() * 60; // 20-80% down the screen
-        const size = 8 + Math.random() * 12; // Small: 8-20px
-        const speed = 0.8 + Math.random() * 0.7; // Slow swimming
 
-        // Realistic fish colors - dark silhouettes with slight blue tint
-        const hue = 200 + Math.random() * 30; // Blue-green range
-        const lightness = 25 + Math.random() * 15; // Dark
+        let size, speed, color, fishType, verticalPattern;
+
+        if (creatureType === 'seahorse') {
+            // Seahorses - vertical, slow, distinctive
+            size = 10 + Math.random() * 8; // 10-18px
+            speed = 0.3 + Math.random() * 0.3; // Very slow
+            color = `hsla(190, 35%, 30%, 0.7)`; // Muted blue-green
+            fishType = 'seahorse';
+            verticalPattern = 'bobbing'; // Up and down gently
+        } else if (creatureType === 'shrimp') {
+            // Shrimp - small, quick, darting
+            size = 6 + Math.random() * 6; // 6-12px 
+            speed = 1.2 + Math.random() * 0.8; // Quick but erratic
+            color = `hsla(15, 25%, 35%, 0.6)`; // Pinkish-brown
+            fishType = 'shrimp';
+            verticalPattern = 'darting'; // Fast vertical movements
+        } else {
+            // Regular fish
+            size = 8 + Math.random() * 12; // 8-20px
+            speed = 0.8 + Math.random() * 0.7; // Normal speed
+            const hue = 200 + Math.random() * 30;
+            const lightness = 25 + Math.random() * 15;
+            color = `hsla(${hue}, 40%, ${lightness}%, 0.6)`;
+            fishType = Math.random() > 0.7 ? 'elongated' : 'normal';
+            verticalPattern = 'smooth';
+        }
 
         this.marineCreatures.push({
             x: direction > 0 ? -50 : this.effectCanvas.width + 50,
@@ -813,10 +1100,12 @@ export default class OceanTheme extends BaseTheme {
             size,
             vx: direction * speed,
             life: 1,
-            duration: 15 + Math.random() * 10, // 15-25 seconds to cross
-            color: `hsla(${hue}, 40%, ${lightness}%, 0.6)`,
-            isAmbient: true, // Mark as ambient life
-            fishType: Math.random() > 0.7 ? 'elongated' : 'normal', // Some elongated fish
+            duration: 15 + Math.random() * 10,
+            color,
+            isAmbient: true,
+            fishType,
+            verticalPattern,
+            creatureType,
         });
     }
 
