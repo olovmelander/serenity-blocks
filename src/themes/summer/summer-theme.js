@@ -1,5 +1,6 @@
 import { BaseTheme } from '../base-theme.js';
 import { SUMMER_TETROMINOS } from './summer-tetrominos.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 export default class SummerTheme extends BaseTheme {
     constructor() {
@@ -9,6 +10,7 @@ export default class SummerTheme extends BaseTheme {
         this.comboLevel = 0;
         this.dynamicElements = new Set();
         this.sunPosition = { x: 50, y: 25 }; // Sun in upper sky
+        this.comboUnsubscribe = null; // Store unsubscribe function
     }
 
     stop() {
@@ -21,6 +23,12 @@ export default class SummerTheme extends BaseTheme {
     }
 
     destroyDynamicSystems() {
+        // Unsubscribe from combo events
+        if (this.comboUnsubscribe) {
+            this.comboUnsubscribe();
+            this.comboUnsubscribe = null;
+        }
+
         this.dynamicElements.forEach((node) => {
             if (node?.parentNode) node.parentNode.removeChild(node);
         });
@@ -34,6 +42,14 @@ export default class SummerTheme extends BaseTheme {
         if (!themeContainer) return;
 
         this.themeContainerRef = themeContainer;
+
+        // Subscribe to combo events
+        if (!this.comboUnsubscribe) {
+            this.comboUnsubscribe = eventBus.on(EVENTS.COMBO, ({ comboCount }) => {
+                console.log(`[SummerTheme] Received combo event: ${comboCount}`);
+                this.onComboUpdate(comboCount);
+            });
+        }
 
         // Build all summer elements
         this.buildSun();
@@ -352,61 +368,230 @@ export default class SummerTheme extends BaseTheme {
         }
     }
 
-    // Combo effect system
+    // Combo effect system - Summer themed!
     onComboUpdate(comboCount) {
         this.comboLevel = comboCount;
 
-        if (comboCount >= 5 && comboCount < 10) {
-            this.triggerButterflySwirl();
-        } else if (comboCount >= 10 && comboCount < 20) {
-            this.triggerSunPulse();
-        } else if (comboCount >= 20 && comboCount < 30) {
-            this.triggerPollenBurst();
-        } else if (comboCount >= 30) {
-            this.triggerSummerMagic();
+        if (comboCount >= 1 && comboCount < 2) {
+            this.triggerFireflies();
+        } else if (comboCount >= 2 && comboCount < 3) {
+            this.triggerFlowerPetalBurst();
+        } else if (comboCount >= 3 && comboCount < 5) {
+            this.triggerRainbow();
+        } else if (comboCount >= 5 && comboCount < 6) {
+            this.triggerBeeSwarm();
+        } else if (comboCount >= 6 && comboCount < 8) {
+            this.triggerDewdropSparkles();
+        } else if (comboCount >= 8 && comboCount < 10) {
+            this.triggerButterflyVortex();
+        } else if (comboCount >= 10) {
+            this.triggerGoldenHourMagic();
         }
     }
 
-    triggerButterflySwirl() {
-        // Make butterflies swirl more actively
-        this.butterflies.forEach((butterfly, index) => {
+    // COMBO 5-10: Fireflies appear and glow
+    triggerFireflies() {
+        const fireflyContainer = document.getElementById('summer-fireflies');
+        if (!fireflyContainer) {
+            const container = document.createElement('div');
+            container.id = 'summer-fireflies';
+            container.className = 'summer-firefly-container';
+            this.themeContainerRef?.appendChild(container);
+            this.dynamicElements.add(container);
+        }
+
+        const container = document.getElementById('summer-fireflies');
+        if (!container) return;
+
+        // Spawn 5-8 fireflies
+        const fireflyCount = this.random(5, 8);
+        for (let i = 0; i < fireflyCount; i++) {
             setTimeout(() => {
-                butterfly.style.animationDuration = '8s';
+                const firefly = document.createElement('div');
+                firefly.className = 'summer-firefly';
+                firefly.style.left = `${Math.random() * 100}%`;
+                firefly.style.top = `${Math.random() * 80 + 10}%`;
+                firefly.style.animationDelay = `-${Math.random() * 4}s`;
+                container.appendChild(firefly);
+
+                // Remove after animation
                 setTimeout(() => {
-                    butterfly.style.animationDuration = `${this.random(15, 30)}s`;
-                }, 3000);
-            }, index * 100);
-        });
-    }
-
-    triggerSunPulse() {
-        const sunCore = this.themeContainerRef?.querySelector('.summer-sun-core');
-        if (sunCore) {
-            sunCore.classList.add('summer-sun-pulse-combo');
-            setTimeout(() => {
-                sunCore.classList.remove('summer-sun-pulse-combo');
-            }, 2000);
+                    if (firefly.parentNode) firefly.parentNode.removeChild(firefly);
+                }, 6000);
+            }, i * 200);
         }
     }
 
-    triggerPollenBurst() {
-        const pollenContainer = document.getElementById('summer-pollen-layer');
-        if (pollenContainer) {
-            pollenContainer.classList.add('summer-pollen-burst');
+    // COMBO 10-15: Flower petals burst from cleared lines
+    triggerFlowerPetalBurst() {
+        const petalContainer = document.getElementById('summer-petals');
+        if (!petalContainer) {
+            const container = document.createElement('div');
+            container.id = 'summer-petals';
+            container.className = 'summer-petal-container';
+            this.themeContainerRef?.appendChild(container);
+            this.dynamicElements.add(container);
+        }
+
+        const container = document.getElementById('summer-petals');
+        if (!container) return;
+
+        // Create 20 flower petals
+        const colors = ['#FF69B4', '#FFB6C1', '#FFA500', '#FFD700', '#FF6B35', '#FFFFFF'];
+        for (let i = 0; i < 20; i++) {
             setTimeout(() => {
-                pollenContainer.classList.remove('summer-pollen-burst');
-            }, 3000);
+                const petal = document.createElement('div');
+                petal.className = 'summer-petal';
+                petal.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                petal.style.left = `${40 + Math.random() * 20}%`;
+                petal.style.top = `${40 + Math.random() * 20}%`;
+                petal.style.setProperty('--petal-drift-x', `${(Math.random() - 0.5) * 200}px`);
+                petal.style.setProperty('--petal-drift-y', `${Math.random() * 400 + 200}px`);
+                petal.style.animationDelay = `${Math.random() * 0.5}s`;
+                container.appendChild(petal);
+
+                setTimeout(() => {
+                    if (petal.parentNode) petal.parentNode.removeChild(petal);
+                }, 4000);
+            }, i * 50);
         }
     }
 
-    triggerSummerMagic() {
-        // Full summer magic - everything glows and intensifies
-        if (this.themeContainerRef) {
-            this.themeContainerRef.classList.add('summer-magic-mode');
+    // COMBO 15-20: Rainbow arc appears in sky
+    triggerRainbow() {
+        const rainbowEl = document.getElementById('summer-rainbow');
+        if (!rainbowEl) {
+            const rainbow = document.createElement('div');
+            rainbow.id = 'summer-rainbow';
+            rainbow.className = 'summer-rainbow';
+            this.themeContainerRef?.appendChild(rainbow);
+            this.dynamicElements.add(rainbow);
+        }
+
+        const rainbow = document.getElementById('summer-rainbow');
+        if (rainbow) {
+            rainbow.classList.add('summer-rainbow-active');
             setTimeout(() => {
-                this.themeContainerRef.classList.remove('summer-magic-mode');
+                rainbow.classList.remove('summer-rainbow-active');
             }, 5000);
         }
+    }
+
+    // COMBO 20-25: Bees buzz around the flowers
+    triggerBeeSwarm() {
+        const beeContainer = document.getElementById('summer-bees');
+        if (!beeContainer) {
+            const container = document.createElement('div');
+            container.id = 'summer-bees';
+            container.className = 'summer-bee-container';
+            this.themeContainerRef?.appendChild(container);
+            this.dynamicElements.add(container);
+        }
+
+        const container = document.getElementById('summer-bees');
+        if (!container) return;
+
+        // Spawn 6-10 bees
+        const beeCount = this.random(6, 10);
+        for (let i = 0; i < beeCount; i++) {
+            setTimeout(() => {
+                const bee = document.createElement('div');
+                bee.className = 'summer-bee';
+
+                // Bees fly from left to right at bottom
+                const startY = 60 + Math.random() * 30;
+                bee.style.setProperty('--bee-start-y', `${startY}%`);
+                bee.style.setProperty('--bee-mid-y', `${startY + (Math.random() - 0.5) * 20}%`);
+                bee.style.setProperty('--bee-end-y', `${startY + (Math.random() - 0.5) * 15}%`);
+                bee.style.animationDuration = `${this.random(3, 5)}s`;
+                bee.style.animationDelay = `${Math.random() * 0.5}s`;
+
+                container.appendChild(bee);
+
+                setTimeout(() => {
+                    if (bee.parentNode) bee.parentNode.removeChild(bee);
+                }, 6000);
+            }, i * 100);
+        }
+    }
+
+    // COMBO 25-30: Dewdrop sparkles across the scene
+    triggerDewdropSparkles() {
+        const sparkleContainer = document.getElementById('summer-dewdrops');
+        if (!sparkleContainer) {
+            const container = document.createElement('div');
+            container.id = 'summer-dewdrops';
+            container.className = 'summer-dewdrop-container';
+            this.themeContainerRef?.appendChild(container);
+            this.dynamicElements.add(container);
+        }
+
+        const container = document.getElementById('summer-dewdrops');
+        if (!container) return;
+
+        // Create 30 sparkling dewdrops
+        for (let i = 0; i < 30; i++) {
+            setTimeout(() => {
+                const dewdrop = document.createElement('div');
+                dewdrop.className = 'summer-dewdrop';
+                dewdrop.style.left = `${Math.random() * 100}%`;
+                dewdrop.style.top = `${Math.random() * 100}%`;
+                dewdrop.style.animationDelay = `${Math.random() * 2}s`;
+                container.appendChild(dewdrop);
+
+                setTimeout(() => {
+                    if (dewdrop.parentNode) dewdrop.parentNode.removeChild(dewdrop);
+                }, 3000);
+            }, i * 30);
+        }
+    }
+
+    // COMBO 30-40: Butterfly vortex - all butterflies spiral together
+    triggerButterflyVortex() {
+        if (!this.themeContainerRef) return;
+
+        this.themeContainerRef.classList.add('summer-butterfly-vortex');
+
+        // Enhanced butterfly activity
+        this.butterflies.forEach((butterfly, index) => {
+            setTimeout(() => {
+                butterfly.style.animationDuration = '5s';
+                butterfly.style.filter = 'drop-shadow(0 0 15px rgba(255, 200, 100, 1))';
+            }, index * 100);
+        });
+
+        setTimeout(() => {
+            this.themeContainerRef?.classList.remove('summer-butterfly-vortex');
+            this.butterflies.forEach((butterfly) => {
+                butterfly.style.animationDuration = `${this.random(15, 30)}s`;
+                butterfly.style.filter = '';
+            });
+        }, 6000);
+    }
+
+    // COMBO 40+: Golden Hour Magic - Everything becomes magical golden hour
+    triggerGoldenHourMagic() {
+        if (!this.themeContainerRef) return;
+
+        this.themeContainerRef.classList.add('summer-golden-hour');
+
+        // Trigger multiple effects simultaneously
+        this.triggerRainbow();
+        this.triggerFireflies();
+        this.triggerFlowerPetalBurst();
+
+        // Intense sun pulse
+        const sunCore = this.themeContainerRef.querySelector('.summer-sun-core');
+        if (sunCore) {
+            sunCore.classList.add('summer-sun-golden-burst');
+        }
+
+        setTimeout(() => {
+            this.themeContainerRef?.classList.remove('summer-golden-hour');
+            if (sunCore) {
+                sunCore.classList.remove('summer-sun-golden-burst');
+            }
+        }, 8000);
     }
 
     /**
