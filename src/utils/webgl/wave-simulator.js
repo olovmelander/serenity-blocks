@@ -799,6 +799,49 @@ export default class WaveSimulator {
     }
 
     /**
+     * Clear all wave state - resets ocean to calm
+     */
+    clear() {
+        if (!this.gl || !this.height || !this.velocity) return;
+
+        const gl = this.gl;
+        
+        // Clear height field
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.height.read.fbo);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.height.write.fbo);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Clear velocity field
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.velocity.read.fbo);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.velocity.write.fbo);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Clear foam field if enabled
+        if (this.config.FOAM_ENABLED && this.foam) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.foam.read.fbo);
+            gl.clearColor(0.0, 0.0, 0.0, 0.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.foam.write.fbo);
+            gl.clearColor(0.0, 0.0, 0.0, 0.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+        
+        // Unbind framebuffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        
+        console.log('[WaveSimulator] Wave state cleared - ocean calm');
+    }
+
+    /**
      * Cleanup WebGL resources
      */
     cleanup() {
