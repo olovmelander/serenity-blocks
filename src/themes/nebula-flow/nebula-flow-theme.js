@@ -11,7 +11,7 @@
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import FluidSimulator from './fluid-simulator.js';
+import FluidSimulator from '../../utils/webgl/fluid-simulator.js';
 import { getColorScheme, getRandomColor, lerpColor } from './color-schemes.js';
 import { NEBULA_FLOW_TETROMINOS } from './nebula-flow-tetrominos.js';
 
