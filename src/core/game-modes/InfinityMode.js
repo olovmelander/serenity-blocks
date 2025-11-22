@@ -829,7 +829,7 @@ export class InfinityMode extends BaseGameMode {
 
                 // Update if either: enough steps have passed OR enough time has passed
                 const shouldUpdate = (this.gravityStepCount >= this.cameraUpdateInterval) ||
-                                    (timeSinceLastUpdate >= this.minCameraUpdateInterval);
+                    (timeSinceLastUpdate >= this.minCameraUpdateInterval);
 
                 if (shouldUpdate && this.boardScene?.cameraSettings) {
                     this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
@@ -937,11 +937,11 @@ export class InfinityMode extends BaseGameMode {
 
         const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const cameraCenterRow = typeof cameraSettings.centerRow === 'number'
-            ? cameraSettings.centerRow
-            : (cameraSettings.currentTopRow || 0) + visibleRows / 2;
 
-        this.minimap.update(this.gameState, cameraCenterRow, visibleRows);
+        // Minimap expects the TOP row of the viewport, not the center
+        const cameraTopRow = cameraSettings.currentTopRow || 0;
+
+        this.minimap.update(this.gameState, cameraTopRow, visibleRows);
     }
 
     /**
