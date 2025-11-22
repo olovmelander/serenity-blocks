@@ -4251,18 +4251,17 @@ body {
     }
 }
 
-/* === COMBO 15-20: Rainbow === */
 /* === COMBO 3-4: Rainbow === */
 .summer-rainbow {
     position: absolute;
-    top: 10%;
+    top: -15%;
     left: 50%;
     transform: translateX(-50%);
-    width: 900px;
-    height: 450px;
+    width: 2000px;
+    height: 1000px;
     border-radius: 50% 50% 0 0;
     background:
-        radial-gradient(ellipse 900px 450px at 50% 100%,
+        radial-gradient(ellipse 2000px 1000px at 50% 100%,
             transparent 35%,
             rgba(255, 0, 0, 0.6) 36%,
             rgba(255, 0, 0, 0.6) 38%,
