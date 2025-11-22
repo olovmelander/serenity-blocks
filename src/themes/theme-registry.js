@@ -165,6 +165,12 @@ export const THEME_REGISTRY = [
         group: 'biomes',
     },
     {
+        id: 'luminous-tides',
+        displayName: 'Luminous Tides',
+        module: './luminous-tides/luminous-tides-theme.js',
+        group: 'biomes',
+    },
+    {
         id: 'fluid-dreams',
         displayName: 'Fluid Dreams',
         module: './fluid-dreams/fluid-dreams-theme.js',
