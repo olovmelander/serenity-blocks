@@ -105,7 +105,11 @@ export default class OceanTheme extends BaseTheme {
             theme.appendChild(this.effectCanvas);
         }
         this.resizeEffectCanvas();
-        this.effectCtx = this.effectCanvas.getContext('2d', { alpha: true });
+        // Optimize canvas for frequent reads and 2D rendering
+        this.effectCtx = this.effectCanvas.getContext('2d', {
+            alpha: true,
+            desynchronized: true, // Better performance for animations
+        });
         window.addEventListener('resize', () => this.resizeEffectCanvas());
     }
 
@@ -130,11 +134,23 @@ export default class OceanTheme extends BaseTheme {
             const dt = (ts - this.effectLastFrame) / 1000;
             this.effectLastFrame = ts;
 
-            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
-            this.updateShockwaveEffects(dt);
-            this.updateBiolumParticles(dt);
-            this.updateBubbleParticles(dt);
-            this.updateMarineCreatures(dt);
+            // Simple direct canvas dimensions
+            const canvasWidth = this.effectCanvas.width;
+            const canvasHeight = this.effectCanvas.height;
+
+            // Only clear and redraw if we have active effects
+            const hasEffects = this.shockwaveEffects.length > 0 ||
+                this.biolumParticles.length > 0 ||
+                this.bubbleBurstParticles.length > 0 ||
+                this.marineCreatures.length > 0;
+
+            if (hasEffects) {
+                this.effectCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+                this.updateShockwaveEffects(dt);
+                this.updateBiolumParticles(dt);
+                this.updateBubbleParticles(dt);
+                this.updateMarineCreatures(dt);
+            }
 
             // Spawn ambient life occasionally
             this.updateAmbientLife(ts);
@@ -237,6 +253,10 @@ export default class OceanTheme extends BaseTheme {
     }
 
     updateMarineCreatures(dt) {
+        const ctx = this.effectCtx;
+        const dt50 = dt * 50; // Pre-calculate for speed
+        const dt15 = dt * 15;
+
         for (let i = this.marineCreatures.length - 1; i >= 0; i--) {
             const c = this.marineCreatures[i];
             c.life -= dt / c.duration;
@@ -259,37 +279,30 @@ export default class OceanTheme extends BaseTheme {
             if (c.behaviorTime > (c.nextBehaviorChange || 2)) {
                 c.nextBehaviorChange = 2 + Math.random() * 2;
                 c.behaviorTime = 0;
-
-                // Random speed variation (0.6x to 1.4x base speed)
                 c.targetSpeed = c.vx * (0.6 + Math.random() * 0.8);
-
-                // Random vertical drift
                 c.verticalDrift = (Math.random() - 0.5) * 20;
             }
 
-            // Smooth speed transitions
+            // Smooth speed transitions and movement
             c.currentSpeed += (c.targetSpeed - c.currentSpeed) * dt * 2;
-            c.x += c.currentSpeed * dt * 50;
+            c.x += c.currentSpeed * dt50;
 
             // Natural swimming motion with random element
             c.swimTime = (c.swimTime || 0) + dt * (3 + Math.random() * 2);
             const swimPhase = c.swimTime;
-
-            // Combine smooth wave with vertical drift
             const swimOffset = Math.sin(swimPhase) * 3;
-            c.y += (swimOffset + c.verticalDrift * 0.1) * dt * 15;
+            c.y += (swimOffset + c.verticalDrift * 0.1) * dt15;
 
-            // Occasional small depth changes (like fish adjusting buoyancy)
+            // Occasional small depth changes
             if (Math.random() < dt * 0.3) {
                 c.y += (Math.random() - 0.5) * 2;
             }
 
-            // Fade in/out smoothly
+            // Calculate alpha once
             const fadeIn = Math.min(c.life * 3, 1);
             const fadeOut = Math.min((1 - c.life) * 3, 1);
             const alpha = Math.min(fadeIn, fadeOut) * 0.65;
 
-            const ctx = this.effectCtx;
             ctx.save();
             ctx.globalAlpha = alpha;
             ctx.fillStyle = c.color;
@@ -864,6 +877,15 @@ export default class OceanTheme extends BaseTheme {
                 setTimeout(() => { ray.style.opacity = original; }, 500);
             }
         }
+    }
+
+    resizeEffectCanvas() {
+        if (!this.effectCanvas) return;
+        const rect = this.effectCanvas.getBoundingClientRect();
+
+        // Simple 1:1 sizing - no DPR complexity
+        this.effectCanvas.width = rect.width;
+        this.effectCanvas.height = rect.height;
     }
 
     createShockwave(comboCount) {
