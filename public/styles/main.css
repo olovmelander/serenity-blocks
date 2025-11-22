@@ -482,11 +482,15 @@ body {
 .ocean-god-ray {
     position: absolute;
     top: 0;
-    /* Much more subtle god rays - deeper blue tones */
-    background: linear-gradient(to bottom, rgba(80, 140, 180, 0.04) 0%, rgba(40, 100, 140, 0.02) 40%, transparent 75%);
+    /* Realistic deep ocean god rays - very subtle blue-white light */
+    background: linear-gradient(to bottom,
+            rgba(120, 160, 200, 0.12) 0%,
+            rgba(80, 130, 170, 0.08) 15%,
+            rgba(60, 110, 150, 0.04) 40%,
+            transparent 70%);
     transform-origin: top center;
-    mix-blend-mode: overlay;
-    /* Removed blur for better performance */
+    mix-blend-mode: screen;
+    /* No blur for performance */
 }
 
 @keyframes ocean-ray-anim {
@@ -688,11 +692,13 @@ body {
 
     0%,
     100% {
-        transform: rotate(var(--ray-angle)) skewY(var(--ray-skew)) translateX(0);
+        transform: rotate(var(--base-angle, 0deg)) translateX(-8px);
+        opacity: 0.8;
     }
 
     50% {
-        transform: rotate(calc(var(--ray-angle) + 5deg)) skewY(calc(var(--ray-skew) + 2deg)) translateX(15px);
+        transform: rotate(var(--base-angle, 0deg)) translateX(8px);
+        opacity: 1;
     }
 }
 

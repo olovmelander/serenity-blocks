@@ -271,8 +271,40 @@ export default class OceanTheme extends BaseTheme {
             theme.appendChild(vignette);
         }
 
-        // God rays removed for performance
-        // Volumetric god rays
+        // Volumetric god rays - subtle light from surface
+        const godRayContainer = document.querySelector('.ocean-god-rays');
+        if (godRayContainer && godRayContainer.children.length === 0) {
+            this.godRays = [];
+            // Only 6-8 rays for performance and realism
+            const rayCount = 6 + Math.floor(Math.random() * 3);
+
+            for (let i = 0; i < rayCount; i++) {
+                const ray = document.createElement('div');
+                ray.className = 'ocean-god-ray';
+
+                const width = 40 + Math.random() * 80; // 40-120px wide
+                const angle = (Math.random() * 20 - 10); // -10 to +10 degrees
+                const leftPos = Math.random() * 110 - 5; // -5% to 105%
+
+                Object.assign(ray.style, {
+                    position: 'absolute',
+                    left: `${leftPos}%`,
+                    top: '-10%',
+                    width: `${width}px`,
+                    height: '120%',
+                    transform: `rotate(${angle}deg)`,
+                    transformOrigin: 'top center',
+                    opacity: Math.random() * 0.15 + 0.05, // Very subtle: 0.05-0.2
+                    animation: `godRayDrift ${20 + Math.random() * 15}s ease-in-out infinite`,
+                    animationDelay: `-${Math.random() * 30}s`,
+                    pointerEvents: 'none',
+                });
+
+                godRayContainer.appendChild(ray);
+                this.godRays.push(ray);
+            }
+            this.registerContainer(godRayContainer);
+        }
 
         // Enhanced caustics
         const causticsContainer = document.querySelector('#ocean-theme .caustics-container');
