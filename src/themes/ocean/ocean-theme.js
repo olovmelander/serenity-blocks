@@ -26,12 +26,12 @@ export default class OceanTheme extends BaseTheme {
         this.depthFog = [];
         this.marineCreatures = [];
         this.presets = {
-            Minimal: { biolumLimit: 8, fishCount: 2, kelpCount: 5, sedimentCount: 10, bubbleCount: 15, planktonCount: 15, jellyCount: 0 },
-            Low: { biolumLimit: 15, fishCount: 4, kelpCount: 8, sedimentCount: 15, bubbleCount: 20, planktonCount: 25, jellyCount: 0 },
-            Medium: { biolumLimit: 30, fishCount: 8, kelpCount: 12, sedimentCount: 25, bubbleCount: 30, planktonCount: 40, jellyCount: 0 },
-            High: { biolumLimit: 50, fishCount: 12, kelpCount: 18, sedimentCount: 40, bubbleCount: 45, planktonCount: 60, jellyCount: 0 },
-            Ultra: { biolumLimit: 80, fishCount: 18, kelpCount: 25, sedimentCount: 60, bubbleCount: 70, planktonCount: 90, jellyCount: 0 },
-            Extreme: { biolumLimit: 120, fishCount: 25, kelpCount: 35, sedimentCount: 90, bubbleCount: 100, planktonCount: 130, jellyCount: 0 },
+            Minimal: { biolumLimit: 8, fishCount: 2, kelpCount: 8, sedimentCount: 20, bubbleCount: 8, planktonCount: 30, jellyCount: 0 },
+            Low: { biolumLimit: 15, fishCount: 4, kelpCount: 12, sedimentCount: 30, bubbleCount: 12, planktonCount: 50, jellyCount: 0 },
+            Medium: { biolumLimit: 30, fishCount: 8, kelpCount: 18, sedimentCount: 50, bubbleCount: 18, planktonCount: 80, jellyCount: 0 },
+            High: { biolumLimit: 50, fishCount: 12, kelpCount: 25, sedimentCount: 80, bubbleCount: 25, planktonCount: 120, jellyCount: 0 },
+            Ultra: { biolumLimit: 80, fishCount: 18, kelpCount: 35, sedimentCount: 120, bubbleCount: 35, planktonCount: 180, jellyCount: 0 },
+            Extreme: { biolumLimit: 120, fishCount: 25, kelpCount: 50, sedimentCount: 180, bubbleCount: 50, planktonCount: 250, jellyCount: 0 },
         };
         this.currentPreset = this.presets.High;
     }
@@ -119,6 +119,8 @@ export default class OceanTheme extends BaseTheme {
 
     startEffectLoop() {
         if (!this.effectCanvas) return;
+        this.lastAmbientSpawn = 0;
+
         const loop = (ts) => {
             if (!this.isActive || !this.effectCanvas || !this.effectCtx) {
                 this.effectRafId = null;
@@ -133,6 +135,9 @@ export default class OceanTheme extends BaseTheme {
             this.updateBiolumParticles(dt);
             this.updateBubbleParticles(dt);
             this.updateMarineCreatures(dt);
+
+            // Spawn ambient life occasionally
+            this.updateAmbientLife(ts);
 
             this.effectRafId = requestAnimationFrame(loop);
         };
@@ -239,19 +244,42 @@ export default class OceanTheme extends BaseTheme {
                 this.marineCreatures.splice(i, 1);
                 continue;
             }
+
             c.x += c.vx * dt * 50;
-            c.y += Math.sin(c.life * 5) * 0.5;
-            const alpha = Math.min(c.life * 2, 1) * 0.7;
+
+            // Subtle swimming motion
+            const swimPhase = c.life * 8;
+            const swimOffset = Math.sin(swimPhase) * 2;
+            c.y += swimOffset * dt * 10;
+
+            // Fade in/out
+            const alpha = Math.min(c.life * 3, 1, (1 - c.life) * 3) * 0.7;
 
             const ctx = this.effectCtx;
             ctx.save();
             ctx.globalAlpha = alpha;
             ctx.fillStyle = c.color;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = c.color;
+
+            // Draw fish shape
             ctx.beginPath();
-            ctx.ellipse(c.x, c.y, c.size, c.size * 0.5, 0, 0, Math.PI * 2);
+            if (c.fishType === 'elongated') {
+                // Elongated fish (like barracuda)
+                ctx.ellipse(c.x, c.y, c.size * 2, c.size * 0.4, 0, 0, Math.PI * 2);
+            } else {
+                // Normal fish silhouette
+                ctx.ellipse(c.x, c.y, c.size, c.size * 0.5, 0, 0, Math.PI * 2);
+            }
             ctx.fill();
+
+            // Add subtle tail
+            const tailX = c.x - (c.vx > 0 ? c.size * 0.8 : -c.size * 0.8);
+            const tailOffset = Math.sin(swimPhase * 2) * c.size * 0.3;
+            ctx.beginPath();
+            ctx.moveTo(c.x - (c.vx > 0 ? c.size * 0.6 : -c.size * 0.6), c.y);
+            ctx.lineTo(tailX, c.y + tailOffset);
+            ctx.lineTo(c.x - (c.vx > 0 ? c.size * 0.6 : -c.size * 0.6), c.y);
+            ctx.fill();
+
             ctx.restore();
         }
     }
@@ -749,6 +777,47 @@ export default class OceanTheme extends BaseTheme {
                 speed: Math.random() * 1.2 + 0.8,
             });
         }
+    }
+
+    updateAmbientLife(timestamp) {
+        if (!this.effectCanvas) return;
+
+        // Spawn small fish occasionally - every 8-15 seconds
+        const spawnInterval = 8000 + Math.random() * 7000;
+        if (timestamp - this.lastAmbientSpawn > spawnInterval) {
+            this.lastAmbientSpawn = timestamp;
+
+            // Keep max 3 ambient creatures at once
+            const ambientCount = this.marineCreatures.filter(c => c.isAmbient).length;
+            if (ambientCount < 3) {
+                this.spawnAmbientFish();
+            }
+        }
+    }
+
+    spawnAmbientFish() {
+        if (!this.effectCanvas) return;
+
+        const direction = Math.random() > 0.5 ? 1 : -1;
+        const depth = 20 + Math.random() * 60; // 20-80% down the screen
+        const size = 8 + Math.random() * 12; // Small: 8-20px
+        const speed = 0.8 + Math.random() * 0.7; // Slow swimming
+
+        // Realistic fish colors - dark silhouettes with slight blue tint
+        const hue = 200 + Math.random() * 30; // Blue-green range
+        const lightness = 25 + Math.random() * 15; // Dark
+
+        this.marineCreatures.push({
+            x: direction > 0 ? -50 : this.effectCanvas.width + 50,
+            y: this.effectCanvas.height * (depth / 100),
+            size,
+            vx: direction * speed,
+            life: 1,
+            duration: 15 + Math.random() * 10, // 15-25 seconds to cross
+            color: `hsla(${hue}, 40%, ${lightness}%, 0.6)`,
+            isAmbient: true, // Mark as ambient life
+            fishType: Math.random() > 0.7 ? 'elongated' : 'normal', // Some elongated fish
+        });
     }
 
     stop() {
