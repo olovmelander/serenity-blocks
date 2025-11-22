@@ -31,13 +31,13 @@ export default class SunsetTheme extends BaseTheme {
         // REMOVED: All canvas star properties - using simple CSS stars
         this.performanceFlags = {
             minimalAtmosphere: false,
-            solarSampleMs: 500, // EXTREME: 500ms (~2 FPS) for solar updates - dramatic reduction
-            solarThrottleMs: 500, // EXTREME: Match solar sample rate
-            godRayCount: 0, // EXTREME: Completely disable god rays (cause FPS drop in daylight!)
-            sunFlareCount: 1, // EXTREME: Only 1 sun flare (from 6 to 1 = 83% reduction!)
-            starCount: 100, // ULTRA: From 200 to 100 (50% reduction!)
-            disablePhaserEmitter: true, // DISABLE Phaser sun particles completely
-            disableLensEffects: true, // EXTREME: Disable lens effects (biggest performance hit!)
+            solarSampleMs: 200, // Reduced from 100ms (5 FPS updates) - sufficient for slow sunset
+            solarThrottleMs: 200, // Match solar sample rate
+            godRayCount: 16, // Reduced from 24 to 16 for performance
+            sunFlareCount: 3, // Keep multiple sun flares
+            starCount: 150, // Reduced from 200 to 150
+            disablePhaserEmitter: false, // Keep Phaser sun particles
+            disableLensEffects: false, // Keep lens effects
         };
         this.lastSolarApply = 0;
     }
@@ -506,16 +506,29 @@ export default class SunsetTheme extends BaseTheme {
         const sunflareContainer = document.getElementById('sunset-sunflares');
         if (sunflareContainer && sunflareContainer.children.length === 0) {
             // EXTREME PERFORMANCE: Only 1 sun flare with simpler gradient (radial gradients are very expensive!)
-            const flareCount = this.performanceFlags.sunFlareCount || 1;
-            if (flareCount >= 1) {
+            const flareCount = this.performanceFlags.sunFlareCount || 3;
+            for (let i = 0; i < flareCount; i++) {
                 const flareEl = document.createElement('div');
                 flareEl.className = 'sunset-sunflare';
-                flareEl.style.width = '150px';
-                flareEl.style.height = '150px';
-                // Simplified gradient: only 2 stops instead of default multi-stop
-                flareEl.style.background = 'radial-gradient(circle, rgba(255, 200, 100, 0.6) 0%, transparent 60%)';
-                flareEl.style.marginLeft = '0px';
-                flareEl.style.marginTop = '0px';
+
+                // Randomize size and position slightly
+                const size = 100 + Math.random() * 200;
+                flareEl.style.width = `${size}px`;
+                flareEl.style.height = `${size}px`;
+
+                // Varied gradients for better look
+                if (i === 0) {
+                    flareEl.style.background = 'radial-gradient(circle, rgba(255, 220, 150, 0.4) 0%, rgba(255, 180, 100, 0.1) 60%, transparent 70%)';
+                } else if (i === 1) {
+                    flareEl.style.background = 'radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 200, 150, 0.1) 50%, transparent 60%)';
+                    flareEl.style.marginLeft = `${(Math.random() - 0.5) * 50}px`;
+                    flareEl.style.marginTop = `${(Math.random() - 0.5) * 50}px`;
+                } else {
+                    flareEl.style.background = 'radial-gradient(circle, rgba(255, 150, 100, 0.2) 0%, transparent 60%)';
+                    flareEl.style.width = `${size * 1.5}px`;
+                    flareEl.style.height = `${size * 1.5}px`;
+                }
+
                 sunflareContainer.appendChild(flareEl);
             }
             this.registerContainer(sunflareContainer);
@@ -573,14 +586,22 @@ export default class SunsetTheme extends BaseTheme {
     ensureStars() {
         // SIMPLIFIED: Clean star rendering like galaxy theme - no canvas, no noise, just pure CSS stars
         let starsContainer = document.getElementById('sunset-stars');
+        const sunAndSky = this.themeContainerRef?.querySelector('.sun-and-sky');
+
         if (!starsContainer) {
             starsContainer = document.createElement('div');
             starsContainer.id = 'sunset-stars';
             starsContainer.className = 'sunset-stars';
-            (this.themeContainerRef || document.getElementById('sunset-theme') || document.body)
-                .appendChild(starsContainer);
-        } else if (this.themeContainerRef && starsContainer.parentNode !== this.themeContainerRef) {
-            this.themeContainerRef.appendChild(starsContainer);
+            if (sunAndSky) {
+                // Insert before sun if possible, or just append (z-index will handle it)
+                sunAndSky.insertBefore(starsContainer, sunAndSky.firstChild);
+            } else {
+                (this.themeContainerRef || document.getElementById('sunset-theme') || document.body)
+                    .appendChild(starsContainer);
+            }
+        } else if (sunAndSky && starsContainer.parentNode !== sunAndSky) {
+            // Move into sun-and-sky if not already there
+            sunAndSky.insertBefore(starsContainer, sunAndSky.firstChild);
         }
 
         // ULTRA PERFORMANCE: Reduced star count for better performance

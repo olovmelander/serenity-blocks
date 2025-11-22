@@ -136,7 +136,7 @@ export class SunsetSolarState {
      * @returns {() => void} unsubscribe function
      */
     onUpdate(callback) {
-        if (typeof callback !== 'function') return () => {};
+        if (typeof callback !== 'function') return () => { };
         this.listeners.add(callback);
         // Immediately inform with current state for deterministic behavior
         callback({ ...this._state });
@@ -259,18 +259,22 @@ export class SunsetSolarState {
             '--sunset-solar-altitude': altitude.toFixed(3),
             '--sunset-solar-intensity': intensity.toFixed(3),
             '--sunset-solar-hue': `${hue.toFixed(1)}deg`,
-            // REMOVED: god-ray-center (use solar-x/y instead)
-            // REMOVED: ray-scale, ray-opacity (use altitude/intensity instead)
-            // REMOVED: cloud-warmth, cloud-brightness, cloud-highlight (clouds removed)
-            // REMOVED: heat-haze-strength (not critical)
-            // REMOVED: noise-alpha (not critical)
+            '--sunset-god-ray-center-x': `${(normalizedX * 100).toFixed(2)}%`,
+            '--sunset-god-ray-center-y': `${(normalizedY * 100).toFixed(2)}%`,
+            '--sunset-ray-scale': (0.8 + altitude * 0.4).toFixed(3),
+            '--sunset-ray-opacity': (intensity * 0.8).toFixed(3),
+            '--sunset-cloud-warmth': `${(hue - 40).toFixed(1)}deg`,
+            '--sunset-cloud-brightness': (0.8 + intensity * 0.4).toFixed(3),
+            '--sunset-cloud-highlight': stagePreset.cloudHighlight.toFixed(3),
+            '--sunset-heat-haze-strength': (altitude * 0.8).toFixed(3),
+            '--sunset-noise-alpha': (0.1 + (1 - intensity) * 0.1).toFixed(3),
             '--sunset-star-alpha': starAlpha.toFixed(3),
-            // REMOVED: star-twinkle-speed (constant is fine)
+            '--sunset-star-twinkle-speed': stagePreset.starTwinkle.toFixed(2),
             '--sunset-night-veil-alpha': nightVeil.toFixed(3),
-            // REMOVED: cirrus-opacity (not critical)
-            // REMOVED: sun-core-alpha (constant is fine)
-            // REMOVED: sky-desaturate (constant is fine)
-            // REMOVED: flare-cap (not critical)
+            '--sunset-cirrus-opacity': cirrus.toFixed(3),
+            '--sunset-sun-core-alpha': stagePreset.sunCoreAlpha.toFixed(3),
+            '--sunset-sky-desaturate': stagePreset.skyDesaturate.toFixed(3),
+            '--sunset-flare-cap': stagePreset.flareCap.toFixed(3),
         };
 
         // Only update changed values to minimize repaints
