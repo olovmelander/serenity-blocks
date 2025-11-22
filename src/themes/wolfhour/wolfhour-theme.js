@@ -374,7 +374,7 @@ export default class WolfhourTheme extends BaseTheme {
         const nebulaBack = this.getContainer('wolfhour-nebula-back');
         if (nebulaBack) {
             const quality = this.getGraphicsQuality();
-            const cacheKey = `wolfhour-nebula-back-2000x800-${quality}`;
+            const cacheKey = `wolfhour-nebula-back-2000x800-${quality}-v2`;
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -394,9 +394,9 @@ export default class WolfhourTheme extends BaseTheme {
                     const radius = rng() * 200 + 100;
                     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
                     const opacity = rng() * 0.15 + 0.05;
-                    gradient.addColorStop(0, `rgba(200, 200, 200, ${opacity})`);
-                    gradient.addColorStop(0.5, `rgba(150, 150, 150, ${opacity * 0.5})`);
-                    gradient.addColorStop(1, 'rgba(100, 100, 100, 0)');
+                    gradient.addColorStop(0, `rgba(100, 120, 180, ${opacity})`);
+                    gradient.addColorStop(0.5, `rgba(80, 90, 140, ${opacity * 0.5})`);
+                    gradient.addColorStop(1, 'rgba(40, 40, 60, 0)');
                     ctx.fillStyle = gradient;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
@@ -410,7 +410,7 @@ export default class WolfhourTheme extends BaseTheme {
         const nebulaMid = this.getContainer('wolfhour-nebula-mid');
         if (nebulaMid) {
             const quality = this.getGraphicsQuality();
-            const cacheKey = `wolfhour-nebula-mid-2000x800-${quality}`;
+            const cacheKey = `wolfhour-nebula-mid-2000x800-${quality}-v2`;
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -430,9 +430,9 @@ export default class WolfhourTheme extends BaseTheme {
                     const radius = rng() * 250 + 150;
                     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
                     const opacity = rng() * 0.2 + 0.1;
-                    gradient.addColorStop(0, `rgba(220, 220, 220, ${opacity})`);
-                    gradient.addColorStop(0.5, `rgba(180, 180, 180, ${opacity * 0.6})`);
-                    gradient.addColorStop(1, 'rgba(120, 120, 120, 0)');
+                    gradient.addColorStop(0, `rgba(140, 160, 220, ${opacity})`);
+                    gradient.addColorStop(0.5, `rgba(100, 110, 180, ${opacity * 0.6})`);
+                    gradient.addColorStop(1, 'rgba(60, 60, 90, 0)');
                     ctx.fillStyle = gradient;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
@@ -510,7 +510,7 @@ export default class WolfhourTheme extends BaseTheme {
         // 6. Create jagged mountain silhouettes (with caching)
         const mountainsDistant = this.getContainer('wolfhour-mountains-distant');
         if (mountainsDistant) {
-            const cacheKey = 'wolfhour-mountains-distant-4000x800';
+            const cacheKey = 'wolfhour-mountains-distant-4000x800-v2';
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -525,7 +525,7 @@ export default class WolfhourTheme extends BaseTheme {
                 canvas.height = 800;
                 const ctx = canvas.getContext('2d');
 
-                ctx.fillStyle = '#404040';
+                ctx.fillStyle = '#2b3040';
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
 
@@ -548,7 +548,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         const mountainsFore = this.getContainer('wolfhour-mountains-fore');
         if (mountainsFore) {
-            const cacheKey = 'wolfhour-mountains-fore-4000x600';
+            const cacheKey = 'wolfhour-mountains-fore-4000x600-v2';
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
                 // Use cached version
@@ -563,7 +563,7 @@ export default class WolfhourTheme extends BaseTheme {
                 canvas.height = 600;
                 const ctx = canvas.getContext('2d');
 
-                ctx.fillStyle = '#1a1a1a';
+                ctx.fillStyle = '#0f111a';
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
 
@@ -727,7 +727,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Create star bursts from cleared lines
         for (let i = 0; i < burstCount; i++) {
-            this.createStarBurst();
+            this.createStarBurst(this.comboMultiplier);
         }
 
         // Trigger shooting stars (quality-based)
@@ -791,20 +791,20 @@ export default class WolfhourTheme extends BaseTheme {
         this.glowMountainTops(comboCount);
     }
 
-    createStarBurst() {
+    createStarBurst(intensity = 1.0) {
         const x = Math.random() * this.effectCanvas.width;
         const y = Math.random() * this.effectCanvas.height * 0.7; // Upper 70% of screen
 
         this.starBursts.push({
             x,
             y,
-            particles: this.createBurstParticles(x, y, this.activeQuality.starBurstParticles),
+            particles: this.createBurstParticles(x, y, this.activeQuality.starBurstParticles, intensity),
             life: 1.0,
             decay: 0.015,
         });
     }
 
-    createBurstParticles(cx, cy, count) {
+    createBurstParticles(cx, cy, count, intensity = 1.0) {
         const particles = [];
         for (let i = 0; i < count; i++) {
             const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
@@ -816,7 +816,7 @@ export default class WolfhourTheme extends BaseTheme {
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 size: Math.random() * 4 + 2,
-                hue: Math.random() * 60 + 180, // Cyan to blue
+                hue: (Math.random() * 60 + 200) + (intensity * 15), // Blue -> Purple -> Pink based on intensity
                 brightness: Math.random() * 40 + 60,
             });
         }
@@ -834,7 +834,7 @@ export default class WolfhourTheme extends BaseTheme {
             maxRadius: 300 + Math.random() * 200,
             thickness: 3,
             opacity: 0.8,
-            hue: Math.random() * 20 + 200, // Cool silver hue
+            hue: Math.random() * 30 + 220, // Purple/Blue
             growthRate: 4,
         });
     }
@@ -866,7 +866,7 @@ export default class WolfhourTheme extends BaseTheme {
             maxRadius: 300 + intensity * 50,
             opacity: 0.6,
             growthRate: 3,
-            hue: 200,
+            hue: 210 + intensity * 10,
         });
     }
 
@@ -933,7 +933,7 @@ export default class WolfhourTheme extends BaseTheme {
                 opacity: 0.7,
                 life: 1.0,
                 decay: 0.012,
-                hue: Math.random() * 40 + 180,
+                hue: Math.random() * 40 + 200,
             });
         }
     }
@@ -1098,7 +1098,7 @@ export default class WolfhourTheme extends BaseTheme {
 
             // Clear canvases - only if there are effects to draw (performance optimization)
             const hasEffects = this.starBursts.length > 0 || this.cosmicWaves.length > 0 ||
-                              this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
+                this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
             const hasBeams = this.celestialBeams.length > 0;
 
             if (hasEffects) {
