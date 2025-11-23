@@ -322,12 +322,15 @@ export default class NebulaFlowTheme extends BaseTheme {
      */
     createSimpleLineEffect() {
         const q = this.currentQualityMultiplier || 0.65;
-        const splatCount = Math.max(1, Math.round(4 * q));
+        const splatCount = Math.max(1, Math.round(6 * q)); // Increased from 4 for more puffs
         for (let i = 0; i < splatCount; i++) {
             setTimeout(() => {
-                this.addFlowingSplat(0.7 * q); // Much bigger puffs for single line
+                this.addFlowingSplat(1.3 * q); // EXTREME force for massive puffs
             }, i * 100);
         }
+
+        // Add even more emitter-style puffs for line clear
+        this.triggerEmitterPuffs(12, 1200); // Increased from 8
     }
 
     /**
@@ -335,8 +338,8 @@ export default class NebulaFlowTheme extends BaseTheme {
      */
     createCascadeEffect(lineCount) {
         const q = this.currentQualityMultiplier || 0.65;
-        const splatCount = Math.max(2, Math.round(lineCount * 3 * q));
-        const intensity = (0.8 + (lineCount * 0.08)) * q; // Much bigger base intensity
+        const splatCount = Math.max(3, Math.round(lineCount * 4 * q)); // More splats
+        const intensity = (1.6 + (lineCount * 0.12)) * q; // EXTREME intensity boost
 
         for (let i = 0; i < splatCount; i++) {
             setTimeout(() => {
@@ -345,14 +348,17 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const y = 0.3 + Math.random() * 0.4;
 
                 const angle = Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
-                const force = intensity * 1100; // Much bigger force for dramatic cascades
+                const force = intensity * 2200; // EXTREME force for insane cascades
                 const dx = Math.cos(angle) * force;
                 const dy = Math.sin(angle) * force;
 
-                const color = this.sampleColor(0.12, 0.08);
+                const color = this.sampleColor(0.16, 0.08); // Even more vibrant
                 this.simulator.splat(x, y, dx, dy, color);
             }, i * 80);
         }
+
+        // Add even more emitter-style puffs for multi-line clears
+        this.triggerEmitterPuffs(18, 1500); // Increased from 12
     }
 
     /**
@@ -360,8 +366,8 @@ export default class NebulaFlowTheme extends BaseTheme {
      */
     createWaveEffect(lineCount) {
         const q = this.currentQualityMultiplier || 0.65;
-        const waveCount = Math.max(4, Math.round(16 * q));
-        const intensity = (1.0 + (lineCount * 0.1)) * q; // Dramatically increased for epic Tetris
+        const waveCount = Math.max(6, Math.round(20 * q)); // More waves for epic effect
+        const intensity = (2.0 + (lineCount * 0.2)) * q; // EXTREME intensity for legendary Tetris
 
         for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
@@ -371,22 +377,25 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const y = 0.5 + Math.sin(progress * Math.PI * 2) * 0.2;
 
                 const angle = Math.PI * 0.25 + progress * Math.PI * 0.5;
-                const force = intensity * 1300; // Much bigger force for dramatic Tetris waves
+                const force = intensity * 2500; // EXTREME force for legendary Tetris waves
                 const dx = Math.cos(angle) * force;
                 const dy = Math.sin(angle) * force;
 
-                const color = this.sampleColor(0.15, 0.07);
+                const color = this.sampleColor(0.2, 0.07); // Maximum vibrancy
                 this.simulator.splat(x, y, dx, dy, color);
 
                 // Add mirrored wave only on higher quality
                 if (q >= 0.6) {
                     const yMirror = 0.5 - Math.sin(progress * Math.PI * 2) * 0.2;
                     const dyMirror = -Math.sin(angle) * force;
-                    const color2 = this.sampleColor(0.15, 0.07);
+                    const color2 = this.sampleColor(0.2, 0.07);
                     this.simulator.splat(x, yMirror, dx, dyMirror, color2);
                 }
             }, i * 50);
         }
+
+        // Add massive emitter-style puffs for epic Tetris
+        this.triggerEmitterPuffs(24, 2000); // Increased from 16
     }
 
     /**
@@ -698,55 +707,40 @@ export default class NebulaFlowTheme extends BaseTheme {
     }
 
     /**
-     * Update autonomous emitters
+     * Trigger emitter-style puffs (called during line clears)
      */
-    updateEmitters(deltaTime) {
+    triggerEmitterPuffs(count = 8, duration = 1000) {
         if (!this.simulator || !this.isActive) return;
 
-        // Only emit dye during EMITTING state
-        if (this.emissionState !== 'EMITTING') return;
-
         const q = this.currentQualityMultiplier || 0.65;
+        const puffCount = Math.max(2, Math.round(count * q));
 
-        // deltaTime should be in milliseconds, normalize to seconds
-        const dt = deltaTime / 1000;
+        for (let i = 0; i < puffCount; i++) {
+            setTimeout(() => {
+                // Random position across screen
+                const x = 0.2 + Math.random() * 0.6;
+                const y = 0.2 + Math.random() * 0.6;
 
-        this.emitters.forEach((emitter, index) => {
-            // Update emitter age and respawn if needed
-            emitter.age += dt;
-            if (emitter.age >= emitter.lifetime) {
-                // Respawn emitter at new random location
-                const newEmitter = this.createEmitter();
-                this.emitters[index] = newEmitter;
-                return; // Skip this frame for the new emitter
-            }
+                // EXTREME force for mind-blowing puffs
+                const angle = Math.random() * Math.PI * 2;
+                const force = (600 + Math.random() * 600) * q; // EXTREME: 600-1200 range
+                const forceX = Math.cos(angle) * force;
+                const forceY = Math.sin(angle) * force;
 
-            // Move emitter in a smooth, wandering path
-            emitter.phase += emitter.freq * dt; // Smooth phase change
+                // Get a vibrant color
+                const color = this.sampleColor(0.18, 0.12);
 
-            // Update position with some noise/wandering
-            // Scale movement by delta time for consistent speed regardless of FPS
-            const moveSpeed = dt * 0.3; // Slower, gentler movement
-            emitter.x += Math.cos(emitter.phase) * moveSpeed + emitter.vx * dt;
-            emitter.y += Math.sin(emitter.phase * 1.3) * moveSpeed + emitter.vy * dt;
+                this.simulator.splat(x, y, forceX, forceY, color);
+            }, (i / puffCount) * duration);
+        }
+    }
 
-            // Wrap around screen edges instead of bouncing - creates flow across entire screen
-            if (emitter.x < 0) emitter.x += 1;
-            if (emitter.x > 1) emitter.x -= 1;
-            if (emitter.y < 0) emitter.y += 1;
-            if (emitter.y > 1) emitter.y -= 1;
-
-            // Add splat at emitter position with varied force (scaled by quality)
-            const forceVariation = 0.6 + Math.random() * 0.4; // Vary force 60-100% (gentler)
-            const forceX = Math.cos(emitter.phase) * 8 * forceVariation * q;
-            const forceY = Math.sin(emitter.phase) * 8 * forceVariation * q;
-
-            // Advance color for this emitter
-            const color = this.sampleColor(0.008, 0.12, emitter.colorState); // Faster color cycling
-
-            // Add to simulation
-            this.simulator.splat(emitter.x, emitter.y, forceX, forceY, color);
-        });
+    /**
+     * Update autonomous emitters - DISABLED (now only triggered on line clears)
+     */
+    updateEmitters() {
+        // Automatic emission disabled - only triggered manually on line clears
+        return;
     }
 
     /**
@@ -786,15 +780,15 @@ export default class NebulaFlowTheme extends BaseTheme {
                 }
             }
 
-            // Random splat timer - adds splats across entire screen for full coverage
-            this.randomSplatTimer += deltaTime;
-            if (this.randomSplatTimer >= this.RANDOM_SPLAT_INTERVAL) {
-                this.randomSplatTimer = 0;
-                this.addRandomScreenSplat();
-            }
+            // Random splat timer - DISABLED (only triggered on line clears now)
+            // this.randomSplatTimer += deltaTime;
+            // if (this.randomSplatTimer >= this.RANDOM_SPLAT_INTERVAL) {
+            //     this.randomSplatTimer = 0;
+            //     this.addRandomScreenSplat();
+            // }
 
-            // Update emitters
-            this.updateEmitters(deltaTime * 1000); // Pass in milliseconds
+            // Update emitters - DISABLED (only triggered on line clears now)
+            // this.updateEmitters(deltaTime * 1000); // Pass in milliseconds
 
             // Run simulation step
             if (this.simulator) {
