@@ -160,6 +160,9 @@ export default class VoltageStormTheme extends BaseTheme {
                 this.simulator.splat(x, y, dx, dy, color);
             }, i * 20);
         }
+
+        // Add electric spark pulses for line clears
+        this.triggerSparkPulses(lineCount * 5, intensity);
     }
 
     onCombo(comboCount) {
@@ -173,6 +176,10 @@ export default class VoltageStormTheme extends BaseTheme {
                 this.createLightningStrike();
             }, i * 100);
         }
+
+        // Add intense electric sparks for combos
+        const intensity = Math.min(comboCount / 3, 2.0);
+        this.triggerSparkPulses(comboCount * 3, intensity);
     }
 
     createLightningStrike() {
@@ -202,6 +209,9 @@ export default class VoltageStormTheme extends BaseTheme {
         const y = Math.random();
         const color = this.getRandomElectricColor();
         this.simulator.splat(x, y, (Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500, color);
+
+        // Add subtle electric sparks
+        this.triggerSparkPulses(2, 0.6);
     }
 
     addInitialStorm() {
@@ -226,22 +236,32 @@ export default class VoltageStormTheme extends BaseTheme {
     }
 
     updateEmitters(dt) {
-        this.emitters.forEach(e => {
-            e.x += e.vx * dt;
-            e.y += e.vy * dt;
+        // Automatic emissions disabled - only triggered on gameplay events
+        return;
+    }
 
-            // Bounce
-            if (e.x < 0 || e.x > 1) e.vx *= -1;
-            if (e.y < 0 || e.y > 1) e.vy *= -1;
+    /**
+     * Trigger electric spark pulses manually (called during gameplay events)
+     */
+    triggerSparkPulses(count = 3, intensity = 1.0) {
+        if (!this.simulator) return;
 
-            e.timer -= dt;
-            if (e.timer <= 0) {
-                e.timer = 0.5 + Math.random();
-                // Emit pulse
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                // Random position across screen
+                const x = Math.random();
+                const y = Math.random();
+
+                // Random direction with scaled force
+                const angle = Math.random() * Math.PI * 2;
+                const force = (500 + Math.random() * 500) * intensity;
+                const dx = Math.cos(angle) * force;
+                const dy = Math.sin(angle) * force;
+
                 const color = this.getRandomElectricColor();
-                this.simulator.splat(e.x, e.y, e.vx * 1000, e.vy * 1000, color);
-            }
-        });
+                this.simulator.splat(x, y, dx, dy, color);
+            }, i * 80);
+        }
     }
 
     // --- Loop ---
