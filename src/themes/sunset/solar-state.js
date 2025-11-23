@@ -23,7 +23,7 @@ const STAGE_PRESETS = {
         starTwinkle: 1.15,
         nightVeil: 0.5,
         cirrus: 0.28,
-        sunCoreAlpha: 0.55,
+        sunCoreAlpha: 0.98, // Opaque to block stars
         skyDesaturate: 0.92,
         cloudHighlight: 0.28,
     },
@@ -36,7 +36,7 @@ const STAGE_PRESETS = {
         starTwinkle: 1,
         nightVeil: 0,
         cirrus: 0.22,
-        sunCoreAlpha: 0.8,
+        sunCoreAlpha: 1.0, // Fully opaque
         skyDesaturate: 1,
         cloudHighlight: 0.34,
     },
@@ -49,7 +49,7 @@ const STAGE_PRESETS = {
         starTwinkle: 1.05,
         nightVeil: 0.55,
         cirrus: 0.3,
-        sunCoreAlpha: 0.75,
+        sunCoreAlpha: 0.98, // Opaque to block stars
         skyDesaturate: 0.96,
         cloudHighlight: 0.45,
     },
