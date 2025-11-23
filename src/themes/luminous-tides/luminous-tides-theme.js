@@ -34,8 +34,9 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.ambientWaveTimer = 0;
         this.AMBIENT_WAVE_INTERVAL = 30.0; // Time between wave cycles
         this.waveResetTimer = 0;
-        this.WAVE_RESET_INTERVAL = 5.0; // Mark when waves have naturally dissipated
+        this.WAVE_RESET_INTERVAL = 3.0; // Clear waves after 3 seconds of calm
         this.isCalm = true; // Track if ocean is in calm state
+        this.lastWaveTime = 0; // Track when last wave was created
 
         console.log('[LuminousTides] Constructor called');
     }
@@ -142,9 +143,9 @@ export default class LuminousTidesTheme extends BaseTheme {
             DEEP_COLOR: { r: 0.02, g: 0.08, b: 0.15 },     // Very dark depths
 
             // Wave physics for puff pattern - stormy ocean waves
-            WAVE_DAMPING: 0.82,              // Very high damping for fast dissipation
-            SURFACE_TENSION: 0.04,           // Higher tension keeps waves localized
-            DISPLACEMENT_SCALE: 2.2,         // Slightly more dramatic to compensate for faster fade
+            WAVE_DAMPING: 0.90,              // High damping for smooth dissipation
+            SURFACE_TENSION: 0.06,           // Higher tension keeps waves localized
+            DISPLACEMENT_SCALE: 2.3,         // Dramatic waves with natural fade
             GRAVITY: 9.8,
 
             // Minimal effects - focus on wave simulation
@@ -210,12 +211,18 @@ export default class LuminousTidesTheme extends BaseTheme {
         if (lineCount >= 4) {
             // Tetris! Create dramatic wave cascade
             this.createTetrisCascade();
+            // Add extra ambient waves for Tetris
+            this.triggerAmbientWaves(5, 1.5);
         } else if (lineCount >= 2) {
             // Multi-line: Flowing waves
             this.createMultiLineWaves(lineCount);
+            // Add ambient waves for multi-line
+            this.triggerAmbientWaves(4, 1.2);
         } else {
             // Single line: Simple ripple
             this.createSimpleRipple();
+            // Add subtle ambient waves
+            this.triggerAmbientWaves(3, 1.0);
         }
     }
 
@@ -269,6 +276,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      * Simple ripple for single line clear - stormy wave puff from random location
      */
     createSimpleRipple() {
+        this.lastWaveTime = performance.now();
+
         // Spawn from completely random position - anywhere on screen
         const x = 0.1 + Math.random() * 0.8;
         const y = 0.1 + Math.random() * 0.8;
@@ -287,6 +296,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      * Wave puffs for double/triple line clears - storm surge from multiple directions
      */
     createMultiLineWaves(lineCount) {
+        this.lastWaveTime = performance.now();
+
         const puffCount = lineCount * 2; // Reduced waves for faster dissipation
 
         // Stronger storm flash for multi-line
@@ -311,6 +322,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      * Dramatic puff cascade for Tetris (4 lines) - massive storm from all directions
      */
     createTetrisCascade() {
+        this.lastWaveTime = performance.now();
+
         const puffCount = 10;  // Reduced for faster dissipation
 
         // Dramatic storm lightning for Tetris
@@ -357,6 +370,8 @@ export default class LuminousTidesTheme extends BaseTheme {
     onCombo(comboCount) {
         if (!this.simulator) return;
 
+        this.lastWaveTime = performance.now();
+
         const puffCount = Math.min(comboCount + 3, 10);  // Reduced for faster dissipation
 
         // Escalating storm flash based on combo
@@ -395,26 +410,18 @@ export default class LuminousTidesTheme extends BaseTheme {
                 this.createSmoothWave(x, y, radius, amplitude, 4, 120);
             }, i * 90);  // Slower to reduce overlap
         }
+
+        // Add intense ambient waves for combos
+        const intensity = Math.min(1.0 + (comboCount * 0.15), 2.0);
+        this.triggerAmbientWaves(comboCount + 2, intensity);
     }
 
     /**
-     * React to piece locks with ripple - like rain on water from random location
+     * React to piece locks - DISABLED (no effects on piece locks)
      */
     onPieceLock() {
-        if (!this.simulator) return;
-
-        // Rain-like ripple anywhere on stormy ocean
-        const x = 0.1 + Math.random() * 0.8;
-        const y = 0.1 + Math.random() * 0.8;
-
-        // Varied ripple sizes - from tiny droplets to larger splashes
-        const radius = 0.05 + Math.random() * 0.12; // 0.05-0.17 (wider range)
-        const amplitude = 0.4 + Math.random() * 0.6; // 0.4-1.0 (more variation)
-
-        this.createSmoothWave(x, y, radius, amplitude, 3, 100);
-
-        // Subtle light ripple
-        this.flashStormLight(0.06);
+        // No piece lock effects in this theme
+        return;
     }
 
     /**
@@ -449,19 +456,28 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Create ambient waves periodically - stormy ocean swells from varied locations
+     * Create ambient waves - DISABLED (now only triggered on line clears and combos)
      */
     createAmbientWave() {
+        // Automatic ambient waves disabled - only triggered on gameplay events
+        return;
+    }
+
+    /**
+     * Trigger ambient-style waves manually (called during line clears and combos)
+     */
+    triggerAmbientWaves(count = 3, intensity = 1.0) {
         if (!this.simulator) return;
 
-        // Mark that we're no longer calm
+        // Mark that we're no longer calm and update last wave time
         this.isCalm = false;
+        this.lastWaveTime = performance.now();
 
-        // Gentle ambient storm flash
-        this.flashStormLight(0.10);
+        // Storm flash scaled by intensity
+        this.flashStormLight(0.10 * intensity);
 
-        // Create storm swells from different areas - fewer waves for cleaner dissipation
-        const puffCount = 2 + Math.floor(Math.random() * 2); // 2-3 puffs (reduced from 3-5)
+        // Create storm swells from different areas
+        const puffCount = Math.max(2, Math.round(count));
 
         for (let i = 0; i < puffCount; i++) {
             setTimeout(() => {
@@ -484,9 +500,9 @@ export default class LuminousTidesTheme extends BaseTheme {
                     y = 0.15 + Math.random() * 0.7;
                 }
 
-                // Highly varied ambient waves - some gentle, some stronger
-                const radius = 0.10 + Math.random() * 0.15; // 0.10-0.25 (wider range)
-                const amplitude = 0.7 + Math.random() * 0.7; // 0.7-1.4 (more variation)
+                // Varied ambient waves scaled by intensity
+                const radius = (0.10 + Math.random() * 0.15) * intensity;
+                const amplitude = (0.7 + Math.random() * 0.7) * intensity;
 
                 this.createSmoothWave(x, y, radius, amplitude, 4, 150);
             }, i * 160);
@@ -494,15 +510,20 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Reset wave field to calm state
+     * Reset wave field to calm state - waves fade naturally through damping
      */
     resetWaveField() {
         if (!this.simulator) return;
 
-        // Let waves naturally dissipate - no forced clear
-        // The high damping will fade them out smoothly
-        this.isCalm = true;
-        console.log('[LuminousTides] Waves naturally dissipating...');
+        // Check if enough time has passed since last wave
+        const now = performance.now();
+        const timeSinceLastWave = (now - this.lastWaveTime) / 1000;
+
+        // Mark as calm after waves have had time to dissipate naturally
+        if (timeSinceLastWave >= this.WAVE_RESET_INTERVAL && !this.isCalm) {
+            this.isCalm = true;
+            console.log('[LuminousTides] Ocean returning to calm - waves fading naturally');
+        }
     }
 
     /**
@@ -525,19 +546,15 @@ export default class LuminousTidesTheme extends BaseTheme {
                 deltaTime = 0.016666; // Reset to 60fps equivalent
             }
 
-            // Update ambient wave timer - create puffs periodically
-            this.ambientWaveTimer += deltaTime;
-            if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
-                this.ambientWaveTimer = 0;
-                this.createAmbientWave();
-            }
+            // Ambient wave timer - DISABLED (only triggered on gameplay events now)
+            // this.ambientWaveTimer += deltaTime;
+            // if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
+            //     this.ambientWaveTimer = 0;
+            //     this.createAmbientWave();
+            // }
 
-            // Update wave reset timer - mark cycle completion
-            this.waveResetTimer += deltaTime;
-            if (this.waveResetTimer >= this.WAVE_RESET_INTERVAL) {
-                this.waveResetTimer = 0;
-                this.resetWaveField();
-            }
+            // Check if we should reset wave field (clear accumulated waves during calm periods)
+            this.resetWaveField();
 
             // Update storm lighting effect
             this.updateStormLighting(deltaTime);
@@ -608,6 +625,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.stormBrightness = 0;
         this.targetBrightness = 0;
         this.isCalm = true;
+        this.lastWaveTime = 0;
 
         // Call parent cleanup
         super.cleanup();
