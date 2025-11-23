@@ -23,8 +23,8 @@ export class PhaserSunEmitter {
         this.pendingState = null;
         this._resolveReady = null;
         this._readyPromise = null;
-        this._width = 256;
-        this._height = 256;
+        this._width = 512;
+        this._height = 512;
     }
 
     /**
@@ -41,10 +41,11 @@ export class PhaserSunEmitter {
             return Promise.resolve();
         }
 
+        const self = this;
         const sceneConfig = {
             key: 'SunsetSunScene',
-            preload: (scene) => this._preload(scene),
-            create: (scene) => this._create(scene),
+            preload: function () { self._preload(this); },
+            create: function () { self._create(this); },
         };
 
         const config = {
