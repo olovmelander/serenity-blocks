@@ -10248,8 +10248,7 @@ body {
 #himalayan-sun {
     position: absolute;
     top: 10%;
-    left: 50%;
-    transform: translateX(-50%);
+    left: -200px;
     width: 160px;
     height: 160px;
     background: radial-gradient(circle, #ffe6cc 0%, #ffd9b3 30%, #ffcc99 60%, #ffbf80 100%);
@@ -10258,9 +10257,19 @@ body {
         0 0 35px 8px rgba(255, 220, 180, 0.6),
         0 0 70px 15px rgba(255, 200, 130, 0.4),
         0 0 100px 20px rgba(255, 180, 100, 0.3);
-    animation: sun-pulse 12s ease-in-out infinite alternate;
+    animation: sun-pulse 12s ease-in-out infinite alternate, himalayan-sun-traverse 360s linear infinite;
     z-index: 2;
     filter: brightness(0.95);
+}
+
+@keyframes himalayan-sun-traverse {
+    0% {
+        left: -200px;
+    }
+
+    100% {
+        left: 100%;
+    }
 }
 
 #himalayan-clouds {
