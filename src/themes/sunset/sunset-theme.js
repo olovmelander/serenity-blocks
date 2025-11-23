@@ -2,6 +2,7 @@ import { BaseTheme } from '../base-theme.js';
 import { SunsetSolarState } from './solar-state.js';
 import { PhaserSunEmitter } from './phaser-sun-emitter.js';
 import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 // REMOVED: DUST_STAGE_COLORS - Dust particles permanently removed for performance
 
@@ -40,6 +41,8 @@ export default class SunsetTheme extends BaseTheme {
             disableLensEffects: false, // Keep lens effects
         };
         this.lastSolarApply = 0;
+        this.eventUnsubscribers = [];
+        this.currentComboLevel = 0;
     }
 
     stop() {
@@ -60,6 +63,8 @@ export default class SunsetTheme extends BaseTheme {
             this.solarUnsubscribe();
             this.solarUnsubscribe = null;
         }
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
         if (this.sunEmitter) {
             this.sunEmitter.destroy();
             this.sunEmitter = null;
@@ -493,6 +498,203 @@ export default class SunsetTheme extends BaseTheme {
         }
         // REMOVED: this.buildMountainSilhouette() - Permanently removed for performance
         this.ensureStars();
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        // Listen for line clear events
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (this.isActive) {
+                this.onLineClear(data.lineCount);
+            }
+        });
+
+        // Listen for combo events
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (this.isActive) {
+                this.onCombo(data.comboCount);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+    }
+
+    /**
+     * React to line clears with subtle atmospheric shifts
+     */
+    onLineClear(lineCount) {
+        if (this.performanceFlags.minimalAtmosphere) return;
+
+        // 1. Gentle Sun Pulse
+        this.pulseSun(lineCount * 0.5);
+
+        // 2. Spawn Solar Embers (fewer for just lines)
+        if (lineCount >= 2) {
+            this.spawnSolarEmbers(lineCount * 3);
+        }
+
+        // 3. Horizon Glow for big clears
+        if (lineCount >= 4) {
+            this.triggerHorizonGlow(0.6);
+        }
+    }
+
+    /**
+     * React to combos with integrated theme effects
+     */
+    onCombo(comboCount) {
+        if (this.performanceFlags.minimalAtmosphere) return;
+
+        this.currentComboLevel = comboCount;
+
+        // 1. Intensify Sun Pulse
+        const pulseIntensity = Math.min(comboCount * 0.8, 4);
+        this.pulseSun(pulseIntensity);
+
+        // 2. Solar Embers rising from the horizon
+        const emberCount = Math.min(comboCount * 5, 30);
+        this.spawnSolarEmbers(emberCount);
+
+        // 3. God Ray Shimmer
+        this.shimmerGodRays(comboCount);
+
+        // 4. Horizon Glow
+        if (comboCount >= 3) {
+            this.triggerHorizonGlow(Math.min(0.3 + comboCount * 0.1, 0.8));
+        }
+    }
+
+    /**
+     * Make the sun pulse gently with warmth
+     */
+    pulseSun(intensity) {
+        const sun = this.themeContainerRef?.querySelector('.sun');
+        if (!sun) return;
+
+        // Don't interrupt if already animating intensely
+        if (sun.dataset.pulsing === 'true') return;
+
+        sun.dataset.pulsing = 'true';
+        const originalTransform = sun.style.transform || '';
+
+        // Gentle scale up
+        const scale = 1 + (intensity * 0.02); // Subtle scale
+        sun.style.transition = 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.4s ease-out';
+        sun.style.transform = `${originalTransform} scale(${scale})`;
+        sun.style.filter = `brightness(${1 + intensity * 0.1}) saturate(${1 + intensity * 0.05})`;
+
+        setTimeout(() => {
+            sun.style.transform = originalTransform;
+            sun.style.filter = '';
+            sun.dataset.pulsing = 'false';
+        }, 400);
+    }
+
+    /**
+     * Spawn rising glowing embers from the bottom
+     */
+    spawnSolarEmbers(count) {
+        const theme = this.themeContainerRef;
+        if (!theme) return;
+
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const ember = document.createElement('div');
+                ember.className = 'solar-ember';
+                ember.style.position = 'absolute';
+                const size = 2 + Math.random() * 4;
+                ember.style.width = `${size}px`;
+                ember.style.height = `${size}px`;
+                ember.style.borderRadius = '50%';
+
+                // Warm colors: Gold, Orange, Red
+                const colors = ['#ffd700', '#ff8c00', '#ff4500', '#ff6b6b'];
+                const color = colors[Math.floor(Math.random() * colors.length)];
+
+                ember.style.backgroundColor = color;
+                ember.style.boxShadow = `0 0 ${size * 2}px ${color}`;
+                ember.style.left = `${Math.random() * 100}%`;
+                ember.style.bottom = '-10px';
+                ember.style.opacity = '0';
+                ember.style.pointerEvents = 'none';
+                ember.style.zIndex = '10'; // In front of mountains/sky
+
+                // Physics-ish movement
+                const duration = 2 + Math.random() * 3;
+                ember.style.transition = `bottom ${duration}s ease-out, opacity ${duration * 0.2}s ease-in, transform ${duration}s linear`;
+
+                theme.appendChild(ember);
+
+                requestAnimationFrame(() => {
+                    ember.style.opacity = (0.6 + Math.random() * 0.4).toString();
+                    ember.style.bottom = `${20 + Math.random() * 40}%`; // Float up 20-60%
+                    const drift = (Math.random() - 0.5) * 100;
+                    ember.style.transform = `translateX(${drift}px) scale(0)`; // Shrink as they rise
+                });
+
+                setTimeout(() => {
+                    if (ember.parentNode) ember.parentNode.removeChild(ember);
+                }, duration * 1000);
+            }, i * 50);
+        }
+    }
+
+    /**
+     * Make god rays shimmer/brighten momentarily
+     */
+    shimmerGodRays(intensity) {
+        if (!this.godRayContainer) return;
+
+        const rays = Array.from(this.godRayContainer.children);
+        const raysToAffect = Math.min(rays.length, Math.ceil(intensity * 2));
+
+        // Shuffle array to pick random rays
+        const shuffled = rays.sort(() => 0.5 - Math.random());
+
+        for (let i = 0; i < raysToAffect; i++) {
+            const ray = shuffled[i];
+            const originalOpacity = ray.style.getPropertyValue('--ray-opacity');
+
+            ray.style.transition = 'opacity 0.5s ease-in-out';
+            // Boost opacity temporarily
+            ray.style.opacity = '0.8';
+
+            setTimeout(() => {
+                ray.style.opacity = ''; // Revert to CSS variable or default
+            }, 500 + Math.random() * 500);
+        }
+    }
+
+    /**
+     * Create a subtle horizon glow pulse
+     */
+    triggerHorizonGlow(opacity) {
+        const theme = this.themeContainerRef;
+        if (!theme) return;
+
+        let glow = theme.querySelector('.horizon-glow-effect');
+        if (!glow) {
+            glow = document.createElement('div');
+            glow.className = 'horizon-glow-effect';
+            glow.style.position = 'absolute';
+            glow.style.bottom = '0';
+            glow.style.left = '0';
+            glow.style.width = '100%';
+            glow.style.height = '40%';
+            glow.style.background = 'linear-gradient(to top, rgba(255, 200, 100, 0.4), transparent)';
+            glow.style.pointerEvents = 'none';
+            glow.style.zIndex = '5'; // Behind foreground elements if any
+            glow.style.opacity = '0';
+            glow.style.transition = 'opacity 0.5s ease-in-out';
+            theme.appendChild(glow);
+        }
+
+        requestAnimationFrame(() => {
+            glow.style.opacity = opacity.toString();
+            setTimeout(() => {
+                glow.style.opacity = '0';
+            }, 600);
+        });
     }
 
     // REMOVED: buildCloudLayers() - Cloud layers permanently removed for performance
