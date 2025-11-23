@@ -34,8 +34,9 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.ambientWaveTimer = 0;
         this.AMBIENT_WAVE_INTERVAL = 30.0; // Time between wave cycles
         this.waveResetTimer = 0;
-        this.WAVE_RESET_INTERVAL = 5.0; // Mark when waves have naturally dissipated
+        this.WAVE_RESET_INTERVAL = 3.0; // Clear waves after 3 seconds of calm
         this.isCalm = true; // Track if ocean is in calm state
+        this.lastWaveTime = 0; // Track when last wave was created
 
         console.log('[LuminousTides] Constructor called');
     }
@@ -142,9 +143,9 @@ export default class LuminousTidesTheme extends BaseTheme {
             DEEP_COLOR: { r: 0.02, g: 0.08, b: 0.15 },     // Very dark depths
 
             // Wave physics for puff pattern - stormy ocean waves
-            WAVE_DAMPING: 0.82,              // Very high damping for fast dissipation
-            SURFACE_TENSION: 0.04,           // Higher tension keeps waves localized
-            DISPLACEMENT_SCALE: 2.2,         // Slightly more dramatic to compensate for faster fade
+            WAVE_DAMPING: 0.90,              // High damping for smooth dissipation
+            SURFACE_TENSION: 0.06,           // Higher tension keeps waves localized
+            DISPLACEMENT_SCALE: 2.3,         // Dramatic waves with natural fade
             GRAVITY: 9.8,
 
             // Minimal effects - focus on wave simulation
@@ -275,6 +276,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      * Simple ripple for single line clear - stormy wave puff from random location
      */
     createSimpleRipple() {
+        this.lastWaveTime = performance.now();
+
         // Spawn from completely random position - anywhere on screen
         const x = 0.1 + Math.random() * 0.8;
         const y = 0.1 + Math.random() * 0.8;
@@ -293,6 +296,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      * Wave puffs for double/triple line clears - storm surge from multiple directions
      */
     createMultiLineWaves(lineCount) {
+        this.lastWaveTime = performance.now();
+
         const puffCount = lineCount * 2; // Reduced waves for faster dissipation
 
         // Stronger storm flash for multi-line
@@ -317,6 +322,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      * Dramatic puff cascade for Tetris (4 lines) - massive storm from all directions
      */
     createTetrisCascade() {
+        this.lastWaveTime = performance.now();
+
         const puffCount = 10;  // Reduced for faster dissipation
 
         // Dramatic storm lightning for Tetris
@@ -362,6 +369,8 @@ export default class LuminousTidesTheme extends BaseTheme {
      */
     onCombo(comboCount) {
         if (!this.simulator) return;
+
+        this.lastWaveTime = performance.now();
 
         const puffCount = Math.min(comboCount + 3, 10);  // Reduced for faster dissipation
 
@@ -460,8 +469,9 @@ export default class LuminousTidesTheme extends BaseTheme {
     triggerAmbientWaves(count = 3, intensity = 1.0) {
         if (!this.simulator) return;
 
-        // Mark that we're no longer calm
+        // Mark that we're no longer calm and update last wave time
         this.isCalm = false;
+        this.lastWaveTime = performance.now();
 
         // Storm flash scaled by intensity
         this.flashStormLight(0.10 * intensity);
@@ -500,15 +510,20 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Reset wave field to calm state
+     * Reset wave field to calm state - waves fade naturally through damping
      */
     resetWaveField() {
         if (!this.simulator) return;
 
-        // Let waves naturally dissipate - no forced clear
-        // The high damping will fade them out smoothly
-        this.isCalm = true;
-        console.log('[LuminousTides] Waves naturally dissipating...');
+        // Check if enough time has passed since last wave
+        const now = performance.now();
+        const timeSinceLastWave = (now - this.lastWaveTime) / 1000;
+
+        // Mark as calm after waves have had time to dissipate naturally
+        if (timeSinceLastWave >= this.WAVE_RESET_INTERVAL && !this.isCalm) {
+            this.isCalm = true;
+            console.log('[LuminousTides] Ocean returning to calm - waves fading naturally');
+        }
     }
 
     /**
@@ -538,12 +553,8 @@ export default class LuminousTidesTheme extends BaseTheme {
             //     this.createAmbientWave();
             // }
 
-            // Update wave reset timer - mark cycle completion
-            this.waveResetTimer += deltaTime;
-            if (this.waveResetTimer >= this.WAVE_RESET_INTERVAL) {
-                this.waveResetTimer = 0;
-                this.resetWaveField();
-            }
+            // Check if we should reset wave field (clear accumulated waves during calm periods)
+            this.resetWaveField();
 
             // Update storm lighting effect
             this.updateStormLighting(deltaTime);
@@ -614,6 +625,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.stormBrightness = 0;
         this.targetBrightness = 0;
         this.isCalm = true;
+        this.lastWaveTime = 0;
 
         // Call parent cleanup
         super.cleanup();
