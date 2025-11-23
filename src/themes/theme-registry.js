@@ -93,6 +93,12 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'aether-tides',
+        displayName: 'Aether Tides',
+        module: './aether-tides/aether-tides-theme.js',
+        group: 'cosmic',
+    },
+    {
         id: 'rainy-window',
         displayName: 'Rainy Window',
         module: './rainy-window/rainy-window-theme.js',
