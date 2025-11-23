@@ -210,12 +210,18 @@ export default class LuminousTidesTheme extends BaseTheme {
         if (lineCount >= 4) {
             // Tetris! Create dramatic wave cascade
             this.createTetrisCascade();
+            // Add extra ambient waves for Tetris
+            this.triggerAmbientWaves(5, 1.5);
         } else if (lineCount >= 2) {
             // Multi-line: Flowing waves
             this.createMultiLineWaves(lineCount);
+            // Add ambient waves for multi-line
+            this.triggerAmbientWaves(4, 1.2);
         } else {
             // Single line: Simple ripple
             this.createSimpleRipple();
+            // Add subtle ambient waves
+            this.triggerAmbientWaves(3, 1.0);
         }
     }
 
@@ -395,26 +401,18 @@ export default class LuminousTidesTheme extends BaseTheme {
                 this.createSmoothWave(x, y, radius, amplitude, 4, 120);
             }, i * 90);  // Slower to reduce overlap
         }
+
+        // Add intense ambient waves for combos
+        const intensity = Math.min(1.0 + (comboCount * 0.15), 2.0);
+        this.triggerAmbientWaves(comboCount + 2, intensity);
     }
 
     /**
-     * React to piece locks with ripple - like rain on water from random location
+     * React to piece locks - DISABLED (no effects on piece locks)
      */
     onPieceLock() {
-        if (!this.simulator) return;
-
-        // Rain-like ripple anywhere on stormy ocean
-        const x = 0.1 + Math.random() * 0.8;
-        const y = 0.1 + Math.random() * 0.8;
-
-        // Varied ripple sizes - from tiny droplets to larger splashes
-        const radius = 0.05 + Math.random() * 0.12; // 0.05-0.17 (wider range)
-        const amplitude = 0.4 + Math.random() * 0.6; // 0.4-1.0 (more variation)
-
-        this.createSmoothWave(x, y, radius, amplitude, 3, 100);
-
-        // Subtle light ripple
-        this.flashStormLight(0.06);
+        // No piece lock effects in this theme
+        return;
     }
 
     /**
@@ -449,19 +447,27 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Create ambient waves periodically - stormy ocean swells from varied locations
+     * Create ambient waves - DISABLED (now only triggered on line clears and combos)
      */
     createAmbientWave() {
+        // Automatic ambient waves disabled - only triggered on gameplay events
+        return;
+    }
+
+    /**
+     * Trigger ambient-style waves manually (called during line clears and combos)
+     */
+    triggerAmbientWaves(count = 3, intensity = 1.0) {
         if (!this.simulator) return;
 
         // Mark that we're no longer calm
         this.isCalm = false;
 
-        // Gentle ambient storm flash
-        this.flashStormLight(0.10);
+        // Storm flash scaled by intensity
+        this.flashStormLight(0.10 * intensity);
 
-        // Create storm swells from different areas - fewer waves for cleaner dissipation
-        const puffCount = 2 + Math.floor(Math.random() * 2); // 2-3 puffs (reduced from 3-5)
+        // Create storm swells from different areas
+        const puffCount = Math.max(2, Math.round(count));
 
         for (let i = 0; i < puffCount; i++) {
             setTimeout(() => {
@@ -484,9 +490,9 @@ export default class LuminousTidesTheme extends BaseTheme {
                     y = 0.15 + Math.random() * 0.7;
                 }
 
-                // Highly varied ambient waves - some gentle, some stronger
-                const radius = 0.10 + Math.random() * 0.15; // 0.10-0.25 (wider range)
-                const amplitude = 0.7 + Math.random() * 0.7; // 0.7-1.4 (more variation)
+                // Varied ambient waves scaled by intensity
+                const radius = (0.10 + Math.random() * 0.15) * intensity;
+                const amplitude = (0.7 + Math.random() * 0.7) * intensity;
 
                 this.createSmoothWave(x, y, radius, amplitude, 4, 150);
             }, i * 160);
@@ -525,12 +531,12 @@ export default class LuminousTidesTheme extends BaseTheme {
                 deltaTime = 0.016666; // Reset to 60fps equivalent
             }
 
-            // Update ambient wave timer - create puffs periodically
-            this.ambientWaveTimer += deltaTime;
-            if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
-                this.ambientWaveTimer = 0;
-                this.createAmbientWave();
-            }
+            // Ambient wave timer - DISABLED (only triggered on gameplay events now)
+            // this.ambientWaveTimer += deltaTime;
+            // if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
+            //     this.ambientWaveTimer = 0;
+            //     this.createAmbientWave();
+            // }
 
             // Update wave reset timer - mark cycle completion
             this.waveResetTimer += deltaTime;
