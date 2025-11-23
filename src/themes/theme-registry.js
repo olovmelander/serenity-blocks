@@ -255,6 +255,12 @@ export const THEME_REGISTRY = [
         group: 'atmospheric',
     },
     {
+        id: 'cinder-drift',
+        displayName: 'Cinder Drift',
+        module: './cinder-drift/cinder-drift-theme.js',
+        group: 'atmospheric',
+    },
+    {
         id: 'pyrestorm',
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',
