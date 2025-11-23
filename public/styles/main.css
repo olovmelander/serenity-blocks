@@ -3409,13 +3409,59 @@ body {
 }
 
 /* ===== SUN WITH LENS EFFECTS ===== */
+/* ===== SUN WITH LENS EFFECTS ===== */
 .summer-sun {
     position: absolute;
-    width: 180px;
-    height: 180px;
+    width: 220px;
+    height: 220px;
     transform: translate(-50%, -50%);
     z-index: 3;
     pointer-events: none;
+}
+
+/* Large atmospheric glow behind the sun */
+.summer-sun-atmosphere {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle,
+            rgba(255, 255, 220, 0.4) 0%,
+            rgba(255, 240, 180, 0.2) 30%,
+            rgba(255, 220, 150, 0.1) 50%,
+            transparent 70%);
+    border-radius: 50%;
+    mix-blend-mode: screen;
+    animation: summer-atmosphere-pulse 8s ease-in-out infinite alternate;
+}
+
+/* Rotating corona rays */
+.summer-sun-corona {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    height: 280px;
+    background: conic-gradient(from 0deg,
+            transparent 0%,
+            rgba(255, 255, 200, 0.3) 10%,
+            transparent 20%,
+            rgba(255, 240, 150, 0.2) 30%,
+            transparent 40%,
+            rgba(255, 255, 220, 0.3) 50%,
+            transparent 60%,
+            rgba(255, 230, 180, 0.2) 70%,
+            transparent 80%,
+            rgba(255, 255, 200, 0.3) 90%,
+            transparent 100%);
+    border-radius: 50%;
+    mask-image: radial-gradient(circle, transparent 30%, black 70%);
+    -webkit-mask-image: radial-gradient(circle, transparent 30%, black 70%);
+    animation: summer-corona-rotate 60s linear infinite;
+    mix-blend-mode: screen;
 }
 
 .summer-sun-core {
@@ -3423,37 +3469,63 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 120px;
-    height: 120px;
+    width: 140px;
+    height: 140px;
     background: radial-gradient(circle,
             #FFFFFF 0%,
-            #FFFACD 30%,
-            #FFD700 60%,
-            #FFA500 100%);
+            #FFFACD 25%,
+            #FFD700 50%,
+            #FFA500 85%,
+            #FF8C00 100%);
     border-radius: 50%;
     box-shadow:
-        0 0 40px rgba(255, 255, 255, 1),
-        0 0 80px rgba(255, 215, 0, 0.8),
-        0 0 120px rgba(255, 165, 0, 0.6),
-        0 0 160px rgba(255, 140, 0, 0.4);
+        0 0 60px rgba(255, 255, 255, 0.9),
+        0 0 100px rgba(255, 215, 0, 0.7),
+        0 0 160px rgba(255, 165, 0, 0.5),
+        inset 0 0 20px rgba(255, 255, 255, 0.8);
+    filter: brightness(1.1);
     animation: summer-sun-glow 4s ease-in-out infinite alternate;
 }
 
 @keyframes summer-sun-glow {
     0% {
         box-shadow:
-            0 0 40px rgba(255, 255, 255, 1),
-            0 0 80px rgba(255, 215, 0, 0.8),
-            0 0 120px rgba(255, 165, 0, 0.6),
-            0 0 160px rgba(255, 140, 0, 0.4);
+            0 0 60px rgba(255, 255, 255, 0.9),
+            0 0 100px rgba(255, 215, 0, 0.7),
+            0 0 160px rgba(255, 165, 0, 0.5),
+            inset 0 0 20px rgba(255, 255, 255, 0.8);
+        transform: translate(-50%, -50%) scale(1);
     }
 
     100% {
         box-shadow:
-            0 0 50px rgba(255, 255, 255, 1),
-            0 0 100px rgba(255, 215, 0, 0.9),
-            0 0 150px rgba(255, 165, 0, 0.7),
-            0 0 200px rgba(255, 140, 0, 0.5);
+            0 0 70px rgba(255, 255, 255, 1),
+            0 0 120px rgba(255, 215, 0, 0.8),
+            0 0 180px rgba(255, 165, 0, 0.6),
+            inset 0 0 30px rgba(255, 255, 255, 0.9);
+        transform: translate(-50%, -50%) scale(1.02);
+    }
+}
+
+@keyframes summer-atmosphere-pulse {
+    0% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+}
+
+@keyframes summer-corona-rotate {
+    from {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
     }
 }
 
@@ -4092,6 +4164,22 @@ body {
     }
 }
 
+/* ===== GROUND ===== */
+.summer-ground {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 6%;
+    background: linear-gradient(to top, #2d5a27 0%, #4a8a2a 60%, #6aa84a 100%);
+    z-index: 3;
+    pointer-events: none;
+    border-radius: 50% 50% 0 0 / 20% 20% 0 0;
+    transform: scaleX(1.2);
+    /* Stretch to reduce curvature steepness at edges */
+    box-shadow: 0 -10px 20px rgba(0, 0, 0, 0.1);
+}
+
 /* ===== GRASS ===== */
 .summer-grass {
     position: absolute;
@@ -4252,117 +4340,159 @@ body {
 }
 
 /* === COMBO 3-4: Rainbow === */
+/* === COMBO 3-4: Rainbow === */
+/* === COMBO 3-4: Rainbow === */
 .summer-rainbow {
     position: absolute;
-    top: -15%;
+    bottom: 0;
     left: 50%;
     transform: translateX(-50%);
-    width: 2000px;
-    height: 1000px;
-    border-radius: 50% 50% 0 0;
-    background:
-        radial-gradient(ellipse 2000px 1000px at 50% 100%,
-            transparent 35%,
-            rgba(255, 0, 0, 0.6) 36%,
-            rgba(255, 0, 0, 0.6) 38%,
-            rgba(255, 165, 0, 0.55) 39%,
-            rgba(255, 165, 0, 0.55) 41%,
-            rgba(255, 255, 0, 0.5) 42%,
-            rgba(255, 255, 0, 0.5) 44%,
-            rgba(0, 255, 0, 0.5) 45%,
-            rgba(0, 255, 0, 0.5) 47%,
-            rgba(0, 120, 255, 0.55) 48%,
-            rgba(0, 120, 255, 0.55) 50%,
-            rgba(75, 0, 130, 0.6) 51%,
-            rgba(75, 0, 130, 0.6) 53%,
-            rgba(238, 130, 238, 0.55) 54%,
-            rgba(238, 130, 238, 0.55) 56%,
-            transparent 57%);
+    width: 120%;
+    height: 60%;
     z-index: 3;
     pointer-events: none;
     opacity: 0;
-    transform: translateX(-50%) translateY(30px) scale(0.7);
-    filter: blur(20px) brightness(0.5);
+    filter: drop-shadow(0 0 30px rgba(255, 255, 255, 0.4));
+    mix-blend-mode: screen;
+    /* Make it glow against the sky */
+}
+
+.summer-rainbow::before {
+    content: '';
+    position: absolute;
+    bottom: -10%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    height: 200%;
+    border-radius: 50%;
     box-shadow:
-        0 0 80px rgba(255, 255, 255, 0),
-        0 0 120px rgba(255, 200, 255, 0);
+        0 0 0 20px rgba(148, 0, 211, 0.6),
+        /* Violet */
+        0 0 0 40px rgba(75, 0, 130, 0.6),
+        /* Indigo */
+        0 0 0 60px rgba(0, 0, 255, 0.6),
+        /* Blue */
+        0 0 0 80px rgba(0, 255, 0, 0.6),
+        /* Green */
+        0 0 0 100px rgba(255, 255, 0, 0.6),
+        /* Yellow */
+        0 0 0 120px rgba(255, 127, 0, 0.6),
+        /* Orange */
+        0 0 0 140px rgba(255, 0, 0, 0.6);
+    /* Red */
+    opacity: 0.9;
+}
+
+/* Shimmer effect */
+.summer-rainbow::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 50% 100%, transparent 40%, rgba(255, 255, 255, 0.2) 45%, transparent 50%);
+    border-radius: 50% 50% 0 0;
+    opacity: 0;
+    mix-blend-mode: overlay;
+    pointer-events: none;
 }
 
 .summer-rainbow-active {
-    animation: summer-rainbow-appear 1.5s ease-out forwards,
-        summer-rainbow-shimmer 3s ease-in-out 1.5s infinite;
+    opacity: 1;
+    animation: summer-rainbow-reveal 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-@keyframes summer-rainbow-appear {
+.summer-rainbow-active::before {
+    animation: summer-rainbow-pulse 3s ease-in-out infinite alternate;
+}
+
+.summer-rainbow-active::after {
+    animation: summer-rainbow-shimmer-move 4s linear infinite;
+}
+
+@keyframes summer-rainbow-reveal {
     0% {
         opacity: 0;
-        transform: translateX(-50%) translateY(30px) scale(0.7);
-        filter: blur(8px) brightness(0.5);
-        box-shadow:
-            0 0 80px rgba(255, 255, 255, 0),
-            0 0 120px rgba(255, 200, 255, 0);
-    }
-
-    30% {
-        opacity: 0.3;
-        filter: blur(5px) brightness(0.8);
-    }
-
-    60% {
-        opacity: 0.8;
-        transform: translateX(-50%) translateY(0) scale(0.95);
-        filter: blur(1px) brightness(1.2);
-        box-shadow:
-            0 0 100px rgba(255, 255, 255, 0.6),
-            0 0 150px rgba(255, 200, 255, 0.4);
+        clip-path: circle(0% at 50% 100%);
+        filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0));
     }
 
     100% {
         opacity: 1;
-        transform: translateX(-50%) translateY(0) scale(1);
-        filter: blur(0px) brightness(1);
-        box-shadow:
-            0 0 120px rgba(255, 255, 255, 0.8),
-            0 0 180px rgba(255, 200, 255, 0.5),
-            inset 0 0 80px rgba(255, 255, 255, 0.3);
+        clip-path: circle(150% at 50% 100%);
+        filter: drop-shadow(0 0 30px rgba(255, 255, 255, 0.6));
     }
 }
 
-@keyframes summer-rainbow-shimmer {
-
-    0%,
-    100% {
-        filter: blur(0px) brightness(1) saturate(1.2);
-        box-shadow:
-            0 0 120px rgba(255, 255, 255, 0.8),
-            0 0 180px rgba(255, 200, 255, 0.5),
-            inset 0 0 80px rgba(255, 255, 255, 0.3);
+@keyframes summer-rainbow-pulse {
+    0% {
+        transform: translateX(-50%) scale(1);
+        filter: brightness(1);
     }
 
-    25% {
-        filter: blur(0px) brightness(1.15) saturate(1.4);
-        box-shadow:
-            0 0 140px rgba(255, 255, 255, 0.9),
-            0 0 200px rgba(255, 150, 255, 0.6),
-            inset 0 0 100px rgba(255, 255, 255, 0.4);
+    100% {
+        transform: translateX(-50%) scale(1.03);
+        filter: brightness(1.3);
+    }
+}
+
+@keyframes summer-rainbow-shimmer-move {
+    0% {
+        opacity: 0;
+        transform: scale(0.9);
     }
 
     50% {
-        filter: blur(0px) brightness(1.2) saturate(1.5);
-        box-shadow:
-            0 0 150px rgba(255, 255, 255, 1),
-            0 0 220px rgba(200, 150, 255, 0.7),
-            inset 0 0 120px rgba(255, 255, 255, 0.5);
+        opacity: 1;
+        transform: scale(1.1);
     }
 
-    75% {
-        filter: blur(0px) brightness(1.15) saturate(1.4);
-        box-shadow:
-            0 0 140px rgba(255, 255, 255, 0.9),
-            0 0 200px rgba(255, 100, 200, 0.6),
-            inset 0 0 100px rgba(255, 255, 255, 0.4);
+    100% {
+        opacity: 0;
+        transform: scale(1.3);
     }
 }
+
+/* Rainbow Glitter */
+.summer-rainbow-glitter-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 4;
+    pointer-events: none;
+}
+
+.summer-rainbow-sparkle {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+    animation: summer-sparkle-twinkle linear forwards;
+}
+
+@keyframes summer-sparkle-twinkle {
+    0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    20% {
+        transform: scale(1.5) rotate(45deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(0) rotate(180deg) translateY(20px);
+        opacity: 0;
+    }
+}
+
+
 
 /* === COMBO 20-25: Bees === */
 .summer-bee-container {

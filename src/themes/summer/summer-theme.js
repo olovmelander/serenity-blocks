@@ -9,7 +9,7 @@ export default class SummerTheme extends BaseTheme {
         this.butterflies = [];
         this.comboLevel = 0;
         this.dynamicElements = new Set();
-        this.sunPosition = { x: 50, y: 25 }; // Sun in upper sky
+        this.sunPosition = { x: 85, y: 15 }; // Sun in top right corner
         this.comboUnsubscribe = null; // Store unsubscribe function
     }
 
@@ -58,12 +58,27 @@ export default class SummerTheme extends BaseTheme {
         this.buildClouds();
         this.buildPollen();
         this.buildButterflies();
+        this.buildGround();
         this.buildWildflowers();
         this.buildDandelionSeeds();
         this.buildGrass();
 
         // Start ambient animations
         this.startAmbientAnimations();
+    }
+
+    buildGround() {
+        const groundContainer = document.getElementById('summer-ground');
+        if (groundContainer) return;
+
+        const ground = document.createElement('div');
+        ground.id = 'summer-ground';
+        ground.className = 'summer-ground';
+
+        // Insert before the first wildflower layer if possible, or just append
+        // The CSS z-index will handle the layering mostly
+        this.themeContainerRef?.appendChild(ground);
+        this.registerContainer(ground);
     }
 
     buildSun() {
@@ -76,6 +91,18 @@ export default class SummerTheme extends BaseTheme {
 
         // Add sun core with glow
         if (!sunElement.querySelector('.summer-sun-core')) {
+            // Atmosphere glow (large soft glow)
+            const atmosphere = document.createElement('div');
+            atmosphere.className = 'summer-sun-atmosphere';
+            sunElement.appendChild(atmosphere);
+            this.dynamicElements.add(atmosphere);
+
+            // Corona (rotating rays/texture)
+            const corona = document.createElement('div');
+            corona.className = 'summer-sun-corona';
+            sunElement.appendChild(corona);
+            this.dynamicElements.add(corona);
+
             const core = document.createElement('div');
             core.className = 'summer-sun-core';
             sunElement.appendChild(core);
@@ -241,10 +268,11 @@ export default class SummerTheme extends BaseTheme {
             // Random flight path
             const xStart = Math.random() * 100;
             const yStart = Math.random() * 80 + 10;
-            const xMid1 = this.random(20, 80);
-            const yMid1 = this.random(20, 70);
-            const xMid2 = this.random(20, 80);
-            const yMid2 = this.random(30, 80);
+            // Allow butterflies to visit edges more frequently
+            const xMid1 = this.random(-10, 110);
+            const yMid1 = this.random(10, 90);
+            const xMid2 = this.random(-10, 110);
+            const yMid2 = this.random(10, 90);
             const xEnd = Math.random() * 100;
             const yEnd = Math.random() * 80 + 10;
 
@@ -283,7 +311,8 @@ export default class SummerTheme extends BaseTheme {
 
                 const scale = layerIndex === 0 ? this.random(0.5, 0.8) : layerIndex === 1 ? this.random(0.8, 1.2) : this.random(1.2, 1.8);
                 flower.style.left = `${Math.random() * 100}%`;
-                flower.style.bottom = `${Math.random() * 20 - 5}%`;
+                // Ensure flowers are grounded - bottom 0 to 15% of the container
+                flower.style.bottom = `${Math.random() * 15}%`;
                 flower.style.transform = `scale(${scale})`;
                 flower.style.animationDelay = `-${Math.random() * 10}s`;
 
@@ -457,7 +486,7 @@ export default class SummerTheme extends BaseTheme {
         }
     }
 
-    // COMBO 15-20: Rainbow arc appears in sky
+    // COMBO 3-5: Rainbow arc appears in sky with magical animation
     triggerRainbow() {
         const rainbowEl = document.getElementById('summer-rainbow');
         if (!rainbowEl) {
@@ -470,10 +499,68 @@ export default class SummerTheme extends BaseTheme {
 
         const rainbow = document.getElementById('summer-rainbow');
         if (rainbow) {
+            // Reset animation
+            rainbow.classList.remove('summer-rainbow-active');
+            void rainbow.offsetWidth; // Force reflow
             rainbow.classList.add('summer-rainbow-active');
+
+            // Remove class after animation completes to allow re-trigger
             setTimeout(() => {
                 rainbow.classList.remove('summer-rainbow-active');
-            }, 5000);
+            }, 8000);
+
+            // Trigger glitter effect
+            this.triggerRainbowGlitter();
+        }
+    }
+
+    triggerRainbowGlitter() {
+        const glitterContainer = document.getElementById('summer-rainbow-glitter');
+        if (!glitterContainer) {
+            const container = document.createElement('div');
+            container.id = 'summer-rainbow-glitter';
+            container.className = 'summer-rainbow-glitter-container';
+            this.themeContainerRef?.appendChild(container);
+            this.dynamicElements.add(container);
+        }
+
+        const container = document.getElementById('summer-rainbow-glitter');
+        if (!container) return;
+
+        const colors = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#9400D3', '#FFFFFF', '#FFFFFF'];
+        const particleCount = 100;
+
+        for (let i = 0; i < particleCount; i++) {
+            setTimeout(() => {
+                const sparkle = document.createElement('div');
+                sparkle.className = 'summer-rainbow-sparkle';
+
+                // Position in an arc
+                const angle = Math.random() * Math.PI; // 0 to 180 degrees
+                const radius = 30 + Math.random() * 40; // 30% to 70% of screen height roughly
+
+                // Convert polar to percentage coordinates relative to bottom center
+                // Center is 50% left, 100% top (bottom of screen)
+                const left = 50 + (Math.cos(angle) * radius * 1.2); // Spread out horizontally
+                const bottom = Math.sin(angle) * radius * 0.8; // Squish slightly vertically
+
+                sparkle.style.left = `${left}%`;
+                sparkle.style.bottom = `${bottom}%`;
+                sparkle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+
+                // Varied size
+                const size = 2 + Math.random() * 6;
+                sparkle.style.width = `${size}px`;
+                sparkle.style.height = `${size}px`;
+
+                sparkle.style.animationDuration = `${0.5 + Math.random() * 1.5}s`;
+
+                container.appendChild(sparkle);
+
+                setTimeout(() => {
+                    if (sparkle.parentNode) sparkle.parentNode.removeChild(sparkle);
+                }, 2000);
+            }, i * 20);
         }
     }
 
