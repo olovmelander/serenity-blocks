@@ -886,7 +886,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 eagle.style.width = '40px';
                 eagle.style.height = '30px';
                 eagle.style.left = '-50px';
-                eagle.style.top = `${20 + Math.random() * 40}%`;
+                eagle.style.top = `${10 + Math.random() * 25}%`;
                 eagle.style.opacity = '1';
                 eagle.style.pointerEvents = 'none';
                 eagle.style.zIndex = '99999';
