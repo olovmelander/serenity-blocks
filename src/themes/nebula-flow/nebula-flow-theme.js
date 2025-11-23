@@ -325,7 +325,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const splatCount = Math.max(1, Math.round(4 * q));
         for (let i = 0; i < splatCount; i++) {
             setTimeout(() => {
-                this.addFlowingSplat(0.25 * q);
+                this.addFlowingSplat(0.7 * q); // Much bigger puffs for single line
             }, i * 100);
         }
     }
@@ -336,7 +336,7 @@ export default class NebulaFlowTheme extends BaseTheme {
     createCascadeEffect(lineCount) {
         const q = this.currentQualityMultiplier || 0.65;
         const splatCount = Math.max(2, Math.round(lineCount * 3 * q));
-        const intensity = (0.3 + (lineCount * 0.03)) * q;
+        const intensity = (0.8 + (lineCount * 0.08)) * q; // Much bigger base intensity
 
         for (let i = 0; i < splatCount; i++) {
             setTimeout(() => {
@@ -345,11 +345,11 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const y = 0.3 + Math.random() * 0.4;
 
                 const angle = Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
-                const force = intensity * 500;
+                const force = intensity * 1100; // Much bigger force for dramatic cascades
                 const dx = Math.cos(angle) * force;
                 const dy = Math.sin(angle) * force;
 
-                const color = this.sampleColor(0.08, 0.08);
+                const color = this.sampleColor(0.12, 0.08);
                 this.simulator.splat(x, y, dx, dy, color);
             }, i * 80);
         }
@@ -361,7 +361,7 @@ export default class NebulaFlowTheme extends BaseTheme {
     createWaveEffect(lineCount) {
         const q = this.currentQualityMultiplier || 0.65;
         const waveCount = Math.max(4, Math.round(16 * q));
-        const intensity = (0.4 + (lineCount * 0.04)) * q;
+        const intensity = (1.0 + (lineCount * 0.1)) * q; // Dramatically increased for epic Tetris
 
         for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
@@ -371,18 +371,18 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const y = 0.5 + Math.sin(progress * Math.PI * 2) * 0.2;
 
                 const angle = Math.PI * 0.25 + progress * Math.PI * 0.5;
-                const force = intensity * 600;
+                const force = intensity * 1300; // Much bigger force for dramatic Tetris waves
                 const dx = Math.cos(angle) * force;
                 const dy = Math.sin(angle) * force;
 
-                const color = this.sampleColor(0.1, 0.07);
+                const color = this.sampleColor(0.15, 0.07);
                 this.simulator.splat(x, y, dx, dy, color);
 
                 // Add mirrored wave only on higher quality
                 if (q >= 0.6) {
                     const yMirror = 0.5 - Math.sin(progress * Math.PI * 2) * 0.2;
                     const dyMirror = -Math.sin(angle) * force;
-                    const color2 = this.sampleColor(0.1, 0.07);
+                    const color2 = this.sampleColor(0.15, 0.07);
                     this.simulator.splat(x, yMirror, dx, dyMirror, color2);
                 }
             }, i * 50);
@@ -397,8 +397,8 @@ export default class NebulaFlowTheme extends BaseTheme {
 
         const q = this.currentQualityMultiplier || 0.65;
 
-        // Intensity increases with combo count, scaled by quality
-        const intensity = Math.min(0.5, 0.25 + comboCount * 0.025) * q;
+        // Intensity increases with combo count, scaled by quality - dramatically increased
+        const intensity = Math.min(1.2, 0.65 + comboCount * 0.05) * q; // Much bigger base and scaling
         const spiralCount = Math.max(2, Math.round(Math.min(comboCount + 4, 16) * q));
 
         // Pattern type based on combo count
@@ -445,11 +445,11 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const x = centerX + Math.cos(angle) * radius;
                 const y = centerY + Math.sin(angle) * radius;
 
-                // Velocity creates swirling motion
-                const vx = -Math.sin(angle) * intensity * 700 * q;
-                const vy = Math.cos(angle) * intensity * 700 * q;
+                // Velocity creates swirling motion - much bigger
+                const vx = -Math.sin(angle) * intensity * 1400 * q; // Dramatically increased
+                const vy = Math.cos(angle) * intensity * 1400 * q;
 
-                const color = this.sampleColor(0.1, 0.08);
+                const color = this.sampleColor(0.15, 0.08);
                 this.simulator.splat(x, y, vx, vy, color);
             }, i * 50);
         }
@@ -468,23 +468,23 @@ export default class NebulaFlowTheme extends BaseTheme {
                 const angle = (i / spiralCount) * Math.PI * 2;
                 const radius = 0.3 + (comboCount * 0.015);
 
-                // First spiral (clockwise)
+                // First spiral (clockwise) - much bigger force
                 const x1 = centerX + Math.cos(angle) * radius;
                 const y1 = centerY + Math.sin(angle) * radius;
-                const vx1 = -Math.sin(angle) * intensity * 750 * q;
-                const vy1 = Math.cos(angle) * intensity * 750 * q;
+                const vx1 = -Math.sin(angle) * intensity * 1500 * q; // Dramatically increased
+                const vy1 = Math.cos(angle) * intensity * 1500 * q;
 
-                const color1 = this.sampleColor(0.12, 0.08);
+                const color1 = this.sampleColor(0.16, 0.08);
                 this.simulator.splat(x1, y1, vx1, vy1, color1);
 
                 // Second spiral only on medium+ quality
                 if (q >= 0.6) {
                     const x2 = centerX + Math.cos(-angle) * (radius * 0.6);
                     const y2 = centerY + Math.sin(-angle) * (radius * 0.6);
-                    const vx2 = -Math.sin(-angle) * intensity * 650 * q;
-                    const vy2 = Math.cos(-angle) * intensity * 650 * q;
+                    const vx2 = -Math.sin(-angle) * intensity * 1350 * q; // Dramatically increased
+                    const vy2 = Math.cos(-angle) * intensity * 1350 * q;
 
-                    const color2 = this.sampleColor(0.12, 0.08);
+                    const color2 = this.sampleColor(0.16, 0.08);
                     this.simulator.splat(x2, y2, vx2, vy2, color2);
                 }
             }, i * 45);
@@ -513,10 +513,10 @@ export default class NebulaFlowTheme extends BaseTheme {
 
                     const x = centerX + Math.cos(angle * direction) * radius;
                     const y = centerY + Math.sin(angle * direction) * radius;
-                    const vx = -Math.sin(angle * direction) * intensity * (800 - ring * 100) * q;
-                    const vy = Math.cos(angle * direction) * intensity * (800 - ring * 100) * q;
+                    const vx = -Math.sin(angle * direction) * intensity * (1700 - ring * 100) * q; // Massively increased
+                    const vy = Math.cos(angle * direction) * intensity * (1700 - ring * 100) * q;
 
-                    const color = this.sampleColor(0.15, 0.06);
+                    const color = this.sampleColor(0.2, 0.06);
                     this.simulator.splat(x, y, vx, vy, color);
                 }
             }, i * 40);
@@ -535,24 +535,24 @@ export default class NebulaFlowTheme extends BaseTheme {
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
                 const angle = (i / burstCount) * Math.PI * 2;
-                const force = intensity * 800 * q;
+                const force = intensity * 1600 * q; // Massively increased for epic burst
 
                 const vx = Math.cos(angle) * force;
                 const vy = Math.sin(angle) * force;
 
-                const color = this.sampleColor(0.1, 0.1);
+                const color = this.sampleColor(0.15, 0.1);
                 this.simulator.splat(centerX, centerY, vx, vy, color);
             }, i * 20);
         }
     }
 
     /**
-     * React to piece locks with subtle pulse
+     * React to piece locks with bigger pulse
      */
     onPieceLock() {
         if (!this.simulator) return;
-        // Subtle ripple effect
-        this.addFlowingSplat(0.2);
+        // Bigger ripple effect for piece locks
+        this.addFlowingSplat(0.8);
     }
 
     /**
@@ -565,11 +565,11 @@ export default class NebulaFlowTheme extends BaseTheme {
         const y = Math.random();
 
         const angle = Math.random() * Math.PI * 2;
-        const force = intensity * 400;
+        const force = intensity * 1000; // Dramatically increased for much bigger puffs
         const dx = Math.cos(angle) * force;
         const dy = Math.sin(angle) * force;
 
-        const color = this.sampleColor(0.06, 0.08);
+        const color = this.sampleColor(0.1, 0.08);
         this.simulator.splat(x, y, dx, dy, color);
     }
 
