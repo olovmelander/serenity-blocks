@@ -194,14 +194,71 @@ export default class AetherTidesTheme extends BaseTheme {
         this.simulator.splat(0.5, 0.5, 0, 0, { r: 0.1, g: 0.0, b: 0.2 }); // Dark center
     }
 
-    onPieceLock() {
+    onPieceLock(data) {
         if (!this.simulator) return;
-        // Stardust ripple
-        const x = Math.random();
-        const y = Math.random();
+
+        // Get the piece shape if available
+        const piece = data?.piece;
+        if (!piece || !piece.shape || !piece.shape.length) {
+            // Fallback to irregular puff if no shape data
+            this.createIrregularPuff(0.3 + Math.random() * 0.4, 0.3 + Math.random() * 0.4);
+            return;
+        }
+
+        // Create stardust puffs in the shape of the tetromino
+        const baseX = 0.3 + Math.random() * 0.4;
+        const baseY = 0.3 + Math.random() * 0.4;
+        const blockSize = 0.04; // Size of each block in the shape
         const color = this.getRandomCosmicColor();
-        // Gentle puff
-        this.simulator.splat(x, y, (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200, color);
+
+        // Iterate through the shape matrix
+        for (let row = 0; row < piece.shape.length; row++) {
+            for (let col = 0; col < piece.shape[row].length; col++) {
+                if (piece.shape[row][col]) {
+                    // Calculate position for this block
+                    const x = baseX + (col - 1.5) * blockSize;
+                    const y = baseY + (row - 1.5) * blockSize;
+
+                    setTimeout(() => {
+                        this.createIrregularPuff(x, y, color);
+                    }, (row * piece.shape[row].length + col) * 40);
+                }
+            }
+        }
+    }
+
+    /**
+     * Create an irregular, streak-like puff instead of circular
+     */
+    createIrregularPuff(x, y, baseColor = null) {
+        if (!this.simulator) return;
+
+        const color = baseColor || this.getRandomCosmicColor();
+
+        // Create multiple directional streaks to form an irregular shape
+        const numStreaks = 3 + Math.floor(Math.random() * 4); // 3-6 streaks
+        const baseAngle = Math.random() * Math.PI * 2;
+
+        for (let i = 0; i < numStreaks; i++) {
+            // Vary angle and distance for each streak
+            const angleOffset = (Math.random() - 0.5) * Math.PI;
+            const angle = baseAngle + angleOffset;
+            const distance = 0.005 + Math.random() * 0.01; // Small offset from center
+
+            // Position offset for this streak
+            const offsetX = Math.cos(angle) * distance;
+            const offsetY = Math.sin(angle) * distance;
+
+            // Create directional force for streak
+            const force = 200 + Math.random() * 200;
+            const dx = Math.cos(angle) * force;
+            const dy = Math.sin(angle) * force;
+
+            // Add slight timing variation
+            setTimeout(() => {
+                this.simulator.splat(x + offsetX, y + offsetY, dx, dy, color);
+            }, i * 15);
+        }
     }
 
     addInitialNebula() {
