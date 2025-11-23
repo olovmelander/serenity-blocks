@@ -143,39 +143,36 @@ export default class CinderDriftTheme extends BaseTheme {
     }
 
     updateEmbers(dt) {
-        this.embers.forEach(ember => {
-            // Update pulse
-            ember.pulsePhase += ember.pulseSpeed * dt;
-            const pulse = 0.5 + 0.5 * Math.sin(ember.pulsePhase);
+        // Automatic ember emissions disabled - only triggered on gameplay events
+        return;
+    }
 
-            // CONTINUOUS smoke emission (multiple per frame for dramatic effect)
-            ember.emitTimer -= dt;
-            if (ember.emitTimer <= 0) {
-                ember.emitTimer = 1.5 + Math.random() * 2.0; // Much less frequent puffing (1.5-3.5s)
+    /**
+     * Trigger ember-style smoke puffs manually (called during gameplay events)
+     */
+    triggerEmberPuffs(count = 3, intensity = 1.0) {
+        if (!this.simulator) return;
 
-                // Emit 1-2 smoke puffs per emission (calmer)
-                const puffs = 1 + Math.floor(Math.random() * 2);
-                for (let i = 0; i < puffs; i++) {
-                    const intensity = ember.brightness * pulse;
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                // Random ember position at bottom
+                const x = Math.random();
+                const y = 0.02 + Math.random() * 0.08;
 
-                    // Brighter smoke with more orange/red for excitement
-                    const smokeColor = {
-                        r: 0.25 + intensity * 0.4,  // Much brighter orange/red
-                        g: 0.15 + intensity * 0.2,  // Warmer gray
-                        b: 0.10 + intensity * 0.1,  // Slight warmth
-                    };
+                // Brighter smoke with orange/red tints
+                const smokeColor = {
+                    r: 0.25 + intensity * 0.4,
+                    g: 0.15 + intensity * 0.2,
+                    b: 0.10 + intensity * 0.1,
+                };
 
-                    // Very slow but tall pillar
-                    const dx = (Math.random() - 0.5) * 30;  // Narrow pillar
-                    const dy = 400 + Math.random() * 300;   // Tall vertical rise
+                // Tall vertical pillar
+                const dx = (Math.random() - 0.5) * 30;
+                const dy = 400 + Math.random() * 300;
 
-                    // Slight offset for multiple puffs
-                    const offsetX = ember.x + (Math.random() - 0.5) * 0.05;
-
-                    this.simulator.splat(offsetX, ember.y, dx, dy, smokeColor);
-                }
-            }
-        });
+                this.simulator.splat(x, y, dx, dy, smokeColor);
+            }, i * 100);
+        }
     }
 
     // --- Effects ---
@@ -205,6 +202,9 @@ export default class CinderDriftTheme extends BaseTheme {
                 this.simulator.splat(x, y, dx, dy, color);
             }, i * 30); // Faster succession
         }
+
+        // Add ember-style puffs for line clears
+        this.triggerEmberPuffs(lineCount * 4, 0.8);
     }
 
     onCombo(comboCount) {
@@ -231,6 +231,9 @@ export default class CinderDriftTheme extends BaseTheme {
                 this.simulator.splat(x, y, dx, dy, color);
             }, i * 50); // Rapid succession
         }
+
+        // Add intense ember puffs for combos
+        this.triggerEmberPuffs(comboCount * 2, intensity);
     }
 
     onPieceLock() {
@@ -241,6 +244,9 @@ export default class CinderDriftTheme extends BaseTheme {
         const y = 0.2 + Math.random() * 0.2;
         const color = this.getSmokeColor(0.5);
         this.simulator.splat(x, y, (Math.random() - 0.5) * 40, 60, color);
+
+        // Add subtle ember puff
+        this.triggerEmberPuffs(2, 0.5);
     }
 
     addInitialSmoke() {
