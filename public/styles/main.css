@@ -10227,7 +10227,7 @@ body {
 
 /* --- Himalayan Peak Theme --- */
 #himalayan-peak-theme {
-    background-color: #6a8199;
+    background-color: #aebaf0;
     overflow: hidden;
 }
 
@@ -10237,14 +10237,11 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(to top,
-            #3a5570 0%,
-            #4a6580 15%,
-            #5a7590 30%,
-            #6a85a0 50%,
-            #7a95b0 70%,
-            #8aa5c0 85%,
-            #9ab5d0 100%);
+    /* Lavender to soft blue gradient */
+    background: linear-gradient(to bottom,
+            #aebaf0 0%,
+            #9aaae0 40%,
+            #8a9bd6 100%);
     z-index: 1;
 }
 

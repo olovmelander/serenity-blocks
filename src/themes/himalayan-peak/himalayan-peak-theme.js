@@ -182,81 +182,199 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         console.log('[HimalayanPeak] Creating scene with quality:', qualitySetting, this.qualityConfig);
 
-        // 1. Procedural Peaks for WebGL - with canvas caching optimization
-        if (this.webglRenderer) {
+        // 1. Procedural Mountains (DOM-based for correct z-indexing behind flags)
+        const themeContainer = document.getElementById('himalayan-peak-theme');
+        let mountainContainer = document.getElementById('himalayan-mountains');
+
+        if (!mountainContainer && themeContainer) {
+            mountainContainer = document.createElement('div');
+            mountainContainer.id = 'himalayan-mountains';
+            mountainContainer.style.position = 'absolute';
+            mountainContainer.style.top = '0';
+            mountainContainer.style.left = '0';
+            mountainContainer.style.width = '100%';
+            mountainContainer.style.height = '100%';
+            mountainContainer.style.zIndex = '3'; // Behind clouds (4) and flags (6), in front of sun (2)
+            themeContainer.appendChild(mountainContainer);
+        }
+
+        if (mountainContainer && mountainContainer.children.length === 0) {
+            // Enhanced Grain Pattern Generator
+            const createGrainPattern = (ctx, density = 1, opacity = 0.5, color = '#000000') => {
+                const patternCanvas = document.createElement('canvas');
+                patternCanvas.width = 256;
+                patternCanvas.height = 256;
+                const pCtx = patternCanvas.getContext('2d');
+                const imageData = pCtx.createImageData(256, 256);
+                const data = imageData.data;
+
+                let r = 0, g = 0, b = 0;
+                if (color.startsWith('#')) {
+                    const hex = color.substring(1);
+                    r = parseInt(hex.substring(0, 2), 16);
+                    g = parseInt(hex.substring(2, 4), 16);
+                    b = parseInt(hex.substring(4, 6), 16);
+                }
+
+                for (let i = 0; i < data.length; i += 4) {
+                    if (Math.random() < density) {
+                        data[i] = r;
+                        data[i + 1] = g;
+                        data[i + 2] = b;
+                        data[i + 3] = Math.floor((opacity * 0.5 + Math.random() * opacity * 0.5) * 255);
+                    } else {
+                        data[i + 3] = 0;
+                    }
+                }
+                pCtx.putImageData(imageData, 0, 0);
+                return ctx.createPattern(patternCanvas, 'repeat');
+            };
+
             const peakLayers = [
-                // z-index values are for WebGL depth, not CSS z-index. Closer to -1 is further away.
+                // Layer 1: The Majestic Main Peak (Back)
                 {
-                    zIndex: -0.9,
-                    color: 'rgba(60, 70, 90, 0.7)',
-                    jaggedness: 0.3,
-                    snowLine: 0.4,
+                    id: 'peak-back',
+                    color: '#f0f4ff', // White Snow
+                    shadowColor: '#6b7db3', // Indigo Shadow
+                    baseHeight: 0.55,
+                    amplitude: 300,
                     seed: 12345,
+                    grainDensity: 0.4,
+                    grainOpacity: 0.3,
+                    zIndex: 1
                 },
+                // Layer 2: Rugged Mid-Mountain Base (Mid)
                 {
-                    zIndex: -0.8,
-                    color: 'rgba(80, 90, 110, 0.8)',
-                    jaggedness: 0.5,
-                    snowLine: 0.3,
+                    id: 'peak-mid',
+                    color: '#3a4b6b', // Dark Grey/Blue
+                    shadowColor: '#1f2a40', // Darker Shadow
+                    baseHeight: 0.75,
+                    amplitude: 200,
                     seed: 23456,
+                    grainDensity: 0.5,
+                    grainOpacity: 0.5,
+                    zIndex: 2
                 },
+                // Layer 3: Foreground Silhouette (Front)
                 {
-                    zIndex: -0.7,
-                    color: 'rgba(100, 110, 130, 0.9)',
-                    jaggedness: 0.7,
-                    snowLine: 0.2,
+                    id: 'peak-front',
+                    color: '#151a26', // Very Dark Navy
+                    shadowColor: '#0a0c12', // Black
+                    baseHeight: 0.9,
+                    amplitude: 120,
                     seed: 34567,
-                },
+                    grainDensity: 0.7,
+                    grainOpacity: 0.7,
+                    zIndex: 3
+                }
             ];
 
             peakLayers.forEach((layer) => {
                 const C_WIDTH = 2048;
-                const C_HEIGHT = window.innerHeight > 1080 ? 1080 : window.innerHeight; // Cap height for performance
+                const C_HEIGHT = window.innerHeight > 1080 ? 1080 : window.innerHeight;
 
-                // Create cache key based on layer properties and dimensions
-                const cacheKey = `peak-${layer.zIndex}-${layer.color}-${layer.jaggedness}-${layer.snowLine}-${C_WIDTH}x${C_HEIGHT}`;
-
-                // Check if we have this peak cached
-                if (himalayanPeakCache.has(cacheKey)) {
-                    const cachedCanvas = himalayanPeakCache.get(cacheKey);
-                    this.addWebGLLayer(cachedCanvas, layer.zIndex);
-                    return;
-                }
-
-                // Generate new peak with seeded random for deterministic output
                 const rng = this.seededRandom(layer.seed);
                 const canvas = document.createElement('canvas');
                 canvas.width = C_WIDTH;
                 canvas.height = C_HEIGHT;
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.zIndex = layer.zIndex;
+
                 const ctx = canvas.getContext('2d');
 
-                ctx.fillStyle = layer.color;
+                // Generate Ridge Noise
+                const points = [];
+                const baseH = canvas.height * layer.baseHeight;
+                const amp = layer.amplitude;
+
+                for (let x = 0; x <= C_WIDTH; x += 2) {
+                    const nx = x / C_WIDTH;
+                    let y = 0;
+
+                    // Ridge Noise: 1 - abs(sin(x))
+                    // Octave 1
+                    y -= amp * Math.pow(1 - Math.abs(Math.sin(nx * Math.PI * 1.5 + layer.seed)), 1.2);
+                    // Octave 2
+                    y -= (amp * 0.4) * Math.pow(1 - Math.abs(Math.sin(nx * Math.PI * 4 + layer.seed * 2)), 1.5);
+                    // Octave 3
+                    y -= (amp * 0.15) * Math.pow(1 - Math.abs(Math.sin(nx * Math.PI * 10 + layer.seed * 3)), 1);
+
+                    // Noise
+                    y += (rng() - 0.5) * 20;
+                    // Base Height
+                    y += baseH;
+
+                    points.push({ x, y });
+                }
+
+                // 1. Draw Main Shape
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
-                let y = canvas.height * 0.8;
-                for (let x = 0; x < C_WIDTH; x++) {
-                    const angle = (x / C_WIDTH) * Math.PI * 4;
-                    y = canvas.height * 0.7 - Math.sin(angle) * 100 - Math.cos(angle * 0.5) * 50;
-                    y += (rng() - 0.5) * layer.jaggedness * 20;
-                    ctx.lineTo(x, y);
-
-                    // Draw snow caps
-                    if (y < canvas.height * layer.snowLine) {
-                        ctx.fillStyle = 'rgba(240, 245, 255, 0.9)';
-                        ctx.fillRect(x, y - 5, 1, 10);
-                        ctx.fillStyle = layer.color;
-                    }
-                }
+                points.forEach(p => ctx.lineTo(p.x, p.y));
                 ctx.lineTo(C_WIDTH, canvas.height);
                 ctx.closePath();
+                ctx.fillStyle = layer.color;
                 ctx.fill();
 
-                // Cache the generated canvas
-                himalayanPeakCache.set(cacheKey, canvas);
+                // 2. Apply Base Grain
+                ctx.globalCompositeOperation = 'source-atop';
+                ctx.fillStyle = createGrainPattern(ctx, layer.grainDensity, layer.grainOpacity * 0.4, '#000000');
+                ctx.fill();
 
-                // Add the generated canvas as a layer to the WebGL renderer
-                this.addWebGLLayer(canvas, layer.zIndex);
+                // 3. Slope-Based Stippled Shadows
+                ctx.beginPath();
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p1 = points[i];
+                    const p2 = points[i + 1];
+                    const slope = (p2.y - p1.y) / (p2.x - p1.x);
+
+                    // Shadow on right-facing slopes (positive slope)
+                    if (slope > 0.1) {
+                        const shadowDepth = Math.min(500, slope * 600);
+                        ctx.rect(p1.x, p1.y, (p2.x - p1.x), shadowDepth);
+                    }
+                }
+                ctx.fillStyle = layer.shadowColor;
+                ctx.fill();
+
+                // 4. Heavy Grain on Shadows
+                ctx.fillStyle = createGrainPattern(ctx, layer.grainDensity, layer.grainOpacity, '#000000');
+                ctx.fill();
+
+                // 5. Mist for Back Layer
+                if (layer.id === 'peak-back') {
+                    const mistGrad = ctx.createLinearGradient(0, canvas.height - 300, 0, canvas.height);
+                    mistGrad.addColorStop(0, 'rgba(174, 186, 240, 0)');
+                    mistGrad.addColorStop(1, 'rgba(174, 186, 240, 0.9)');
+                    ctx.fillStyle = mistGrad;
+                    ctx.fillRect(0, 0, C_WIDTH, canvas.height);
+                }
+
+                ctx.globalCompositeOperation = 'source-over';
+                mountainContainer.appendChild(canvas);
             });
+        }
+
+        // Global Grain Overlay (for that "photo" look)
+        const themeContainerForGrain = document.getElementById('himalayan-peak-theme');
+        if (themeContainerForGrain && !themeContainerForGrain.querySelector('.global-grain-overlay')) {
+            const grainOverlay = document.createElement('div');
+            grainOverlay.className = 'global-grain-overlay';
+            grainOverlay.style.position = 'absolute';
+            grainOverlay.style.top = '0';
+            grainOverlay.style.left = '0';
+            grainOverlay.style.width = '100%';
+            grainOverlay.style.height = '100%';
+            grainOverlay.style.pointerEvents = 'none';
+            grainOverlay.style.zIndex = '20'; // On top of everything
+            grainOverlay.style.opacity = '0.15';
+            // CSS-based noise
+            grainOverlay.style.backgroundImage = `url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)" opacity="1"/%3E%3C/svg%3E')`;
+            themeContainerForGrain.appendChild(grainOverlay);
         }
 
         // 2. High-altitude clouds (quality-based)
@@ -266,7 +384,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
             for (let i = 0; i < this.qualityConfig.clouds; i++) {
                 const cloud = document.createElement('div');
                 cloud.className = 'himalayan-cloud';
-                cloud.style.top = `${60 + Math.random() * 30}%`;
+                cloud.style.top = `${10 + Math.random() * 40}%`; // Adjusted for new mountain height
                 const duration = Math.random() * 100 + 120;
                 cloud.style.animationDuration = `${duration}s`;
                 cloud.style.animationDelay = `-${Math.random() * duration}s`;
@@ -283,7 +401,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
             strand.className = 'himalayan-prayer-strand';
             const flagColors = ['#00a8ff', '#9c88ff', '#fbc531', '#4cd137', '#e84118'];
             const flagSpacing = Math.max(3, 90 / this.qualityConfig.prayerFlags); // Distribute evenly
-            
+
             for (let i = 0; i < this.qualityConfig.prayerFlags; i++) {
                 const flag = document.createElement('div');
                 flag.className = 'himalayan-prayer-flag';
@@ -353,10 +471,10 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         const comboEffects = this.qualityConfig.comboEffects;
 
-        // Trigger snow avalanche cascading down the peaks
+        // Trigger snow blizzard cascading down the peaks
         if (comboEffects.avalancheMultiplier > 0) {
-            const avalancheIntensity = Math.ceil(lineCount * 8 * comboEffects.avalancheMultiplier);
-            this.triggerAvalanche(avalancheIntensity, lineCount);
+            const blizzardIntensity = Math.ceil(lineCount * 8 * comboEffects.avalancheMultiplier);
+            this.triggerSnowBlizzard(blizzardIntensity, lineCount);
         }
 
         // Prayer flags flutter and glow with blessings
@@ -418,10 +536,10 @@ export default class HimalayanPeakTheme extends BaseTheme {
             }
         }
 
-        // Sacred geometry mandala for very high combos
-        if (comboCount >= 5 && comboEffects.sacredGeometryEnabled) {
-            this.createSacredGeometry(comboCount);
-        }
+        // Sacred geometry mandala REMOVED per user request
+        // if (comboCount >= 5 && comboEffects.sacredGeometryEnabled) {
+        //     this.createSacredGeometry(comboCount);
+        // }
 
         // Epic blizzard for extreme combos
         if (comboCount >= 7 && comboEffects.blizzardEnabled) {
@@ -448,48 +566,56 @@ export default class HimalayanPeakTheme extends BaseTheme {
     }
 
     /**
-     * Trigger cascading avalanche effect with parallax snow layers
+     * Trigger snow blizzard effect (replaces avalanche/rain)
      */
-    triggerAvalanche(intensity, lineCount) {
+    triggerSnowBlizzard(intensity, lineCount) {
         const theme = document.getElementById('himalayan-peak-theme');
         if (!theme) return;
 
-        // Define parallax layers for avalanche (far to near)
-        const avalancheLayers = [
-            { zIndex: 1, speed: 1.4, size: 0.6, opacity: 0.4, blur: 2 },     // Far back
-            { zIndex: 3, speed: 1.2, size: 0.8, opacity: 0.6, blur: 1.5 },   // Back
-            { zIndex: 5, speed: 1.0, size: 1.0, opacity: 0.8, blur: 1 },     // Mid
-            { zIndex: 8, speed: 0.8, size: 1.2, opacity: 1.0, blur: 0 },     // Front
+        // Snow layers (far to near)
+        const snowLayers = [
+            { zIndex: 4, speed: 0.5, size: 0.5, opacity: 0.6, blur: 1 },     // Far
+            { zIndex: 6, speed: 0.8, size: 0.8, opacity: 0.8, blur: 0.5 },   // Mid
+            { zIndex: 8, speed: 1.2, size: 1.2, opacity: 1.0, blur: 0 },     // Front
         ];
 
-        avalancheLayers.forEach((layer) => {
-            const particlesForLayer = Math.ceil(intensity * 0.25);
-            
+        snowLayers.forEach((layer) => {
+            const particlesForLayer = Math.ceil(intensity * 0.5);
+
             for (let i = 0; i < particlesForLayer; i++) {
                 setTimeout(() => {
                     const snow = document.createElement('div');
-                    snow.className = 'avalanche-snow';
+                    snow.className = 'blizzard-snow';
                     snow.style.position = 'absolute';
-                    snow.style.width = `${3 * layer.size}px`;
-                    snow.style.height = `${3 * layer.size}px`;
+                    snow.style.width = `${4 * layer.size}px`;
+                    snow.style.height = `${4 * layer.size}px`;
                     snow.style.borderRadius = '50%';
-                    snow.style.backgroundColor = 'rgba(240, 245, 255, 0.9)';
-                    snow.style.boxShadow = `0 0 ${4 * layer.size}px rgba(255, 255, 255, 0.8)`;
+                    snow.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
+                    snow.style.boxShadow = `0 0 ${5 * layer.size}px rgba(255, 255, 255, 0.8)`;
                     snow.style.left = `${Math.random() * 100}%`;
-                    snow.style.top = `${Math.random() * 20}%`;
+                    snow.style.top = '-10px'; // Start above screen
                     snow.style.opacity = '0';
                     snow.style.pointerEvents = 'none';
                     snow.style.zIndex = layer.zIndex.toString();
-                    
+
                     if (layer.blur > 0) {
                         snow.style.filter = `blur(${layer.blur}px)`;
                     }
-                    
-                    const duration = 1.5 * layer.speed + Math.random() * 0.5;
-                    snow.style.animation = `avalancheFall ${duration}s ease-in forwards`;
-                    snow.style.setProperty('--avalanche-x-drift', `${(Math.random() - 0.5) * 100}px`);
-                    snow.style.willChange = 'transform, opacity'; // Performance optimization
-                    
+
+                    const duration = 3 / layer.speed + Math.random() * 2;
+                    snow.style.transition = `top ${duration}s linear, opacity 0.5s ease-in`;
+
+                    // Animate
+                    requestAnimationFrame(() => {
+                        snow.style.opacity = layer.opacity.toString();
+                        snow.style.top = '110%'; // Fall to bottom
+
+                        // Add horizontal drift
+                        const drift = (Math.random() - 0.5) * 200;
+                        snow.style.transform = `translateX(${drift}px)`;
+                        snow.style.transition += `, transform ${duration}s ease-in-out`;
+                    });
+
                     theme.appendChild(snow);
 
                     setTimeout(() => {
@@ -497,7 +623,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                             snow.parentNode.removeChild(snow);
                         }
                     }, duration * 1000);
-                }, i * 40 / layer.speed);
+                }, i * 50);
             }
         });
     }
@@ -765,7 +891,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 eagle.style.pointerEvents = 'none';
                 eagle.style.zIndex = '99999';
                 eagle.style.animation = 'eagleSoar 8s linear forwards';
-                
+
                 // Simple minimalistic bird silhouette - classic V-shape with small body
                 eagle.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 30"><g opacity="0.6"><path d="M 20 15 Q 12 10, 5 12 L 15 15 Z" fill="%23252520" stroke="none"/><path d="M 20 15 Q 28 10, 35 12 L 25 15 Z" fill="%23252520" stroke="none"/><circle cx="20" cy="15" r="2" fill="%23252520"/></g></svg>')`;
                 eagle.style.backgroundSize = 'contain';
@@ -786,55 +912,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         }
     }
 
-    /**
-     * Create sacred geometry mandala pattern
-     */
-    createSacredGeometry(comboCount) {
-        const theme = document.getElementById('himalayan-peak-theme');
-        if (!theme) return;
 
-        const mandala = document.createElement('div');
-        mandala.className = 'sacred-mandala';
-        mandala.style.position = 'absolute';
-        mandala.style.left = '50%';
-        mandala.style.top = '50%';
-        mandala.style.transform = 'translate(-50%, -50%)';
-        mandala.style.width = '200px';
-        mandala.style.height = '200px';
-        mandala.style.border = '3px solid rgba(255, 215, 100, 0.6)';
-        mandala.style.borderRadius = '50%';
-        mandala.style.boxShadow = `
-            0 0 20px rgba(255, 215, 100, 0.6),
-            inset 0 0 20px rgba(255, 215, 100, 0.3),
-            0 0 40px rgba(255, 180, 50, 0.4)
-        `;
-        mandala.style.opacity = '0';
-        mandala.style.pointerEvents = 'none';
-        mandala.style.zIndex = '11';
-        mandala.style.animation = `mandalaAppear ${2 + comboCount * 0.2}s ease-in-out forwards`;
-
-        // Add inner geometric patterns
-        for (let i = 0; i < 8; i++) {
-            const petal = document.createElement('div');
-            petal.style.position = 'absolute';
-            petal.style.width = '60px';
-            petal.style.height = '60px';
-            petal.style.border = '2px solid rgba(255, 215, 100, 0.5)';
-            petal.style.borderRadius = '50%';
-            petal.style.top = '50%';
-            petal.style.left = '50%';
-            petal.style.transform = `translate(-50%, -50%) rotate(${i * 45}deg) translateY(-60px)`;
-            mandala.appendChild(petal);
-        }
-
-        theme.appendChild(mandala);
-
-        setTimeout(() => {
-            if (mandala.parentNode) {
-                mandala.parentNode.removeChild(mandala);
-            }
-        }, (2 + comboCount * 0.2) * 1000);
-    }
 
     /**
      * Unleash epic blizzard for extreme combos
