@@ -19093,28 +19093,34 @@ body.phaser-multiplayer-active #single-player-container {
     position: relative;
 }
 
-/* 2 players - horizontal row */
+/* 2 players - 1 row × 2 columns */
 .multiplayer-game-area.players-2 {
-    --board-width: 300px;
-    --board-height: 600px;
-    grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 36px)));
-    gap: 80px;
+    --board-width: min(380px, calc((100vw - 160px) / 2));
+    --board-height: calc(var(--board-width) * 2);
+    grid-template-columns: repeat(2, auto);
+    grid-template-rows: 1fr;
+    gap: 60px;
+    align-items: center;
 }
 
-/* 3 players - horizontal row */
+/* 3 players - 1 row × 3 columns */
 .multiplayer-game-area.players-3 {
-    --board-width: 260px;
-    --board-height: 520px;
-    grid-template-columns: repeat(3, minmax(0, calc(var(--board-width) + 32px)));
-    gap: 50px;
+    --board-width: min(300px, calc((100vw - 200px) / 3));
+    --board-height: calc(var(--board-width) * 2);
+    grid-template-columns: repeat(3, auto);
+    grid-template-rows: 1fr;
+    gap: 40px;
+    align-items: center;
 }
 
-/* 4 players - horizontal row */
+/* 4 players - 1 row × 4 columns */
 .multiplayer-game-area.players-4 {
-    --board-width: 240px;
-    --board-height: 480px;
-    grid-template-columns: repeat(4, minmax(0, calc(var(--board-width) + 32px)));
+    --board-width: min(280px, calc((100vw - 220px) / 4));
+    --board-height: calc(var(--board-width) * 2);
+    grid-template-columns: repeat(4, auto);
+    grid-template-rows: 1fr;
     gap: 30px;
+    align-items: center;
 }
 
 /* Individual player card */
@@ -19149,25 +19155,57 @@ body.phaser-multiplayer-active #single-player-container {
     gap: 20px;
 }
 
-/* Player card color variations */
+/* Player card color variations - Enhanced visual separation */
 .player-card[data-player="1"] {
-    border-color: #3B82F6;
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(59, 130, 246, 0.4),
+        inset 0 0 20px rgba(59, 130, 246, 0.1);
+    background: linear-gradient(
+        145deg,
+        rgba(0, 0, 0, 0.5),
+        rgba(59, 130, 246, 0.05)
+    );
 }
 
 .player-card[data-player="2"] {
-    border-color: #EF4444;
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    border-color: rgba(239, 68, 68, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(239, 68, 68, 0.4),
+        inset 0 0 20px rgba(239, 68, 68, 0.1);
+    background: linear-gradient(
+        145deg,
+        rgba(0, 0, 0, 0.5),
+        rgba(239, 68, 68, 0.05)
+    );
 }
 
 .player-card[data-player="3"] {
-    border-color: #10B981;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    border-color: rgba(16, 185, 129, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(16, 185, 129, 0.4),
+        inset 0 0 20px rgba(16, 185, 129, 0.1);
+    background: linear-gradient(
+        145deg,
+        rgba(0, 0, 0, 0.5),
+        rgba(16, 185, 129, 0.05)
+    );
 }
 
 .player-card[data-player="4"] {
-    border-color: #F59E0B;
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    border-color: rgba(245, 158, 11, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(245, 158, 11, 0.4),
+        inset 0 0 20px rgba(245, 158, 11, 0.1);
+    background: linear-gradient(
+        145deg,
+        rgba(0, 0, 0, 0.5),
+        rgba(245, 158, 11, 0.05)
+    );
 }
 
 /* Next pieces section - horizontal layout */
@@ -19352,94 +19390,104 @@ body.phaser-multiplayer-active #single-player-container {
     transform: rotate(90deg);
 }
 
-/* Board scaling for different player counts */
-.players-2 .phaser-board-container,
-.players-2 .phaser-board-container canvas,
-.players-2 .board-border-overlay {
-    width: 300px;
-    height: 600px;
+/* Board scaling - dynamic based on CSS variables */
+.phaser-board-container,
+.phaser-board-container canvas,
+.board-border-overlay {
+    width: var(--board-width);
+    height: var(--board-height);
 }
 
 /* ============================================
    RESPONSIVE BREAKPOINTS
    ============================================ */
 
-/* Large Desktop (1920px+) */
+/* Large Desktop (1920px+) - Maximum screen utilization */
 @media (min-width: 1920px) {
     .multiplayer-game-area.players-2 {
-        gap: 100px;
-    }
-}
-
-/* Desktop (1440px - 1920px) */
-@media (min-width: 1440px) and (max-width: 1919px) {
-    .multiplayer-game-area.players-2 {
+        --board-width: min(420px, calc((100vw - 200px) / 2));
         gap: 80px;
     }
 
     .multiplayer-game-area.players-3 {
+        --board-width: min(360px, calc((100vw - 240px) / 3));
         gap: 60px;
     }
 
     .multiplayer-game-area.players-4 {
+        --board-width: min(320px, calc((100vw - 280px) / 4));
+        gap: 50px;
+    }
+}
+
+/* Desktop (1440px - 1920px) - Optimal balanced layout */
+@media (min-width: 1440px) and (max-width: 1919px) {
+    .multiplayer-game-area.players-2 {
+        --board-width: min(380px, calc((100vw - 180px) / 2));
+        gap: 70px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        --board-width: min(320px, calc((100vw - 220px) / 3));
+        gap: 50px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        --board-width: min(290px, calc((100vw - 240px) / 4));
         gap: 40px;
     }
 }
 
-/* Laptop (1024px - 1440px) */
+/* Laptop (1024px - 1440px) - Compact but comfortable */
 @media (min-width: 1024px) and (max-width: 1439px) {
     .multiplayer-game-area.players-2 {
-        gap: 60px;
+        --board-width: min(340px, calc((100vw - 140px) / 2));
+        gap: 50px;
     }
 
     .multiplayer-game-area.players-3 {
+        --board-width: min(280px, calc((100vw - 180px) / 3));
         gap: 40px;
     }
 
     .multiplayer-game-area.players-4 {
+        --board-width: min(240px, calc((100vw - 200px) / 4));
         gap: 30px;
-        --board-width: 220px;
-        --board-height: 440px;
     }
 }
 
-/* Tablet/Small Laptop (768px - 1024px) */
+/* Tablet/Small Laptop (768px - 1024px) - Horizontal scrolling enabled */
 @media (min-width: 768px) and (max-width: 1023px) {
-
-    .multiplayer-game-area.players-3,
-    .multiplayer-game-area.players-4 {
-        overflow-y: auto;
-        max-height: 90vh;
-    }
-
     .multiplayer-game-area.players-2 {
+        --board-width: min(300px, calc((100vw - 120px) / 2));
         gap: 40px;
     }
 
-    .multiplayer-game-area.players-3,
-    .multiplayer-game-area.players-4 {
+    .multiplayer-game-area.players-3 {
+        --board-width: min(240px, calc((100vw - 160px) / 3));
         gap: 30px;
     }
 
-    .multiplayer-game-area.players-3 {
-        --board-width: 240px;
-        --board-height: 480px;
+    .multiplayer-game-area.players-4 {
+        --board-width: min(200px, calc((100vw - 180px) / 4));
+        gap: 25px;
     }
 
+    /* Allow horizontal scrolling for 3-4 players if needed */
+    .multiplayer-game-area.players-3,
     .multiplayer-game-area.players-4 {
-        --board-width: 200px;
-        --board-height: 400px;
-        grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 28px)));
-        grid-template-rows: repeat(2, auto);
+        overflow-x: auto;
+        padding-bottom: 10px;
     }
 }
 
-/* Mobile (< 768px) */
+/* Mobile (< 768px) - Stack all players vertically */
 @media (max-width: 767px) {
     .multiplayer-game-area {
         grid-template-columns: 1fr !important;
         grid-template-rows: auto !important;
         gap: 20px;
+        padding: 10px;
     }
 
     .player-card {
@@ -19447,8 +19495,8 @@ body.phaser-multiplayer-active #single-player-container {
     }
 
     .multiplayer-game-area {
-        --board-width: 200px;
-        --board-height: 400px;
+        --board-width: min(280px, calc(100vw - 60px));
+        --board-height: calc(var(--board-width) * 2);
     }
 
     .stat-value {
