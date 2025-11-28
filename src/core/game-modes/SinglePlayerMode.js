@@ -417,8 +417,9 @@ export class SinglePlayerMode extends BaseGameMode {
             level: this.gameState.level,
         });
 
-        // Show game over modal
-        this.deps.modalManager.show('gameOver');
+        // Show game over modal with stats
+        const { showGameOverModal } = await import('../../ui/modals.js');
+        await showGameOverModal(this.deps.modalManager, this.gameState, this.deps.highScoreManager);
 
         // Trigger game over event
         window.dispatchEvent(new CustomEvent('gameOver', {
