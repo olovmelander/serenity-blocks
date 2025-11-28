@@ -8,13 +8,13 @@ export const RAINY_WINDOW_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8ccff9',  // Rain haze
-        O: '#f6c46a',  // Streetlight glow
-        T: '#c9b4ff',  // Lavender neon
-        S: '#7bf0d0',  // Mint reflections
-        Z: '#ff8fb5',  // Umbrella pink
-        J: '#586abf',  // Midnight indigo
-        L: '#ffe9b7',  // Window light
+        I: '#8ccff9', // Rain haze
+        O: '#f6c46a', // Streetlight glow
+        T: '#c9b4ff', // Lavender neon
+        S: '#7bf0d0', // Mint reflections
+        Z: '#ff8fb5', // Umbrella pink
+        J: '#586abf', // Midnight indigo
+        L: '#ffe9b7', // Window light
         GARBAGE: '#0b131d', // Storm shadow
     },
 

@@ -50,22 +50,22 @@ export default class MoonlitForestTheme extends BaseTheme {
     getQualityConfig(quality) {
         const configs = {
             minimal: {
-                trees: { back: 5, mid: 4, front: 3 },      // Sparse forest
-                leaves: 5,                                   // Minimal falling leaves
-                mushrooms: 5,                               // Few DOM mushrooms (canvas mushrooms scale with trees)
-                moonbeams: 2,                               // Just a couple of beams
-                eyes: 1,                                    // Single glowing eyes
-                fireflies: 3,                               // Very few ambient fireflies
+                trees: { back: 5, mid: 4, front: 3 }, // Sparse forest
+                leaves: 5, // Minimal falling leaves
+                mushrooms: 5, // Few DOM mushrooms (canvas mushrooms scale with trees)
+                moonbeams: 2, // Just a couple of beams
+                eyes: 1, // Single glowing eyes
+                fireflies: 3, // Very few ambient fireflies
                 comboEffects: {
-                    fireflyMultiplier: 0.2,                 // Minimal combo effects
+                    fireflyMultiplier: 0.2, // Minimal combo effects
                     sporesMultiplier: 0.2,
-                    wispsMultiplier: 0,                     // No wisps
-                    auroraEnabled: false,                   // No aurora
-                    shootingStarsEnabled: false,            // No shooting stars
+                    wispsMultiplier: 0, // No wisps
+                    auroraEnabled: false, // No aurora
+                    shootingStarsEnabled: false, // No shooting stars
                 },
             },
             low: {
-                trees: { back: 10, mid: 8, front: 6 },     // Light forest
+                trees: { back: 10, mid: 8, front: 6 }, // Light forest
                 leaves: 12,
                 mushrooms: 10,
                 moonbeams: 3,
@@ -74,13 +74,13 @@ export default class MoonlitForestTheme extends BaseTheme {
                 comboEffects: {
                     fireflyMultiplier: 0.4,
                     sporesMultiplier: 0.4,
-                    wispsMultiplier: 0.3,                   // Minimal wisps
+                    wispsMultiplier: 0.3, // Minimal wisps
                     auroraEnabled: false,
                     shootingStarsEnabled: false,
                 },
             },
             medium: {
-                trees: { back: 15, mid: 12, front: 8 },    // Balanced forest
+                trees: { back: 15, mid: 12, front: 8 }, // Balanced forest
                 leaves: 25,
                 mushrooms: 15,
                 moonbeams: 5,
@@ -90,12 +90,12 @@ export default class MoonlitForestTheme extends BaseTheme {
                     fireflyMultiplier: 0.65,
                     sporesMultiplier: 0.65,
                     wispsMultiplier: 0.65,
-                    auroraEnabled: true,                    // Aurora enabled from medium
+                    auroraEnabled: true, // Aurora enabled from medium
                     shootingStarsEnabled: false,
                 },
             },
             high: {
-                trees: { back: 20, mid: 16, front: 11 },   // Dense forest
+                trees: { back: 20, mid: 16, front: 11 }, // Dense forest
                 leaves: 40,
                 mushrooms: 22,
                 moonbeams: 7,
@@ -106,11 +106,11 @@ export default class MoonlitForestTheme extends BaseTheme {
                     sporesMultiplier: 0.85,
                     wispsMultiplier: 0.85,
                     auroraEnabled: true,
-                    shootingStarsEnabled: true,             // Shooting stars from high
+                    shootingStarsEnabled: true, // Shooting stars from high
                 },
             },
             ultra: {
-                trees: { back: 26, mid: 20, front: 14 },   // Very dense forest
+                trees: { back: 26, mid: 20, front: 14 }, // Very dense forest
                 leaves: 60,
                 mushrooms: 30,
                 moonbeams: 9,
@@ -125,14 +125,14 @@ export default class MoonlitForestTheme extends BaseTheme {
                 },
             },
             extreme: {
-                trees: { back: 35, mid: 28, front: 18 },   // Maximum density forest
+                trees: { back: 35, mid: 28, front: 18 }, // Maximum density forest
                 leaves: 85,
                 mushrooms: 45,
                 moonbeams: 12,
                 eyes: 10,
                 fireflies: 45,
                 comboEffects: {
-                    fireflyMultiplier: 1.5,                 // Maximum effects
+                    fireflyMultiplier: 1.5, // Maximum effects
                     sporesMultiplier: 1.5,
                     wispsMultiplier: 1.5,
                     auroraEnabled: true,
@@ -184,25 +184,25 @@ export default class MoonlitForestTheme extends BaseTheme {
                 // Draw refined, sparse leaf cluster at branch endpoints
                 const clusterCount = Math.floor(this.random(4, 7)); // Lighter amount
                 const clusterRadius = this.random(12, 20); // Tighter spread
-                
+
                 for (let i = 0; i < clusterCount; i++) {
                     const offsetX = this.random(-clusterRadius, clusterRadius);
                     const offsetY = this.random(-clusterRadius, clusterRadius);
                     const size = this.random(6, 11); // Smaller leaves
-                    
+
                     // Single layer for crisp, clean look
-                ctx.beginPath();
+                    ctx.beginPath();
                     ctx.arc(
-                        x + offsetX, 
-                        y + offsetY, 
-                        size, 
-                        0, 
-                        Math.PI * 2
+                        x + offsetX,
+                        y + offsetY,
+                        size,
+                        0,
+                        Math.PI * 2,
                     );
-                ctx.fillStyle = foliageColor;
+                    ctx.fillStyle = foliageColor;
                     ctx.globalAlpha = this.random(0.5, 0.7);
-                ctx.fill();
-                    
+                    ctx.fill();
+
                     // Very selective highlights for key leaves only
                     if (Math.random() < 0.2) {
                         ctx.beginPath();
@@ -211,7 +211,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                             y + offsetY + this.random(-2, 2),
                             size * 0.4,
                             0,
-                            Math.PI * 2
+                            Math.PI * 2,
                         );
                         ctx.fillStyle = foliageColor;
                         ctx.globalAlpha = this.random(0.25, 0.4);
@@ -229,7 +229,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                     const offsetX = this.random(-8, 8);
                     const offsetY = this.random(-8, 8);
                     const size = this.random(5, 9);
-                    
+
                     ctx.beginPath();
                     ctx.arc(x + offsetX, y + offsetY, size, 0, Math.PI * 2);
                     ctx.fillStyle = foliageColor;
@@ -264,7 +264,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                     angle + this.random(25, 45),
                     newWidth * 0.75,
                     foliageColor,
-                    depth + 1
+                    depth + 1,
                 );
                 drawTree(
                     ctx,
@@ -274,9 +274,9 @@ export default class MoonlitForestTheme extends BaseTheme {
                     angle - this.random(25, 45),
                     newWidth * 0.75,
                     foliageColor,
-                    depth + 1
+                    depth + 1,
                 );
-                
+
                 // Rare extra branches for occasional variety
                 if (depth >= 3 && Math.random() < 0.25) { // Further reduced from 0.4 to 0.25
                     drawTree(
@@ -286,9 +286,9 @@ export default class MoonlitForestTheme extends BaseTheme {
                         newLen * 0.6,
                         angle + this.random(40, 70),
                         newWidth * 0.6,
-                    foliageColor,
-                    depth + 1
-                );
+                        foliageColor,
+                        depth + 1,
+                    );
                 }
             }
         };
@@ -320,9 +320,9 @@ export default class MoonlitForestTheme extends BaseTheme {
                     // Draw solid ground silhouette with gentle hills (aligned with trees)
                     // Use darker shade for clear ground definition
                     const groundColors = {
-                        back: '#1A2820',    // Dark forest ground (matches front tree color)
-                        mid: '#14201A',     // Slightly darker
-                        front: '#0D1512',   // Darkest for front layer
+                        back: '#1A2820', // Dark forest ground (matches front tree color)
+                        mid: '#14201A', // Slightly darker
+                        front: '#0D1512', // Darkest for front layer
                     };
                     const groundColorKey = layerIndex === 0 ? 'back' : layerIndex === 1 ? 'mid' : 'front';
                     ctx.fillStyle = groundColors[groundColorKey];
@@ -345,7 +345,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                         const bushY = C_HEIGHT * (0.92 + Math.random() * 0.04);
                         const bushSize = this.random(10, 24);
                         const foliageCount = Math.floor(this.random(3, 5)); // Sparse clusters
-                        
+
                         // Draw subtle, refined bush clusters
                         for (let j = 0; j < foliageCount; j++) {
                             ctx.beginPath();
@@ -354,12 +354,12 @@ export default class MoonlitForestTheme extends BaseTheme {
                                 bushY + this.random(-bushSize * 0.25, bushSize * 0.25),
                                 this.random(5, 11),
                                 0,
-                                Math.PI * 2
+                                Math.PI * 2,
                             );
                             ctx.fillStyle = layer.foliageColor;
                             ctx.globalAlpha = this.random(0.5, 0.65);
                             ctx.fill();
-                            
+
                             // Rare highlights for accent
                             if (Math.random() < 0.15) {
                                 ctx.beginPath();
@@ -368,7 +368,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                                     bushY + this.random(-bushSize * 0.15, bushSize * 0.15),
                                     this.random(3, 6),
                                     0,
-                                    Math.PI * 2
+                                    Math.PI * 2,
                                 );
                                 ctx.fillStyle = layer.foliageColor;
                                 ctx.globalAlpha = this.random(0.35, 0.5);
@@ -383,25 +383,26 @@ export default class MoonlitForestTheme extends BaseTheme {
                     // Mushrooms are drawn BEFORE trees so they appear behind trees
                     const mushroomCount = Math.floor(layer.count * 1.2); // More mushrooms than bushes
                     const groundLineY = C_HEIGHT * 0.92; // Base ground line for this layer
-                    
+
                     for (let i = 0; i < mushroomCount; i++) {
                         const mushroomX = Math.random() * C_WIDTH;
                         // Position mushrooms on the ground line (same as trees)
                         const mushroomGroundY = groundLineY + Math.random() * (C_HEIGHT * 0.08);
                         const mushroomSize = this.random(6, 16);
-                        
+
                         // Determine mushroom color variant (matching DOM mushrooms)
                         // Using same logic as CSS: default (cyan/blue), 3n (purple), 5n (green)
                         const variant = i % 15; // Using 15 for LCM of 3 and 5
-                        let capGradientColors, glowColor, shadowColor;
-                        
+                        let capGradientColors; let glowColor; let
+                            shadowColor;
+
                         if (variant % 5 === 0) {
                             // Green variant (every 5th)
                             capGradientColors = [
                                 'rgba(100, 255, 180, 0.9)',
                                 'rgba(100, 220, 160, 0.7)',
                                 'rgba(80, 180, 140, 0.6)',
-                                'rgba(60, 140, 120, 0.4)'
+                                'rgba(60, 140, 120, 0.4)',
                             ];
                             glowColor = 'rgba(100, 255, 180, 0.6)';
                             shadowColor = 'rgba(100, 255, 180, 0.8)';
@@ -411,7 +412,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                                 'rgba(180, 100, 255, 0.9)',
                                 'rgba(140, 120, 220, 0.7)',
                                 'rgba(100, 100, 180, 0.6)',
-                                'rgba(70, 80, 140, 0.4)'
+                                'rgba(70, 80, 140, 0.4)',
                             ];
                             glowColor = 'rgba(180, 100, 255, 0.6)';
                             shadowColor = 'rgba(180, 100, 255, 0.8)';
@@ -421,50 +422,54 @@ export default class MoonlitForestTheme extends BaseTheme {
                                 'rgba(0, 255, 255, 0.9)',
                                 'rgba(100, 200, 255, 0.7)',
                                 'rgba(80, 150, 200, 0.6)',
-                                'rgba(60, 120, 160, 0.4)'
+                                'rgba(60, 120, 160, 0.4)',
                             ];
                             glowColor = 'rgba(0, 255, 255, 0.6)';
                             shadowColor = 'rgba(0, 255, 255, 0.8)';
                         }
-                        
+
                         const stemWidth = mushroomSize * 0.3;
                         const stemHeight = mushroomSize * 0.8;
                         const capWidth = mushroomSize * 0.8;
                         const capHeight = mushroomSize * 0.6;
-                        
+
                         // Draw mushroom stem with gradient (matching DOM style)
                         const stemGradient = ctx.createLinearGradient(
-                            mushroomX, mushroomGroundY - stemHeight,
-                            mushroomX, mushroomGroundY
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
+                            mushroomX,
+                            mushroomGroundY,
                         );
                         stemGradient.addColorStop(0, 'rgba(180, 210, 220, 0.6)');
                         stemGradient.addColorStop(1, 'rgba(140, 170, 180, 0.4)');
-                        
+
                         ctx.fillStyle = stemGradient;
                         ctx.globalAlpha = 1;
                         ctx.fillRect(
                             mushroomX - stemWidth / 2,
                             mushroomGroundY - stemHeight,
                             stemWidth,
-                            stemHeight
+                            stemHeight,
                         );
-                        
+
                         // Draw glowing cap with radial gradient (matching DOM style)
                         const capGradient = ctx.createRadialGradient(
-                            mushroomX, mushroomGroundY - stemHeight,
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
                             0,
-                            mushroomX, mushroomGroundY - stemHeight,
-                            capWidth
+                            mushroomX,
+                            mushroomGroundY - stemHeight,
+                            capWidth,
                         );
-                        capGradient.addColorStop(0, capGradientColors[0]);      // Center
-                        capGradient.addColorStop(0.3, capGradientColors[1]);    // Mid
-                        capGradient.addColorStop(0.6, capGradientColors[2]);    // Outer
-                        capGradient.addColorStop(1, capGradientColors[3]);      // Edge
-                        
+                        capGradient.addColorStop(0, capGradientColors[0]); // Center
+                        capGradient.addColorStop(0.3, capGradientColors[1]); // Mid
+                        capGradient.addColorStop(0.6, capGradientColors[2]); // Outer
+                        capGradient.addColorStop(1, capGradientColors[3]); // Edge
+
                         // Apply shadow glow effect
                         ctx.shadowBlur = 8;
                         ctx.shadowColor = shadowColor;
-                        
+
                         ctx.beginPath();
                         ctx.ellipse(
                             mushroomX,
@@ -473,15 +478,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                             capHeight,
                             0,
                             0,
-                            Math.PI * 2
+                            Math.PI * 2,
                         );
                         ctx.fillStyle = capGradient;
                         ctx.globalAlpha = 1;
                         ctx.fill();
-                        
+
                         // Reset shadow
                         ctx.shadowBlur = 0;
-                        
+
                         // Add outer glow halo effect
                         const glowGradient = ctx.createRadialGradient(
                             mushroomX,
@@ -489,25 +494,25 @@ export default class MoonlitForestTheme extends BaseTheme {
                             0,
                             mushroomX,
                             mushroomGroundY - stemHeight,
-                            mushroomSize * 1.8
+                            mushroomSize * 1.8,
                         );
                         glowGradient.addColorStop(0, glowColor);
                         glowGradient.addColorStop(0.3, glowColor.replace('0.6', '0.4'));
                         glowGradient.addColorStop(0.6, glowColor.replace('0.6', '0.2'));
                         glowGradient.addColorStop(1, 'transparent');
-                        
+
                         ctx.beginPath();
                         ctx.arc(
                             mushroomX,
                             mushroomGroundY - stemHeight,
                             mushroomSize * 1.8,
                             0,
-                            Math.PI * 2
+                            Math.PI * 2,
                         );
                         ctx.fillStyle = glowGradient;
                         ctx.globalAlpha = 0.5;
                         ctx.fill();
-                        
+
                         // Add subtle white highlight on cap (matching DOM inset highlight)
                         const highlightGradient = ctx.createRadialGradient(
                             mushroomX,
@@ -515,18 +520,18 @@ export default class MoonlitForestTheme extends BaseTheme {
                             0,
                             mushroomX,
                             mushroomGroundY - stemHeight - capHeight * 0.3,
-                            capWidth * 0.4
+                            capWidth * 0.4,
                         );
                         highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
                         highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                        
+
                         ctx.beginPath();
                         ctx.arc(
                             mushroomX,
                             mushroomGroundY - stemHeight - capHeight * 0.3,
                             capWidth * 0.4,
                             0,
-                            Math.PI * 2
+                            Math.PI * 2,
                         );
                         ctx.fillStyle = highlightGradient;
                         ctx.globalAlpha = 1;
@@ -638,17 +643,17 @@ export default class MoonlitForestTheme extends BaseTheme {
             const leafDepthLayers = [
                 {
                     name: 'far-back',
-                    count: Math.ceil(this.qualityConfig.leaves * 0.2),  // 20% furthest back
+                    count: Math.ceil(this.qualityConfig.leaves * 0.2), // 20% furthest back
                     zIndex: 2,
-                    size: 0.5,  // Small (far away)
+                    size: 0.5, // Small (far away)
                     opacity: 0.4,
                     blur: 1.5,
-                    durationMultiplier: 1.6,  // Slower fall (parallax)
+                    durationMultiplier: 1.6, // Slower fall (parallax)
                     driftRange: 12,
                 },
                 {
                     name: 'back',
-                    count: Math.ceil(this.qualityConfig.leaves * 0.25),  // 25% back layer
+                    count: Math.ceil(this.qualityConfig.leaves * 0.25), // 25% back layer
                     zIndex: 4,
                     size: 0.7,
                     opacity: 0.6,
@@ -658,7 +663,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                 },
                 {
                     name: 'mid',
-                    count: Math.ceil(this.qualityConfig.leaves * 0.3),  // 30% middle layer
+                    count: Math.ceil(this.qualityConfig.leaves * 0.3), // 30% middle layer
                     zIndex: 7,
                     size: 0.9,
                     opacity: 0.8,
@@ -668,12 +673,12 @@ export default class MoonlitForestTheme extends BaseTheme {
                 },
                 {
                     name: 'front',
-                    count: Math.ceil(this.qualityConfig.leaves * 0.25),  // 25% front layer
+                    count: Math.ceil(this.qualityConfig.leaves * 0.25), // 25% front layer
                     zIndex: 11,
                     size: 1.0,
                     opacity: 1.0,
                     blur: 0,
-                    durationMultiplier: 1.0,  // Normal speed
+                    durationMultiplier: 1.0, // Normal speed
                     driftRange: 20,
                 },
             ];
@@ -681,33 +686,33 @@ export default class MoonlitForestTheme extends BaseTheme {
             // Create leaves for each depth layer
             leafDepthLayers.forEach((layer) => {
                 for (let i = 0; i < layer.count; i++) {
-                const leaf = document.createElement('div');
-                leaf.className = 'moonlit-leaf';
-                    
+                    const leaf = document.createElement('div');
+                    leaf.className = 'moonlit-leaf';
+
                     // Position and movement
-                const xStart = Math.random() * 100;
-                leaf.style.setProperty('--x-start', `${xStart}vw`);
+                    const xStart = Math.random() * 100;
+                    leaf.style.setProperty('--x-start', `${xStart}vw`);
                     leaf.style.setProperty('--x-end', `${xStart + (Math.random() * layer.driftRange - layer.driftRange / 2)}vw`);
-                leaf.style.setProperty('--r-start', `${Math.random() * 360}deg`);
-                leaf.style.setProperty('--r-end', `${Math.random() * 540 - 270}deg`);
-                    
+                    leaf.style.setProperty('--r-start', `${Math.random() * 360}deg`);
+                    leaf.style.setProperty('--r-end', `${Math.random() * 540 - 270}deg`);
+
                     // Depth-based properties
                     leaf.style.setProperty('--leaf-scale', layer.size.toString());
                     leaf.style.setProperty('--leaf-opacity', layer.opacity.toString());
                     leaf.style.zIndex = layer.zIndex;
-                    
+
                     // Apply blur for depth of field effect
                     if (layer.blur > 0) {
                         leaf.style.filter = `blur(${layer.blur}px)`;
                     }
-                    
+
                     // Duration varies by depth for parallax effect
                     const baseDuration = Math.random() * 12 + 12;
                     const duration = baseDuration * layer.durationMultiplier;
-                leaf.style.animationDuration = `${duration}s`;
-                leaf.style.animationDelay = `-${Math.random() * duration}s`;
-                    
-                themeContainer.appendChild(leaf);
+                    leaf.style.animationDuration = `${duration}s`;
+                    leaf.style.animationDelay = `-${Math.random() * duration}s`;
+
+                    themeContainer.appendChild(leaf);
                     this.leaves.push(leaf);
                 }
             });
@@ -748,11 +753,11 @@ export default class MoonlitForestTheme extends BaseTheme {
         firefly.style.opacity = '0';
         firefly.style.pointerEvents = 'none';
         firefly.style.zIndex = '9';
-        
+
         // Random movement pattern
         const duration = 8 + Math.random() * 8; // 8-16 seconds
         firefly.style.animation = `fireflyWander ${duration}s ease-in-out forwards`;
-        
+
         theme.appendChild(firefly);
 
         // Remove and respawn after animation
@@ -803,7 +808,7 @@ export default class MoonlitForestTheme extends BaseTheme {
     onLineClear(lineCount) {
         if (!this.qualityConfig) return;
 
-        const comboEffects = this.qualityConfig.comboEffects;
+        const { comboEffects } = this.qualityConfig;
 
         // Brighten mushrooms
         this.brightenMushrooms(lineCount);
@@ -836,7 +841,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (!this.qualityConfig) return;
 
         this.currentComboLevel = comboCount;
-        const comboEffects = this.qualityConfig.comboEffects;
+        const { comboEffects } = this.qualityConfig;
 
         // Make wildlife eyes glow
         this.glowWildlifeEyes(comboCount);
@@ -1329,7 +1334,7 @@ export default class MoonlitForestTheme extends BaseTheme {
 
     stop() {
         // Unsubscribe from all events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Reset combo level

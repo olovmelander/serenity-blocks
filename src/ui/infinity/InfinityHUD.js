@@ -272,7 +272,7 @@ export class InfinityHUD {
         `;
 
         // Create milestone badges
-        this.milestones.forEach(milestone => {
+        this.milestones.forEach((milestone) => {
             const badge = document.createElement('div');
             badge.className = 'milestone-badge';
             badge.dataset.milestone = milestone;
@@ -556,8 +556,7 @@ export class InfinityHUD {
      * @param {number} buildHeight - Pre-calculated build height
      */
     _updateMilestones(buildHeight) {
-
-        this.milestones.forEach(milestone => {
+        this.milestones.forEach((milestone) => {
             const badge = this.milestonesDisplay.querySelector(`[data-milestone="${milestone}"]`);
             if (!badge) return;
 
@@ -638,7 +637,7 @@ export class InfinityHUD {
         // PERFORMANCE: Only update lines if changed
         const linesElem = document.getElementById('stat-lines');
         if (linesElem) {
-            const lines = this.gameState.lines;
+            const { lines } = this.gameState;
             if (this.lastLines !== lines) {
                 this.lastLines = lines;
                 linesElem.textContent = lines.toString();
@@ -649,7 +648,7 @@ export class InfinityHUD {
         // toLocaleString() gets slower as numbers grow!
         const scoreElem = document.getElementById('stat-score');
         if (scoreElem) {
-            const score = this.gameState.score;
+            const { score } = this.gameState;
             if (this.lastScore !== score) {
                 this.lastScore = score;
                 scoreElem.textContent = score.toLocaleString();

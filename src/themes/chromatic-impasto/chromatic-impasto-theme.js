@@ -145,17 +145,17 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
     getLindstromColor() {
         const palette = [
-            { r: 0.7, g: 0.0, b: 0.0 },   // Blood red
-            { r: 0.9, g: 0.1, b: 0.1 },   // Crimson
-            { r: 1.0, g: 0.5, b: 0.0 },   // Bright orange
-            { r: 1.0, g: 0.75, b: 0.0 },  // Golden yellow
-            { r: 0.95, g: 0.9, b: 0.1 },  // Pure yellow
-            { r: 0.0, g: 0.85, b: 0.8 },  // Bright cyan/turquoise
-            { r: 0.0, g: 0.6, b: 0.55 },  // Deep teal
-            { r: 0.0, g: 0.4, b: 0.15 },  // Dark green (almost black-green)
-            { r: 0.1, g: 0.5, b: 0.3 },   // Forest green
-            { r: 0.0, g: 0.2, b: 0.8 },   // Deep blue
-            { r: 0.2, g: 0.4, b: 1.0 },   // Bright blue
+            { r: 0.7, g: 0.0, b: 0.0 }, // Blood red
+            { r: 0.9, g: 0.1, b: 0.1 }, // Crimson
+            { r: 1.0, g: 0.5, b: 0.0 }, // Bright orange
+            { r: 1.0, g: 0.75, b: 0.0 }, // Golden yellow
+            { r: 0.95, g: 0.9, b: 0.1 }, // Pure yellow
+            { r: 0.0, g: 0.85, b: 0.8 }, // Bright cyan/turquoise
+            { r: 0.0, g: 0.6, b: 0.55 }, // Deep teal
+            { r: 0.0, g: 0.4, b: 0.15 }, // Dark green (almost black-green)
+            { r: 0.1, g: 0.5, b: 0.3 }, // Forest green
+            { r: 0.0, g: 0.2, b: 0.8 }, // Deep blue
+            { r: 0.2, g: 0.4, b: 1.0 }, // Bright blue
             { r: 1.0, g: 0.98, b: 0.85 }, // Cream white
             { r: 0.95, g: 0.95, b: 0.95 }, // Pure white
         ];
@@ -169,25 +169,24 @@ export default class ChromaticImpastoTheme extends BaseTheme {
         if (avgBrightness > 0.5) {
             // If bright, return dark, saturated colors
             const darkPalette = [
-                { r: 0.7, g: 0.0, b: 0.0 },   // Blood red
-                { r: 0.0, g: 0.4, b: 0.15 },  // Black-green
-                { r: 0.0, g: 0.2, b: 0.8 },   // Deep blue
-                { r: 0.0, g: 0.6, b: 0.55 },  // Deep teal
-                { r: 0.1, g: 0.5, b: 0.3 },   // Forest green
+                { r: 0.7, g: 0.0, b: 0.0 }, // Blood red
+                { r: 0.0, g: 0.4, b: 0.15 }, // Black-green
+                { r: 0.0, g: 0.2, b: 0.8 }, // Deep blue
+                { r: 0.0, g: 0.6, b: 0.55 }, // Deep teal
+                { r: 0.1, g: 0.5, b: 0.3 }, // Forest green
             ];
             return darkPalette[Math.floor(Math.random() * darkPalette.length)];
-        } else {
-            // If dark, return bright, bold colors
-            const brightPalette = [
-                { r: 1.0, g: 0.75, b: 0.0 },  // Golden yellow
-                { r: 0.95, g: 0.9, b: 0.1 },  // Pure yellow
-                { r: 0.0, g: 0.85, b: 0.8 },  // Bright cyan
-                { r: 1.0, g: 0.5, b: 0.0 },   // Bright orange
-                { r: 1.0, g: 0.98, b: 0.85 }, // Cream white
-                { r: 0.2, g: 0.4, b: 1.0 },   // Bright blue
-            ];
-            return brightPalette[Math.floor(Math.random() * brightPalette.length)];
         }
+        // If dark, return bright, bold colors
+        const brightPalette = [
+            { r: 1.0, g: 0.75, b: 0.0 }, // Golden yellow
+            { r: 0.95, g: 0.9, b: 0.1 }, // Pure yellow
+            { r: 0.0, g: 0.85, b: 0.8 }, // Bright cyan
+            { r: 1.0, g: 0.5, b: 0.0 }, // Bright orange
+            { r: 1.0, g: 0.98, b: 0.85 }, // Cream white
+            { r: 0.2, g: 0.4, b: 1.0 }, // Bright blue
+        ];
+        return brightPalette[Math.floor(Math.random() * brightPalette.length)];
     }
 
     // --- Effects ---
@@ -292,9 +291,9 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
                     setTimeout(() => {
                         // Use primary color for most blocks, accent for edges
-                        const isEdge = row === 0 || col === 0 ||
-                                     row === piece.shape.length - 1 ||
-                                     col === piece.shape[row].length - 1;
+                        const isEdge = row === 0 || col === 0
+                                     || row === piece.shape.length - 1
+                                     || col === piece.shape[row].length - 1;
                         const color = (isEdge && Math.random() < 0.5) ? accentColor : primaryColor;
                         this.createBoldStroke(x, y, color);
                     }, (row * piece.shape[row].length + col) * 50);
@@ -372,7 +371,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
                         y + (Math.random() - 0.5) * offset,
                         dx * 0.7,
                         dy * 0.7,
-                        Math.random() < 0.5 ? color : contrastColor
+                        Math.random() < 0.5 ? color : contrastColor,
                     );
                 }, 100);
             }, i * 180);
@@ -439,7 +438,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();
     }

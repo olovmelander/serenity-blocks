@@ -36,7 +36,7 @@ export class ModalManager {
                 document.body.classList.add('start-modal-open');
             }
             window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName } }));
-            
+
             // Enable menu navigation when modal opens
             if (this.gamepadController && modalName !== 'gameOver') {
                 this.gamepadController.enableMenuNavigation();
@@ -56,7 +56,7 @@ export class ModalManager {
                 document.body.classList.remove('start-modal-open');
             }
             window.dispatchEvent(new CustomEvent('modalHidden', { detail: { modalName } }));
-            
+
             // Disable menu navigation when modal closes
             if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
                 this.gamepadController.disableMenuNavigation();

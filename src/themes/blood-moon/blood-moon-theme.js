@@ -49,7 +49,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Graphics quality presets
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 stars: 100,
                 nebulaClouds: 5,
                 craterData: 10,
@@ -62,9 +62,9 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningBranches: 3,
                 lightningSegments: 4,
                 vortexParticleLimit: 15,
-                vortexSpawnRate: 0.2
+                vortexSpawnRate: 0.2,
             },
-            'Low': {
+            Low: {
                 stars: 150,
                 nebulaClouds: 8,
                 craterData: 15,
@@ -77,9 +77,9 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningBranches: 4,
                 lightningSegments: 5,
                 vortexParticleLimit: 25,
-                vortexSpawnRate: 0.25
+                vortexSpawnRate: 0.25,
             },
-            'Medium': {
+            Medium: {
                 stars: 200,
                 nebulaClouds: 12,
                 craterData: 20,
@@ -92,9 +92,9 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningBranches: 6,
                 lightningSegments: 6,
                 vortexParticleLimit: 30,
-                vortexSpawnRate: 0.35
+                vortexSpawnRate: 0.35,
             },
-            'High': {
+            High: {
                 stars: 300,
                 nebulaClouds: 15,
                 craterData: 25,
@@ -107,9 +107,9 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningBranches: 8,
                 lightningSegments: 7,
                 vortexParticleLimit: 40,
-                vortexSpawnRate: 0.4
+                vortexSpawnRate: 0.4,
             },
-            'Ultra': {
+            Ultra: {
                 stars: 500,
                 nebulaClouds: 20,
                 craterData: 35,
@@ -122,9 +122,9 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningBranches: 10,
                 lightningSegments: 10,
                 vortexParticleLimit: 60,
-                vortexSpawnRate: 0.5
+                vortexSpawnRate: 0.5,
             },
-            'Extreme': {
+            Extreme: {
                 stars: 700,
                 nebulaClouds: 28,
                 craterData: 50,
@@ -137,12 +137,12 @@ export default class BloodMoonTheme extends BaseTheme {
                 lightningBranches: 12,
                 lightningSegments: 12,
                 vortexParticleLimit: 80,
-                vortexSpawnRate: 0.6
-            }
+                vortexSpawnRate: 0.6,
+            },
         };
 
         this.currentQuality = 'High'; // Default
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
     }
 
     /**
@@ -183,7 +183,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: false,
-            desynchronized: true // Better performance
+            desynchronized: true, // Better performance
         });
 
         this.resizeHandler = () => this.resizeCanvas();
@@ -262,10 +262,12 @@ export default class BloodMoonTheme extends BaseTheme {
     cacheGradients() {
         // Background gradient
         this.cachedGradients.background = this.ctx.createRadialGradient(
-            this.canvas.width * 0.5, this.canvas.height * 0.3,
+            this.canvas.width * 0.5,
+            this.canvas.height * 0.3,
             0,
-            this.canvas.width * 0.5, this.canvas.height * 0.3,
-            this.canvas.height * 0.8
+            this.canvas.width * 0.5,
+            this.canvas.height * 0.3,
+            this.canvas.height * 0.8,
         );
         this.cachedGradients.background.addColorStop(0, '#1a0510');
         this.cachedGradients.background.addColorStop(0.3, '#0d0208');
@@ -283,7 +285,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 brightness: Math.random() * 0.6 + 0.4,
                 twinkleSpeed: Math.random() * 0.02 + 0.005,
                 twinklePhase: Math.random() * Math.PI * 2,
-                color: Math.random() > 0.7 ? 'red' : 'white' // Some stars have red tint
+                color: Math.random() > 0.7 ? 'red' : 'white', // Some stars have red tint
             });
         }
     }
@@ -299,7 +301,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 speed: Math.random() * 0.0003 + 0.0001, // Faster drift (3x faster)
                 phase: Math.random() * Math.PI * 2,
                 pulseSpeed: Math.random() * 0.01 + 0.005, // Add pulsing
-                pulsePhase: Math.random() * Math.PI * 2
+                pulsePhase: Math.random() * Math.PI * 2,
             });
         }
     }
@@ -315,7 +317,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 x: Math.cos(angle) * distance,
                 y: Math.sin(angle) * distance,
                 size: Math.random() * 0.15 + 0.03,
-                depth: Math.random() * 0.4 + 0.3
+                depth: Math.random() * 0.4 + 0.3,
             });
         }
     }
@@ -329,10 +331,12 @@ export default class BloodMoonTheme extends BaseTheme {
         const centerX = this.canvas.width * 0.5;
         const centerY = this.canvas.height * 0.35;
         const atmosphereGradient = this.ctx.createRadialGradient(
-            centerX, centerY,
+            centerX,
+            centerY,
             this.canvas.height * 0.2,
-            centerX, centerY,
-            this.canvas.height * 0.8
+            centerX,
+            centerY,
+            this.canvas.height * 0.8,
         );
         atmosphereGradient.addColorStop(0, 'rgba(120, 10, 25, 0.12)'); // More intense
         atmosphereGradient.addColorStop(0.4, 'rgba(100, 5, 20, 0.08)');
@@ -400,8 +404,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
             // Outer glow layer
             const outerGradient = this.ctx.createRadialGradient(
-                x, y, 0,
-                x, y, cloud.size * 1.2
+                x,
+                y,
+                0,
+                x,
+                y,
+                cloud.size * 1.2,
             );
             outerGradient.addColorStop(0, `rgba(150, 30, 40, ${baseOpacity * 0.6})`);
             outerGradient.addColorStop(0.3, `rgba(120, 20, 30, ${baseOpacity * 0.4})`);
@@ -415,8 +423,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
             // Inner bright core
             const coreGradient = this.ctx.createRadialGradient(
-                x, y, 0,
-                x, y, cloud.size * 0.5
+                x,
+                y,
+                0,
+                x,
+                y,
+                cloud.size * 0.5,
             );
             coreGradient.addColorStop(0, `rgba(200, 50, 60, ${baseOpacity * 0.8})`);
             coreGradient.addColorStop(0.5, `rgba(150, 30, 40, ${baseOpacity * 0.5})`);
@@ -523,8 +535,8 @@ export default class BloodMoonTheme extends BaseTheme {
         const speed = Math.random() * 12 + 6 + lineCount * 2;
 
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             size: Math.random() * 5 + 2,
@@ -534,7 +546,7 @@ export default class BloodMoonTheme extends BaseTheme {
             rotationSpeed: (Math.random() - 0.5) * 0.2,
             color: Math.random() > 0.5 ? 'blood' : 'dark',
             sparkle: Math.random() * Math.PI * 2,
-            trail: []
+            trail: [],
         };
     }
 
@@ -542,7 +554,7 @@ export default class BloodMoonTheme extends BaseTheme {
         const branches = [];
         const numBranches = Math.min(
             Math.floor(comboCount / 3) + 3,
-            this.activePreset.lightningBranches
+            this.activePreset.lightningBranches,
         );
 
         for (let i = 0; i < numBranches; i++) {
@@ -561,7 +573,7 @@ export default class BloodMoonTheme extends BaseTheme {
                     x1: currentX,
                     y1: currentY,
                     x2: nextX,
-                    y2: nextY
+                    y2: nextY,
                 });
 
                 currentX = nextX;
@@ -572,10 +584,10 @@ export default class BloodMoonTheme extends BaseTheme {
         }
 
         this.crimsonLightning.push({
-            branches: branches,
+            branches,
             opacity: 1.0,
             life: 1.0,
-            pulsePhase: 0
+            pulsePhase: 0,
         });
     }
 
@@ -590,7 +602,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 life: 1.0,
                 speed: 4 + comboCount * 0.5,
                 delay: i * 0.15,
-                started: false
+                started: false,
             });
         }
     }
@@ -605,7 +617,7 @@ export default class BloodMoonTheme extends BaseTheme {
             opacity: Math.random() * 0.7 + 0.4,
             life: 1.0,
             pulsePhase: Math.random() * Math.PI * 2,
-            glowIntensity: Math.random() * 0.5 + 0.5
+            glowIntensity: Math.random() * 0.5 + 0.5,
         };
     }
 
@@ -620,7 +632,7 @@ export default class BloodMoonTheme extends BaseTheme {
             spinSpeed: 0.12,
             expansionRate: 3,
             life: 1.0,
-            direction: Math.random() < 0.5 ? 1 : -1
+            direction: Math.random() < 0.5 ? 1 : -1,
         };
     }
 
@@ -646,7 +658,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
         return {
             x: moonX + moonXOffset,
-            y: moonY + moonYOffset
+            y: moonY + moonYOffset,
         };
     }
 
@@ -685,8 +697,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Draw main moon body with gradient
         const moonGradient = this.ctx.createRadialGradient(
-            -this.moonRadius * 0.2, -this.moonRadius * 0.2, this.moonRadius * 0.2,
-            0, 0, this.moonRadius
+            -this.moonRadius * 0.2,
+            -this.moonRadius * 0.2,
+            this.moonRadius * 0.2,
+            0,
+            0,
+            this.moonRadius,
         );
         moonGradient.addColorStop(0, '#cc1a2e');
         moonGradient.addColorStop(0.4, '#a01525');
@@ -706,8 +722,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
             // Crater shadow
             const craterGradient = this.ctx.createRadialGradient(
-                craterX, craterY, 0,
-                craterX, craterY, craterRadius
+                craterX,
+                craterY,
+                0,
+                craterX,
+                craterY,
+                craterRadius,
             );
             craterGradient.addColorStop(0, `rgba(20, 5, 5, ${crater.depth})`);
             craterGradient.addColorStop(0.6, `rgba(40, 10, 10, ${crater.depth * 0.5})`);
@@ -759,8 +779,12 @@ export default class BloodMoonTheme extends BaseTheme {
         // Add animated edge highlight for 3D effect and shimmer
         const shimmerIntensity = Math.sin(this.time * 0.005) * 0.2 + 0.5;
         const edgeGradient = this.ctx.createRadialGradient(
-            -this.moonRadius * 0.3, -this.moonRadius * 0.3, 0,
-            0, 0, this.moonRadius
+            -this.moonRadius * 0.3,
+            -this.moonRadius * 0.3,
+            0,
+            0,
+            0,
+            this.moonRadius,
         );
         edgeGradient.addColorStop(0, `rgba(255, 120, 140, ${0.5 * shimmerIntensity})`); // More intense
         edgeGradient.addColorStop(0.4, `rgba(240, 90, 110, ${0.3 * shimmerIntensity})`);
@@ -784,8 +808,12 @@ export default class BloodMoonTheme extends BaseTheme {
         // Draw enhanced atmospheric glow around moon - multiple layers
         // Layer 1: Extended outer atmosphere
         const outerAtmosphere = this.ctx.createRadialGradient(
-            moonPos.x, moonPos.y, this.moonRadius,
-            moonPos.x, moonPos.y, this.moonRadius * 2.5
+            moonPos.x,
+            moonPos.y,
+            this.moonRadius,
+            moonPos.x,
+            moonPos.y,
+            this.moonRadius * 2.5,
         );
         outerAtmosphere.addColorStop(0, `rgba(220, 60, 80, ${0.25 * this.glowPulse})`);
         outerAtmosphere.addColorStop(0.3, `rgba(200, 40, 60, ${0.15 * this.glowPulse})`);
@@ -799,8 +827,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Layer 2: Intense inner atmosphere
         const innerAtmosphere = this.ctx.createRadialGradient(
-            moonPos.x, moonPos.y, this.moonRadius * 0.8,
-            moonPos.x, moonPos.y, this.moonRadius * 1.4
+            moonPos.x,
+            moonPos.y,
+            this.moonRadius * 0.8,
+            moonPos.x,
+            moonPos.y,
+            this.moonRadius * 1.4,
         );
         innerAtmosphere.addColorStop(0, `rgba(255, 80, 100, ${0.35 * this.glowPulse})`);
         innerAtmosphere.addColorStop(0.5, `rgba(230, 50, 70, ${0.2 * this.glowPulse})`);
@@ -1011,9 +1043,9 @@ export default class BloodMoonTheme extends BaseTheme {
             vortex.life -= 0.006;
 
             // Spawn vortex particles - quality-based spawn rate
-            if (Math.random() < this.activePreset.vortexSpawnRate &&
-                vortex.radius < vortex.maxRadius &&
-                vortex.particles.length < this.activePreset.vortexParticleLimit) {
+            if (Math.random() < this.activePreset.vortexSpawnRate
+                && vortex.radius < vortex.maxRadius
+                && vortex.particles.length < this.activePreset.vortexParticleLimit) {
                 const particleAngle = vortex.angle + Math.random() * Math.PI * 0.4;
                 const particleRadius = vortex.radius + Math.random() * 50;
                 vortex.particles.push({
@@ -1023,7 +1055,7 @@ export default class BloodMoonTheme extends BaseTheme {
                     opacity: Math.random() * 0.9 + 0.3,
                     vx: Math.cos(particleAngle) * 2,
                     vy: Math.sin(particleAngle) * 2,
-                    life: 1.0
+                    life: 1.0,
                 });
             }
 
@@ -1072,7 +1104,7 @@ export default class BloodMoonTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear gameplay effects

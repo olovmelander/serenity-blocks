@@ -111,18 +111,20 @@ export class RenderBatch {
         // Group by graphics object and color/alpha
         const groups = new Map();
 
-        this.batches.fillRect.forEach(rect => {
+        this.batches.fillRect.forEach((rect) => {
             const key = `${rect.graphics.id || 'default'}-${rect.color}-${rect.alpha}`;
             if (!groups.has(key)) {
-                groups.set(key, { graphics: rect.graphics, color: rect.color, alpha: rect.alpha, rects: [] });
+                groups.set(key, {
+                    graphics: rect.graphics, color: rect.color, alpha: rect.alpha, rects: [],
+                });
             }
             groups.get(key).rects.push(rect);
         });
 
         // Draw each group
-        groups.forEach(group => {
+        groups.forEach((group) => {
             group.graphics.fillStyle(group.color, group.alpha);
-            group.rects.forEach(rect => {
+            group.rects.forEach((rect) => {
                 group.graphics.fillRect(rect.x, rect.y, rect.width, rect.height);
             });
             this.stats.drawCalls++;
@@ -140,7 +142,7 @@ export class RenderBatch {
         // Group by graphics object and style
         const groups = new Map();
 
-        this.batches.strokeRect.forEach(rect => {
+        this.batches.strokeRect.forEach((rect) => {
             const key = `${rect.graphics.id || 'default'}-${rect.color}-${rect.lineWidth}-${rect.alpha}`;
             if (!groups.has(key)) {
                 groups.set(key, {
@@ -155,9 +157,9 @@ export class RenderBatch {
         });
 
         // Draw each group
-        groups.forEach(group => {
+        groups.forEach((group) => {
             group.graphics.lineStyle(group.lineWidth, group.color, group.alpha);
-            group.rects.forEach(rect => {
+            group.rects.forEach((rect) => {
                 group.graphics.strokeRect(rect.x, rect.y, rect.width, rect.height);
             });
             this.stats.drawCalls++;
@@ -175,18 +177,20 @@ export class RenderBatch {
         // Group by graphics object and color/alpha
         const groups = new Map();
 
-        this.batches.circle.forEach(circle => {
+        this.batches.circle.forEach((circle) => {
             const key = `${circle.graphics.id || 'default'}-${circle.color}-${circle.alpha}`;
             if (!groups.has(key)) {
-                groups.set(key, { graphics: circle.graphics, color: circle.color, alpha: circle.alpha, circles: [] });
+                groups.set(key, {
+                    graphics: circle.graphics, color: circle.color, alpha: circle.alpha, circles: [],
+                });
             }
             groups.get(key).circles.push(circle);
         });
 
         // Draw each group
-        groups.forEach(group => {
+        groups.forEach((group) => {
             group.graphics.fillStyle(group.color, group.alpha);
-            group.circles.forEach(circle => {
+            group.circles.forEach((circle) => {
                 group.graphics.fillCircle(circle.x, circle.y, circle.radius);
             });
             this.stats.drawCalls++;
@@ -252,7 +256,9 @@ export class OffscreenCanvasManager {
             canvas.height = height;
             const ctx = canvas.getContext('2d');
 
-            this.canvases.set(key, { canvas, ctx, width, height });
+            this.canvases.set(key, {
+                canvas, ctx, width, height,
+            });
         }
 
         return this.canvases.get(key);
@@ -301,7 +307,7 @@ export class OffscreenCanvasManager {
      * Clear all canvases
      */
     clearAll() {
-        this.canvases.forEach(entry => {
+        this.canvases.forEach((entry) => {
             entry.ctx.clearRect(0, 0, entry.width, entry.height);
         });
     }

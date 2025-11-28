@@ -9,132 +9,132 @@
  */
 
 export class BreathingTab {
-  constructor(hubInstance, breathingIndicator) {
-    this.hub = hubInstance;
-    this.breathingIndicator = breathingIndicator;
-    this.serenityMode = hubInstance.serenityMode;
+    constructor(hubInstance, breathingIndicator) {
+        this.hub = hubInstance;
+        this.breathingIndicator = breathingIndicator;
+        this.serenityMode = hubInstance.serenityMode;
 
-    // Get techniques from EnhancedBreathingIndicator
-    this.techniques = this.getTechniques();
+        // Get techniques from EnhancedBreathingIndicator
+        this.techniques = this.getTechniques();
 
-    // Store event handler references for cleanup
-    this.toggleHandler = null;
-    this.gridClickHandler = null;
-    this.textToggleHandler = null;
-    this.autoStartToggleHandler = null;
+        // Store event handler references for cleanup
+        this.toggleHandler = null;
+        this.gridClickHandler = null;
+        this.textToggleHandler = null;
+        this.autoStartToggleHandler = null;
 
-    this.init();
-  }
+        this.init();
+    }
 
-  init() {
-    this.render();
-    this.attachEventListeners();
-    console.log('[BreathingTab] Initialized with', this.techniques.length, 'techniques');
-  }
+    init() {
+        this.render();
+        this.attachEventListeners();
+        console.log('[BreathingTab] Initialized with', this.techniques.length, 'techniques');
+    }
 
-  /**
+    /**
    * Get breathing techniques from the breathing indicator
    */
-  getTechniques() {
-    if (!this.breathingIndicator || !this.breathingIndicator.techniques) {
-      console.warn('[BreathingTab] No breathing indicator techniques found');
-      return [];
+    getTechniques() {
+        if (!this.breathingIndicator || !this.breathingIndicator.techniques) {
+            console.warn('[BreathingTab] No breathing indicator techniques found');
+            return [];
+        }
+
+        // Convert techniques object to array with metadata
+        const techniques = Object.keys(this.breathingIndicator.techniques).map((id) => {
+            const tech = this.breathingIndicator.techniques[id];
+            return {
+                id,
+                name: tech.name,
+                pattern: tech.pattern,
+                description: tech.description,
+                color: tech.color,
+                // Create emoji based on technique type
+                emoji: this.getTechniqueEmoji(id),
+            };
+        });
+
+        return techniques;
     }
 
-    // Convert techniques object to array with metadata
-    const techniques = Object.keys(this.breathingIndicator.techniques).map(id => {
-      const tech = this.breathingIndicator.techniques[id];
-      return {
-        id: id,
-        name: tech.name,
-        pattern: tech.pattern,
-        description: tech.description,
-        color: tech.color,
-        // Create emoji based on technique type
-        emoji: this.getTechniqueEmoji(id)
-      };
-    });
-
-    return techniques;
-  }
-
-  /**
+    /**
    * Get emoji for each technique
    */
-  getTechniqueEmoji(id) {
-    const emojiMap = {
-      'deep-relaxation': '🌊',
-      'box-breathing': '⬜',
-      'calm-sleep': '🌙',
-      'energizing': '⚡',
-      'coherence': '💚',
-      'triangle': '🔺',
-      'wim-hof': '🔥'
-    };
-    return emojiMap[id] || '🧘';
-  }
-
-  /**
-   * Format breathing pattern for display
-   */
-  formatPattern(pattern) {
-    const [inhale, hold1, exhale, hold2] = pattern;
-    let formatted = `Inhale ${inhale}s`;
-
-    if (hold1 > 0) formatted += ` → Hold ${hold1}s`;
-    formatted += ` → Exhale ${exhale}s`;
-    if (hold2 > 0) formatted += ` → Hold ${hold2}s`;
-
-    return formatted;
-  }
-
-  /**
-   * Render the breathing tab
-   */
-  render() {
-    const container = document.getElementById('tab-breathing');
-    if (!container) {
-      console.error('[BreathingTab] Container not found');
-      return;
+    getTechniqueEmoji(id) {
+        const emojiMap = {
+            'deep-relaxation': '🌊',
+            'box-breathing': '⬜',
+            'calm-sleep': '🌙',
+            energizing: '⚡',
+            coherence: '💚',
+            triangle: '🔺',
+            'wim-hof': '🔥',
+        };
+        return emojiMap[id] || '🧘';
     }
 
-    // Clear loading message
-    container.innerHTML = '';
+    /**
+   * Format breathing pattern for display
+   */
+    formatPattern(pattern) {
+        const [inhale, hold1, exhale, hold2] = pattern;
+        let formatted = `Inhale ${inhale}s`;
 
-    // Create main content
-    const content = document.createElement('div');
-    content.className = 'breathing-tab-content';
+        if (hold1 > 0) formatted += ` → Hold ${hold1}s`;
+        formatted += ` → Exhale ${exhale}s`;
+        if (hold2 > 0) formatted += ` → Hold ${hold2}s`;
 
-    // Toggle switch section
-    const toggleSection = this.createToggleSection();
+        return formatted;
+    }
 
-    // Techniques grid
-    const techniqueGrid = this.createTechniqueGrid();
+    /**
+   * Render the breathing tab
+   */
+    render() {
+        const container = document.getElementById('tab-breathing');
+        if (!container) {
+            console.error('[BreathingTab] Container not found');
+            return;
+        }
 
-    // Info display
-    const infoDisplay = this.createInfoDisplay();
+        // Clear loading message
+        container.innerHTML = '';
 
-    // Settings section
-    const settingsSection = this.createSettingsSection();
+        // Create main content
+        const content = document.createElement('div');
+        content.className = 'breathing-tab-content';
 
-    content.appendChild(toggleSection);
-    content.appendChild(techniqueGrid);
-    content.appendChild(infoDisplay);
-    content.appendChild(settingsSection);
+        // Toggle switch section
+        const toggleSection = this.createToggleSection();
 
-    container.appendChild(content);
-  }
+        // Techniques grid
+        const techniqueGrid = this.createTechniqueGrid();
 
-  /**
+        // Info display
+        const infoDisplay = this.createInfoDisplay();
+
+        // Settings section
+        const settingsSection = this.createSettingsSection();
+
+        content.appendChild(toggleSection);
+        content.appendChild(techniqueGrid);
+        content.appendChild(infoDisplay);
+        content.appendChild(settingsSection);
+
+        container.appendChild(content);
+    }
+
+    /**
    * Create toggle switch for breathing guide
    */
-  createToggleSection() {
-    const section = document.createElement('div');
-    section.className = 'breathing-toggle-section';
+    createToggleSection() {
+        const section = document.createElement('div');
+        section.className = 'breathing-toggle-section';
 
-    const isActive = this.serenityMode.breathingIndicatorActive;
+        const isActive = this.serenityMode.breathingIndicatorActive;
 
-    section.innerHTML = `
+        section.innerHTML = `
       <div class="breathing-toggle-header">
         <h3 class="section-title">Breathing Guide</h3>
         <label class="toggle-switch">
@@ -147,55 +147,56 @@ export class BreathingTab {
       </p>
     `;
 
-    return section;
-  }
-
-  /**
-   * Create technique cards grid
-   */
-  createTechniqueGrid() {
-    const section = document.createElement('div');
-    section.className = 'technique-section';
-
-    const title = document.createElement('h3');
-    title.className = 'section-title';
-    title.textContent = 'Choose Your Technique';
-
-    const grid = document.createElement('div');
-    grid.className = 'technique-grid';
-    grid.id = 'breathing-technique-grid';
-
-    // Create card for each technique
-    this.techniques.forEach(technique => {
-      const card = this.createTechniqueCard(technique);
-      grid.appendChild(card);
-    });
-
-    section.appendChild(title);
-    section.appendChild(grid);
-
-    return section;
-  }
-
-  /**
-   * Create individual technique card
-   */
-  createTechniqueCard(technique) {
-    const card = document.createElement('div');
-    card.className = 'technique-card';
-    card.dataset.techniqueId = technique.id;
-
-    // Check if this is the current technique
-    const isActive = this.breathingIndicator.currentTechnique === technique.id;
-    if (isActive) {
-      card.classList.add('active');
+        return section;
     }
 
-    // Get RGB color
-    const { r, g, b } = technique.color;
-    const colorStyle = `rgb(${r}, ${g}, ${b})`;
+    /**
+   * Create technique cards grid
+   */
+    createTechniqueGrid() {
+        const section = document.createElement('div');
+        section.className = 'technique-section';
 
-    card.innerHTML = `
+        const title = document.createElement('h3');
+        title.className = 'section-title';
+        title.textContent = 'Choose Your Technique';
+
+        const grid = document.createElement('div');
+        grid.className = 'technique-grid';
+        grid.id = 'breathing-technique-grid';
+
+        // Create card for each technique
+        this.techniques.forEach((technique) => {
+            const card = this.createTechniqueCard(technique);
+            grid.appendChild(card);
+        });
+
+        section.appendChild(title);
+        section.appendChild(grid);
+
+        return section;
+    }
+
+    /**
+   * Create individual technique card
+   */
+    createTechniqueCard(technique) {
+        const card = document.createElement('div');
+        card.className = 'technique-card';
+        card.dataset.techniqueId = technique.id;
+        card.setAttribute('tabindex', '0');
+
+        // Check if this is the current technique
+        const isActive = this.breathingIndicator.currentTechnique === technique.id;
+        if (isActive) {
+            card.classList.add('active');
+        }
+
+        // Get RGB color
+        const { r, g, b } = technique.color;
+        const colorStyle = `rgb(${r}, ${g}, ${b})`;
+
+        card.innerHTML = `
       <div class="technique-icon" style="background: linear-gradient(135deg, ${colorStyle}, rgba(${r}, ${g}, ${b}, 0.6));">
         <span class="technique-emoji">${technique.emoji}</span>
       </div>
@@ -206,23 +207,23 @@ export class BreathingTab {
       ${isActive ? '<div class="active-indicator">●</div>' : ''}
     `;
 
-    return card;
-  }
+        return card;
+    }
 
-  /**
+    /**
    * Create info display section
    */
-  createInfoDisplay() {
-    const section = document.createElement('div');
-    section.className = 'technique-info-display';
-    section.id = 'breathing-info-display';
+    createInfoDisplay() {
+        const section = document.createElement('div');
+        section.className = 'technique-info-display';
+        section.id = 'breathing-info-display';
 
-    // Get current technique
-    const currentTech = this.techniques.find(
-      t => t.id === this.breathingIndicator.currentTechnique
-    ) || this.techniques[0];
+        // Get current technique
+        const currentTech = this.techniques.find(
+            (t) => t.id === this.breathingIndicator.currentTechnique,
+        ) || this.techniques[0];
 
-    section.innerHTML = `
+        section.innerHTML = `
       <div class="info-header">
         <span class="info-emoji">${currentTech.emoji}</span>
         <h4 class="info-title">${currentTech.name}</h4>
@@ -233,19 +234,19 @@ export class BreathingTab {
       </div>
     `;
 
-    return section;
-  }
+        return section;
+    }
 
-  /**
+    /**
    * Create settings section
    */
-  createSettingsSection() {
-    const section = document.createElement('div');
-    section.className = 'breathing-settings-section';
+    createSettingsSection() {
+        const section = document.createElement('div');
+        section.className = 'breathing-settings-section';
 
-    const settings = this.serenityMode.deps.settingsManager.get();
+        const settings = this.serenityMode.deps.settingsManager.get();
 
-    section.innerHTML = `
+        section.innerHTML = `
       <h3 class="section-title">Settings</h3>
       <div class="setting-item">
         <label class="setting-label">
@@ -263,140 +264,140 @@ export class BreathingTab {
       </div>
     `;
 
-    return section;
-  }
+        return section;
+    }
 
-  /**
+    /**
    * Attach event listeners
    */
-  attachEventListeners() {
-    // Store handler references for cleanup
-    this.toggleHandler = (e) => {
-      this.toggleBreathingGuide(e.target.checked);
-    };
-    
-    this.gridClickHandler = (e) => {
-      const card = e.target.closest('.technique-card');
-      if (card) {
-        const techniqueId = card.dataset.techniqueId;
-        this.selectTechnique(techniqueId);
-      }
-    };
-    
-    this.textToggleHandler = (e) => {
-      this.updateSetting('breathingText', e.target.checked);
-    };
-    
-    this.autoStartToggleHandler = (e) => {
-      this.updateSetting('breathingGuideAutoStart', e.target.checked);
-    };
+    attachEventListeners() {
+        // Store handler references for cleanup
+        this.toggleHandler = (e) => {
+            this.toggleBreathingGuide(e.target.checked);
+        };
 
-    // Toggle breathing guide
-    const toggle = document.getElementById('breathing-guide-toggle');
-    if (toggle) {
-      toggle.addEventListener('change', this.toggleHandler);
+        this.gridClickHandler = (e) => {
+            const card = e.target.closest('.technique-card');
+            if (card) {
+                const { techniqueId } = card.dataset;
+                this.selectTechnique(techniqueId);
+            }
+        };
+
+        this.textToggleHandler = (e) => {
+            this.updateSetting('breathingText', e.target.checked);
+        };
+
+        this.autoStartToggleHandler = (e) => {
+            this.updateSetting('breathingGuideAutoStart', e.target.checked);
+        };
+
+        // Toggle breathing guide
+        const toggle = document.getElementById('breathing-guide-toggle');
+        if (toggle) {
+            toggle.addEventListener('change', this.toggleHandler);
+        }
+
+        // Technique card clicks
+        const grid = document.getElementById('breathing-technique-grid');
+        if (grid) {
+            grid.addEventListener('click', this.gridClickHandler);
+        }
+
+        // Text prompts toggle
+        const textToggle = document.getElementById('breathing-text-toggle');
+        if (textToggle) {
+            textToggle.addEventListener('change', this.textToggleHandler);
+        }
+
+        // Auto-start toggle
+        const autoStartToggle = document.getElementById('breathing-auto-start');
+        if (autoStartToggle) {
+            autoStartToggle.addEventListener('change', this.autoStartToggleHandler);
+        }
     }
 
-    // Technique card clicks
-    const grid = document.getElementById('breathing-technique-grid');
-    if (grid) {
-      grid.addEventListener('click', this.gridClickHandler);
-    }
-
-    // Text prompts toggle
-    const textToggle = document.getElementById('breathing-text-toggle');
-    if (textToggle) {
-      textToggle.addEventListener('change', this.textToggleHandler);
-    }
-
-    // Auto-start toggle
-    const autoStartToggle = document.getElementById('breathing-auto-start');
-    if (autoStartToggle) {
-      autoStartToggle.addEventListener('change', this.autoStartToggleHandler);
-    }
-  }
-
-  /**
+    /**
    * Toggle breathing guide on/off
    */
-  toggleBreathingGuide(enabled) {
-    if (enabled) {
-      this.serenityMode._showBreathingIndicator();
-    } else {
-      this.serenityMode._hideBreathingIndicator();
+    toggleBreathingGuide(enabled) {
+        if (enabled) {
+            this.serenityMode._showBreathingIndicator();
+        } else {
+            this.serenityMode._hideBreathingIndicator();
+        }
+
+        // Update UI
+        this.updateToggleUI(enabled);
     }
 
-    // Update UI
-    this.updateToggleUI(enabled);
-  }
-
-  /**
+    /**
    * Update toggle UI state
    */
-  updateToggleUI(enabled) {
-    const description = document.querySelector('.breathing-toggle-section .section-description');
-    if (description) {
-      description.textContent = enabled
-        ? '✓ Active - Follow the breathing rhythm'
-        : 'Start the breathing guide to begin your practice';
+    updateToggleUI(enabled) {
+        const description = document.querySelector('.breathing-toggle-section .section-description');
+        if (description) {
+            description.textContent = enabled
+                ? '✓ Active - Follow the breathing rhythm'
+                : 'Start the breathing guide to begin your practice';
+        }
     }
-  }
 
-  /**
+    /**
    * Select a breathing technique
    */
-  selectTechnique(techniqueId) {
-    // Update breathing indicator
-    if (this.breathingIndicator) {
-      this.breathingIndicator.setTechnique(techniqueId);
+    selectTechnique(techniqueId) {
+        // Update breathing indicator
+        if (this.breathingIndicator) {
+            this.breathingIndicator.setTechnique(techniqueId);
+        }
+
+        // Save to settings
+        this.serenityMode.deps.settingsManager.update({
+            breathingTechnique: techniqueId,
+        });
+
+        // Update UI
+        this.updateActiveCard(techniqueId);
+        this.updateInfoDisplay(techniqueId);
+
+        console.log('[BreathingTab] Selected technique:', techniqueId);
     }
 
-    // Save to settings
-    this.serenityMode.deps.settingsManager.update({
-      breathingTechnique: techniqueId
-    });
-
-    // Update UI
-    this.updateActiveCard(techniqueId);
-    this.updateInfoDisplay(techniqueId);
-
-    console.log('[BreathingTab] Selected technique:', techniqueId);
-  }
-
-  /**
+    /**
    * Update active card styling
    */
-  updateActiveCard(techniqueId) {
-    // Remove active class from all cards
-    const cards = document.querySelectorAll('.technique-card');
-    cards.forEach(card => {
-      card.classList.remove('active');
-      const indicator = card.querySelector('.active-indicator');
-      if (indicator) indicator.remove();
-    });
+    updateActiveCard(techniqueId) {
+        // Remove active class from all cards
+        const cards = document.querySelectorAll('.technique-card');
+        cards.forEach((card) => {
+            card.classList.remove('active');
+            const indicator = card.querySelector('.active-indicator');
+            if (indicator) indicator.remove();
+        });
 
-    // Add active class to selected card
-    const activeCard = document.querySelector(`[data-technique-id="${techniqueId}"]`);
-    if (activeCard) {
-      activeCard.classList.add('active');
-      const indicator = document.createElement('div');
-      indicator.className = 'active-indicator';
-      indicator.textContent = '●';
-      activeCard.appendChild(indicator);
+        // Add active class to selected card
+        const activeCard = document.querySelector(`[data-technique-id="${techniqueId}"]`);
+        if (activeCard) {
+            activeCard.classList.add('active');
+            const indicator = document.createElement('div');
+            indicator.className = 'active-indicator';
+            indicator.textContent = '●';
+            activeCard.appendChild(indicator);
+        }
     }
-  }
 
-  /**
+    /**
    * Update info display
    */
-  updateInfoDisplay(techniqueId) {
-    const technique = this.techniques.find(t => t.id === techniqueId);
-    if (!technique) return;
+    updateInfoDisplay(techniqueId) {
+        const technique = this.techniques.find((t) => t.id === techniqueId);
+        if (!technique) return;
 
-    const infoDisplay = document.getElementById('breathing-info-display');
-    if (!infoDisplay) return;
+        const infoDisplay = document.getElementById('breathing-info-display');
+        if (!infoDisplay) return;
 
-    infoDisplay.innerHTML = `
+        infoDisplay.innerHTML = `
       <div class="info-header">
         <span class="info-emoji">${technique.emoji}</span>
         <h4 class="info-title">${technique.name}</h4>
@@ -407,62 +408,62 @@ export class BreathingTab {
       </div>
     `;
 
-    // Animate the update
-    infoDisplay.style.animation = 'none';
-    setTimeout(() => {
-      infoDisplay.style.animation = 'tab-content-fade 0.3s ease';
-    }, 10);
-  }
+        // Animate the update
+        infoDisplay.style.animation = 'none';
+        setTimeout(() => {
+            infoDisplay.style.animation = 'tab-content-fade 0.3s ease';
+        }, 10);
+    }
 
-  /**
+    /**
    * Update a setting
    */
-  updateSetting(key, value) {
-    this.serenityMode.deps.settingsManager.update({ [key]: value });
+    updateSetting(key, value) {
+        this.serenityMode.deps.settingsManager.update({ [key]: value });
 
-    // Apply the setting immediately if breathing is active
-    if (key === 'breathingText' && this.breathingIndicator) {
-      this.breathingIndicator.setShowText(value);
+        // Apply the setting immediately if breathing is active
+        if (key === 'breathingText' && this.breathingIndicator) {
+            this.breathingIndicator.setShowText(value);
+        }
+
+        console.log('[BreathingTab] Updated setting:', key, '=', value);
     }
 
-    console.log('[BreathingTab] Updated setting:', key, '=', value);
-  }
-
-  /**
+    /**
    * Cleanup
    */
-  destroy() {
-    // Remove event listeners explicitly
-    const toggle = document.getElementById('breathing-guide-toggle');
-    if (toggle && this.toggleHandler) {
-      toggle.removeEventListener('change', this.toggleHandler);
+    destroy() {
+        // Remove event listeners explicitly
+        const toggle = document.getElementById('breathing-guide-toggle');
+        if (toggle && this.toggleHandler) {
+            toggle.removeEventListener('change', this.toggleHandler);
+        }
+
+        const grid = document.getElementById('breathing-technique-grid');
+        if (grid && this.gridClickHandler) {
+            grid.removeEventListener('click', this.gridClickHandler);
+        }
+
+        const textToggle = document.getElementById('breathing-text-toggle');
+        if (textToggle && this.textToggleHandler) {
+            textToggle.removeEventListener('change', this.textToggleHandler);
+        }
+
+        const autoStartToggle = document.getElementById('breathing-auto-start');
+        if (autoStartToggle && this.autoStartToggleHandler) {
+            autoStartToggle.removeEventListener('change', this.autoStartToggleHandler);
+        }
+
+        // Null out references
+        this.toggleHandler = null;
+        this.gridClickHandler = null;
+        this.textToggleHandler = null;
+        this.autoStartToggleHandler = null;
+        this.hub = null;
+        this.breathingIndicator = null;
+        this.serenityMode = null;
+        this.techniques = null;
+
+        console.log('✅ [BreathingTab] Destroyed - all listeners removed');
     }
-
-    const grid = document.getElementById('breathing-technique-grid');
-    if (grid && this.gridClickHandler) {
-      grid.removeEventListener('click', this.gridClickHandler);
-    }
-
-    const textToggle = document.getElementById('breathing-text-toggle');
-    if (textToggle && this.textToggleHandler) {
-      textToggle.removeEventListener('change', this.textToggleHandler);
-    }
-
-    const autoStartToggle = document.getElementById('breathing-auto-start');
-    if (autoStartToggle && this.autoStartToggleHandler) {
-      autoStartToggle.removeEventListener('change', this.autoStartToggleHandler);
-    }
-
-    // Null out references
-    this.toggleHandler = null;
-    this.gridClickHandler = null;
-    this.textToggleHandler = null;
-    this.autoStartToggleHandler = null;
-    this.hub = null;
-    this.breathingIndicator = null;
-    this.serenityMode = null;
-    this.techniques = null;
-
-    console.log('✅ [BreathingTab] Destroyed - all listeners removed');
-  }
 }

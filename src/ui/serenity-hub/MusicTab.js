@@ -161,16 +161,14 @@ export class MusicTab {
      */
     renderPlaylist() {
         // Sort songs alphabetically by name
-        const sortedSongs = [...this.songs].sort((a, b) =>
-            a.name.localeCompare(b.name)
-        );
+        const sortedSongs = [...this.songs].sort((a, b) => a.name.localeCompare(b.name));
 
         return sortedSongs.map((song, index) => {
             const songKey = this.nameToKey(song.name);
             const isActive = songKey === this.currentSong;
 
             return `
-                <div class="playlist-item ${isActive ? 'active' : ''}" data-track="${songKey}">
+                <div class="playlist-item ${isActive ? 'active' : ''}" data-track="${songKey}" tabindex="0">
                     <div class="playlist-item-number">${(index + 1).toString().padStart(2, '0')}</div>
                     <div class="playlist-item-info">
                         <div class="playlist-item-title">${song.name}</div>
@@ -246,7 +244,7 @@ export class MusicTab {
 
         // Playlist items
         const playlistItems = document.querySelectorAll('.playlist-item');
-        playlistItems.forEach(item => {
+        playlistItems.forEach((item) => {
             item.addEventListener('click', () => {
                 const trackKey = item.dataset.track;
                 this.selectTrack(trackKey);
@@ -258,7 +256,7 @@ export class MusicTab {
      * Toggles play/pause state
      */
     togglePlayPause() {
-        const audioElement = this.soundManager.audioElement;
+        const { audioElement } = this.soundManager;
 
         if (!audioElement) {
             // Start music if not playing
@@ -283,7 +281,7 @@ export class MusicTab {
      * Goes to previous track
      */
     previousTrack() {
-        const currentIndex = this.songs.findIndex(s => this.nameToKey(s.name) === this.currentSong);
+        const currentIndex = this.songs.findIndex((s) => this.nameToKey(s.name) === this.currentSong);
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : this.songs.length - 1;
         const prevTrack = this.nameToKey(this.songs[prevIndex].name);
         this.selectTrack(prevTrack);
@@ -342,7 +340,7 @@ export class MusicTab {
      * @param {MouseEvent} e - Click event on progress bar
      */
     seekToPosition(e) {
-        const audioElement = this.soundManager.audioElement;
+        const { audioElement } = this.soundManager;
         if (!audioElement) return;
 
         const progressBar = e.currentTarget;
@@ -369,12 +367,11 @@ export class MusicTab {
      */
     updatePlaylist() {
         const playlistItems = document.querySelectorAll('.playlist-item');
-        playlistItems.forEach(item => {
+        playlistItems.forEach((item) => {
             const trackKey = item.dataset.track;
             if (trackKey === this.currentSong) {
                 item.classList.add('active');
-                item.querySelector('.playlist-item-icon').innerHTML =
-                    '<span class="playing-indicator">♪</span>';
+                item.querySelector('.playlist-item-icon').innerHTML = '<span class="playing-indicator">♪</span>';
             } else {
                 item.classList.remove('active');
                 item.querySelector('.playlist-item-icon').innerHTML = '';
@@ -429,7 +426,7 @@ export class MusicTab {
      * Updates the progress bar and time displays
      */
     updateProgressBar() {
-        const audioElement = this.soundManager.audioElement;
+        const { audioElement } = this.soundManager;
 
         // If no audio element exists, reset to zero
         if (!audioElement) {
@@ -453,8 +450,8 @@ export class MusicTab {
             return;
         }
 
-        const currentTime = audioElement.currentTime;
-        const duration = audioElement.duration;
+        const { currentTime } = audioElement;
+        const { duration } = audioElement;
         const percentage = (currentTime / duration) * 100;
 
         // Update progress bar
@@ -466,7 +463,7 @@ export class MusicTab {
         } else {
             // Log if elements are missing (only once per second)
             if (!this.lastMissingElementsLog || Date.now() - this.lastMissingElementsLog > 1000) {
-                console.warn('[MusicTab] Progress elements not found:', {progressFill: !!progressFill, progressHandle: !!progressHandle});
+                console.warn('[MusicTab] Progress elements not found:', { progressFill: !!progressFill, progressHandle: !!progressHandle });
                 this.lastMissingElementsLog = Date.now();
             }
         }
@@ -480,7 +477,7 @@ export class MusicTab {
         } else {
             // Log if elements are missing (only once per second)
             if (!this.lastMissingTimeLog || Date.now() - this.lastMissingTimeLog > 1000) {
-                console.warn('[MusicTab] Time display elements not found:', {currentTimeDisplay: !!currentTimeDisplay, totalTimeDisplay: !!totalTimeDisplay});
+                console.warn('[MusicTab] Time display elements not found:', { currentTimeDisplay: !!currentTimeDisplay, totalTimeDisplay: !!totalTimeDisplay });
                 this.lastMissingTimeLog = Date.now();
             }
         }
@@ -522,7 +519,7 @@ export class MusicTab {
      * @returns {string} Current song display name
      */
     getCurrentSongName() {
-        const song = this.songs.find(s => this.nameToKey(s.name) === this.currentSong);
+        const song = this.songs.find((s) => this.nameToKey(s.name) === this.currentSong);
         return song ? song.name : 'No track selected';
     }
 
@@ -531,7 +528,7 @@ export class MusicTab {
      * @returns {boolean} True if playing
      */
     isPlaying() {
-        const audioElement = this.soundManager.audioElement;
+        const { audioElement } = this.soundManager;
         return audioElement && !audioElement.paused && !this.soundManager.isMuted;
     }
 
@@ -557,7 +554,7 @@ export class MusicTab {
                 this.updatePlaylist();
 
                 // Sync play/pause state when track changes
-                const audioElement = this.soundManager.audioElement;
+                const { audioElement } = this.soundManager;
                 if (audioElement) {
                     const isPlaying = !audioElement.paused;
                     this.updatePlayPauseButton(isPlaying);
@@ -574,7 +571,7 @@ export class MusicTab {
      * Listen for audio element events (play, pause, loadedmetadata)
      */
     listenForAudioEvents() {
-        const audioElement = this.soundManager.audioElement;
+        const { audioElement } = this.soundManager;
 
         if (!audioElement) {
             console.log('[MusicTab] No audio element - will sync on next update');
@@ -613,7 +610,7 @@ export class MusicTab {
      * Called on initialization to ensure UI matches reality
      */
     syncWithAudioState() {
-        const audioElement = this.soundManager.audioElement;
+        const { audioElement } = this.soundManager;
 
         if (!audioElement) {
             console.log('[MusicTab] No audio element found - UI showing default state');

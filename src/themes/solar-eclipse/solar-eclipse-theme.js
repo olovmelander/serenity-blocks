@@ -36,7 +36,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.cmeContainer = null;
         this.burstContainer = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 starCount: 40,
                 coronaParticles: 80,
                 solarFlares: 3,
@@ -44,7 +44,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 burstLimit: 1,
                 driftRadiusScale: 0.25,
             },
-            'Low': {
+            Low: {
                 starCount: 60,
                 coronaParticles: 120,
                 solarFlares: 4,
@@ -52,7 +52,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 burstLimit: 2,
                 driftRadiusScale: 0.35,
             },
-            'Medium': {
+            Medium: {
                 starCount: 100,
                 coronaParticles: 200,
                 solarFlares: 6,
@@ -60,7 +60,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 burstLimit: 3,
                 driftRadiusScale: 0.5,
             },
-            'High': {
+            High: {
                 starCount: 140,
                 coronaParticles: 260,
                 solarFlares: 8,
@@ -68,7 +68,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 burstLimit: 4,
                 driftRadiusScale: 0.65,
             },
-            'Ultra': {
+            Ultra: {
                 starCount: 180,
                 coronaParticles: 340,
                 solarFlares: 10,
@@ -76,17 +76,17 @@ export default class SolarEclipseTheme extends BaseTheme {
                 burstLimit: 5,
                 driftRadiusScale: 0.8,
             },
-            'Extreme': {
+            Extreme: {
                 starCount: 250,
                 coronaParticles: 480,
                 solarFlares: 14,
                 cmeLimit: 6,
                 burstLimit: 7,
                 driftRadiusScale: 1.0,
-            }
+            },
         };
         this.currentQuality = 'Medium';
-        this.activePreset = this.qualityPresets['Medium'];
+        this.activePreset = this.qualityPresets.Medium;
     }
 
     applyQualityPreset(quality, { skipRefresh = false } = {}) {
@@ -179,7 +179,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 this.registerContainer(this.starsContainer);
             }
         }
-        const starsContainer = this.starsContainer;
+        const { starsContainer } = this;
         if (!starsContainer) return;
         if (!force && starsContainer.children.length > 0) return;
 
@@ -188,7 +188,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         const fragment = document.createDocumentFragment();
         const starCount = this.activePreset?.starCount ?? 100;
         this.stars = [];
-        
+
         for (let i = 0; i < starCount; i++) {
             const star = document.createElement('div');
             star.className = 'eclipse-star';
@@ -279,7 +279,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Draw particles
-        this.coronaParticles.forEach(particle => {
+        this.coronaParticles.forEach((particle) => {
             // Update particle position
             particle.angle += particle.speed;
             particle.pulse += particle.pulseSpeed;
@@ -303,9 +303,7 @@ export default class SolarEclipseTheme extends BaseTheme {
             ctx.fill();
         });
 
-        this.animationFrame = requestAnimationFrame(() =>
-            this.animateCorona(canvas, ctx, centerX, centerY)
-        );
+        this.animationFrame = requestAnimationFrame(() => this.animateCorona(canvas, ctx, centerX, centerY));
     }
 
     /**
@@ -320,10 +318,10 @@ export default class SolarEclipseTheme extends BaseTheme {
             { node: document.getElementById('eclipse-corona-canvas'), multiplier: 1 },
             { node: document.getElementById('eclipse-flares'), multiplier: 1 },
             { node: document.getElementById('eclipse-bursts'), multiplier: 1 },
-            { node: document.getElementById('eclipse-cme'), multiplier: 1 }
+            { node: document.getElementById('eclipse-cme'), multiplier: 1 },
         ];
 
-        this.driftTargets = potentialTargets.filter(target => target.node);
+        this.driftTargets = potentialTargets.filter((target) => target.node);
     }
 
     /**
@@ -423,7 +421,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 this.registerContainer(this.flareContainer);
             }
         }
-        const flareContainer = this.flareContainer;
+        const { flareContainer } = this;
         if (!flareContainer) return;
         flareContainer.textContent = '';
 
@@ -543,7 +541,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         if (!this.burstContainer) {
             this.burstContainer = document.getElementById('eclipse-bursts');
         }
-        const burstContainer = this.burstContainer;
+        const { burstContainer } = this;
         if (!burstContainer) return;
 
         const burstLimit = this.activePreset?.burstLimit ?? 4;
@@ -615,7 +613,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         if (!this.cmeContainer) {
             this.cmeContainer = document.getElementById('eclipse-cme');
         }
-        const cmeContainer = this.cmeContainer;
+        const { cmeContainer } = this;
         if (!cmeContainer) return;
 
         const cmeLimit = this.activePreset?.cmeLimit ?? 3;
@@ -647,7 +645,7 @@ export default class SolarEclipseTheme extends BaseTheme {
      * Pulse corona particles
      */
     pulseCoronaParticles() {
-        this.coronaParticles.forEach(particle => {
+        this.coronaParticles.forEach((particle) => {
             particle.baseOpacity = Math.min(particle.baseOpacity * 1.5, 1);
 
             setTimeout(() => {
@@ -664,7 +662,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         if (this.qualityChangeHandler && typeof window !== 'undefined') {
             window.removeEventListener('settingsChanged', this.qualityChangeHandler);

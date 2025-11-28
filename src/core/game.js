@@ -19,8 +19,8 @@ function resolveActiveTetrominoColor(shapeKey) {
         return defaultColor;
     }
 
-    const settingsManager = window.settingsManager;
-    const themeManager = window.themeManager;
+    const { settingsManager } = window;
+    const { themeManager } = window;
     const settings = settingsManager?.get?.();
     const themeBasedEnabled = settings?.themeBasedTetrominos ?? true;
 
@@ -343,7 +343,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
 
     gameState.currentPiece = piece;
     invalidateGhostCache(gameState);
-    
+
     // Reset drop counter for new piece (CRITICAL for gravity!)
     gameState.dropCounter = 0;
 
@@ -639,7 +639,7 @@ export function gameLoop(
         if (!gameState.isProcessingPhysics && gameState.currentPiece) {
             gameState.dropCounter += delta;
             if (gameState.dropCounter > gameState.dropInterval) {
-            softDrop(gameState, playDropCallback, physicsCallbacks);
+                softDrop(gameState, playDropCallback, physicsCallbacks);
             }
         }
 

@@ -8,13 +8,13 @@ export const CINDER_DRIFT_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ff6b35',  // Ember Orange
-        O: '#ffa500',  // Bright Ember
-        T: '#8B4513',  // Charred Brown
-        S: '#D2691E',  // Burnt Orange
-        Z: '#CD5C5C',  // Smoldering Red
-        J: '#696969',  // Ash Gray
-        L: '#FF4500',  // Hot Ember
+        I: '#ff6b35', // Ember Orange
+        O: '#ffa500', // Bright Ember
+        T: '#8B4513', // Charred Brown
+        S: '#D2691E', // Burnt Orange
+        Z: '#CD5C5C', // Smoldering Red
+        J: '#696969', // Ash Gray
+        L: '#FF4500', // Hot Ember
         GARBAGE: '#1a1614', // Charcoal
     },
 

@@ -10,13 +10,13 @@ export const MOONLIT_FOREST_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#c0d8f0',  // Moonbeam silver - pale silvery moonlight rays
-        O: '#00d9ff',  // Glowing mushroom cyan - bioluminescent fungi
-        T: '#a78bfa',  // Mystical purple - enchanted forest magic
-        S: '#4a9b6b',  // Forest emerald - lush tree foliage
-        Z: '#2c4a5a',  // Shadowy teal - deep forest night
-        J: '#ffa726',  // Amber eyes - glowing wildlife and fireflies
-        L: '#6ee7b7',  // Moss aqua - undergrowth and forest floor
+        I: '#c0d8f0', // Moonbeam silver - pale silvery moonlight rays
+        O: '#00d9ff', // Glowing mushroom cyan - bioluminescent fungi
+        T: '#a78bfa', // Mystical purple - enchanted forest magic
+        S: '#4a9b6b', // Forest emerald - lush tree foliage
+        Z: '#2c4a5a', // Shadowy teal - deep forest night
+        J: '#ffa726', // Amber eyes - glowing wildlife and fireflies
+        L: '#6ee7b7', // Moss aqua - undergrowth and forest floor
         GARBAGE: '#1a2820', // Deep shadow - darkest forest depths
     },
 
@@ -33,8 +33,8 @@ export const MOONLIT_FOREST_TETROMINOS = {
 
         // Pulse like glowing mushrooms and breathing forest
         pulse: true,
-        pulseSpeed: 0.042,         // Gentle, organic pulsing
-        pulseAmplitude: 0.21,      // Noticeable bioluminescence
+        pulseSpeed: 0.042, // Gentle, organic pulsing
+        pulseAmplitude: 0.21, // Noticeable bioluminescence
 
         // Shimmer like moonlight filtering through leaves
         shimmer: true,

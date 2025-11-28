@@ -9,13 +9,13 @@ export const PYRESTORM_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ff6b1a',  // Lava orange beam
-        O: '#ffd200',  // Molten core yellow
-        T: '#ff3b00',  // Super-heated magma red
-        S: '#ffb347',  // Ember amber
-        Z: '#ff0048',  // Volcanic plasma pink-red
-        J: '#94211a',  // Charred obsidian edge
-        L: '#ff8c00',  // Flame orange
+        I: '#ff6b1a', // Lava orange beam
+        O: '#ffd200', // Molten core yellow
+        T: '#ff3b00', // Super-heated magma red
+        S: '#ffb347', // Ember amber
+        Z: '#ff0048', // Volcanic plasma pink-red
+        J: '#94211a', // Charred obsidian edge
+        L: '#ff8c00', // Flame orange
         GARBAGE: '#1a0b06', // Basalt ash
     },
 

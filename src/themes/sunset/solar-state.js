@@ -245,7 +245,9 @@ export class SunsetSolarState {
     }
 
     _applyCssVariables(state) {
-        const { normalizedX, normalizedY, altitude, intensity, hue, stage } = state;
+        const {
+            normalizedX, normalizedY, altitude, intensity, hue, stage,
+        } = state;
         const container = this.themeContainer;
         const stagePreset = STAGE_PRESETS[stage] || STAGE_PRESETS.day;
         const starAlpha = CLAMP(stagePreset.starAlpha * (1 - altitude * 0.5), 0, 1);

@@ -42,28 +42,28 @@ export default class PlasmaSimulator {
             ENERGY_RESOLUTION: 512,
 
             // Electromagnetic Physics
-            WAVE_SPEED: 2.0,              // Electromagnetic wave propagation speed
-            CHARGE_COUPLING: 0.85,        // How strongly charge affects current
-            CURRENT_DAMPING: 0.992,       // Energy dissipation in current field
-            CHARGE_DAMPING: 0.998,        // Energy dissipation in charge field
-            PLASMA_FREQUENCY: 3.0,        // Natural oscillation frequency
+            WAVE_SPEED: 2.0, // Electromagnetic wave propagation speed
+            CHARGE_COUPLING: 0.85, // How strongly charge affects current
+            CURRENT_DAMPING: 0.992, // Energy dissipation in current field
+            CHARGE_DAMPING: 0.998, // Energy dissipation in charge field
+            PLASMA_FREQUENCY: 3.0, // Natural oscillation frequency
 
             // Energy Flow
-            ENERGY_ADVECTION: 0.7,        // How much energy flows with current
-            ENERGY_DIFFUSION: 0.02,       // Energy spreading
-            ENERGY_DECAY: 0.995,          // Energy dissipation rate
-            ENERGY_GENERATION: 0.3,       // Energy created from charge gradients
+            ENERGY_ADVECTION: 0.7, // How much energy flows with current
+            ENERGY_DIFFUSION: 0.02, // Energy spreading
+            ENERGY_DECAY: 0.995, // Energy dissipation rate
+            ENERGY_GENERATION: 0.3, // Energy created from charge gradients
 
             // Turbulence and Chaos
-            TURBULENCE: 0.5,              // Electromagnetic turbulence strength
-            CHAOS_FREQUENCY: 1.5,         // Small-scale chaotic fluctuations
-            VORTICITY: 15.0,              // Swirling motion in current field
+            TURBULENCE: 0.5, // Electromagnetic turbulence strength
+            CHAOS_FREQUENCY: 1.5, // Small-scale chaotic fluctuations
+            VORTICITY: 15.0, // Swirling motion in current field
 
             // Filament Generation
             FILAMENT_ENABLED: true,
-            FILAMENT_THRESHOLD: 0.5,      // Charge gradient needed for filaments
-            FILAMENT_INTENSITY: 0.8,      // Filament brightness
-            FILAMENT_DECAY: 0.96,         // How quickly filaments fade
+            FILAMENT_THRESHOLD: 0.5, // Charge gradient needed for filaments
+            FILAMENT_INTENSITY: 0.8, // Filament brightness
+            FILAMENT_DECAY: 0.96, // How quickly filaments fade
 
             // Visual Effects
             GLOW_ENABLED: true,
@@ -73,19 +73,19 @@ export default class PlasmaSimulator {
             BLOOM_INTENSITY: 0.6,
 
             // Color Mapping (plasma temperature)
-            COLOR_MODE: 'cosmic',         // 'cosmic', 'fire', 'electric', 'aurora'
-            COLOR_SHIFT_SPEED: 0.5,       // How fast colors cycle
-            MIN_COLOR: { r: 0.1, g: 0.0, b: 0.3 },   // Low energy (deep violet)
-            MID_COLOR: { r: 0.0, g: 0.5, b: 0.8 },   // Mid energy (cyan)
-            MAX_COLOR: { r: 0.3, g: 1.0, b: 0.9 },   // High energy (bright cyan-white)
+            COLOR_MODE: 'cosmic', // 'cosmic', 'fire', 'electric', 'aurora'
+            COLOR_SHIFT_SPEED: 0.5, // How fast colors cycle
+            MIN_COLOR: { r: 0.1, g: 0.0, b: 0.3 }, // Low energy (deep violet)
+            MID_COLOR: { r: 0.0, g: 0.5, b: 0.8 }, // Mid energy (cyan)
+            MAX_COLOR: { r: 0.3, g: 1.0, b: 0.9 }, // High energy (bright cyan-white)
 
             // External Forces
-            MAGNETIC_FIELD: [0.0, 0.0],   // External magnetic field
-            ELECTRIC_FIELD: [0.0, 0.0],   // External electric field
+            MAGNETIC_FIELD: [0.0, 0.0], // External magnetic field
+            ELECTRIC_FIELD: [0.0, 0.0], // External electric field
 
             // Performance
             TRANSPARENT: false,
-            ...config
+            ...config,
         };
 
         this.gl = null;
@@ -93,11 +93,11 @@ export default class PlasmaSimulator {
         this.programs = {};
 
         // Simulation state
-        this.charge = null;          // Charge density field (double-buffered)
-        this.current = null;         // Current/flow field (double-buffered)
-        this.energy = null;          // Energy density field (double-buffered)
-        this.filaments = null;       // Filament/arc patterns (single buffer)
-        this.glow = null;            // Glow/emission (single buffer)
+        this.charge = null; // Charge density field (double-buffered)
+        this.current = null; // Current/flow field (double-buffered)
+        this.energy = null; // Energy density field (double-buffered)
+        this.filaments = null; // Filament/arc patterns (single buffer)
+        this.glow = null; // Glow/emission (single buffer)
 
         // Rendering
         this.blitBuffer = null;
@@ -133,7 +133,7 @@ export default class PlasmaSimulator {
             depth: false,
             stencil: false,
             antialias: false,
-            preserveDrawingBuffer: false
+            preserveDrawingBuffer: false,
         };
 
         let gl = canvas.getContext('webgl2', params);
@@ -176,31 +176,31 @@ export default class PlasmaSimulator {
                 formatRG,
                 formatR,
                 halfFloatTexType,
-                supportLinearFiltering
-            }
+                supportLinearFiltering,
+            },
         };
     }
 
     getSupportedFormat(gl, internalFormat, format, type) {
         if (!this.supportRenderTextureFormat(gl, internalFormat, format, type)) {
             switch (internalFormat) {
-                case gl.R16F:
-                    return this.getSupportedFormat(gl, gl.RG16F, gl.RG, type);
-                case gl.RG16F:
-                    return this.getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
-                default:
-                    return null;
+            case gl.R16F:
+                return this.getSupportedFormat(gl, gl.RG16F, gl.RG, type);
+            case gl.RG16F:
+                return this.getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
+            default:
+                return null;
             }
         }
 
         return {
             internalFormat,
-            format
+            format,
         };
     }
 
     supportRenderTextureFormat(gl, internalFormat, format, type) {
-        let texture = gl.createTexture();
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -208,16 +208,16 @@ export default class PlasmaSimulator {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, 4, 4, 0, format, type, null);
 
-        let fbo = gl.createFramebuffer();
+        const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-        let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
         return status == gl.FRAMEBUFFER_COMPLETE;
     }
 
     compileShader(type, source) {
-        const gl = this.gl;
+        const { gl } = this;
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
@@ -230,7 +230,7 @@ export default class PlasmaSimulator {
     }
 
     initPrograms() {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Base vertex shader for full-screen quad with neighbor coordinates
         const baseVertexShaderSource = `
@@ -590,34 +590,64 @@ export default class PlasmaSimulator {
 
         const baseVertexShader = this.compileShader(gl.VERTEX_SHADER, baseVertexShaderSource);
 
-        this.programs.currentUpdate = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, currentUpdateShaderSource));
-        this.programs.chargeUpdate = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, chargeUpdateShaderSource));
-        this.programs.vorticity = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, vorticityShaderSource));
-        this.programs.energyAdvection = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, energyAdvectionShaderSource));
-        this.programs.filament = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, filamentShaderSource));
-        this.programs.glow = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, glowShaderSource));
-        this.programs.energyBurst = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, energyBurstShaderSource));
-        this.programs.chargeBurst = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, chargeBurstShaderSource));
-        this.programs.plasmaDisplay = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, plasmaDisplayShaderSource));
-        this.programs.copy = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, copyShaderSource));
+        this.programs.currentUpdate = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, currentUpdateShaderSource),
+        );
+        this.programs.chargeUpdate = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, chargeUpdateShaderSource),
+        );
+        this.programs.vorticity = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, vorticityShaderSource),
+        );
+        this.programs.energyAdvection = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, energyAdvectionShaderSource),
+        );
+        this.programs.filament = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, filamentShaderSource),
+        );
+        this.programs.glow = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, glowShaderSource),
+        );
+        this.programs.energyBurst = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, energyBurstShaderSource),
+        );
+        this.programs.chargeBurst = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, chargeBurstShaderSource),
+        );
+        this.programs.plasmaDisplay = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, plasmaDisplayShaderSource),
+        );
+        this.programs.copy = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, copyShaderSource),
+        );
     }
 
     initFramebuffers() {
-        const gl = this.gl;
-        const ext = this.ext;
+        const { gl } = this;
+        const { ext } = this;
 
-        let chargeRes = this.getResolution(this.config.CHARGE_RESOLUTION);
-        let energyRes = this.getResolution(this.config.ENERGY_RESOLUTION);
+        const chargeRes = this.getResolution(this.config.CHARGE_RESOLUTION);
+        const energyRes = this.getResolution(this.config.ENERGY_RESOLUTION);
 
         const texType = ext.halfFloatTexType;
         const r = ext.formatR;
@@ -629,43 +659,63 @@ export default class PlasmaSimulator {
 
         // Charge density field
         this.charge = this.createDoubleFBO(
-            chargeRes.width, chargeRes.height,
-            r.internalFormat, r.format, texType, filtering
+            chargeRes.width,
+            chargeRes.height,
+            r.internalFormat,
+            r.format,
+            texType,
+            filtering,
         );
 
         // Current field (2D vector)
         this.current = this.createDoubleFBO(
-            chargeRes.width, chargeRes.height,
-            rg.internalFormat, rg.format, texType, filtering
+            chargeRes.width,
+            chargeRes.height,
+            rg.internalFormat,
+            rg.format,
+            texType,
+            filtering,
         );
 
         // Energy density field
         this.energy = this.createDoubleFBO(
-            energyRes.width, energyRes.height,
-            r.internalFormat, r.format, texType, filtering
+            energyRes.width,
+            energyRes.height,
+            r.internalFormat,
+            r.format,
+            texType,
+            filtering,
         );
 
         // Filaments
         if (this.config.FILAMENT_ENABLED) {
             this.filaments = this.createDoubleFBO(
-                energyRes.width, energyRes.height,
-                r.internalFormat, r.format, texType, filtering
+                energyRes.width,
+                energyRes.height,
+                r.internalFormat,
+                r.format,
+                texType,
+                filtering,
             );
         }
 
         // Glow
         if (this.config.GLOW_ENABLED) {
             this.glow = this.createFBO(
-                energyRes.width, energyRes.height,
-                r.internalFormat, r.format, texType, filtering
+                energyRes.width,
+                energyRes.height,
+                r.internalFormat,
+                r.format,
+                texType,
+                filtering,
             );
         }
     }
 
     createFBO(w, h, internalFormat, format, type, param) {
-        const gl = this.gl;
+        const { gl } = this;
         gl.activeTexture(gl.TEXTURE0);
-        let texture = gl.createTexture();
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, param);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, param);
@@ -673,14 +723,14 @@ export default class PlasmaSimulator {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, w, h, 0, format, type, null);
 
-        let fbo = gl.createFramebuffer();
+        const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
         gl.viewport(0, 0, w, h);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        let texelSizeX = 1.0 / w;
-        let texelSizeY = 1.0 / h;
+        const texelSizeX = 1.0 / w;
+        const texelSizeY = 1.0 / h;
 
         return {
             texture,
@@ -693,7 +743,7 @@ export default class PlasmaSimulator {
                 gl.activeTexture(gl.TEXTURE0 + id);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
                 return id;
-            }
+            },
         };
     }
 
@@ -719,29 +769,26 @@ export default class PlasmaSimulator {
                 fbo2 = value;
             },
             swap() {
-                let temp = fbo1;
+                const temp = fbo1;
                 fbo1 = fbo2;
                 fbo2 = temp;
-            }
+            },
         };
     }
 
     getResolution(resolution) {
         let aspectRatio = this.canvas.width / this.canvas.height;
-        if (aspectRatio < 1)
-            aspectRatio = 1.0 / aspectRatio;
+        if (aspectRatio < 1) aspectRatio = 1.0 / aspectRatio;
 
-        let min = Math.round(resolution);
-        let max = Math.round(resolution * aspectRatio);
+        const min = Math.round(resolution);
+        const max = Math.round(resolution * aspectRatio);
 
-        if (this.canvas.width > this.canvas.height)
-            return { width: max, height: min };
-        else
-            return { width: min, height: max };
+        if (this.canvas.width > this.canvas.height) return { width: max, height: min };
+        return { width: min, height: max };
     }
 
     blit(target, clear = false) {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Init blit geometry if needed
         if (!this.blitBuffer) {
@@ -778,8 +825,8 @@ export default class PlasmaSimulator {
      * Advance plasma simulation by dt seconds
      */
     step(dt) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
 
         // Update time for color shifting
         this.time += dt;
@@ -792,8 +839,11 @@ export default class PlasmaSimulator {
         // Step 1: Apply vorticity confinement to current (turbulence)
         if (config.VORTICITY > 0) {
             this.programs.vorticity.bind();
-            gl.uniform2f(this.programs.vorticity.uniforms.texelSize,
-                this.current.texelSizeX, this.current.texelSizeY);
+            gl.uniform2f(
+                this.programs.vorticity.uniforms.texelSize,
+                this.current.texelSizeX,
+                this.current.texelSizeY,
+            );
             gl.uniform1i(this.programs.vorticity.uniforms.uCurrent, this.current.read.attach(0));
             gl.uniform1i(this.programs.vorticity.uniforms.uCharge, this.charge.read.attach(1));
             gl.uniform1f(this.programs.vorticity.uniforms.vorticity, config.VORTICITY);
@@ -804,23 +854,32 @@ export default class PlasmaSimulator {
 
         // Step 2: Update current from electromagnetic forces
         this.programs.currentUpdate.bind();
-        gl.uniform2f(this.programs.currentUpdate.uniforms.texelSize,
-            this.charge.texelSizeX, this.charge.texelSizeY);
+        gl.uniform2f(
+            this.programs.currentUpdate.uniforms.texelSize,
+            this.charge.texelSizeX,
+            this.charge.texelSizeY,
+        );
         gl.uniform1i(this.programs.currentUpdate.uniforms.uCharge, this.charge.read.attach(0));
         gl.uniform1i(this.programs.currentUpdate.uniforms.uCurrent, this.current.read.attach(1));
         gl.uniform1f(this.programs.currentUpdate.uniforms.dt, dt);
         gl.uniform1f(this.programs.currentUpdate.uniforms.coupling, config.CHARGE_COUPLING);
         gl.uniform1f(this.programs.currentUpdate.uniforms.damping, config.CURRENT_DAMPING);
         gl.uniform1f(this.programs.currentUpdate.uniforms.plasmaFreq, config.PLASMA_FREQUENCY);
-        gl.uniform2f(this.programs.currentUpdate.uniforms.externalField,
-            config.ELECTRIC_FIELD[0], config.ELECTRIC_FIELD[1]);
+        gl.uniform2f(
+            this.programs.currentUpdate.uniforms.externalField,
+            config.ELECTRIC_FIELD[0],
+            config.ELECTRIC_FIELD[1],
+        );
         this.blit(this.current.write);
         this.current.swap();
 
         // Step 3: Update charge from current divergence (wave propagation)
         this.programs.chargeUpdate.bind();
-        gl.uniform2f(this.programs.chargeUpdate.uniforms.texelSize,
-            this.charge.texelSizeX, this.charge.texelSizeY);
+        gl.uniform2f(
+            this.programs.chargeUpdate.uniforms.texelSize,
+            this.charge.texelSizeX,
+            this.charge.texelSizeY,
+        );
         gl.uniform1i(this.programs.chargeUpdate.uniforms.uCharge, this.charge.read.attach(0));
         gl.uniform1i(this.programs.chargeUpdate.uniforms.uCurrent, this.current.read.attach(1));
         gl.uniform1f(this.programs.chargeUpdate.uniforms.dt, dt);
@@ -831,8 +890,11 @@ export default class PlasmaSimulator {
 
         // Step 4: Advect energy along current flow
         this.programs.energyAdvection.bind();
-        gl.uniform2f(this.programs.energyAdvection.uniforms.texelSize,
-            this.energy.texelSizeX, this.energy.texelSizeY);
+        gl.uniform2f(
+            this.programs.energyAdvection.uniforms.texelSize,
+            this.energy.texelSizeX,
+            this.energy.texelSizeY,
+        );
         gl.uniform1i(this.programs.energyAdvection.uniforms.uEnergy, this.energy.read.attach(0));
         gl.uniform1i(this.programs.energyAdvection.uniforms.uCurrent, this.current.read.attach(1));
         gl.uniform1i(this.programs.energyAdvection.uniforms.uCharge, this.charge.read.attach(2));
@@ -847,8 +909,11 @@ export default class PlasmaSimulator {
         // Step 5: Generate filaments from charge gradients
         if (config.FILAMENT_ENABLED && this.filaments) {
             this.programs.filament.bind();
-            gl.uniform2f(this.programs.filament.uniforms.texelSize,
-                this.charge.texelSizeX, this.charge.texelSizeY);
+            gl.uniform2f(
+                this.programs.filament.uniforms.texelSize,
+                this.charge.texelSizeX,
+                this.charge.texelSizeY,
+            );
             gl.uniform1i(this.programs.filament.uniforms.uCharge, this.charge.read.attach(0));
             gl.uniform1i(this.programs.filament.uniforms.uFilaments, this.filaments.read.attach(1));
             gl.uniform1f(this.programs.filament.uniforms.threshold, config.FILAMENT_THRESHOLD);
@@ -861,11 +926,16 @@ export default class PlasmaSimulator {
         // Step 6: Generate glow from energy
         if (config.GLOW_ENABLED && this.glow) {
             this.programs.glow.bind();
-            gl.uniform2f(this.programs.glow.uniforms.texelSize,
-                this.energy.texelSizeX, this.energy.texelSizeY);
+            gl.uniform2f(
+                this.programs.glow.uniforms.texelSize,
+                this.energy.texelSizeX,
+                this.energy.texelSizeY,
+            );
             gl.uniform1i(this.programs.glow.uniforms.uEnergy, this.energy.read.attach(0));
-            gl.uniform1i(this.programs.glow.uniforms.uFilaments,
-                this.filaments ? this.filaments.read.attach(1) : this.energy.read.attach(1));
+            gl.uniform1i(
+                this.programs.glow.uniforms.uFilaments,
+                this.filaments ? this.filaments.read.attach(1) : this.energy.read.attach(1),
+            );
             gl.uniform1f(this.programs.glow.uniforms.intensity, config.GLOW_INTENSITY);
             gl.uniform1f(this.programs.glow.uniforms.radius, config.GLOW_RADIUS);
             this.blit(this.glow);
@@ -876,8 +946,8 @@ export default class PlasmaSimulator {
      * Render plasma to target (or screen if null)
      */
     render(target = null) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
 
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
@@ -900,12 +970,24 @@ export default class PlasmaSimulator {
             gl.uniform1i(this.programs.plasmaDisplay.uniforms.glowEnabled, false);
         }
 
-        gl.uniform3f(this.programs.plasmaDisplay.uniforms.minColor,
-            config.MIN_COLOR.r, config.MIN_COLOR.g, config.MIN_COLOR.b);
-        gl.uniform3f(this.programs.plasmaDisplay.uniforms.midColor,
-            config.MID_COLOR.r, config.MID_COLOR.g, config.MID_COLOR.b);
-        gl.uniform3f(this.programs.plasmaDisplay.uniforms.maxColor,
-            config.MAX_COLOR.r, config.MAX_COLOR.g, config.MAX_COLOR.b);
+        gl.uniform3f(
+            this.programs.plasmaDisplay.uniforms.minColor,
+            config.MIN_COLOR.r,
+            config.MIN_COLOR.g,
+            config.MIN_COLOR.b,
+        );
+        gl.uniform3f(
+            this.programs.plasmaDisplay.uniforms.midColor,
+            config.MID_COLOR.r,
+            config.MID_COLOR.g,
+            config.MID_COLOR.b,
+        );
+        gl.uniform3f(
+            this.programs.plasmaDisplay.uniforms.maxColor,
+            config.MAX_COLOR.r,
+            config.MAX_COLOR.g,
+            config.MAX_COLOR.b,
+        );
         gl.uniform1f(this.programs.plasmaDisplay.uniforms.time, this.time);
         gl.uniform1f(this.programs.plasmaDisplay.uniforms.colorShiftSpeed, config.COLOR_SHIFT_SPEED);
 
@@ -920,10 +1002,10 @@ export default class PlasmaSimulator {
             radius: 0.08,
             intensity: 0.8,
             chargeIntensity: 0.5,
-            ...options
+            ...options,
         };
 
-        const gl = this.gl;
+        const { gl } = this;
 
         // Add energy
         this.programs.energyBurst.bind();
@@ -931,8 +1013,10 @@ export default class PlasmaSimulator {
         gl.uniform2f(this.programs.energyBurst.uniforms.point, x, y);
         gl.uniform1f(this.programs.energyBurst.uniforms.radius, config.radius);
         gl.uniform1f(this.programs.energyBurst.uniforms.intensity, config.intensity);
-        gl.uniform1f(this.programs.energyBurst.uniforms.aspectRatio,
-            this.canvas.width / this.canvas.height);
+        gl.uniform1f(
+            this.programs.energyBurst.uniforms.aspectRatio,
+            this.canvas.width / this.canvas.height,
+        );
         this.blit(this.energy.write);
         this.energy.swap();
 
@@ -942,8 +1026,10 @@ export default class PlasmaSimulator {
         gl.uniform2f(this.programs.chargeBurst.uniforms.point, x, y);
         gl.uniform1f(this.programs.chargeBurst.uniforms.radius, config.radius);
         gl.uniform1f(this.programs.chargeBurst.uniforms.intensity, config.chargeIntensity);
-        gl.uniform1f(this.programs.chargeBurst.uniforms.aspectRatio,
-            this.canvas.width / this.canvas.height);
+        gl.uniform1f(
+            this.programs.chargeBurst.uniforms.aspectRatio,
+            this.canvas.width / this.canvas.height,
+        );
         this.blit(this.charge.write);
         this.charge.swap();
     }
@@ -954,7 +1040,7 @@ export default class PlasmaSimulator {
     setElectromagneticField(direction, strength) {
         this.config.ELECTRIC_FIELD = [
             direction[0] * strength,
-            direction[1] * strength
+            direction[1] * strength,
         ];
     }
 
@@ -981,7 +1067,7 @@ export default class PlasmaSimulator {
     clear() {
         if (!this.gl || !this.charge || !this.current || !this.energy) return;
 
-        const gl = this.gl;
+        const { gl } = this;
 
         // Clear charge field
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.charge.read.fbo);
@@ -1044,8 +1130,8 @@ class Program {
     }
 
     createProgram(vertexShader, fragmentShader) {
-        const gl = this.gl;
-        let program = gl.createProgram();
+        const { gl } = this;
+        const program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
@@ -1058,11 +1144,11 @@ class Program {
     }
 
     getUniforms(program) {
-        const gl = this.gl;
-        let uniforms = {};
-        let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        const { gl } = this;
+        const uniforms = {};
+        const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
         for (let i = 0; i < uniformCount; i++) {
-            let uniformName = gl.getActiveUniform(program, i).name;
+            const uniformName = gl.getActiveUniform(program, i).name;
             uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
         }
         return uniforms;
@@ -1078,29 +1164,29 @@ export const PLASMA_QUALITY_PRESETS = {
         ENERGY_RESOLUTION: 256,
         FILAMENT_ENABLED: false,
         GLOW_ENABLED: false,
-        VORTICITY: 5.0
+        VORTICITY: 5.0,
     },
     medium: {
         CHARGE_RESOLUTION: 256,
         ENERGY_RESOLUTION: 512,
         FILAMENT_ENABLED: true,
         GLOW_ENABLED: false,
-        VORTICITY: 15.0
+        VORTICITY: 15.0,
     },
     high: {
         CHARGE_RESOLUTION: 384,
         ENERGY_RESOLUTION: 768,
         FILAMENT_ENABLED: true,
         GLOW_ENABLED: true,
-        VORTICITY: 20.0
+        VORTICITY: 20.0,
     },
     ultra: {
         CHARGE_RESOLUTION: 512,
         ENERGY_RESOLUTION: 1024,
         FILAMENT_ENABLED: true,
         GLOW_ENABLED: true,
-        VORTICITY: 30.0
-    }
+        VORTICITY: 30.0,
+    },
 };
 
 /**
@@ -1108,28 +1194,28 @@ export const PLASMA_QUALITY_PRESETS = {
  */
 export const PLASMA_COLOR_MODES = {
     cosmic: {
-        MIN_COLOR: { r: 0.1, g: 0.0, b: 0.3 },   // Deep violet
-        MID_COLOR: { r: 0.0, g: 0.5, b: 0.8 },   // Cyan
-        MAX_COLOR: { r: 0.3, g: 1.0, b: 0.9 }    // Bright cyan-white
+        MIN_COLOR: { r: 0.1, g: 0.0, b: 0.3 }, // Deep violet
+        MID_COLOR: { r: 0.0, g: 0.5, b: 0.8 }, // Cyan
+        MAX_COLOR: { r: 0.3, g: 1.0, b: 0.9 }, // Bright cyan-white
     },
     fire: {
-        MIN_COLOR: { r: 0.2, g: 0.0, b: 0.0 },   // Deep red
-        MID_COLOR: { r: 1.0, g: 0.3, b: 0.0 },   // Orange
-        MAX_COLOR: { r: 1.0, g: 1.0, b: 0.8 }    // Bright yellow-white
+        MIN_COLOR: { r: 0.2, g: 0.0, b: 0.0 }, // Deep red
+        MID_COLOR: { r: 1.0, g: 0.3, b: 0.0 }, // Orange
+        MAX_COLOR: { r: 1.0, g: 1.0, b: 0.8 }, // Bright yellow-white
     },
     electric: {
-        MIN_COLOR: { r: 0.0, g: 0.0, b: 0.3 },   // Deep blue
-        MID_COLOR: { r: 0.3, g: 0.3, b: 1.0 },   // Electric blue
-        MAX_COLOR: { r: 0.9, g: 0.9, b: 1.0 }    // Bright white-blue
+        MIN_COLOR: { r: 0.0, g: 0.0, b: 0.3 }, // Deep blue
+        MID_COLOR: { r: 0.3, g: 0.3, b: 1.0 }, // Electric blue
+        MAX_COLOR: { r: 0.9, g: 0.9, b: 1.0 }, // Bright white-blue
     },
     aurora: {
-        MIN_COLOR: { r: 0.0, g: 0.2, b: 0.3 },   // Deep teal
-        MID_COLOR: { r: 0.2, g: 0.8, b: 0.5 },   // Green
-        MAX_COLOR: { r: 0.8, g: 1.0, b: 0.9 }    // Bright green-white
+        MIN_COLOR: { r: 0.0, g: 0.2, b: 0.3 }, // Deep teal
+        MID_COLOR: { r: 0.2, g: 0.8, b: 0.5 }, // Green
+        MAX_COLOR: { r: 0.8, g: 1.0, b: 0.9 }, // Bright green-white
     },
     nebula: {
-        MIN_COLOR: { r: 0.3, g: 0.0, b: 0.3 },   // Magenta
-        MID_COLOR: { r: 0.5, g: 0.2, b: 0.8 },   // Purple
-        MAX_COLOR: { r: 0.9, g: 0.7, b: 1.0 }    // Bright lavender
-    }
+        MIN_COLOR: { r: 0.3, g: 0.0, b: 0.3 }, // Magenta
+        MID_COLOR: { r: 0.5, g: 0.2, b: 0.8 }, // Purple
+        MAX_COLOR: { r: 0.9, g: 0.7, b: 1.0 }, // Bright lavender
+    },
 };

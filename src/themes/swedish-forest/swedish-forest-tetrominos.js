@@ -8,13 +8,13 @@ export const SWEDISH_FOREST_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#9be8ff',  // Misty cyan
-        O: '#ffd27a',  // Lantern amber
-        T: '#c7b5ff',  // Twilight lavender
-        S: '#7ff4c9',  // Mossy mint
-        Z: '#ff9fc0',  // Aurora rose
-        J: '#6479d8',  // Pine indigo
-        L: '#ffe8a6',  // Dawn glow
+        I: '#9be8ff', // Misty cyan
+        O: '#ffd27a', // Lantern amber
+        T: '#c7b5ff', // Twilight lavender
+        S: '#7ff4c9', // Mossy mint
+        Z: '#ff9fc0', // Aurora rose
+        J: '#6479d8', // Pine indigo
+        L: '#ffe8a6', // Dawn glow
         GARBAGE: '#121b27', // Forest shadow
     },
 

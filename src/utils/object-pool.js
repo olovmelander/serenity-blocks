@@ -102,7 +102,7 @@ export class ObjectPool {
      * @param {Array} objects - Objects to release
      */
     releaseAll(objects) {
-        objects.forEach(obj => this.release(obj));
+        objects.forEach((obj) => this.release(obj));
     }
 
     /**
@@ -191,7 +191,7 @@ export class ParticlePool extends ObjectPool {
                 particle.alpha = 1;
             },
             initialSize,
-            maxSize
+            maxSize,
         );
     }
 }
@@ -221,7 +221,7 @@ export class GarbageEntryPool extends ObjectPool {
                 entry.team = null;
             },
             initialSize,
-            maxSize
+            maxSize,
         );
     }
 }
@@ -249,7 +249,7 @@ export class PiecePool extends ObjectPool {
                 piece.color = null;
             },
             initialSize,
-            maxSize
+            maxSize,
         );
     }
 }
@@ -265,7 +265,7 @@ export class ArrayPool extends ObjectPool {
             // Reset: fill with zeros
             (arr) => arr.fill(0),
             initialPoolSize,
-            maxSize
+            maxSize,
         );
     }
 }

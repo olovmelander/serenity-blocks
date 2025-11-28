@@ -9,13 +9,13 @@ export const MISTY_LAKE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#b1e5ff',  // Misty cyan
-        O: '#ffd59a',  // Lantern amber
-        T: '#cfc2ff',  // Lilac glow
-        S: '#9efad2',  // Dewy mint
-        Z: '#ffa9c4',  // Petal pink
-        J: '#7a92d5',  // Twilight indigo
-        L: '#ffe388',  // Warm sunrise
+        I: '#b1e5ff', // Misty cyan
+        O: '#ffd59a', // Lantern amber
+        T: '#cfc2ff', // Lilac glow
+        S: '#9efad2', // Dewy mint
+        Z: '#ffa9c4', // Petal pink
+        J: '#7a92d5', // Twilight indigo
+        L: '#ffe388', // Warm sunrise
         GARBAGE: '#131c2d', // Lake shadow
     },
 

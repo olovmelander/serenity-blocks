@@ -32,12 +32,12 @@ export default class WaveSimulator {
             // Wave Physics - Tall narrow surf waves that fade very fast
             WAVE_RESOLUTION: 256,
             NORMAL_RESOLUTION: 512,
-            DISPLACEMENT_SCALE: 3.5,    // Much taller waves (surf-like)
+            DISPLACEMENT_SCALE: 3.5, // Much taller waves (surf-like)
             WAVE_SPEED: 1.4,
-            WAVE_DAMPING: 0.86,         // VERY fast fade-out to calm
-            SURFACE_TENSION: 0.03,      // Keeps waves more focused
+            WAVE_DAMPING: 0.86, // VERY fast fade-out to calm
+            SURFACE_TENSION: 0.03, // Keeps waves more focused
             GRAVITY: 9.8,
-            DIFFUSION: 0.004,           // Less spreading (narrower waves)
+            DIFFUSION: 0.004, // Less spreading (narrower waves)
 
             // Visual Effects
             FOAM_ENABLED: false,
@@ -49,9 +49,9 @@ export default class WaveSimulator {
 
             // Enhanced Atmospheric Effects
             GLOW_ENABLED: true,
-            GLOW_INTENSITY: 1.4,        // Bright for tall waves
-            GLOW_SPREAD: 2.0,           // Less spread (focused glow)
-            DEPTH_FADE: 2.0,            // Stronger depth for tall waves
+            GLOW_INTENSITY: 1.4, // Bright for tall waves
+            GLOW_SPREAD: 2.0, // Less spread (focused glow)
+            DEPTH_FADE: 2.0, // Stronger depth for tall waves
             AMBIENT_LIGHT: 0.15,
             SPECULAR_INTENSITY: 0.50,
             SPECULAR_POWER: 20.0,
@@ -60,11 +60,11 @@ export default class WaveSimulator {
             WATER_COLOR: { r: 0.05, g: 0.15, b: 0.25 },
             FOAM_COLOR: { r: 0.15, g: 0.3, b: 0.4 },
             DEEP_COLOR: { r: 0.02, g: 0.08, b: 0.15 },
-            GLOW_COLOR: { r: 0.1, g: 0.4, b: 0.6 },    // Cyan glow
+            GLOW_COLOR: { r: 0.1, g: 0.4, b: 0.6 }, // Cyan glow
 
             // Performance
             TRANSPARENT: false,
-            ...config
+            ...config,
         };
 
         this.gl = null;
@@ -72,12 +72,12 @@ export default class WaveSimulator {
         this.programs = {};
 
         // Simulation state
-        this.height = null;      // Wave height field (double-buffered)
-        this.velocity = null;    // Vertical velocity (double-buffered)
-        this.foam = null;        // Foam density (double-buffered)
-        this.normals = null;     // Surface normals (single buffer)
-        this.caustics = null;    // Caustic pattern (single buffer)
-        this.glow = null;        // Glow/luminescence field (double-buffered)
+        this.height = null; // Wave height field (double-buffered)
+        this.velocity = null; // Vertical velocity (double-buffered)
+        this.foam = null; // Foam density (double-buffered)
+        this.normals = null; // Surface normals (single buffer)
+        this.caustics = null; // Caustic pattern (single buffer)
+        this.glow = null; // Glow/luminescence field (double-buffered)
 
         // Blit geometry (reused for all draw calls)
         this.blitBuffer = null;
@@ -114,7 +114,7 @@ export default class WaveSimulator {
             stencil: false,
             antialias: false,
             preserveDrawingBuffer: false,
-            premultipliedAlpha: false
+            premultipliedAlpha: false,
         };
 
         let gl = canvas.getContext('webgl2', params);
@@ -157,31 +157,31 @@ export default class WaveSimulator {
                 formatRG,
                 formatR,
                 halfFloatTexType,
-                supportLinearFiltering
-            }
+                supportLinearFiltering,
+            },
         };
     }
 
     getSupportedFormat(gl, internalFormat, format, type) {
         if (!this.supportRenderTextureFormat(gl, internalFormat, format, type)) {
             switch (internalFormat) {
-                case gl.R16F:
-                    return this.getSupportedFormat(gl, gl.RG16F, gl.RG, type);
-                case gl.RG16F:
-                    return this.getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
-                default:
-                    return null;
+            case gl.R16F:
+                return this.getSupportedFormat(gl, gl.RG16F, gl.RG, type);
+            case gl.RG16F:
+                return this.getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
+            default:
+                return null;
             }
         }
 
         return {
             internalFormat,
-            format
+            format,
         };
     }
 
     supportRenderTextureFormat(gl, internalFormat, format, type) {
-        let texture = gl.createTexture();
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -189,16 +189,16 @@ export default class WaveSimulator {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, 4, 4, 0, format, type, null);
 
-        let fbo = gl.createFramebuffer();
+        const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-        let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
         return status == gl.FRAMEBUFFER_COMPLETE;
     }
 
     compileShader(type, source) {
-        const gl = this.gl;
+        const { gl } = this;
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
@@ -211,7 +211,7 @@ export default class WaveSimulator {
     }
 
     initPrograms() {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Base vertex shader for full-screen quad with neighbor coordinates
         const baseVertexShaderSource = `
@@ -559,32 +559,59 @@ export default class WaveSimulator {
 
         const baseVertexShader = this.compileShader(gl.VERTEX_SHADER, baseVertexShaderSource);
 
-        this.programs.waveHeight = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveHeightShaderSource));
-        this.programs.waveVelocity = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveVelocityShaderSource));
-        this.programs.waveDisplacement = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveDisplacementShaderSource));
-        this.programs.waveNormal = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveNormalShaderSource));
-        this.programs.waveFoam = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveFoamShaderSource));
-        this.programs.waveCaustics = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveCausticsShaderSource));
-        this.programs.waveGlow = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveGlowShaderSource));
-        this.programs.waveDisplay = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, waveDisplayShaderSource));
-        this.programs.copy = new Program(gl, baseVertexShader,
-            this.compileShader(gl.FRAGMENT_SHADER, copyShaderSource));
+        this.programs.waveHeight = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveHeightShaderSource),
+        );
+        this.programs.waveVelocity = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveVelocityShaderSource),
+        );
+        this.programs.waveDisplacement = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveDisplacementShaderSource),
+        );
+        this.programs.waveNormal = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveNormalShaderSource),
+        );
+        this.programs.waveFoam = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveFoamShaderSource),
+        );
+        this.programs.waveCaustics = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveCausticsShaderSource),
+        );
+        this.programs.waveGlow = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveGlowShaderSource),
+        );
+        this.programs.waveDisplay = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, waveDisplayShaderSource),
+        );
+        this.programs.copy = new Program(
+            gl,
+            baseVertexShader,
+            this.compileShader(gl.FRAGMENT_SHADER, copyShaderSource),
+        );
     }
 
     initFramebuffers() {
-        const gl = this.gl;
-        const ext = this.ext;
+        const { gl } = this;
+        const { ext } = this;
 
-        let waveRes = this.getResolution(this.config.WAVE_RESOLUTION);
-        let normalRes = this.getResolution(this.config.NORMAL_RESOLUTION);
+        const waveRes = this.getResolution(this.config.WAVE_RESOLUTION);
+        const normalRes = this.getResolution(this.config.NORMAL_RESOLUTION);
 
         const texType = ext.halfFloatTexType;
         const r = ext.formatR;
@@ -595,51 +622,75 @@ export default class WaveSimulator {
 
         // Height field
         this.height = this.createDoubleFBO(
-            waveRes.width, waveRes.height,
-            r.internalFormat, r.format, texType, filtering
+            waveRes.width,
+            waveRes.height,
+            r.internalFormat,
+            r.format,
+            texType,
+            filtering,
         );
 
         // Velocity field
         this.velocity = this.createDoubleFBO(
-            waveRes.width, waveRes.height,
-            r.internalFormat, r.format, texType, filtering
+            waveRes.width,
+            waveRes.height,
+            r.internalFormat,
+            r.format,
+            texType,
+            filtering,
         );
 
         // Glow field (for bioluminescence)
         if (this.config.GLOW_ENABLED) {
             this.glow = this.createDoubleFBO(
-                waveRes.width, waveRes.height,
-                r.internalFormat, r.format, texType, filtering
+                waveRes.width,
+                waveRes.height,
+                r.internalFormat,
+                r.format,
+                texType,
+                filtering,
             );
         }
 
         // Foam field
         if (this.config.FOAM_ENABLED) {
             this.foam = this.createDoubleFBO(
-                waveRes.width, waveRes.height,
-                r.internalFormat, r.format, texType, filtering
+                waveRes.width,
+                waveRes.height,
+                r.internalFormat,
+                r.format,
+                texType,
+                filtering,
             );
         }
 
         // Normal map
         this.normals = this.createFBO(
-            normalRes.width, normalRes.height,
-            rgb.internalFormat, rgb.format, texType, filtering
+            normalRes.width,
+            normalRes.height,
+            rgb.internalFormat,
+            rgb.format,
+            texType,
+            filtering,
         );
 
         // Caustics
         if (this.config.CAUSTICS_ENABLED) {
             this.caustics = this.createFBO(
-                normalRes.width, normalRes.height,
-                r.internalFormat, r.format, texType, filtering
+                normalRes.width,
+                normalRes.height,
+                r.internalFormat,
+                r.format,
+                texType,
+                filtering,
             );
         }
     }
 
     createFBO(w, h, internalFormat, format, type, param) {
-        const gl = this.gl;
+        const { gl } = this;
         gl.activeTexture(gl.TEXTURE0);
-        let texture = gl.createTexture();
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, param);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, param);
@@ -647,14 +698,14 @@ export default class WaveSimulator {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, w, h, 0, format, type, null);
 
-        let fbo = gl.createFramebuffer();
+        const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
         gl.viewport(0, 0, w, h);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        let texelSizeX = 1.0 / w;
-        let texelSizeY = 1.0 / h;
+        const texelSizeX = 1.0 / w;
+        const texelSizeY = 1.0 / h;
 
         return {
             texture,
@@ -667,7 +718,7 @@ export default class WaveSimulator {
                 gl.activeTexture(gl.TEXTURE0 + id);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
                 return id;
-            }
+            },
         };
     }
 
@@ -693,29 +744,26 @@ export default class WaveSimulator {
                 fbo2 = value;
             },
             swap() {
-                let temp = fbo1;
+                const temp = fbo1;
                 fbo1 = fbo2;
                 fbo2 = temp;
-            }
+            },
         };
     }
 
     getResolution(resolution) {
         let aspectRatio = this.canvas.width / this.canvas.height;
-        if (aspectRatio < 1)
-            aspectRatio = 1.0 / aspectRatio;
+        if (aspectRatio < 1) aspectRatio = 1.0 / aspectRatio;
 
-        let min = Math.round(resolution);
-        let max = Math.round(resolution * aspectRatio);
+        const min = Math.round(resolution);
+        const max = Math.round(resolution * aspectRatio);
 
-        if (this.canvas.width > this.canvas.height)
-            return { width: max, height: min };
-        else
-            return { width: min, height: max };
+        if (this.canvas.width > this.canvas.height) return { width: max, height: min };
+        return { width: min, height: max };
     }
 
     blit(target, clear = false) {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Init blit geometry if needed
         if (!this.blitBuffer) {
@@ -752,8 +800,8 @@ export default class WaveSimulator {
      * Advance wave simulation by dt seconds
      */
     step(dt) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
 
         // Cap time step for stability
         dt = Math.min(dt, 0.016);
@@ -761,8 +809,11 @@ export default class WaveSimulator {
 
         // Update velocity from height gradients with enhanced physics
         this.programs.waveVelocity.bind();
-        gl.uniform2f(this.programs.waveVelocity.uniforms.texelSize,
-            this.height.texelSizeX, this.height.texelSizeY);
+        gl.uniform2f(
+            this.programs.waveVelocity.uniforms.texelSize,
+            this.height.texelSizeX,
+            this.height.texelSizeY,
+        );
         gl.uniform1i(this.programs.waveVelocity.uniforms.uHeight, this.height.read.attach(0));
         gl.uniform1i(this.programs.waveVelocity.uniforms.uVelocity, this.velocity.read.attach(1));
         gl.uniform1f(this.programs.waveVelocity.uniforms.dt, dt);
@@ -783,8 +834,11 @@ export default class WaveSimulator {
 
         // Generate normals from height field
         this.programs.waveNormal.bind();
-        gl.uniform2f(this.programs.waveNormal.uniforms.texelSize,
-            this.height.texelSizeX, this.height.texelSizeY);
+        gl.uniform2f(
+            this.programs.waveNormal.uniforms.texelSize,
+            this.height.texelSizeX,
+            this.height.texelSizeY,
+        );
         gl.uniform1i(this.programs.waveNormal.uniforms.uHeight, this.height.read.attach(0));
         gl.uniform1f(this.programs.waveNormal.uniforms.displacementScale, config.DISPLACEMENT_SCALE);
         this.blit(this.normals);
@@ -792,8 +846,11 @@ export default class WaveSimulator {
         // Update glow/luminescence
         if (config.GLOW_ENABLED && this.glow) {
             this.programs.waveGlow.bind();
-            gl.uniform2f(this.programs.waveGlow.uniforms.texelSize,
-                this.height.texelSizeX, this.height.texelSizeY);
+            gl.uniform2f(
+                this.programs.waveGlow.uniforms.texelSize,
+                this.height.texelSizeX,
+                this.height.texelSizeY,
+            );
             gl.uniform1i(this.programs.waveGlow.uniforms.uHeight, this.height.read.attach(0));
             gl.uniform1i(this.programs.waveGlow.uniforms.uVelocity, this.velocity.read.attach(1));
             gl.uniform1i(this.programs.waveGlow.uniforms.uGlow, this.glow.read.attach(2));
@@ -807,8 +864,11 @@ export default class WaveSimulator {
         // Update foam
         if (config.FOAM_ENABLED && this.foam) {
             this.programs.waveFoam.bind();
-            gl.uniform2f(this.programs.waveFoam.uniforms.texelSize,
-                this.height.texelSizeX, this.height.texelSizeY);
+            gl.uniform2f(
+                this.programs.waveFoam.uniforms.texelSize,
+                this.height.texelSizeX,
+                this.height.texelSizeY,
+            );
             gl.uniform1i(this.programs.waveFoam.uniforms.uHeight, this.height.read.attach(0));
             gl.uniform1i(this.programs.waveFoam.uniforms.uFoam, this.foam.read.attach(1));
             gl.uniform1f(this.programs.waveFoam.uniforms.threshold, config.FOAM_THRESHOLD);
@@ -831,8 +891,8 @@ export default class WaveSimulator {
      * Render waves to target (or screen if null)
      */
     render(target = null) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
 
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
@@ -862,14 +922,30 @@ export default class WaveSimulator {
             gl.uniform1i(this.programs.waveDisplay.uniforms.causticsEnabled, false);
         }
 
-        gl.uniform3f(this.programs.waveDisplay.uniforms.waterColor,
-            config.WATER_COLOR.r, config.WATER_COLOR.g, config.WATER_COLOR.b);
-        gl.uniform3f(this.programs.waveDisplay.uniforms.foamColor,
-            config.FOAM_COLOR.r, config.FOAM_COLOR.g, config.FOAM_COLOR.b);
-        gl.uniform3f(this.programs.waveDisplay.uniforms.deepColor,
-            config.DEEP_COLOR.r, config.DEEP_COLOR.g, config.DEEP_COLOR.b);
-        gl.uniform3f(this.programs.waveDisplay.uniforms.glowColor,
-            config.GLOW_COLOR.r, config.GLOW_COLOR.g, config.GLOW_COLOR.b);
+        gl.uniform3f(
+            this.programs.waveDisplay.uniforms.waterColor,
+            config.WATER_COLOR.r,
+            config.WATER_COLOR.g,
+            config.WATER_COLOR.b,
+        );
+        gl.uniform3f(
+            this.programs.waveDisplay.uniforms.foamColor,
+            config.FOAM_COLOR.r,
+            config.FOAM_COLOR.g,
+            config.FOAM_COLOR.b,
+        );
+        gl.uniform3f(
+            this.programs.waveDisplay.uniforms.deepColor,
+            config.DEEP_COLOR.r,
+            config.DEEP_COLOR.g,
+            config.DEEP_COLOR.b,
+        );
+        gl.uniform3f(
+            this.programs.waveDisplay.uniforms.glowColor,
+            config.GLOW_COLOR.r,
+            config.GLOW_COLOR.g,
+            config.GLOW_COLOR.b,
+        );
         gl.uniform1f(this.programs.waveDisplay.uniforms.displacementScale, config.DISPLACEMENT_SCALE);
         gl.uniform1f(this.programs.waveDisplay.uniforms.depthFade, config.DEPTH_FADE);
         gl.uniform1f(this.programs.waveDisplay.uniforms.ambientLight, config.AMBIENT_LIGHT);
@@ -887,19 +963,24 @@ export default class WaveSimulator {
         const config = {
             radius: 0.05,
             amplitude: 0.3,
-            ...options
+            ...options,
         };
 
-        const gl = this.gl;
+        const { gl } = this;
         this.programs.waveDisplacement.bind();
-        gl.uniform2f(this.programs.waveDisplacement.uniforms.texelSize,
-            this.height.texelSizeX, this.height.texelSizeY);
+        gl.uniform2f(
+            this.programs.waveDisplacement.uniforms.texelSize,
+            this.height.texelSizeX,
+            this.height.texelSizeY,
+        );
         gl.uniform1i(this.programs.waveDisplacement.uniforms.uHeight, this.height.read.attach(0));
         gl.uniform2f(this.programs.waveDisplacement.uniforms.point, x, y);
         gl.uniform1f(this.programs.waveDisplacement.uniforms.radius, config.radius);
         gl.uniform1f(this.programs.waveDisplacement.uniforms.amplitude, config.amplitude);
-        gl.uniform1f(this.programs.waveDisplacement.uniforms.aspectRatio,
-            this.canvas.width / this.canvas.height);
+        gl.uniform1f(
+            this.programs.waveDisplacement.uniforms.aspectRatio,
+            this.canvas.width / this.canvas.height,
+        );
         this.blit(this.height.write);
         this.height.swap();
     }
@@ -911,7 +992,7 @@ export default class WaveSimulator {
         const config = {
             radius: 0.3,
             amplitude: 2.0,
-            ...options
+            ...options,
         };
         this.createRipple(x, y, config);
     }
@@ -947,7 +1028,7 @@ export default class WaveSimulator {
     clear() {
         if (!this.gl || !this.height || !this.velocity) return;
 
-        const gl = this.gl;
+        const { gl } = this;
 
         // Clear height field
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.height.read.fbo);
@@ -1022,8 +1103,8 @@ class Program {
     }
 
     createProgram(vertexShader, fragmentShader) {
-        const gl = this.gl;
-        let program = gl.createProgram();
+        const { gl } = this;
+        const program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
@@ -1036,11 +1117,11 @@ class Program {
     }
 
     getUniforms(program) {
-        const gl = this.gl;
-        let uniforms = {};
-        let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        const { gl } = this;
+        const uniforms = {};
+        const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
         for (let i = 0; i < uniformCount; i++) {
-            let uniformName = gl.getActiveUniform(program, i).name;
+            const uniformName = gl.getActiveUniform(program, i).name;
             uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
         }
         return uniforms;
@@ -1062,7 +1143,7 @@ export const WAVE_QUALITY_PRESETS = {
         GLOW_SPREAD: 1.8,
         DIFFUSION: 0.003,
         WAVE_DAMPING: 0.84,
-        DISPLACEMENT_SCALE: 3.2
+        DISPLACEMENT_SCALE: 3.2,
     },
     medium: {
         WAVE_RESOLUTION: 256,
@@ -1074,7 +1155,7 @@ export const WAVE_QUALITY_PRESETS = {
         GLOW_SPREAD: 2.0,
         DIFFUSION: 0.004,
         WAVE_DAMPING: 0.86,
-        DISPLACEMENT_SCALE: 3.5
+        DISPLACEMENT_SCALE: 3.5,
     },
     high: {
         WAVE_RESOLUTION: 384,
@@ -1086,7 +1167,7 @@ export const WAVE_QUALITY_PRESETS = {
         GLOW_SPREAD: 2.2,
         DIFFUSION: 0.005,
         WAVE_DAMPING: 0.88,
-        DISPLACEMENT_SCALE: 3.8
+        DISPLACEMENT_SCALE: 3.8,
     },
     ultra: {
         WAVE_RESOLUTION: 512,
@@ -1098,6 +1179,6 @@ export const WAVE_QUALITY_PRESETS = {
         GLOW_SPREAD: 2.4,
         DIFFUSION: 0.006,
         WAVE_DAMPING: 0.90,
-        DISPLACEMENT_SCALE: 4.0
-    }
+        DISPLACEMENT_SCALE: 4.0,
+    },
 };

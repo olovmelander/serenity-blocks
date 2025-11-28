@@ -42,7 +42,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.MAX_BLOBS = 1;
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 blobCount: 4,
                 bubbleCount: 8,
                 ribbonCount: 2,
@@ -53,7 +53,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxBursts: 1,
                 maxBlobs: 1,
             },
-            'Low': {
+            Low: {
                 blobCount: 6,
                 bubbleCount: 14,
                 ribbonCount: 3,
@@ -64,7 +64,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxBursts: 1,
                 maxBlobs: 1,
             },
-            'Medium': {
+            Medium: {
                 blobCount: 7,
                 bubbleCount: 18,
                 ribbonCount: 4,
@@ -75,7 +75,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxBursts: 1,
                 maxBlobs: 1,
             },
-            'High': {
+            High: {
                 blobCount: 8,
                 bubbleCount: 22,
                 ribbonCount: 5,
@@ -86,7 +86,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxBursts: 2,
                 maxBlobs: 2,
             },
-            'Ultra': {
+            Ultra: {
                 blobCount: 10,
                 bubbleCount: 26,
                 ribbonCount: 6,
@@ -97,7 +97,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxBursts: 2,
                 maxBlobs: 2,
             },
-            'Extreme': {
+            Extreme: {
                 blobCount: 14,
                 bubbleCount: 35,
                 ribbonCount: 8,
@@ -107,10 +107,10 @@ export default class FluidDreamsTheme extends BaseTheme {
                 maxStreams: 7,
                 maxBursts: 3,
                 maxBlobs: 3,
-            }
+            },
         };
         this.currentQuality = 'Ultra';
-        this.activePreset = this.qualityPresets['Ultra'];
+        this.activePreset = this.qualityPresets.Ultra;
     }
 
     applyQualityPreset(quality, { skipRefresh = false } = {}) {
@@ -533,8 +533,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         // Limit waves
         if (this.iridescenceWaves.length >= this.MAX_WAVES) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const waveCount = Math.min(comboCount, this.MAX_WAVES - this.iridescenceWaves.length);
 
         // Half waves from random positions
@@ -610,8 +610,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         // Limit streams
         if (this.fluidStreams.length >= this.MAX_STREAMS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
 
         const streamCount = Math.min(lineCount, this.MAX_STREAMS - this.fluidStreams.length);
         for (let i = 0; i < streamCount; i++) {
@@ -684,8 +684,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         // Limit morph blobs
         if (this.morphBlobs.length >= this.MAX_BLOBS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
 
         const blobCount = Math.min(Math.floor(comboCount / 4), this.MAX_BLOBS - this.morphBlobs.length);
         for (let i = 0; i < blobCount; i++) {
@@ -886,8 +886,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         if (!this.effectsCanvas || !this.effectsCtx) return;
 
         const ctx = this.effectsCtx;
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
@@ -949,7 +949,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 stream.points[0].x,
                 stream.points[0].y,
                 stream.points[stream.points.length - 1].x,
-                stream.points[stream.points.length - 1].y
+                stream.points[stream.points.length - 1].y,
             );
 
             for (let i = 0; i <= 2; i++) {
@@ -998,7 +998,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 0,
                 p.x,
                 p.y,
-                p.size
+                p.size,
             );
             coreGradient.addColorStop(0, `hsla(${h}, ${s}%, ${Math.min(l + 20, 95)}%, ${alpha * shimmer})`);
             coreGradient.addColorStop(0.6, `hsla(${h}, ${s}%, ${l}%, ${alpha * shimmer * 0.8})`);

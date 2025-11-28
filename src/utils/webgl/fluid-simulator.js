@@ -33,7 +33,7 @@ export default class FluidSimulator {
             SUNRAYS: false,
             SUNRAYS_RESOLUTION: 196,
             SUNRAYS_WEIGHT: 1.0,
-            ...config
+            ...config,
         };
 
         this.gl = null;
@@ -82,12 +82,13 @@ export default class FluidSimulator {
     }
 
     getWebGLContext(canvas) {
-        const params = { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: true };
+        const params = {
+            alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: true,
+        };
 
         let gl = canvas.getContext('webgl2', params);
         const isWebGL2 = !!gl;
-        if (!isWebGL2)
-            gl = canvas.getContext('webgl', params) || canvas.getContext('experimental-webgl', params);
+        if (!isWebGL2) gl = canvas.getContext('webgl', params) || canvas.getContext('experimental-webgl', params);
 
         let halfFloat;
         let supportLinearFiltering;
@@ -123,31 +124,31 @@ export default class FluidSimulator {
                 formatRG,
                 formatR,
                 halfFloatTexType,
-                supportLinearFiltering
-            }
+                supportLinearFiltering,
+            },
         };
     }
 
     getSupportedFormat(gl, internalFormat, format, type) {
         if (!this.supportRenderTextureFormat(gl, internalFormat, format, type)) {
             switch (internalFormat) {
-                case gl.R16F:
-                    return this.getSupportedFormat(gl, gl.RG16F, gl.RG, type);
-                case gl.RG16F:
-                    return this.getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
-                default:
-                    return null;
+            case gl.R16F:
+                return this.getSupportedFormat(gl, gl.RG16F, gl.RG, type);
+            case gl.RG16F:
+                return this.getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
+            default:
+                return null;
             }
         }
 
         return {
             internalFormat,
-            format
-        }
+            format,
+        };
     }
 
     supportRenderTextureFormat(gl, internalFormat, format, type) {
-        let texture = gl.createTexture();
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -155,24 +156,23 @@ export default class FluidSimulator {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, 4, 4, 0, format, type, null);
 
-        let fbo = gl.createFramebuffer();
+        const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-        let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
         return status == gl.FRAMEBUFFER_COMPLETE;
     }
 
     compileShader(type, source, keywords) {
-        const gl = this.gl;
+        const { gl } = this;
         source = this.addKeywords(source, keywords);
 
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
 
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
-            console.trace(gl.getShaderInfoLog(shader));
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) console.trace(gl.getShaderInfoLog(shader));
 
         return shader;
     }
@@ -180,14 +180,14 @@ export default class FluidSimulator {
     addKeywords(source, keywords) {
         if (keywords == null) return source;
         let keywordsString = '';
-        keywords.forEach(keyword => {
-            keywordsString += '#define ' + keyword + '\\n';
+        keywords.forEach((keyword) => {
+            keywordsString += `#define ${keyword}\\n`;
         });
         return keywordsString + source;
     }
 
     initPrograms() {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Vertex Shaders
         const baseVertexShaderSource = `
@@ -609,11 +609,11 @@ export default class FluidSimulator {
     }
 
     initFramebuffers() {
-        const gl = this.gl;
-        const ext = this.ext;
+        const { gl } = this;
+        const { ext } = this;
 
-        let simRes = this.getResolution(this.config.SIM_RESOLUTION);
-        let dyeRes = this.getResolution(this.config.DYE_RESOLUTION);
+        const simRes = this.getResolution(this.config.SIM_RESOLUTION);
+        const dyeRes = this.getResolution(this.config.DYE_RESOLUTION);
 
         const texType = ext.halfFloatTexType;
         const rgba = ext.formatRGBA;
@@ -623,15 +623,11 @@ export default class FluidSimulator {
 
         gl.disable(gl.BLEND);
 
-        if (this.dye == null)
-            this.dye = this.createDoubleFBO(dyeRes.width, dyeRes.height, rgba.internalFormat, rgba.format, texType, filtering);
-        else
-            this.dye = this.resizeDoubleFBO(this.dye, dyeRes.width, dyeRes.height, rgba.internalFormat, rgba.format, texType, filtering);
+        if (this.dye == null) this.dye = this.createDoubleFBO(dyeRes.width, dyeRes.height, rgba.internalFormat, rgba.format, texType, filtering);
+        else this.dye = this.resizeDoubleFBO(this.dye, dyeRes.width, dyeRes.height, rgba.internalFormat, rgba.format, texType, filtering);
 
-        if (this.velocity == null)
-            this.velocity = this.createDoubleFBO(simRes.width, simRes.height, rg.internalFormat, rg.format, texType, filtering);
-        else
-            this.velocity = this.resizeDoubleFBO(this.velocity, simRes.width, simRes.height, rg.internalFormat, rg.format, texType, filtering);
+        if (this.velocity == null) this.velocity = this.createDoubleFBO(simRes.width, simRes.height, rg.internalFormat, rg.format, texType, filtering);
+        else this.velocity = this.resizeDoubleFBO(this.velocity, simRes.width, simRes.height, rg.internalFormat, rg.format, texType, filtering);
 
         this.divergence = this.createFBO(simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
         this.curl = this.createFBO(simRes.width, simRes.height, r.internalFormat, r.format, texType, gl.NEAREST);
@@ -642,9 +638,9 @@ export default class FluidSimulator {
     }
 
     initBloomFramebuffers() {
-        const gl = this.gl;
-        const ext = this.ext;
-        let res = this.getResolution(this.config.BLOOM_RESOLUTION);
+        const { gl } = this;
+        const { ext } = this;
+        const res = this.getResolution(this.config.BLOOM_RESOLUTION);
 
         const texType = ext.halfFloatTexType;
         const rgba = ext.formatRGBA;
@@ -654,20 +650,20 @@ export default class FluidSimulator {
 
         this.bloomFramebuffers.length = 0;
         for (let i = 0; i < this.config.BLOOM_ITERATIONS; i++) {
-            let width = res.width >> (i + 1);
-            let height = res.height >> (i + 1);
+            const width = res.width >> (i + 1);
+            const height = res.height >> (i + 1);
 
             if (width < 2 || height < 2) break;
 
-            let fbo = this.createFBO(width, height, rgba.internalFormat, rgba.format, texType, filtering);
+            const fbo = this.createFBO(width, height, rgba.internalFormat, rgba.format, texType, filtering);
             this.bloomFramebuffers.push(fbo);
         }
     }
 
     initSunraysFramebuffers() {
-        const gl = this.gl;
-        const ext = this.ext;
-        let res = this.getResolution(this.config.SUNRAYS_RESOLUTION);
+        const { gl } = this;
+        const { ext } = this;
+        const res = this.getResolution(this.config.SUNRAYS_RESOLUTION);
 
         const texType = ext.halfFloatTexType;
         const r = ext.formatR;
@@ -678,9 +674,9 @@ export default class FluidSimulator {
     }
 
     createFBO(w, h, internalFormat, format, type, param) {
-        const gl = this.gl;
+        const { gl } = this;
         gl.activeTexture(gl.TEXTURE0);
-        let texture = gl.createTexture();
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, param);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, param);
@@ -688,14 +684,14 @@ export default class FluidSimulator {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, w, h, 0, format, type, null);
 
-        let fbo = gl.createFramebuffer();
+        const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
         gl.viewport(0, 0, w, h);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        let texelSizeX = 1.0 / w;
-        let texelSizeY = 1.0 / h;
+        const texelSizeX = 1.0 / w;
+        const texelSizeY = 1.0 / h;
 
         return {
             texture,
@@ -708,7 +704,7 @@ export default class FluidSimulator {
                 gl.activeTexture(gl.TEXTURE0 + id);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
                 return id;
-            }
+            },
         };
     }
 
@@ -734,15 +730,15 @@ export default class FluidSimulator {
                 fbo2 = value;
             },
             swap() {
-                let temp = fbo1;
+                const temp = fbo1;
                 fbo1 = fbo2;
                 fbo2 = temp;
-            }
-        }
+            },
+        };
     }
 
     resizeFBO(target, w, h, internalFormat, format, type, param) {
-        let newFBO = this.createFBO(w, h, internalFormat, format, type, param);
+        const newFBO = this.createFBO(w, h, internalFormat, format, type, param);
         this.programs.copy.bind();
         this.gl.uniform1i(this.programs.copy.uniforms.uTexture, target.attach(0));
         this.blit(newFBO);
@@ -750,8 +746,7 @@ export default class FluidSimulator {
     }
 
     resizeDoubleFBO(target, w, h, internalFormat, format, type, param) {
-        if (target.width == w && target.height == h)
-            return target;
+        if (target.width == w && target.height == h) return target;
         target.read = this.resizeFBO(target.read, w, h, internalFormat, format, type, param);
         target.write = this.createFBO(w, h, internalFormat, format, type, param);
         target.width = w;
@@ -762,8 +757,8 @@ export default class FluidSimulator {
     }
 
     createTextureAsync(url) {
-        const gl = this.gl;
-        let texture = gl.createTexture();
+        const { gl } = this;
+        const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -781,7 +776,7 @@ export default class FluidSimulator {
 
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, size, size, 0, gl.RGB, gl.UNSIGNED_BYTE, data);
 
-        let obj = {
+        const obj = {
             texture,
             width: size,
             height: size,
@@ -789,24 +784,24 @@ export default class FluidSimulator {
                 gl.activeTexture(gl.TEXTURE0 + id);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
                 return id;
-            }
+            },
         };
 
         return obj;
     }
 
     updateKeywords() {
-        let displayKeywords = [];
-        if (this.config.SHADING) displayKeywords.push("SHADING");
-        if (this.config.BLOOM) displayKeywords.push("BLOOM");
-        if (this.config.SUNRAYS) displayKeywords.push("SUNRAYS");
+        const displayKeywords = [];
+        if (this.config.SHADING) displayKeywords.push('SHADING');
+        if (this.config.BLOOM) displayKeywords.push('BLOOM');
+        if (this.config.SUNRAYS) displayKeywords.push('SUNRAYS');
         this.materials.display.setKeywords(displayKeywords);
     }
 
     step(dt) {
-        const gl = this.gl;
-        const ext = this.ext;
-        const config = this.config;
+        const { gl } = this;
+        const { ext } = this;
+        const { config } = this;
 
         gl.disable(gl.BLEND);
 
@@ -853,9 +848,8 @@ export default class FluidSimulator {
 
         this.programs.advection.bind();
         gl.uniform2f(this.programs.advection.uniforms.texelSize, this.velocity.texelSizeX, this.velocity.texelSizeY);
-        if (!ext.supportLinearFiltering)
-            gl.uniform2f(this.programs.advection.uniforms.dyeTexelSize, this.velocity.texelSizeX, this.velocity.texelSizeY);
-        let velocityId = this.velocity.read.attach(0);
+        if (!ext.supportLinearFiltering) gl.uniform2f(this.programs.advection.uniforms.dyeTexelSize, this.velocity.texelSizeX, this.velocity.texelSizeY);
+        const velocityId = this.velocity.read.attach(0);
         gl.uniform1i(this.programs.advection.uniforms.uVelocity, velocityId);
         gl.uniform1i(this.programs.advection.uniforms.uSource, velocityId);
         gl.uniform1f(this.programs.advection.uniforms.dt, dt);
@@ -863,8 +857,7 @@ export default class FluidSimulator {
         this.blit(this.velocity.write);
         this.velocity.swap();
 
-        if (!ext.supportLinearFiltering)
-            gl.uniform2f(this.programs.advection.uniforms.dyeTexelSize, this.dye.texelSizeX, this.dye.texelSizeY);
+        if (!ext.supportLinearFiltering) gl.uniform2f(this.programs.advection.uniforms.dyeTexelSize, this.dye.texelSizeX, this.dye.texelSizeY);
         gl.uniform1i(this.programs.advection.uniforms.uVelocity, this.velocity.read.attach(0));
         gl.uniform1i(this.programs.advection.uniforms.uSource, this.dye.read.attach(1));
         gl.uniform1f(this.programs.advection.uniforms.dissipation, config.DENSITY_DISSIPATION);
@@ -873,11 +866,10 @@ export default class FluidSimulator {
     }
 
     render(target) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
 
-        if (config.BLOOM)
-            this.applyBloom(this.dye.read, this.bloom);
+        if (config.BLOOM) this.applyBloom(this.dye.read, this.bloom);
         if (config.SUNRAYS) {
             this.applySunrays(this.dye.read, this.dye.write, this.sunrays);
             this.blur(this.sunrays, this.sunraysTemp, 1);
@@ -890,53 +882,50 @@ export default class FluidSimulator {
             gl.disable(gl.BLEND);
         }
 
-        if (!config.TRANSPARENT)
-            this.drawColor(target, this.normalizeColor(config.BACK_COLOR));
+        if (!config.TRANSPARENT) this.drawColor(target, this.normalizeColor(config.BACK_COLOR));
 
         this.drawDisplay(target);
     }
 
     drawColor(target, color) {
-        const gl = this.gl;
+        const { gl } = this;
         this.programs.color.bind();
         gl.uniform4f(this.programs.color.uniforms.color, color.r, color.g, color.b, 1);
         this.blit(target);
     }
 
     drawDisplay(target) {
-        const gl = this.gl;
-        const config = this.config;
-        let width = target == null ? gl.drawingBufferWidth : target.width;
-        let height = target == null ? gl.drawingBufferHeight : target.height;
+        const { gl } = this;
+        const { config } = this;
+        const width = target == null ? gl.drawingBufferWidth : target.width;
+        const height = target == null ? gl.drawingBufferHeight : target.height;
 
         this.materials.display.bind();
-        if (config.SHADING)
-            gl.uniform2f(this.materials.display.uniforms.texelSize, 1.0 / width, 1.0 / height);
+        if (config.SHADING) gl.uniform2f(this.materials.display.uniforms.texelSize, 1.0 / width, 1.0 / height);
         gl.uniform1i(this.materials.display.uniforms.uTexture, this.dye.read.attach(0));
         if (config.BLOOM) {
             gl.uniform1i(this.materials.display.uniforms.uBloom, this.bloom.attach(1));
             gl.uniform1i(this.materials.display.uniforms.uDithering, this.ditheringTexture.attach(2));
-            let scale = this.getTextureScale(this.ditheringTexture, width, height);
+            const scale = this.getTextureScale(this.ditheringTexture, width, height);
             gl.uniform2f(this.materials.display.uniforms.ditherScale, scale.x, scale.y);
         }
-        if (config.SUNRAYS)
-            gl.uniform1i(this.materials.display.uniforms.uSunrays, this.sunrays.attach(3));
+        if (config.SUNRAYS) gl.uniform1i(this.materials.display.uniforms.uSunrays, this.sunrays.attach(3));
         this.blit(target);
     }
 
     applyBloom(source, destination) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
         if (this.bloomFramebuffers.length < 2) return;
 
         let last = destination;
 
         gl.disable(gl.BLEND);
         this.programs.bloomPrefilter.bind();
-        let knee = config.BLOOM_THRESHOLD * config.BLOOM_SOFT_KNEE + 0.0001;
-        let curve0 = config.BLOOM_THRESHOLD - knee;
-        let curve1 = knee * 2;
-        let curve2 = 0.25 / knee;
+        const knee = config.BLOOM_THRESHOLD * config.BLOOM_SOFT_KNEE + 0.0001;
+        const curve0 = config.BLOOM_THRESHOLD - knee;
+        const curve1 = knee * 2;
+        const curve2 = 0.25 / knee;
         gl.uniform3f(this.programs.bloomPrefilter.uniforms.curve, curve0, curve1, curve2);
         gl.uniform1f(this.programs.bloomPrefilter.uniforms.threshold, config.BLOOM_THRESHOLD);
         gl.uniform1i(this.programs.bloomPrefilter.uniforms.uTexture, source.attach(0));
@@ -944,7 +933,7 @@ export default class FluidSimulator {
 
         this.programs.bloomBlur.bind();
         for (let i = 0; i < this.bloomFramebuffers.length; i++) {
-            let dest = this.bloomFramebuffers[i];
+            const dest = this.bloomFramebuffers[i];
             gl.uniform2f(this.programs.bloomBlur.uniforms.texelSize, last.texelSizeX, last.texelSizeY);
             gl.uniform1i(this.programs.bloomBlur.uniforms.uTexture, last.attach(0));
             this.blit(dest);
@@ -955,7 +944,7 @@ export default class FluidSimulator {
         gl.enable(gl.BLEND);
 
         for (let i = this.bloomFramebuffers.length - 2; i >= 0; i--) {
-            let baseTex = this.bloomFramebuffers[i];
+            const baseTex = this.bloomFramebuffers[i];
             gl.uniform2f(this.programs.bloomBlur.uniforms.texelSize, last.texelSizeX, last.texelSizeY);
             gl.uniform1i(this.programs.bloomBlur.uniforms.uTexture, last.attach(0));
             gl.viewport(0, 0, baseTex.width, baseTex.height);
@@ -972,8 +961,8 @@ export default class FluidSimulator {
     }
 
     applySunrays(source, mask, destination) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
         gl.disable(gl.BLEND);
         this.programs.sunraysMask.bind();
         gl.uniform1i(this.programs.sunraysMask.uniforms.uTexture, source.attach(0));
@@ -986,7 +975,7 @@ export default class FluidSimulator {
     }
 
     blur(target, temp, iterations) {
-        const gl = this.gl;
+        const { gl } = this;
         this.programs.blur.bind();
         for (let i = 0; i < iterations; i++) {
             gl.uniform2f(this.programs.blur.uniforms.texelSize, target.texelSizeX, 0.0);
@@ -1000,8 +989,8 @@ export default class FluidSimulator {
     }
 
     splat(x, y, dx, dy, color) {
-        const gl = this.gl;
-        const config = this.config;
+        const { gl } = this;
+        const { config } = this;
         this.programs.splat.bind();
         gl.uniform1i(this.programs.splat.uniforms.uTarget, this.velocity.read.attach(0));
         gl.uniform1f(this.programs.splat.uniforms.aspectRatio, this.canvas.width / this.canvas.height);
@@ -1018,14 +1007,13 @@ export default class FluidSimulator {
     }
 
     correctRadius(radius) {
-        let aspectRatio = this.canvas.width / this.canvas.height;
-        if (aspectRatio > 1)
-            radius *= aspectRatio;
+        const aspectRatio = this.canvas.width / this.canvas.height;
+        if (aspectRatio > 1) radius *= aspectRatio;
         return radius;
     }
 
     blit(target, clear = false) {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Init blit geometry if needed
         if (!this.blitBuffer) {
@@ -1058,22 +1046,19 @@ export default class FluidSimulator {
 
     getResolution(resolution) {
         let aspectRatio = this.canvas.width / this.canvas.height;
-        if (aspectRatio < 1)
-            aspectRatio = 1.0 / aspectRatio;
+        if (aspectRatio < 1) aspectRatio = 1.0 / aspectRatio;
 
-        let min = Math.round(resolution);
-        let max = Math.round(resolution * aspectRatio);
+        const min = Math.round(resolution);
+        const max = Math.round(resolution * aspectRatio);
 
-        if (this.canvas.width > this.canvas.height)
-            return { width: max, height: min };
-        else
-            return { width: min, height: max };
+        if (this.canvas.width > this.canvas.height) return { width: max, height: min };
+        return { width: min, height: max };
     }
 
     getTextureScale(texture, width, height) {
         return {
             x: width / texture.width,
-            y: height / texture.height
+            y: height / texture.height,
         };
     }
 
@@ -1081,7 +1066,7 @@ export default class FluidSimulator {
         return {
             r: input.r / 255,
             g: input.g / 255,
-            b: input.b / 255
+            b: input.b / 255,
         };
     }
 
@@ -1110,24 +1095,23 @@ class Program {
     }
 
     createProgram(vertexShader, fragmentShader) {
-        const gl = this.gl;
-        let program = gl.createProgram();
+        const { gl } = this;
+        const program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
 
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS))
-            console.trace(gl.getProgramInfoLog(program));
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) console.trace(gl.getProgramInfoLog(program));
 
         return program;
     }
 
     getUniforms(program) {
-        const gl = this.gl;
-        let uniforms = {};
-        let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        const { gl } = this;
+        const uniforms = {};
+        const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
         for (let i = 0; i < uniformCount; i++) {
-            let uniformName = gl.getActiveUniform(program, i).name;
+            const uniformName = gl.getActiveUniform(program, i).name;
             uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
         }
         return uniforms;
@@ -1146,12 +1130,11 @@ class Material {
 
     setKeywords(keywords) {
         let hash = 0;
-        for (let i = 0; i < keywords.length; i++)
-            hash += this.hashCode(keywords[i]);
+        for (let i = 0; i < keywords.length; i++) hash += this.hashCode(keywords[i]);
 
         let program = this.programs[hash];
         if (program == null) {
-            let fragmentShader = this.compileShader(this.gl.FRAGMENT_SHADER, this.fragmentShaderSource, keywords);
+            const fragmentShader = this.compileShader(this.gl.FRAGMENT_SHADER, this.fragmentShaderSource, keywords);
             program = this.createProgram(this.vertexShader, fragmentShader);
             this.programs[hash] = program;
         }
@@ -1177,15 +1160,14 @@ class Material {
     }
 
     compileShader(type, source, keywords) {
-        const gl = this.gl;
+        const { gl } = this;
         source = this.addKeywords(source, keywords);
 
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
 
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
-            console.trace(gl.getShaderInfoLog(shader));
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) console.trace(gl.getShaderInfoLog(shader));
 
         return shader;
     }
@@ -1193,31 +1175,30 @@ class Material {
     addKeywords(source, keywords) {
         if (keywords == null) return source;
         let keywordsString = '';
-        keywords.forEach(keyword => {
-            keywordsString += '#define ' + keyword + '\\n';
+        keywords.forEach((keyword) => {
+            keywordsString += `#define ${keyword}\\n`;
         });
         return keywordsString + source;
     }
 
     createProgram(vertexShader, fragmentShader) {
-        const gl = this.gl;
-        let program = gl.createProgram();
+        const { gl } = this;
+        const program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
 
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS))
-            console.trace(gl.getProgramInfoLog(program));
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) console.trace(gl.getProgramInfoLog(program));
 
         return program;
     }
 
     getUniforms(program) {
-        const gl = this.gl;
-        let uniforms = {};
-        let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        const { gl } = this;
+        const uniforms = {};
+        const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
         for (let i = 0; i < uniformCount; i++) {
-            let uniformName = gl.getActiveUniform(program, i).name;
+            const uniformName = gl.getActiveUniform(program, i).name;
             uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
         }
         return uniforms;

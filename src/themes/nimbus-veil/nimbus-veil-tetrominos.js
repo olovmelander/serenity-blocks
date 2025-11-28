@@ -10,13 +10,13 @@ export const NIMBUS_VEIL_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#dff6ff',  // Moonlit cyan
-        O: '#f6f6ff',  // Soft cloud white
-        T: '#bfc6ff',  // Lavender mist
-        S: '#cfe9ff',  // Pale aqua drift
-        Z: '#aebdff',  // Cool indigo haze
-        J: '#9ab0d8',  // Dusky periwinkle
-        L: '#e2ecff',  // Frosted blue-white
+        I: '#dff6ff', // Moonlit cyan
+        O: '#f6f6ff', // Soft cloud white
+        T: '#bfc6ff', // Lavender mist
+        S: '#cfe9ff', // Pale aqua drift
+        Z: '#aebdff', // Cool indigo haze
+        J: '#9ab0d8', // Dusky periwinkle
+        L: '#e2ecff', // Frosted blue-white
         GARBAGE: '#161a27', // Void shadow
     },
 

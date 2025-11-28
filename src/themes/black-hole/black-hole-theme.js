@@ -27,88 +27,88 @@ const QUALITY_PRESETS = {
         skipPhysicsDistance: 1.6,
     },
     Ultra: {
-        starCount: 320,  // Reduced from 320
-        initialParticles: 260,  // Reduced from 260
+        starCount: 320, // Reduced from 320
+        initialParticles: 260, // Reduced from 260
         maxParticles: 720, // Reduced from 720
         minParticles: 420, // Reduced from 420
         adaptiveStep: 40,
         targetFps: 60,
-        renderScale: 1.0,  // Reduced from 1.0
-        effectIntensity: 1.0,  // Reduced from 1.0
-        pulseCoverage: 0.9,  // Reduced from 0.9
-        comboBurstLimit: 60,  // Reduced from 60
-        eruptionLimit: 80,  // Reduced from 80
+        renderScale: 1.0, // Reduced from 1.0
+        effectIntensity: 1.0, // Reduced from 1.0
+        pulseCoverage: 0.9, // Reduced from 0.9
+        comboBurstLimit: 60, // Reduced from 60
+        eruptionLimit: 80, // Reduced from 80
         allowEruptions: true,
-        lineEffectCooldown: 90,  // Increased from 80
-        comboEffectCooldown: 140,  // Increased from 140
-        smallBurstLimit: 10,  // Reduced from 10
-        starBurstLimit: 4,  // Reduced from 4
-        trailDetail: 0.8,  // Reduced from 1.0
-        useCanvasStars: false,  // DOM stars for best quality
-        skipPhysicsDistance: 1.8,  // Skip physics beyond 1.8x pull radius
+        lineEffectCooldown: 90, // Increased from 80
+        comboEffectCooldown: 140, // Increased from 140
+        smallBurstLimit: 10, // Reduced from 10
+        starBurstLimit: 4, // Reduced from 4
+        trailDetail: 0.8, // Reduced from 1.0
+        useCanvasStars: false, // DOM stars for best quality
+        skipPhysicsDistance: 1.8, // Skip physics beyond 1.8x pull radius
     },
     High: {
-        starCount: 150,  // Reduced from 260
-        initialParticles: 140,  // Reduced from 220
-        maxParticles: 320,  // Reduced from 560
-        minParticles: 160,  // Reduced from 280
+        starCount: 150, // Reduced from 260
+        initialParticles: 140, // Reduced from 220
+        maxParticles: 320, // Reduced from 560
+        minParticles: 160, // Reduced from 280
         adaptiveStep: 35,
         targetFps: 60,
-        renderScale: 0.75,  // Reduced from 0.85
-        effectIntensity: 0.7,  // Reduced from 0.85
-        pulseCoverage: 0.5,  // Reduced from 0.7
-        comboBurstLimit: 30,  // Reduced from 45
-        eruptionLimit: 35,  // Reduced from 50
+        renderScale: 0.75, // Reduced from 0.85
+        effectIntensity: 0.7, // Reduced from 0.85
+        pulseCoverage: 0.5, // Reduced from 0.7
+        comboBurstLimit: 30, // Reduced from 45
+        eruptionLimit: 35, // Reduced from 50
         allowEruptions: true,
-        lineEffectCooldown: 150,  // Increased from 120
-        comboEffectCooldown: 240,  // Increased from 200
-        smallBurstLimit: 6,  // Reduced from 8
-        starBurstLimit: 3,  // Reduced from 4
-        trailDetail: 0.6,  // Reduced from 0.85
-        useCanvasStars: true,  // Canvas stars for better performance
-        skipPhysicsDistance: 2.0,  // Skip physics beyond 2x pull radius
+        lineEffectCooldown: 150, // Increased from 120
+        comboEffectCooldown: 240, // Increased from 200
+        smallBurstLimit: 6, // Reduced from 8
+        starBurstLimit: 3, // Reduced from 4
+        trailDetail: 0.6, // Reduced from 0.85
+        useCanvasStars: true, // Canvas stars for better performance
+        skipPhysicsDistance: 2.0, // Skip physics beyond 2x pull radius
     },
     Medium: {
-        starCount: 100,  // Reduced from 180
-        initialParticles: 100,  // Reduced from 170
-        maxParticles: 200,  // Reduced from 360
-        minParticles: 100,  // Reduced from 180
+        starCount: 100, // Reduced from 180
+        initialParticles: 100, // Reduced from 170
+        maxParticles: 200, // Reduced from 360
+        minParticles: 100, // Reduced from 180
         adaptiveStep: 30,
         targetFps: 48,
-        renderScale: 0.65,  // Reduced from 0.7
-        effectIntensity: 0.5,  // Reduced from 0.6
-        pulseCoverage: 0.3,  // Reduced from 0.45
-        comboBurstLimit: 18,  // Reduced from 28
-        eruptionLimit: 20,  // Reduced from 30
-        allowEruptions: false,  // Disabled for performance
-        lineEffectCooldown: 220,  // Increased from 180
-        comboEffectCooldown: 320,  // Increased from 260
-        smallBurstLimit: 4,  // Reduced from 6
-        starBurstLimit: 2,  // Reduced from 3
-        trailDetail: 0.4,  // Reduced from 0.6
+        renderScale: 0.65, // Reduced from 0.7
+        effectIntensity: 0.5, // Reduced from 0.6
+        pulseCoverage: 0.3, // Reduced from 0.45
+        comboBurstLimit: 18, // Reduced from 28
+        eruptionLimit: 20, // Reduced from 30
+        allowEruptions: false, // Disabled for performance
+        lineEffectCooldown: 220, // Increased from 180
+        comboEffectCooldown: 320, // Increased from 260
+        smallBurstLimit: 4, // Reduced from 6
+        starBurstLimit: 2, // Reduced from 3
+        trailDetail: 0.4, // Reduced from 0.6
         useCanvasStars: true,
-        skipPhysicsDistance: 2.2,  // Skip more distant particles
+        skipPhysicsDistance: 2.2, // Skip more distant particles
     },
     Low: {
-        starCount: 60,  // Reduced from 120
-        initialParticles: 70,  // Reduced from 120
-        maxParticles: 120,  // Reduced from 220
-        minParticles: 70,  // Reduced from 120
+        starCount: 60, // Reduced from 120
+        initialParticles: 70, // Reduced from 120
+        maxParticles: 120, // Reduced from 220
+        minParticles: 70, // Reduced from 120
         adaptiveStep: 25,
         targetFps: 40,
-        renderScale: 0.5,  // Reduced from 0.55
-        effectIntensity: 0.3,  // Reduced from 0.4
-        pulseCoverage: 0.2,  // Reduced from 0.3
-        comboBurstLimit: 10,  // Reduced from 16
-        eruptionLimit: 12,  // Reduced from 18
+        renderScale: 0.5, // Reduced from 0.55
+        effectIntensity: 0.3, // Reduced from 0.4
+        pulseCoverage: 0.2, // Reduced from 0.3
+        comboBurstLimit: 10, // Reduced from 16
+        eruptionLimit: 12, // Reduced from 18
         allowEruptions: false,
-        lineEffectCooldown: 300,  // Increased from 260
-        comboEffectCooldown: 400,  // Increased from 350
-        smallBurstLimit: 3,  // Reduced from 4
-        starBurstLimit: 1,  // Reduced from 2
-        trailDetail: 0.2,  // Reduced from 0.45
+        lineEffectCooldown: 300, // Increased from 260
+        comboEffectCooldown: 400, // Increased from 350
+        smallBurstLimit: 3, // Reduced from 4
+        starBurstLimit: 1, // Reduced from 2
+        trailDetail: 0.2, // Reduced from 0.45
         useCanvasStars: true,
-        skipPhysicsDistance: 2.5,  // Skip even more distant particles
+        skipPhysicsDistance: 2.5, // Skip even more distant particles
     },
     Minimal: {
         starCount: 35,
@@ -183,7 +183,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.blackHolePullRadiusSquared = this.blackHolePullRadius * this.blackHolePullRadius;
         // Spatial partitioning - particles beyond this don't need physics
         this.physicsSkipDistance = this.qualityProfile.skipPhysicsDistance || 2.0;
-        this.physicsSkipDistanceSquared = Math.pow(this.blackHolePullRadius * this.physicsSkipDistance, 2);
+        this.physicsSkipDistanceSquared = (this.blackHolePullRadius * this.physicsSkipDistance) ** 2;
         // Fast inverse square root lookup table for optimization
         this.invSqrtLUT = new Float32Array(1024);
         for (let i = 0; i < 1024; i++) {
@@ -248,7 +248,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.blackHolePullRadiusSquared = this.blackHolePullRadius * this.blackHolePullRadius;
         // Update spatial partitioning distance
         this.physicsSkipDistance = this.qualityProfile.skipPhysicsDistance || 2.0;
-        this.physicsSkipDistanceSquared = Math.pow(this.blackHolePullRadius * this.physicsSkipDistance, 2);
+        this.physicsSkipDistanceSquared = (this.blackHolePullRadius * this.physicsSkipDistance) ** 2;
     }
 
     updateTrailDetailFactor() {
@@ -360,7 +360,7 @@ export default class BlackHoleTheme extends BaseTheme {
      * Create multi-colored star field
      */
     createStarField() {
-        const starCount = this.qualityProfile.starCount;
+        const { starCount } = this.qualityProfile;
         const useCanvas = this.qualityProfile.useCanvasStars;
 
         if (useCanvas) {
@@ -389,16 +389,16 @@ export default class BlackHoleTheme extends BaseTheme {
         canvas.height = window.innerHeight;
 
         const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
-        
+
         // Define star color palette
         const starColors = [
-            'rgba(255, 255, 255, 1)',      // White
-            'rgba(180, 220, 255, 1)',      // Cyan-white
-            'rgba(255, 240, 180, 1)',      // Yellow-white
-            'rgba(255, 200, 140, 1)',      // Orange
-            'rgba(150, 200, 255, 1)',      // Blue
-            'rgba(255, 180, 220, 1)',      // Pink
-            'rgba(200, 180, 255, 1)',      // Purple
+            'rgba(255, 255, 255, 1)', // White
+            'rgba(180, 220, 255, 1)', // Cyan-white
+            'rgba(255, 240, 180, 1)', // Yellow-white
+            'rgba(255, 200, 140, 1)', // Orange
+            'rgba(150, 200, 255, 1)', // Blue
+            'rgba(255, 180, 220, 1)', // Pink
+            'rgba(200, 180, 255, 1)', // Purple
         ];
 
         // Generate static star data
@@ -412,7 +412,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 opacity: this.random(0.5, 1),
                 twinkleSpeed: this.random(0.005, 0.015),
                 twinklePhase: this.random(0, Math.PI * 2),
-                isBright: Math.random() < 0.1
+                isBright: Math.random() < 0.1,
             });
         }
 
@@ -422,13 +422,13 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Render stars once on canvas
         this.renderCanvasStars(ctx);
-        
+
         const starsContainer = document.getElementById('stellar-stars');
         if (starsContainer) {
             starsContainer.appendChild(canvas);
             this.registerContainer(starsContainer);
         }
-        
+
         // Animate stars with requestAnimationFrame
         this.animateCanvasStars();
     }
@@ -442,20 +442,20 @@ export default class BlackHoleTheme extends BaseTheme {
         if (!canvas) {
             return;
         }
-        
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
+
         const now = performance.now() * 0.001; // Convert to seconds
-        
+
         for (const star of this.canvasStars) {
             // Calculate twinkle effect
             star.twinklePhase += star.twinkleSpeed;
             const twinkle = 0.5 + 0.5 * Math.sin(star.twinklePhase);
             const currentOpacity = star.opacity * (0.7 + 0.3 * twinkle);
-            
+
             ctx.fillStyle = star.color;
             ctx.globalAlpha = currentOpacity;
-            
+
             if (star.isBright) {
                 // Bright stars with glow
                 ctx.shadowBlur = star.size * 2;
@@ -466,7 +466,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 ctx.fillRect(star.x, star.y, star.size, star.size);
             }
         }
-        
+
         ctx.globalAlpha = 1;
     }
 
@@ -475,7 +475,7 @@ export default class BlackHoleTheme extends BaseTheme {
      */
     animateCanvasStars() {
         if (!this.isActive || !this.starCanvas) return;
-        
+
         this.renderCanvasStars(this.starCtx);
         this.starAnimationFrame = requestAnimationFrame(() => this.animateCanvasStars());
     }
@@ -491,15 +491,15 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Define star color palette based on the nebula image
         const starColors = [
-            { color: 'rgba(255, 255, 255, 1)', weight: 35 },      // White
-            { color: 'rgba(180, 220, 255, 1)', weight: 15 },      // Cyan-white
-            { color: 'rgba(255, 240, 180, 1)', weight: 12 },      // Yellow-white
-            { color: 'rgba(255, 200, 140, 1)', weight: 10 },      // Orange
-            { color: 'rgba(150, 200, 255, 1)', weight: 10 },      // Blue
-            { color: 'rgba(255, 180, 220, 1)', weight: 8 },       // Pink
-            { color: 'rgba(200, 180, 255, 1)', weight: 5 },       // Purple
-            { color: 'rgba(255, 150, 100, 1)', weight: 3 },       // Red-orange
-            { color: 'rgba(100, 220, 255, 1)', weight: 2 },       // Bright cyan
+            { color: 'rgba(255, 255, 255, 1)', weight: 35 }, // White
+            { color: 'rgba(180, 220, 255, 1)', weight: 15 }, // Cyan-white
+            { color: 'rgba(255, 240, 180, 1)', weight: 12 }, // Yellow-white
+            { color: 'rgba(255, 200, 140, 1)', weight: 10 }, // Orange
+            { color: 'rgba(150, 200, 255, 1)', weight: 10 }, // Blue
+            { color: 'rgba(255, 180, 220, 1)', weight: 8 }, // Pink
+            { color: 'rgba(200, 180, 255, 1)', weight: 5 }, // Purple
+            { color: 'rgba(255, 150, 100, 1)', weight: 3 }, // Red-orange
+            { color: 'rgba(100, 220, 255, 1)', weight: 2 }, // Bright cyan
         ];
 
         const getRandomStarColor = () => {
@@ -560,7 +560,7 @@ export default class BlackHoleTheme extends BaseTheme {
             this.resizeAttached = true;
         }
         this.updateGravityDefaults();
-        
+
         // Pre-compute particle sprites for better performance
         this.precomputeParticleSprites();
 
@@ -594,15 +594,15 @@ export default class BlackHoleTheme extends BaseTheme {
         // Use pre-defined colors that we've already cached sprites for
         if (!this.nebulaColors) {
             this.nebulaColors = [
-                { r: 255, g: 100, b: 180 },  // Magenta
-                { r: 80, g: 180, b: 255 },   // Cyan
-                { r: 255, g: 150, b: 80 },   // Orange
-                { r: 180, g: 100, b: 255 },  // Purple
-                { r: 100, g: 220, b: 255 },  // Bright cyan
-                { r: 255, g: 120, b: 200 },  // Hot pink
-                { r: 200, g: 130, b: 255 },  // Violet
-                { r: 255, g: 170, b: 100 },  // Coral
-                { r: 140, g: 230, b: 255 },  // Aqua
+                { r: 255, g: 100, b: 180 }, // Magenta
+                { r: 80, g: 180, b: 255 }, // Cyan
+                { r: 255, g: 150, b: 80 }, // Orange
+                { r: 180, g: 100, b: 255 }, // Purple
+                { r: 100, g: 220, b: 255 }, // Bright cyan
+                { r: 255, g: 120, b: 200 }, // Hot pink
+                { r: 200, g: 130, b: 255 }, // Violet
+                { r: 255, g: 170, b: 100 }, // Coral
+                { r: 140, g: 230, b: 255 }, // Aqua
             ];
         }
         return this.nebulaColors[Math.floor(Math.random() * this.nebulaColors.length)];
@@ -613,19 +613,19 @@ export default class BlackHoleTheme extends BaseTheme {
      */
     precomputeParticleSprites() {
         const colors = [
-            { r: 255, g: 100, b: 180 },  // Magenta
-            { r: 80, g: 180, b: 255 },   // Cyan
-            { r: 255, g: 150, b: 80 },   // Orange
-            { r: 180, g: 100, b: 255 },  // Purple
-            { r: 100, g: 220, b: 255 },  // Bright cyan
-            { r: 255, g: 120, b: 200 },  // Hot pink
-            { r: 200, g: 130, b: 255 },  // Violet
-            { r: 255, g: 170, b: 100 },  // Coral
-            { r: 140, g: 230, b: 255 },  // Aqua
+            { r: 255, g: 100, b: 180 }, // Magenta
+            { r: 80, g: 180, b: 255 }, // Cyan
+            { r: 255, g: 150, b: 80 }, // Orange
+            { r: 180, g: 100, b: 255 }, // Purple
+            { r: 100, g: 220, b: 255 }, // Bright cyan
+            { r: 255, g: 120, b: 200 }, // Hot pink
+            { r: 200, g: 130, b: 255 }, // Violet
+            { r: 255, g: 170, b: 100 }, // Coral
+            { r: 140, g: 230, b: 255 }, // Aqua
         ];
-        
+
         // Pre-generate sprites for all colors
-        colors.forEach(color => {
+        colors.forEach((color) => {
             this.getParticleSprite(color);
         });
     }
@@ -634,8 +634,8 @@ export default class BlackHoleTheme extends BaseTheme {
      * Update black hole drifting position for smooth, slow movement
      */
     updateBlackHoleDrift(delta) {
-        const width = this.canvas.width;
-        const height = this.canvas.height;
+        const { width } = this.canvas;
+        const { height } = this.canvas;
 
         // Update drift change timer
         this.blackHoleDriftChangeTimer += delta;
@@ -690,8 +690,8 @@ export default class BlackHoleTheme extends BaseTheme {
             blackHole.dataset.driftInitialized = 'true';
         }
 
-        const width = this.canvas.width;
-        const height = this.canvas.height;
+        const { width } = this.canvas;
+        const { height } = this.canvas;
 
         // Convert canvas coordinates to viewport percentages
         const percentX = (this.blackHoleX / width) * 100;
@@ -712,9 +712,9 @@ export default class BlackHoleTheme extends BaseTheme {
         try {
             if (!this.isActive || !this.ctx) return;
 
-            const ctx = this.ctx;
-            const width = this.canvas.width;
-            const height = this.canvas.height;
+            const { ctx } = this;
+            const { width } = this.canvas;
+            const { height } = this.canvas;
             const now = performance.now();
             const delta = now - this.lastFrameTime;
             this.lastFrameTime = now;
@@ -733,19 +733,19 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
                 return;
             }
-            
+
             // Cap accumulated time to prevent spiral of death
             const maxFrameSkip = this.frameInterval * 2.5;
             if (this.accumulatedFrameTime > maxFrameSkip) {
                 this.accumulatedFrameTime = maxFrameSkip;
             }
-            
+
             this.accumulatedFrameTime -= this.frameInterval;
 
             this.processScheduledSpawns(now);
             ctx.clearRect(0, 0, width, height);
 
-            const particles = this.particles;
+            const { particles } = this;
             let writeIndex = 0;
 
             // Batch similar operations together and reduce sqrt operations
@@ -756,7 +756,7 @@ export default class BlackHoleTheme extends BaseTheme {
             const bhPullStrength = this.blackHolePullStrength;
             const invBhPullRadius = 1 / bhPullRadius;
             const physicsSkipDistSq = this.physicsSkipDistanceSquared;
-            
+
             for (let i = 0; i < particles.length; i++) {
                 const particle = particles[i];
                 if (!particle) {
@@ -789,7 +789,7 @@ export default class BlackHoleTheme extends BaseTheme {
                         } else {
                             distance = Math.sqrt(distanceSquared);
                         }
-                        
+
                         const invDistance = 1 / distance;
                         const force = bhPullStrength * (bhPullRadius - distance) * invBhPullRadius;
                         const dirX = dx * invDistance;
@@ -1279,7 +1279,7 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     easeInOutCubic(t) {
-        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     }
 
     /**
@@ -1335,7 +1335,7 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Use will-change to hint browser about animation
         disk.style.willChange = 'animation-duration';
-        
+
         // Quick acceleration to fast speed
         disk.style.transition = 'animation-duration 0.3s ease-out';
         disk.style.animationDuration = `${fastDuration}s`;
@@ -1448,12 +1448,12 @@ export default class BlackHoleTheme extends BaseTheme {
 
         const { r, g, b } = particle.color;
         const baseOpacity = isFinite(particle.opacity) ? particle.opacity : 0;
-        
+
         // LOD: Skip very dim particles for performance
         if (baseOpacity < 0.1) {
             return;
         }
-        
+
         const pulse = particle.pulse || 0;
         const pulseOpacity = Math.max(0, Math.min(1, baseOpacity + Math.sin(pulse) * 0.2));
 
@@ -1462,7 +1462,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const dy = this.blackHoleY - particle.y;
         const distSq = dx * dx + dy * dy;
         const pullRadiusSq = this.blackHolePullRadiusSquared;
-        
+
         // LOD: Determine detail level based on distance and size
         let lodLevel = 0; // 0 = highest detail, 2 = lowest
         if (distSq > pullRadiusSq * 4) {
@@ -1470,7 +1470,7 @@ export default class BlackHoleTheme extends BaseTheme {
         } else if (distSq > pullRadiusSq * 2) {
             lodLevel = 1; // Medium distance - medium detail
         }
-        
+
         // Draw sprite with LOD-adjusted size
         const sprite = this.getParticleSprite(particle.color);
         if (!sprite) {
@@ -1485,7 +1485,7 @@ export default class BlackHoleTheme extends BaseTheme {
         } else {
             sizeFactor = this.lowPowerMode ? 3 : 4; // Largest
         }
-        
+
         const drawSize = particle.size * sizeFactor;
         if (drawSize <= 0) {
             return;
@@ -1493,19 +1493,19 @@ export default class BlackHoleTheme extends BaseTheme {
         const halfSize = drawSize / 2;
         ctx.globalAlpha = pulseOpacity;
         ctx.drawImage(sprite, particle.x - halfSize, particle.y - halfSize, drawSize, drawSize);
-        
+
         // LOD: Only draw trails for high-detail particles (close to black hole)
         const detailFactor = this.trailDetailFactor ?? 1;
         if (lodLevel === 0 && detailFactor > 0.2 && (this.trailRenderThrottle++ % 3 === 0)) {
             const speedX = isFinite(particle.speedX) ? particle.speedX : 0;
             const speedY = isFinite(particle.speedY) ? particle.speedY : 0;
             const speedSquared = speedX * speedX + speedY * speedY;
-            
+
             // Only draw trails for fast-moving particles (avoid sqrt)
             if (speedSquared > 4) { // speed > 2
                 const speed = Math.sqrt(speedSquared);
                 const trailLength = Math.min(speed * 3, 10);
-                
+
                 ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${pulseOpacity * 0.3})`;
                 ctx.lineWidth = particle.size * 0.5 * detailFactor;
                 ctx.beginPath();
@@ -1514,7 +1514,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 ctx.stroke();
             }
         }
-        
+
         ctx.globalAlpha = 1;
     }
 
@@ -1523,13 +1523,13 @@ export default class BlackHoleTheme extends BaseTheme {
             return null;
         }
         const key = `${color.r},${color.g},${color.b}`;
-        
+
         // Check cache first
         const cached = this.particleSpriteCache.get(key);
         if (cached) {
             return cached;
         }
-        
+
         // Create new sprite with optimized settings
         const spriteSize = 48; // Reduced from 64 for better performance
         const offscreen = document.createElement('canvas');
@@ -1539,11 +1539,15 @@ export default class BlackHoleTheme extends BaseTheme {
         if (!spriteCtx) {
             return null;
         }
-        
+
         const halfSize = spriteSize / 2;
         const gradient = spriteCtx.createRadialGradient(
-            halfSize, halfSize, spriteSize / 8,
-            halfSize, halfSize, halfSize
+            halfSize,
+            halfSize,
+            spriteSize / 8,
+            halfSize,
+            halfSize,
+            halfSize,
         );
         gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 1)`);
         gradient.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`);
@@ -1649,7 +1653,9 @@ export default class BlackHoleTheme extends BaseTheme {
             this.pendingParticleSpawns.shift(); // Remove oldest
         }
 
-        this.pendingParticleSpawns.push({ time, factory, options, count });
+        this.pendingParticleSpawns.push({
+            time, factory, options, count,
+        });
     }
 
     handleResize() {
@@ -1713,7 +1719,7 @@ export default class BlackHoleTheme extends BaseTheme {
             this.releaseParticle(particle);
         });
         this.particles = [];
-        
+
         // Clean up canvas stars
         if (this.canvasStars) {
             this.canvasStars = null;
@@ -1742,7 +1748,7 @@ export default class BlackHoleTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear data
@@ -1788,16 +1794,15 @@ export default class BlackHoleTheme extends BaseTheme {
 
     releaseParticle(particle) {
         if (!particle || particle.persistent) return;
-        
+
         // Mark as inactive and return to pool
         particle.active = false;
         particle.lifetime = undefined;
-        
+
         // Maintain reasonable pool size
         const poolLimit = Math.min(this.maxParticles * 1.5, 1000);
         if (this.particlePool.length < poolLimit) {
             this.particlePool.push(particle);
         }
     }
-
 }

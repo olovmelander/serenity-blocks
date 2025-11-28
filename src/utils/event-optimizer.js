@@ -13,7 +13,7 @@
 export function debounce(func, wait = 100) {
     let timeout;
 
-    const debounced = function(...args) {
+    const debounced = function (...args) {
         const context = this;
 
         clearTimeout(timeout);
@@ -39,7 +39,7 @@ export function throttle(func, limit = 100) {
     let inThrottle;
     let lastResult;
 
-    return function(...args) {
+    return function (...args) {
         const context = this;
 
         if (!inThrottle) {
@@ -64,7 +64,7 @@ export function rafThrottle(func) {
     let rafId = null;
     let lastArgs = null;
 
-    const throttled = function(...args) {
+    const throttled = function (...args) {
         lastArgs = args;
 
         if (rafId === null) {
@@ -189,13 +189,13 @@ export class OptimizedEventEmitter {
             if (!this.batchers.has(event)) {
                 const batcher = new EventBatcher(
                     (batch) => {
-                        this.listeners.get(event)?.forEach(l => {
+                        this.listeners.get(event)?.forEach((l) => {
                             if (l.options.batched) {
                                 l.callback(batch);
                             }
                         });
                     },
-                    options.batchDelay || 16
+                    options.batchDelay || 16,
                 );
                 this.batchers.set(event, batcher);
             }
@@ -211,7 +211,7 @@ export class OptimizedEventEmitter {
         const listeners = this.listeners.get(event);
         if (!listeners) return;
 
-        const index = listeners.findIndex(l => l.original === callback);
+        const index = listeners.findIndex((l) => l.original === callback);
         if (index !== -1) {
             listeners.splice(index, 1);
         }
@@ -237,7 +237,7 @@ export class OptimizedEventEmitter {
             // Emit immediately
             const listeners = this.listeners.get(event);
             if (listeners) {
-                listeners.forEach(l => {
+                listeners.forEach((l) => {
                     if (!l.options.batched) {
                         try {
                             l.callback(data);
@@ -291,7 +291,7 @@ export class OptimizedEventEmitter {
      * Flush all batchers immediately
      */
     flushAll() {
-        this.batchers.forEach(batcher => batcher.flush());
+        this.batchers.forEach((batcher) => batcher.flush());
     }
 }
 
@@ -305,7 +305,7 @@ export class OptimizedEventEmitter {
 export function memoize(func, keyGen = null, maxSize = 1000) {
     const cache = new Map();
 
-    const memoized = function(...args) {
+    const memoized = function (...args) {
         const key = keyGen ? keyGen(...args) : JSON.stringify(args);
 
         if (cache.has(key)) {

@@ -1,16 +1,16 @@
 /**
  * @fileoverview Visibility Manager - Efficient visibility detection using Intersection Observer
- * 
+ *
  * Use this instead of scroll event listeners for visibility detection.
  * Much more efficient than manually checking element.getBoundingClientRect().
  */
 
 /**
  * Visibility Manager - Manages Intersection Observers for efficient visibility tracking
- * 
+ *
  * @example
  * const visibilityManager = new VisibilityManager();
- * 
+ *
  * // Watch when element becomes visible
  * visibilityManager.observe(element, (isVisible) => {
  *   if (isVisible) {
@@ -21,7 +21,7 @@
  *     // Pause animations, etc.
  *   }
  * });
- * 
+ *
  * // Cleanup when done
  * visibilityManager.cleanup();
  */
@@ -31,7 +31,7 @@ export class VisibilityManager {
         this.defaultOptions = {
             threshold: options.threshold || 0.1, // 10% visible by default
             rootMargin: options.rootMargin || '0px',
-            ...options
+            ...options,
         };
     }
 
@@ -45,11 +45,11 @@ export class VisibilityManager {
     observe(element, callback, options = {}) {
         const observerOptions = {
             ...this.defaultOptions,
-            ...options
+            ...options,
         };
 
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
+            entries.forEach((entry) => {
                 callback(entry.isIntersecting, entry);
             });
         }, observerOptions);
@@ -70,16 +70,16 @@ export class VisibilityManager {
     observeMany(elements, callback, options = {}) {
         const observerOptions = {
             ...this.defaultOptions,
-            ...options
+            ...options,
         };
 
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
+            entries.forEach((entry) => {
                 callback(entry.target, entry.isIntersecting, entry);
             });
         }, observerOptions);
 
-        elements.forEach(element => observer.observe(element));
+        elements.forEach((element) => observer.observe(element));
         this.observers.push(observer);
 
         return observer;
@@ -95,21 +95,21 @@ export class VisibilityManager {
     observeOnce(element, callback, options = {}) {
         const observerOptions = {
             ...this.defaultOptions,
-            ...options
+            ...options,
         };
 
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
+            entries.forEach((entry) => {
                 if (entry.isIntersecting) {
                     callback(entry);
                     observer.unobserve(element);
-                    
+
                     // Remove from tracked observers
                     const index = this.observers.indexOf(observer);
                     if (index > -1) {
                         this.observers.splice(index, 1);
                     }
-                    
+
                     observer.disconnect();
                 }
             });
@@ -132,15 +132,15 @@ export class VisibilityManager {
     observePercentage(element, callback, options = {}) {
         // Create multiple thresholds for granular tracking
         const thresholds = options.thresholds || [0, 0.25, 0.5, 0.75, 1.0];
-        
+
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
+            entries.forEach((entry) => {
                 const percentVisible = Math.round(entry.intersectionRatio * 100);
                 callback(percentVisible, entry);
             });
         }, {
             threshold: thresholds,
-            rootMargin: options.rootMargin || '0px'
+            rootMargin: options.rootMargin || '0px',
         });
 
         observer.observe(element);
@@ -154,11 +154,11 @@ export class VisibilityManager {
      */
     cleanup() {
         console.log(`[VisibilityManager] Disconnecting ${this.observers.length} observers`);
-        
-        this.observers.forEach(observer => {
+
+        this.observers.forEach((observer) => {
             observer.disconnect();
         });
-        
+
         this.observers = [];
         console.log('✅ [VisibilityManager] All observers disconnected');
     }
@@ -174,10 +174,10 @@ export class VisibilityManager {
 
 /**
  * Lazy Load Manager - Specialized visibility manager for lazy loading images/content
- * 
+ *
  * @example
  * const lazyLoader = new LazyLoadManager();
- * 
+ *
  * // Lazy load images
  * document.querySelectorAll('img[data-src]').forEach(img => {
  *   lazyLoader.lazyLoadImage(img);
@@ -188,7 +188,7 @@ export class LazyLoadManager extends VisibilityManager {
         super({
             threshold: 0,
             rootMargin: options.rootMargin || '50px', // Start loading 50px before visible
-            ...options
+            ...options,
         });
     }
 
@@ -204,15 +204,15 @@ export class LazyLoadManager extends VisibilityManager {
 
         this.observeOnce(img, () => {
             console.log('[LazyLoadManager] Loading image:', img.dataset.src);
-            
+
             img.src = img.dataset.src;
-            
+
             if (img.dataset.srcset) {
                 img.srcset = img.dataset.srcset;
             }
-            
+
             img.classList.add('lazy-loaded');
-            
+
             // Remove data attributes after loading
             delete img.dataset.src;
             delete img.dataset.srcset;
@@ -224,7 +224,7 @@ export class LazyLoadManager extends VisibilityManager {
      * @param {NodeList|HTMLImageElement[]} images - Images to lazy load
      */
     lazyLoadImages(images) {
-        images.forEach(img => this.lazyLoadImage(img));
+        images.forEach((img) => this.lazyLoadImage(img));
     }
 
     /**
@@ -243,10 +243,10 @@ export class LazyLoadManager extends VisibilityManager {
 
 /**
  * Animation Trigger - Trigger animations when elements become visible
- * 
+ *
  * @example
  * const animTrigger = new AnimationTrigger();
- * 
+ *
  * // Trigger animation class when visible
  * animTrigger.triggerOnVisible(element, 'fade-in-animation');
  */
@@ -254,7 +254,7 @@ export class AnimationTrigger extends VisibilityManager {
     constructor(options = {}) {
         super({
             threshold: options.threshold || 0.2, // 20% visible to trigger
-            ...options
+            ...options,
         });
     }
 
@@ -266,23 +266,23 @@ export class AnimationTrigger extends VisibilityManager {
      */
     triggerOnVisible(element, classNames, once = true) {
         const classes = Array.isArray(classNames) ? classNames : [classNames];
-        
+
         const observeMethod = once ? 'observeOnce' : 'observe';
-        
+
         this[observeMethod](element, (isVisibleOrEntry) => {
-            const isVisible = typeof isVisibleOrEntry === 'boolean' 
-                ? isVisibleOrEntry 
+            const isVisible = typeof isVisibleOrEntry === 'boolean'
+                ? isVisibleOrEntry
                 : isVisibleOrEntry.isIntersecting;
-            
+
             if (isVisible) {
-                classes.forEach(className => {
+                classes.forEach((className) => {
                     element.classList.add(className);
                 });
-                
+
                 console.log(`[AnimationTrigger] Triggered animation: ${classes.join(', ')}`);
             } else if (!once) {
                 // Remove classes when not visible (for repeating animations)
-                classes.forEach(className => {
+                classes.forEach((className) => {
                     element.classList.remove(className);
                 });
             }
@@ -296,7 +296,7 @@ export class AnimationTrigger extends VisibilityManager {
      * @param {boolean} once - Only trigger once per element
      */
     triggerManyOnVisible(elements, classNames, once = true) {
-        elements.forEach(element => {
+        elements.forEach((element) => {
             this.triggerOnVisible(element, classNames, once);
         });
     }
@@ -308,4 +308,3 @@ export class AnimationTrigger extends VisibilityManager {
 export const globalVisibilityManager = new VisibilityManager();
 export const globalLazyLoader = new LazyLoadManager();
 export const globalAnimationTrigger = new AnimationTrigger();
-

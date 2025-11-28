@@ -9,13 +9,13 @@ export const HIMALAYAN_PEAK_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00a8ff',  // Prayer flag blue - sky and space
-        O: '#f0f5ff',  // Snow cap white - pristine peak snow
-        T: '#9c88ff',  // Prayer flag purple - spiritual wisdom
-        S: '#4cd137',  // Prayer flag green - nature and harmony
-        Z: '#e84118',  // Prayer flag red - life force and bravery
-        J: '#5a7090',  // Deep mountain gray - shadowed peaks
-        L: '#fbc531',  // Prayer flag yellow - earth and enlightenment
+        I: '#00a8ff', // Prayer flag blue - sky and space
+        O: '#f0f5ff', // Snow cap white - pristine peak snow
+        T: '#9c88ff', // Prayer flag purple - spiritual wisdom
+        S: '#4cd137', // Prayer flag green - nature and harmony
+        Z: '#e84118', // Prayer flag red - life force and bravery
+        J: '#5a7090', // Deep mountain gray - shadowed peaks
+        L: '#fbc531', // Prayer flag yellow - earth and enlightenment
         GARBAGE: '#3c465a', // Mountain shadow - deep rocky depths
     },
 
@@ -32,8 +32,8 @@ export const HIMALAYAN_PEAK_TETROMINOS = {
 
         // Pulse like prayer flags waving in high-altitude winds
         pulse: true,
-        pulseSpeed: 0.04,          // Gentle, rhythmic movement
-        pulseAmplitude: 0.22,      // Noticeable wave
+        pulseSpeed: 0.04, // Gentle, rhythmic movement
+        pulseAmplitude: 0.22, // Noticeable wave
 
         // Shimmer like thin air and mystical atmosphere
         shimmer: true,

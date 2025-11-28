@@ -9,13 +9,13 @@ export const NEBULA_FLOW_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00ffff',  // Electric Cyan - flowing water
-        O: '#ff00ff',  // Bright Magenta - cosmic energy
-        T: '#8000ff',  // Deep Purple - nebula core
-        S: '#00ff88',  // Spring Green - aurora flow
-        Z: '#ff0044',  // Hot Pink - stellar burst
-        J: '#0088ff',  // Sky Blue - cosmic vapor
-        L: '#ffaa00',  // Bright Orange - solar flare
+        I: '#00ffff', // Electric Cyan - flowing water
+        O: '#ff00ff', // Bright Magenta - cosmic energy
+        T: '#8000ff', // Deep Purple - nebula core
+        S: '#00ff88', // Spring Green - aurora flow
+        Z: '#ff0044', // Hot Pink - stellar burst
+        J: '#0088ff', // Sky Blue - cosmic vapor
+        L: '#ffaa00', // Bright Orange - solar flare
         GARBAGE: '#181820', // Dark void
     },
 
@@ -61,5 +61,3 @@ export const NEBULA_FLOW_TETROMINOS = {
         },
     },
 };
-
-

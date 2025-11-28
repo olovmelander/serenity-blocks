@@ -42,52 +42,52 @@ export default class SupernovaTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 starCount: 40,
                 shockwaveParticles: 100,
                 energyRays: 4,
                 coreFilaments: 6,
                 driftRadiusScale: 0.15,
             },
-            'Low': {
+            Low: {
                 starCount: 60,
                 shockwaveParticles: 160,
                 energyRays: 6,
                 coreFilaments: 10,
                 driftRadiusScale: 0.2,
             },
-            'Medium': {
+            Medium: {
                 starCount: 80,
                 shockwaveParticles: 200,
                 energyRays: 8,
                 coreFilaments: 12,
                 driftRadiusScale: 0.25,
             },
-            'High': {
+            High: {
                 starCount: 100,
                 shockwaveParticles: 250,
                 energyRays: 10,
                 coreFilaments: 15,
                 driftRadiusScale: 0.3,
             },
-            'Ultra': {
+            Ultra: {
                 starCount: 140,
                 shockwaveParticles: 320,
                 energyRays: 14,
                 coreFilaments: 20,
                 driftRadiusScale: 0.35,
             },
-            'Extreme': {
+            Extreme: {
                 starCount: 200,
                 shockwaveParticles: 450,
                 energyRays: 20,
                 coreFilaments: 30,
                 driftRadiusScale: 0.42,
-            }
+            },
         };
 
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
     }
 
     applyQualityPreset(quality, { skipRefresh = false } = {}) {
@@ -178,7 +178,7 @@ export default class SupernovaTheme extends BaseTheme {
             }
         }
 
-        const starsContainer = this.starsContainer;
+        const { starsContainer } = this;
         if (!starsContainer) return;
         if (!force && starsContainer.children.length > 0) return;
 
@@ -190,14 +190,14 @@ export default class SupernovaTheme extends BaseTheme {
 
         // Define star color palette matching the supernova theme
         const starColors = [
-            'rgba(255, 255, 255, 1)',      // White
-            'rgba(100, 220, 255, 1)',      // Bright cyan
-            'rgba(150, 100, 255, 1)',      // Electric purple
-            'rgba(255, 80, 220, 1)',       // Hot pink
-            'rgba(255, 150, 100, 1)',      // Orange
-            'rgba(255, 200, 80, 1)',       // Golden yellow
-            'rgba(80, 255, 200, 1)',       // Turquoise
-            'rgba(180, 150, 255, 1)',      // Lavender
+            'rgba(255, 255, 255, 1)', // White
+            'rgba(100, 220, 255, 1)', // Bright cyan
+            'rgba(150, 100, 255, 1)', // Electric purple
+            'rgba(255, 80, 220, 1)', // Hot pink
+            'rgba(255, 150, 100, 1)', // Orange
+            'rgba(255, 200, 80, 1)', // Golden yellow
+            'rgba(80, 255, 200, 1)', // Turquoise
+            'rgba(180, 150, 255, 1)', // Lavender
         ];
 
         for (let i = 0; i < starCount; i++) {
@@ -241,7 +241,7 @@ export default class SupernovaTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true // Enable async rendering
+            desynchronized: true, // Enable async rendering
         });
 
         const centerX = this.canvas.width / 2;
@@ -269,14 +269,14 @@ export default class SupernovaTheme extends BaseTheme {
 
         // Supernova color palette - vibrant explosion colors
         const colors = [
-            { r: 100, g: 220, b: 255 },   // Bright cyan (core)
-            { r: 80, g: 180, b: 255 },    // Cyan-blue
-            { r: 150, g: 100, b: 255 },   // Electric purple
-            { r: 255, g: 80, b: 220 },    // Hot pink
-            { r: 255, g: 100, b: 150 },   // Pink-red
-            { r: 255, g: 150, b: 100 },   // Orange
-            { r: 255, g: 200, b: 80 },    // Golden yellow
-            { r: 180, g: 150, b: 255 },   // Lavender
+            { r: 100, g: 220, b: 255 }, // Bright cyan (core)
+            { r: 80, g: 180, b: 255 }, // Cyan-blue
+            { r: 150, g: 100, b: 255 }, // Electric purple
+            { r: 255, g: 80, b: 220 }, // Hot pink
+            { r: 255, g: 100, b: 150 }, // Pink-red
+            { r: 255, g: 150, b: 100 }, // Orange
+            { r: 255, g: 200, b: 80 }, // Golden yellow
+            { r: 180, g: 150, b: 255 }, // Lavender
         ];
 
         for (let i = 0; i < particleCount; i++) {
@@ -323,9 +323,7 @@ export default class SupernovaTheme extends BaseTheme {
         const deltaTime = now - this.lastFrameTime;
 
         if (deltaTime < this.targetFrameTime) {
-            this.animationFrame = requestAnimationFrame(() =>
-                this.animateShockwave(canvas, ctx, centerX, centerY)
-            );
+            this.animationFrame = requestAnimationFrame(() => this.animateShockwave(canvas, ctx, centerX, centerY));
             return;
         }
 
@@ -342,7 +340,7 @@ export default class SupernovaTheme extends BaseTheme {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Remove expired combo particles
-        this.shockwaveParticles = this.shockwaveParticles.filter(particle => {
+        this.shockwaveParticles = this.shockwaveParticles.filter((particle) => {
             if (particle.isComboParticle) {
                 particle.lifetime += deltaTime;
                 return particle.lifetime < particle.maxLifetime;
@@ -423,9 +421,7 @@ export default class SupernovaTheme extends BaseTheme {
             ctx.restore();
         }
 
-        this.animationFrame = requestAnimationFrame(() =>
-            this.animateShockwave(canvas, ctx, centerX, centerY)
-        );
+        this.animationFrame = requestAnimationFrame(() => this.animateShockwave(canvas, ctx, centerX, centerY));
     }
 
     /**
@@ -490,7 +486,7 @@ export default class SupernovaTheme extends BaseTheme {
             }
         }
 
-        const rayContainer = this.rayContainer;
+        const { rayContainer } = this;
         if (!rayContainer) return;
         if (!force && rayContainer.children.length > 0) return;
 
@@ -530,7 +526,7 @@ export default class SupernovaTheme extends BaseTheme {
             }
         }
 
-        const filamentContainer = this.filamentContainer;
+        const { filamentContainer } = this;
         if (!filamentContainer) return;
         if (!force && filamentContainer.children.length > 0) return;
 
@@ -837,12 +833,12 @@ export default class SupernovaTheme extends BaseTheme {
         const particleCount = Math.min(intensity * 8, 50);
 
         const colors = [
-            { r: 100, g: 220, b: 255 },   // Bright cyan
-            { r: 150, g: 100, b: 255 },   // Electric purple
-            { r: 255, g: 80, b: 220 },    // Hot pink
-            { r: 255, g: 150, b: 100 },   // Orange
-            { r: 255, g: 200, b: 80 },    // Golden yellow
-            { r: 80, g: 255, b: 200 },    // Turquoise
+            { r: 100, g: 220, b: 255 }, // Bright cyan
+            { r: 150, g: 100, b: 255 }, // Electric purple
+            { r: 255, g: 80, b: 220 }, // Hot pink
+            { r: 255, g: 150, b: 100 }, // Orange
+            { r: 255, g: 200, b: 80 }, // Golden yellow
+            { r: 80, g: 255, b: 200 }, // Turquoise
         ];
 
         for (let i = 0; i < particleCount; i++) {
@@ -875,7 +871,7 @@ export default class SupernovaTheme extends BaseTheme {
      * Pulse shockwave particles
      */
     pulseShockwaveParticles() {
-        this.shockwaveParticles.forEach(particle => {
+        this.shockwaveParticles.forEach((particle) => {
             particle.baseOpacity = Math.min(particle.baseOpacity * 1.3, 1);
 
             setTimeout(() => {
@@ -903,7 +899,7 @@ export default class SupernovaTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear particles
@@ -958,10 +954,10 @@ export default class SupernovaTheme extends BaseTheme {
             'supernova-filaments',
             'supernova-pulses',
             'supernova-bursts',
-            'supernova-explosions'
+            'supernova-explosions',
         ];
 
-        containers.forEach(id => {
+        containers.forEach((id) => {
             const container = document.getElementById(id);
             if (container) {
                 container.style.translate = '';

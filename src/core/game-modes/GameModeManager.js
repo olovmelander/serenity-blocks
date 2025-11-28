@@ -283,7 +283,7 @@ export class GameModeManager {
             this.currentModeId = null;
             console.log('[GameModeManager] Mode deactivated successfully');
         } catch (error) {
-            console.error(`[GameModeManager] Failed to deactivate mode:`, error);
+            console.error('[GameModeManager] Failed to deactivate mode:', error);
             throw error;
         }
     }

@@ -57,7 +57,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 // Scene Elements
                 clouds: 3,
                 prayerFlags: 5,
-                peaks: { back: 1, mid: 1, front: 1 },  // Mountain layer complexity
+                peaks: { back: 1, mid: 1, front: 1 }, // Mountain layer complexity
                 // Combo Effect Elements (reduced for performance)
                 snowParticles: 5,
                 iceCrystals: 3,
@@ -206,9 +206,10 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 patternCanvas.height = 256;
                 const pCtx = patternCanvas.getContext('2d');
                 const imageData = pCtx.createImageData(256, 256);
-                const data = imageData.data;
+                const { data } = imageData;
 
-                let r = 0, g = 0, b = 0;
+                let r = 0; let g = 0; let
+                    b = 0;
                 if (color.startsWith('#')) {
                     const hex = color.substring(1);
                     r = parseInt(hex.substring(0, 2), 16);
@@ -241,7 +242,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                     seed: 12345,
                     grainDensity: 0.4,
                     grainOpacity: 0.3,
-                    zIndex: 1
+                    zIndex: 1,
                 },
                 // Layer 2: Rugged Mid-Mountain Base (Mid)
                 {
@@ -253,7 +254,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                     seed: 23456,
                     grainDensity: 0.5,
                     grainOpacity: 0.5,
-                    zIndex: 2
+                    zIndex: 2,
                 },
                 // Layer 3: Foreground Silhouette (Front)
                 {
@@ -265,8 +266,8 @@ export default class HimalayanPeakTheme extends BaseTheme {
                     seed: 34567,
                     grainDensity: 0.7,
                     grainOpacity: 0.7,
-                    zIndex: 3
-                }
+                    zIndex: 3,
+                },
             ];
 
             peakLayers.forEach((layer) => {
@@ -297,11 +298,11 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                     // Ridge Noise: 1 - abs(sin(x))
                     // Octave 1
-                    y -= amp * Math.pow(1 - Math.abs(Math.sin(nx * Math.PI * 1.5 + layer.seed)), 1.2);
+                    y -= amp * (1 - Math.abs(Math.sin(nx * Math.PI * 1.5 + layer.seed))) ** 1.2;
                     // Octave 2
-                    y -= (amp * 0.4) * Math.pow(1 - Math.abs(Math.sin(nx * Math.PI * 4 + layer.seed * 2)), 1.5);
+                    y -= (amp * 0.4) * (1 - Math.abs(Math.sin(nx * Math.PI * 4 + layer.seed * 2))) ** 1.5;
                     // Octave 3
-                    y -= (amp * 0.15) * Math.pow(1 - Math.abs(Math.sin(nx * Math.PI * 10 + layer.seed * 3)), 1);
+                    y -= (amp * 0.15) * (1 - Math.abs(Math.sin(nx * Math.PI * 10 + layer.seed * 3))) ** 1;
 
                     // Noise
                     y += (rng() - 0.5) * 20;
@@ -314,7 +315,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 // 1. Draw Main Shape
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height);
-                points.forEach(p => ctx.lineTo(p.x, p.y));
+                points.forEach((p) => ctx.lineTo(p.x, p.y));
                 ctx.lineTo(C_WIDTH, canvas.height);
                 ctx.closePath();
                 ctx.fillStyle = layer.color;
@@ -373,7 +374,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
             grainOverlay.style.zIndex = '20'; // On top of everything
             grainOverlay.style.opacity = '0.15';
             // CSS-based noise
-            grainOverlay.style.backgroundImage = `url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)" opacity="1"/%3E%3C/svg%3E')`;
+            grainOverlay.style.backgroundImage = 'url(\'data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)" opacity="1"/%3E%3C/svg%3E\')';
             themeContainerForGrain.appendChild(grainOverlay);
         }
 
@@ -469,7 +470,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
     onLineClear(lineCount) {
         if (!this.qualityConfig) return;
 
-        const comboEffects = this.qualityConfig.comboEffects;
+        const { comboEffects } = this.qualityConfig;
 
         // Trigger snow blizzard cascading down the peaks
         if (comboEffects.avalancheMultiplier > 0) {
@@ -510,7 +511,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         if (!this.qualityConfig) return;
 
         this.currentComboLevel = comboCount;
-        const comboEffects = this.qualityConfig.comboEffects;
+        const { comboEffects } = this.qualityConfig;
 
         // Mountain spirits rise from the peaks
         if (comboEffects.spiritsMultiplier > 0) {
@@ -574,9 +575,15 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         // Snow layers (far to near)
         const snowLayers = [
-            { zIndex: 4, speed: 0.5, size: 0.5, opacity: 0.6, blur: 1 },     // Far
-            { zIndex: 6, speed: 0.8, size: 0.8, opacity: 0.8, blur: 0.5 },   // Mid
-            { zIndex: 8, speed: 1.2, size: 1.2, opacity: 1.0, blur: 0 },     // Front
+            {
+                zIndex: 4, speed: 0.5, size: 0.5, opacity: 0.6, blur: 1,
+            }, // Far
+            {
+                zIndex: 6, speed: 0.8, size: 0.8, opacity: 0.8, blur: 0.5,
+            }, // Mid
+            {
+                zIndex: 8, speed: 1.2, size: 1.2, opacity: 1.0, blur: 0,
+            }, // Front
         ];
 
         snowLayers.forEach((layer) => {
@@ -893,7 +900,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 eagle.style.animation = 'eagleSoar 8s linear forwards';
 
                 // Simple minimalistic bird silhouette - classic V-shape with small body
-                eagle.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 30"><g opacity="0.6"><path d="M 20 15 Q 12 10, 5 12 L 15 15 Z" fill="%23252520" stroke="none"/><path d="M 20 15 Q 28 10, 35 12 L 25 15 Z" fill="%23252520" stroke="none"/><circle cx="20" cy="15" r="2" fill="%23252520"/></g></svg>')`;
+                eagle.style.backgroundImage = 'url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 30"><g opacity="0.6"><path d="M 20 15 Q 12 10, 5 12 L 15 15 Z" fill="%23252520" stroke="none"/><path d="M 20 15 Q 28 10, 35 12 L 25 15 Z" fill="%23252520" stroke="none"/><circle cx="20" cy="15" r="2" fill="%23252520"/></g></svg>\')';
                 eagle.style.backgroundSize = 'contain';
                 eagle.style.backgroundRepeat = 'no-repeat';
                 eagle.style.backgroundPosition = 'center';
@@ -911,8 +918,6 @@ export default class HimalayanPeakTheme extends BaseTheme {
             }, i * 2000);
         }
     }
-
-
 
     /**
      * Unleash epic blizzard for extreme combos
@@ -1040,7 +1045,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
     stop() {
         // Unsubscribe from all events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Reset combo level

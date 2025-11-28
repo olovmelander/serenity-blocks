@@ -4746,7 +4746,7 @@ body {
 
 /* Main Theme Container - Dreamy Ethereal Dawn */
 #spring-theme {
-    background: 
+    background:
         /* Ethereal sun glow - golden dawn light */
         radial-gradient(ellipse 100% 100% at 75% 5%, rgba(255, 248, 220, 0.9) 0%, rgba(255, 223, 186, 0.6) 15%, transparent 45%),
         /* Secondary sun rays - diffused light */
@@ -4758,19 +4758,29 @@ body {
         /* Dreamy cyan accent */
         radial-gradient(ellipse 100% 60% at 90% 50%, rgba(175, 238, 238, 0.15) 0%, transparent 45%),
         /* Main sky gradient - ethereal spring dawn */
-        linear-gradient(
-            175deg,
-            #1e3a5f 0%,        /* Pre-dawn deep blue */
-            #2d5a7b 8%,        /* Deep sky awakening */
-            #4a8cb8 18%,       /* Morning sky blue */
-            #7ec8e3 30%,       /* Soft azure */
-            #b8e4f0 42%,       /* Light sky */
-            #ffecd2 55%,       /* Golden dawn horizon */
-            #ffdab9 65%,       /* Peach warmth */
-            #ffe4e1 75%,       /* Misty rose */
-            #e8f5e9 85%,       /* Soft meadow transition */
-            #c8e6c9 92%,       /* Fresh green meadow */
-            #81c784 100%       /* Lush grass */
+        linear-gradient(175deg,
+            #1e3a5f 0%,
+            /* Pre-dawn deep blue */
+            #2d5a7b 8%,
+            /* Deep sky awakening */
+            #4a8cb8 18%,
+            /* Morning sky blue */
+            #7ec8e3 30%,
+            /* Soft azure */
+            #b8e4f0 42%,
+            /* Light sky */
+            #ffecd2 55%,
+            /* Golden dawn horizon */
+            #ffdab9 65%,
+            /* Peach warmth */
+            #ffe4e1 75%,
+            /* Misty rose */
+            #e8f5e9 85%,
+            /* Soft meadow transition */
+            #c8e6c9 92%,
+            /* Fresh green meadow */
+            #81c784 100%
+            /* Lush grass */
         );
     overflow: hidden;
     transition: filter 0.6s ease-out, background 1s ease-out;
@@ -4784,7 +4794,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: 
+    background:
         radial-gradient(ellipse 80% 50% at 75% 10%, rgba(255, 250, 240, 0.4) 0%, transparent 50%),
         radial-gradient(ellipse 60% 40% at 25% 80%, rgba(144, 238, 144, 0.15) 0%, transparent 50%);
     animation: spring-atmosphere-breathe 12s ease-in-out infinite;
@@ -4793,12 +4803,15 @@ body {
 }
 
 @keyframes spring-atmosphere-breathe {
-    0%, 100% { 
-        opacity: 0.6; 
+
+    0%,
+    100% {
+        opacity: 0.6;
         filter: brightness(1) saturate(1);
     }
-    50% { 
-        opacity: 0.9; 
+
+    50% {
+        opacity: 0.9;
         filter: brightness(1.05) saturate(1.1);
     }
 }
@@ -4825,12 +4838,11 @@ body {
     transform: translate(-50%, -50%);
     width: 80px;
     height: 80px;
-    background: radial-gradient(circle at 35% 35%, 
-        #fffef0 0%, 
-        #fff8dc 30%, 
-        #ffd700 60%, 
-        transparent 72%
-    );
+    background: radial-gradient(circle at 35% 35%,
+            #fffef0 0%,
+            #fff8dc 30%,
+            #ffd700 60%,
+            transparent 72%);
     border-radius: 50%;
     /* REMOVED expensive box-shadow animation */
     /* Using simple opacity pulse instead */
@@ -4846,21 +4858,23 @@ body {
     transform: translate(-50%, -50%);
     width: 200%;
     height: 200%;
-    background: radial-gradient(circle, 
-        rgba(255, 215, 0, 0.4) 0%, 
-        rgba(255, 179, 71, 0.1) 50%, 
-        transparent 70%
-    );
+    background: radial-gradient(circle,
+            rgba(255, 215, 0, 0.4) 0%,
+            rgba(255, 179, 71, 0.1) 50%,
+            transparent 70%);
     border-radius: 50%;
     z-index: -1;
 }
 
 @keyframes spring-sun-pulse {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: translate(-50%, -50%) scale(1);
         opacity: 0.9;
     }
-    50% { 
+
+    50% {
         transform: translate(-50%, -50%) scale(1.05);
         opacity: 1;
     }
@@ -4878,21 +4892,58 @@ body {
     /* REMOVED blur */
 }
 
-.spring-sun-ray:nth-child(2) { animation-delay: -2.5s; }
-.spring-sun-ray:nth-child(3) { animation-delay: -5s; }
-.spring-sun-ray:nth-child(4) { animation-delay: -7.5s; }
-.spring-sun-ray:nth-child(5) { animation-delay: -10s; }
-.spring-sun-ray:nth-child(6) { animation-delay: -12.5s; }
-.spring-sun-ray:nth-child(7) { animation-delay: -15s; }
-.spring-sun-ray:nth-child(8) { animation-delay: -17.5s; }
-.spring-sun-ray:nth-child(9) { animation-delay: -20s; }
-.spring-sun-ray:nth-child(10) { animation-delay: -22.5s; }
-.spring-sun-ray:nth-child(11) { animation-delay: -25s; }
-.spring-sun-ray:nth-child(12) { animation-delay: -27.5s; }
+.spring-sun-ray:nth-child(2) {
+    animation-delay: -2.5s;
+}
+
+.spring-sun-ray:nth-child(3) {
+    animation-delay: -5s;
+}
+
+.spring-sun-ray:nth-child(4) {
+    animation-delay: -7.5s;
+}
+
+.spring-sun-ray:nth-child(5) {
+    animation-delay: -10s;
+}
+
+.spring-sun-ray:nth-child(6) {
+    animation-delay: -12.5s;
+}
+
+.spring-sun-ray:nth-child(7) {
+    animation-delay: -15s;
+}
+
+.spring-sun-ray:nth-child(8) {
+    animation-delay: -17.5s;
+}
+
+.spring-sun-ray:nth-child(9) {
+    animation-delay: -20s;
+}
+
+.spring-sun-ray:nth-child(10) {
+    animation-delay: -22.5s;
+}
+
+.spring-sun-ray:nth-child(11) {
+    animation-delay: -25s;
+}
+
+.spring-sun-ray:nth-child(12) {
+    animation-delay: -27.5s;
+}
 
 @keyframes spring-sun-ray-rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* ===== Floating Magical Particles (Pollen/Dust) - OPTIMIZED ===== */
@@ -4912,11 +4963,10 @@ body {
     width: var(--particle-size, 4px);
     height: var(--particle-size, 4px);
     /* Combined glow into the background gradient to remove box-shadow */
-    background: radial-gradient(circle at 50% 50%, 
-        rgba(255, 255, 255, 0.9) 0%, 
-        var(--particle-color, rgba(255, 248, 220, 0.8)) 40%, 
-        transparent 80%
-    );
+    background: radial-gradient(circle at 50% 50%,
+            rgba(255, 255, 255, 0.9) 0%,
+            var(--particle-color, rgba(255, 248, 220, 0.8)) 40%,
+            transparent 80%);
     border-radius: 50%;
     animation: spring-particle-float var(--float-duration, 15s) ease-in-out infinite;
     animation-delay: var(--float-delay, 0s);
@@ -4930,18 +4980,22 @@ body {
         transform: translate(var(--start-x, 0), 110vh) scale(0);
         opacity: 0;
     }
+
     10% {
         opacity: var(--particle-opacity, 0.8);
         transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px)), 90vh) scale(1);
     }
+
     50% {
         transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px) * 2), 50vh) scale(1);
         opacity: var(--particle-opacity, 0.8);
     }
+
     90% {
         opacity: var(--particle-opacity, 0.8);
         transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px) * 3), 10vh) scale(1);
     }
+
     100% {
         transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px) * 4), -10vh) scale(0);
         opacity: 0;
@@ -4961,45 +5015,53 @@ body {
 
 .spring-firefly {
     position: absolute;
-    width: 8px; /* Slightly larger to compensate for removed shadow */
+    width: 8px;
+    /* Slightly larger to compensate for removed shadow */
     height: 8px;
     /* Fake glow with gradient */
-    background: radial-gradient(circle, 
-        rgba(255, 255, 200, 1) 0%, 
-        rgba(200, 255, 150, 0.5) 40%, 
-        transparent 70%
-    );
+    background: radial-gradient(circle,
+            rgba(255, 255, 200, 1) 0%,
+            rgba(200, 255, 150, 0.5) 40%,
+            transparent 70%);
     border-radius: 50%;
     /* REMOVED box-shadow */
-    animation: 
+    animation:
         spring-firefly-glow 2s ease-in-out infinite,
         spring-firefly-drift var(--drift-duration, 20s) ease-in-out infinite;
     animation-delay: var(--firefly-delay, 0s);
 }
 
 @keyframes spring-firefly-glow {
-    0%, 100% { 
+
+    0%,
+    100% {
         opacity: 0.4;
         transform: scale(0.8);
     }
-    50% { 
+
+    50% {
         opacity: 1;
         transform: scale(1.2);
     }
 }
 
 @keyframes spring-firefly-drift {
-    0%, 100% { 
-        transform: translate(0, 0); 
+
+    0%,
+    100% {
+        transform: translate(0, 0);
     }
-    25% { 
-        transform: translate(var(--drift-x1, 30px), var(--drift-y1, -20px)); 
+
+    25% {
+        transform: translate(var(--drift-x1, 30px), var(--drift-y1, -20px));
     }
-    50% { 
-        transform: translate(var(--drift-x2, -20px), var(--drift-y2, 15px)); 
+
+    50% {
+        transform: translate(var(--drift-x2, -20px), var(--drift-y2, 15px));
     }
-    75% { 
-        transform: translate(var(--drift-x3, 15px), var(--drift-y3, -30px)); 
+
+    75% {
+        transform: translate(var(--drift-x3, 15px), var(--drift-y3, -30px));
     }
 }
 
@@ -5021,13 +5083,11 @@ body {
     right: 5%;
     width: var(--beam-width, 80px);
     height: 140%;
-    background: linear-gradient(
-        180deg,
-        rgba(255, 250, 240, var(--beam-opacity, 0.25)) 0%,
-        rgba(255, 248, 220, 0.15) 30%,
-        rgba(255, 223, 186, 0.05) 60%,
-        transparent 100%
-    );
+    background: linear-gradient(180deg,
+            rgba(255, 250, 240, var(--beam-opacity, 0.25)) 0%,
+            rgba(255, 248, 220, 0.15) 30%,
+            rgba(255, 223, 186, 0.05) 60%,
+            transparent 100%);
     transform-origin: top right;
     transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg);
     animation: spring-sunbeam-pulse var(--beam-duration, 10s) ease-in-out infinite;
@@ -5037,13 +5097,16 @@ body {
 }
 
 @keyframes spring-sunbeam-pulse {
-    0%, 100% { 
-        opacity: 0.5; 
+
+    0%,
+    100% {
+        opacity: 0.5;
         transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg) scaleY(1) scaleX(1);
         /* REMOVED filter animation */
     }
-    50% { 
-        opacity: 0.8; 
+
+    50% {
+        opacity: 0.8;
         transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg) scaleY(1.03) scaleX(1.1);
     }
 }
@@ -5061,13 +5124,13 @@ body {
 
 .spring-cloud {
     position: absolute;
-    background: 
+    background:
         radial-gradient(ellipse 70% 70% at 50% 50%, rgba(255, 255, 255, 0.9) 0%, transparent 70%);
     border-radius: 50%;
     /* REMOVED filter: blur */
-    animation: 
+    animation:
         spring-cloud-drift var(--cloud-duration, 120s) linear infinite;
-        /* Removed expensive morph animation */
+    /* Removed expensive morph animation */
     animation-delay: var(--cloud-delay, 0s);
     /* REMOVED complex box-shadow */
     will-change: transform;
@@ -5080,8 +5143,13 @@ body {
 }
 
 @keyframes spring-cloud-drift {
-    from { transform: translateX(-30vw); }
-    to { transform: translateX(130vw); }
+    from {
+        transform: translateX(-30vw);
+    }
+
+    to {
+        transform: translateX(130vw);
+    }
 }
 
 /* Removed morph animation */
@@ -5109,26 +5177,37 @@ body {
     width: 100%;
     height: 200%;
     border-radius: 50%;
-    background: conic-gradient(
-        from 0.25turn at 50% 100%, 
-        rgba(255, 99, 71, 0.6),
-        rgba(255, 165, 0, 0.6),
-        rgba(255, 255, 0, 0.6),
-        rgba(144, 238, 144, 0.6),
-        rgba(135, 206, 235, 0.6),
-        rgba(138, 43, 226, 0.5),
-        rgba(255, 182, 193, 0.4),
-        transparent
-    );
+    background: conic-gradient(from 0.25turn at 50% 100%,
+            rgba(255, 99, 71, 0.6),
+            rgba(255, 165, 0, 0.6),
+            rgba(255, 255, 0, 0.6),
+            rgba(144, 238, 144, 0.6),
+            rgba(135, 206, 235, 0.6),
+            rgba(138, 43, 226, 0.5),
+            rgba(255, 182, 193, 0.4),
+            transparent);
     mask-image: radial-gradient(ellipse 50% 100% at 50% 100%, black 58%, transparent 62%);
     -webkit-mask-image: radial-gradient(ellipse 50% 100% at 50% 100%, black 58%, transparent 62%);
 }
 
 @keyframes rainbow-fade {
-    0%, 100% { opacity: 0; }
-    8% { opacity: 0.5; }
-    18% { opacity: 0.5; }
-    25% { opacity: 0; }
+
+    0%,
+    100% {
+        opacity: 0;
+    }
+
+    8% {
+        opacity: 0.5;
+    }
+
+    18% {
+        opacity: 0.5;
+    }
+
+    25% {
+        opacity: 0;
+    }
 }
 
 /* ===== Enchanting Cherry Blossom Petals ===== */
@@ -5149,19 +5228,18 @@ body {
     left: 0;
     width: var(--petal-size, 14px);
     height: var(--petal-size, 14px);
-    background: 
+    background:
         radial-gradient(ellipse 80% 60% at 30% 30%, rgba(255, 255, 255, 0.8) 0%, transparent 50%),
-        linear-gradient(135deg, 
-            var(--petal-color, #FFB7C5) 0%, 
-            var(--petal-color-mid, #FFC8D4) 50%, 
-            var(--petal-color-light, #FFE4EC) 100%
-        );
+        linear-gradient(135deg,
+            var(--petal-color, #FFB7C5) 0%,
+            var(--petal-color-mid, #FFC8D4) 50%,
+            var(--petal-color-light, #FFE4EC) 100%);
     border-radius: 50% 0 50% 0;
     transform: scale(var(--petal-scale, 1));
     /* REMOVED filter */
     animation: spring-petal-fall var(--fall-duration, 12s) linear infinite;
     animation-delay: var(--fall-delay, 0s);
-    box-shadow: 
+    box-shadow:
         inset 3px 3px 6px rgba(255, 255, 255, 0.7),
         inset -1px -1px 3px rgba(255, 182, 193, 0.3),
         0 3px 8px rgba(255, 150, 180, 0.35);
@@ -5193,21 +5271,27 @@ body {
         transform: translate3d(var(--x-start, 50vw), -30px, 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-start, 0deg)) rotateY(0deg);
         opacity: 0;
     }
-    5% { 
-        opacity: var(--petal-opacity, 1); 
+
+    5% {
+        opacity: var(--petal-opacity, 1);
     }
+
     25% {
         transform: translate3d(calc(var(--x-start, 50vw) + (var(--x-end, 50vw) - var(--x-start, 50vw)) * 0.25), calc(25vh + 7px), 0) scale(var(--petal-scale, 1)) rotate(calc(var(--rotate-start, 0deg) + 90deg)) rotateY(45deg);
     }
+
     50% {
         transform: translate3d(calc(var(--x-start, 50vw) + (var(--x-end, 50vw) - var(--x-start, 50vw)) * 0.5), calc(50vh + 15px), 0) scale(var(--petal-scale, 1)) rotate(calc(var(--rotate-start, 0deg) + 180deg)) rotateY(0deg);
     }
+
     75% {
         transform: translate3d(calc(var(--x-start, 50vw) + (var(--x-end, 50vw) - var(--x-start, 50vw)) * 0.75), calc(75vh + 22px), 0) scale(var(--petal-scale, 1)) rotate(calc(var(--rotate-start, 0deg) + 270deg)) rotateY(-45deg);
     }
-    95% { 
-        opacity: var(--petal-opacity, 1); 
+
+    95% {
+        opacity: var(--petal-opacity, 1);
     }
+
     100% {
         transform: translate3d(var(--x-end, 50vw), calc(100vh + 30px), 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-end, 360deg)) rotateY(0deg);
         opacity: 0;
@@ -5219,6 +5303,7 @@ body {
         transform: translate3d(var(--x-start, 50vw), -30px, 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-start, 0deg));
         opacity: 1;
     }
+
     100% {
         transform: translate3d(var(--x-end, 50vw), calc(100vh + 30px), 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-end, 720deg));
         opacity: 0;
@@ -5242,7 +5327,7 @@ body {
     height: 16px;
     left: var(--start-x, 50vw);
     top: var(--start-y, 50vh);
-    animation: 
+    animation:
         spring-butterfly-path-1 var(--path-duration, 30s) ease-in-out infinite,
         spring-butterfly-flutter 0.25s ease-in-out infinite;
     /* REMOVED filter: drop-shadow */
@@ -5255,14 +5340,13 @@ body {
     top: 0;
     width: 12px;
     height: 16px;
-    background: 
+    background:
         radial-gradient(ellipse 60% 40% at 60% 30%, rgba(255, 255, 255, 0.7) 0%, transparent 50%),
         radial-gradient(ellipse 40% 30% at 40% 70%, rgba(0, 0, 0, 0.1) 0%, transparent 50%),
-        linear-gradient(135deg, 
-            var(--butterfly-color, #FFD700) 0%, 
+        linear-gradient(135deg,
+            var(--butterfly-color, #FFD700) 0%,
             var(--butterfly-color-light, #FFF8DC) 50%,
-            var(--butterfly-color, #FFD700) 100%
-        );
+            var(--butterfly-color, #FFD700) 100%);
     border-radius: 50% 50% 35% 35%;
     /* REMOVED complex box-shadow */
     box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.4);
@@ -5294,24 +5378,57 @@ body {
 }
 
 @keyframes spring-butterfly-wing-left {
-    from { transform: rotateY(0deg) rotateZ(-12deg) scale(1); }
-    to { transform: rotateY(70deg) rotateZ(-12deg) scale(0.95); }
+    from {
+        transform: rotateY(0deg) rotateZ(-12deg) scale(1);
+    }
+
+    to {
+        transform: rotateY(70deg) rotateZ(-12deg) scale(0.95);
+    }
 }
 
 @keyframes spring-butterfly-wing-right {
-    from { transform: rotateY(0deg) rotateZ(12deg) scale(1); }
-    to { transform: rotateY(-70deg) rotateZ(12deg) scale(0.95); }
+    from {
+        transform: rotateY(0deg) rotateZ(12deg) scale(1);
+    }
+
+    to {
+        transform: rotateY(-70deg) rotateZ(12deg) scale(0.95);
+    }
 }
 
 @keyframes spring-butterfly-path-1 {
-    0% { transform: translate(0, 0) scale(1); }
-    15% { transform: translate(12vw, -10vh) scale(1.05); }
-    30% { transform: translate(25vw, 8vh) scale(0.95); }
-    45% { transform: translate(35vw, -15vh) scale(1.1); }
-    60% { transform: translate(50vw, 5vh) scale(1); }
-    75% { transform: translate(55vw, -8vh) scale(1.05); }
-    90% { transform: translate(62vw, 3vh) scale(0.98); }
-    100% { transform: translate(70vw, 0) scale(1); }
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    15% {
+        transform: translate(12vw, -10vh) scale(1.05);
+    }
+
+    30% {
+        transform: translate(25vw, 8vh) scale(0.95);
+    }
+
+    45% {
+        transform: translate(35vw, -15vh) scale(1.1);
+    }
+
+    60% {
+        transform: translate(50vw, 5vh) scale(1);
+    }
+
+    75% {
+        transform: translate(55vw, -8vh) scale(1.05);
+    }
+
+    90% {
+        transform: translate(62vw, 3vh) scale(0.98);
+    }
+
+    100% {
+        transform: translate(70vw, 0) scale(1);
+    }
 }
 
 .spring-butterfly.path-2 {
@@ -5319,12 +5436,29 @@ body {
 }
 
 @keyframes spring-butterfly-path-2 {
-    0% { transform: translate(0, 0) scale(1); }
-    20% { transform: translate(-12vw, 12vh) scale(1.1); }
-    40% { transform: translate(8vw, -8vh) scale(0.9); }
-    60% { transform: translate(-18vw, 10vh) scale(1.05); }
-    80% { transform: translate(12vw, -12vh) scale(0.95); }
-    100% { transform: translate(-8vw, 0) scale(1); }
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    20% {
+        transform: translate(-12vw, 12vh) scale(1.1);
+    }
+
+    40% {
+        transform: translate(8vw, -8vh) scale(0.9);
+    }
+
+    60% {
+        transform: translate(-18vw, 10vh) scale(1.05);
+    }
+
+    80% {
+        transform: translate(12vw, -12vh) scale(0.95);
+    }
+
+    100% {
+        transform: translate(-8vw, 0) scale(1);
+    }
 }
 
 .spring-butterfly.path-3 {
@@ -5332,16 +5466,38 @@ body {
 }
 
 @keyframes spring-butterfly-path-3 {
-    0% { transform: translate(0, 0) scale(1); }
-    25% { transform: translate(18vw, 18vh) scale(1.15); }
-    50% { transform: translate(-8vw, -8vh) scale(0.85); }
-    75% { transform: translate(10vw, 12vh) scale(1.1); }
-    100% { transform: translate(0, 0) scale(1); }
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    25% {
+        transform: translate(18vw, 18vh) scale(1.15);
+    }
+
+    50% {
+        transform: translate(-8vw, -8vh) scale(0.85);
+    }
+
+    75% {
+        transform: translate(10vw, 12vh) scale(1.1);
+    }
+
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
 }
 
 @keyframes spring-butterfly-flutter {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.9; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.9;
+    }
+
     /* REMOVED filter animation */
 }
 
@@ -5385,12 +5541,10 @@ body {
 .spring-raindrop {
     position: absolute;
     bottom: 100%;
-    background: linear-gradient(
-        to bottom, 
-        rgba(255, 255, 255, 0) 0%,
-        rgba(173, 216, 230, 0.7) 50%,
-        rgba(135, 206, 250, 0.9) 100%
-    );
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(173, 216, 230, 0.7) 50%,
+            rgba(135, 206, 250, 0.9) 100%);
     border-radius: 0 0 50% 50%;
     animation: spring-rain-fall linear infinite;
 }
@@ -5408,27 +5562,31 @@ body {
     left: 0;
     width: 100%;
     height: 14%;
-    background: 
+    background:
         /* Top soft blend */
         linear-gradient(to top,
             transparent 0%,
             rgba(168, 219, 168, 0.3) 60%,
-            transparent 100%
-        ),
+            transparent 100%),
         /* Main ground gradient with depth */
-        linear-gradient(
-            to top,
-            #2d5a1e 0%,       /* Deep forest floor */
-            #3d7a2e 15%,      /* Rich earth green */
-            #4a8c3a 30%,      /* Grass base */
-            #5ca045 45%,      /* Lush grass */
-            #6fb856 60%,      /* Bright meadow */
-            #81c784 75%,      /* Fresh spring green */
-            #a5d6a7 88%,      /* Light highlights */
-            transparent 100%
-        );
+        linear-gradient(to top,
+            #2d5a1e 0%,
+            /* Deep forest floor */
+            #3d7a2e 15%,
+            /* Rich earth green */
+            #4a8c3a 30%,
+            /* Grass base */
+            #5ca045 45%,
+            /* Lush grass */
+            #6fb856 60%,
+            /* Bright meadow */
+            #81c784 75%,
+            /* Fresh spring green */
+            #a5d6a7 88%,
+            /* Light highlights */
+            transparent 100%);
     z-index: 10;
-    box-shadow: 
+    box-shadow:
         inset 0 20px 40px rgba(255, 255, 255, 0.1),
         inset 0 -10px 30px rgba(0, 50, 0, 0.2);
 }
@@ -5452,7 +5610,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: 
+    background:
         radial-gradient(ellipse 30% 50% at 20% 30%, rgba(255, 255, 200, 0.08) 0%, transparent 70%),
         radial-gradient(ellipse 25% 40% at 70% 40%, rgba(255, 255, 200, 0.06) 0%, transparent 60%),
         radial-gradient(ellipse 20% 30% at 50% 50%, rgba(255, 255, 200, 0.04) 0%, transparent 50%);
@@ -5461,13 +5619,27 @@ body {
 }
 
 @keyframes spring-grass-sway {
-    0%, 100% { transform: scaleX(1); }
-    50% { transform: scaleX(1.01); }
+
+    0%,
+    100% {
+        transform: scaleX(1);
+    }
+
+    50% {
+        transform: scaleX(1.01);
+    }
 }
 
 @keyframes spring-ground-shimmer {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 0.9; }
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 0.9;
+    }
 }
 
 /* ===== Enchanted Meadow Wildflowers ===== */
@@ -5494,8 +5666,13 @@ body {
 }
 
 @keyframes spring-wildflower-sway {
-    from { transform: rotate(-6deg) translateX(-2px); }
-    to { transform: rotate(6deg) translateX(2px); }
+    from {
+        transform: rotate(-6deg) translateX(-2px);
+    }
+
+    to {
+        transform: rotate(6deg) translateX(2px);
+    }
 }
 
 /* ===== Growing Sprouts ===== */
@@ -5518,7 +5695,7 @@ body {
     animation: sprout-life-cycle 28s ease-in-out infinite;
 }
 
-.sprout > div {
+.sprout>div {
     position: absolute;
     bottom: 0;
     width: 100%;
@@ -5542,22 +5719,54 @@ body {
 }
 
 @keyframes sprout-life-cycle {
-    0% { transform: scaleY(0); opacity: 0.8; }
-    8% { transform: scaleY(1); opacity: 1; }
-    12% { animation-play-state: running; }
-    88% { transform: scaleY(1); filter: saturate(1) brightness(1); }
-    95% { transform: scaleY(0.85); filter: saturate(0.6) brightness(0.9); }
-    100% { transform: scaleY(0); opacity: 0.5; }
+    0% {
+        transform: scaleY(0);
+        opacity: 0.8;
+    }
+
+    8% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+
+    12% {
+        animation-play-state: running;
+    }
+
+    88% {
+        transform: scaleY(1);
+        filter: saturate(1) brightness(1);
+    }
+
+    95% {
+        transform: scaleY(0.85);
+        filter: saturate(0.6) brightness(0.9);
+    }
+
+    100% {
+        transform: scaleY(0);
+        opacity: 0.5;
+    }
 }
 
 @keyframes sprout-sway-left {
-    from { transform: rotate(-22deg); }
-    to { transform: rotate(-12deg); }
+    from {
+        transform: rotate(-22deg);
+    }
+
+    to {
+        transform: rotate(-12deg);
+    }
 }
 
 @keyframes sprout-sway-right {
-    from { transform: rotate(12deg); }
-    to { transform: rotate(22deg); }
+    from {
+        transform: rotate(12deg);
+    }
+
+    to {
+        transform: rotate(22deg);
+    }
 }
 
 .sprout::after {
@@ -5576,9 +5785,23 @@ body {
 }
 
 @keyframes sprout-dewdrop {
-    0%, 30% { opacity: 0; transform: scale(0.6); }
-    50% { opacity: 1; transform: scale(1); }
-    70%, 100% { opacity: 0; transform: scale(0.8) translateY(5px); }
+
+    0%,
+    30% {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    70%,
+    100% {
+        opacity: 0;
+        transform: scale(0.8) translateY(5px);
+    }
 }
 
 /* ============================================
@@ -5591,7 +5814,8 @@ body {
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 35vh; /* Slightly taller to allow flowers to grow higher */
+    height: 35vh;
+    /* Slightly taller to allow flowers to grow higher */
     z-index: 50;
     pointer-events: none;
     perspective: 800px;
@@ -5635,25 +5859,22 @@ body {
     height: calc(var(--stem-height) * var(--growth-progress));
     /* Very slow growth transition */
     transition: width 5s ease-out, height 5s ease-out;
-    background: 
-        linear-gradient(90deg, 
-            rgba(0, 0, 0, 0.1) 0%, 
+    background:
+        linear-gradient(90deg,
+            rgba(0, 0, 0, 0.1) 0%,
             transparent 30%,
             transparent 70%,
-            rgba(0, 0, 0, 0.1) 100%
-        ),
-        linear-gradient(
-            to top,
+            rgba(0, 0, 0, 0.1) 100%),
+        linear-gradient(to top,
             #1b5e20 0%,
             #2e7d32 20%,
             #388e3c 40%,
             #43a047 60%,
             #4caf50 80%,
-            #66bb6a 100%
-        );
+            #66bb6a 100%);
     border-radius: 4px;
     transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 
+    box-shadow:
         inset 2px 0 6px rgba(255, 255, 255, 0.25),
         inset -1px 0 4px rgba(0, 0, 0, 0.15),
         2px 0 8px rgba(76, 175, 80, 0.3),
@@ -5669,21 +5890,23 @@ body {
     transform: translateX(-50%);
     width: 2px;
     height: 100%;
-    background: linear-gradient(to top, 
-        rgba(200, 255, 200, 0) 0%, 
-        rgba(200, 255, 200, 0.6) 50%, 
-        rgba(200, 255, 200, 0) 100%
-    );
+    background: linear-gradient(to top,
+            rgba(200, 255, 200, 0) 0%,
+            rgba(200, 255, 200, 0.6) 50%,
+            rgba(200, 255, 200, 0) 100%);
     animation: stem-energy-flow 2s ease-in-out infinite;
     opacity: var(--growth-progress);
 }
 
 @keyframes stem-energy-flow {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: translateX(-50%) scaleY(0.5);
         opacity: calc(var(--growth-progress) * 0.3);
     }
-    50% { 
+
+    50% {
         transform: translateX(-50%) scaleY(1);
         opacity: var(--growth-progress);
     }
@@ -5694,19 +5917,18 @@ body {
     position: absolute;
     width: calc(20px + var(--growth-progress) * 15px);
     height: calc(12px + var(--growth-progress) * 8px);
-    background: 
+    background:
         radial-gradient(ellipse 50% 50% at 30% 30%, rgba(255, 255, 255, 0.4) 0%, transparent 50%),
-        linear-gradient(135deg, 
-            #98fb98 0%, 
-            #66bb6a 40%, 
-            #4caf50 70%, 
-            #388e3c 100%
-        );
+        linear-gradient(135deg,
+            #98fb98 0%,
+            #66bb6a 40%,
+            #4caf50 70%,
+            #388e3c 100%);
     border-radius: 0 85% 0 85%;
     bottom: calc(20px + var(--growth-progress) * 45px);
     opacity: calc(0.2 + var(--growth-progress) * 0.8);
     transition: all 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
-    box-shadow: 
+    box-shadow:
         inset 2px 2px 5px rgba(255, 255, 255, 0.4),
         inset -1px -1px 3px rgba(0, 100, 0, 0.2),
         2px 3px 8px rgba(76, 175, 80, 0.3);
@@ -5734,7 +5956,7 @@ body {
     position: absolute;
     width: calc(15px + var(--growth-progress) * 10px);
     height: calc(9px + var(--growth-progress) * 6px);
-    background: 
+    background:
         radial-gradient(ellipse 50% 50% at 30% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 50%),
         linear-gradient(135deg, #81c784 0%, #4caf50 60%, #388e3c 100%);
     border-radius: 0 80% 0 80%;
@@ -5745,8 +5967,15 @@ body {
 }
 
 @keyframes leaf-gentle-sway {
-    0%, 100% { transform: translateX(-105%) rotate(-35deg) scale(calc(0.4 + var(--growth-progress) * 0.6)); }
-    50% { transform: translateX(-105%) rotate(-30deg) scale(calc(0.42 + var(--growth-progress) * 0.6)); }
+
+    0%,
+    100% {
+        transform: translateX(-105%) rotate(-35deg) scale(calc(0.4 + var(--growth-progress) * 0.6));
+    }
+
+    50% {
+        transform: translateX(-105%) rotate(-30deg) scale(calc(0.42 + var(--growth-progress) * 0.6));
+    }
 }
 
 /* Magnificent Flower Head */
@@ -5773,23 +6002,21 @@ body {
     --petal-scale: 1;
     /* Very slow petal animation */
     transition: transform 4s ease-out, opacity 3s ease-out;
-    background: 
+    background:
         radial-gradient(ellipse 70% 50% at 70% 30%, rgba(255, 255, 255, 0.7) 0%, transparent 50%),
-        linear-gradient(
-            100deg,
+        linear-gradient(100deg,
             #ff8fab 0%,
             #ffb3c6 25%,
             #ffc8d7 50%,
             #ffdce4 75%,
-            #fff0f5 100%
-        );
+            #fff0f5 100%);
     border-radius: 50% 50% 45% 45% / 65% 65% 35% 35%;
     transform-origin: 0% 50%;
     transform: rotate(var(--petal-angle)) translateX(12px);
     opacity: calc(var(--growth-progress) * 1);
     transition: all 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
     /* Optimized box-shadow - reduced complexity */
-    box-shadow: 
+    box-shadow:
         inset 3px 3px 8px rgba(255, 255, 255, 0.6),
         0 2px 6px rgba(255, 105, 180, 0.3);
     backface-visibility: hidden;
@@ -5802,7 +6029,7 @@ body {
     left: 25%;
     width: 55%;
     height: 35%;
-    background: 
+    background:
         radial-gradient(ellipse at center, rgba(255, 255, 255, 0.6) 0%, transparent 70%);
     border-radius: 50%;
     filter: blur(2px);
@@ -5862,77 +6089,77 @@ body {
     height: 20px;
     border-radius: 0;
     clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-    background: linear-gradient(180deg, 
-        #fff8dc 0%, 
-        #ffd700 50%, 
-        #ffb347 100%);
+    background: linear-gradient(180deg,
+            #fff8dc 0%,
+            #ffd700 50%,
+            #ffb347 100%);
 }
 
 /* ===== FLOWER VARIETY COLORS ===== */
 
 .combo-flower-wrapper.variety-cherry .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #ffc0cb 0%, 
-        #ffb7c5 40%, 
-        #ff91a4 100%);
+    background: linear-gradient(180deg,
+            #ffc0cb 0%,
+            #ffb7c5 40%,
+            #ff91a4 100%);
 }
 
 .combo-flower-wrapper.variety-lily .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #ffffff 0%, 
-        #fffaf0 40%, 
-        #ffefd5 100%);
+    background: linear-gradient(180deg,
+            #ffffff 0%,
+            #fffaf0 40%,
+            #ffefd5 100%);
 }
 
 .combo-flower-wrapper.variety-rose .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #ff6b6b 0%, 
-        #ee5a5a 40%, 
-        #dc143c 100%);
+    background: linear-gradient(180deg,
+            #ff6b6b 0%,
+            #ee5a5a 40%,
+            #dc143c 100%);
 }
 
 .combo-flower-wrapper.variety-pansy .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #9370db 0%, 
-        #8a2be2 40%, 
-        #4b0082 100%);
+    background: linear-gradient(180deg,
+            #9370db 0%,
+            #8a2be2 40%,
+            #4b0082 100%);
 }
 
 .combo-flower-wrapper.variety-daisy .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #ffffff 0%, 
-        #fffef0 50%, 
-        #fffacd 100%);
+    background: linear-gradient(180deg,
+            #ffffff 0%,
+            #fffef0 50%,
+            #fffacd 100%);
 }
 
 .combo-flower-wrapper.variety-cosmos .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #ff69b4 0%, 
-        #ff1493 40%, 
-        #db7093 100%);
+    background: linear-gradient(180deg,
+            #ff69b4 0%,
+            #ff1493 40%,
+            #db7093 100%);
 }
 
 .combo-flower-wrapper.variety-star .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #fff8dc 0%, 
-        #ffd700 50%, 
-        #ffb347 100%);
+    background: linear-gradient(180deg,
+            #fff8dc 0%,
+            #ffd700 50%,
+            #ffb347 100%);
 }
 
 .combo-flower-wrapper.variety-sunflower .combo-flower-petal {
-    background: linear-gradient(180deg, 
-        #ffff00 0%, 
-        #ffd700 40%, 
-        #ff8c00 100%);
+    background: linear-gradient(180deg,
+            #ffff00 0%,
+            #ffd700 40%,
+            #ff8c00 100%);
 }
 
 .combo-flower-wrapper.variety-sunflower .combo-flower-center {
     width: calc(var(--center-size) * 1.5);
     height: calc(var(--center-size) * 1.5);
     background: radial-gradient(circle,
-        #8b4513 0%,
-        #654321 50%,
-        #3d2914 100%);
+            #8b4513 0%,
+            #654321 50%,
+            #3d2914 100%);
 }
 
 /* ===== WITHERING ANIMATION ===== */
@@ -5945,11 +6172,13 @@ body {
         opacity: 1;
         transform: rotate(var(--flower-rotation)) scale(var(--flower-scale));
     }
+
     50% {
         opacity: 0.5;
         transform: rotate(calc(var(--flower-rotation) + 15deg)) scale(calc(var(--flower-scale) * 0.7));
         filter: hue-rotate(var(--hue-shift)) grayscale(0.5);
     }
+
     100% {
         opacity: 0;
         transform: rotate(calc(var(--flower-rotation) + 30deg)) scale(0);
@@ -5966,18 +6195,17 @@ body {
     width: calc(var(--center-size, 12px) + var(--growth-progress) * 6px);
     transition: width 4s ease-out, height 4s ease-out, box-shadow 3s ease-out;
     height: calc(18px + var(--growth-progress) * 8px);
-    background: 
-        radial-gradient(circle at 35% 35%, 
-            #fffef0 0%, 
+    background:
+        radial-gradient(circle at 35% 35%,
+            #fffef0 0%,
             #fff8dc 20%,
             #ffd700 45%,
             #ffb300 70%,
-            #ff8f00 100%
-        );
+            #ff8f00 100%);
     border-radius: 50%;
     z-index: 2;
     /* Optimized box-shadow */
-    box-shadow: 
+    box-shadow:
         inset 2px 2px 5px rgba(255, 255, 255, 0.6),
         0 0 10px rgba(255, 215, 0, 0.5);
     transition: all 0.4s ease-out;
@@ -6009,18 +6237,29 @@ body {
 }
 
 @keyframes center-pulse {
-    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: calc(var(--growth-progress) * 0.5); }
-    50% { transform: translate(-50%, -50%) scale(1.3); opacity: var(--growth-progress); }
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: calc(var(--growth-progress) * 0.5);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: var(--growth-progress);
+    }
 }
 
 /* Magical Aura Glow - Simplified for performance */
 .combo-flower-glow {
-    display: none; /* Disabled for performance */
+    display: none;
+    /* Disabled for performance */
 }
 
 /* Secondary outer aura - Simplified for performance */
 .combo-flower-aura {
-    display: none; /* Disabled for performance */
+    display: none;
+    /* Disabled for performance */
 }
 
 /* Particle container */
@@ -6053,9 +6292,11 @@ body {
         transform: translate(-50%, -50%) rotate(var(--particle-angle)) translateY(0) scale(1.2);
         opacity: 1;
     }
+
     70% {
         opacity: 0.8;
     }
+
     100% {
         transform: translate(-50%, -50%) rotate(var(--particle-angle)) translateY(calc(-1 * var(--particle-distance))) scale(0);
         opacity: 0;
@@ -6067,7 +6308,8 @@ body {
 /* Stage: Dormant (seed waiting to bloom) */
 .combo-flower-wrapper.stage-dormant {
     opacity: 0.25;
-    filter: grayscale(0.5); /* Simplified filter */
+    filter: grayscale(0.5);
+    /* Simplified filter */
 }
 
 .combo-flower-wrapper.stage-dormant .combo-flower-head {
@@ -6109,11 +6351,14 @@ body {
 }
 
 @keyframes petal-unfurl {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: rotate(var(--petal-angle)) translateX(8px) scale(0.6);
         opacity: 0.55;
     }
-    50% { 
+
+    50% {
         transform: rotate(calc(var(--petal-angle) + 2deg)) translateX(10px) scale(0.65);
         opacity: 0.65;
     }
@@ -6141,16 +6386,21 @@ body {
 }
 
 @keyframes petal-bloom-sway {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: rotate(var(--petal-angle)) translateX(14px) scale(0.9);
     }
-    25% { 
+
+    25% {
         transform: rotate(calc(var(--petal-angle) + 4deg)) translateX(16px) scale(0.93);
     }
-    50% { 
+
+    50% {
         transform: rotate(calc(var(--petal-angle) + 2deg)) translateX(15px) scale(0.92);
     }
-    75% { 
+
+    75% {
         transform: rotate(calc(var(--petal-angle) - 2deg)) translateX(13px) scale(0.88);
     }
 }
@@ -6170,30 +6420,33 @@ body {
     transform: rotate(var(--petal-angle)) translateX(18px) scale(1.05);
     animation: petal-radiant-dance 2.5s ease-in-out infinite;
     animation-delay: calc(var(--petal-index) * 0.08s);
-    background: 
+    background:
         radial-gradient(ellipse 70% 50% at 70% 30%, rgba(255, 255, 255, 0.8) 0%, transparent 50%),
-        linear-gradient(
-            100deg,
+        linear-gradient(100deg,
             #ffb3c6 0%,
             #ffc8d7 30%,
             #ffdce4 60%,
             #fff5f8 90%,
-            #ffffff 100%
-        );
+            #ffffff 100%);
     /* Removed expensive box-shadows */
 }
 
 @keyframes petal-radiant-dance {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: rotate(var(--petal-angle)) translateX(18px) scale(1.05);
     }
-    25% { 
+
+    25% {
         transform: rotate(calc(var(--petal-angle) + 6deg)) translateX(21px) scale(1.08);
     }
-    50% { 
+
+    50% {
         transform: rotate(calc(var(--petal-angle) + 3deg)) translateX(20px) scale(1.06);
     }
-    75% { 
+
+    75% {
         transform: rotate(calc(var(--petal-angle) - 3deg)) translateX(17px) scale(1.02);
     }
 }
@@ -6205,11 +6458,14 @@ body {
 }
 
 @keyframes center-radiant-glow {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: translate(-50%, -50%) scale(1);
         opacity: 1;
     }
-    50% { 
+
+    50% {
         transform: translate(-50%, -50%) scale(1.1);
         opacity: 0.9;
     }
@@ -6221,22 +6477,31 @@ body {
 }
 
 @keyframes head-radiant-sway {
-    0%, 100% { transform: translateX(-50%) scale(1.1) rotateX(0deg) rotateZ(0deg); }
-    25% { transform: translateX(-50%) scale(1.12) rotateX(2deg) rotateZ(1deg); }
-    50% { transform: translateX(-50%) scale(1.1) rotateX(0deg) rotateZ(0deg); }
-    75% { transform: translateX(-50%) scale(1.12) rotateX(-2deg) rotateZ(-1deg); }
+
+    0%,
+    100% {
+        transform: translateX(-50%) scale(1.1) rotateX(0deg) rotateZ(0deg);
+    }
+
+    25% {
+        transform: translateX(-50%) scale(1.12) rotateX(2deg) rotateZ(1deg);
+    }
+
+    50% {
+        transform: translateX(-50%) scale(1.1) rotateX(0deg) rotateZ(0deg);
+    }
+
+    75% {
+        transform: translateX(-50%) scale(1.12) rotateX(-2deg) rotateZ(-1deg);
+    }
 }
 
 /* Stage: Transcendent (combo 11+) - Maximum glory */
 .combo-flower-wrapper.stage-transcendent {
     opacity: 1;
     /* transform scaling removed - handled by base class with --growth-progress */
-    filter: 
-        hue-rotate(var(--hue-shift))
-        drop-shadow(0 0 20px rgba(255, 215, 0, 0.7))
-        drop-shadow(0 0 40px rgba(255, 182, 193, 0.4))
-        saturate(1.3)
-        brightness(1.1);
+    filter:
+        hue-rotate(var(--hue-shift)) drop-shadow(0 0 20px rgba(255, 215, 0, 0.7)) drop-shadow(0 0 40px rgba(255, 182, 193, 0.4)) saturate(1.3) brightness(1.1);
 }
 
 .combo-flower-wrapper.stage-transcendent .combo-flower-petal {
@@ -6244,18 +6509,16 @@ body {
     transform: rotate(var(--petal-angle)) translateX(22px) scale(1.15);
     animation: petal-transcendent-glory 2s ease-in-out infinite;
     animation-delay: calc(var(--petal-index) * 0.05s);
-    background: 
+    background:
         radial-gradient(ellipse 80% 60% at 65% 25%, rgba(255, 255, 255, 0.9) 0%, transparent 50%),
-        linear-gradient(
-            100deg,
+        linear-gradient(100deg,
             #ffc8d7 0%,
             #ffdce4 20%,
             #ffecf0 40%,
             #fff8fa 60%,
             #ffffff 80%,
-            #fffef0 100%
-        );
-    box-shadow: 
+            #fffef0 100%);
+    box-shadow:
         inset 4px 4px 12px rgba(255, 255, 255, 0.85),
         inset -1px -1px 6px rgba(255, 182, 193, 0.2),
         0 5px 20px rgba(255, 105, 180, 0.6),
@@ -6264,35 +6527,39 @@ body {
 }
 
 @keyframes petal-transcendent-glory {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: rotate(var(--petal-angle)) translateX(22px) scale(1.15);
         filter: brightness(1) saturate(1);
     }
-    25% { 
+
+    25% {
         transform: rotate(calc(var(--petal-angle) + 10deg)) translateX(28px) scale(1.22);
         filter: brightness(1.2) saturate(1.15);
     }
-    50% { 
+
+    50% {
         transform: rotate(calc(var(--petal-angle) + 5deg)) translateX(25px) scale(1.18);
         filter: brightness(1.3) saturate(1.2);
     }
-    75% { 
+
+    75% {
         transform: rotate(calc(var(--petal-angle) - 5deg)) translateX(20px) scale(1.12);
         filter: brightness(1.15) saturate(1.1);
     }
 }
 
 .combo-flower-wrapper.stage-transcendent .combo-flower-center {
-    background: 
-        radial-gradient(circle at 30% 30%, 
-            #ffffff 0%, 
+    background:
+        radial-gradient(circle at 30% 30%,
+            #ffffff 0%,
             #fffef0 20%,
             #fff8dc 40%,
             #ffd700 65%,
-            #ffb300 100%
-        );
+            #ffb300 100%);
     animation: center-transcendent-pulse 1.2s ease-in-out infinite;
-    box-shadow: 
+    box-shadow:
         inset 4px 4px 12px rgba(255, 255, 255, 0.9),
         0 0 30px rgba(255, 215, 0, 1),
         0 0 60px rgba(255, 165, 0, 0.8),
@@ -6300,11 +6567,14 @@ body {
 }
 
 @keyframes center-transcendent-pulse {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: translate(-50%, -50%) scale(1);
         filter: brightness(1);
     }
-    50% { 
+
+    50% {
         transform: translate(-50%, -50%) scale(1.2);
         filter: brightness(1.3);
     }
@@ -6316,19 +6586,24 @@ body {
 }
 
 @keyframes head-transcendent-glory {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: translateX(-50%) scale(1.2) rotateX(0deg) rotateZ(0deg);
         filter: brightness(1);
     }
-    25% { 
+
+    25% {
         transform: translateX(-50%) scale(1.25) rotateX(5deg) rotateZ(3deg);
         filter: brightness(1.1);
     }
-    50% { 
+
+    50% {
         transform: translateX(-50%) scale(1.22) rotateX(0deg) rotateZ(0deg);
         filter: brightness(1.2);
     }
-    75% { 
+
+    75% {
         transform: translateX(-50%) scale(1.25) rotateX(-5deg) rotateZ(-3deg);
         filter: brightness(1.1);
     }
@@ -6336,23 +6611,25 @@ body {
 
 .combo-flower-wrapper.stage-transcendent .combo-flower-glow {
     animation: transcendent-aura-burst 1.5s ease-in-out infinite;
-    background: 
+    background:
         radial-gradient(circle,
             rgba(255, 255, 240, 0.5) 0%,
             rgba(255, 215, 0, 0.4) 20%,
             rgba(255, 182, 193, 0.3) 40%,
             rgba(255, 105, 180, 0.15) 60%,
-            transparent 80%
-        );
+            transparent 80%);
 }
 
 @keyframes transcendent-aura-burst {
-    0%, 100% { 
+
+    0%,
+    100% {
         transform: translateX(-50%) scale(1);
         opacity: 0.9;
         filter: blur(5px) brightness(1);
     }
-    50% { 
+
+    50% {
         transform: translateX(-50%) scale(1.4);
         opacity: 1;
         filter: blur(10px) brightness(1.3);
@@ -6368,17 +6645,15 @@ body {
     transform: translateX(-50%);
     width: calc(160px + var(--growth-progress) * 200px);
     height: calc(160px + var(--growth-progress) * 200px);
-    background: conic-gradient(
-        from 0deg,
-        rgba(255, 0, 0, 0.15),
-        rgba(255, 165, 0, 0.15),
-        rgba(255, 255, 0, 0.15),
-        rgba(0, 255, 0, 0.15),
-        rgba(0, 255, 255, 0.15),
-        rgba(0, 0, 255, 0.15),
-        rgba(255, 0, 255, 0.15),
-        rgba(255, 0, 0, 0.15)
-    );
+    background: conic-gradient(from 0deg,
+            rgba(255, 0, 0, 0.15),
+            rgba(255, 165, 0, 0.15),
+            rgba(255, 255, 0, 0.15),
+            rgba(0, 255, 0, 0.15),
+            rgba(0, 255, 255, 0.15),
+            rgba(0, 0, 255, 0.15),
+            rgba(255, 0, 255, 0.15),
+            rgba(255, 0, 0, 0.15));
     border-radius: 50%;
     animation: rainbow-ring-spin 8s linear infinite;
     opacity: 0.6;
@@ -6387,8 +6662,13 @@ body {
 }
 
 @keyframes rainbow-ring-spin {
-    from { transform: translateX(-50%) rotate(0deg); }
-    to { transform: translateX(-50%) rotate(360deg); }
+    from {
+        transform: translateX(-50%) rotate(0deg);
+    }
+
+    to {
+        transform: translateX(-50%) rotate(360deg);
+    }
 }
 
 /* Growth animation trigger - Spectacular bounce */
@@ -6397,19 +6677,22 @@ body {
 }
 
 @keyframes flower-grow-spectacular {
-    0% { 
+    0% {
         transform: translateX(-50%) scale(var(--prev-scale, 0.8));
         filter: brightness(1);
     }
-    30% { 
+
+    30% {
         transform: translateX(-50%) scale(calc(1.05 + var(--growth-progress) * 0.45));
         filter: brightness(1.3);
     }
-    60% { 
+
+    60% {
         transform: translateX(-50%) scale(calc(0.95 + var(--growth-progress) * 0.35));
         filter: brightness(1.15);
     }
-    100% { 
+
+    100% {
         transform: translateX(-50%) scale(calc(1 + var(--growth-progress) * 0.4));
         filter: brightness(1);
     }
@@ -6433,11 +6716,10 @@ body {
         transform: translate(-50%, 0) rotate(0deg) scale(1);
         opacity: 1;
     }
+
     100% {
-        transform: translate(
-            calc(-50% + cos(var(--burst-angle)) * var(--burst-distance)),
-            calc(sin(var(--burst-angle)) * var(--burst-distance) * -1)
-        ) rotate(720deg) scale(0);
+        transform: translate(calc(-50% + cos(var(--burst-angle)) * var(--burst-distance)),
+                calc(sin(var(--burst-angle)) * var(--burst-distance) * -1)) rotate(720deg) scale(0);
         opacity: 0;
     }
 }
@@ -6449,21 +6731,27 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: radial-gradient(
-        ellipse at 50% 85%,
-        rgba(255, 215, 0, var(--glow-intensity, 0.2)) 0%,
-        rgba(255, 182, 193, calc(var(--glow-intensity, 0.2) * 0.5)) 30%,
-        transparent 70%
-    );
+    background: radial-gradient(ellipse at 50% 85%,
+            rgba(255, 215, 0, var(--glow-intensity, 0.2)) 0%,
+            rgba(255, 182, 193, calc(var(--glow-intensity, 0.2) * 0.5)) 30%,
+            transparent 70%);
     pointer-events: none;
     z-index: 100;
     animation: screen-glow-fade 1s ease-out forwards;
 }
 
 @keyframes screen-glow-fade {
-    0% { opacity: 0; }
-    20% { opacity: 1; }
-    100% { opacity: 0; }
+    0% {
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
 }
 
 /* ===== Canvas for Particles ===== */
@@ -13644,12 +13932,21 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 #settings-modal .modal-content {
-    min-width: 700px;
-    max-width: 850px;
-    max-height: 90vh;
+    min-width: 800px;
+    max-width: 950px;
+    max-height: 85vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    box-shadow:
+        0 0 0 1px rgba(139, 92, 246, 0.1),
+        0 20px 50px rgba(0, 0, 0, 0.5),
+        0 0 100px rgba(139, 92, 246, 0.15);
+    border-radius: 24px;
 }
 
 /* Settings header with close button */
@@ -13657,10 +13954,11 @@ body.phaser-multiplayer-active #p2-canvas {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid rgba(139, 92, 246, 0.3);
+    margin-bottom: 0;
+    padding: 24px 32px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
+    background: rgba(0, 0, 0, 0.2);
 }
 
 .settings-header h1 {
@@ -13699,8 +13997,8 @@ body.phaser-multiplayer-active #p2-canvas {
     overflow-y: auto;
     overflow-x: hidden;
     flex-grow: 1;
-    margin: 20px 0;
-    padding-right: 10px;
+    margin: 0;
+    padding: 0 32px 32px;
 }
 
 /* Scrollbar for settings-scroll-container - always auto, only visible when needed */
@@ -14079,38 +14377,84 @@ body.phaser-multiplayer-active #p2-canvas {
 
 .settings-tabs {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid rgba(139, 92, 246, 0.3);
+    gap: 8px;
+    padding: 20px 32px 0;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
-    /* Prevent tabs from shrinking */
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Hide scrollbar */
+}
+
+.settings-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 #settings-modal h1 {
     flex-shrink: 0;
-    /* Prevent title from shrinking */
+    font-size: 32px;
+    letter-spacing: 0.05em;
+    margin: 0;
 }
 
 .settings-tab {
-    background: transparent;
-    border: none;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: rgba(224, 231, 255, 0.6);
-    padding: 10px 20px;
+    padding: 12px 24px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 15px;
     font-family: 'Space Mono', monospace;
-    transition: all 0.3s ease;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px 12px 0 0;
+    margin-bottom: -1px;
+    position: relative;
+    overflow: hidden;
+}
+
+.settings-tab::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, rgba(139, 92, 246, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .settings-tab:hover {
-    color: rgba(224, 231, 255, 0.8);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+}
+
+.settings-tab:hover::before {
+    opacity: 1;
 }
 
 .settings-tab.active {
     color: #00ffff;
-    border-bottom-color: #00ffff;
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    border-bottom-color: transparent;
+    /* Merge with content */
+    box-shadow: 0 -4px 12px rgba(139, 92, 246, 0.1);
+    z-index: 10;
+}
+
+.settings-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: #00ffff;
+    box-shadow: 0 0 10px #00ffff;
 }
 
 .settings-tab-content {
@@ -14136,10 +14480,9 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .controls-nav-group {
-    background: rgba(139, 92, 246, 0.08);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    border-radius: 16px;
-    padding: 18px 16px;
+    background: transparent;
+    border: none;
+    padding: 0;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -14165,32 +14508,33 @@ body.phaser-multiplayer-active #p2-canvas {
     justify-content: space-between;
     gap: 12px;
     width: 100%;
-    background: rgba(17, 24, 39, 0.4);
-    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: rgba(224, 231, 255, 0.65);
-    padding: 10px 14px;
+    padding: 12px 16px;
     cursor: pointer;
     font-size: 14px;
     font-family: 'Space Mono', monospace;
     transition: all 0.2s ease;
     border-left: 3px solid transparent;
-    border-radius: 10px;
+    border-radius: 8px;
     text-align: left;
 }
 
 .controls-subtab:hover,
 .controls-subtab:focus-visible {
-    color: rgba(224, 231, 255, 0.9);
-    background: rgba(45, 55, 72, 0.55);
-    border-color: rgba(139, 92, 246, 0.35);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateX(4px);
 }
 
 .controls-subtab.active {
-    color: #f0f9ff;
-    background: linear-gradient(135deg, rgba(14, 165, 233, 0.3), rgba(139, 92, 246, 0.35));
+    color: #00ffff;
+    background: rgba(139, 92, 246, 0.15);
     border-left-color: #00ffff;
-    border-color: rgba(129, 140, 248, 0.45);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .controls-subtab-icon {
@@ -14468,42 +14812,49 @@ body.phaser-multiplayer-active #p2-canvas {
     justify-self: end;
     align-self: center;
     white-space: normal;
-    padding-right: 15px;
+    padding-right: 24px;
     text-align: right;
     width: 100%;
-    line-height: 1.3;
+    line-height: 1.4;
+    font-size: 15px;
+    color: rgba(224, 231, 255, 0.9);
+    font-weight: 500;
 }
 
 /* Enhanced Input Styling */
 .key-input,
 .setting-select {
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid rgba(139, 92, 246, 0.3);
-    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
     color: #e0e7ff;
     padding: 12px 16px;
     font-family: 'Space Mono', monospace;
     font-size: 14px;
     cursor: pointer;
     min-width: 200px;
-    max-width: 300px;
+    max-width: 320px;
     width: 100%;
     justify-self: start;
-    transition: all 0.3s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .key-input:hover,
 .setting-select:hover {
-    border-color: rgba(139, 92, 246, 0.6);
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(139, 92, 246, 0.5);
+    transform: translateY(-1px);
 }
 
 .key-input:focus,
 .setting-select:focus {
     outline: none;
-    border-color: rgba(139, 92, 246, 0.8);
-    background: rgba(0, 0, 0, 0.6);
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+    background: rgba(15, 23, 42, 0.8);
+    border-color: #00ffff;
+    box-shadow:
+        0 0 0 4px rgba(0, 255, 255, 0.15),
+        0 0 20px rgba(0, 255, 255, 0.1);
 }
 
 .key-input {
@@ -14574,29 +14925,34 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .slider-container input[type=range]::-webkit-slider-runnable-track {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    height: 8px;
-    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    height: 6px;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.slider-container input[type=range]:hover::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .slider-container input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    margin-top: -5px;
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-    height: 18px;
-    width: 18px;
+    margin-top: -7px;
+    background: #00ffff;
+    height: 20px;
+    width: 20px;
     border-radius: 50%;
-    border: 2px solid rgba(167, 139, 253, 0.5);
-    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
-    transition: all 0.2s ease;
+    border: 2px solid rgba(15, 23, 42, 0.5);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .slider-container input[type=range]::-webkit-slider-thumb:hover {
-    background: linear-gradient(135deg, #7c3aed, #6d28d9);
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.8);
-    transform: scale(1.1);
+    background: #ffffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+    transform: scale(1.2);
 }
 
 .slider-container input[type=range]::-moz-range-track {
@@ -20970,11 +21326,9 @@ body.phaser-multiplayer-active #single-player-container {
     box-shadow:
         0 0 30px rgba(59, 130, 246, 0.4),
         inset 0 0 20px rgba(59, 130, 246, 0.1);
-    background: linear-gradient(
-        145deg,
-        rgba(0, 0, 0, 0.5),
-        rgba(59, 130, 246, 0.05)
-    );
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(59, 130, 246, 0.05));
 }
 
 .player-card[data-player="2"] {
@@ -20983,11 +21337,9 @@ body.phaser-multiplayer-active #single-player-container {
     box-shadow:
         0 0 30px rgba(239, 68, 68, 0.4),
         inset 0 0 20px rgba(239, 68, 68, 0.1);
-    background: linear-gradient(
-        145deg,
-        rgba(0, 0, 0, 0.5),
-        rgba(239, 68, 68, 0.05)
-    );
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(239, 68, 68, 0.05));
 }
 
 .player-card[data-player="3"] {
@@ -20996,11 +21348,9 @@ body.phaser-multiplayer-active #single-player-container {
     box-shadow:
         0 0 30px rgba(16, 185, 129, 0.4),
         inset 0 0 20px rgba(16, 185, 129, 0.1);
-    background: linear-gradient(
-        145deg,
-        rgba(0, 0, 0, 0.5),
-        rgba(16, 185, 129, 0.05)
-    );
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(16, 185, 129, 0.05));
 }
 
 .player-card[data-player="4"] {
@@ -21009,11 +21359,9 @@ body.phaser-multiplayer-active #single-player-container {
     box-shadow:
         0 0 30px rgba(245, 158, 11, 0.4),
         inset 0 0 20px rgba(245, 158, 11, 0.1);
-    background: linear-gradient(
-        145deg,
-        rgba(0, 0, 0, 0.5),
-        rgba(245, 158, 11, 0.05)
-    );
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(245, 158, 11, 0.05));
 }
 
 /* Next pieces section - horizontal layout */
@@ -22550,7 +22898,9 @@ body.serenity-mode.cursor-hidden * {
 }
 
 /* Gamepad focus state */
-.game-mode-card.gamepad-focused {
+/* Gamepad focus state */
+.game-mode-card.gamepad-focused,
+.game-mode-card:focus-visible {
     transform: translateY(-15px) scale(1.05);
     border-color: rgba(100, 200, 255, 0.9);
     box-shadow:
@@ -22558,9 +22908,12 @@ body.serenity-mode.cursor-hidden * {
         0 0 40px rgba(100, 200, 255, 0.4),
         inset 0 1px 1px rgba(255, 255, 255, 0.2);
     background: rgba(25, 25, 50, 0.85);
+    outline: none;
+    /* Remove default outline as we have custom styles */
 }
 
-.game-mode-card.gamepad-focused .mode-card-glow {
+.game-mode-card.gamepad-focused .mode-card-glow,
+.game-mode-card:focus-visible .mode-card-glow {
     opacity: 1;
     background: radial-gradient(circle,
             rgba(100, 200, 255, 0.5) 0%,

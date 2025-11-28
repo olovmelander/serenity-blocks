@@ -8,13 +8,13 @@ export const MEADOW_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#9ff6d5',  // Mint leaf
-        O: '#ffe58f',  // Sunflower glow
-        T: '#d9b7ff',  // Lavender bloom
-        S: '#8befb0',  // Clover green
-        Z: '#ff9fbf',  // Rose petal
-        J: '#87a6ff',  // Sky blue
-        L: '#ffdca1',  // Warm pollen
+        I: '#9ff6d5', // Mint leaf
+        O: '#ffe58f', // Sunflower glow
+        T: '#d9b7ff', // Lavender bloom
+        S: '#8befb0', // Clover green
+        Z: '#ff9fbf', // Rose petal
+        J: '#87a6ff', // Sky blue
+        L: '#ffdca1', // Warm pollen
         GARBAGE: '#1d2b1f', // Forest shadow
     },
 

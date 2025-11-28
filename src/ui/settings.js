@@ -5,7 +5,6 @@
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
 
-
 const DEFAULT_CONFIG = {
     gameMode: 'single',
     dasDelay: 120,
@@ -26,24 +25,24 @@ const DEFAULT_CONFIG = {
     backgroundComboEffects: true,
     sunsetFlareIntensity: 'full',
     // Tetromino Visual Settings
-    themeBasedTetrominos: true,  // Use theme-specific tetromino colors and effects
+    themeBasedTetrominos: true, // Use theme-specific tetromino colors and effects
     controlScheme: 'Keyboard',
     gamepadEnabled: true,
     gamepadDeadzone: 0.25,
     // Display Settings (Phase 1)
-    displayMode: 'windowed',        // 'windowed' | 'fullscreen' | 'borderless'
-    resolution: 'auto',             // 'auto' | '1280x720' | '1920x1080' | etc.
-    customResolution: null,         // { width: number, height: number } or null
+    displayMode: 'windowed', // 'windowed' | 'fullscreen' | 'borderless'
+    resolution: 'auto', // 'auto' | '1280x720' | '1920x1080' | etc.
+    customResolution: null, // { width: number, height: number } or null
     vsyncEnabled: true,
-    targetFrameRate: 60,            // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
-    effectQuality: 'High',          // 'Minimal' | 'Low' | 'Medium' | 'High' | 'Ultra' | 'Extreme' | 'Custom'
+    targetFrameRate: 60, // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
+    effectQuality: 'High', // 'Minimal' | 'Low' | 'Medium' | 'High' | 'Ultra' | 'Extreme' | 'Custom'
     // Advanced Graphics Settings
     enableAntialiasing: true,
     enableMotionBlur: false,
     enableBloom: true,
     enableShadows: true,
-    particleQuality: 'high',        // 'low' | 'medium' | 'high' | 'ultra'
-    textureQuality: 'high',         // 'low' | 'medium' | 'high' | 'ultra'
+    particleQuality: 'high', // 'low' | 'medium' | 'high' | 'ultra'
+    textureQuality: 'high', // 'low' | 'medium' | 'high' | 'ultra'
     showFPSCounter: false,
     keyBindings: {
         moveLeft: 'ArrowLeft',
@@ -69,24 +68,24 @@ const DEFAULT_CONFIG = {
         hardDrop: 'Shift',
     },
     gamepadBindings: {
-        moveLeft: 14,      // D-pad Left
-        moveRight: 15,     // D-pad Right
-        rotateRight: 0,    // A Button
-        rotateLeft: 3,     // Y Button
-        flip: 2,           // X Button
-        softDrop: 13,      // D-pad Down
-        hardDrop: 1,       // B Button
-        pause: 9,          // Start Button
+        moveLeft: 14, // D-pad Left
+        moveRight: 15, // D-pad Right
+        rotateRight: 0, // A Button
+        rotateLeft: 3, // Y Button
+        flip: 2, // X Button
+        softDrop: 13, // D-pad Down
+        hardDrop: 1, // B Button
+        pause: 9, // Start Button
     },
     player2GamepadBindings: {
-        moveLeft: 14,      // D-pad Left
-        moveRight: 15,     // D-pad Right
-        rotateRight: 0,    // A Button
-        rotateLeft: 3,     // Y Button
-        flip: 2,           // X Button
-        softDrop: 13,      // D-pad Down
-        hardDrop: 1,       // B Button
-        pause: 9,          // Start Button
+        moveLeft: 14, // D-pad Left
+        moveRight: 15, // D-pad Right
+        rotateRight: 0, // A Button
+        rotateLeft: 3, // Y Button
+        flip: 2, // X Button
+        softDrop: 13, // D-pad Down
+        hardDrop: 1, // B Button
+        pause: 9, // Start Button
     },
     player3GamepadBindings: {
         moveLeft: 14,
@@ -437,7 +436,7 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
     }
 
     // Listen for gamepad button press
-    let pollInterval = setInterval(() => {
+    const pollInterval = setInterval(() => {
         const gamepads = navigator.getGamepads();
         for (let i = 0; i < gamepads.length; i++) {
             const gamepad = gamepads[i];
@@ -466,7 +465,7 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
                     element.textContent = GAMEPAD_BUTTON_NAMES[btnIndex] || `Button ${btnIndex}`;
                     element.classList.remove('listening');
                     clearInterval(pollInterval);
-                    
+
                     settingsManager.save();
                     if (updateCallback) updateCallback();
                     return;

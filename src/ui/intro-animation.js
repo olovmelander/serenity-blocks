@@ -173,16 +173,16 @@ export class IntroAnimation {
 
         // Vibrant color palette matching the theme
         const colors = [
-            'rgba(100, 200, 255, 0.8)',   // Cyan/Blue
-            'rgba(147, 51, 234, 0.8)',    // Purple
-            'rgba(59, 130, 246, 0.8)',    // Blue
-            'rgba(236, 72, 153, 0.8)',    // Pink
-            'rgba(16, 185, 129, 0.8)',    // Emerald/Green
-            'rgba(139, 92, 246, 0.8)',    // Violet
-            'rgba(20, 184, 166, 0.8)',    // Teal
-            'rgba(255, 153, 0, 0.8)',     // Orange
-            'rgba(255, 255, 0, 0.8)',     // Yellow
-            'rgba(0, 255, 255, 0.8)',     // Cyan
+            'rgba(100, 200, 255, 0.8)', // Cyan/Blue
+            'rgba(147, 51, 234, 0.8)', // Purple
+            'rgba(59, 130, 246, 0.8)', // Blue
+            'rgba(236, 72, 153, 0.8)', // Pink
+            'rgba(16, 185, 129, 0.8)', // Emerald/Green
+            'rgba(139, 92, 246, 0.8)', // Violet
+            'rgba(20, 184, 166, 0.8)', // Teal
+            'rgba(255, 153, 0, 0.8)', // Orange
+            'rgba(255, 255, 0, 0.8)', // Yellow
+            'rgba(0, 255, 255, 0.8)', // Cyan
         ];
 
         // Create 80 particles (increased from 50 for more vibrant effect)
@@ -227,10 +227,18 @@ export class IntroAnimation {
         orbsContainer.className = 'intro-orbs';
 
         const orbConfigs = [
-            { color: 'rgba(100, 200, 255, 0.3)', size: 300, x: '10%', y: '20%', floatX: 50, floatY: -30, delay: 0 },
-            { color: 'rgba(147, 51, 234, 0.2)', size: 400, x: '80%', y: '70%', floatX: -60, floatY: 40, delay: 2 },
-            { color: 'rgba(59, 130, 246, 0.25)', size: 250, x: '50%', y: '10%', floatX: 30, floatY: 50, delay: 4 },
-            { color: 'rgba(16, 185, 129, 0.2)', size: 350, x: '20%', y: '80%', floatX: -40, floatY: -50, delay: 1 },
+            {
+                color: 'rgba(100, 200, 255, 0.3)', size: 300, x: '10%', y: '20%', floatX: 50, floatY: -30, delay: 0,
+            },
+            {
+                color: 'rgba(147, 51, 234, 0.2)', size: 400, x: '80%', y: '70%', floatX: -60, floatY: 40, delay: 2,
+            },
+            {
+                color: 'rgba(59, 130, 246, 0.25)', size: 250, x: '50%', y: '10%', floatX: 30, floatY: 50, delay: 4,
+            },
+            {
+                color: 'rgba(16, 185, 129, 0.2)', size: 350, x: '20%', y: '80%', floatX: -40, floatY: -50, delay: 1,
+            },
         ];
 
         orbConfigs.forEach((config) => {
@@ -315,8 +323,8 @@ export class IntroAnimation {
     createCosmicScene() {
         console.log('[IntroAnimation] Creating cosmic scene...');
         const scene = this.phaserGame.scene.scenes[0];
-        const width = scene.scale.width;
-        const height = scene.scale.height;
+        const { width } = scene.scale;
+        const { height } = scene.scale;
         console.log('[IntroAnimation] Scene dimensions:', width, 'x', height);
 
         // Create particle textures
@@ -376,7 +384,7 @@ export class IntroAnimation {
                 Math.random() * height,
                 Math.random() * 1.5 + 0.5,
                 0xffffff,
-                Math.random() * 0.8 + 0.2
+                Math.random() * 0.8 + 0.2,
             );
 
             // Twinkling animation
@@ -500,36 +508,36 @@ export class IntroAnimation {
             let velocityY;
 
             switch (edge) {
-                case 0: // Top
-                    startX = Math.random() * width;
-                    startY = -100;
-                    velocityX = (Math.random() - 0.5) * 40;
-                    velocityY = Math.random() * 30 + 20;
-                    break;
-                case 1: // Right
-                    startX = width + 100;
-                    startY = Math.random() * height;
-                    velocityX = -(Math.random() * 30 + 20);
-                    velocityY = (Math.random() - 0.5) * 40;
-                    break;
-                case 2: // Bottom
-                    startX = Math.random() * width;
-                    startY = height + 100;
-                    velocityX = (Math.random() - 0.5) * 40;
-                    velocityY = -(Math.random() * 30 + 20);
-                    break;
-                case 3: // Left
-                    startX = -100;
-                    startY = Math.random() * height;
-                    velocityX = Math.random() * 30 + 20;
-                    velocityY = (Math.random() - 0.5) * 40;
-                    break;
-                default:
-                    startX = Math.random() * width;
-                    startY = Math.random() * height;
-                    velocityX = (Math.random() - 0.5) * 40;
-                    velocityY = (Math.random() - 0.5) * 40;
-                    break;
+            case 0: // Top
+                startX = Math.random() * width;
+                startY = -100;
+                velocityX = (Math.random() - 0.5) * 40;
+                velocityY = Math.random() * 30 + 20;
+                break;
+            case 1: // Right
+                startX = width + 100;
+                startY = Math.random() * height;
+                velocityX = -(Math.random() * 30 + 20);
+                velocityY = (Math.random() - 0.5) * 40;
+                break;
+            case 2: // Bottom
+                startX = Math.random() * width;
+                startY = height + 100;
+                velocityX = (Math.random() - 0.5) * 40;
+                velocityY = -(Math.random() * 30 + 20);
+                break;
+            case 3: // Left
+                startX = -100;
+                startY = Math.random() * height;
+                velocityX = Math.random() * 30 + 20;
+                velocityY = (Math.random() - 0.5) * 40;
+                break;
+            default:
+                startX = Math.random() * width;
+                startY = Math.random() * height;
+                velocityX = (Math.random() - 0.5) * 40;
+                velocityY = (Math.random() - 0.5) * 40;
+                break;
             }
 
             // Create container for the tetromino
@@ -602,9 +610,7 @@ export class IntroAnimation {
 
             // Calculate bounding circle for collision detection
             const maxDistance = Math.max(
-                ...shape.map(([bx, by]) =>
-                    Math.sqrt(Math.pow(bx * cellSize, 2) + Math.pow(by * cellSize, 2))
-                )
+                ...shape.map(([bx, by]) => Math.sqrt((bx * cellSize) ** 2 + (by * cellSize) ** 2)),
             );
             container.collisionRadius = maxDistance + blockSize;
 
@@ -646,10 +652,10 @@ export class IntroAnimation {
 
                 // Check if out of bounds (with margin for cleanup)
                 const margin = 200;
-                if (container.x < -margin ||
-                    container.x > width + margin ||
-                    container.y < -margin ||
-                    container.y > height + margin) {
+                if (container.x < -margin
+                    || container.x > width + margin
+                    || container.y < -margin
+                    || container.y > height + margin) {
                     cleanupContainer();
                 }
             };
@@ -708,7 +714,7 @@ export class IntroAnimation {
             loop: true,
         });
 
-        console.log('[IntroAnimation] Continuous tetromino spawning started (max: ' + maxTetrominos + ')');
+        console.log(`[IntroAnimation] Continuous tetromino spawning started (max: ${maxTetrominos})`);
     }
 
     /**
@@ -806,13 +812,13 @@ export class IntroAnimation {
                 scale: 0,
                 duration: 400,
                 ease: 'Cubic.easeOut',
-                onComplete: () => particle.destroy()
+                onComplete: () => particle.destroy(),
             });
         }
 
         // Move particles
         const moveParticles = () => {
-            particles.forEach(p => {
+            particles.forEach((p) => {
                 if (p.active) {
                     p.x += p.velocityX * 0.016;
                     p.y += p.velocityY * 0.016;
@@ -821,7 +827,7 @@ export class IntroAnimation {
         };
 
         const moveInterval = setInterval(() => {
-            if (particles.every(p => !p.active)) {
+            if (particles.every((p) => !p.active)) {
                 clearInterval(moveInterval);
             } else {
                 moveParticles();
@@ -838,7 +844,7 @@ export class IntroAnimation {
             scale: 2,
             duration: 300,
             ease: 'Cubic.easeOut',
-            onComplete: () => flash.destroy()
+            onComplete: () => flash.destroy(),
         });
 
         // Create expanding ring effect
@@ -854,7 +860,7 @@ export class IntroAnimation {
             scale: 3,
             duration: 500,
             ease: 'Cubic.easeOut',
-            onComplete: () => ring.destroy()
+            onComplete: () => ring.destroy(),
         });
     }
 

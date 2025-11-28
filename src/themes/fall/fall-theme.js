@@ -54,7 +54,7 @@ export default class FallTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 // Leaf particles
                 leafLayerBackCount: 60,
                 leafLayerMidCount: 40,
@@ -82,7 +82,7 @@ export default class FallTheme extends BaseTheme {
                 comboFireflySpawnMultiplier: 0.5,
                 comboMultiplierGain: 0.15,
             },
-            'Low': {
+            Low: {
                 // Leaf particles
                 leafLayerBackCount: 80,
                 leafLayerMidCount: 60,
@@ -110,7 +110,7 @@ export default class FallTheme extends BaseTheme {
                 comboFireflySpawnMultiplier: 0.6,
                 comboMultiplierGain: 0.16,
             },
-            'Medium': {
+            Medium: {
                 // Leaf particles
                 leafLayerBackCount: 100,
                 leafLayerMidCount: 80,
@@ -138,7 +138,7 @@ export default class FallTheme extends BaseTheme {
                 comboFireflySpawnMultiplier: 0.85,
                 comboMultiplierGain: 0.19,
             },
-            'High': {
+            High: {
                 // Leaf particles
                 leafLayerBackCount: 120,
                 leafLayerMidCount: 100,
@@ -166,7 +166,7 @@ export default class FallTheme extends BaseTheme {
                 comboFireflySpawnMultiplier: 1.0,
                 comboMultiplierGain: 0.2,
             },
-            'Ultra': {
+            Ultra: {
                 // Leaf particles
                 leafLayerBackCount: 140,
                 leafLayerMidCount: 120,
@@ -194,7 +194,7 @@ export default class FallTheme extends BaseTheme {
                 comboFireflySpawnMultiplier: 1.0,
                 comboMultiplierGain: 0.2,
             },
-            'Extreme': {
+            Extreme: {
                 // Leaf particles
                 leafLayerBackCount: 160,
                 leafLayerMidCount: 140,
@@ -221,10 +221,10 @@ export default class FallTheme extends BaseTheme {
                 comboWindGustMultiplier: 1.3,
                 comboFireflySpawnMultiplier: 1.5,
                 comboMultiplierGain: 0.25,
-            }
+            },
         };
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
 
         // Apply default preset values
         this.maxLeafBurstParticles = this.activePreset.maxLeafBurstParticles;
@@ -251,11 +251,11 @@ export default class FallTheme extends BaseTheme {
 
         const leafColors = [
             '#d32f2f', '#ff5722', '#ff9100', '#ffc107', '#ffeb3b',
-            '#795548', '#5d4037', '#e64a19', '#fbc02d', '#8e24aa'
+            '#795548', '#5d4037', '#e64a19', '#fbc02d', '#8e24aa',
         ];
 
-        leafShapes.forEach(pathData => {
-            leafColors.forEach(color => {
+        leafShapes.forEach((pathData) => {
+            leafColors.forEach((color) => {
                 const canvas = document.createElement('canvas');
                 canvas.width = 40;
                 canvas.height = 40;
@@ -380,7 +380,7 @@ export default class FallTheme extends BaseTheme {
         }
 
         // Clear existing DOM leaves
-        ['fall-leaves-back', 'fall-leaves-mid', 'fall-leaves-front'].forEach(id => {
+        ['fall-leaves-back', 'fall-leaves-mid', 'fall-leaves-front'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '';
         });
@@ -389,12 +389,18 @@ export default class FallTheme extends BaseTheme {
         this.leafParticles = [];
 
         const layers = [
-            { count: preset.leafLayerBackCount, depth: 0.3, minSize: 15, maxSize: 25 },
-            { count: preset.leafLayerMidCount, depth: 0.6, minSize: 20, maxSize: 35 },
-            { count: preset.leafLayerFrontCount, depth: 1.0, minSize: 25, maxSize: 45 }
+            {
+                count: preset.leafLayerBackCount, depth: 0.3, minSize: 15, maxSize: 25,
+            },
+            {
+                count: preset.leafLayerMidCount, depth: 0.6, minSize: 20, maxSize: 35,
+            },
+            {
+                count: preset.leafLayerFrontCount, depth: 1.0, minSize: 25, maxSize: 45,
+            },
         ];
 
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
             for (let i = 0; i < layer.count; i++) {
                 const img = this.leafImages[Math.floor(Math.random() * this.leafImages.length)];
                 const size = Math.random() * (layer.maxSize - layer.minSize) + layer.minSize;
@@ -495,10 +501,18 @@ export default class FallTheme extends BaseTheme {
         svg.style.pointerEvents = 'none';
 
         const branchConfigs = [
-            { xPercent: 10, yPercent: 20, size: 0.8, opacity: 0.4, angle: 30 },
-            { xPercent: 85, yPercent: 15, size: 1.0, opacity: 0.5, angle: -25 },
-            { xPercent: 50, yPercent: 10, size: 0.6, opacity: 0.35, angle: 10 },
-            { xPercent: 30, yPercent: 5, size: 0.7, opacity: 0.38, angle: 15 },
+            {
+                xPercent: 10, yPercent: 20, size: 0.8, opacity: 0.4, angle: 30,
+            },
+            {
+                xPercent: 85, yPercent: 15, size: 1.0, opacity: 0.5, angle: -25,
+            },
+            {
+                xPercent: 50, yPercent: 10, size: 0.6, opacity: 0.35, angle: 10,
+            },
+            {
+                xPercent: 30, yPercent: 5, size: 0.7, opacity: 0.38, angle: 15,
+            },
         ];
 
         const systemsToCreate = Math.min(preset.treeBranchSystems, branchConfigs.length);
@@ -544,7 +558,7 @@ export default class FallTheme extends BaseTheme {
         }
 
         // Clear any existing DOM leaves (just in case)
-        ['fall-leaves-back', 'fall-leaves-mid', 'fall-leaves-front'].forEach(id => {
+        ['fall-leaves-back', 'fall-leaves-mid', 'fall-leaves-front'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '';
         });
@@ -552,12 +566,18 @@ export default class FallTheme extends BaseTheme {
         // Initialize leaf particles for canvas rendering
         this.leafParticles = [];
         const layers = [
-            { count: preset.leafLayerBackCount, depth: 0.3, minSize: 15, maxSize: 25 },
-            { count: preset.leafLayerMidCount, depth: 0.6, minSize: 20, maxSize: 35 },
-            { count: preset.leafLayerFrontCount, depth: 1.0, minSize: 25, maxSize: 45 }
+            {
+                count: preset.leafLayerBackCount, depth: 0.3, minSize: 15, maxSize: 25,
+            },
+            {
+                count: preset.leafLayerMidCount, depth: 0.6, minSize: 20, maxSize: 35,
+            },
+            {
+                count: preset.leafLayerFrontCount, depth: 1.0, minSize: 25, maxSize: 45,
+            },
         ];
 
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
             for (let i = 0; i < layer.count; i++) {
                 const img = this.leafImages[Math.floor(Math.random() * this.leafImages.length)];
                 const size = Math.random() * (layer.maxSize - layer.minSize) + layer.minSize;
@@ -579,7 +599,7 @@ export default class FallTheme extends BaseTheme {
 
         const leafColors = [
             '#d32f2f', '#ff5722', '#ff9100', '#ffc107', '#ffeb3b',
-            '#795548', '#5d4037', '#e64a19', '#fbc02d', '#8e24aa'
+            '#795548', '#5d4037', '#e64a19', '#fbc02d', '#8e24aa',
         ];
 
         const groundContainer = document.querySelector('.ground-leaves');
@@ -668,9 +688,15 @@ export default class FallTheme extends BaseTheme {
 
         // Generate 2-3 branch systems with percentage-based positions
         const branchSystems = [
-            { xPercent: 10, yPercent: 20, size: 0.8, opacity: 0.4, angle: 30 },
-            { xPercent: 85, yPercent: 15, size: 1.0, opacity: 0.5, angle: -25 },
-            { xPercent: 50, yPercent: 10, size: 0.6, opacity: 0.35, angle: 10 },
+            {
+                xPercent: 10, yPercent: 20, size: 0.8, opacity: 0.4, angle: 30,
+            },
+            {
+                xPercent: 85, yPercent: 15, size: 1.0, opacity: 0.5, angle: -25,
+            },
+            {
+                xPercent: 50, yPercent: 10, size: 0.6, opacity: 0.35, angle: 10,
+            },
         ];
 
         branchSystems.forEach((system) => {
@@ -782,8 +808,6 @@ export default class FallTheme extends BaseTheme {
         };
     }
 
-
-
     /**
      * Get a generic particle object from the pool
      */
@@ -837,7 +861,7 @@ export default class FallTheme extends BaseTheme {
                 // Normal falling leaves
                 leaf.velocityY = Math.min(
                     leaf.velocityY + leaf.gravity * dt,
-                    leaf.maxFallSpeed
+                    leaf.maxFallSpeed,
                 );
 
                 leaf.turbulencePhase += leaf.turbulenceSpeed * dt;
@@ -996,7 +1020,7 @@ export default class FallTheme extends BaseTheme {
     shouldProcessComboEffects() {
         if (!this.isActive) return false;
         if (typeof window === 'undefined') return true;
-        const settings = window.settings;
+        const { settings } = window;
         return settings?.backgroundComboEffects === true;
     }
 
@@ -1070,7 +1094,7 @@ export default class FallTheme extends BaseTheme {
         const baseLeafBurst = lineCount * 15 + this.comboCount * 10;
         const leafBurstCount = Math.min(
             Math.ceil(baseLeafBurst * this.activePreset.leafBurstScale),
-            this.maxLeafBurstParticles
+            this.maxLeafBurstParticles,
         );
         for (let i = 0; i < leafBurstCount; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -1208,8 +1232,8 @@ export default class FallTheme extends BaseTheme {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 1.5 + 0.5;
             this.embers.push({
-                x: x,
-                y: y,
+                x,
+                y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed - 1,
                 life: 1.0,
@@ -1459,8 +1483,12 @@ export default class FallTheme extends BaseTheme {
             this.ctx.beginPath();
             this.ctx.arc(firefly.x, firefly.y, firefly.size * 6, 0, Math.PI * 2);
             const gradient = this.ctx.createRadialGradient(
-                firefly.x, firefly.y, 0,
-                firefly.x, firefly.y, firefly.size * 6
+                firefly.x,
+                firefly.y,
+                0,
+                firefly.x,
+                firefly.y,
+                firefly.size * 6,
             );
             gradient.addColorStop(0, `hsla(${firefly.hue}, 100%, 70%, ${alpha * 0.4})`);
             gradient.addColorStop(0.5, `hsla(${firefly.hue}, 100%, 65%, ${alpha * 0.2})`);

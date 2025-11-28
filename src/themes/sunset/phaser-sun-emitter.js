@@ -44,8 +44,8 @@ export class PhaserSunEmitter {
         const self = this;
         const sceneConfig = {
             key: 'SunsetSunScene',
-            preload: function () { self._preload(this); },
-            create: function () { self._create(this); },
+            preload() { self._preload(this); },
+            create() { self._create(this); },
         };
 
         const config = {

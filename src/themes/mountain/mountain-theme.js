@@ -409,10 +409,10 @@ export default class MountainTheme extends BaseTheme {
 
         particle.animate([
             { transform: 'translate(0, 0)', opacity: 1 },
-            { transform: `translate(${drift}px, ${fallDistance}vh)`, opacity: 0 }
+            { transform: `translate(${drift}px, ${fallDistance}vh)`, opacity: 0 },
         ], {
-            duration: duration,
-            easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+            duration,
+            easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
         }).onfinish = () => {
             particle.remove();
             const index = this.activeParticles.indexOf(particle);
@@ -470,10 +470,10 @@ export default class MountainTheme extends BaseTheme {
             { opacity: 1 },
             { opacity: 0 },
             { opacity: 0.6 },
-            { opacity: 0 }
+            { opacity: 0 },
         ], {
             duration: 400,
-            easing: 'ease-in-out'
+            easing: 'ease-in-out',
         }).onfinish = () => {
             flash.remove();
         };
@@ -504,10 +504,10 @@ export default class MountainTheme extends BaseTheme {
 
         puff.animate([
             { transform: 'scale(1)', opacity: 0.4 },
-            { transform: 'scale(3)', opacity: 0 }
+            { transform: 'scale(3)', opacity: 0 },
         ], {
             duration: 600,
-            easing: 'ease-out'
+            easing: 'ease-out',
         }).onfinish = () => {
             puff.remove();
         };
@@ -529,11 +529,11 @@ export default class MountainTheme extends BaseTheme {
 
     stop() {
         // Clean up event listeners
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clean up active particles
-        this.activeParticles.forEach(particle => particle.remove());
+        this.activeParticles.forEach((particle) => particle.remove());
         this.activeParticles = [];
 
         // Reset filters
@@ -541,7 +541,7 @@ export default class MountainTheme extends BaseTheme {
         if (sky) sky.style.filter = '';
 
         const ranges = ['mountain-range-back', 'mountain-range-mid', 'mountain-range-front'];
-        ranges.forEach(id => {
+        ranges.forEach((id) => {
             const range = document.getElementById(id);
             if (range) range.style.filter = '';
         });

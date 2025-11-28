@@ -30,45 +30,45 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.waveContainer = null;
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 starCount: 50,
                 galaxyParticles: 80,
                 dustParticles: 40,
                 maxWaveBursts: 1,
             },
-            'Low': {
+            Low: {
                 starCount: 80,
                 galaxyParticles: 120,
                 dustParticles: 60,
                 maxWaveBursts: 1,
             },
-            'Medium': {
+            Medium: {
                 starCount: 110,
                 galaxyParticles: 160,
                 dustParticles: 80,
                 maxWaveBursts: 2,
             },
-            'High': {
+            High: {
                 starCount: 140,
                 galaxyParticles: 200,
                 dustParticles: 110,
                 maxWaveBursts: 3,
             },
-            'Ultra': {
+            Ultra: {
                 starCount: 180,
                 galaxyParticles: 260,
                 dustParticles: 150,
                 maxWaveBursts: 4,
             },
-            'Extreme': {
+            Extreme: {
                 starCount: 250,
                 galaxyParticles: 350,
                 dustParticles: 200,
                 maxWaveBursts: 6,
-            }
+            },
         };
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
         this.maxWaveBursts = this.activePreset.maxWaveBursts;
     }
 
@@ -156,7 +156,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
-        const starsContainer = this.starsContainer;
+        const { starsContainer } = this;
         if (!starsContainer) return;
         if (!force && starsContainer.children.length > 0) return;
 
@@ -168,11 +168,11 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Grayscale palette - pure monochrome
         const starColors = [
-            'rgba(255, 255, 255, 1)',      // Bright white
-            'rgba(230, 230, 230, 1)',      // Light gray
-            'rgba(200, 200, 200, 1)',      // Medium gray
-            'rgba(180, 180, 180, 1)',      // Gray
-            'rgba(160, 160, 160, 1)',      // Darker gray
+            'rgba(255, 255, 255, 1)', // Bright white
+            'rgba(230, 230, 230, 1)', // Light gray
+            'rgba(200, 200, 200, 1)', // Medium gray
+            'rgba(180, 180, 180, 1)', // Gray
+            'rgba(160, 160, 160, 1)', // Darker gray
         ];
 
         for (let i = 0; i < starCount; i++) {
@@ -216,7 +216,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true
+            desynchronized: true,
         });
 
         // Store galaxy center (the "planet") for use in combo effects
@@ -282,9 +282,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         const deltaTime = now - this.lastFrameTime;
 
         if (deltaTime < this.targetFrameTime) {
-            this.animationFrame = requestAnimationFrame(() =>
-                this.animateGalaxy(centerX, centerY)
-            );
+            this.animationFrame = requestAnimationFrame(() => this.animateGalaxy(centerX, centerY));
             return;
         }
 
@@ -352,9 +350,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.ctx.fillRect(dust.x, dust.y, dust.size, dust.size);
         }
 
-        this.animationFrame = requestAnimationFrame(() =>
-            this.animateGalaxy(centerX, centerY)
-        );
+        this.animationFrame = requestAnimationFrame(() => this.animateGalaxy(centerX, centerY));
     }
 
     /**
@@ -462,7 +458,7 @@ export default class CosmicNoirTheme extends BaseTheme {
      * Intensify particle drift
      */
     intensifyDrift(intensity) {
-        this.galaxyParticles.forEach(particle => {
+        this.galaxyParticles.forEach((particle) => {
             particle.driftSpeed *= (1 + intensity * 0.2);
 
             setTimeout(() => {
@@ -522,7 +518,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (!this.waveContainer) {
             this.waveContainer = document.getElementById('cosmic-noir-waves');
         }
-        const waveContainer = this.waveContainer;
+        const { waveContainer } = this;
         if (!waveContainer) return;
 
         // Get planet element position
@@ -567,7 +563,7 @@ export default class CosmicNoirTheme extends BaseTheme {
      * Subtle galaxy pulse on piece lock
      */
     subtleGalaxyPulse() {
-        this.galaxyParticles.forEach(particle => {
+        this.galaxyParticles.forEach((particle) => {
             particle.baseOpacity = Math.min(particle.baseOpacity * 1.2, 1);
 
             setTimeout(() => {
@@ -595,7 +591,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear particles
