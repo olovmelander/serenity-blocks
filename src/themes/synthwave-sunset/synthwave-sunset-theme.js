@@ -43,7 +43,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 maxBursts: 1,
                 maxStreaks: 2,
                 maxParticles: 30,
@@ -59,9 +59,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 glowIntensity: 0.5,
                 useShadowBlur: false,
                 useDropShadow: false,
-                cityGlowUpdateInterval: 4 // Update every 4 frames
+                cityGlowUpdateInterval: 4, // Update every 4 frames
             },
-            'Low': {
+            Low: {
                 maxBursts: 2,
                 maxStreaks: 4,
                 maxParticles: 50,
@@ -77,9 +77,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 glowIntensity: 0.7,
                 useShadowBlur: false,
                 useDropShadow: false,
-                cityGlowUpdateInterval: 3 // Update every 3 frames
+                cityGlowUpdateInterval: 3, // Update every 3 frames
             },
-            'Medium': {
+            Medium: {
                 maxBursts: 3,
                 maxStreaks: 5,
                 maxParticles: 90,
@@ -95,9 +95,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 glowIntensity: 0.85,
                 useShadowBlur: false,
                 useDropShadow: true,
-                cityGlowUpdateInterval: 2 // Update every 2 frames
+                cityGlowUpdateInterval: 2, // Update every 2 frames
             },
-            'High': {
+            High: {
                 maxBursts: 4,
                 maxStreaks: 6,
                 maxParticles: 120,
@@ -113,9 +113,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 glowIntensity: 1.0,
                 useShadowBlur: true,
                 useDropShadow: true,
-                cityGlowUpdateInterval: 1 // Update every frame
+                cityGlowUpdateInterval: 1, // Update every frame
             },
-            'Ultra': {
+            Ultra: {
                 maxBursts: 6,
                 maxStreaks: 10,
                 maxParticles: 200,
@@ -131,9 +131,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 glowIntensity: 1.2,
                 useShadowBlur: true,
                 useDropShadow: true,
-                cityGlowUpdateInterval: 1 // Update every frame
+                cityGlowUpdateInterval: 1, // Update every frame
             },
-            'Extreme': {
+            Extreme: {
                 maxBursts: 8,
                 maxStreaks: 15,
                 maxParticles: 300,
@@ -149,12 +149,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 glowIntensity: 1.5,
                 useShadowBlur: true,
                 useDropShadow: true,
-                cityGlowUpdateInterval: 1 // Update every frame
-            }
+                cityGlowUpdateInterval: 1, // Update every frame
+            },
         };
 
         this.currentQuality = 'Medium'; // Default to Medium for better performance
-        this.activePreset = this.qualityPresets['Medium'];
+        this.activePreset = this.qualityPresets.Medium;
         this.frameCounter = 0;
     }
 
@@ -286,7 +286,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Remove existing glow layers so we can rebuild for the new preset
         const existingGlows = sunContainer.querySelectorAll('.synthwave-sun-glow');
-        existingGlows.forEach(glow => glow.remove());
+        existingGlows.forEach((glow) => glow.remove());
 
         const layerCount = this.activePreset?.sunGlowLayers ?? 3;
         for (let i = 0; i < layerCount; i++) {
@@ -313,7 +313,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Movement range (percentage of viewport from center)
         const horizontalRange = 25; // Extended range for longer glide to the sides (50% total travel)
-        const verticalRange = 3;    // Subtle up-down floating
+        const verticalRange = 3; // Subtle up-down floating
 
         // Apply time offset so sun starts at different position each time
         const time = this.animationTime + this.timeOffset;
@@ -331,7 +331,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         return {
             x: sunX,
-            y: sunY
+            y: sunY,
         };
     }
 
@@ -417,7 +417,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Clear existing beams so we can rebuild based on the active preset
         const existingBeams = glowContainer.querySelectorAll('.synthwave-city-glow-beam');
-        existingBeams.forEach(beam => beam.remove());
+        existingBeams.forEach((beam) => beam.remove());
 
         const beamCount = this.activePreset?.cityGlowBeams ?? 8;
         const spacing = 100 / (beamCount + 1);
@@ -445,8 +445,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.createCityLayer('synthwave-sunset-city-back', '#08040f', 1.1);
 
         // Create front city layer (larger, closer)
-        this.createCityLayer('synthwave-sunset-city-front', '#0a0515', 1.0
-        );
+        this.createCityLayer('synthwave-sunset-city-front', '#0a0515', 1.0);
     }
 
     createCityLayer(containerId, fillColor, sizeScale) {
@@ -475,8 +474,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
             buildings.push({
                 x: currentX,
-                width: width,
-                height: finalHeight
+                width,
+                height: finalHeight,
             });
 
             currentX += width;
@@ -493,10 +492,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Build clean rectangular skyline
         let pathData = 'M 0 50 ';
 
-        buildings.forEach(building => {
-            const x = building.x;
-            const width = building.width;
-            const height = building.height;
+        buildings.forEach((building) => {
+            const { x } = building;
+            const { width } = building;
+            const { height } = building;
             const top = 50 - height;
 
             // Simple rectangle - no decorations
@@ -598,108 +597,108 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             // Clear canvas
             ctx.clearRect(0, 0, width, height);
 
-        // Grid parameters matching reference
-        const vanishingPointX = width / 2;
-        const vanishingPointY = height * 0.08; // Vanishing point very high for dramatic perspective
+            // Grid parameters matching reference
+            const vanishingPointX = width / 2;
+            const vanishingPointY = height * 0.08; // Vanishing point very high for dramatic perspective
 
-        // Grid configuration
-        const rows = this.activePreset?.gridRows ?? 40; // Number of horizontal divisions
-        const cols = this.activePreset?.gridCols ?? 40; // Number of vertical divisions
-        const cellSize = 40; // Base cell size in the foreground
+            // Grid configuration
+            const rows = this.activePreset?.gridRows ?? 40; // Number of horizontal divisions
+            const cols = this.activePreset?.gridCols ?? 40; // Number of vertical divisions
+            const cellSize = 40; // Base cell size in the foreground
 
-        // Animation offset
-        const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
-        const animOffset = (this.animationTime * scrollSpeed) % cellSize;
+            // Animation offset
+            const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
+            const animOffset = (this.animationTime * scrollSpeed) % cellSize;
 
-        // Bright pink/magenta grid color
-        const gridColor = '#ff0066';
-        const baseGlow = this.activePreset?.glowIntensity ?? 0.8;
-        const brightness = baseGlow + this.gridPulseIntensity * 0.2;
+            // Bright pink/magenta grid color
+            const gridColor = '#ff0066';
+            const baseGlow = this.activePreset?.glowIntensity ?? 0.8;
+            const brightness = baseGlow + this.gridPulseIntensity * 0.2;
 
-        ctx.strokeStyle = gridColor;
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
 
-        // Draw horizontal lines (going into depth)
-        for (let row = 0; row <= rows; row++) {
-            const depth = (row + animOffset / cellSize) / rows;
+            // Draw horizontal lines (going into depth)
+            for (let row = 0; row <= rows; row++) {
+                const depth = (row + animOffset / cellSize) / rows;
 
-            if (depth > 1) continue;
+                if (depth > 1) continue;
 
-            // Calculate Y position with perspective
-            let y = vanishingPointY + (height - vanishingPointY) * depth;
+                // Calculate Y position with perspective
+                let y = vanishingPointY + (height - vanishingPointY) * depth;
 
-            if (y > height) continue;
+                if (y > height) continue;
 
-            // Apply grid wave effects
-            let waveOffset = 0;
-            this.gridWaves.forEach(wave => {
-                const waveDist = Math.abs(depth - wave.progress);
-                if (waveDist < 0.3) {
-                    const waveIntensity = (1 - waveDist / 0.3) * wave.intensity * wave.life;
-                    waveOffset += Math.sin(waveDist * 10) * waveIntensity * 15;
-                }
-            });
-            y += waveOffset;
+                // Apply grid wave effects
+                let waveOffset = 0;
+                this.gridWaves.forEach((wave) => {
+                    const waveDist = Math.abs(depth - wave.progress);
+                    if (waveDist < 0.3) {
+                        const waveIntensity = (1 - waveDist / 0.3) * wave.intensity * wave.life;
+                        waveOffset += Math.sin(waveDist * 10) * waveIntensity * 15;
+                    }
+                });
+                y += waveOffset;
 
-            // Calculate alpha and line width based on depth
-            const alpha = Math.max(0.25, 1 - depth * 0.7) * brightness;
-            const lineWidth = Math.max(1, 2.5 - depth * 1.5);
+                // Calculate alpha and line width based on depth
+                const alpha = Math.max(0.25, 1 - depth * 0.7) * brightness;
+                const lineWidth = Math.max(1, 2.5 - depth * 1.5);
 
-            // Calculate perspective scale for line width
-            const scale = 1 - depth * 0.25;
-            const lineSpan = width * scale;
-            const xStart = vanishingPointX - lineSpan / 2;
-            const xEnd = vanishingPointX + lineSpan / 2;
+                // Calculate perspective scale for line width
+                const scale = 1 - depth * 0.25;
+                const lineSpan = width * scale;
+                const xStart = vanishingPointX - lineSpan / 2;
+                const xEnd = vanishingPointX + lineSpan / 2;
 
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth = lineWidth;
-            ctx.beginPath();
-            ctx.moveTo(xStart, y);
-            ctx.lineTo(xEnd, y);
-            ctx.stroke();
-        }
+                ctx.globalAlpha = alpha;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(xStart, y);
+                ctx.lineTo(xEnd, y);
+                ctx.stroke();
+            }
 
-        // Draw vertical lines (converging to vanishing point)
-        for (let col = -cols / 2; col <= cols / 2; col++) {
-            const lateralPos = col / (cols / 2); // -1 to 1
+            // Draw vertical lines (converging to vanishing point)
+            for (let col = -cols / 2; col <= cols / 2; col++) {
+                const lateralPos = col / (cols / 2); // -1 to 1
 
-            // Calculate alpha based on distance from center
-            const alpha = Math.max(0.25, 1 - Math.abs(lateralPos) * 0.6) * brightness;
-            const lineWidth = Math.max(1, 2.5 - Math.abs(lateralPos) * 1.2);
+                // Calculate alpha based on distance from center
+                const alpha = Math.max(0.25, 1 - Math.abs(lateralPos) * 0.6) * brightness;
+                const lineWidth = Math.max(1, 2.5 - Math.abs(lateralPos) * 1.2);
 
-            // Start point at vanishing point
-            const startX = vanishingPointX;
-            const startY = vanishingPointY;
+                // Start point at vanishing point
+                const startX = vanishingPointX;
+                const startY = vanishingPointY;
 
-            // End point at bottom of screen
-            const spread = cellSize * col;
-            const endX = vanishingPointX + spread;
-            const endY = height;
+                // End point at bottom of screen
+                const spread = cellSize * col;
+                const endX = vanishingPointX + spread;
+                const endY = height;
 
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth = lineWidth;
-            ctx.beginPath();
-            ctx.moveTo(startX, startY);
-            ctx.lineTo(endX, endY);
-            ctx.stroke();
-        }
+                ctx.globalAlpha = alpha;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
 
-        // Reset context
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
+            // Reset context
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
 
-        // Decay pulse effects
-        if (this.gridPulseIntensity > 0) {
-            this.gridPulseIntensity *= 0.95;
-            if (this.gridPulseIntensity < 0.01) this.gridPulseIntensity = 0;
-        }
+            // Decay pulse effects
+            if (this.gridPulseIntensity > 0) {
+                this.gridPulseIntensity *= 0.95;
+                if (this.gridPulseIntensity < 0.01) this.gridPulseIntensity = 0;
+            }
 
-        if (this.comboColorShift !== 0) {
-            this.comboColorShift *= 0.95;
-            if (Math.abs(this.comboColorShift) < 0.1) this.comboColorShift = 0;
-        }
+            if (this.comboColorShift !== 0) {
+                this.comboColorShift *= 0.95;
+                if (Math.abs(this.comboColorShift) < 0.1) this.comboColorShift = 0;
+            }
         } catch (error) {
             console.error('Synthwave Sunset: Error drawing perspective grid:', error);
         }
@@ -836,8 +835,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (!this.effectsCanvas) return;
         if (this.horizonBursts.length >= this.MAX_BURSTS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const horizonY = height * 0.65; // Position near city horizon
 
         // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
@@ -858,7 +857,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 const angle = Math.random() * Math.PI - Math.PI / 2; // Upward burst
                 const speed = (Math.random() * 2 + 1.5) * this.comboMultiplier;
                 particles.push({
-                    x: x,
+                    x,
                     y: horizonY,
                     vx: Math.cos(angle) * speed,
                     vy: Math.sin(angle) * speed,
@@ -880,8 +879,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (!this.effectsCanvas) return;
         if (this.retroStreaks.length >= this.MAX_STREAKS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         // Sunset-themed colors: hot pink, orange-red, violet purple, deep pink
         const colors = ['#ff0066', '#ff4500', '#b000ff', '#ff006e'];
         const streakIntensity = this.activePreset?.streakMultiplier ?? 1;
@@ -917,8 +916,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.retroParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
         }
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const centerX = width / 2;
         const centerY = height / 2;
         // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
@@ -965,7 +964,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const burst = this.horizonBursts[i];
             burst.life -= delta / burst.maxLife;
 
-            burst.particles.forEach(p => {
+            burst.particles.forEach((p) => {
                 p.x += p.vx;
                 p.y += p.vy;
                 p.vy += 0.1; // Gravity
@@ -1031,100 +1030,100 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         try {
             const ctx = this.effectsCtx;
-            const width = this.effectsCanvas.width;
-            const height = this.effectsCanvas.height;
-            const useShadowBlur = this.activePreset.useShadowBlur;
+            const { width } = this.effectsCanvas;
+            const { height } = this.effectsCanvas;
+            const { useShadowBlur } = this.activePreset;
 
             // Clear canvas
             ctx.clearRect(0, 0, width, height);
 
-        // Render retro streaks - optimized (no save/restore)
-        this.retroStreaks.forEach(streak => {
-            const alpha = streak.life * 0.7;
-
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = streak.color;
-
-            // Only use shadow blur if quality allows
-            if (useShadowBlur) {
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = streak.color;
-            }
-
-            ctx.fillRect(streak.x, streak.y, streak.width, streak.height);
-
-            // Reset shadow blur
-            if (useShadowBlur) {
-                ctx.shadowBlur = 0;
-            }
-        });
-
-        // Reset alpha
-        ctx.globalAlpha = 1;
-
-        // Render horizon bursts - optimized batch rendering
-        this.horizonBursts.forEach(burst => {
-            // Set shadow blur once per burst if quality allows
-            if (useShadowBlur) {
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = burst.color;
-            }
-
-            ctx.fillStyle = burst.color;
-
-            burst.particles.forEach(p => {
-                const alpha = p.life * burst.life;
+            // Render retro streaks - optimized (no save/restore)
+            this.retroStreaks.forEach((streak) => {
+                const alpha = streak.life * 0.7;
 
                 ctx.globalAlpha = alpha;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillStyle = streak.color;
+
+                // Only use shadow blur if quality allows
+                if (useShadowBlur) {
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = streak.color;
+                }
+
+                ctx.fillRect(streak.x, streak.y, streak.width, streak.height);
+
+                // Reset shadow blur
+                if (useShadowBlur) {
+                    ctx.shadowBlur = 0;
+                }
             });
 
-            // Reset shadow blur after burst
-            if (useShadowBlur) {
-                ctx.shadowBlur = 0;
-            }
-        });
+            // Reset alpha
+            ctx.globalAlpha = 1;
 
-        // Reset alpha
-        ctx.globalAlpha = 1;
+            // Render horizon bursts - optimized batch rendering
+            this.horizonBursts.forEach((burst) => {
+            // Set shadow blur once per burst if quality allows
+                if (useShadowBlur) {
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = burst.color;
+                }
 
-        // Render retro particles - optimized
-        this.retroParticles.forEach(p => {
-            const alpha = p.life;
+                ctx.fillStyle = burst.color;
 
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = p.color;
+                burst.particles.forEach((p) => {
+                    const alpha = p.life * burst.life;
 
-            // Only use shadow blur if quality allows
-            if (useShadowBlur) {
-                ctx.shadowBlur = p.glow;
-                ctx.shadowColor = p.color;
-            }
+                    ctx.globalAlpha = alpha;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
 
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.rotation);
+                // Reset shadow blur after burst
+                if (useShadowBlur) {
+                    ctx.shadowBlur = 0;
+                }
+            });
 
-            if (p.isSquare) {
-                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-            } else {
-                ctx.beginPath();
-                ctx.arc(0, 0, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            // Reset alpha
+            ctx.globalAlpha = 1;
 
-            // Reset transform
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            // Render retro particles - optimized
+            this.retroParticles.forEach((p) => {
+                const alpha = p.life;
 
-            // Reset shadow blur
-            if (useShadowBlur) {
-                ctx.shadowBlur = 0;
-            }
-        });
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = p.color;
 
-        // Final reset
-        ctx.globalAlpha = 1;
+                // Only use shadow blur if quality allows
+                if (useShadowBlur) {
+                    ctx.shadowBlur = p.glow;
+                    ctx.shadowColor = p.color;
+                }
+
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+
+                if (p.isSquare) {
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Reset transform
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+                // Reset shadow blur
+                if (useShadowBlur) {
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // Final reset
+            ctx.globalAlpha = 1;
         } catch (error) {
             console.error('Synthwave Sunset: Error rendering effects:', error);
         }
@@ -1176,7 +1175,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear combo effects

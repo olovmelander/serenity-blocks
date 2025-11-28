@@ -40,7 +40,7 @@ export default class StillwaterTheme extends BaseTheme {
 
         // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 staticWaterRipples: 2,
                 distantTreeClusters: 2,
                 midTrees: 3,
@@ -60,9 +60,9 @@ export default class StillwaterTheme extends BaseTheme {
                 glowIntensity: 0.4,
                 useShadowBlur: false,
                 useDropShadow: false,
-                glowUpdateInterval: 4 // Update every 4 frames
+                glowUpdateInterval: 4, // Update every 4 frames
             },
-            'Low': {
+            Low: {
                 staticWaterRipples: 3,
                 distantTreeClusters: 3,
                 midTrees: 5,
@@ -82,9 +82,9 @@ export default class StillwaterTheme extends BaseTheme {
                 glowIntensity: 0.5,
                 useShadowBlur: false,
                 useDropShadow: false,
-                glowUpdateInterval: 3 // Update every 3 frames
+                glowUpdateInterval: 3, // Update every 3 frames
             },
-            'Medium': {
+            Medium: {
                 staticWaterRipples: 5,
                 distantTreeClusters: 4,
                 midTrees: 7,
@@ -104,9 +104,9 @@ export default class StillwaterTheme extends BaseTheme {
                 glowIntensity: 0.7,
                 useShadowBlur: false,
                 useDropShadow: true,
-                glowUpdateInterval: 2 // Update every 2 frames
+                glowUpdateInterval: 2, // Update every 2 frames
             },
-            'High': {
+            High: {
                 staticWaterRipples: 6,
                 distantTreeClusters: 4,
                 midTrees: 9,
@@ -126,9 +126,9 @@ export default class StillwaterTheme extends BaseTheme {
                 glowIntensity: 0.9,
                 useShadowBlur: true,
                 useDropShadow: true,
-                glowUpdateInterval: 1 // Update every frame
+                glowUpdateInterval: 1, // Update every frame
             },
-            'Ultra': {
+            Ultra: {
                 staticWaterRipples: 10,
                 distantTreeClusters: 5,
                 midTrees: 12,
@@ -148,9 +148,9 @@ export default class StillwaterTheme extends BaseTheme {
                 glowIntensity: 1.2,
                 useShadowBlur: true,
                 useDropShadow: true,
-                glowUpdateInterval: 1 // Update every frame
+                glowUpdateInterval: 1, // Update every frame
             },
-            'Extreme': {
+            Extreme: {
                 staticWaterRipples: 15,
                 distantTreeClusters: 7,
                 midTrees: 16,
@@ -170,12 +170,12 @@ export default class StillwaterTheme extends BaseTheme {
                 glowIntensity: 1.5,
                 useShadowBlur: true,
                 useDropShadow: true,
-                glowUpdateInterval: 1 // Update every frame
-            }
+                glowUpdateInterval: 1, // Update every frame
+            },
         };
 
         this.currentQuality = 'Medium'; // Default to Medium for better performance
-        this.activePreset = this.qualityPresets['Medium'];
+        this.activePreset = this.qualityPresets.Medium;
     }
 
     /**
@@ -643,8 +643,8 @@ export default class StillwaterTheme extends BaseTheme {
         if (!this.effectsCanvas) return;
         if (this.waterRipples.length >= this.MAX_RIPPLES) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const waterlineY = height * 0.75; // Position at water surface
 
         const rippleCount = Math.min(lineCount, this.MAX_RIPPLES - this.waterRipples.length);
@@ -669,8 +669,8 @@ export default class StillwaterTheme extends BaseTheme {
         if (!this.effectsCanvas) return;
         if (this.mysticalWisps.length >= this.MAX_WISPS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
 
         // Create flowing wisp trail with point count based on quality
         const startX = Math.random() * width;
@@ -703,8 +703,8 @@ export default class StillwaterTheme extends BaseTheme {
             this.tranquilSparkles.splice(0, Math.floor(this.MAX_SPARKLES * 0.3));
         }
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         // Mystical forest colors: soft cyan, pale yellow, lavender, soft white
         const colors = ['#5fc3c1', '#fff9c4', '#b39ddb', '#e8f5e9', '#80deea'];
         const sparkleCount = Math.min(count, this.MAX_SPARKLES);
@@ -733,8 +733,8 @@ export default class StillwaterTheme extends BaseTheme {
         if (!this.effectsCanvas) return;
         if (this.fireflySwarms.length >= this.MAX_FIREFLY_SWARMS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const centerX = Math.random() * width;
         const centerY = Math.random() * height * 0.6 + height * 0.2;
 
@@ -767,8 +767,8 @@ export default class StillwaterTheme extends BaseTheme {
         if (!this.effectsCanvas) return;
         if (this.lightBeams.length >= this.MAX_LIGHT_BEAMS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
 
         this.lightBeams.push({
             x: Math.random() * width,
@@ -829,7 +829,7 @@ export default class StillwaterTheme extends BaseTheme {
             const swarm = this.fireflySwarms[i];
             swarm.life -= delta / swarm.maxLife;
 
-            swarm.fireflies.forEach(f => {
+            swarm.fireflies.forEach((f) => {
                 f.x += f.vx;
                 f.y += f.vy;
                 f.blink += f.blinkSpeed;
@@ -867,15 +867,15 @@ export default class StillwaterTheme extends BaseTheme {
         if (!this.effectsCanvas || !this.effectsCtx) return;
 
         const ctx = this.effectsCtx;
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
-        const useShadowBlur = this.activePreset.useShadowBlur;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
+        const { useShadowBlur } = this.activePreset;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
         // Render light beams (optimized - no save/restore)
-        this.lightBeams.forEach(beam => {
+        this.lightBeams.forEach((beam) => {
             const alpha = beam.life * beam.opacity;
 
             ctx.globalAlpha = alpha;
@@ -898,7 +898,7 @@ export default class StillwaterTheme extends BaseTheme {
         });
 
         // Render water ripples (elliptical for perspective view) - optimized
-        this.waterRipples.forEach(ripple => {
+        this.waterRipples.forEach((ripple) => {
             const alpha = ripple.life * 0.6;
 
             ctx.globalAlpha = alpha;
@@ -926,7 +926,7 @@ export default class StillwaterTheme extends BaseTheme {
         ctx.globalAlpha = 1;
 
         // Render mystical wisps - optimized
-        this.mysticalWisps.forEach(wisp => {
+        this.mysticalWisps.forEach((wisp) => {
             const alpha = wisp.life * 0.5;
 
             ctx.globalAlpha = alpha;
@@ -961,7 +961,7 @@ export default class StillwaterTheme extends BaseTheme {
         ctx.globalAlpha = 1;
 
         // Render tranquil sparkles - optimized batch rendering
-        this.tranquilSparkles.forEach(sparkle => {
+        this.tranquilSparkles.forEach((sparkle) => {
             const twinkleAlpha = (Math.sin(sparkle.twinkle) + 1) / 2;
             const alpha = sparkle.life * twinkleAlpha * 0.8;
 
@@ -988,7 +988,7 @@ export default class StillwaterTheme extends BaseTheme {
         ctx.globalAlpha = 1;
 
         // Render firefly swarms - optimized batch rendering
-        this.fireflySwarms.forEach(swarm => {
+        this.fireflySwarms.forEach((swarm) => {
             // Set shadow blur once per swarm if quality allows
             if (useShadowBlur) {
                 ctx.shadowBlur = 10;
@@ -997,7 +997,7 @@ export default class StillwaterTheme extends BaseTheme {
 
             ctx.fillStyle = swarm.color;
 
-            swarm.fireflies.forEach(f => {
+            swarm.fireflies.forEach((f) => {
                 const blinkAlpha = (Math.sin(f.blink) + 1) / 2;
                 const alpha = swarm.life * blinkAlpha * 0.9;
 
@@ -1039,7 +1039,7 @@ export default class StillwaterTheme extends BaseTheme {
 
     stop() {
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Remove quality change listener

@@ -63,6 +63,25 @@ export class HighScoreManager {
     }
 
     /**
+     * Adds a score (alias for saveScore for backward compatibility)
+     * @param {Object} scoreData - Score data to save
+     * @returns {Promise<Object>} The saved game record
+     */
+    async addScore(scoreData) {
+        // Get current theme and music track from global managers if not provided
+        const theme = scoreData.theme || (window.themeManager?.activeThemeName || 'default');
+        const musicTrack = scoreData.musicTrack || (window.soundManager?.currentTrack || 'none');
+        const speedMultiplier = scoreData.speedMultiplier || 1.0;
+
+        return this.saveScore({
+            ...scoreData,
+            theme,
+            musicTrack,
+            speedMultiplier,
+        });
+    }
+
+    /**
      * Saves a game score and updates statistics
      * @param {Object} scoreData - Score data to save
      * @param {number} scoreData.score - Final score

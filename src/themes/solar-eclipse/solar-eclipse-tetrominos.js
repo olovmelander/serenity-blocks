@@ -8,13 +8,13 @@ export const SOLAR_ECLIPSE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#fff7b1',  // Corona gold
-        O: '#ff9635',  // Amber flare
-        T: '#ff5f8a',  // Rose aurora
-        S: '#c3e8ff',  // Pale blue halo
-        Z: '#ffbe5d',  // Ember orange
-        J: '#7085ff',  // Twilight indigo
-        L: '#ffeedd',  // Warm eclipse white
+        I: '#fff7b1', // Corona gold
+        O: '#ff9635', // Amber flare
+        T: '#ff5f8a', // Rose aurora
+        S: '#c3e8ff', // Pale blue halo
+        Z: '#ffbe5d', // Ember orange
+        J: '#7085ff', // Twilight indigo
+        L: '#ffeedd', // Warm eclipse white
         GARBAGE: '#0a0b14', // Umbra shadow
     },
 

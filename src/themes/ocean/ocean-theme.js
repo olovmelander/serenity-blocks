@@ -26,12 +26,24 @@ export default class OceanTheme extends BaseTheme {
         this.depthFog = [];
         this.marineCreatures = [];
         this.presets = {
-            Minimal: { biolumLimit: 8, fishCount: 2, kelpCount: 8, sedimentCount: 20, bubbleCount: 8, planktonCount: 30, jellyCount: 0 },
-            Low: { biolumLimit: 15, fishCount: 4, kelpCount: 12, sedimentCount: 30, bubbleCount: 12, planktonCount: 50, jellyCount: 0 },
-            Medium: { biolumLimit: 30, fishCount: 8, kelpCount: 18, sedimentCount: 50, bubbleCount: 18, planktonCount: 80, jellyCount: 0 },
-            High: { biolumLimit: 50, fishCount: 12, kelpCount: 25, sedimentCount: 80, bubbleCount: 25, planktonCount: 120, jellyCount: 0 },
-            Ultra: { biolumLimit: 80, fishCount: 18, kelpCount: 35, sedimentCount: 120, bubbleCount: 35, planktonCount: 180, jellyCount: 0 },
-            Extreme: { biolumLimit: 100, fishCount: 25, kelpCount: 100, sedimentCount: 60, bubbleCount: 40, planktonCount: 150, jellyCount: 0 },
+            Minimal: {
+                biolumLimit: 8, fishCount: 2, kelpCount: 8, sedimentCount: 20, bubbleCount: 8, planktonCount: 30, jellyCount: 0,
+            },
+            Low: {
+                biolumLimit: 15, fishCount: 4, kelpCount: 12, sedimentCount: 30, bubbleCount: 12, planktonCount: 50, jellyCount: 0,
+            },
+            Medium: {
+                biolumLimit: 30, fishCount: 8, kelpCount: 18, sedimentCount: 50, bubbleCount: 18, planktonCount: 80, jellyCount: 0,
+            },
+            High: {
+                biolumLimit: 50, fishCount: 12, kelpCount: 25, sedimentCount: 80, bubbleCount: 25, planktonCount: 120, jellyCount: 0,
+            },
+            Ultra: {
+                biolumLimit: 80, fishCount: 18, kelpCount: 35, sedimentCount: 120, bubbleCount: 35, planktonCount: 180, jellyCount: 0,
+            },
+            Extreme: {
+                biolumLimit: 100, fishCount: 25, kelpCount: 100, sedimentCount: 60, bubbleCount: 40, planktonCount: 150, jellyCount: 0,
+            },
         };
         this.currentPreset = this.presets.High;
     }
@@ -99,8 +111,13 @@ export default class OceanTheme extends BaseTheme {
             this.effectCanvas = document.createElement('canvas');
             this.effectCanvas.className = 'ocean-effects-canvas';
             Object.assign(this.effectCanvas.style, {
-                position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-                pointerEvents: 'none', zIndex: '120',
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: '120',
             });
             theme.appendChild(this.effectCanvas);
         }
@@ -139,10 +156,10 @@ export default class OceanTheme extends BaseTheme {
             const canvasHeight = this.effectCanvas.height;
 
             // Only clear and redraw if we have active effects
-            const hasEffects = this.shockwaveEffects.length > 0 ||
-                this.biolumParticles.length > 0 ||
-                this.bubbleBurstParticles.length > 0 ||
-                this.marineCreatures.length > 0;
+            const hasEffects = this.shockwaveEffects.length > 0
+                || this.biolumParticles.length > 0
+                || this.bubbleBurstParticles.length > 0
+                || this.marineCreatures.length > 0;
 
             if (hasEffects) {
                 this.effectCtx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -169,7 +186,7 @@ export default class OceanTheme extends BaseTheme {
                 continue;
             }
             const progress = 1 - sw.life;
-            const easeOut = 1 - Math.pow(1 - progress, 3);
+            const easeOut = 1 - (1 - progress) ** 3;
             const radius = sw.startRadius + (sw.maxRadius - sw.startRadius) * easeOut;
             const alpha = sw.life * 0.6;
 
@@ -318,8 +335,9 @@ export default class OceanTheme extends BaseTheme {
             ctx.restore();
         }
     }
+
     drawFish(ctx, fish, swimPhase) {
-        const size = fish.size;
+        const { size } = fish;
         const tailWave = Math.sin(swimPhase * 2) * 0.4; // Tail animation
         const bodyWave = Math.sin(swimPhase) * 0.15; // Body undulation
 
@@ -343,16 +361,22 @@ export default class OceanTheme extends BaseTheme {
 
         // Top of body
         ctx.bezierCurveTo(
-            -size * 0.2, -size * 0.5 + bodyWave * size,
-            size * 0.2, -size * 0.5 + bodyWave * size,
-            size * 0.7, -size * 0.1
+            -size * 0.2,
+            -size * 0.5 + bodyWave * size,
+            size * 0.2,
+            -size * 0.5 + bodyWave * size,
+            size * 0.7,
+            -size * 0.1,
         );
 
         // Bottom of body
         ctx.bezierCurveTo(
-            size * 0.2, size * 0.5 - bodyWave * size,
-            -size * 0.2, size * 0.5 - bodyWave * size,
-            -size * 0.6, 0
+            size * 0.2,
+            size * 0.5 - bodyWave * size,
+            -size * 0.2,
+            size * 0.5 - bodyWave * size,
+            -size * 0.6,
+            0,
         );
         ctx.fill();
 
@@ -386,16 +410,22 @@ export default class OceanTheme extends BaseTheme {
 
         // Top
         ctx.bezierCurveTo(
-            -size * 0.3, -size * 0.3,
-            size * 0.5, -size * 0.3,
-            size * 1.2, -size * 0.1
+            -size * 0.3,
+            -size * 0.3,
+            size * 0.5,
+            -size * 0.3,
+            size * 1.2,
+            -size * 0.1,
         );
 
         // Bottom
         ctx.bezierCurveTo(
-            size * 0.5, size * 0.3,
-            -size * 0.3, size * 0.3,
-            -size * 0.8, 0
+            size * 0.5,
+            size * 0.3,
+            -size * 0.3,
+            size * 0.3,
+            -size * 0.8,
+            0,
         );
         ctx.fill();
 
@@ -439,14 +469,20 @@ export default class OceanTheme extends BaseTheme {
         ctx.beginPath();
         ctx.moveTo(size * 0.6, -size * 0.2);
         ctx.bezierCurveTo(
-            size * 0.3, -size * 0.3 + sway * size,
-            size * 0.1, size * 0.1 + sway * size,
-            -size * 0.2, size * 0.3 + sway * size * 0.5
+            size * 0.3,
+            -size * 0.3 + sway * size,
+            size * 0.1,
+            size * 0.1 + sway * size,
+            -size * 0.2,
+            size * 0.3 + sway * size * 0.5,
         );
         ctx.bezierCurveTo(
-            size * 0.1, size * 0.1 + sway * size * 0.5,
-            size * 0.3, -size * 0.1 - sway * size * 0.5,
-            size * 0.6, size * 0.2
+            size * 0.1,
+            size * 0.1 + sway * size * 0.5,
+            size * 0.3,
+            -size * 0.1 - sway * size * 0.5,
+            size * 0.6,
+            size * 0.2,
         );
         ctx.fill();
 
@@ -599,7 +635,7 @@ export default class OceanTheme extends BaseTheme {
                     left: `${xPos}%`,
                     width: `${2 + Math.random() * 3}px`,
                     height: `${height}%`,
-                    background: `linear-gradient(180deg, transparent 0%, rgba(20, 80, 60, 0.6) 20%, rgba(30, 100, 70, 0.8) 100%)`,
+                    background: 'linear-gradient(180deg, transparent 0%, rgba(20, 80, 60, 0.6) 20%, rgba(30, 100, 70, 0.8) 100%)',
                     transformOrigin: 'bottom center',
                     animation: `kelpSway ${4 + Math.random() * 3}s ease-in-out infinite`,
                     animationDelay: `-${Math.random() * 7}s`,
@@ -655,7 +691,7 @@ export default class OceanTheme extends BaseTheme {
                     left: `${Math.random() * 100}%`,
                     width: `${size}px`,
                     height: `${size}px`,
-                    background: `radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(200, 235, 255, 0.3))`,
+                    background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(200, 235, 255, 0.3))',
                     borderRadius: '50%',
                     opacity: Math.random() * 0.7 + 0.3,
                     animation: `rise-deep ${10 + Math.random() * 12}s linear infinite`,
@@ -716,7 +752,7 @@ export default class OceanTheme extends BaseTheme {
                     Object.assign(body.style, {
                         width: `${bodySize}px`,
                         height: `${bodySize}px`,
-                        background: `radial-gradient(circle, rgba(150, 200, 255, 0.6), rgba(100, 180, 240, 0.3))`,
+                        background: 'radial-gradient(circle, rgba(150, 200, 255, 0.6), rgba(100, 180, 240, 0.3))',
                         borderRadius: '50% 50% 40% 40%',
                         boxShadow: `0 0 ${bodySize}px rgba(120, 200, 255, 0.5), inset 0 0 ${bodySize * 0.5}px rgba(200, 230, 255, 0.4)`,
                         animation: `pulse-jelly ${2 + Math.random() * 1.5}s ease-in-out infinite`,
@@ -734,7 +770,7 @@ export default class OceanTheme extends BaseTheme {
                             left: `${j * (bodySize / 6)}px`,
                             width: '1px',
                             height: `${tHeight}px`,
-                            background: `linear-gradient(180deg, rgba(120, 180, 240, 0.5), transparent)`,
+                            background: 'linear-gradient(180deg, rgba(120, 180, 240, 0.5), transparent)',
                             transformOrigin: 'top',
                             animation: `wave-tentacle ${1.5 + Math.random() * 1}s ease-in-out infinite`,
                             animationDelay: `-${Math.random() * 3}s`,
@@ -1064,7 +1100,7 @@ export default class OceanTheme extends BaseTheme {
             this.lastAmbientSpawn = timestamp;
 
             // Keep max 3 ambient creatures at once
-            const ambientCount = this.marineCreatures.filter(c => c.isAmbient).length;
+            const ambientCount = this.marineCreatures.filter((c) => c.isAmbient).length;
             if (ambientCount < 3) {
                 this.spawnAmbientFish();
             }
@@ -1089,20 +1125,21 @@ export default class OceanTheme extends BaseTheme {
         const direction = Math.random() > 0.5 ? 1 : -1;
         const depth = 20 + Math.random() * 60; // 20-80% down the screen
 
-        let size, speed, color, fishType, verticalPattern;
+        let size; let speed; let color; let fishType; let
+            verticalPattern;
 
         if (creatureType === 'seahorse') {
             // Seahorses - vertical, slow, distinctive
             size = 10 + Math.random() * 8; // 10-18px
             speed = 0.3 + Math.random() * 0.3; // Very slow
-            color = `hsla(190, 35%, 30%, 0.7)`; // Muted blue-green
+            color = 'hsla(190, 35%, 30%, 0.7)'; // Muted blue-green
             fishType = 'seahorse';
             verticalPattern = 'bobbing'; // Up and down gently
         } else if (creatureType === 'shrimp') {
             // Shrimp - small, quick, darting
-            size = 6 + Math.random() * 6; // 6-12px 
+            size = 6 + Math.random() * 6; // 6-12px
             speed = 1.2 + Math.random() * 0.8; // Quick but erratic
-            color = `hsla(15, 25%, 35%, 0.6)`; // Pinkish-brown
+            color = 'hsla(15, 25%, 35%, 0.6)'; // Pinkish-brown
             fishType = 'shrimp';
             verticalPattern = 'darting'; // Fast vertical movements
         } else {
@@ -1132,7 +1169,7 @@ export default class OceanTheme extends BaseTheme {
     }
 
     stop() {
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.teardownQualityListener();
         this.currentComboLevel = 0;

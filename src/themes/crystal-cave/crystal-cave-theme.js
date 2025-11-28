@@ -26,9 +26,9 @@ export default class CrystalCaveTheme extends BaseTheme {
                     { main: '#9b59b6', glow: '#e056fd', light: '#f8f0fc' }, // Amethyst
                     { main: '#00b894', glow: '#55efc4', light: '#e0fcf6' }, // Emerald
                     { main: '#0984e3', glow: '#74b9ff', light: '#e6f2ff' }, // Sapphire
-                    { main: '#e84393', glow: '#fd79a8', light: '#fff0f5' }  // Rose
-                ]
-            }
+                    { main: '#e84393', glow: '#fd79a8', light: '#fff0f5' }, // Rose
+                ],
+            },
         };
 
         // State
@@ -40,7 +40,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             angle: 0,
             targetSpeed: 0.005,
             currentSpeed: 0.005,
-            energy: 0
+            energy: 0,
         };
         this.resonance = 0; // 0 to 1, drives intensity
         this.targetResonance = 0;
@@ -65,7 +65,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 width: '100%',
                 height: '100%',
                 zIndex: '-1',
-                background: `linear-gradient(to bottom, ${this.config.colors.bgTop}, ${this.config.colors.bgBottom})`
+                background: `linear-gradient(to bottom, ${this.config.colors.bgTop}, ${this.config.colors.bgBottom})`,
             });
             themeContainer.appendChild(canvas);
         }
@@ -113,7 +113,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         const sides = ['top', 'bottom', 'left', 'right'];
         const countPerSide = Math.ceil(count / 4);
 
-        sides.forEach(side => {
+        sides.forEach((side) => {
             for (let i = 0; i < countPerSide; i++) {
                 // Calculate position along the edge (0.0 to 1.0)
                 const t = (i + Math.random()) / countPerSide;
@@ -121,7 +121,9 @@ export default class CrystalCaveTheme extends BaseTheme {
             }
         });
 
-        this.layers.push({ crystals, parallaxFactor, zIndex: scale, mistOpacity, blur });
+        this.layers.push({
+            crystals, parallaxFactor, zIndex: scale, mistOpacity, blur,
+        });
     }
 
     generateCrystal(scaleBase, opacityBase, side, t) {
@@ -130,7 +132,8 @@ export default class CrystalCaveTheme extends BaseTheme {
         const length = (150 + Math.random() * 300) * scale;
         const palette = this.config.colors.palettes[Math.floor(Math.random() * this.config.colors.palettes.length)];
 
-        let x, y, rotation;
+        let x; let y; let
+            rotation;
 
         // Position based on side and 't' (0-1 position along edge)
         if (side === 'top') {
@@ -155,13 +158,17 @@ export default class CrystalCaveTheme extends BaseTheme {
         const cache = this.createCrystalCache(thickness, length, palette);
 
         return {
-            x, y, side, rotation,
-            thickness, length,
+            x,
+            y,
+            side,
+            rotation,
+            thickness,
+            length,
             cache, // The pre-rendered canvas
             color: palette,
             opacity: opacityBase,
             pulsePhase: Math.random() * Math.PI * 2,
-            shimmerSpeed: 0.02 + Math.random() * 0.03
+            shimmerSpeed: 0.02 + Math.random() * 0.03,
         };
     }
 
@@ -254,7 +261,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             life: 1.0,
             decay: isAmbient ? 0.005 : 0.02,
             color: isAmbient ? '#ffffff' : this.config.colors.palettes[Math.floor(Math.random() * 4)].glow,
-            isAmbient
+            isAmbient,
         };
     }
 
@@ -275,7 +282,7 @@ export default class CrystalCaveTheme extends BaseTheme {
 
         // Select random crystals from mid/near layers to "activate"
         const activeLayers = [this.layers[1], this.layers[2]];
-        const candidates = activeLayers.flatMap(l => l.crystals);
+        const candidates = activeLayers.flatMap((l) => l.crystals);
 
         const activationCount = Math.min(count + 2, 10);
         for (let i = 0; i < activationCount; i++) {
@@ -300,12 +307,13 @@ export default class CrystalCaveTheme extends BaseTheme {
             else sx -= crystal.length;
 
             this.energyArcs.push({
-                sx, sy,
+                sx,
+                sy,
                 ex: this.canvas.width / 2,
                 ey: this.canvas.height / 2,
                 color: crystal.color.glow,
                 life: 1.0,
-                width: 2 + Math.random() * 3
+                width: 2 + Math.random() * 3,
             });
 
             // Burst particles from tip
@@ -365,7 +373,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             this.ctx.filter = `blur(${layer.blur}px)`;
         }
 
-        layer.crystals.forEach(c => {
+        layer.crystals.forEach((c) => {
             // Physics/Animation
             const pulse = (Math.sin(this.time * 0.8 + c.pulsePhase) + 1) / 2;
             const resonanceShake = (Math.random() - 0.5) * this.resonance * 5;
@@ -377,7 +385,7 @@ export default class CrystalCaveTheme extends BaseTheme {
 
             // Translate to position
             let dx = c.x + resonanceShake;
-            let dy = c.y;
+            const dy = c.y;
 
             // Apply drift based on orientation (horizontal drift for top/bottom, vertical for left/right?)
             // Keeping it simple: drift is always horizontal for now to simulate camera movement
@@ -522,15 +530,21 @@ export default class CrystalCaveTheme extends BaseTheme {
             this.ctx.moveTo(size * 0.9, -size * 0.2);
             // Outer curve
             this.ctx.bezierCurveTo(
-                size * 1.6, size * 0.5,
-                size * 0.5, size * 1.6,
-                -size * 0.5, size * 1.0
+                size * 1.6,
+                size * 0.5,
+                size * 0.5,
+                size * 1.6,
+                -size * 0.5,
+                size * 1.0,
             );
             // Inner curve back to start (tapering)
             this.ctx.bezierCurveTo(
-                size * 0.2, size * 1.2,
-                size * 1.2, size * 0.8,
-                size * 0.9, -size * 0.2
+                size * 0.2,
+                size * 1.2,
+                size * 1.2,
+                size * 0.8,
+                size * 0.9,
+                -size * 0.2,
             );
 
             this.ctx.fillStyle = energyRatio > 0.5 ? 'rgba(255, 255, 255, 0.9)' : 'rgba(129, 236, 236, 0.7)';
@@ -569,7 +583,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 life: 1.0,
                 decay: 0.03 + Math.random() * 0.03,
                 color: Math.random() > 0.5 ? '#ffffff' : '#81ecec', // White or Cyan sparks
-                isAmbient: false
+                isAmbient: false,
             });
         }
     }
@@ -616,8 +630,12 @@ export default class CrystalCaveTheme extends BaseTheme {
     drawAtmosphere() {
         // Vignette
         const grad = this.ctx.createRadialGradient(
-            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.3,
-            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.8
+            this.canvas.width / 2,
+            this.canvas.height / 2,
+            this.canvas.width * 0.3,
+            this.canvas.width / 2,
+            this.canvas.height / 2,
+            this.canvas.width * 0.8,
         );
         grad.addColorStop(0, 'rgba(0,0,0,0)');
         grad.addColorStop(1, 'rgba(0,0,0,0.6)');
@@ -629,7 +647,7 @@ export default class CrystalCaveTheme extends BaseTheme {
     stop() {
         if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
         if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         if (this.canvas) this.canvas.remove();
         this.canvas = null;

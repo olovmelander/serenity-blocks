@@ -115,9 +115,7 @@ export class SerenityMode extends BaseGameMode {
         // Setup interactive effects (click/tap to trigger effects)
         this._setupInteractiveEffects();
 
-        // Show keyboard shortcuts overlay briefly
-        this._showKeyboardShortcuts();
-
+        // Don't auto-show keyboard shortcuts - user can press '/' to view them if needed
         // Don't auto-show breathing indicator - user must press Space to enable
         // This keeps focus on the beautiful themes
         console.log('[Serenity] Serenity mode active - Press H for Serenity Hub, Space for breathing guide');
@@ -129,7 +127,7 @@ export class SerenityMode extends BaseGameMode {
     onPause() {
         super.onPause();
         console.log('[Serenity] Paused');
-        
+
         // Pause breathing indicator if it's active
         if (this.breathingIndicatorActive && window.breathingIndicator) {
             this.breathingIndicatorWasActive = true;
@@ -146,13 +144,13 @@ export class SerenityMode extends BaseGameMode {
     onResume() {
         super.onResume();
         console.log('[Serenity] Resumed');
-        
+
         // Disable menu navigation mode so Serenity controls work
         if (this.deps.gamepadController) {
             this.deps.gamepadController.disableMenuNavigation();
             console.log('[Serenity] Menu navigation disabled on resume');
         }
-        
+
         // Resume breathing indicator if it was active before pause
         if (this.breathingIndicatorWasActive && window.breathingIndicator) {
             window.breathingIndicator.start();
@@ -306,7 +304,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _showPhaserThemeOnly() {
-        const phaserGame = this.deps.phaserGame;
+        const { phaserGame } = this.deps;
         if (!phaserGame?.scene) return;
 
         // Get BoardScene (which handles theme rendering)
@@ -368,7 +366,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _ensureMusicPlaying() {
-        const soundManager = this.deps.soundManager;
+        const { soundManager } = this.deps;
         if (soundManager) {
             // Resume audio context if suspended (browser autoplay policy)
             soundManager.resumeAudioContext();
@@ -412,48 +410,48 @@ export class SerenityMode extends BaseGameMode {
         const key = event.key.toLowerCase();
 
         switch (key) {
-            case 'm': // Next music track
-                this._nextMusicTrack();
-                break;
+        case 'm': // Next music track
+            this._nextMusicTrack();
+            break;
 
-            case 'b': // Random theme
-                this._randomTheme();
-                break;
+        case 'b': // Random theme
+            this._randomTheme();
+            break;
 
-            case 'f': // Toggle fullscreen
-                this._toggleFullscreen();
-                break;
+        case 'f': // Toggle fullscreen
+            this._toggleFullscreen();
+            break;
 
-            case 'escape': // Exit to main menu
-                this._exitToMenu();
-                break;
+        case 'escape': // Exit to main menu
+            this._exitToMenu();
+            break;
 
-            case 'h': // Toggle Serenity Hub
-                if (this.serenityHub) {
-                    this.serenityHub.toggle();
-                }
-                event.preventDefault(); // Prevent global high score handler
-                event.stopPropagation(); // Stop event from bubbling
-                break;
+        case 'h': // Toggle Serenity Hub
+            if (this.serenityHub) {
+                this.serenityHub.toggle();
+            }
+            event.preventDefault(); // Prevent global high score handler
+            event.stopPropagation(); // Stop event from bubbling
+            break;
 
-            case '?': // Show keyboard shortcuts (legacy)
-            case '/': // Toggle control hints
-                if (this.serenityHub) {
-                    this.serenityHub.toggleButtonHints();
-                } else {
-                    this._showKeyboardShortcuts();
-                }
-                break;
+        case '?': // Show keyboard shortcuts (legacy)
+        case '/': // Toggle control hints
+            if (this.serenityHub) {
+                this.serenityHub.toggleButtonHints();
+            } else {
+                this._showKeyboardShortcuts();
+            }
+            break;
 
-            case ' ': // Toggle breathing indicator
-                this._toggleBreathingIndicator();
-                event.preventDefault(); // Prevent page scroll
-                break;
+        case ' ': // Toggle breathing indicator
+            this._toggleBreathingIndicator();
+            event.preventDefault(); // Prevent page scroll
+            break;
 
-            case 't': // Cycle breathing technique
-                this._cycleBreathingTechnique();
-                event.preventDefault();
-                break;
+        case 't': // Cycle breathing technique
+            this._cycleBreathingTechnique();
+            event.preventDefault();
+            break;
         }
     }
 
@@ -503,7 +501,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _nextMusicTrack() {
-        const soundManager = this.deps.soundManager;
+        const { soundManager } = this.deps;
         if (soundManager && soundManager.nextTrack) {
             soundManager.nextTrack();
             this._showNotification('Next Track');
@@ -515,7 +513,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _randomTheme() {
-        const themeManager = this.deps.themeManager;
+        const { themeManager } = this.deps;
         if (themeManager && themeManager.switchToRandomTheme) {
             themeManager.switchToRandomTheme();
             this._showNotification('Theme Changed');
@@ -753,13 +751,13 @@ export class SerenityMode extends BaseGameMode {
         if (!this.isRunning) return;
 
         // Don't trigger if clicking on UI elements
-        const target = event.target;
+        const { target } = event;
         if (target && (
-            target.closest('.serenity-hub') ||
-            target.closest('.serenity-notification') ||
-            target.closest('.serenity-shortcuts-overlay') ||
-            target.closest('#settings-modal') ||
-            target.closest('.breathing-indicator')
+            target.closest('.serenity-hub')
+            || target.closest('.serenity-notification')
+            || target.closest('.serenity-shortcuts-overlay')
+            || target.closest('#settings-modal')
+            || target.closest('.breathing-indicator')
         )) {
             return;
         }
@@ -876,7 +874,7 @@ export class SerenityMode extends BaseGameMode {
             lineCount,
             comboCount,
             source: 'serenity-interaction',
-            position: { x: clickX, y: clickY }
+            position: { x: clickX, y: clickY },
         });
 
         // If combo >= 2, also emit COMBO event
@@ -884,7 +882,7 @@ export class SerenityMode extends BaseGameMode {
             eventBus.emit(EVENTS.COMBO, {
                 comboCount,
                 source: 'serenity-interaction',
-                position: { x: clickX, y: clickY }
+                position: { x: clickX, y: clickY },
             });
         }
 

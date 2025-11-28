@@ -42,19 +42,19 @@ export default class WinterTheme extends BaseTheme {
             fog: null,
             vignette: null,
             lastWidth: 0,
-            lastHeight: 0
+            lastHeight: 0,
         };
         this.particlePool = {
             snow: [],
             ice: [],
             vortex: [],
-            streak: []
+            streak: [],
         };
         this.activeParticles = {
             snow: [],
             ice: [],
             vortex: [],
-            streak: []
+            streak: [],
         };
         this.offscreenMargin = 150; // Tighter culling boundary
         this.frameSkip = 0;
@@ -63,7 +63,7 @@ export default class WinterTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 // Snow particles
                 maxParticles: 250,
                 initialParticlePercent: 0.4,
@@ -84,7 +84,7 @@ export default class WinterTheme extends BaseTheme {
                 particleSortInterval: 20,
                 windIndicatorInterval: 6,
             },
-            'Low': {
+            Low: {
                 // Snow particles
                 maxParticles: 400,
                 initialParticlePercent: 0.5,
@@ -105,7 +105,7 @@ export default class WinterTheme extends BaseTheme {
                 particleSortInterval: 15,
                 windIndicatorInterval: 4,
             },
-            'Medium': {
+            Medium: {
                 // Snow particles
                 maxParticles: 800,
                 initialParticlePercent: 0.6,
@@ -126,7 +126,7 @@ export default class WinterTheme extends BaseTheme {
                 particleSortInterval: 10,
                 windIndicatorInterval: 2,
             },
-            'High': {
+            High: {
                 // Snow particles
                 maxParticles: 1200,
                 initialParticlePercent: 0.7,
@@ -147,7 +147,7 @@ export default class WinterTheme extends BaseTheme {
                 particleSortInterval: 10,
                 windIndicatorInterval: 2,
             },
-            'Ultra': {
+            Ultra: {
                 // Snow particles
                 maxParticles: 1600,
                 initialParticlePercent: 0.8,
@@ -168,7 +168,7 @@ export default class WinterTheme extends BaseTheme {
                 particleSortInterval: 8,
                 windIndicatorInterval: 1,
             },
-            'Extreme': {
+            Extreme: {
                 // Snow particles
                 maxParticles: 2200,
                 initialParticlePercent: 0.9,
@@ -188,10 +188,10 @@ export default class WinterTheme extends BaseTheme {
                 // Performance
                 particleSortInterval: 6,
                 windIndicatorInterval: 1,
-            }
+            },
         };
         this.currentQuality = 'Medium';
-        this.activePreset = this.qualityPresets['Medium'];
+        this.activePreset = this.qualityPresets.Medium;
 
         // Apply default preset values
         this.maxFrozenLightning = this.activePreset.maxFrozenLightning;
@@ -338,12 +338,12 @@ export default class WinterTheme extends BaseTheme {
 
     // Performance: Create and cache gradients
     getCachedBackgroundGradient(comboBoost, flashBoost, gustBoost) {
-        if (this.gradientCache.background &&
-            this.gradientCache.lastWidth === this.canvas.width &&
-            this.gradientCache.lastHeight === this.canvas.height &&
-            this.gradientCache.lastComboBoost === comboBoost &&
-            this.gradientCache.lastFlashBoost === flashBoost &&
-            this.gradientCache.lastGustBoost === gustBoost) {
+        if (this.gradientCache.background
+            && this.gradientCache.lastWidth === this.canvas.width
+            && this.gradientCache.lastHeight === this.canvas.height
+            && this.gradientCache.lastComboBoost === comboBoost
+            && this.gradientCache.lastFlashBoost === flashBoost
+            && this.gradientCache.lastGustBoost === gustBoost) {
             return this.gradientCache.background;
         }
 
@@ -364,16 +364,20 @@ export default class WinterTheme extends BaseTheme {
     }
 
     getCachedFogGradient(gustBoost, comboBoost) {
-        if (this.gradientCache.fog &&
-            this.gradientCache.lastWidth === this.canvas.width &&
-            this.gradientCache.lastFogGust === gustBoost &&
-            this.gradientCache.lastFogCombo === comboBoost) {
+        if (this.gradientCache.fog
+            && this.gradientCache.lastWidth === this.canvas.width
+            && this.gradientCache.lastFogGust === gustBoost
+            && this.gradientCache.lastFogCombo === comboBoost) {
             return this.gradientCache.fog;
         }
 
         const fogGradient = this.ctx.createRadialGradient(
-            this.canvas.width / 2, this.canvas.height * 0.6, 0,
-            this.canvas.width / 2, this.canvas.height * 0.6, this.canvas.width * 0.8
+            this.canvas.width / 2,
+            this.canvas.height * 0.6,
+            0,
+            this.canvas.width / 2,
+            this.canvas.height * 0.6,
+            this.canvas.width * 0.8,
         );
         fogGradient.addColorStop(0, `rgba(${20 + gustBoost * 2 + comboBoost}, ${25 + gustBoost * 2 + comboBoost}, ${35 + gustBoost * 2 + comboBoost}, 0.4)`);
         fogGradient.addColorStop(0.5, `rgba(${15 + gustBoost}, ${20 + gustBoost}, ${30 + gustBoost}, 0.25)`);
@@ -387,15 +391,19 @@ export default class WinterTheme extends BaseTheme {
     }
 
     getCachedVignetteGradient() {
-        if (this.gradientCache.vignette &&
-            this.gradientCache.lastWidth === this.canvas.width &&
-            this.gradientCache.lastVignetteGust === this.gustIntensity) {
+        if (this.gradientCache.vignette
+            && this.gradientCache.lastWidth === this.canvas.width
+            && this.gradientCache.lastVignetteGust === this.gustIntensity) {
             return this.gradientCache.vignette;
         }
 
         const vignetteGradient = this.ctx.createRadialGradient(
-            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.2,
-            this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.8
+            this.canvas.width / 2,
+            this.canvas.height / 2,
+            this.canvas.width * 0.2,
+            this.canvas.width / 2,
+            this.canvas.height / 2,
+            this.canvas.width * 0.8,
         );
         vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
         vignetteGradient.addColorStop(1, `rgba(0, 0, 0, ${0.5 + this.gustIntensity * 0.2})`);
@@ -454,7 +462,7 @@ export default class WinterTheme extends BaseTheme {
     shouldProcessComboEffects() {
         if (!this.isActive) return false;
         if (typeof window === 'undefined') return true;
-        const settings = window.settings;
+        const { settings } = window;
         return settings?.backgroundComboEffects === true;
     }
 
@@ -545,7 +553,7 @@ export default class WinterTheme extends BaseTheme {
             for (let i = 0; i < vortexesToSpawn; i++) {
                 const vortex = this.createComboVortex(
                     Math.random() * this.canvas.width,
-                    Math.random() * this.canvas.height * 0.5
+                    Math.random() * this.canvas.height * 0.5,
                 );
                 this.comboVortexes.push(vortex);
             }
@@ -561,11 +569,11 @@ export default class WinterTheme extends BaseTheme {
         const size = Math.random() * 4 + 2;
 
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            size: size,
+            size,
             opacity: Math.random() * 0.8 + 0.4,
             life: 1.0,
             rotation: Math.random() * Math.PI * 2,
@@ -606,7 +614,7 @@ export default class WinterTheme extends BaseTheme {
         }
 
         this.frozenLightning.push({
-            branches: branches,
+            branches,
             opacity: 1.0,
             life: 1.0,
             pulsePhase: 0,
@@ -615,8 +623,8 @@ export default class WinterTheme extends BaseTheme {
 
     createComboVortex(x, y) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             particles: [],
             angle: 0,
             radius: 0,
@@ -634,7 +642,7 @@ export default class WinterTheme extends BaseTheme {
         const depthScale = 0.2 + depth * 0.8;
 
         // Try to get from pool first
-        let particle = this.getPooledParticle('snow');
+        const particle = this.getPooledParticle('snow');
 
         if (particle) {
             // Reset particle properties
@@ -690,8 +698,8 @@ export default class WinterTheme extends BaseTheme {
 
     createVortexParticle(x, y) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             angle: Math.random() * Math.PI * 2,
             speed: Math.random() * 4 + 2,
             size: Math.random() * 2.5 + 1,
@@ -704,8 +712,8 @@ export default class WinterTheme extends BaseTheme {
 
     createSpiralSystem(x, y) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             particles: [],
             angle: 0,
             radius: 0,
@@ -791,7 +799,7 @@ export default class WinterTheme extends BaseTheme {
                     for (let i = 0; i < this.activePreset.spiralSystemsCount; i++) {
                         const spiral = this.createSpiralSystem(
                             Math.random() * this.canvas.width,
-                            Math.random() * this.canvas.height * 0.6
+                            Math.random() * this.canvas.height * 0.6,
                         );
                         this.spiralSystems.push(spiral);
                     }
@@ -1087,17 +1095,19 @@ export default class WinterTheme extends BaseTheme {
             streak.life -= 0.015;
             streak.opacity = streak.life * 0.9;
 
-            if (streak.life <= 0 ||
-                streak.x < -200 ||
-                streak.x > this.canvas.width + 200) {
+            if (streak.life <= 0
+                || streak.x < -200
+                || streak.x > this.canvas.width + 200) {
                 this.streakParticles.splice(i, 1);
                 continue;
             }
 
             // Draw long horizontal streak
             const streakGradient = this.ctx.createLinearGradient(
-                streak.x, streak.y,
-                streak.x - Math.sign(streak.vx) * streak.length, streak.y
+                streak.x,
+                streak.y,
+                streak.x - Math.sign(streak.vx) * streak.length,
+                streak.y,
             );
             streakGradient.addColorStop(0, `rgba(240, 245, 255, ${streak.opacity})`);
             streakGradient.addColorStop(0.3, `rgba(220, 230, 245, ${streak.opacity * 0.6})`);
@@ -1185,9 +1195,9 @@ export default class WinterTheme extends BaseTheme {
             }
 
             // Tighter culling for offscreen particles
-            if (particle.y > canvasHeight + margin ||
-                particle.x < -margin ||
-                particle.x > canvasWidth + margin) {
+            if (particle.y > canvasHeight + margin
+                || particle.x < -margin
+                || particle.x > canvasWidth + margin) {
                 this.releaseParticle('snow', particle);
                 this.snowParticles.splice(i, 1);
                 continue;
@@ -1195,15 +1205,15 @@ export default class WinterTheme extends BaseTheme {
 
             // Trail rendering based on quality settings
             if (this.activePreset.enableTrails && particle.trail.length > 2) {
-                const trailComplexity = this.activePreset.trailComplexity;
+                const { trailComplexity } = this.activePreset;
 
                 // Quality 0: no trails
                 // Quality 1: only very near particles with simplified trails
                 // Quality 2: near particles with full trails
                 // Quality 3: all particles with enhanced trails
-                const shouldRenderTrail = trailComplexity === 3 ||
-                    (trailComplexity === 2 && particle.z > 0.4) ||
-                    (trailComplexity === 1 && particle.z > 0.5);
+                const shouldRenderTrail = trailComplexity === 3
+                    || (trailComplexity === 2 && particle.z > 0.4)
+                    || (trailComplexity === 1 && particle.z > 0.5);
 
                 if (shouldRenderTrail) {
                     // Draw simplified trail using line instead of circles (much faster)
@@ -1234,8 +1244,15 @@ export default class WinterTheme extends BaseTheme {
             this.ctx.globalAlpha = particle.opacity;
             this.ctx.fillStyle = 'rgba(240, 245, 255, 1)';
             this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, particle.size, particle.size * streakLength,
-                           Math.atan2(particle.vy, particle.vx), 0, Math.PI * 2);
+            this.ctx.ellipse(
+                0,
+                0,
+                particle.size,
+                particle.size * streakLength,
+                Math.atan2(particle.vy, particle.vx),
+                0,
+                Math.PI * 2,
+            );
             this.ctx.fill();
 
             // Highlight (only for very near particles to save performance)
@@ -1253,9 +1270,7 @@ export default class WinterTheme extends BaseTheme {
         // Atmospheric overlay during intense gusts
         if (this.gustIntensity > 0.4) {
             const overlayOpacity = (this.gustIntensity - 0.4) * 0.4 * this.comboMultiplier;
-            const overlayGradient = this.ctx.createLinearGradient(
-                0, 0, this.canvas.width * (this.windForce > 0 ? 1 : -1), this.canvas.height
-            );
+            const overlayGradient = this.ctx.createLinearGradient(0, 0, this.canvas.width * (this.windForce > 0 ? 1 : -1), this.canvas.height);
             overlayGradient.addColorStop(0, `rgba(210, 220, 235, ${overlayOpacity})`);
             overlayGradient.addColorStop(0.5, `rgba(190, 205, 225, ${overlayOpacity * 0.6})`);
             overlayGradient.addColorStop(1, 'rgba(170, 185, 210, 0)');

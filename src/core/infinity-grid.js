@@ -48,8 +48,8 @@ export function expandGridIfNeeded(gameState, requiredRows) {
         10, // Add 10 rows at a time for efficiency
         Math.min(
             requiredRows - currentLength,
-            gameState.maxRows - currentLength
-        )
+            gameState.maxRows - currentLength,
+        ),
     );
 
     // No space to expand
@@ -60,9 +60,7 @@ export function expandGridIfNeeded(gameState, requiredRows) {
     console.log(`[InfinityGrid] Expanding grid by ${rowsToAdd} rows (${currentLength} → ${currentLength + rowsToAdd})`);
 
     // Prepend new empty rows at the top
-    const newRows = Array.from({ length: rowsToAdd }, () =>
-        Array(board[0]?.length || COLS).fill(null)
-    );
+    const newRows = Array.from({ length: rowsToAdd }, () => Array(board[0]?.length || COLS).fill(null));
 
     const expandedBoard = [...newRows, ...board];
     gameState.board = expandedBoard;
@@ -70,13 +68,13 @@ export function expandGridIfNeeded(gameState, requiredRows) {
 
     // Update all locked pieces to account for new row offset
     if (gameState.lockedPieces && gameState.lockedPieces.length > 0) {
-        gameState.lockedPieces.forEach(piece => {
+        gameState.lockedPieces.forEach((piece) => {
             // Update piece's y position (row)
             piece.y += rowsToAdd;
 
             // Update individual block positions if they exist
             if (piece.blocks) {
-                piece.blocks.forEach(block => {
+                piece.blocks.forEach((block) => {
                     block.row += rowsToAdd;
                 });
             }
@@ -99,7 +97,7 @@ export function expandGridIfNeeded(gameState, requiredRows) {
     // Invalidate board cache since grid size changed
     markBoardDirty(gameState);
 
-    console.log(`[InfinityGrid] Grid expansion complete`);
+    console.log('[InfinityGrid] Grid expansion complete');
 
     return true;
 }
@@ -118,7 +116,7 @@ export function expandGridAndInvalidateCache(gameState, requiredRows) {
     if (expanded) {
         // Cache is already invalidated in expandGridIfNeeded
         // This function exists for API consistency and future extensibility
-        console.log(`[InfinityGrid] Cache invalidated after expansion`);
+        console.log('[InfinityGrid] Cache invalidated after expansion');
     }
 
     return expanded;
@@ -136,7 +134,7 @@ export function calculateTopRow(gameState) {
         return 0;
     }
 
-    const board = gameState.board;
+    const { board } = gameState;
     let topRow = board.length; // Start with max (bottom)
 
     // Scan from top to bottom

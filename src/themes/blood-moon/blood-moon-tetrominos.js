@@ -16,13 +16,13 @@ export const BLOOD_MOON_TETROMINOS = {
 
     // Blood moon crimson palette
     colors: {
-        I: '#cc1a2e',  // Deep Crimson (matches moon body)
-        O: '#8b0000',  // Dark Blood Red
-        T: '#dc143c',  // Crimson Red (bright blood)
-        S: '#6b0f1a',  // Dark Maroon
-        Z: '#a01525',  // Blood Red
-        J: '#7a0f1a',  // Deep Burgundy
-        L: '#b22222',  // Firebrick Red
+        I: '#cc1a2e', // Deep Crimson (matches moon body)
+        O: '#8b0000', // Dark Blood Red
+        T: '#dc143c', // Crimson Red (bright blood)
+        S: '#6b0f1a', // Dark Maroon
+        Z: '#a01525', // Blood Red
+        J: '#7a0f1a', // Deep Burgundy
+        L: '#b22222', // Firebrick Red
         GARBAGE: '#1a0510', // Dark purple-black (matches background)
     },
 
@@ -42,8 +42,8 @@ export const BLOOD_MOON_TETROMINOS = {
 
         // Slow, ominous pulsing like a beating heart
         pulse: true,
-        pulseSpeed: 0.03,      // Slower pulse for eerie effect
-        pulseAmplitude: 0.3,   // Pronounced pulsing
+        pulseSpeed: 0.03, // Slower pulse for eerie effect
+        pulseAmplitude: 0.3, // Pronounced pulsing
 
         // Blood shimmer effect
         shimmer: true,
@@ -59,14 +59,14 @@ export const BLOOD_MOON_TETROMINOS = {
     // Renderer-specific tweaks
     rendererOverrides: {
         canvas: {
-            glowRadius: 12,      // Strong glow in Canvas
-            glowIntensity: 0.8,  // Intense atmospheric glow
-            outlineWidth: 2,     // Clear dark outline
+            glowRadius: 12, // Strong glow in Canvas
+            glowIntensity: 0.8, // Intense atmospheric glow
+            outlineWidth: 2, // Clear dark outline
         },
         phaser: {
-            glowRadius: 16,      // Maximum glow with WebGL
-            glowIntensity: 0.9,  // Most intense in WebGL
-            outlineWidth: 2.5,   // Thick dark outline
+            glowRadius: 16, // Maximum glow with WebGL
+            glowIntensity: 0.9, // Most intense in WebGL
+            outlineWidth: 2.5, // Thick dark outline
         },
     },
 };

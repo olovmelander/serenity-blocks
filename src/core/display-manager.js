@@ -18,9 +18,9 @@ export class DisplayManager {
      */
     detectElectron() {
         // Check for Electron renderer process
-        return typeof window !== 'undefined' &&
-               typeof window.process !== 'undefined' &&
-               window.process.type === 'renderer';
+        return typeof window !== 'undefined'
+               && typeof window.process !== 'undefined'
+               && window.process.type === 'renderer';
     }
 
     /**
@@ -37,16 +37,16 @@ export class DisplayManager {
                     x: 0,
                     y: 0,
                     width: window.screen.width,
-                    height: window.screen.height
+                    height: window.screen.height,
                 },
                 workArea: {
                     x: 0,
                     y: 0,
                     width: window.screen.availWidth,
-                    height: window.screen.availHeight
+                    height: window.screen.availHeight,
                 },
                 scaleFactor: window.devicePixelRatio || 1,
-                internal: true
+                internal: true,
             }];
         }
 
@@ -78,7 +78,7 @@ export class DisplayManager {
         ];
 
         return commonResolutions.filter(
-            res => res.width <= maxWidth && res.height <= maxHeight
+            (res) => res.width <= maxWidth && res.height <= maxHeight,
         );
     }
 
@@ -95,27 +95,26 @@ export class DisplayManager {
             // Web fallback - only fullscreen API available
             if (mode === 'fullscreen') {
                 return this.requestFullscreen();
-            } else {
-                return this.exitFullscreen();
             }
+            return this.exitFullscreen();
         }
 
         try {
             const { ipcRenderer } = window.require('electron');
 
             switch (mode) {
-                case 'fullscreen':
-                    await ipcRenderer.invoke('set-fullscreen', true);
-                    break;
+            case 'fullscreen':
+                await ipcRenderer.invoke('set-fullscreen', true);
+                break;
 
-                case 'borderless':
-                    await ipcRenderer.invoke('set-borderless', resolution);
-                    break;
+            case 'borderless':
+                await ipcRenderer.invoke('set-borderless', resolution);
+                break;
 
-                case 'windowed':
-                default:
-                    await ipcRenderer.invoke('set-windowed', resolution);
-                    break;
+            case 'windowed':
+            default:
+                await ipcRenderer.invoke('set-windowed', resolution);
+                break;
             }
 
             console.log(`[DisplayManager] Display mode set to: ${mode}`);
@@ -207,9 +206,9 @@ export class DisplayManager {
      */
     isFullscreen() {
         return !!(
-            document.fullscreenElement ||
-            document.webkitFullscreenElement ||
-            document.msFullscreenElement
+            document.fullscreenElement
+            || document.webkitFullscreenElement
+            || document.msFullscreenElement
         );
     }
 
@@ -230,12 +229,12 @@ export class DisplayManager {
             const events = [
                 'fullscreenchange',
                 'webkitfullscreenchange',
-                'msfullscreenchange'
+                'msfullscreenchange',
             ];
 
             const handler = () => {
                 const isFs = this.isFullscreen();
-                this.fullscreenChangeCallbacks.forEach(cb => {
+                this.fullscreenChangeCallbacks.forEach((cb) => {
                     try {
                         cb(isFs);
                     } catch (error) {
@@ -244,7 +243,7 @@ export class DisplayManager {
                 });
             };
 
-            events.forEach(event => {
+            events.forEach((event) => {
                 document.addEventListener(event, handler);
             });
         }
@@ -260,7 +259,7 @@ export class DisplayManager {
                 x: 0,
                 y: 0,
                 width: window.innerWidth,
-                height: window.innerHeight
+                height: window.innerHeight,
             };
         }
 
@@ -309,7 +308,7 @@ export class DisplayManager {
 
         return {
             width: parseInt(match[1], 10),
-            height: parseInt(match[2], 10)
+            height: parseInt(match[2], 10),
         };
     }
 
@@ -346,7 +345,7 @@ export class DisplayManager {
 
         if (!isValid) {
             console.warn(
-                `[DisplayManager] Resolution ${width}×${height} exceeds display bounds ${maxWidth}×${maxHeight}`
+                `[DisplayManager] Resolution ${width}×${height} exceeds display bounds ${maxWidth}×${maxHeight}`,
             );
         }
 

@@ -58,7 +58,7 @@ export default class RainyWindowTheme extends BaseTheme {
         // Graphics quality
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 maxDrops: 50,
                 dropSpawnProbability: 0.15,
                 currentDropCap: 25,
@@ -78,7 +78,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 mistSpawnMultiplier: 0.4,
                 splashSpawnMultiplier: 0.5,
             },
-            'Low': {
+            Low: {
                 maxDrops: 80,
                 dropSpawnProbability: 0.22,
                 currentDropCap: 35,
@@ -98,7 +98,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 mistSpawnMultiplier: 0.5,
                 splashSpawnMultiplier: 0.6,
             },
-            'Medium': {
+            Medium: {
                 maxDrops: 120,
                 dropSpawnProbability: 0.32,
                 currentDropCap: 48,
@@ -118,7 +118,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 mistSpawnMultiplier: 0.7,
                 splashSpawnMultiplier: 0.8,
             },
-            'High': {
+            High: {
                 maxDrops: 150,
                 dropSpawnProbability: 0.4,
                 currentDropCap: 58,
@@ -138,7 +138,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 mistSpawnMultiplier: 0.85,
                 splashSpawnMultiplier: 0.9,
             },
-            'Ultra': {
+            Ultra: {
                 maxDrops: 180,
                 dropSpawnProbability: 0.45,
                 currentDropCap: 63,
@@ -158,7 +158,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 mistSpawnMultiplier: 1,
                 splashSpawnMultiplier: 1,
             },
-            'Extreme': {
+            Extreme: {
                 maxDrops: 250,
                 dropSpawnProbability: 0.55,
                 currentDropCap: 85,
@@ -177,54 +177,54 @@ export default class RainyWindowTheme extends BaseTheme {
                 comboEffectScale: 1.3,
                 mistSpawnMultiplier: 1.3,
                 splashSpawnMultiplier: 1.3,
-            }
+            },
         };
         this.currentQuality = 'Ultra';
-        this.activePreset = this.qualityPresets['Ultra'];
+        this.activePreset = this.qualityPresets.Ultra;
 
         // Performance optimization: Cache static data to avoid recreation every frame
         this.colorSchemes = {
-            'lightning': {
+            lightning: {
                 base: { r: 140, g: 180, b: 255 },
                 highlight: { r: 200, g: 230, b: 255 },
-                accent: { r: 230, g: 245, b: 255 }
+                accent: { r: 230, g: 245, b: 255 },
             },
-            'splash': {
+            splash: {
                 base: { r: 160, g: 200, b: 235 },
                 highlight: { r: 200, g: 230, b: 250 },
-                accent: { r: 220, g: 240, b: 255 }
+                accent: { r: 220, g: 240, b: 255 },
             },
-            'strong': {
+            strong: {
                 base: { r: 140, g: 175, b: 220 },
                 highlight: { r: 180, g: 210, b: 245 },
-                accent: { r: 200, g: 225, b: 255 }
+                accent: { r: 200, g: 225, b: 255 },
             },
-            'gentle': {
+            gentle: {
                 base: { r: 120, g: 155, b: 190 },
                 highlight: { r: 160, g: 195, b: 230 },
-                accent: { r: 180, g: 210, b: 240 }
+                accent: { r: 180, g: 210, b: 240 },
             },
-            'normal': {
+            normal: {
                 base: { r: 125, g: 160, b: 200 },
                 highlight: { r: 165, g: 195, b: 230 },
-                accent: { r: 185, g: 210, b: 240 }
-            }
+                accent: { r: 185, g: 210, b: 240 },
+            },
         };
 
         this.ringConfigs = {
-            'lightning': { count: 5, spacing: 12, pattern: 'electric' },
-            'splash': { count: 4, spacing: 15, pattern: 'burst' },
-            'strong': { count: 6, spacing: 8, pattern: 'wave' },
-            'gentle': { count: 5, spacing: 12, pattern: 'smooth' },
-            'normal': { count: 5, spacing: 10, pattern: 'standard' }
+            lightning: { count: 5, spacing: 12, pattern: 'electric' },
+            splash: { count: 4, spacing: 15, pattern: 'burst' },
+            strong: { count: 6, spacing: 8, pattern: 'wave' },
+            gentle: { count: 5, spacing: 12, pattern: 'smooth' },
+            normal: { count: 5, spacing: 10, pattern: 'standard' },
         };
 
         this.fadeRates = {
-            'lightning': 0.003,
-            'splash': 0.008,
-            'strong': 0.005,
-            'gentle': 0.006,
-            'normal': 0.007
+            lightning: 0.003,
+            splash: 0.008,
+            strong: 0.005,
+            gentle: 0.006,
+            normal: 0.007,
         };
     }
 
@@ -384,7 +384,7 @@ export default class RainyWindowTheme extends BaseTheme {
     shouldProcessComboEffects() {
         if (!this.isActive) return false;
         if (typeof window === 'undefined') return true;
-        const settings = window.settings;
+        const { settings } = window;
         return settings?.backgroundComboEffects === true;
     }
 
@@ -425,7 +425,7 @@ export default class RainyWindowTheme extends BaseTheme {
         // Create rain burst - intense rain from line clears
         const burstCount = Math.min(
             Math.ceil((lineCount * 15 + comboCount * 10) * this.comboEffectScale),
-            this.maxRainBurstDrops
+            this.maxRainBurstDrops,
         );
         for (let i = 0; i < burstCount; i++) {
             this.rainBurstDrops.push(this.createRainBurstDrop(lineCount));
@@ -440,13 +440,13 @@ export default class RainyWindowTheme extends BaseTheme {
         // Increase drop spawn rate temporarily
         this.currentDropCap = Math.min(
             this.currentDropCap + lineCount * 10 * this.comboEffectScale,
-            this.maxDrops
+            this.maxDrops,
         );
 
         // Create water explosion on water surface
         const explosionCount = Math.min(
             Math.ceil((lineCount + Math.floor(comboCount / 2)) * this.comboEffectScale),
-            4
+            4,
         );
         for (let i = 0; i < explosionCount; i++) {
             const x = Math.random() * this.canvas.width;
@@ -472,7 +472,7 @@ export default class RainyWindowTheme extends BaseTheme {
         if (lineCount >= 3) {
             this.lightningFlashIntensity = Math.min(
                 (0.15 + lineCount * 0.05) * this.comboEffectScale,
-                0.35
+                0.35,
             );
         }
     }
@@ -523,7 +523,8 @@ export default class RainyWindowTheme extends BaseTheme {
         const depthScale = 0.3 + depth * 0.7;
 
         // Create variety in ripple types with distinct visual styles
-        let rippleType, style;
+        let rippleType; let
+            style;
         if (isLightning) {
             rippleType = 'lightning';
             style = 'electric'; // Electric burst pattern
@@ -545,36 +546,36 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         const sizeMultiplier = {
-            'splash': 1.8,
-            'strong': 1.4,
-            'gentle': 0.8,
-            'normal': 1.0,
-            'lightning': 2.0
+            splash: 1.8,
+            strong: 1.4,
+            gentle: 0.8,
+            normal: 1.0,
+            lightning: 2.0,
         }[rippleType];
 
         const speedMultiplier = {
-            'splash': 1.5,
-            'strong': 1.0,
-            'gentle': 0.7,
-            'normal': 1.0,
-            'lightning': 1.2
+            splash: 1.5,
+            strong: 1.0,
+            gentle: 0.7,
+            normal: 1.0,
+            lightning: 1.2,
         }[rippleType];
 
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             radius: 0,
             maxRadius: (dropSize * 10 + Math.random() * 30 + 40) * depthScale * sizeMultiplier,
             opacity: rippleType === 'splash' ? 1.5 : (rippleType === 'strong' ? 1.2 : 1.0),
             speed: (Math.random() * 0.8 + 0.6) * depthScale * speedMultiplier,
             lineWidth: (Math.random() * 2 + 1.5) * depthScale * (rippleType === 'splash' ? 1.5 : rippleType === 'strong' ? 1.3 : 1.0),
-            depth: depth,
+            depth,
             phase: 0,
             frequency: Math.random() * 0.1 + 0.05,
-            isLightning: isLightning,
+            isLightning,
             shimmer: Math.random() * Math.PI * 2,
-            rippleType: rippleType,
-            style: style,
+            rippleType,
+            style,
             pulseSpeed: Math.random() * 0.05 + 0.03,
             rotation: Math.random() * Math.PI * 2, // Random rotation for variety
         };
@@ -595,7 +596,9 @@ export default class RainyWindowTheme extends BaseTheme {
         while (y < targetY) {
             const nextY = y + Math.random() * 30 + 20;
             const nextX = x + (Math.random() - 0.5) * 40;
-            mainSegs.push({ x1: x, y1: y, x2: nextX, y2: nextY });
+            mainSegs.push({
+                x1: x, y1: y, x2: nextX, y2: nextY,
+            });
 
             // Random branches
             if (Math.random() > 0.7) {
@@ -603,7 +606,9 @@ export default class RainyWindowTheme extends BaseTheme {
                 const branchAngle = (Math.random() - 0.5) * Math.PI * 0.6;
                 const bx = nextX + Math.cos(branchAngle) * branchLength;
                 const by = nextY + Math.sin(branchAngle) * branchLength;
-                branchSegs.push({ x1: nextX, y1: nextY, x2: bx, y2: by });
+                branchSegs.push({
+                    x1: nextX, y1: nextY, x2: bx, y2: by,
+                });
             }
 
             x = nextX;
@@ -618,9 +623,9 @@ export default class RainyWindowTheme extends BaseTheme {
             glowIntensity: 1.0,
             originX: startX,
             originY: 0,
-            impactX: x,  // Final x position where bolt ends
-            impactY: y,  // Final y position where bolt ends
-            depth: depth,
+            impactX: x, // Final x position where bolt ends
+            impactY: y, // Final y position where bolt ends
+            depth,
         };
     }
 
@@ -634,8 +639,8 @@ export default class RainyWindowTheme extends BaseTheme {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 1.5 + 0.5;
             particles.push({
-                x: x,
-                y: y,
+                x,
+                y,
                 vx: Math.cos(angle) * speed * depthScale,
                 vy: -Math.random() * 2 - 1, // Upward drift
                 life: 1.0,
@@ -655,8 +660,8 @@ export default class RainyWindowTheme extends BaseTheme {
             const angle = (Math.PI / 2) + (Math.random() - 0.5) * Math.PI * 0.8;
             const speed = (Math.random() * 3 + 2) * depthScale;
             particles.push({
-                x: x,
-                y: y,
+                x,
+                y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed * -1,
                 life: 1.0,
@@ -703,7 +708,7 @@ export default class RainyWindowTheme extends BaseTheme {
         const waterY = this.getWaterY(bolt.depth);
         const numRipples = Math.min(
             Math.max(1, Math.floor((3 + comboCount) * this.comboEffectScale)),
-            8
+            8,
         );
         for (let i = 0; i < numRipples && this.lightningRipples.length < this.maxRipples; i++) {
             this.lightningRipples.push({
@@ -712,7 +717,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 depth: bolt.depth,
                 size: 12 + Math.random() * 10,
                 delay: i * 2,
-                spawned: false
+                spawned: false,
             });
         }
     }
@@ -726,8 +731,8 @@ export default class RainyWindowTheme extends BaseTheme {
             const angle = Math.random() * Math.PI * 2;
             const speed = (Math.random() * 8 + 4) * depthScale;
             particles.push({
-                x: x,
-                y: y,
+                x,
+                y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed - Math.random() * 3,
                 size: (Math.random() * 3 + 2) * depthScale,
@@ -739,10 +744,10 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         return {
-            x: x,
-            y: y,
-            depth: depth,
-            particles: particles,
+            x,
+            y,
+            depth,
+            particles,
             ripplePhase: 0,
             life: 1.0,
         };
@@ -768,9 +773,9 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         return {
-            x: x,
-            width: width,
-            drops: drops,
+            x,
+            width,
+            drops,
             life: 1.0,
             intensity: 1.0,
         };
@@ -899,7 +904,7 @@ export default class RainyWindowTheme extends BaseTheme {
                         depth: bolt.depth,
                         size: 9 + Math.random() * 7,
                         delay: i * 3,
-                        spawned: false
+                        spawned: false,
                     });
                 }
             }
@@ -943,7 +948,6 @@ export default class RainyWindowTheme extends BaseTheme {
         // Draw water surface
         this.drawWaterSurface();
 
-
         // Add atmospheric fog layers (use cached gradients)
         for (let i = 0; i < 3; i++) {
             const fog = this.fogGradients[i];
@@ -969,7 +973,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Draw main segments (thickness = 3) - all layers
             if (bolt.mainSegs.length > 0) {
-                const mainSegs = bolt.mainSegs;
+                const { mainSegs } = bolt;
                 // Layer 1: Wide atmospheric glow
                 this.ctx.beginPath();
                 for (const seg of mainSegs) {
@@ -1023,7 +1027,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Draw branch segments (thickness = 1.5) - all layers
             if (bolt.branchSegs.length > 0) {
-                const branchSegs = bolt.branchSegs;
+                const { branchSegs } = bolt;
                 // Layer 1: Wide atmospheric glow
                 this.ctx.beginPath();
                 for (const seg of branchSegs) {
@@ -1092,7 +1096,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Enhanced rendering for combo thunder
             if (bolt.mainSegs.length > 0) {
-                const mainSegs = bolt.mainSegs;
+                const { mainSegs } = bolt;
 
                 // Extra wide atmospheric glow
                 this.ctx.beginPath();
@@ -1146,7 +1150,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Draw branch segments
             if (bolt.branchSegs.length > 0) {
-                const branchSegs = bolt.branchSegs;
+                const { branchSegs } = bolt;
 
                 this.ctx.beginPath();
                 for (const seg of branchSegs) {
@@ -1243,8 +1247,10 @@ export default class RainyWindowTheme extends BaseTheme {
                 const waterY = this.getWaterY(0.5);
                 if (drop.y < waterY) {
                     const gradient = this.ctx.createLinearGradient(
-                        drop.x, drop.y - drop.length,
-                        drop.x, drop.y
+                        drop.x,
+                        drop.y - drop.length,
+                        drop.x,
+                        drop.y,
                     );
                     gradient.addColorStop(0, 'rgba(200, 230, 255, 0)');
                     gradient.addColorStop(0.5, `rgba(220, 240, 255, ${drop.opacity * curtain.intensity * 0.5})`);
@@ -1308,8 +1314,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
                 // Enhanced glowing rain drop
                 const gradient = this.ctx.createLinearGradient(
-                    drop.x, drop.y - scaledLength,
-                    drop.x, drop.y
+                    drop.x,
+                    drop.y - scaledLength,
+                    drop.x,
+                    drop.y,
                 );
                 gradient.addColorStop(0, 'rgba(200, 230, 255, 0)');
                 gradient.addColorStop(0.4, `rgba(220, 240, 255, ${drop.opacity * 0.5 * drop.glow})`);
@@ -1366,7 +1374,7 @@ export default class RainyWindowTheme extends BaseTheme {
             }
 
             // Apply depth-based effects
-            const depth = ripple.depth;
+            const { depth } = ripple;
             const depthAlpha = 0.4 + depth * 0.6;
 
             ripple.y = this.getWaterY(depth);
@@ -1420,8 +1428,7 @@ export default class RainyWindowTheme extends BaseTheme {
                     const b = colors.highlight.b + (colors.accent.b - colors.highlight.b) * shimmerEffect * 0.5;
                     this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
                     this.ctx.lineWidth = ripple.lineWidth * 1.3 * (1 - j * 0.12);
-                    this.ctx.stroke()
-
+                    this.ctx.stroke();
                 } else if (config.pattern === 'burst') {
                     // Splash: Fast, bold rings with high contrast
                     this.ctx.beginPath();
@@ -1439,7 +1446,6 @@ export default class RainyWindowTheme extends BaseTheme {
                     this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha})`;
                     this.ctx.lineWidth = ripple.lineWidth * 1.5 * (1 - j * 0.22);
                     this.ctx.stroke();
-
                 } else if (config.pattern === 'wave') {
                     // Strong: Multiple layered waves with medium intensity
                     if (j < 3) {
@@ -1466,7 +1472,6 @@ export default class RainyWindowTheme extends BaseTheme {
                         this.ctx.lineWidth = ripple.lineWidth * 0.6 * (1 - j * 0.2);
                         this.ctx.stroke();
                     }
-
                 } else if (config.pattern === 'smooth') {
                     // Gentle: Soft, blended rings with low intensity
                     this.ctx.beginPath();
@@ -1483,7 +1488,6 @@ export default class RainyWindowTheme extends BaseTheme {
                     this.ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${waveAlpha * 0.6})`;
                     this.ctx.lineWidth = ripple.lineWidth * 0.8 * (1 - j * 0.16);
                     this.ctx.stroke();
-
                 } else {
                     // Standard: Balanced medium ripples
                     this.ctx.beginPath();
@@ -1577,10 +1581,12 @@ export default class RainyWindowTheme extends BaseTheme {
             if (drop.y < waterY) {
                 // Draw motion blur streak
                 const gradient = this.ctx.createLinearGradient(
-                    drop.x, drop.y - scaledLength,
-                    drop.x, drop.y
+                    drop.x,
+                    drop.y - scaledLength,
+                    drop.x,
+                    drop.y,
                 );
-                gradient.addColorStop(0, `rgba(200, 220, 240, 0)`);
+                gradient.addColorStop(0, 'rgba(200, 220, 240, 0)');
                 gradient.addColorStop(0.3, `rgba(210, 230, 250, ${drop.opacity * 0.3})`);
                 gradient.addColorStop(1, `rgba(220, 235, 255, ${drop.opacity * 0.7})`);
 

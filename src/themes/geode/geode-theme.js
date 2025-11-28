@@ -54,7 +54,7 @@ export default class GeodeTheme extends BaseTheme {
         this.pendingComboCount = 0;
 
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 wallCount: 2,
                 stalactiteCount: 2,
                 stalagmiteCount: 4,
@@ -65,7 +65,7 @@ export default class GeodeTheme extends BaseTheme {
                 maxLightRays: 2,
                 maxEnergyPulses: 5,
             },
-            'Low': {
+            Low: {
                 wallCount: 4,
                 stalactiteCount: 4,
                 stalagmiteCount: 6,
@@ -76,7 +76,7 @@ export default class GeodeTheme extends BaseTheme {
                 maxLightRays: 4,
                 maxEnergyPulses: 8,
             },
-            'Medium': {
+            Medium: {
                 wallCount: 6,
                 stalactiteCount: 8,
                 stalagmiteCount: 12,
@@ -87,7 +87,7 @@ export default class GeodeTheme extends BaseTheme {
                 maxLightRays: 8,
                 maxEnergyPulses: 15,
             },
-            'High': {
+            High: {
                 wallCount: 8,
                 stalactiteCount: 12,
                 stalagmiteCount: 16,
@@ -98,7 +98,7 @@ export default class GeodeTheme extends BaseTheme {
                 maxLightRays: 12,
                 maxEnergyPulses: 22,
             },
-            'Ultra': {
+            Ultra: {
                 wallCount: 10,
                 stalactiteCount: 16,
                 stalagmiteCount: 20,
@@ -109,7 +109,7 @@ export default class GeodeTheme extends BaseTheme {
                 maxLightRays: 16,
                 maxEnergyPulses: 30,
             },
-            'Extreme': {
+            Extreme: {
                 wallCount: 14,
                 stalactiteCount: 22,
                 stalagmiteCount: 27,
@@ -119,15 +119,15 @@ export default class GeodeTheme extends BaseTheme {
                 maxDustParticles: 95,
                 maxLightRays: 22,
                 maxEnergyPulses: 40,
-            }
+            },
         };
         this.currentQuality = 'Medium';
-        this.activePreset = this.qualityPresets['Medium'];
+        this.activePreset = this.qualityPresets.Medium;
         this.applyQualityPreset('Medium');
     }
 
     applyQualityPreset(quality) {
-        const preset = this.qualityPresets[quality] ?? this.qualityPresets['Medium'];
+        const preset = this.qualityPresets[quality] ?? this.qualityPresets.Medium;
         this.currentQuality = quality in this.qualityPresets ? quality : 'Medium';
         this.activePreset = preset;
 
@@ -387,12 +387,24 @@ export default class GeodeTheme extends BaseTheme {
         const clusterCount = this.crystalClusterCount ?? 12;
 
         const crystalPalettes = [
-            { hues: [280, 285, 275, 290], saturation: 65, lightness: [40, 50, 35], name: 'amethyst' },
-            { hues: [190, 195, 185, 200], saturation: 70, lightness: [45, 55, 40], name: 'aquamarine' },
-            { hues: [340, 345, 335, 350], saturation: 60, lightness: [42, 52, 38], name: 'rose-quartz' },
-            { hues: [270, 275, 265, 280], saturation: 55, lightness: [35, 45, 30], name: 'deep-purple' },
-            { hues: [180, 185, 175, 190], saturation: 65, lightness: [38, 48, 33], name: 'cyan-crystal' },
-            { hues: [160, 165, 155, 170], saturation: 75, lightness: [40, 50, 35], name: 'emerald' },
+            {
+                hues: [280, 285, 275, 290], saturation: 65, lightness: [40, 50, 35], name: 'amethyst',
+            },
+            {
+                hues: [190, 195, 185, 200], saturation: 70, lightness: [45, 55, 40], name: 'aquamarine',
+            },
+            {
+                hues: [340, 345, 335, 350], saturation: 60, lightness: [42, 52, 38], name: 'rose-quartz',
+            },
+            {
+                hues: [270, 275, 265, 280], saturation: 55, lightness: [35, 45, 30], name: 'deep-purple',
+            },
+            {
+                hues: [180, 185, 175, 190], saturation: 65, lightness: [38, 48, 33], name: 'cyan-crystal',
+            },
+            {
+                hues: [160, 165, 155, 170], saturation: 75, lightness: [40, 50, 35], name: 'emerald',
+            },
         ];
 
         for (let i = 0; i < clusterCount; i++) {

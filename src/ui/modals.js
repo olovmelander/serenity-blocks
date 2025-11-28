@@ -36,7 +36,7 @@ export class ModalManager {
                 document.body.classList.add('start-modal-open');
             }
             window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName } }));
-            
+
             // Enable menu navigation when modal opens
             if (this.gamepadController && modalName !== 'gameOver') {
                 this.gamepadController.enableMenuNavigation();
@@ -56,7 +56,7 @@ export class ModalManager {
                 document.body.classList.remove('start-modal-open');
             }
             window.dispatchEvent(new CustomEvent('modalHidden', { detail: { modalName } }));
-            
+
             // Disable menu navigation when modal closes
             if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
                 this.gamepadController.disableMenuNavigation();
@@ -99,7 +99,7 @@ export function showStartModal(modalManager) {
  */
 export async function showGameOverModal(modalManager, gameState, highScoreManager) {
     const {
-        score, lines, level, dropInterval,
+        score, lines, level, dropInterval, startTime, piecesPlaced,
     } = gameState;
 
     // Calculate speed multiplier
@@ -109,6 +109,21 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
     ];
     const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
 
+    // Calculate game duration
+    const duration = Date.now() - startTime;
+    const minutes = Math.floor(duration / 60000);
+    const seconds = Math.floor((duration % 60000) / 1000);
+    const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const totalMinutes = duration / 60000;
+
+    // Calculate PPM metrics
+    const piecesPPM = duration > 0 ? Math.round((piecesPlaced / duration) * 60000) : 0;
+    const pointsPPM = totalMinutes > 0 ? Math.round(score / totalMinutes) : 0;
+
+    // Calculate efficiency metrics
+    const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
+    const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
+
     try {
         // Get rank and statistics
         const rank = await highScoreManager.getRank(score);
@@ -116,35 +131,144 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
 
         // Build ranking HTML
         let rankingHTML = '';
+        let rankingBadge = '';
         if (rank === 1) {
-            rankingHTML = '<div style="font-size:20px;color:#10b981;margin:10px 0;font-weight:bold;">🏆 NEW HIGH SCORE! 🏆</div>';
+            rankingHTML = '🏆 NEW HIGH SCORE!';
+            rankingBadge = '<div class="stat-badge stat-badge-gold">New Record</div>';
         } else if (rank <= 10) {
-            rankingHTML = `<div style="font-size:16px;color:#fbbf24;margin:10px 0;">Rank: #${rank} in your top 10!</div>`;
+            rankingHTML = `Rank #${rank}`;
+            rankingBadge = '<div class="stat-badge stat-badge-purple">Top 10</div>';
         } else {
-            rankingHTML = `<div style="font-size:14px;color:#9ca3af;margin:10px 0;">Personal Rank: #${rank}</div>`;
+            rankingHTML = `Rank #${rank}`;
         }
 
-        // Personal best
-        const personalBest = stats.highestScore > score
-            ? `<div style="font-size:14px;color:#9ca3af;margin:5px 0;">Personal Best: ${stats.highestScore}</div>`
-            : '';
+        // Personal best comparison
+        const personalBest = stats.highestScore > score ? stats.highestScore : null;
 
-        // Update final stats display
+        // Calculate averages
+        const avgScore = stats.totalGames > 0 ? Math.round(stats.totalScore / stats.totalGames) : 0;
+        const avgLines = stats.totalGames > 0 ? Math.round(stats.totalLines / stats.totalGames) : 0;
+
+        // Update final stats display with 2x2 grid
         document.getElementById('final-stats').innerHTML = `
-            <div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div>
-            ${rankingHTML}
-            ${personalBest}
-            <div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div>
-            <div>Lines Cleared: ${lines}</div>
-            <div style="font-size:12px;color:#9ca3af;margin-top:10px;">Total Games: ${stats.totalGames}</div>
+            <div class="stats-header">
+                <div class="score-display">${score.toLocaleString()}</div>
+                <div class="ranking-display">${rankingHTML}</div>
+                ${rankingBadge}
+            </div>
+
+            <div class="stats-grid">
+                <!-- Performance Section (Purple) -->
+                <div class="stat-card stat-card-purple">
+                    <div class="stat-card-header">Performance</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Level</span>
+                        <span class="stat-value">${level}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Speed</span>
+                        <span class="stat-value">${speedMultiplier}x</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Lines</span>
+                        <span class="stat-value">${lines}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Pieces</span>
+                        <span class="stat-value">${piecesPlaced}</span>
+                    </div>
+                </div>
+
+                <!-- Rate Stats Section (Cyan) -->
+                <div class="stat-card stat-card-cyan">
+                    <div class="stat-card-header">Rates (Per Min)</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Points/Min</span>
+                        <span class="stat-value">${pointsPPM.toLocaleString()}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Pieces/Min</span>
+                        <span class="stat-value">${piecesPPM}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Lines/Piece</span>
+                        <span class="stat-value">${linesPerPiece}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Efficiency</span>
+                        <span class="stat-value">${efficiency}%</span>
+                    </div>
+                </div>
+
+                <!-- Career Stats Section (Gold) -->
+                <div class="stat-card stat-card-gold">
+                    <div class="stat-card-header">Career Best</div>
+                    <div class="stat-row">
+                        <span class="stat-label">High Score</span>
+                        <span class="stat-value">${stats.highestScore.toLocaleString()}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">High Level</span>
+                        <span class="stat-value">${stats.highestLevel}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Total Games</span>
+                        <span class="stat-value">${stats.totalGames}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Total Lines</span>
+                        <span class="stat-value">${stats.totalLines.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <!-- Comparison Section (Green) -->
+                <div class="stat-card stat-card-green">
+                    <div class="stat-card-header">Session (${durationStr})</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Score</span>
+                        <span class="stat-value">${score.toLocaleString()}</span>
+                    </div>
+                    ${personalBest ? `
+                    <div class="stat-row">
+                        <span class="stat-label">vs Best</span>
+                        <span class="stat-value stat-comparison">${score > personalBest ? '+' : ''}${(score - personalBest).toLocaleString()}</span>
+                    </div>
+                    ` : ''}
+                    <div class="stat-row">
+                        <span class="stat-label">vs Avg</span>
+                        <span class="stat-value stat-comparison">${score > avgScore ? '+' : ''}${(score - avgScore).toLocaleString()}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Avg Score</span>
+                        <span class="stat-value">${avgScore.toLocaleString()}</span>
+                    </div>
+                </div>
+            </div>
         `;
     } catch (error) {
         console.error('Error displaying game over stats:', error);
         // Fallback display
         document.getElementById('final-stats').innerHTML = `
-            <div style="font-size:24px;margin-bottom:10px;color:#fbbf24;">Score: ${score}</div>
-            <div style="margin-bottom:5px;">Level ${level} (${speedMultiplier}x speed)</div>
-            <div>Lines Cleared: ${lines}</div>
+            <div class="stats-header">
+                <div class="score-display">${score.toLocaleString()}</div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card stat-card-purple">
+                    <div class="stat-card-header">Game Stats</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Level</span>
+                        <span class="stat-value">${level}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Speed</span>
+                        <span class="stat-value">${speedMultiplier}x</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Lines</span>
+                        <span class="stat-value">${lines}</span>
+                    </div>
+                </div>
+            </div>
         `;
     }
 

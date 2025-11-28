@@ -68,7 +68,7 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         this.ctx = this.canvas.getContext('2d', {
             alpha: false,
-            desynchronized: true
+            desynchronized: true,
         });
 
         // Set initial canvas size BEFORE creating elements
@@ -108,10 +108,12 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Background gradient - deep forest to bioluminescent glow
         this.cachedGradients.background = this.ctx.createRadialGradient(
-            this.canvas.width * 0.5, this.canvas.height * 0.5,
+            this.canvas.width * 0.5,
+            this.canvas.height * 0.5,
             0,
-            this.canvas.width * 0.5, this.canvas.height * 0.5,
-            this.canvas.height * 0.9
+            this.canvas.width * 0.5,
+            this.canvas.height * 0.5,
+            this.canvas.height * 0.9,
         );
         this.cachedGradients.background.addColorStop(0, '#0a1f1f');
         this.cachedGradients.background.addColorStop(0.4, '#061518');
@@ -129,8 +131,8 @@ export default class BioluminescenceTheme extends BaseTheme {
             const baseY = this.canvas.height;
 
             const plant = {
-                type: type,
-                x: x,
+                type,
+                x,
                 y: baseY,
                 height: Math.random() * 120 + 60,
                 width: Math.random() * 60 + 30,
@@ -141,7 +143,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 swaySpeed: Math.random() * 0.01 + 0.005,
                 swayAmount: Math.random() * 15 + 5,
                 hue: Math.random() * 40 + 160, // Cyan to green range
-                layer: Math.random()
+                layer: Math.random(),
             };
 
             // Type-specific properties
@@ -179,18 +181,18 @@ export default class BioluminescenceTheme extends BaseTheme {
                     height: Math.random() * 50 + 30,
                     width: Math.random() * 15 + 10,
                     angle: (Math.random() - 0.5) * 0.3,
-                    glowIntensity: Math.random() * 0.5 + 0.5
+                    glowIntensity: Math.random() * 0.5 + 0.5,
                 });
             }
 
             this.crystalFormations.push({
                 x: baseX,
                 y: baseY,
-                crystals: crystals,
+                crystals,
                 pulseSpeed: Math.random() * 0.02 + 0.01,
                 pulsePhase: Math.random() * Math.PI * 2,
                 hue: Math.random() * 30 + 170, // Cyan-ish crystals
-                layer: Math.random() * 0.5 // Front layer mostly
+                layer: Math.random() * 0.5, // Front layer mostly
             });
         }
 
@@ -216,9 +218,9 @@ export default class BioluminescenceTheme extends BaseTheme {
                     x: currentX,
                     y: currentY,
                     length: segmentLength,
-                    angle: angle,
+                    angle,
                     thickness: Math.max(2, 8 - j * 0.5), // Taper off
-                    glowSize: Math.random() * 10 + 8
+                    glowSize: Math.random() * 10 + 8,
                 });
 
                 currentX += Math.cos(angle) * segmentLength;
@@ -226,12 +228,12 @@ export default class BioluminescenceTheme extends BaseTheme {
             }
 
             this.luminousVines.push({
-                segments: segments,
+                segments,
                 pulseSpeed: Math.random() * 0.02 + 0.01,
                 pulsePhase: Math.random() * Math.PI * 2,
                 swayPhase: Math.random() * Math.PI * 2,
                 swaySpeed: Math.random() * 0.015 + 0.008,
-                hue: Math.random() * 40 + 160
+                hue: Math.random() * 40 + 160,
             });
         }
     }
@@ -249,7 +251,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 pulseSpeed: Math.random() * 0.05 + 0.02,
                 pulsePhase: Math.random() * Math.PI * 2,
                 color: Math.random() > 0.7 ? 'cyan' : 'green', // Mix of colors
-                trail: []
+                trail: [],
             });
         }
     }
@@ -265,7 +267,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 size: Math.random() * 2 + 1,
                 opacity: Math.random() * 0.6 + 0.2,
                 driftPhase: Math.random() * Math.PI * 2,
-                driftSpeed: Math.random() * 0.02 + 0.01
+                driftSpeed: Math.random() * 0.02 + 0.01,
             });
         }
     }
@@ -282,7 +284,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 pulsePhase: Math.random() * Math.PI * 2,
                 driftSpeed: Math.random() * 0.0003 + 0.0001,
                 driftPhase: Math.random() * Math.PI * 2,
-                hue: Math.random() * 50 + 155 // Cyan-green range
+                hue: Math.random() * 50 + 155, // Cyan-green range
             });
         }
     }
@@ -350,7 +352,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                     life: 1.0,
                     speed: 5 + comboCount * 0.5,
                     delay: i * 0.12,
-                    started: false
+                    started: false,
                 });
             }
         }
@@ -380,13 +382,13 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
 
         // Make all plants glow more intensely
-        this.glowingPlants.forEach(plant => {
+        this.glowingPlants.forEach((plant) => {
             plant.glowIntensity = Math.min(plant.glowIntensity + 0.4 + comboCount * 0.1, 2.5);
         });
 
         // Make crystals shine brighter
-        this.crystalFormations.forEach(formation => {
-            formation.crystals.forEach(crystal => {
+        this.crystalFormations.forEach((formation) => {
+            formation.crystals.forEach((crystal) => {
                 crystal.glowIntensity = Math.min(crystal.glowIntensity + 0.3, 2.0);
             });
         });
@@ -402,8 +404,8 @@ export default class BioluminescenceTheme extends BaseTheme {
         const speed = Math.random() * 10 + 5 + lineCount * 2;
 
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             size: Math.random() * 6 + 3,
@@ -411,7 +413,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             life: 1.0,
             color: Math.random() > 0.5 ? 'cyan' : 'green',
             pulsePhase: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.2
+            rotationSpeed: (Math.random() - 0.5) * 0.2,
         };
     }
 
@@ -426,7 +428,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             life: 1.0,
             pulsePhase: Math.random() * Math.PI * 2,
             spiralPhase: Math.random() * Math.PI * 2,
-            spiralSpeed: Math.random() * 0.1 + 0.05
+            spiralSpeed: Math.random() * 0.1 + 0.05,
         };
     }
 
@@ -440,18 +442,18 @@ export default class BioluminescenceTheme extends BaseTheme {
                 frequency: Math.random() * 0.01 + 0.005,
                 phase: Math.random() * Math.PI * 2,
                 speed: Math.random() * 0.02 + 0.01,
-                yOffset: Math.random() * 200
+                yOffset: Math.random() * 200,
             });
         }
 
         return {
             x: Math.random() * this.canvas.width,
             y: Math.random() * this.canvas.height * 0.5,
-            waves: waves,
+            waves,
             opacity: 0.7,
             life: 1.0,
             width: Math.random() * 400 + 300,
-            driftSpeed: (Math.random() - 0.5) * 0.5
+            driftSpeed: (Math.random() - 0.5) * 0.5,
         };
     }
 
@@ -479,7 +481,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                         color: Math.random() > 0.5 ? 'cyan' : 'green',
                         pulsePhase: Math.random() * Math.PI * 2,
                         rotationSpeed: (Math.random() - 0.5) * 0.2,
-                        hue: plant.hue // Use plant's color
+                        hue: plant.hue, // Use plant's color
                     });
                 }
             }
@@ -502,10 +504,12 @@ export default class BioluminescenceTheme extends BaseTheme {
         const centerX = this.canvas.width * 0.5;
         const centerY = this.canvas.height * 0.6;
         const atmosphereGradient = this.ctx.createRadialGradient(
-            centerX, centerY,
+            centerX,
+            centerY,
             this.canvas.height * 0.2,
-            centerX, centerY,
-            this.canvas.height * 0.9
+            centerX,
+            centerY,
+            this.canvas.height * 0.9,
         );
         atmosphereGradient.addColorStop(0, 'rgba(20, 255, 200, 0.08)');
         atmosphereGradient.addColorStop(0.4, 'rgba(10, 200, 150, 0.04)');
@@ -635,8 +639,12 @@ export default class BioluminescenceTheme extends BaseTheme {
                 const trailSize = (i / firefly.trail.length) * firefly.size;
 
                 const trailGradient = this.ctx.createRadialGradient(
-                    trailPoint.x, trailPoint.y, 0,
-                    trailPoint.x, trailPoint.y, trailSize * 2
+                    trailPoint.x,
+                    trailPoint.y,
+                    0,
+                    trailPoint.x,
+                    trailPoint.y,
+                    trailSize * 2,
                 );
 
                 if (firefly.color === 'cyan') {
@@ -655,8 +663,12 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Draw main firefly glow
             const gradient = this.ctx.createRadialGradient(
-                firefly.x, firefly.y, 0,
-                firefly.x, firefly.y, firefly.size * 3
+                firefly.x,
+                firefly.y,
+                0,
+                firefly.x,
+                firefly.y,
+                firefly.size * 3,
             );
 
             if (firefly.color === 'cyan') {
@@ -686,7 +698,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             const pulse = Math.sin(mushroom.pulsePhase) * 0.3 + 0.7;
             const floatOffset = Math.sin(mushroom.floatPhase) * mushroom.floatAmplitude;
 
-            const x = mushroom.x;
+            const { x } = mushroom;
             const y = mushroom.y + floatOffset;
 
             // Gradually decay intense glow back to normal
@@ -698,8 +710,10 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Draw stem with gradient
             const stemGradient = this.ctx.createLinearGradient(
-                x, y,
-                x, y - mushroom.stemHeight
+                x,
+                y,
+                x,
+                y - mushroom.stemHeight,
             );
             stemGradient.addColorStop(0, `hsl(${180 + mushroom.hueShift}, 60%, 30%)`);
             stemGradient.addColorStop(1, `hsl(${180 + mushroom.hueShift}, 70%, 40%)`);
@@ -707,9 +721,13 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.ctx.fillStyle = stemGradient;
             this.ctx.beginPath();
             this.ctx.ellipse(
-                x, y - mushroom.stemHeight / 2,
-                mushroom.stemWidth, mushroom.stemHeight / 2,
-                0, 0, Math.PI * 2
+                x,
+                y - mushroom.stemHeight / 2,
+                mushroom.stemWidth,
+                mushroom.stemHeight / 2,
+                0,
+                0,
+                Math.PI * 2,
             );
             this.ctx.fill();
 
@@ -741,8 +759,12 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Main cap body
             const capGradient = this.ctx.createRadialGradient(
-                x - mushroom.capRadius * 0.2, capY - mushroom.capRadius * 0.2, mushroom.capRadius * 0.2,
-                x, capY, mushroom.capRadius
+                x - mushroom.capRadius * 0.2,
+                capY - mushroom.capRadius * 0.2,
+                mushroom.capRadius * 0.2,
+                x,
+                capY,
+                mushroom.capRadius,
             );
             capGradient.addColorStop(0, `hsl(${180 + mushroom.hueShift}, 100%, ${60 + glowMult * 10}%)`);
             capGradient.addColorStop(0.5, `hsl(${180 + mushroom.hueShift}, 90%, ${45 + glowMult * 8}%)`);
@@ -771,8 +793,12 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Add rim highlight for 3D effect
             const rimGradient = this.ctx.createRadialGradient(
-                x - mushroom.capRadius * 0.3, capY - mushroom.capRadius * 0.3, 0,
-                x, capY, mushroom.capRadius
+                x - mushroom.capRadius * 0.3,
+                capY - mushroom.capRadius * 0.3,
+                0,
+                x,
+                capY,
+                mushroom.capRadius,
             );
             rimGradient.addColorStop(0, `rgba(255, 255, 255, ${0.3 * glowMult})`);
             rimGradient.addColorStop(0.4, `rgba(200, 255, 240, ${0.15 * glowMult})`);
@@ -976,7 +1002,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear gameplay effects

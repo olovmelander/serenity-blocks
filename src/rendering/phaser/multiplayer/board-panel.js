@@ -106,7 +106,7 @@ export function createMultiplayerBoardScene(
             try {
                 console.log(`[MultiplayerBoardScene] preload() called for ${this.scene?.key || 'unknown'}`);
                 super.preload();
-                
+
                 // Log particle system availability for debugging
                 logParticleSystemInfo(this);
             } catch (error) {
@@ -186,15 +186,20 @@ export function createMultiplayerBoardScene(
 
                 const camera = this.cameras.main;
                 console.log(`[MultiplayerBoardScene] applyViewport for ${this.scene?.key || 'unknown'}`, this.viewport);
-                
+
                 if (!this.viewport) {
                     console.error(`[MultiplayerBoardScene] No viewport data for ${this.scene?.key || 'unknown'}!`);
                     return;
                 }
 
-                console.log(`[MultiplayerBoardScene] Setting viewport:`, 
-                    this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
-                
+                console.log(
+                    '[MultiplayerBoardScene] Setting viewport:',
+                    this.viewport.x,
+                    this.viewport.y,
+                    this.viewport.width,
+                    this.viewport.height,
+                );
+
                 // Set the viewport (where on the canvas this camera renders)
                 camera.setViewport(
                     this.viewport.x,
@@ -202,24 +207,32 @@ export function createMultiplayerBoardScene(
                     this.viewport.width,
                     this.viewport.height,
                 );
-                
+
                 // Each scene has its own independent world space starting at (0, 0)
                 // The viewport determines WHERE on the canvas the scene renders
                 const { width, height } = this.getBoardDimensions();
-                
+
                 // Set camera bounds to the full board size (including hidden rows)
                 camera.setBounds(0, 0, width, height);
-                
+
                 // Position camera to show only the visible area (hide the top hidden rows)
                 const { hiddenRows, blockSize } = this.boardConfig;
                 const visibleHeight = height - (hiddenRows * blockSize);
-                
+
                 // Center the camera on the visible portion
                 camera.centerOn(width / 2, visibleHeight / 2 + (hiddenRows * blockSize));
-                
-                console.log(`[MultiplayerBoardScene] Camera configured:`, 
-                    'bounds:', 0, 0, width, height, 
-                    'centerOn:', width / 2, visibleHeight / 2 + (hiddenRows * blockSize));
+
+                console.log(
+                    '[MultiplayerBoardScene] Camera configured:',
+                    'bounds:',
+                    0,
+                    0,
+                    width,
+                    height,
+                    'centerOn:',
+                    width / 2,
+                    visibleHeight / 2 + (hiddenRows * blockSize),
+                );
             } catch (error) {
                 console.error('[MultiplayerBoardScene] Error in applyViewport():', error);
             }

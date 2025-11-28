@@ -88,25 +88,25 @@ export default class CinderDriftTheme extends BaseTheme {
         return {
             SIM_RESOLUTION: 128,
             DYE_RESOLUTION: 1024,
-            DENSITY_DISSIPATION: 2.0,    // Very slow fade for lingering smoke
-            VELOCITY_DISSIPATION: 1.5,   // Very high dissipation = very slow movement
+            DENSITY_DISSIPATION: 2.0, // Very slow fade for lingering smoke
+            VELOCITY_DISSIPATION: 1.5, // Very high dissipation = very slow movement
             PRESSURE: 0.8,
             PRESSURE_ITERATIONS: 20,
-            CURL: 40,                     // More turbulence for dramatic swirls
-            SPLAT_RADIUS: 0.25,           // Larger smoke volumes
-            SPLAT_FORCE: 6000,            // More dramatic motion
+            CURL: 40, // More turbulence for dramatic swirls
+            SPLAT_RADIUS: 0.25, // Larger smoke volumes
+            SPLAT_FORCE: 6000, // More dramatic motion
             SHADING: true,
-            COLORFUL: true,               // Enable color for orange/red tints
+            COLORFUL: true, // Enable color for orange/red tints
             BLOOM: true,
             BLOOM_ITERATIONS: 8,
             BLOOM_RESOLUTION: 256,
-            BLOOM_INTENSITY: 0.9,         // Brighter glow
-            BLOOM_THRESHOLD: 0.3,         // Lower threshold for more glow
+            BLOOM_INTENSITY: 0.9, // Brighter glow
+            BLOOM_THRESHOLD: 0.3, // Lower threshold for more glow
             BLOOM_SOFT_KNEE: 0.8,
             SUNRAYS: false,
             BACK_COLOR: { r: 10, g: 8, b: 6 },
             TRANSPARENT: false,
-            BUOYANCY: 0.25,               // Gentle rise for pillars
+            BUOYANCY: 0.25, // Gentle rise for pillars
         };
     }
 
@@ -137,14 +137,14 @@ export default class CinderDriftTheme extends BaseTheme {
                 brightness: 0.6 + Math.random() * 0.4,
                 pulsePhase: Math.random() * Math.PI * 2,
                 pulseSpeed: 0.8 + Math.random() * 0.7, // Faster, more dynamic pulse
-                emitTimer: Math.random() * 2.0,        // Longer start delay
+                emitTimer: Math.random() * 2.0, // Longer start delay
             });
         }
     }
 
     updateEmbers(dt) {
         // Automatic ember emissions disabled - only triggered on gameplay events
-        return;
+
     }
 
     /**
@@ -180,9 +180,9 @@ export default class CinderDriftTheme extends BaseTheme {
     getSmokeColor(intensity = 1.0) {
         // Brighter smoke with warm orange/red tints for excitement
         return {
-            r: 0.35 * intensity,  // More orange
-            g: 0.22 * intensity,  // Warmer
-            b: 0.15 * intensity,  // Slight warmth
+            r: 0.35 * intensity, // More orange
+            g: 0.22 * intensity, // Warmer
+            b: 0.15 * intensity, // Slight warmth
         };
     }
 
@@ -196,7 +196,7 @@ export default class CinderDriftTheme extends BaseTheme {
                 const x = Math.random();
                 const y = 0.2 + Math.random() * 0.4;
                 const dx = (Math.random() - 0.5) * 100; // Narrow spread
-                const dy = 500 + Math.random() * 400;  // High pillars
+                const dy = 500 + Math.random() * 400; // High pillars
 
                 const color = this.getSmokeColor(1.0 + lineCount * 0.2);
                 this.simulator.splat(x, y, dx, dy, color);
@@ -223,9 +223,9 @@ export default class CinderDriftTheme extends BaseTheme {
 
                 // Bright orange/red smoke for combos (like flames)
                 const color = {
-                    r: 0.5 * intensity,   // Bright orange/red
-                    g: 0.25 * intensity,  // Flame color
-                    b: 0.1 * intensity,   // Hot
+                    r: 0.5 * intensity, // Bright orange/red
+                    g: 0.25 * intensity, // Flame color
+                    b: 0.1 * intensity, // Hot
                 };
 
                 this.simulator.splat(x, y, dx, dy, color);
@@ -289,7 +289,7 @@ export default class CinderDriftTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();
     }

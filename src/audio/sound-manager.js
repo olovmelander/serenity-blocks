@@ -107,12 +107,14 @@ export class SoundManager {
      */
     createRichTone({
         oscillators = [], // Array of { type, freq, detune, gain, delay }
-        noise = null,     // { type: 'white'|'pink', gain }
-        envelope = { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 },
-        filter = null,    // { type, frequency, Q, envAmount }
+        noise = null, // { type: 'white'|'pink', gain }
+        envelope = {
+            attack: 0.01, decay: 0.1, sustain: 0, release: 0.1,
+        },
+        filter = null, // { type, frequency, Q, envAmount }
         duration = 0.2,
         volume = 1.0,
-        isMusic = false
+        isMusic = false,
     }) {
         if (!this.audioContext || this.isMuted) return;
 
@@ -129,7 +131,7 @@ export class SoundManager {
         masterGain.gain.linearRampToValueAtTime(masterGainValue, now + envelope.attack);
         masterGain.gain.exponentialRampToValueAtTime(
             Math.max(0.001, masterGainValue * (envelope.sustain || 0)),
-            now + envelope.attack + envelope.decay
+            now + envelope.attack + envelope.decay,
         );
 
         const releaseStart = now + duration;
@@ -150,11 +152,11 @@ export class SoundManager {
             if (filter.envAmount) {
                 biquadFilter.frequency.linearRampToValueAtTime(
                     (filter.frequency || 1000) + filter.envAmount,
-                    now + envelope.attack
+                    now + envelope.attack,
                 );
                 biquadFilter.frequency.exponentialRampToValueAtTime(
                     filter.frequency || 1000,
-                    now + envelope.attack + envelope.decay
+                    now + envelope.attack + envelope.decay,
                 );
             }
 
@@ -163,7 +165,7 @@ export class SoundManager {
         }
 
         // Oscillators
-        oscillators.forEach(oscDef => {
+        oscillators.forEach((oscDef) => {
             const osc = this.audioContext.createOscillator();
             const oscGain = this.audioContext.createGain();
 
@@ -190,7 +192,8 @@ export class SoundManager {
 
             if (noise.type === 'pink') {
                 // Pink noise approximation
-                let b0, b1, b2, b3, b4, b5, b6;
+                let b0; let b1; let b2; let b3; let b4; let b5; let
+                    b6;
                 b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
                 for (let i = 0; i < bufferSize; i++) {
                     const white = Math.random() * 2 - 1;
@@ -288,7 +291,7 @@ export class SoundManager {
 
         // Dispatch track change event for UI components to listen
         window.dispatchEvent(new CustomEvent('musicTrackChanged', {
-            detail: { trackName }
+            detail: { trackName },
         }));
     }
 

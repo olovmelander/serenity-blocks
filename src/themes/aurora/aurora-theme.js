@@ -4,7 +4,7 @@ import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
 
 /**
  * Enhanced Aurora Theme - "Living Sky" Edition
- * 
+ *
  * Features:
  * - Dynamic "Activity Cycle": Aurora grows, shrinks, fades, and intensifies organically over time.
  * - Varied Forms: Can be a subtle horizon glow, a medium curtain, or a massive full-screen storm.
@@ -51,7 +51,7 @@ export default class AuroraTheme extends BaseTheme {
                 stripWidth: 100,
                 overlap: 0.7,
                 noiseDetail: 1,
-                shootingStars: false
+                shootingStars: false,
             },
             Low: {
                 starCount: 100,
@@ -59,7 +59,7 @@ export default class AuroraTheme extends BaseTheme {
                 stripWidth: 90,
                 overlap: 0.75,
                 noiseDetail: 2,
-                shootingStars: false
+                shootingStars: false,
             },
             Medium: {
                 starCount: 200,
@@ -67,7 +67,7 @@ export default class AuroraTheme extends BaseTheme {
                 stripWidth: 80,
                 overlap: 0.8,
                 noiseDetail: 2,
-                shootingStars: true
+                shootingStars: true,
             },
             High: {
                 starCount: 350,
@@ -75,7 +75,7 @@ export default class AuroraTheme extends BaseTheme {
                 stripWidth: 65,
                 overlap: 0.85,
                 noiseDetail: 2,
-                shootingStars: true
+                shootingStars: true,
             },
             Ultra: {
                 starCount: 600,
@@ -83,7 +83,7 @@ export default class AuroraTheme extends BaseTheme {
                 stripWidth: 50,
                 overlap: 0.9,
                 noiseDetail: 3,
-                shootingStars: true
+                shootingStars: true,
             },
             Extreme: {
                 starCount: 900,
@@ -91,8 +91,8 @@ export default class AuroraTheme extends BaseTheme {
                 stripWidth: 50,
                 overlap: 0.9,
                 noiseDetail: 3,
-                shootingStars: true
-            }
+                shootingStars: true,
+            },
         };
 
         // Current Configuration
@@ -100,7 +100,7 @@ export default class AuroraTheme extends BaseTheme {
             ...this.qualityPresets[this.currentQuality],
             baseSpeed: 0.0002,
             comboIntensity: 0,
-            targetComboIntensity: 0
+            targetComboIntensity: 0,
         };
     }
 
@@ -217,11 +217,11 @@ export default class AuroraTheme extends BaseTheme {
 
         // Horizontal Soft Falloff (Smoother Sine-like profile)
         const hGrad = ctx.createLinearGradient(0, 0, width, 0);
-        hGrad.addColorStop(0, 'rgba(0,0,0,1)');   // Fully erased at edge
+        hGrad.addColorStop(0, 'rgba(0,0,0,1)'); // Fully erased at edge
         hGrad.addColorStop(0.1, 'rgba(0,0,0,0.8)');
         hGrad.addColorStop(0.5, 'rgba(0,0,0,0)'); // Fully visible at center
         hGrad.addColorStop(0.9, 'rgba(0,0,0,0.8)');
-        hGrad.addColorStop(1, 'rgba(0,0,0,1)');   // Fully erased at edge
+        hGrad.addColorStop(1, 'rgba(0,0,0,1)'); // Fully erased at edge
 
         ctx.globalCompositeOperation = 'destination-out';
         ctx.fillStyle = hGrad;
@@ -249,7 +249,7 @@ export default class AuroraTheme extends BaseTheme {
                 size: Math.random() * 1.5 + 0.2,
                 baseAlpha: Math.random() * 0.6 + 0.1,
                 twinklePhase: Math.random() * Math.PI * 2,
-                twinkleSpeed: Math.random() * 0.003 + 0.001
+                twinkleSpeed: Math.random() * 0.003 + 0.001,
             });
         }
     }
@@ -278,7 +278,7 @@ export default class AuroraTheme extends BaseTheme {
             vx: -15 - Math.random() * 10,
             vy: 2 + Math.random() * 5,
             life: 1.0,
-            trail: []
+            trail: [],
         });
     }
 
@@ -321,7 +321,7 @@ export default class AuroraTheme extends BaseTheme {
 
     render() {
         if (!this.ctx) return;
-        const ctx = this.ctx;
+        const { ctx } = this;
         const w = this.width;
         const h = this.height;
 
@@ -358,11 +358,11 @@ export default class AuroraTheme extends BaseTheme {
                 const y = h * (yBase + yActivityOffset);
 
                 layers.push({
-                    y: y,
+                    y,
                     speed: (0.5 + t * 0.6) * (0.5 + effectiveActivity * 1.5),
                     scale: (1.5 + t * 0.5) * effectiveActivity,
                     brightness: (0.2 + t * 0.3) * effectiveActivity,
-                    offset: i * 2000
+                    offset: i * 2000,
                 });
             }
 
@@ -378,7 +378,7 @@ export default class AuroraTheme extends BaseTheme {
                 if (s.trail.length > 1) {
                     ctx.beginPath();
                     ctx.moveTo(s.trail[0].x, s.trail[0].y);
-                    for (let p of s.trail) ctx.lineTo(p.x, p.y);
+                    for (const p of s.trail) ctx.lineTo(p.x, p.y);
                     ctx.strokeStyle = `rgba(200, 255, 220, ${s.life * 0.4})`;
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
@@ -399,8 +399,8 @@ export default class AuroraTheme extends BaseTheme {
 
         const t = this.time * this.config.baseSpeed * layer.speed;
 
-        const stripWidth = this.config.stripWidth;
-        const overlap = this.config.overlap;
+        const { stripWidth } = this.config;
+        const { overlap } = this.config;
         const step = stripWidth * (1 - overlap);
 
         // Extend rendering well beyond screen edges to prevent visible cutoffs
@@ -419,10 +419,8 @@ export default class AuroraTheme extends BaseTheme {
             return val;
         };
 
-        const intensityNoise = (x, time) => {
-            return Math.sin(x * 0.0015 + time * 1.2) * 0.5 +
-                Math.sin(x * 0.004 - time * 0.5) * 0.3 + 0.5;
-        };
+        const intensityNoise = (x, time) => Math.sin(x * 0.0015 + time * 1.2) * 0.5
+                + Math.sin(x * 0.004 - time * 0.5) * 0.3 + 0.5;
 
         for (let i = startStep; i < endStep; i++) {
             const x = i * step;
@@ -465,7 +463,7 @@ export default class AuroraTheme extends BaseTheme {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.teardownQualityListener();
         super.stop();

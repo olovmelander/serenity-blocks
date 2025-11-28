@@ -74,7 +74,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Quality presets - current settings are considered Ultra
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 starCount: 25,
                 shootingStarInterval: 20000,
                 lightRayCount: 3,
@@ -91,14 +91,14 @@ export default class WolfhourTheme extends BaseTheme {
                 enableMoonPulses: false,
                 enableCelestialBeams: false,
                 starBurstParticles: 4,
-                burstCountMultiplier: 0.5,  // lineCount * 0.5
-                shootingStarMultiplier: 0.25,  // lineCount * 0.25
+                burstCountMultiplier: 0.5, // lineCount * 0.5
+                shootingStarMultiplier: 0.25, // lineCount * 0.25
                 useShadows: false,
                 useComplexGradients: false,
                 waveRingCount: 1,
-                effectUpdateInterval: 3,  // Update effects every 3 frames
+                effectUpdateInterval: 3, // Update effects every 3 frames
             },
-            'Low': {
+            Low: {
                 starCount: 50,
                 shootingStarInterval: 15000,
                 lightRayCount: 6,
@@ -115,14 +115,14 @@ export default class WolfhourTheme extends BaseTheme {
                 enableMoonPulses: false,
                 enableCelestialBeams: false,
                 starBurstParticles: 6,
-                burstCountMultiplier: 1,  // lineCount * 1
-                shootingStarMultiplier: 0.5,  // lineCount * 0.5
+                burstCountMultiplier: 1, // lineCount * 1
+                shootingStarMultiplier: 0.5, // lineCount * 0.5
                 useShadows: false,
                 useComplexGradients: false,
                 waveRingCount: 1,
-                effectUpdateInterval: 2,  // Update effects every 2 frames
+                effectUpdateInterval: 2, // Update effects every 2 frames
             },
-            'Medium': {
+            Medium: {
                 starCount: 80,
                 shootingStarInterval: 12000,
                 lightRayCount: 8,
@@ -139,14 +139,14 @@ export default class WolfhourTheme extends BaseTheme {
                 enableMoonPulses: true,
                 enableCelestialBeams: false,
                 starBurstParticles: 8,
-                burstCountMultiplier: 1.5,  // lineCount * 1.5
-                shootingStarMultiplier: 0.75,  // lineCount * 0.75
+                burstCountMultiplier: 1.5, // lineCount * 1.5
+                shootingStarMultiplier: 0.75, // lineCount * 0.75
                 useShadows: false,
                 useComplexGradients: false,
                 waveRingCount: 2,
-                effectUpdateInterval: 1,  // Update every frame
+                effectUpdateInterval: 1, // Update every frame
             },
-            'High': {
+            High: {
                 starCount: 120,
                 shootingStarInterval: 10000,
                 lightRayCount: 10,
@@ -163,14 +163,14 @@ export default class WolfhourTheme extends BaseTheme {
                 enableMoonPulses: true,
                 enableCelestialBeams: true,
                 starBurstParticles: 10,
-                burstCountMultiplier: 2,  // lineCount * 2
-                shootingStarMultiplier: 1,  // lineCount * 1
+                burstCountMultiplier: 2, // lineCount * 2
+                shootingStarMultiplier: 1, // lineCount * 1
                 useShadows: true,
                 useComplexGradients: true,
                 waveRingCount: 2,
-                effectUpdateInterval: 1,  // Update every frame
+                effectUpdateInterval: 1, // Update every frame
             },
-            'Ultra': {
+            Ultra: {
                 starCount: 150,
                 shootingStarInterval: 8000,
                 lightRayCount: 12,
@@ -187,14 +187,14 @@ export default class WolfhourTheme extends BaseTheme {
                 enableMoonPulses: true,
                 enableCelestialBeams: true,
                 starBurstParticles: 12,
-                burstCountMultiplier: 2,  // lineCount * 2 (current)
-                shootingStarMultiplier: 1,  // lineCount * 1 (current)
+                burstCountMultiplier: 2, // lineCount * 2 (current)
+                shootingStarMultiplier: 1, // lineCount * 1 (current)
                 useShadows: true,
                 useComplexGradients: true,
                 waveRingCount: 3,
-                effectUpdateInterval: 1,  // Update every frame
+                effectUpdateInterval: 1, // Update every frame
             },
-            'Extreme': {
+            Extreme: {
                 starCount: 200,
                 shootingStarInterval: 5000,
                 lightRayCount: 15,
@@ -211,17 +211,17 @@ export default class WolfhourTheme extends BaseTheme {
                 enableMoonPulses: true,
                 enableCelestialBeams: true,
                 starBurstParticles: 15,
-                burstCountMultiplier: 2.5,  // lineCount * 2.5
-                shootingStarMultiplier: 1.5,  // lineCount * 1.5
+                burstCountMultiplier: 2.5, // lineCount * 2.5
+                shootingStarMultiplier: 1.5, // lineCount * 1.5
                 useShadows: true,
                 useComplexGradients: true,
                 waveRingCount: 4,
-                effectUpdateInterval: 1,  // Update every frame
-            }
+                effectUpdateInterval: 1, // Update every frame
+            },
         };
 
         // Active quality preset
-        this.activeQuality = this.qualityPresets['Ultra'];
+        this.activeQuality = this.qualityPresets.Ultra;
         this.qualityListener = null;
 
         // Performance throttling helpers
@@ -249,7 +249,7 @@ export default class WolfhourTheme extends BaseTheme {
 
     applyQualityPreset() {
         const quality = this.getGraphicsQuality();
-        this.activeQuality = this.qualityPresets[quality] || this.qualityPresets['Ultra'];
+        this.activeQuality = this.qualityPresets[quality] || this.qualityPresets.Ultra;
 
         // Trim effect collections to match new limits
         this.trimEffectCollections();
@@ -336,7 +336,7 @@ export default class WolfhourTheme extends BaseTheme {
         // 1. Create dense star field (quality-based count)
         const starsContainer = this.getContainer('wolfhour-stars');
         if (starsContainer && starsContainer.children.length === 0) {
-            const starCount = this.activeQuality.starCount;
+            const { starCount } = this.activeQuality;
             this.cachedStarElements = [];
             for (let i = 0; i < starCount; i++) {
                 const star = document.createElement('div');
@@ -481,7 +481,7 @@ export default class WolfhourTheme extends BaseTheme {
         // 5. Create ethereal spirits (quality-based count)
         const spiritsContainer = this.getContainer('wolfhour-spirits');
         if (spiritsContainer && spiritsContainer.children.length === 0) {
-            const spiritCount = this.activeQuality.spiritCount;
+            const { spiritCount } = this.activeQuality;
             for (let i = 0; i < spiritCount; i++) {
                 const spirit = document.createElement('div');
                 spirit.className = 'wolfhour-spirit';
@@ -722,7 +722,7 @@ export default class WolfhourTheme extends BaseTheme {
         // Quality-based burst count
         const burstCount = Math.min(
             Math.floor(lineCount * this.activeQuality.burstCountMultiplier),
-            this.activeQuality.maxStarBursts - this.starBursts.length
+            this.activeQuality.maxStarBursts - this.starBursts.length,
         );
 
         // Create star bursts from cleared lines
@@ -888,7 +888,7 @@ export default class WolfhourTheme extends BaseTheme {
                     return;
                 }
                 this.cachedStarElements = stars;
-                this.cachedStarPositions = stars.map(star => {
+                this.cachedStarPositions = stars.map((star) => {
                     const rect = star.getBoundingClientRect();
                     return {
                         x: rect.left + rect.width / 2,
@@ -939,7 +939,7 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     triggerShootingStar() {
-        const starsContainer = this.cachedDOMElements.starsContainer;
+        const { starsContainer } = this.cachedDOMElements;
         if (!starsContainer) return;
 
         const shootingStar = document.createElement('div');
@@ -960,8 +960,8 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     intensifyNebula(lineCount) {
-        const nebulaBack = this.cachedDOMElements.nebulaBack;
-        const nebulaMid = this.cachedDOMElements.nebulaMid;
+        const { nebulaBack } = this.cachedDOMElements;
+        const { nebulaMid } = this.cachedDOMElements;
 
         const intensity = 1 + lineCount * 0.15 * this.comboMultiplier;
 
@@ -981,7 +981,7 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     intensifyStars(comboCount) {
-        const starsContainer = this.cachedDOMElements.starsContainer;
+        const { starsContainer } = this.cachedDOMElements;
         if (!starsContainer) return;
 
         const now = Date.now();
@@ -1008,8 +1008,8 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     glowMountainTops(comboCount) {
-        const mountainsDistant = this.cachedDOMElements.mountainsDistant;
-        const mountainsFore = this.cachedDOMElements.mountainsFore;
+        const { mountainsDistant } = this.cachedDOMElements;
+        const { mountainsFore } = this.cachedDOMElements;
         const now = Date.now();
         if (now - this.lastMountainGlowTime < this.mountainGlowCooldownMs) {
             return;
@@ -1097,8 +1097,8 @@ export default class WolfhourTheme extends BaseTheme {
             }
 
             // Clear canvases - only if there are effects to draw (performance optimization)
-            const hasEffects = this.starBursts.length > 0 || this.cosmicWaves.length > 0 ||
-                this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
+            const hasEffects = this.starBursts.length > 0 || this.cosmicWaves.length > 0
+                || this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
             const hasBeams = this.celestialBeams.length > 0;
 
             if (hasEffects) {
@@ -1247,8 +1247,8 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     drawCelestialBeams() {
-        const useShadows = this.activeQuality.useShadows;
-        const useComplexGradients = this.activeQuality.useComplexGradients;
+        const { useShadows } = this.activeQuality;
+        const { useComplexGradients } = this.activeQuality;
 
         for (let i = this.celestialBeams.length - 1; i >= 0; i--) {
             const beam = this.celestialBeams[i];
@@ -1306,8 +1306,8 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     drawMoonPulses() {
-        const useShadows = this.activeQuality.useShadows;
-        const useComplexGradients = this.activeQuality.useComplexGradients;
+        const { useShadows } = this.activeQuality;
+        const { useComplexGradients } = this.activeQuality;
 
         for (let i = this.moonGlowPulses.length - 1; i >= 0; i--) {
             const pulse = this.moonGlowPulses[i];
@@ -1377,8 +1377,8 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     drawConstellationLines() {
-        const useShadows = this.activeQuality.useShadows;
-        const useComplexGradients = this.activeQuality.useComplexGradients;
+        const { useShadows } = this.activeQuality;
+        const { useComplexGradients } = this.activeQuality;
 
         for (let i = this.constellationLines.length - 1; i >= 0; i--) {
             const line = this.constellationLines[i];

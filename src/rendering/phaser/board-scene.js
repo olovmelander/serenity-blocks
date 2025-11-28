@@ -1,7 +1,7 @@
 /**
  * @fileoverview Phaser 4 Board Scene for Serenity Blocks
  * Migrated from Phaser 3 - handles rendering game board, pieces, and visual effects
- * 
+ *
  * Key Phaser 4 Changes:
  * - Particle system API completely rewritten
  * - Graphics API modernized
@@ -26,20 +26,20 @@ const CAMERA_SHAKE_BASE_DURATION = 120;
 /**
  * Create and return the BoardScene class for Phaser 4.
  * Factory function that generates scene class with Phaser reference
- * 
+ *
  * @param {typeof Phaser} phaserLib - Phaser 4 library reference
  * @returns {typeof Phaser.Scene} BoardScene class
  */
 export function createBoardScene(phaserLib = typeof window !== 'undefined' ? window.Phaser : null) {
     const PhaserRef = phaserLib;
-    
+
     // Validate Phaser 4 availability
     if (!PhaserRef?.Scene) {
         throw new Error('[BoardScene] Phaser 4 not available');
     }
-    
+
     console.log('[BoardScene] Creating scene class for Phaser 4');
-    
+
     const BaseBoardScene = createBaseBoardScene(phaserLib);
 
     return class BoardScene extends BaseBoardScene {
@@ -236,7 +236,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             }
             // Store combo count for enhanced particle effects
             this.currentComboCount = comboCount;
-            
+
             // Create text popup (center of visible canvas)
             const text = this.add.text(
                 (this.cols * this.blockSize) / 2,
@@ -272,7 +272,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Track tween for cleanup
             this.activeTweens.push(tween);
-            
+
             // Trigger background explosion particles for combos
             if (comboCount >= 2) {
                 this.spawnComboExplosionParticles(comboCount);
@@ -323,7 +323,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
             // Apply combo multiplier to make effects more dramatic
             const comboMultiplier = this.currentComboCount > 0 ? (1 + (this.currentComboCount * 0.5)) : 1;
             const totalIntensity = intensity * comboMultiplier;
-            
+
             const boardWidth = this.cols * this.blockSize;
             const PhaserRef = window.Phaser;
 
@@ -428,14 +428,14 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Create multiple explosion bursts for higher combos
             const burstCount = Math.min(Math.floor(comboCount / 2), 5);
-            
+
             for (let burst = 0; burst < burstCount; burst++) {
                 // Delay each burst slightly for cascade effect
                 this.time.delayedCall(burst * 100, () => {
                     // Random position near center for variety
                     const offsetX = (Math.random() - 0.5) * boardWidth * 0.3;
                     const offsetY = (Math.random() - 0.5) * boardHeight * 0.3;
-                    
+
                     // Use compatibility layer
                     const emitter = createParticleEmitter(
                         this,
@@ -453,7 +453,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                             blendMode: 'ADD',
                             on: false,
                             tint: this.getComboTint(comboCount, burst),
-                        }
+                        },
                     );
 
                     if (!emitter) {
@@ -536,7 +536,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 if (emitter.setDepth) {
                     emitter.setDepth(3);
                 }
-                
+
                 emitParticles(emitter, 1);
 
                 this.time.delayedCall(900, () => {
@@ -611,7 +611,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Destroy line clear emitters
             if (this.lineClearEmitters) {
-                this.lineClearEmitters.forEach(emitter => {
+                this.lineClearEmitters.forEach((emitter) => {
                     if (emitter && emitter.destroy) {
                         emitter.destroy();
                     }
@@ -621,7 +621,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Destroy piece lock emitters
             if (this.pieceLockEmitters) {
-                this.pieceLockEmitters.forEach(emitter => {
+                this.pieceLockEmitters.forEach((emitter) => {
                     if (emitter && emitter.destroy) {
                         emitter.destroy();
                     }
@@ -636,7 +636,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Destroy tracked tweens
             if (this.activeTweens) {
-                this.activeTweens.forEach(tween => {
+                this.activeTweens.forEach((tween) => {
                     if (tween && tween.stop) {
                         tween.stop();
                     }
@@ -646,7 +646,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Destroy tracked timers
             if (this.activeTimers) {
-                this.activeTimers.forEach(timer => {
+                this.activeTimers.forEach((timer) => {
                     if (timer && timer.destroy) {
                         timer.destroy();
                     }
@@ -656,7 +656,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Destroy tracked graphics objects
             if (this.activeGraphics) {
-                this.activeGraphics.forEach(graphic => {
+                this.activeGraphics.forEach((graphic) => {
                     if (graphic && graphic.destroy) {
                         graphic.destroy();
                     }
@@ -671,9 +671,9 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
                 'gridTexture',
                 this.lineClearParticleKey,
                 this.commonParticleKey,
-                'common-circle-4px'
+                'common-circle-4px',
             ];
-            customTextures.forEach(key => {
+            customTextures.forEach((key) => {
                 if (key && this.textures && this.textures.exists(key)) {
                     this.textures.remove(key);
                 }
@@ -698,7 +698,7 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
 
             // Clear block pool
             if (this.blockPool) {
-                this.blockPool.forEach(block => {
+                this.blockPool.forEach((block) => {
                     if (block && block.destroy) {
                         block.destroy();
                     }

@@ -6,7 +6,7 @@ let cachedPhaserRef = null;
 /**
  * Create the background scene for Phaser 4.
  * Coordinates WebGL theme renderer with Phaser update loop.
- * 
+ *
  * @param {typeof Phaser} phaserLib - Phaser 4 library reference
  * @returns {typeof Phaser.Scene} - BackgroundScene class
  */
@@ -53,7 +53,7 @@ export function createBackgroundScene(
             this.webglRenderer = data?.webglRenderer || null;
             this.themeManager = data?.themeManager || null;
             this.effectQuality = data?.effectQuality || 'High';
-            
+
             console.log('[BackgroundScene] Initialized', {
                 hasRenderer: !!this.webglRenderer,
                 hasThemeManager: !!this.themeManager,
@@ -76,12 +76,12 @@ export function createBackgroundScene(
             try {
                 // Enable external render loop (Phaser drives the WebGL renderer)
                 this.webglRenderer.enableExternalRenderLoop(true);
-                
+
                 // Apply quality settings to renderer
                 if (typeof this.webglRenderer.setEffectQuality === 'function') {
                     this.webglRenderer.setEffectQuality(this.effectQuality);
                 }
-                
+
                 // Start WebGL renderer
                 this.webglRenderer.start();
 
@@ -122,7 +122,7 @@ export function createBackgroundScene(
                 try {
                     this.webglRenderer.renderFrame();
                     this.lastUpdateTime = currentTime;
-                    this.accumulatedTime = this.accumulatedTime % this.targetFrameTime; // Keep remainder
+                    this.accumulatedTime %= this.targetFrameTime; // Keep remainder
                 } catch (error) {
                     console.error('[BackgroundScene] Error in update loop:', error);
                 }

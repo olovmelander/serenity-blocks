@@ -9,13 +9,13 @@ export const GEODE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#6beaff',  // Aquamarine vein
-        O: '#d6a4ff',  // Amethyst heart
-        T: '#8b63ff',  // Deep geode violet
-        S: '#43f0c0',  // Emerald glimmer
-        Z: '#ff81c7',  // Rose quartz flare
-        J: '#5c6dff',  // Sapphire ridge
-        L: '#99ffe5',  // Opal highlight
+        I: '#6beaff', // Aquamarine vein
+        O: '#d6a4ff', // Amethyst heart
+        T: '#8b63ff', // Deep geode violet
+        S: '#43f0c0', // Emerald glimmer
+        Z: '#ff81c7', // Rose quartz flare
+        J: '#5c6dff', // Sapphire ridge
+        L: '#99ffe5', // Opal highlight
         GARBAGE: '#05070d', // Basalt shadow
     },
 

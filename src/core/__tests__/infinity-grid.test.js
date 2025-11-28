@@ -10,7 +10,7 @@ import {
     calculateBuildHeight,
     shouldExpandGrid,
     getGridStats,
-    checkInfinityGameOver
+    checkInfinityGameOver,
 } from '../infinity-grid.js';
 import { COLS } from '../constants.js';
 
@@ -49,8 +49,8 @@ console.log('Initial grid length:', initialLength);
 gameState.lockedPieces.push({
     y: 10,
     blocks: [
-        { row: 10, col: 5 }
-    ]
+        { row: 10, col: 5 },
+    ],
 });
 
 // Expand grid

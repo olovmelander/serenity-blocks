@@ -296,7 +296,7 @@ export default class IceTempleTheme extends BaseTheme {
     shouldProcessComboEffects() {
         if (!this.isActive) return false;
         if (typeof window === 'undefined') return true;
-        const settings = window.settings;
+        const { settings } = window;
         return settings?.backgroundComboEffects === true;
     }
 
@@ -306,7 +306,7 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     applyQualityPreset(quality) {
-        const preset = this.qualityPresets[quality] || this.qualityPresets['Ultra'];
+        const preset = this.qualityPresets[quality] || this.qualityPresets.Ultra;
         const presetName = this.qualityPresets[quality] ? quality : 'Ultra';
         this.currentQuality = presetName;
         this.activePreset = preset;
@@ -357,11 +357,11 @@ export default class IceTempleTheme extends BaseTheme {
         const shardPressure = this.iceShardBurst.length >= this.effectLimits.maxIceShards * 0.85;
         const stormPressure = this.iceStorm.length >= this.effectLimits.maxIceStormParticles * 0.85;
         return (
-            performanceDrop ||
-            shardPressure ||
-            stormPressure ||
-            (this.adaptiveScale ?? 1) < 0.65 ||
-            timeSinceLast < this.comboCooldownMs
+            performanceDrop
+            || shardPressure
+            || stormPressure
+            || (this.adaptiveScale ?? 1) < 0.65
+            || timeSinceLast < this.comboCooldownMs
         );
     }
 
@@ -479,9 +479,9 @@ export default class IceTempleTheme extends BaseTheme {
         const lightningThreshold = throttled ? 6 : 5;
         const lightningCap = Math.max(1, Math.floor(this.effectLimits.maxGlacialLightning * this.getSpawnScale('lightning')));
         if (
-            this.effectToggles.glacialLightning &&
-            comboCount >= lightningThreshold &&
-            this.glacialLightning.length < lightningCap
+            this.effectToggles.glacialLightning
+            && comboCount >= lightningThreshold
+            && this.glacialLightning.length < lightningCap
         ) {
             this.createGlacialLightning(centerX, centerY, comboCount, throttled);
         }
@@ -509,7 +509,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.auroraWaves.push({
             intensity: Math.min(intensity, 1.8),
             life: 1.0,
-            duration: duration,
+            duration,
             phase: 0,
             speed: 0.08 + comboCount * 0.02,
         });
@@ -521,11 +521,11 @@ export default class IceTempleTheme extends BaseTheme {
         const size = Math.random() * 5 + 3;
 
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            size: size,
+            size,
             opacity: Math.random() * 0.8 + 0.4,
             life: 1.0,
             rotation: Math.random() * Math.PI * 2,
@@ -556,8 +556,8 @@ export default class IceTempleTheme extends BaseTheme {
 
     createComboRing(x, y, index) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             radius: 20 + index * 15,
             maxRadius: 300 + index * 80,
             opacity: 0.9,
@@ -594,7 +594,9 @@ export default class IceTempleTheme extends BaseTheme {
                 const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.7) * length;
                 const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.7) * length;
 
-                segments.push({ x1: currentX, y1: currentY, x2: nextX, y2: nextY });
+                segments.push({
+                    x1: currentX, y1: currentY, x2: nextX, y2: nextY,
+                });
                 currentX = nextX;
                 currentY = nextY;
             }
@@ -603,7 +605,7 @@ export default class IceTempleTheme extends BaseTheme {
         }
 
         this.glacialLightning.push({
-            branches: branches,
+            branches,
             opacity: 1.0,
             life: 1.0,
             pulsePhase: 0,
@@ -989,6 +991,7 @@ export default class IceTempleTheme extends BaseTheme {
             this.effectsCtx.restore();
         }
     }
+
     initSprites() {
         this.sprites = {
             shardCyan: this.createShardSprite('cyan'),
@@ -1133,6 +1136,7 @@ export default class IceTempleTheme extends BaseTheme {
         ctx.fillRect(0, 0, size, size);
         return canvas;
     }
+
     createStars() {
         const container = this.getContainer('ice-temple-stars');
         if (!container) return;

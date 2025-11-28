@@ -9,13 +9,13 @@ export const COSMIC_NOIR_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#f8f8ff',  // Stark white beam
-        O: '#cfd2d6',  // Polished steel
-        T: '#b0b5c0',  // Dim moonlight lavender-gray
-        S: '#9aa0aa',  // Smoke gray
-        Z: '#7f8691',  // Gunmetal
-        J: '#5b616c',  // Slate shadow
-        L: '#3c4049',  // Charcoal edge
+        I: '#f8f8ff', // Stark white beam
+        O: '#cfd2d6', // Polished steel
+        T: '#b0b5c0', // Dim moonlight lavender-gray
+        S: '#9aa0aa', // Smoke gray
+        Z: '#7f8691', // Gunmetal
+        J: '#5b616c', // Slate shadow
+        L: '#3c4049', // Charcoal edge
         GARBAGE: '#16181d', // Deep void
     },
 

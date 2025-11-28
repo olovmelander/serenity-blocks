@@ -15,45 +15,45 @@ export default class MoonriseSummitTheme extends BaseTheme {
         this.shootingStarTimeout = null;
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 starCount: 25,
                 cloudCount: 1,
                 shootingInitialDelay: [7000, 12000],
                 shootingRecurringDelay: [20000, 35000],
             },
-            'Low': {
+            Low: {
                 starCount: 40,
                 cloudCount: 2,
                 shootingInitialDelay: [5000, 10000],
                 shootingRecurringDelay: [15000, 25000],
             },
-            'Medium': {
+            Medium: {
                 starCount: 60,
                 cloudCount: 3,
                 shootingInitialDelay: [4000, 9000],
                 shootingRecurringDelay: [10000, 22000],
             },
-            'High': {
+            High: {
                 starCount: 80,
                 cloudCount: 3,
                 shootingInitialDelay: [3000, 8000],
                 shootingRecurringDelay: [8000, 20000],
             },
-            'Ultra': {
+            Ultra: {
                 starCount: 110,
                 cloudCount: 4,
                 shootingInitialDelay: [2500, 6000],
                 shootingRecurringDelay: [7000, 16000],
             },
-            'Extreme': {
+            Extreme: {
                 starCount: 150,
                 cloudCount: 6,
                 shootingInitialDelay: [2000, 5000],
                 shootingRecurringDelay: [5000, 12000],
-            }
+            },
         };
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
     }
 
     applyQualityPreset(quality, { skipRefresh = false } = {}) {
@@ -142,7 +142,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 this.registerContainer(this.starsContainer);
             }
         }
-        const starsContainer = this.starsContainer;
+        const { starsContainer } = this;
         if (!starsContainer) return;
         if (!force && starsContainer.children.length > 0) return;
 
@@ -203,7 +203,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 this.registerContainer(this.cloudsContainer);
             }
         }
-        const cloudsContainer = this.cloudsContainer;
+        const { cloudsContainer } = this;
         if (!cloudsContainer) return;
         if (!force && cloudsContainer.children.length > 0) return;
 
@@ -561,7 +561,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
             setTimeout(() => {
                 // Get the clip-path from the ::before pseudo-element
                 const beforeStyle = window.getComputedStyle(mountain, '::before');
-                const clipPath = beforeStyle.clipPath;
+                const { clipPath } = beforeStyle;
 
                 // Parse the polygon points from clip-path
                 const polygonMatch = clipPath.match(/polygon\(([^)]+)\)/);
@@ -589,11 +589,11 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
                 // Parse polygon points and convert to SVG path
                 const points = polygonMatch[1].trim();
-                const coords = points.split(',').map(pair => {
+                const coords = points.split(',').map((pair) => {
                     const [x, y] = pair.trim().split(/\s+/);
                     return {
                         x: parseFloat(x),
-                        y: parseFloat(y)
+                        y: parseFloat(y),
                     };
                 });
 
@@ -602,7 +602,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 const bottomY = 100;
 
                 // Filter out only the bottom edge points
-                const outlinePoints = coords.filter(coord => coord.y !== bottomY);
+                const outlinePoints = coords.filter((coord) => coord.y !== bottomY);
 
                 // Draw the complete mountain outline
                 if (outlinePoints.length > 0) {
@@ -701,7 +701,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
         this.stopShootingStars();
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear arrays

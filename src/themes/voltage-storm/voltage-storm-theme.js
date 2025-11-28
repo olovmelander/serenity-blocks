@@ -237,7 +237,7 @@ export default class VoltageStormTheme extends BaseTheme {
 
     updateEmitters(dt) {
         // Automatic emissions disabled - only triggered on gameplay events
-        return;
+
     }
 
     /**
@@ -292,7 +292,7 @@ export default class VoltageStormTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();
     }
