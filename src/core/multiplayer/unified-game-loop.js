@@ -52,7 +52,7 @@ export class UnifiedMultiplayerLoop {
      * @param {number} playerId - Player to remove
      */
     unregisterPlayer(playerId) {
-        this.players = this.players.filter(p => p.id !== playerId);
+        this.players = this.players.filter((p) => p.id !== playerId);
         console.log(`[UnifiedLoop] Unregistered player ${playerId} (remaining: ${this.players.length})`);
     }
 
@@ -157,7 +157,7 @@ export class UnifiedMultiplayerLoop {
         // Batch process all active players
         for (let i = 0; i < this.players.length; i++) {
             const player = this.players[i];
-            const state = player.state;
+            const { state } = player;
 
             // Skip if player is processing physics or has no current piece
             if (state.isProcessingPhysics || !state.currentPiece) {
@@ -196,7 +196,7 @@ export class UnifiedMultiplayerLoop {
         return {
             fps: this.currentFps,
             playerCount: this.players.length,
-            activePlayers: this.players.filter(p => !p.state.isProcessingPhysics).length,
+            activePlayers: this.players.filter((p) => !p.state.isProcessingPhysics).length,
             isPaused: this.isPaused,
             isGameOver: this.isGameOver,
         };
@@ -207,7 +207,7 @@ export class UnifiedMultiplayerLoop {
      */
     setGameOver() {
         this.isGameOver = true;
-        this.players.forEach(p => {
+        this.players.forEach((p) => {
             if (p.state) {
                 p.state.isGameOver = true;
             }

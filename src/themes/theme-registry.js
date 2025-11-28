@@ -97,6 +97,7 @@ export const THEME_REGISTRY = [
         displayName: 'Aether Tides',
         module: './aether-tides/aether-tides-theme.js',
         group: 'cosmic',
+        icon: './aether-tides/aether-tides-theme-icon.png',
     },
     {
         id: 'rainy-window',
@@ -151,6 +152,7 @@ export const THEME_REGISTRY = [
         displayName: 'Bioluminescence',
         module: './bioluminescence/bioluminescence-theme.js',
         group: 'cosmic',
+        icon: './bioluminescence/bioluminescence-theme-icon.png',
     },
     {
         id: 'desert-oasis',
@@ -207,6 +209,12 @@ export const THEME_REGISTRY = [
         group: 'abstract',
     },
     {
+        id: 'chromatic-impasto',
+        displayName: 'Chromatic Impasto',
+        module: './chromatic-impasto/chromatic-impasto-theme.js',
+        group: 'abstract',
+    },
+    {
         id: 'voltage-storm',
         displayName: 'Voltage Storm',
         module: './voltage-storm/voltage-storm-theme.js',
@@ -235,6 +243,7 @@ export const THEME_REGISTRY = [
         displayName: 'Black Hole',
         module: './black-hole/black-hole-theme.js',
         group: 'cosmic',
+        icon: './black-hole/black-hole-theme-icon.png',
     },
     {
         id: 'supernova',
@@ -284,6 +293,7 @@ export const THEME_REGISTRY = [
         displayName: 'Chromadelic Highway',
         module: './chromadelic-highway/chromadelic-highway-theme.js',
         group: 'abstract',
+        icon: './chromadelic-highway/chromadelic-highway-theme-icon.png',
     },
     {
         id: 'stillwater',

@@ -78,7 +78,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 cloudParticles: 2,
                 mistParticles: 1,
                 movingParticles: 4,
@@ -87,7 +87,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxLightning: 0,
                 lightningChance: 0.0001,
             },
-            'Low': {
+            Low: {
                 cloudParticles: 3,
                 mistParticles: 2,
                 movingParticles: 6,
@@ -96,7 +96,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxLightning: 1,
                 lightningChance: 0.0002,
             },
-            'Medium': {
+            Medium: {
                 cloudParticles: 4,
                 mistParticles: 3,
                 movingParticles: 8,
@@ -105,7 +105,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxLightning: 2,
                 lightningChance: 0.00035,
             },
-            'High': {
+            High: {
                 cloudParticles: 5,
                 mistParticles: 4,
                 movingParticles: 12,
@@ -114,7 +114,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxLightning: 3,
                 lightningChance: 0.0005,
             },
-            'Ultra': {
+            Ultra: {
                 cloudParticles: 6,
                 mistParticles: 5,
                 movingParticles: 16,
@@ -123,7 +123,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxLightning: 4,
                 lightningChance: 0.0008,
             },
-            'Extreme': {
+            Extreme: {
                 cloudParticles: 8,
                 mistParticles: 7,
                 movingParticles: 24,
@@ -131,11 +131,11 @@ export default class NimbusVeilTheme extends BaseTheme {
                 maxSparkles: 100,
                 maxLightning: 6,
                 lightningChance: 0.0012,
-            }
+            },
         };
 
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
     }
 
     applyQualityPreset(quality) {
@@ -219,11 +219,11 @@ export default class NimbusVeilTheme extends BaseTheme {
      */
     getCloudColors() {
         return [
-            'rgba(255, 255, 255, 0.9)',   // Pure white
-            'rgba(245, 245, 250, 0.85)',  // Slight blue-white
-            'rgba(240, 240, 245, 0.8)',   // Light gray-white
-            'rgba(235, 235, 240, 0.75)',  // Softer white
-            'rgba(230, 230, 235, 0.7)',   // Dim white
+            'rgba(255, 255, 255, 0.9)', // Pure white
+            'rgba(245, 245, 250, 0.85)', // Slight blue-white
+            'rgba(240, 240, 245, 0.8)', // Light gray-white
+            'rgba(235, 235, 240, 0.75)', // Softer white
+            'rgba(230, 230, 235, 0.7)', // Dim white
         ];
     }
 
@@ -290,7 +290,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 x: Math.random() * window.innerWidth,
                 y: Math.random() * window.innerHeight,
                 size: baseSize,
-                baseSize: baseSize, // Store original size
+                baseSize, // Store original size
                 targetSize: baseSize, // Target size for morphing
                 opacity: Math.random() * 0.45 + 0.3, // 0.3-0.75 (very visible)
                 color: colors[Math.floor(Math.random() * colors.length)],
@@ -300,7 +300,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 pulseSpeed: Math.random() * 0.025 + 0.015, // Faster pulsing
                 pulseOffset: Math.random() * Math.PI * 2,
                 swayAmplitude: Math.random() * 0.35 + 0.2, // Much more sway
-                swaySpeed: Math.random() * 0.02 + 0.015 // Faster sway
+                swaySpeed: Math.random() * 0.02 + 0.015, // Faster sway
                 // REMOVED morphing for performance - clouds stay constant size
             });
         }
@@ -326,7 +326,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 x: Math.random() * window.innerWidth,
                 y: Math.random() * window.innerHeight,
                 size: baseSize,
-                baseSize: baseSize,
+                baseSize,
                 targetSize: baseSize,
                 opacity: Math.random() * 0.15 + 0.06, // 0.06-0.21 (more visible)
                 speedX: Math.random() * 0.35 + 0.15, // Faster horizontal drift
@@ -335,7 +335,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 pulseSpeed: Math.random() * 0.02 + 0.01, // Faster pulsing
                 pulseOffset: Math.random() * Math.PI * 2,
                 swayAmplitude: Math.random() * 0.25 + 0.12, // More sway
-                swaySpeed: Math.random() * 0.015 + 0.008 // Faster sway
+                swaySpeed: Math.random() * 0.015 + 0.008, // Faster sway
                 // REMOVED morphing for performance - mist stays constant size
             });
         }
@@ -351,7 +351,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 speedX: (Math.random() - 0.5) * 1.5, // Faster movement in both directions
                 speedY: (Math.random() - 0.5) * 1.5,
                 twinkleSpeed: Math.random() * 0.03 + 0.01,
-                twinkleOffset: Math.random() * Math.PI * 2
+                twinkleOffset: Math.random() * Math.PI * 2,
             });
         }
     }
@@ -372,7 +372,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.ctx = this.canvas.getContext('2d', {
             alpha: true,
             desynchronized: true, // Performance optimization
-            willReadFrequently: false
+            willReadFrequently: false,
         });
 
         // Create offscreen canvases for layer caching (MASSIVE performance boost)
@@ -395,7 +395,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.cloudLayerCanvas.height = height;
         this.cloudLayerCtx = this.cloudLayerCanvas.getContext('2d', {
             alpha: true,
-            willReadFrequently: false
+            willReadFrequently: false,
         });
 
         // Mist layer canvas (pre-rendered with heavy blur)
@@ -404,7 +404,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.mistLayerCanvas.height = height;
         this.mistLayerCtx = this.mistLayerCanvas.getContext('2d', {
             alpha: true,
-            willReadFrequently: false
+            willReadFrequently: false,
         });
 
         console.log('[Nimbus Veil] Layer canvases created for pre-rendering');
@@ -752,7 +752,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.lightningFlashes.push({
             age: 0,
             duration: 0.15 + Math.random() * 0.1, // 0.15-0.25 seconds
-            opacity: 1
+            opacity: 1,
         });
 
         console.log('[Nimbus Veil] Lightning flash!');
@@ -766,7 +766,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 this.lightningFlashes.push({
                     age: 0,
                     duration: 0.1 + Math.random() * 0.05,
-                    opacity: 1
+                    opacity: 1,
                 });
             }, 100 + Math.random() * 100);
         }
@@ -813,7 +813,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         const brightenCount = Math.min(lineCount * 5, 20);
         const randomClouds = this.getRandomParticles(this.cloudParticles, brightenCount);
 
-        randomClouds.forEach(cloud => {
+        randomClouds.forEach((cloud) => {
             const originalOpacity = cloud.opacity;
             cloud.opacity = Math.min(cloud.opacity * 1.5, 0.9);
 
@@ -845,7 +845,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                     maxOpacity: 0.7,
                     color: `rgba(200, 220, 255, ${0.8})`, // Soft blue-white
                     age: 0,
-                    lifetime: 1.5 + (comboCount * 0.1) // Longer for higher combos
+                    lifetime: 1.5 + (comboCount * 0.1), // Longer for higher combos
                 });
                 this.trimCollection(this.comboRings, this.MAX_COMBO_RINGS);
             }
@@ -873,7 +873,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                     maxOpacity: 0.9,
                     color: Math.random() > 0.5 ? 'rgba(255, 255, 255, 1)' : 'rgba(200, 220, 255, 1)',
                     age: 0,
-                    lifetime: 0.8 + Math.random() * 0.4 // 0.8-1.2 seconds
+                    lifetime: 0.8 + Math.random() * 0.4, // 0.8-1.2 seconds
                 });
                 this.trimCollection(this.sparkles, this.MAX_SPARKLES);
             }
@@ -881,7 +881,7 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         // Add color tint to clouds during high combos
         if (comboCount >= 5) {
-            this.cloudParticles.forEach(particle => {
+            this.cloudParticles.forEach((particle) => {
                 const originalColor = particle.color;
                 particle.color = 'rgba(200, 220, 255, 0.85)'; // Blue tint
 
@@ -894,13 +894,13 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         // Speed up drift temporarily (existing effect, kept)
         const speedMultiplier = 1 + (comboCount * 0.1);
-        this.cloudParticles.forEach(particle => {
+        this.cloudParticles.forEach((particle) => {
             particle.speedX *= speedMultiplier;
         });
 
         // Restore speed after 1 second
         setTimeout(() => {
-            this.cloudParticles.forEach(particle => {
+            this.cloudParticles.forEach((particle) => {
                 particle.speedX /= speedMultiplier;
             });
         }, 1000);
@@ -910,7 +910,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             const centerX = window.innerWidth / 2;
             const centerY = window.innerHeight / 2;
 
-            this.cloudParticles.forEach(particle => {
+            this.cloudParticles.forEach((particle) => {
                 const dx = particle.x - centerX;
                 const dy = particle.y - centerY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
@@ -988,7 +988,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             pulseOffset: 0,
             currentOpacity: 0.6,
             lifetime: 2000, // 2 seconds
-            createdAt: Date.now()
+            createdAt: Date.now(),
         };
 
         this.cloudParticles.push(puff);
@@ -1028,7 +1028,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear particles

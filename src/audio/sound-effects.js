@@ -78,85 +78,91 @@ export function createSoundSets(createTone, createRichTone) {
             move: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 320, gain: 0.15 },
-                    { type: 'triangle', freq: 160, gain: 0.1 }
+                    { type: 'triangle', freq: 160, gain: 0.1 },
                 ],
                 envelope: { attack: 0.02, decay: 0.15, release: 0.1 },
                 filter: { type: 'lowpass', frequency: 1200, Q: 0.5 },
-                volume: 0.2
+                volume: 0.2,
             }),
             rotate: () => richTone({
                 oscillators: [
                     { type: 'triangle', freq: 520, gain: 0.15 },
-                    { type: 'sine', freq: 1040, gain: 0.05, detune: 15 }
+                    {
+                        type: 'sine', freq: 1040, gain: 0.05, detune: 15,
+                    },
                 ],
                 envelope: { attack: 0.03, decay: 0.2, release: 0.1 },
                 filter: { type: 'highpass', frequency: 600 },
-                volume: 0.2
+                volume: 0.2,
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 80, gain: 0.6 },
-                    { type: 'sawtooth', freq: 160, gain: 0.1, detune: -10 }
+                    {
+                        type: 'sawtooth', freq: 160, gain: 0.1, detune: -10,
+                    },
                 ],
                 envelope: { attack: 0.01, decay: 0.3, release: 0.2 },
                 filter: { type: 'lowpass', frequency: 300, envAmount: -100 },
-                volume: 0.5
+                volume: 0.5,
             }),
             lineClear: () => {
                 [392, 523, 659, 784].forEach((f, i) => setTimeout(
                     () => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.2 },
-                            { type: 'sine', freq: f * 2, gain: 0.05, detune: 5 }
+                            {
+                                type: 'sine', freq: f * 2, gain: 0.05, detune: 5,
+                            },
                         ],
                         envelope: { attack: 0.05, decay: 0.5, release: 0.3 },
-                        volume: 0.25
+                        volume: 0.25,
                     }),
                     i * 100,
                 ));
                 setTimeout(() => richTone({
                     oscillators: [{ type: 'sine', freq: 987, gain: 0.2 }],
                     envelope: { attack: 0.1, decay: 0.8, release: 0.5 },
-                    volume: 0.2
+                    volume: 0.2,
                 }), 420);
             },
             levelUp: () => {
                 [330, 494, 660, 880].forEach((f, i) => setTimeout(() => richTone({
                     oscillators: [{ type: 'triangle', freq: f, gain: 0.25 }],
                     envelope: { attack: 0.05, decay: 0.4, release: 0.2 },
-                    volume: 0.3
+                    volume: 0.3,
                 }), i * 120));
                 setTimeout(() => richTone({
                     oscillators: [{ type: 'sine', freq: 1175, gain: 0.2 }],
                     envelope: { attack: 0.1, decay: 1.0, release: 0.5 },
-                    volume: 0.25
+                    volume: 0.25,
                 }), 520);
             },
             gameOver: () => {
                 [523, 392, 261, 196].forEach((f, i) => setTimeout(() => richTone({
                     oscillators: [
                         { type: 'sawtooth', freq: f, gain: 0.2 },
-                        { type: 'square', freq: f / 2, gain: 0.1 }
+                        { type: 'square', freq: f / 2, gain: 0.1 },
                     ],
                     envelope: { attack: 0.1, decay: 0.6, release: 0.4 },
                     filter: { type: 'lowpass', frequency: 800, envAmount: -400 },
-                    volume: 0.3
+                    volume: 0.3,
                 }), i * 210));
                 setTimeout(() => richTone({
                     oscillators: [{ type: 'triangle', freq: 130, gain: 0.4 }],
                     envelope: { attack: 0.5, decay: 2.0, release: 1.0 },
-                    volume: 0.4
+                    volume: 0.4,
                 }), 860);
             },
             garbageSend: () => {
                 richTone({
                     oscillators: [
                         { type: 'sawtooth', freq: 200, gain: 0.2 },
-                        { type: 'square', freq: 400, gain: 0.1 }
+                        { type: 'square', freq: 400, gain: 0.1 },
                     ],
                     filter: { type: 'lowpass', frequency: 200, envAmount: 1500 },
                     envelope: { attack: 0.05, decay: 0.3, release: 0.1 },
-                    volume: 0.35
+                    volume: 0.35,
                 });
             },
         },
@@ -165,24 +171,24 @@ export function createSoundSets(createTone, createRichTone) {
                 oscillators: [{ type: 'sine', freq: 220, gain: 0.3 }],
                 filter: { type: 'lowpass', frequency: 600, Q: 1 },
                 envelope: { attack: 0.01, decay: 0.1, release: 0.05 },
-                volume: 0.25
+                volume: 0.25,
             }),
             rotate: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 440, gain: 0.2 },
-                    { type: 'sine', freq: 445, gain: 0.2 } // Detuned
+                    { type: 'sine', freq: 445, gain: 0.2 }, // Detuned
                 ],
                 envelope: { attack: 0.02, decay: 0.15, release: 0.1 },
-                volume: 0.25
+                volume: 0.25,
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 55, gain: 0.8 }, // Deep sub
-                    { type: 'triangle', freq: 110, gain: 0.2 }
+                    { type: 'triangle', freq: 110, gain: 0.2 },
                 ],
                 envelope: { attack: 0.01, decay: 0.4, release: 0.2 },
                 filter: { type: 'lowpass', frequency: 150, envAmount: 50 },
-                volume: 0.6
+                volume: 0.6,
             }),
             lineClear: () => {
                 // Ethereal chord
@@ -190,7 +196,7 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [{ type: 'sine', freq: f, gain: 0.2 }],
                         envelope: { attack: 0.2, decay: 1.5, release: 1.0 },
-                        volume: 0.25
+                        volume: 0.25,
                     }), i * 50);
                 });
             },
@@ -199,10 +205,10 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'triangle', freq: f, gain: 0.15 },
-                            { type: 'sine', freq: f * 2, gain: 0.1 }
+                            { type: 'sine', freq: f * 2, gain: 0.1 },
                         ],
                         envelope: { attack: 0.1, decay: 1.0, release: 0.5 },
-                        volume: 0.3
+                        volume: 0.3,
                     }), i * 100);
                 });
             },
@@ -210,21 +216,23 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [
                         { type: 'sawtooth', freq: 110, gain: 0.4 },
-                        { type: 'sawtooth', freq: 108, gain: 0.4 } // Heavy detune
+                        { type: 'sawtooth', freq: 108, gain: 0.4 }, // Heavy detune
                     ],
                     filter: { type: 'lowpass', frequency: 2000, envAmount: -1800 },
                     envelope: { attack: 0.1, decay: 3.0, release: 1.0 },
-                    volume: 0.5
+                    volume: 0.5,
                 });
             },
             garbageSend: () => {
                 richTone({
                     noise: { type: 'pink', gain: 0.3 },
-                    filter: { type: 'bandpass', frequency: 400, envAmount: 2000, Q: 5 },
+                    filter: {
+                        type: 'bandpass', frequency: 400, envAmount: 2000, Q: 5,
+                    },
                     envelope: { attack: 0.05, decay: 0.4, release: 0.2 },
-                    volume: 0.4
+                    volume: 0.4,
                 });
-            }
+            },
         },
         Pyrestorm: {
             move: () => richTone({
@@ -232,23 +240,25 @@ export function createSoundSets(createTone, createRichTone) {
                 noise: { type: 'pink', gain: 0.2 },
                 filter: { type: 'lowpass', frequency: 600, Q: 0.5 }, // Opened filter slightly
                 envelope: { attack: 0.01, decay: 0.1, release: 0.05 },
-                volume: 0.5 // Boosted volume
+                volume: 0.5, // Boosted volume
             }),
             rotate: () => richTone({
                 noise: { type: 'pink', gain: 0.4 },
-                filter: { type: 'bandpass', frequency: 300, envAmount: 400, Q: 1 },
+                filter: {
+                    type: 'bandpass', frequency: 300, envAmount: 400, Q: 1,
+                },
                 envelope: { attack: 0.05, decay: 0.2, release: 0.1 },
-                volume: 0.4
+                volume: 0.4,
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 40, gain: 0.9 },
-                    { type: 'triangle', freq: 80, gain: 0.3 }
+                    { type: 'triangle', freq: 80, gain: 0.3 },
                 ],
                 noise: { type: 'pink', gain: 0.1 },
                 filter: { type: 'lowpass', frequency: 150, Q: 1 },
                 envelope: { attack: 0.01, decay: 0.5, release: 0.3 },
-                volume: 0.8 // Boosted volume
+                volume: 0.8, // Boosted volume
             }),
             lineClear: () => {
                 // Warm fire chord (C minor add9)
@@ -256,12 +266,12 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'sawtooth', freq: f, gain: 0.2 },
-                            { type: 'sine', freq: f * 2, gain: 0.15 }
+                            { type: 'sine', freq: f * 2, gain: 0.15 },
                         ],
                         noise: { type: 'pink', gain: 0.05 },
                         filter: { type: 'lowpass', frequency: 400, envAmount: 300 },
                         envelope: { attack: 0.1, decay: 1.0, release: 0.8 },
-                        volume: 0.4
+                        volume: 0.4,
                     }), i * 40);
                 });
                 // Sparkle burst
@@ -269,16 +279,18 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'white', gain: 0.2 },
                     filter: { type: 'highpass', frequency: 2000 },
                     envelope: { attack: 0.01, decay: 0.3 },
-                    volume: 0.3
+                    volume: 0.3,
                 }), 100);
             },
             levelUp: () => {
                 richTone({
                     oscillators: [{ type: 'sawtooth', freq: 100, gain: 0.4 }],
                     noise: { type: 'pink', gain: 0.5 },
-                    filter: { type: 'lowpass', frequency: 200, envAmount: 1000, Q: 2 },
+                    filter: {
+                        type: 'lowpass', frequency: 200, envAmount: 1000, Q: 2,
+                    },
                     envelope: { attack: 0.5, decay: 1.5, release: 1.0 },
-                    volume: 0.6
+                    volume: 0.6,
                 });
             },
             gameOver: () => {
@@ -287,18 +299,20 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.4 },
                     filter: { type: 'lowpass', frequency: 400, envAmount: -300 },
                     envelope: { attack: 0.1, decay: 4.0, release: 2.0 },
-                    volume: 0.7
+                    volume: 0.7,
                 });
             },
             garbageSend: () => {
                 richTone({
                     oscillators: [{ type: 'sawtooth', freq: 150, gain: 0.4 }],
                     noise: { type: 'pink', gain: 0.5 },
-                    filter: { type: 'bandpass', frequency: 200, envAmount: 800, Q: 3 },
+                    filter: {
+                        type: 'bandpass', frequency: 200, envAmount: 800, Q: 3,
+                    },
                     envelope: { attack: 0.02, decay: 0.3, release: 0.1 },
-                    volume: 0.5
+                    volume: 0.5,
                 });
-            }
+            },
         },
         SwedishForest: {
             move: () => richTone({
@@ -306,23 +320,25 @@ export function createSoundSets(createTone, createRichTone) {
                 noise: { type: 'pink', gain: 0.1 }, // Barely audible crunch
                 filter: { type: 'lowpass', frequency: 3000 },
                 envelope: { attack: 0.005, decay: 0.12, release: 0.05 },
-                volume: 0.1 // Very subtle
+                volume: 0.1, // Very subtle
             }),
             rotate: () => richTone({
                 oscillators: [{ type: 'triangle', freq: 200, gain: 0.25 }],
                 noise: { type: 'white', gain: 0.08 },
-                filter: { type: 'bandpass', frequency: 500, envAmount: 400, Q: 1 },
+                filter: {
+                    type: 'bandpass', frequency: 500, envAmount: 400, Q: 1,
+                },
                 envelope: { attack: 0.05, decay: 0.25, release: 0.1 },
-                volume: 0.15 // Subtle wind
+                volume: 0.15, // Subtle wind
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 50, gain: 0.9 },
-                    { type: 'sine', freq: 150, gain: 0.25 }
+                    { type: 'sine', freq: 150, gain: 0.25 },
                 ],
                 filter: { type: 'lowpass', frequency: 250, Q: 0.5 },
                 envelope: { attack: 0.02, decay: 0.6, release: 0.3 },
-                volume: 0.3 // Reduced impact
+                volume: 0.3, // Reduced impact
             }),
             lineClear: () => {
                 // Nordic ambient chord (Am9: A2, C3, E3, B3) - Cold, spacious, organic
@@ -330,11 +346,11 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.3 },
-                            { type: 'triangle', freq: f, gain: 0.15 }
+                            { type: 'triangle', freq: f, gain: 0.15 },
                         ],
                         filter: { type: 'lowpass', frequency: 1200, envAmount: 300 },
                         envelope: { attack: 0.15, decay: 2.0, release: 1.5 },
-                        volume: 0.3 // Reduced from 0.4
+                        volume: 0.3, // Reduced from 0.4
                     }), i * 60);
                 });
                 // Subtle mist texture
@@ -342,7 +358,7 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.15 },
                     filter: { type: 'highpass', frequency: 2000 },
                     envelope: { attack: 0.5, decay: 1.5, release: 1.0 },
-                    volume: 0.15 // Reduced from 0.2
+                    volume: 0.15, // Reduced from 0.2
                 }), 50);
             },
             levelUp: () => {
@@ -350,9 +366,11 @@ export function createSoundSets(createTone, createRichTone) {
                 [220, 440, 880].forEach((f, i) => {
                     setTimeout(() => richTone({
                         oscillators: [{ type: 'sine', freq: f, gain: 0.2 }],
-                        filter: { type: 'bandpass', frequency: f, envAmount: 600, Q: 2 },
+                        filter: {
+                            type: 'bandpass', frequency: f, envAmount: 600, Q: 2,
+                        },
                         envelope: { attack: 0.5, decay: 2.0, release: 1.0 },
-                        volume: 0.3 // Reduced from 0.35
+                        volume: 0.3, // Reduced from 0.35
                     }), i * 100);
                 });
             },
@@ -361,11 +379,11 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [
                         { type: 'sine', freq: 55, gain: 0.6 },
-                        { type: 'sine', freq: 54, gain: 0.6 } // Slow beating
+                        { type: 'sine', freq: 54, gain: 0.6 }, // Slow beating
                     ],
                     filter: { type: 'lowpass', frequency: 200 },
                     envelope: { attack: 0.5, decay: 4.0, release: 2.0 },
-                    volume: 0.5 // Reduced from 0.7
+                    volume: 0.5, // Reduced from 0.7
                 });
             },
             garbageSend: () => {
@@ -375,9 +393,9 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.4 },
                     filter: { type: 'lowpass', frequency: 400, envAmount: -150 },
                     envelope: { attack: 0.01, decay: 0.3, release: 0.1 },
-                    volume: 0.4 // Reduced from 0.5
+                    volume: 0.4, // Reduced from 0.5
                 });
-            }
+            },
         },
         Galaxy: {
             move: () => richTone({
@@ -385,25 +403,25 @@ export function createSoundSets(createTone, createRichTone) {
                 noise: { type: 'pink', gain: 0.05 }, // Granular dust
                 filter: { type: 'highpass', frequency: 2000 },
                 envelope: { attack: 0.005, decay: 0.05, release: 0.05 },
-                volume: 0.2
+                volume: 0.2,
             }),
             rotate: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 300, gain: 0.2 },
-                    { type: 'sine', freq: 302, gain: 0.2 } // Phasing
+                    { type: 'sine', freq: 302, gain: 0.2 }, // Phasing
                 ],
                 filter: { type: 'lowpass', frequency: 800, envAmount: 200 },
                 envelope: { attack: 0.05, decay: 0.3, release: 0.2 },
-                volume: 0.25
+                volume: 0.25,
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 35, gain: 1.0 }, // Massive sub-bass
-                    { type: 'triangle', freq: 70, gain: 0.3 }
+                    { type: 'triangle', freq: 70, gain: 0.3 },
                 ],
                 envelope: { attack: 0.01, decay: 0.8, release: 0.5 },
                 filter: { type: 'lowpass', frequency: 100, Q: 0.8 },
-                volume: 0.9
+                volume: 0.9,
             }),
             lineClear: () => {
                 // Ethereal Space Chord (Eb Lydian: Eb, G, Bb, D, F)
@@ -411,10 +429,10 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.2 },
-                            { type: 'sine', freq: f * 1.01, gain: 0.1 } // Detuned layer
+                            { type: 'sine', freq: f * 1.01, gain: 0.1 }, // Detuned layer
                         ],
                         envelope: { attack: 0.3, decay: 2.5, release: 2.0 },
-                        volume: 0.35
+                        volume: 0.35,
                     }), i * 80);
                 });
                 // Stardust shimmer
@@ -422,7 +440,7 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'white', gain: 0.1 },
                     filter: { type: 'highpass', frequency: 4000 },
                     envelope: { attack: 0.1, decay: 1.0, release: 1.0 },
-                    volume: 0.15
+                    volume: 0.15,
                 }), 200);
             },
             levelUp: () => {
@@ -430,11 +448,13 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [
                         { type: 'sine', freq: 200, gain: 0.3 },
-                        { type: 'sine', freq: 202, gain: 0.3 }
+                        { type: 'sine', freq: 202, gain: 0.3 },
                     ],
-                    filter: { type: 'bandpass', frequency: 200, envAmount: 2000, Q: 5 },
+                    filter: {
+                        type: 'bandpass', frequency: 200, envAmount: 2000, Q: 5,
+                    },
                     envelope: { attack: 1.0, decay: 3.0, release: 2.0 },
-                    volume: 0.5
+                    volume: 0.5,
                 });
             },
             gameOver: () => {
@@ -442,11 +462,11 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [
                         { type: 'sawtooth', freq: 50, gain: 0.4 },
-                        { type: 'sine', freq: 40, gain: 0.6 }
+                        { type: 'sine', freq: 40, gain: 0.6 },
                     ],
                     filter: { type: 'lowpass', frequency: 1000, envAmount: -900 },
                     envelope: { attack: 0.1, decay: 5.0, release: 3.0 },
-                    volume: 0.7
+                    volume: 0.7,
                 });
             },
             garbageSend: () => {
@@ -456,36 +476,40 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.4 },
                     filter: { type: 'lowpass', frequency: 200, envAmount: -100 },
                     envelope: { attack: 0.01, decay: 0.4, release: 0.2 },
-                    volume: 0.5
+                    volume: 0.5,
                 });
-            }
+            },
         },
         Bioluminescence: {
             move: () => richTone({
                 oscillators: [{ type: 'sine', freq: 220, gain: 0.3 }], // Soft sonar ping
-                filter: { type: 'lowpass', frequency: 600, envAmount: -200, Q: 2 }, // Watery damping
+                filter: {
+                    type: 'lowpass', frequency: 600, envAmount: -200, Q: 2,
+                }, // Watery damping
                 envelope: { attack: 0.01, decay: 0.15, release: 0.05 },
-                volume: 0.25
+                volume: 0.25,
             }),
             rotate: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 400, gain: 0.2 },
-                    { type: 'sine', freq: 404, gain: 0.2 } // Slow fluid phasing
+                    { type: 'sine', freq: 404, gain: 0.2 }, // Slow fluid phasing
                 ],
                 noise: { type: 'white', gain: 0.05 }, // Bubbles
-                filter: { type: 'bandpass', frequency: 800, envAmount: 400, Q: 1.5 },
+                filter: {
+                    type: 'bandpass', frequency: 800, envAmount: 400, Q: 1.5,
+                },
                 envelope: { attack: 0.1, decay: 0.3, release: 0.2 },
-                volume: 0.25
+                volume: 0.25,
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 32, gain: 1.0 }, // Massive deep ocean sub
-                    { type: 'sine', freq: 64, gain: 0.3 }
+                    { type: 'sine', freq: 64, gain: 0.3 },
                 ],
                 noise: { type: 'pink', gain: 0.1 }, // Muffled splash
                 filter: { type: 'lowpass', frequency: 120, Q: 1 },
                 envelope: { attack: 0.02, decay: 1.0, release: 0.8 },
-                volume: 0.9
+                volume: 0.9,
             }),
             lineClear: () => {
                 // Glowing Cluster Chord (F# Major add9: F#2, A#2, C#3, G#3)
@@ -493,11 +517,11 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.25 },
-                            { type: 'triangle', freq: f, gain: 0.1 }
+                            { type: 'triangle', freq: f, gain: 0.1 },
                         ],
                         filter: { type: 'lowpass', frequency: 800, envAmount: 400 },
                         envelope: { attack: 0.2, decay: 2.0, release: 1.5 },
-                        volume: 0.35
+                        volume: 0.35,
                     }), i * 70);
                 });
                 // Bioluminescent sparkles (Granular details)
@@ -506,7 +530,7 @@ export function createSoundSets(createTone, createRichTone) {
                         noise: { type: 'white', gain: 0.08 },
                         filter: { type: 'highpass', frequency: 3000 + (j * 1000) },
                         envelope: { attack: 0.01, decay: 0.1, release: 0.05 },
-                        volume: 0.15
+                        volume: 0.15,
                     }), 150 + (j * 80));
                 }
             },
@@ -514,9 +538,11 @@ export function createSoundSets(createTone, createRichTone) {
                 // Whale-like swell
                 richTone({
                     oscillators: [{ type: 'sine', freq: 150, gain: 0.4 }],
-                    filter: { type: 'lowpass', frequency: 200, envAmount: 600, Q: 4 },
+                    filter: {
+                        type: 'lowpass', frequency: 200, envAmount: 600, Q: 4,
+                    },
                     envelope: { attack: 1.5, decay: 3.0, release: 2.0 },
-                    volume: 0.5
+                    volume: 0.5,
                 });
             },
             gameOver: () => {
@@ -524,11 +550,11 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [
                         { type: 'sine', freq: 45, gain: 0.6 },
-                        { type: 'sine', freq: 43, gain: 0.6 } // Deep beating
+                        { type: 'sine', freq: 43, gain: 0.6 }, // Deep beating
                     ],
                     filter: { type: 'lowpass', frequency: 100 },
                     envelope: { attack: 0.5, decay: 5.0, release: 3.0 },
-                    volume: 0.7
+                    volume: 0.7,
                 });
             },
             garbageSend: () => {
@@ -538,9 +564,9 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.2 },
                     filter: { type: 'lowpass', frequency: 300, envAmount: -200 },
                     envelope: { attack: 0.05, decay: 0.5, release: 0.2 },
-                    volume: 0.6
+                    volume: 0.6,
                 });
-            }
+            },
         },
         Wolfhour: {
             move: () => richTone({
@@ -548,22 +574,24 @@ export function createSoundSets(createTone, createRichTone) {
                 noise: { type: 'pink', gain: 0.05 },
                 filter: { type: 'lowpass', frequency: 200 },
                 envelope: { attack: 0.005, decay: 0.1, release: 0.05 },
-                volume: 0.3
+                volume: 0.3,
             }),
             rotate: () => richTone({
                 oscillators: [{ type: 'triangle', freq: 100, gain: 0.15 }],
-                filter: { type: 'bandpass', frequency: 150, envAmount: 100, Q: 2 }, // Muffled movement
+                filter: {
+                    type: 'bandpass', frequency: 150, envAmount: 100, Q: 2,
+                }, // Muffled movement
                 envelope: { attack: 0.05, decay: 0.2, release: 0.1 },
-                volume: 0.25
+                volume: 0.25,
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 30, gain: 1.0 }, // Chest-vibrating sub
-                    { type: 'sine', freq: 60, gain: 0.4 }
+                    { type: 'sine', freq: 60, gain: 0.4 },
                 ],
                 filter: { type: 'lowpass', frequency: 100, Q: 0.5 },
                 envelope: { attack: 0.01, decay: 0.8, release: 0.5 },
-                volume: 0.9
+                volume: 0.9,
             }),
             lineClear: () => {
                 // Liminal Night Chord (Dm11: D2, G2, C3, E3) - Mysterious, suspended
@@ -571,11 +599,11 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.3 },
-                            { type: 'triangle', freq: f, gain: 0.1 }
+                            { type: 'triangle', freq: f, gain: 0.1 },
                         ],
                         filter: { type: 'lowpass', frequency: 600, envAmount: 200 },
                         envelope: { attack: 0.2, decay: 2.5, release: 2.0 },
-                        volume: 0.4
+                        volume: 0.4,
                     }), i * 80);
                 });
                 // Night atmosphere texture
@@ -583,16 +611,18 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.1 },
                     filter: { type: 'bandpass', frequency: 1000, Q: 1 },
                     envelope: { attack: 0.5, decay: 2.0, release: 1.0 },
-                    volume: 0.2
+                    volume: 0.2,
                 }), 100);
             },
             levelUp: () => {
                 // Rising darkness
                 richTone({
                     oscillators: [{ type: 'sawtooth', freq: 50, gain: 0.3 }],
-                    filter: { type: 'lowpass', frequency: 100, envAmount: 400, Q: 2 },
+                    filter: {
+                        type: 'lowpass', frequency: 100, envAmount: 400, Q: 2,
+                    },
                     envelope: { attack: 1.0, decay: 3.0, release: 2.0 },
-                    volume: 0.6
+                    volume: 0.6,
                 });
             },
             gameOver: () => {
@@ -601,7 +631,7 @@ export function createSoundSets(createTone, createRichTone) {
                     oscillators: [{ type: 'sine', freq: 35, gain: 0.8 }],
                     filter: { type: 'lowpass', frequency: 80 },
                     envelope: { attack: 0.5, decay: 5.0, release: 3.0 },
-                    volume: 0.8
+                    volume: 0.8,
                 });
             },
             garbageSend: () => {
@@ -611,9 +641,9 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.3 },
                     filter: { type: 'lowpass', frequency: 150, envAmount: -50 },
                     envelope: { attack: 0.01, decay: 0.4, release: 0.2 },
-                    volume: 0.5
+                    volume: 0.5,
                 });
-            }
+            },
         },
         NeonDusk: {
             move: () => richTone({
@@ -621,23 +651,25 @@ export function createSoundSets(createTone, createRichTone) {
                 noise: { type: 'white', gain: 0.03 }, // Reduced glitch dust
                 filter: { type: 'lowpass', frequency: 1200, envAmount: -400 },
                 envelope: { attack: 0.005, decay: 0.08, release: 0.02 },
-                volume: 0.15 // Reduced from 0.25
+                volume: 0.15, // Reduced from 0.25
             }),
             rotate: () => richTone({
                 oscillators: [{ type: 'sine', freq: 400, gain: 0.15 }],
                 noise: { type: 'pink', gain: 0.05 },
-                filter: { type: 'bandpass', frequency: 600, envAmount: 400, Q: 1.5 }, // Softer swipe
+                filter: {
+                    type: 'bandpass', frequency: 600, envAmount: 400, Q: 1.5,
+                }, // Softer swipe
                 envelope: { attack: 0.02, decay: 0.2, release: 0.1 },
-                volume: 0.15 // Reduced from 0.25
+                volume: 0.15, // Reduced from 0.25
             }),
             drop: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 45, gain: 0.9 }, // Deep neon sub
-                    { type: 'sawtooth', freq: 90, gain: 0.1 } // Reduced buzz
+                    { type: 'sawtooth', freq: 90, gain: 0.1 }, // Reduced buzz
                 ],
                 filter: { type: 'lowpass', frequency: 150, Q: 0.6 },
                 envelope: { attack: 0.01, decay: 0.6, release: 0.4 },
-                volume: 0.5 // Reduced from 0.85
+                volume: 0.5, // Reduced from 0.85
             }),
             lineClear: () => {
                 // Twilight Glow Chord (Db Major 9: Db3, F3, Ab3, C4, Eb4)
@@ -645,11 +677,11 @@ export function createSoundSets(createTone, createRichTone) {
                     setTimeout(() => richTone({
                         oscillators: [
                             { type: 'sine', freq: f, gain: 0.2 },
-                            { type: 'triangle', freq: f, gain: 0.1 }
+                            { type: 'triangle', freq: f, gain: 0.1 },
                         ],
                         filter: { type: 'lowpass', frequency: 800, envAmount: 300 },
                         envelope: { attack: 0.1, decay: 1.5, release: 1.2 },
-                        volume: 0.25 // Reduced from 0.35
+                        volume: 0.25, // Reduced from 0.35
                     }), i * 50);
                 });
                 // Glitch artifacts
@@ -658,7 +690,7 @@ export function createSoundSets(createTone, createRichTone) {
                         noise: { type: 'white', gain: 0.05 }, // Reduced gain
                         filter: { type: 'highpass', frequency: 4000 },
                         envelope: { attack: 0.001, decay: 0.05, release: 0.01 },
-                        volume: 0.05 // Reduced from 0.1
+                        volume: 0.05, // Reduced from 0.1
                     }), 100 + (Math.random() * 300));
                 }
             },
@@ -667,11 +699,13 @@ export function createSoundSets(createTone, createRichTone) {
                 richTone({
                     oscillators: [
                         { type: 'sawtooth', freq: 100, gain: 0.15 },
-                        { type: 'square', freq: 100, gain: 0.08 }
+                        { type: 'square', freq: 100, gain: 0.08 },
                     ],
-                    filter: { type: 'lowpass', frequency: 200, envAmount: 1500, Q: 2 },
+                    filter: {
+                        type: 'lowpass', frequency: 200, envAmount: 1500, Q: 2,
+                    },
                     envelope: { attack: 0.5, decay: 2.0, release: 1.0 },
-                    volume: 0.3 // Reduced from 0.5
+                    volume: 0.3, // Reduced from 0.5
                 });
             },
             gameOver: () => {
@@ -681,19 +715,21 @@ export function createSoundSets(createTone, createRichTone) {
                     noise: { type: 'pink', gain: 0.15 },
                     filter: { type: 'lowpass', frequency: 800, envAmount: -700 },
                     envelope: { attack: 0.1, decay: 3.0, release: 1.0 },
-                    volume: 0.4 // Reduced from 0.6
+                    volume: 0.4, // Reduced from 0.6
                 });
             },
             garbageSend: () => {
                 // Digital impact
                 richTone({
                     oscillators: [{ type: 'square', freq: 120, gain: 0.2 }],
-                    filter: { type: 'bandpass', frequency: 400, envAmount: -150, Q: 3 },
+                    filter: {
+                        type: 'bandpass', frequency: 400, envAmount: -150, Q: 3,
+                    },
                     envelope: { attack: 0.01, decay: 0.3, release: 0.1 },
-                    volume: 0.3 // Reduced from 0.4
+                    volume: 0.3, // Reduced from 0.4
                 });
-            }
-        }
+            },
+        },
     };
 }
 

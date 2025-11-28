@@ -9,13 +9,13 @@ export const CRYSTAL_CAVE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8ffbff',  // Cyan shard
-        O: '#ffd48f',  // Amber crystal
-        T: '#d598ff',  // Amethyst glow
-        S: '#66ffc7',  // Emerald glimmer
-        Z: '#ff7bd9',  // Rose quartz
-        J: '#8090ff',  // Sapphire edge
-        L: '#ffb88b',  // Citrine orange
+        I: '#8ffbff', // Cyan shard
+        O: '#ffd48f', // Amber crystal
+        T: '#d598ff', // Amethyst glow
+        S: '#66ffc7', // Emerald glimmer
+        Z: '#ff7bd9', // Rose quartz
+        J: '#8090ff', // Sapphire edge
+        L: '#ffb88b', // Citrine orange
         GARBAGE: '#101428', // Cavern shadow
     },
 

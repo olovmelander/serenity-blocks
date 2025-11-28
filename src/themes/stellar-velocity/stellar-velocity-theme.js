@@ -48,11 +48,21 @@ export default class StellarVelocityTheme extends BaseTheme {
         // Color scheme
         this.currentColorScheme = 0;
         this.colorSchemes = [
-            { name: 'classic', star: '#FFFFFF', trail: 'rgba(255, 255, 255, 0.5)', bg: '#000000' },
-            { name: 'nebula', star: '#00FFFF', trail: 'rgba(0, 255, 255, 0.5)', bg: '#000510' },
-            { name: 'solar', star: '#FFD700', trail: 'rgba(255, 215, 0, 0.5)', bg: '#001020' },
-            { name: 'aurora', star: '#00FF88', trail: 'rgba(0, 255, 136, 0.5)', bg: '#000815' },
-            { name: 'crimson', star: '#FF4466', trail: 'rgba(255, 68, 102, 0.5)', bg: '#100005' },
+            {
+                name: 'classic', star: '#FFFFFF', trail: 'rgba(255, 255, 255, 0.5)', bg: '#000000',
+            },
+            {
+                name: 'nebula', star: '#00FFFF', trail: 'rgba(0, 255, 255, 0.5)', bg: '#000510',
+            },
+            {
+                name: 'solar', star: '#FFD700', trail: 'rgba(255, 215, 0, 0.5)', bg: '#001020',
+            },
+            {
+                name: 'aurora', star: '#00FF88', trail: 'rgba(0, 255, 136, 0.5)', bg: '#000815',
+            },
+            {
+                name: 'crimson', star: '#FF4466', trail: 'rgba(255, 68, 102, 0.5)', bg: '#100005',
+            },
         ];
         this.colorCycleInterval = null;
 
@@ -365,7 +375,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.fov += (this.targetFov - this.fov) * 0.05;
 
         // Update moving stars
-        for (let star of this.stars) {
+        for (const star of this.stars) {
             // Move star toward viewer
             star.z -= this.currentSpeed * 10 * this.comboMultiplier;
 
@@ -396,7 +406,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
 
         // Update background stars (twinkling effect)
-        for (let star of this.backgroundStars) {
+        for (const star of this.backgroundStars) {
             star.twinkle += star.twinkleSpeed;
         }
     }
@@ -422,7 +432,7 @@ export default class StellarVelocityTheme extends BaseTheme {
 
         // Draw background stars first (stationary, behind moving stars)
         this.ctx.fillStyle = colorScheme.star;
-        for (let star of this.backgroundStars) {
+        for (const star of this.backgroundStars) {
             const alpha = star.brightness * (0.3 + Math.sin(star.twinkle) * 0.2);
             this.ctx.globalAlpha = alpha;
             this.ctx.beginPath();
@@ -432,7 +442,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.ctx.globalAlpha = 1.0;
 
         // Draw moving stars with perspective projection
-        for (let star of this.stars) {
+        for (const star of this.stars) {
             // Project 3D to 2D
             const scale = this.fov / star.z;
             const screenX = this.centerX + shakeX + star.x * scale;
@@ -440,8 +450,8 @@ export default class StellarVelocityTheme extends BaseTheme {
             const size = star.size * scale;
 
             // Only draw if on screen
-            if (screenX < 0 || screenX > this.canvas.width ||
-                screenY < 0 || screenY > this.canvas.height) {
+            if (screenX < 0 || screenX > this.canvas.width
+                || screenY < 0 || screenY > this.canvas.height) {
                 star.prevScreenX = screenX;
                 star.prevScreenY = screenY;
                 continue;
@@ -465,11 +475,13 @@ export default class StellarVelocityTheme extends BaseTheme {
                     // Parse RGB from trail color and apply dynamic opacity
                     const trailAlpha = this.trailOpacity * Math.min(1, distance / 5);
                     const gradient = this.ctx.createLinearGradient(
-                        tailX, tailY,
-                        screenX, screenY
+                        tailX,
+                        tailY,
+                        screenX,
+                        screenY,
                     );
 
-                    const rgb = colorScheme.star.match(/\w\w/g)?.map(x => parseInt(x, 16)) || [255, 255, 255];
+                    const rgb = colorScheme.star.match(/\w\w/g)?.map((x) => parseInt(x, 16)) || [255, 255, 255];
 
                     // Fade out at the tail
                     gradient.addColorStop(0, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0)`);
@@ -510,7 +522,7 @@ export default class StellarVelocityTheme extends BaseTheme {
 
         // Draw burst stars with better visuals
         this.ctx.fillStyle = colorScheme.star;
-        for (let star of this.burstStars) {
+        for (const star of this.burstStars) {
             const alpha = star.life * star.brightness;
 
             // Apply camera shake
@@ -596,7 +608,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Call parent stop
@@ -643,7 +655,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.centerY = height / 2;
 
             // Reposition background stars
-            this.backgroundStars.forEach(star => {
+            this.backgroundStars.forEach((star) => {
                 if (star.x > width) star.x = Math.random() * width;
                 if (star.y > height) star.y = Math.random() * height;
             });

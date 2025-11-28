@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { MultiplayerGameState } from '../multiplayer.js';
 import { MultiPlayerState } from '../multi-player-state.js';
-import { GAME_MODES, COLS, ROWS, BLOCK_SIZE } from '../constants.js';
+import {
+    GAME_MODES, COLS, ROWS, BLOCK_SIZE,
+} from '../constants.js';
 import { spawnPiece, fillBag, softDrop } from '../game.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
@@ -38,26 +40,26 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.p1NextCanvases = [];
         this.p2NextCanvases = [];
         this.playerNextCanvases = new Map();
-        
+
         // Match configuration (from modal)
         this.matchConfig = null;
         this.configModal = null;
         this.configuredForStart = false; // Track if config modal has been shown
-        
+
         // Round tracking (frags) - will be configured by modal
         this.roundWins = {
             player1: 0,
             player2: 0,
             player3: 0,
-            player4: 0
+            player4: 0,
         };
-        
+
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
             player1: { score: 0, lines: 0 },
             player2: { score: 0, lines: 0 },
             player3: { score: 0, lines: 0 },
-            player4: { score: 0, lines: 0 }
+            player4: { score: 0, lines: 0 },
         };
     }
 
@@ -92,13 +94,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
             },
             () => {
                 this.handleConfigurationCancelled();
-            }
+            },
         );
 
         this.configModal.show();
         console.log('[LocalMultiplayer] Showing configuration modal');
     }
-    
+
     /**
      * Called when configuration modal is submitted
      */
@@ -148,15 +150,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log('[LocalMultiplayer] handleConfigurationCancelled complete - mode reset');
     }
-    
+
     /**
      * Setup multiplayer UI based on configuration
      */
     async _setupMultiplayerUI() {
         const numPlayers = this.matchConfig?.numPlayers || 2;
-        
+
         console.log(`[LocalMultiplayer] Setting up UI for ${numPlayers} players`);
-        
+
         // Collect next piece canvas references for all players (main boards rendered by Phaser)
         this.playerNextCanvases.clear();
         for (let i = 1; i <= 4; i++) {
@@ -213,7 +215,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Remove all player count classes
         gameArea.classList.remove('players-2', 'players-3', 'players-4');
-        
+
         // Add appropriate class for current player count
         gameArea.classList.add(`players-${numPlayers}`);
 
@@ -251,7 +253,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Now we're ready to actually start the game
         await super.onStart();
-        
+
         // Hide start modal immediately
         this.deps.modalManager.hideAll();
 
@@ -260,22 +262,22 @@ export class LocalMultiplayerMode extends BaseGameMode {
             player1: { score: 0, lines: 0 },
             player2: { score: 0, lines: 0 },
             player3: { score: 0, lines: 0 },
-            player4: { score: 0, lines: 0 }
+            player4: { score: 0, lines: 0 },
         };
         this.roundWins = {
             player1: 0,
             player2: 0,
             player3: 0,
-            player4: 0
+            player4: 0,
         };
-        
+
         // Store match start time for time-based win conditions
         this.matchStartTime = Date.now();
 
         // Initialize multiplayer state with new MultiPlayerState
         const numPlayers = this.matchConfig?.numPlayers || 2;
         console.log(`[LocalMultiplayer] Creating MultiPlayerState for ${numPlayers} players`);
-        
+
         this.multiplayerState = new MultiPlayerState(numPlayers);
         this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
@@ -288,13 +290,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!this.boardScenes || this.boardScenes.length === 0) {
             throw new Error('Board scenes not initialized. Call onActivate first.');
         }
-        
+
         console.log(`[LocalMultiplayer] Using ${this.boardScenes.length} board scenes`);
 
         // Create shared RNG seed for fairness
         const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
         this.multiplayerState.sharedPieceSeed = sharedSeed;
-        
+
         // Initialize RNG and piece bags for all players
         for (let i = 0; i < numPlayers; i++) {
             const player = this.multiplayerState.players[i];
@@ -403,14 +405,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         await super.onDeactivate();
 
         console.log('[LocalMultiplayer] Deactivating...');
-        
+
         // Hide and destroy config modal
         if (this.configModal) {
             this.configModal.hide();
             this.configModal.destroy();
             this.configModal = null;
         }
-        
+
         // Reset configuration state
         this.matchConfig = null;
         this.configuredForStart = false;
@@ -478,7 +480,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     _startGameLoop() {
         let frameCount = 0;
-        
+
         const loop = (currentTime) => {
             if (!this.isRunning || this.multiplayerState.isGameOver) {
                 console.log('[LocalMultiplayer] Game loop stopped:', { isRunning: this.isRunning, isGameOver: this.multiplayerState.isGameOver });
@@ -500,7 +502,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 // Log player state periodically to debug gravity
                 for (let i = 0; i < this.multiplayerState.numPlayers; i++) {
                     const ps = this.multiplayerState.players[i];
-                    console.log(`  P${i+1}: piece=${!!ps.currentPiece}, counter=${Math.floor(ps.dropCounter)}, interval=${ps.dropInterval}, processing=${ps.isProcessingPhysics}`);
+                    console.log(`  P${i + 1}: piece=${!!ps.currentPiece}, counter=${Math.floor(ps.dropCounter)}, interval=${ps.dropInterval}, processing=${ps.isProcessingPhysics}`);
                 }
             }
 
@@ -521,7 +523,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                         isProcessing: playerState.isProcessingPhysics,
                         dropCounter: playerState.dropCounter,
                         dropInterval: playerState.dropInterval,
-                        delta: delta
+                        delta,
                     });
                 }
 
@@ -530,24 +532,24 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     if (frameCount <= 3) {
                         console.log(`[LocalMultiplayer] P${playerNum} BEFORE: dropCounter=${playerState.dropCounter}, delta=${delta}`);
                     }
-                    
+
                     playerState.dropCounter += delta;
-                    
+
                     if (frameCount <= 3) {
                         console.log(`[LocalMultiplayer] P${playerNum} AFTER: dropCounter=${playerState.dropCounter}`);
                     }
-                    
+
                     if (playerState.dropCounter > playerState.dropInterval) {
                         // Use proper multiplayer callbacks (from main.js) to handle garbage and spawning
-                        const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum) 
+                        const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
                             || this._getPhysicsCallbacks();
-                        
+
                         console.log(`[LocalMultiplayer] Dropping piece for P${playerNum}, counter was ${playerState.dropCounter}`);
-                        
+
                         softDrop(
                             playerState,
                             () => this.deps.soundManager.sfxPlayer.playDrop(),
-                            callbacks
+                            callbacks,
                         );
                     }
                 }
@@ -614,7 +616,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return;
         }
 
-        const numPlayers = this.multiplayerState.numPlayers;
+        const { numPlayers } = this.multiplayerState;
 
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
@@ -667,18 +669,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Use array-based access for new MultiPlayerState
             const playerState = this.multiplayerState.players[index];
             const playerNum = index + 1;
-            
+
             if (!playerState) {
                 console.warn(`[LocalMultiplayer] No player state for index ${index}`);
                 return;
             }
-            
+
             if (scene && scene.syncFromGameState) {
                 scene.syncFromGameState(playerState);
             } else {
-                console.warn(`[LocalMultiplayer] Scene ${index} cannot sync:`, { 
-                    hasScene: !!scene, 
-                    hasSyncMethod: scene ? !!scene.syncFromGameState : false 
+                console.warn(`[LocalMultiplayer] Scene ${index} cannot sync:`, {
+                    hasScene: !!scene,
+                    hasSyncMethod: scene ? !!scene.syncFromGameState : false,
                 });
             }
         });
@@ -715,12 +717,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this._showVictoryAnimation(winnerIndex);
 
             // Wait for victory animation before showing round end
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise((resolve) => setTimeout(resolve, 1500));
 
             await this.handleRoundEnd(winnerKey);
         } else {
             // For 3-4 players, check if we need to end the round
-            const alivePlayers = this.multiplayerState.players.filter(p => p.isAlive);
+            const alivePlayers = this.multiplayerState.players.filter((p) => p.isAlive);
             console.log(`[LocalMultiplayer] ${alivePlayers.length} players still alive`);
 
             if (alivePlayers.length <= 1) {
@@ -728,14 +730,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this.multiplayerState.isPaused = true;
 
                 // Find last player standing
-                const winnerIndex = this.multiplayerState.players.findIndex(p => p.isAlive);
+                const winnerIndex = this.multiplayerState.players.findIndex((p) => p.isAlive);
                 const winnerKey = winnerIndex >= 0 ? `player${winnerIndex + 1}` : null;
                 if (winnerKey && winnerIndex >= 0) {
                     // Show victory animation for the winner
                     this._showVictoryAnimation(winnerIndex);
 
                     // Wait a bit for victory animation before showing round end
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await new Promise((resolve) => setTimeout(resolve, 1500));
 
                     await this.handleRoundEnd(winnerKey);
                 }
@@ -752,7 +754,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         console.log('[LocalMultiplayer] Starting countdown...');
         return new Promise((resolve) => {
             let count = 3;
-            
+
             // Create overlay background
             const overlay = document.createElement('div');
             overlay.id = 'countdown-overlay';
@@ -769,7 +771,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 z-index: 99999;
                 pointer-events: none;
             `;
-            
+
             const countdownElement = document.createElement('div');
             countdownElement.id = 'countdown-text';
             countdownElement.style.cssText = `
@@ -785,10 +787,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 line-height: 1;
                 user-select: none;
             `;
-            
+
             overlay.appendChild(countdownElement);
             document.body.appendChild(overlay);
-            
+
             console.log('[LocalMultiplayer] Countdown overlay created');
 
             const countdown = () => {
@@ -797,7 +799,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     countdownElement.textContent = count;
                     countdownElement.style.opacity = '1';
                     countdownElement.style.transform = 'scale(1)';
-                    
+
                     this.deps.soundManager.sfxPlayer.playMove?.();
                     count--;
                     setTimeout(countdown, 1000);
@@ -813,7 +815,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     `;
                     countdownElement.style.opacity = '1';
                     countdownElement.style.transform = 'scale(1)';
-                    
+
                     this.deps.soundManager.sfxPlayer.playDrop?.();
                     setTimeout(() => {
                         console.log('[LocalMultiplayer] Countdown complete, removing overlay');
@@ -837,7 +839,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     async _ensureMultiplayerBoardScenes() {
-        const phaserGame = this.deps.phaserGame;
+        const { phaserGame } = this.deps;
         const MultiplayerBoardSceneClass = this.deps.phaserGame?.MultiplayerBoardSceneClass;
 
         if (!phaserGame || !MultiplayerBoardSceneClass) {
@@ -851,7 +853,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // If scenes don't exist, create them
         if (!scene1 || !scene2) {
             console.log('[LocalMultiplayer] Creating board panel scenes...');
-            
+
             // Calculate viewport dimensions
             const singleBoardWidth = COLS * BLOCK_SIZE;
             const boardHeight = ROWS * BLOCK_SIZE;
@@ -861,7 +863,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 x: 0,
                 y: 0,
                 width: singleBoardWidth,
-                height: boardHeight
+                height: boardHeight,
             };
 
             // Player 2 viewport (right side, with gap)
@@ -869,31 +871,31 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 x: singleBoardWidth + this.boardGap,
                 y: 0,
                 width: singleBoardWidth,
-                height: boardHeight
+                height: boardHeight,
             };
 
             // Create scene instances with unique keys
             // We MUST pass instances because Phaser doesn't support unique keys when passing CLASS
             const scene1Instance = new MultiplayerBoardSceneClass('BoardPanel1');
             const scene2Instance = new MultiplayerBoardSceneClass('BoardPanel2');
-            
+
             // Add scenes with their instances
             phaserGame.scene.add('BoardPanel1', scene1Instance, false);
             phaserGame.scene.add('BoardPanel2', scene2Instance, false);
-            
+
             // Start them manually with init data
             phaserGame.scene.start('BoardPanel1', {
                 playerId: 1,
                 viewport: player1Viewport,
                 playerLabel: 'PLAYER 1',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0
+                getPendingGarbage: (state) => state?.pendingGarbage || 0,
             });
-            
+
             phaserGame.scene.start('BoardPanel2', {
                 playerId: 2,
                 viewport: player2Viewport,
                 playerLabel: 'PLAYER 2',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0
+                getPendingGarbage: (state) => state?.pendingGarbage || 0,
             });
 
             // Wait for scenes to initialize
@@ -905,7 +907,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         } else {
             // Scenes already exist, restart them with fresh data
             console.log('[LocalMultiplayer] Reusing existing board panel scenes...');
-            
+
             // Calculate viewport dimensions
             const singleBoardWidth = COLS * BLOCK_SIZE;
             const boardHeight = ROWS * BLOCK_SIZE;
@@ -915,7 +917,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 x: 0,
                 y: 0,
                 width: singleBoardWidth,
-                height: boardHeight
+                height: boardHeight,
             };
 
             // Player 2 viewport (right side, with gap)
@@ -923,26 +925,26 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 x: singleBoardWidth + this.boardGap,
                 y: 0,
                 width: singleBoardWidth,
-                height: boardHeight
+                height: boardHeight,
             };
 
             // Restart scenes - stop them first, then start with new data
             phaserGame.scene.stop('BoardPanel1');
             phaserGame.scene.stop('BoardPanel2');
-            
+
             // Start both scenes - they should run in parallel
             phaserGame.scene.start('BoardPanel1', {
                 playerId: 1,
                 viewport: player1Viewport,
                 playerLabel: 'PLAYER 1',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0
+                getPendingGarbage: (state) => state?.pendingGarbage || 0,
             });
 
             phaserGame.scene.start('BoardPanel2', {
                 playerId: 2,
                 viewport: player2Viewport,
                 playerLabel: 'PLAYER 2',
-                getPendingGarbage: (state) => state?.pendingGarbage || 0
+                getPendingGarbage: (state) => state?.pendingGarbage || 0,
             });
         }
 
@@ -952,7 +954,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             scene1.scene.setActive(true);
             scene2.scene.setVisible(true);
             scene2.scene.setActive(true);
-            
+
             // Verify camera viewports are set correctly
             if (scene1.cameras && scene1.cameras.main) {
                 console.log('[LocalMultiplayer] Player 1 viewport:', scene1.cameras.main.x, scene1.cameras.main.y, scene1.cameras.main.width, scene1.cameras.main.height);
@@ -960,12 +962,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
             if (scene2.cameras && scene2.cameras.main) {
                 console.log('[LocalMultiplayer] Player 2 viewport:', scene2.cameras.main.x, scene2.cameras.main.y, scene2.cameras.main.width, scene2.cameras.main.height);
             }
-            
+
             this.boardScenes = [scene1, scene2];
             console.log('[LocalMultiplayer] Board scenes ready:', {
                 scene0: scene1.scene?.key,
                 scene1: scene2.scene?.key,
-                array: this.boardScenes
+                array: this.boardScenes,
             });
         } else {
             throw new Error('Failed to create multiplayer board scenes');
@@ -984,14 +986,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!BoardScene) {
             throw new Error('BoardScene or MultiplayerBoardScene class not available');
         }
-        
+
         console.log('[LocalMultiplayer] Using scene class:', BoardScene.name || 'BoardScene');
 
         // Game configuration for each player
         const createGameConfig = (parent) => ({
             width: COLS * BLOCK_SIZE,
             height: ROWS * BLOCK_SIZE,
-            parent: parent,
+            parent,
             type: Phaser.WEBGL,
             transparent: true,
             audio: { noAudio: true },
@@ -1002,7 +1004,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 autoCenter: Phaser.Scale.NO_CENTER,
                 width: COLS * BLOCK_SIZE,
                 height: ROWS * BLOCK_SIZE,
-            }
+            },
         });
 
         // Arrays to store Phaser games and scenes
@@ -1012,21 +1014,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Create Phaser instance for each player
         for (let i = 1; i <= numPlayers; i++) {
             console.log(`[LocalMultiplayer] Creating Player ${i} Phaser game...`);
-            
+
             const phaserGame = new Phaser.Game(createGameConfig(`p${i}-phaser-container`));
-            
+
             // Wait for game to initialize
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             // Add and start BoardScene
             const boardScene = new BoardScene(`P${i}Board`);
             phaserGame.scene.add(`P${i}Board`, boardScene, true);
             console.log(`[LocalMultiplayer] Player ${i} scene created:`, boardScene.scene?.key);
-            
+
             // Store references
             this.phaserGames.push(phaserGame);
             this.boardScenes.push(boardScene);
-            
+
             // Also maintain legacy p1/p2 references for backwards compatibility
             if (i === 1) {
                 this.p1PhaserGame = phaserGame;
@@ -1044,7 +1046,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         // Wait for all scenes to fully initialize
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
 
         console.log(`[LocalMultiplayer] ${numPlayers} Phaser instances created successfully`);
     }
@@ -1055,8 +1057,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     _teardownBoardScenes() {
         console.log('[LocalMultiplayer] Tearing down board scenes...');
-        
-        const phaserGame = this.deps.phaserGame;
+
+        const { phaserGame } = this.deps;
         if (!phaserGame?.scene) return;
 
         // Stop, hide, and remove board panel scenes
@@ -1064,18 +1066,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const scene = phaserGame.scene.getScene(key);
             if (scene) {
                 console.log(`[LocalMultiplayer] Removing scene: ${key}`);
-                
+
                 // Clear the scene's camera viewport to prevent rendering
                 if (scene.cameras?.main) {
                     scene.cameras.main.setViewport(0, 0, 0, 0);
                 }
-                
+
                 // Hide the scene first
                 scene.scene.setVisible(false);
-                
+
                 // Stop the scene (pauses updates)
                 scene.scene.stop();
-                
+
                 // Remove the scene from the scene manager
                 phaserGame.scene.remove(key);
             }
@@ -1213,7 +1215,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
         return this.matchConfig.endConditionValue || 7;
     }
-    
+
     /**
      * Get win condition display text
      */
@@ -1221,21 +1223,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!this.matchConfig) {
             return 'First to 7 frags wins';
         }
-        
+
         const config = this.matchConfig;
         switch (config.endCondition) {
-            case 'frags':
-                return `First to ${config.endConditionValue} frags wins`;
-            case 'time':
-                return `${config.endConditionValue} minute time limit`;
-            case 'points':
-                return `First to ${config.endConditionValue * 1000} points wins`;
-            case 'lines':
-                return `First to ${config.endConditionValue} lines wins`;
-            case 'never':
-                return 'Play until manual end';
-            default:
-                return `First to ${config.endConditionValue} frags wins`;
+        case 'frags':
+            return `First to ${config.endConditionValue} frags wins`;
+        case 'time':
+            return `${config.endConditionValue} minute time limit`;
+        case 'points':
+            return `First to ${config.endConditionValue * 1000} points wins`;
+        case 'lines':
+            return `First to ${config.endConditionValue} lines wins`;
+        case 'never':
+            return 'Play until manual end';
+        default:
+            return `First to ${config.endConditionValue} frags wins`;
         }
     }
 
@@ -1245,29 +1247,29 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async handleRoundEnd(winner) {
         console.log(`[LocalMultiplayer] Round ended! Winner: ${winner}`);
-        
+
         // Increment round wins (frags)
         this.roundWins[winner]++;
-        
+
         const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
         const p1Wins = this.roundWins.player1;
         const p2Wins = this.roundWins.player2;
-        
+
         // Check if someone won the match based on win condition
         const wonMatch = this._checkMatchWinCondition(winner);
-        
+
         if (wonMatch) {
             console.log(`[LocalMultiplayer] ${winnerName} wins the match! (${p1Wins}-${p2Wins})`);
             await this._showMatchEnd(winner, p1Wins, p2Wins);
             return;
         }
-        
+
         // Show round end and start next round
         console.log(`[LocalMultiplayer] Starting next round... Score: ${p1Wins}-${p2Wins}`);
         await this._showRoundEnd(winner, p1Wins, p2Wins);
         await this._startNewRound();
     }
-    
+
     /**
      * Check if the match win condition has been met
      */
@@ -1276,41 +1278,41 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Fallback to old behavior
             return this.roundWins[lastRoundWinner] >= 7;
         }
-        
+
         const config = this.matchConfig;
-        
+
         switch (config.endCondition) {
-            case 'frags':
-                // Frags are round wins
-                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
-                
-            case 'time': {
-                // Check if time limit has been reached
-                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-                return elapsedMinutes >= config.endConditionValue;
-            }
-                
-            case 'points': {
-                // Check if either player reached the score target
-                const targetScore = config.endConditionValue * 1000;
-                const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-                const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-                return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
-            }
-                
-            case 'lines': {
-                // Check if either player cleared enough lines
-                const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-                const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-                return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
-            }
-                
-            case 'never':
-                // Never end automatically
-                return false;
-                
-            default:
-                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+        case 'frags':
+            // Frags are round wins
+            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+
+        case 'time': {
+            // Check if time limit has been reached
+            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+            return elapsedMinutes >= config.endConditionValue;
+        }
+
+        case 'points': {
+            // Check if either player reached the score target
+            const targetScore = config.endConditionValue * 1000;
+            const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+            const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+            return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+        }
+
+        case 'lines': {
+            // Check if either player cleared enough lines
+            const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+            const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+            return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+        }
+
+        case 'never':
+            // Never end automatically
+            return false;
+
+        default:
+            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
         }
     }
 
@@ -1320,7 +1322,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async _showRoundEnd(winner, p1Wins, p2Wins) {
         const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
-        
+
         // Create overlay
         const overlay = document.createElement('div');
         overlay.id = 'round-end-overlay';
@@ -1338,7 +1340,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             z-index: 10000;
             animation: fadeIn 0.3s ease;
         `;
-        
+
         overlay.innerHTML = `
             <div style="text-align: center; color: white;">
                 <div style="font-size: 48px; margin-bottom: 30px; color: #10b981; font-weight: bold;">
@@ -1355,15 +1357,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(overlay);
-        
+
         // Wait 3 seconds
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
         // Remove overlay with fade out
         overlay.style.opacity = '0';
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         overlay.remove();
     }
 
@@ -1377,7 +1379,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Clear death animations from previous round
         this._clearDeathAnimations();
 
-        const numPlayers = this.multiplayerState.numPlayers;
+        const { numPlayers } = this.multiplayerState;
 
         // Accumulate stats from this round into match totals before resetting
         const accumulatedLog = {};
@@ -1401,17 +1403,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Reset multiplayer state
         this.multiplayerState.reset();
         this.multiplayerState.isPaused = true;
-        
+
         // Create new shared seed and reinitialize RNG for all players
         const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
         this.multiplayerState.sharedPieceSeed = sharedSeed;
-        
+
         for (let i = 0; i < numPlayers; i++) {
             const player = this.multiplayerState.players[i];
             player.randomGenerator = seededRandom(sharedSeed);
             fillBag(player.nextPieces, player.randomGenerator);
         }
-        
+
         // Draw next pieces for all players
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
@@ -1420,21 +1422,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 drawNextPieces(canvases, this.multiplayerState.players[i].nextPieces);
             }
         }
-        
+
         // Update stats
         this._updateMultiplayerStats();
 
         // Wait 1 second before showing countdown
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Show countdown
         await this._showCountdown();
-        
+
         // Spawn initial pieces for all configured players
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
             const nextCanvases = this.playerNextCanvases.get(playerNum);
-            
+
             spawnPiece(
                 this.multiplayerState.players[i],
                 () => {
@@ -1443,19 +1445,19 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     }
                     this._syncBoardScenes();
                 },
-                () => this._handleGameOver(i)
+                () => this._handleGameOver(i),
             );
-            
+
             console.log(`[LocalMultiplayer] Spawned piece for Player ${playerNum} in new round`);
         }
-        
+
         this._syncBoardScenes();
-        
+
         // Start game loop
         this.multiplayerState.isPaused = false;
         this.multiplayerState.lastTime = performance.now();
         this._startGameLoop();
-        
+
         console.log('[LocalMultiplayer] New round started!');
     }
 
@@ -1465,21 +1467,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async _showMatchEnd(winner, p1Wins, p2Wins) {
         const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
-        
+
         // Accumulate final round stats before showing match end
         const finalP1Score = this.matchStats.player1.score + this.multiplayerState.players[0].score;
         const finalP1Lines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
         const finalP2Score = this.matchStats.player2.score + this.multiplayerState.players[1].score;
         const finalP2Lines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-        
+
         console.log('[LocalMultiplayer] Match ended! Final stats:', {
             p1: { frags: p1Wins, score: finalP1Score, lines: finalP1Lines },
-            p2: { frags: p2Wins, score: finalP2Score, lines: finalP2Lines }
+            p2: { frags: p2Wins, score: finalP2Score, lines: finalP2Lines },
         });
-        
+
         // Stop the game
         await this.onStop();
-        
+
         // Show match result
         const overlay = document.createElement('div');
         overlay.id = 'match-end-overlay';
@@ -1496,7 +1498,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             justify-content: center;
             z-index: 10000;
         `;
-        
+
         overlay.innerHTML = `
             <div style="text-align: center; color: white;">
                 <div style="font-size: 64px; margin-bottom: 30px; color: #10b981; font-weight: bold;">
@@ -1536,9 +1538,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 </button>
             </div>
         `;
-        
+
         document.body.appendChild(overlay);
-        
+
         // Handle return to menu button
         const returnBtn = document.getElementById('return-to-menu-btn');
         returnBtn.addEventListener('mouseenter', () => {
@@ -1698,7 +1700,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const container = document.getElementById(`p${i}-phaser-container`);
             if (container) {
                 const overlays = container.querySelectorAll('.player-death-overlay');
-                overlays.forEach(overlay => {
+                overlays.forEach((overlay) => {
                     console.log(`[LocalMultiplayer] Force removing overlay from P${i} container`);
                     overlay.remove();
                 });
@@ -1775,7 +1777,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
 
             console.log('[LocalMultiplayer] Full-canvas gentle fade out created successfully');
-
         } catch (error) {
             console.error('[LocalMultiplayer] Error creating elimination effect:', error);
         }
@@ -1830,7 +1831,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             lifespan: 1000,
                             gravityY: 150,
                             quantity: 30,
-                            blendMode: 'ADD'
+                            blendMode: 'ADD',
                         });
 
                         setTimeout(() => firework.destroy(), 1200);
@@ -1848,7 +1849,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     lifespan: 3000,
                     gravityY: 100,
                     frequency: 50,
-                    blendMode: 'NORMAL'
+                    blendMode: 'NORMAL',
                 });
 
                 // Stop confetti after 2.5 seconds
@@ -1861,13 +1862,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 for (let i = 0; i < 8; i++) {
                     setTimeout(() => {
                         const edge = Math.floor(Math.random() * 4);
-                        let x, y;
+                        let x; let
+                            y;
 
-                        switch(edge) {
-                            case 0: x = Math.random() * width; y = 0; break; // Top
-                            case 1: x = width; y = Math.random() * height; break; // Right
-                            case 2: x = Math.random() * width; y = height; break; // Bottom
-                            case 3: x = 0; y = Math.random() * height; break; // Left
+                        switch (edge) {
+                        case 0: x = Math.random() * width; y = 0; break; // Top
+                        case 1: x = width; y = Math.random() * height; break; // Right
+                        case 2: x = Math.random() * width; y = height; break; // Bottom
+                        case 3: x = 0; y = Math.random() * height; break; // Left
                         }
 
                         const sparkle = boardScene.add.particles(x, y, particleKey, {
@@ -1877,7 +1879,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             tint: 0xFFFFFF,
                             lifespan: 600,
                             quantity: 15,
-                            blendMode: 'ADD'
+                            blendMode: 'ADD',
                         });
 
                         setTimeout(() => sparkle.destroy(), 800);
@@ -1886,7 +1888,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
 
             console.log('[LocalMultiplayer] Victory animation created successfully');
-
         } catch (error) {
             console.error('[LocalMultiplayer] Error creating victory animation:', error);
         }

@@ -4738,50 +4738,435 @@ body {
     }
 }
 
-/* --- Spring Theme --- */
+/* ============================================
+   🌸 SPRING THEME - Ethereal Dawn Awakening
+   A breathtaking celebration of renewal with
+   magical atmosphere and growing flowers
+   ============================================ */
+
+/* Main Theme Container - Dreamy Ethereal Dawn */
 #spring-theme {
-    background: linear-gradient(to top, #b0c4de, #dcedc1, #e0f0e8);
+    background:
+        /* Ethereal sun glow - golden dawn light */
+        radial-gradient(ellipse 100% 100% at 75% 5%, rgba(255, 248, 220, 0.9) 0%, rgba(255, 223, 186, 0.6) 15%, transparent 45%),
+        /* Secondary sun rays - diffused light */
+        radial-gradient(ellipse 80% 70% at 80% 8%, rgba(255, 215, 180, 0.5) 0%, transparent 35%),
+        /* Soft rose gold horizon glow */
+        radial-gradient(ellipse 150% 50% at 50% 60%, rgba(255, 182, 193, 0.35) 0%, transparent 50%),
+        /* Magical lavender mist */
+        radial-gradient(ellipse 120% 80% at 20% 30%, rgba(230, 190, 255, 0.2) 0%, transparent 40%),
+        /* Dreamy cyan accent */
+        radial-gradient(ellipse 100% 60% at 90% 50%, rgba(175, 238, 238, 0.15) 0%, transparent 45%),
+        /* Main sky gradient - ethereal spring dawn */
+        linear-gradient(175deg,
+            #1e3a5f 0%,
+            /* Pre-dawn deep blue */
+            #2d5a7b 8%,
+            /* Deep sky awakening */
+            #4a8cb8 18%,
+            /* Morning sky blue */
+            #7ec8e3 30%,
+            /* Soft azure */
+            #b8e4f0 42%,
+            /* Light sky */
+            #ffecd2 55%,
+            /* Golden dawn horizon */
+            #ffdab9 65%,
+            /* Peach warmth */
+            #ffe4e1 75%,
+            /* Misty rose */
+            #e8f5e9 85%,
+            /* Soft meadow transition */
+            #c8e6c9 92%,
+            /* Fresh green meadow */
+            #81c784 100%
+            /* Lush grass */
+        );
+    overflow: hidden;
+    transition: filter 0.6s ease-out, background 1s ease-out;
+}
+
+/* Animated ambient atmosphere overlay */
+#spring-theme::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse 80% 50% at 75% 10%, rgba(255, 250, 240, 0.4) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 25% 80%, rgba(144, 238, 144, 0.15) 0%, transparent 50%);
+    animation: spring-atmosphere-breathe 12s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes spring-atmosphere-breathe {
+
+    0%,
+    100% {
+        opacity: 0.6;
+        filter: brightness(1) saturate(1);
+    }
+
+    50% {
+        opacity: 0.9;
+        filter: brightness(1.05) saturate(1.1);
+    }
+}
+
+#spring-theme.light-pulse {
+    filter: brightness(calc(1 + var(--pulse-intensity, 0.1)));
+}
+
+/* ===== Magical Sun with Radiating Rays - OPTIMIZED ===== */
+#spring-sun {
+    position: absolute;
+    top: -5%;
+    right: 10%;
+    width: 180px;
+    height: 180px;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.spring-sun-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    background: radial-gradient(circle at 35% 35%,
+            #fffef0 0%,
+            #fff8dc 30%,
+            #ffd700 60%,
+            transparent 72%);
+    border-radius: 50%;
+    /* REMOVED expensive box-shadow animation */
+    /* Using simple opacity pulse instead */
+    animation: spring-sun-pulse 8s ease-in-out infinite;
+}
+
+/* Static glow using a pseudo-element instead of animated box-shadow */
+.spring-sun-core::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle,
+            rgba(255, 215, 0, 0.4) 0%,
+            rgba(255, 179, 71, 0.1) 50%,
+            transparent 70%);
+    border-radius: 50%;
+    z-index: -1;
+}
+
+@keyframes spring-sun-pulse {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.9;
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.05);
+        opacity: 1;
+    }
+}
+
+.spring-sun-ray {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(255, 248, 220, 0.8) 0%, rgba(255, 215, 0, 0.3) 50%, transparent 100%);
+    transform-origin: left center;
+    animation: spring-sun-ray-rotate 30s linear infinite;
+    /* REMOVED blur */
+}
+
+.spring-sun-ray:nth-child(2) {
+    animation-delay: -2.5s;
+}
+
+.spring-sun-ray:nth-child(3) {
+    animation-delay: -5s;
+}
+
+.spring-sun-ray:nth-child(4) {
+    animation-delay: -7.5s;
+}
+
+.spring-sun-ray:nth-child(5) {
+    animation-delay: -10s;
+}
+
+.spring-sun-ray:nth-child(6) {
+    animation-delay: -12.5s;
+}
+
+.spring-sun-ray:nth-child(7) {
+    animation-delay: -15s;
+}
+
+.spring-sun-ray:nth-child(8) {
+    animation-delay: -17.5s;
+}
+
+.spring-sun-ray:nth-child(9) {
+    animation-delay: -20s;
+}
+
+.spring-sun-ray:nth-child(10) {
+    animation-delay: -22.5s;
+}
+
+.spring-sun-ray:nth-child(11) {
+    animation-delay: -25s;
+}
+
+.spring-sun-ray:nth-child(12) {
+    animation-delay: -27.5s;
+}
+
+@keyframes spring-sun-ray-rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ===== Floating Magical Particles (Pollen/Dust) - OPTIMIZED ===== */
+#spring-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 7;
+    pointer-events: none;
     overflow: hidden;
 }
 
+.spring-particle {
+    position: absolute;
+    width: var(--particle-size, 4px);
+    height: var(--particle-size, 4px);
+    /* Combined glow into the background gradient to remove box-shadow */
+    background: radial-gradient(circle at 50% 50%,
+            rgba(255, 255, 255, 0.9) 0%,
+            var(--particle-color, rgba(255, 248, 220, 0.8)) 40%,
+            transparent 80%);
+    border-radius: 50%;
+    animation: spring-particle-float var(--float-duration, 15s) ease-in-out infinite;
+    animation-delay: var(--float-delay, 0s);
+    opacity: 0;
+    /* REMOVED filter: blur and box-shadow */
+    will-change: transform, opacity;
+}
+
+@keyframes spring-particle-float {
+    0% {
+        transform: translate(var(--start-x, 0), 110vh) scale(0);
+        opacity: 0;
+    }
+
+    10% {
+        opacity: var(--particle-opacity, 0.8);
+        transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px)), 90vh) scale(1);
+    }
+
+    50% {
+        transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px) * 2), 50vh) scale(1);
+        opacity: var(--particle-opacity, 0.8);
+    }
+
+    90% {
+        opacity: var(--particle-opacity, 0.8);
+        transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px) * 3), 10vh) scale(1);
+    }
+
+    100% {
+        transform: translate(calc(var(--start-x, 0) + var(--drift-x, 10px) * 4), -10vh) scale(0);
+        opacity: 0;
+    }
+}
+
+/* ===== Glowing Fireflies - OPTIMIZED ===== */
+#spring-fireflies {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 15;
+    pointer-events: none;
+}
+
+.spring-firefly {
+    position: absolute;
+    width: 8px;
+    /* Slightly larger to compensate for removed shadow */
+    height: 8px;
+    /* Fake glow with gradient */
+    background: radial-gradient(circle,
+            rgba(255, 255, 200, 1) 0%,
+            rgba(200, 255, 150, 0.5) 40%,
+            transparent 70%);
+    border-radius: 50%;
+    /* REMOVED box-shadow */
+    animation:
+        spring-firefly-glow 2s ease-in-out infinite,
+        spring-firefly-drift var(--drift-duration, 20s) ease-in-out infinite;
+    animation-delay: var(--firefly-delay, 0s);
+}
+
+@keyframes spring-firefly-glow {
+
+    0%,
+    100% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+@keyframes spring-firefly-drift {
+
+    0%,
+    100% {
+        transform: translate(0, 0);
+    }
+
+    25% {
+        transform: translate(var(--drift-x1, 30px), var(--drift-y1, -20px));
+    }
+
+    50% {
+        transform: translate(var(--drift-x2, -20px), var(--drift-y2, 15px));
+    }
+
+    75% {
+        transform: translate(var(--drift-x3, 15px), var(--drift-y3, -30px));
+    }
+}
+
+/* ===== Ethereal Sunbeams / God Rays - OPTIMIZED ===== */
+#spring-sunbeams {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.spring-sunbeam {
+    position: absolute;
+    top: -20%;
+    right: 5%;
+    width: var(--beam-width, 80px);
+    height: 140%;
+    background: linear-gradient(180deg,
+            rgba(255, 250, 240, var(--beam-opacity, 0.25)) 0%,
+            rgba(255, 248, 220, 0.15) 30%,
+            rgba(255, 223, 186, 0.05) 60%,
+            transparent 100%);
+    transform-origin: top right;
+    transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg);
+    animation: spring-sunbeam-pulse var(--beam-duration, 10s) ease-in-out infinite;
+    animation-delay: var(--beam-delay, 0s);
+    /* REMOVED filter: blur */
+    opacity: 0.7;
+}
+
+@keyframes spring-sunbeam-pulse {
+
+    0%,
+    100% {
+        opacity: 0.5;
+        transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg) scaleY(1) scaleX(1);
+        /* REMOVED filter animation */
+    }
+
+    50% {
+        opacity: 0.8;
+        transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg) scaleY(1.03) scaleX(1.1);
+    }
+}
+
+/* ===== Volumetric Dreamy Clouds - OPTIMIZED ===== */
 #spring-clouds {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
-    height: 40%;
-    z-index: 0;
+    height: 60%;
+    z-index: 3;
+    pointer-events: none;
 }
 
 .spring-cloud {
     position: absolute;
-    background-color: rgba(255, 255, 255, 0.7);
+    background:
+        radial-gradient(ellipse 70% 70% at 50% 50%, rgba(255, 255, 255, 0.9) 0%, transparent 70%);
     border-radius: 50%;
-    filter: blur(15px);
-    animation: drift-cloud linear infinite;
+    /* REMOVED filter: blur */
+    animation:
+        spring-cloud-drift var(--cloud-duration, 120s) linear infinite;
+    /* Removed expensive morph animation */
+    animation-delay: var(--cloud-delay, 0s);
+    /* REMOVED complex box-shadow */
+    will-change: transform;
+    opacity: 0.8;
 }
 
-@keyframes drift-cloud {
+.spring-cloud::before,
+.spring-cloud::after {
+    display: none;
+}
+
+@keyframes spring-cloud-drift {
     from {
-        transform: translateX(-20vw);
+        transform: translateX(-30vw);
     }
 
     to {
-        transform: translateX(120vw);
+        transform: translateX(130vw);
     }
 }
 
+/* Removed morph animation */
+
+/* ===== Rainbow ===== */
 #rainbow-container {
     position: absolute;
-    top: 10%;
+    top: 8%;
     left: 50%;
-    width: 80vh;
-    height: 40vh;
+    width: 85vh;
+    height: 42vh;
     transform: translateX(-50%);
-    z-index: 1;
+    z-index: 3;
     overflow: hidden;
-    animation: rainbow-fade 90s ease-in-out infinite;
+    animation: rainbow-fade 120s ease-in-out infinite;
     opacity: 0;
+    filter: blur(2px) saturate(0.8);
 }
 
 #rainbow-container::before {
@@ -4792,8 +5177,17 @@ body {
     width: 100%;
     height: 200%;
     border-radius: 50%;
-    background: conic-gradient(from 0.25turn at 50% 100%, red, orange, yellow, green, blue, indigo, violet, transparent);
-    -webkit-mask-image: radial-gradient(ellipse 50% 100% at 50% 100%, black 60%, transparent 60.5%);
+    background: conic-gradient(from 0.25turn at 50% 100%,
+            rgba(255, 99, 71, 0.6),
+            rgba(255, 165, 0, 0.6),
+            rgba(255, 255, 0, 0.6),
+            rgba(144, 238, 144, 0.6),
+            rgba(135, 206, 235, 0.6),
+            rgba(138, 43, 226, 0.5),
+            rgba(255, 182, 193, 0.4),
+            transparent);
+    mask-image: radial-gradient(ellipse 50% 100% at 50% 100%, black 58%, transparent 62%);
+    -webkit-mask-image: radial-gradient(ellipse 50% 100% at 50% 100%, black 58%, transparent 62%);
 }
 
 @keyframes rainbow-fade {
@@ -4803,17 +5197,319 @@ body {
         opacity: 0;
     }
 
+    8% {
+        opacity: 0.5;
+    }
+
+    18% {
+        opacity: 0.5;
+    }
+
+    25% {
+        opacity: 0;
+    }
+}
+
+/* ===== Enchanting Cherry Blossom Petals ===== */
+#spring-petals {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 8;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.spring-petal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--petal-size, 14px);
+    height: var(--petal-size, 14px);
+    background:
+        radial-gradient(ellipse 80% 60% at 30% 30%, rgba(255, 255, 255, 0.8) 0%, transparent 50%),
+        linear-gradient(135deg,
+            var(--petal-color, #FFB7C5) 0%,
+            var(--petal-color-mid, #FFC8D4) 50%,
+            var(--petal-color-light, #FFE4EC) 100%);
+    border-radius: 50% 0 50% 0;
+    transform: scale(var(--petal-scale, 1));
+    /* REMOVED filter */
+    animation: spring-petal-fall var(--fall-duration, 12s) linear infinite;
+    animation-delay: var(--fall-delay, 0s);
+    box-shadow:
+        inset 3px 3px 6px rgba(255, 255, 255, 0.7),
+        inset -1px -1px 3px rgba(255, 182, 193, 0.3),
+        0 3px 8px rgba(255, 150, 180, 0.35);
+    will-change: transform;
+}
+
+.spring-petal::before {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: 20%;
+    width: 45%;
+    height: 45%;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.7) 0%, transparent 70%);
+    border-radius: 50%;
+    /* REMOVED filter */
+}
+
+.spring-petal::after {
+    display: none;
+}
+
+.spring-petal.extra {
+    animation: spring-petal-fall-burst linear forwards;
+}
+
+@keyframes spring-petal-fall {
+    0% {
+        transform: translate3d(var(--x-start, 50vw), -30px, 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-start, 0deg)) rotateY(0deg);
+        opacity: 0;
+    }
+
     5% {
-        opacity: 0.7;
+        opacity: var(--petal-opacity, 1);
+    }
+
+    25% {
+        transform: translate3d(calc(var(--x-start, 50vw) + (var(--x-end, 50vw) - var(--x-start, 50vw)) * 0.25), calc(25vh + 7px), 0) scale(var(--petal-scale, 1)) rotate(calc(var(--rotate-start, 0deg) + 90deg)) rotateY(45deg);
+    }
+
+    50% {
+        transform: translate3d(calc(var(--x-start, 50vw) + (var(--x-end, 50vw) - var(--x-start, 50vw)) * 0.5), calc(50vh + 15px), 0) scale(var(--petal-scale, 1)) rotate(calc(var(--rotate-start, 0deg) + 180deg)) rotateY(0deg);
+    }
+
+    75% {
+        transform: translate3d(calc(var(--x-start, 50vw) + (var(--x-end, 50vw) - var(--x-start, 50vw)) * 0.75), calc(75vh + 22px), 0) scale(var(--petal-scale, 1)) rotate(calc(var(--rotate-start, 0deg) + 270deg)) rotateY(-45deg);
+    }
+
+    95% {
+        opacity: var(--petal-opacity, 1);
+    }
+
+    100% {
+        transform: translate3d(var(--x-end, 50vw), calc(100vh + 30px), 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-end, 360deg)) rotateY(0deg);
+        opacity: 0;
+    }
+}
+
+@keyframes spring-petal-fall-burst {
+    0% {
+        transform: translate3d(var(--x-start, 50vw), -30px, 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-start, 0deg));
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate3d(var(--x-end, 50vw), calc(100vh + 30px), 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-end, 720deg));
+        opacity: 0;
+    }
+}
+
+/* ===== Enchanting Butterflies - OPTIMIZED ===== */
+#spring-butterflies {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 14;
+    pointer-events: none;
+}
+
+.spring-butterfly {
+    position: absolute;
+    width: 24px;
+    height: 16px;
+    left: var(--start-x, 50vw);
+    top: var(--start-y, 50vh);
+    animation:
+        spring-butterfly-path-1 var(--path-duration, 30s) ease-in-out infinite,
+        spring-butterfly-flutter 0.25s ease-in-out infinite;
+    /* REMOVED filter: drop-shadow */
+}
+
+.spring-butterfly::before,
+.spring-butterfly::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 12px;
+    height: 16px;
+    background:
+        radial-gradient(ellipse 60% 40% at 60% 30%, rgba(255, 255, 255, 0.7) 0%, transparent 50%),
+        radial-gradient(ellipse 40% 30% at 40% 70%, rgba(0, 0, 0, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg,
+            var(--butterfly-color, #FFD700) 0%,
+            var(--butterfly-color-light, #FFF8DC) 50%,
+            var(--butterfly-color, #FFD700) 100%);
+    border-radius: 50% 50% 35% 35%;
+    /* REMOVED complex box-shadow */
+    box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.4);
+}
+
+.spring-butterfly::before {
+    left: 0;
+    transform-origin: right center;
+    animation: spring-butterfly-wing-left 0.12s ease-in-out infinite alternate;
+}
+
+.spring-butterfly::after {
+    right: 0;
+    transform-origin: left center;
+    animation: spring-butterfly-wing-right 0.12s ease-in-out infinite alternate;
+}
+
+/* Butterfly body */
+.spring-butterfly-body {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 12px;
+    background: linear-gradient(to bottom, #333 0%, #555 50%, #333 100%);
+    border-radius: 50%;
+    z-index: 1;
+}
+
+@keyframes spring-butterfly-wing-left {
+    from {
+        transform: rotateY(0deg) rotateZ(-12deg) scale(1);
+    }
+
+    to {
+        transform: rotateY(70deg) rotateZ(-12deg) scale(0.95);
+    }
+}
+
+@keyframes spring-butterfly-wing-right {
+    from {
+        transform: rotateY(0deg) rotateZ(12deg) scale(1);
+    }
+
+    to {
+        transform: rotateY(-70deg) rotateZ(12deg) scale(0.95);
+    }
+}
+
+@keyframes spring-butterfly-path-1 {
+    0% {
+        transform: translate(0, 0) scale(1);
     }
 
     15% {
-        opacity: 0.7;
+        transform: translate(12vw, -10vh) scale(1.05);
+    }
+
+    30% {
+        transform: translate(25vw, 8vh) scale(0.95);
+    }
+
+    45% {
+        transform: translate(35vw, -15vh) scale(1.1);
+    }
+
+    60% {
+        transform: translate(50vw, 5vh) scale(1);
+    }
+
+    75% {
+        transform: translate(55vw, -8vh) scale(1.05);
+    }
+
+    90% {
+        transform: translate(62vw, 3vh) scale(0.98);
+    }
+
+    100% {
+        transform: translate(70vw, 0) scale(1);
+    }
+}
+
+.spring-butterfly.path-2 {
+    animation-name: spring-butterfly-path-2, spring-butterfly-flutter;
+}
+
+@keyframes spring-butterfly-path-2 {
+    0% {
+        transform: translate(0, 0) scale(1);
     }
 
     20% {
-        opacity: 0;
+        transform: translate(-12vw, 12vh) scale(1.1);
     }
+
+    40% {
+        transform: translate(8vw, -8vh) scale(0.9);
+    }
+
+    60% {
+        transform: translate(-18vw, 10vh) scale(1.05);
+    }
+
+    80% {
+        transform: translate(12vw, -12vh) scale(0.95);
+    }
+
+    100% {
+        transform: translate(-8vw, 0) scale(1);
+    }
+}
+
+.spring-butterfly.path-3 {
+    animation-name: spring-butterfly-path-3, spring-butterfly-flutter;
+}
+
+@keyframes spring-butterfly-path-3 {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    25% {
+        transform: translate(18vw, 18vh) scale(1.15);
+    }
+
+    50% {
+        transform: translate(-8vw, -8vh) scale(0.85);
+    }
+
+    75% {
+        transform: translate(10vw, 12vh) scale(1.1);
+    }
+
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+}
+
+@keyframes spring-butterfly-flutter {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.9;
+    }
+
+    /* REMOVED filter animation */
+}
+
+/* ===== Rain Layers - OPTIMIZED ===== */
+#spring-rain {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 6;
+    pointer-events: none;
 }
 
 .rain-layer {
@@ -4825,68 +5521,186 @@ body {
 }
 
 #rain-back {
-    z-index: 2;
-    filter: blur(1px);
-    opacity: 0.7;
+    z-index: 1;
+    opacity: 0.3;
+    /* REMOVED filter: blur */
 }
 
 #rain-mid {
-    z-index: 4;
+    z-index: 2;
+    opacity: 0.5;
+    /* REMOVED filter: blur */
 }
 
 #rain-front {
-    z-index: 6;
-    filter: brightness(1.2);
+    z-index: 3;
+    opacity: 0.7;
+    /* REMOVED filter: brightness */
 }
 
 .spring-raindrop {
     position: absolute;
     bottom: 100%;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(200, 220, 240, 0.8));
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(173, 216, 230, 0.7) 50%,
+            rgba(135, 206, 250, 0.9) 100%);
+    border-radius: 0 0 50% 50%;
     animation: spring-rain-fall linear infinite;
 }
 
 @keyframes spring-rain-fall {
     to {
-        transform: translateY(calc(100vh + 100px)) translateX(var(--x-drift));
+        transform: translateY(calc(100vh + 100px)) translateX(var(--x-drift, 0px));
     }
 }
 
+/* ===== Lush Enchanted Meadow Ground ===== */
 .spring-ground {
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 10%;
-    background: linear-gradient(to top, #6a994e, #89c2d9);
-    z-index: 1;
+    height: 14%;
+    background:
+        /* Top soft blend */
+        linear-gradient(to top,
+            transparent 0%,
+            rgba(168, 219, 168, 0.3) 60%,
+            transparent 100%),
+        /* Main ground gradient with depth */
+        linear-gradient(to top,
+            #2d5a1e 0%,
+            /* Deep forest floor */
+            #3d7a2e 15%,
+            /* Rich earth green */
+            #4a8c3a 30%,
+            /* Grass base */
+            #5ca045 45%,
+            /* Lush grass */
+            #6fb856 60%,
+            /* Bright meadow */
+            #81c784 75%,
+            /* Fresh spring green */
+            #a5d6a7 88%,
+            /* Light highlights */
+            transparent 100%);
+    z-index: 10;
+    box-shadow:
+        inset 0 20px 40px rgba(255, 255, 255, 0.1),
+        inset 0 -10px 30px rgba(0, 50, 0, 0.2);
 }
 
-#sprouts-container {
+.spring-ground::before {
+    content: '';
     position: absolute;
-    bottom: 8%;
+    top: -25px;
     left: 0;
     width: 100%;
-    height: 20%;
-    z-index: 3;
+    height: 35px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 25'%3E%3Cdefs%3E%3ClinearGradient id='grass' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%2398fb98'/%3E%3Cstop offset='100%25' style='stop-color:%2366bb6a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 25 Q3 12 6 22 Q9 8 12 20 Q15 5 18 18 Q21 10 24 21 Q27 6 30 19 Q33 12 36 22 Q39 4 42 17 Q45 10 48 20 Q51 7 54 18 Q57 12 60 21 Q63 5 66 19 Q69 10 72 22 Q75 6 78 18 Q81 11 84 20 Q87 4 90 17 Q93 9 96 21 Q99 7 102 19 Q105 12 108 22 Q111 5 114 18 Q117 10 120 21 L120 25 Z' fill='url(%23grass)'/%3E%3C/svg%3E") repeat-x;
+    background-size: 180px 25px;
+    animation: spring-grass-sway 4s ease-in-out infinite;
+}
+
+.spring-ground::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse 30% 50% at 20% 30%, rgba(255, 255, 200, 0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 25% 40% at 70% 40%, rgba(255, 255, 200, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 20% 30% at 50% 50%, rgba(255, 255, 200, 0.04) 0%, transparent 50%);
+    pointer-events: none;
+    animation: spring-ground-shimmer 8s ease-in-out infinite;
+}
+
+@keyframes spring-grass-sway {
+
+    0%,
+    100% {
+        transform: scaleX(1);
+    }
+
+    50% {
+        transform: scaleX(1.01);
+    }
+}
+
+@keyframes spring-ground-shimmer {
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 0.9;
+    }
+}
+
+/* ===== Enchanted Meadow Wildflowers ===== */
+#spring-meadow {
+    position: absolute;
+    bottom: 6%;
+    left: 0;
+    width: 100%;
+    height: 16%;
+    z-index: 11;
+    pointer-events: none;
+}
+
+.spring-wildflower {
+    position: absolute;
+    animation: spring-wildflower-sway var(--sway-duration, 3s) ease-in-out infinite alternate;
+    transform-origin: bottom center;
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.15));
+    transition: filter 0.3s ease;
+}
+
+.spring-wildflower:hover {
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2)) brightness(1.1);
+}
+
+@keyframes spring-wildflower-sway {
+    from {
+        transform: rotate(-6deg) translateX(-2px);
+    }
+
+    to {
+        transform: rotate(6deg) translateX(2px);
+    }
+}
+
+/* ===== Growing Sprouts ===== */
+#sprouts-container {
+    position: absolute;
+    bottom: 10%;
+    left: 0;
+    width: 100%;
+    height: 18%;
+    z-index: 12;
+    pointer-events: none;
 }
 
 .sprout {
     position: absolute;
     bottom: 0;
-    width: 20px;
-    height: 40px;
+    width: 22px;
+    height: 45px;
     transform-origin: bottom center;
-    animation: sprout-life-cycle 25s ease-in-out infinite;
+    animation: sprout-life-cycle 28s ease-in-out infinite;
 }
 
 .sprout>div {
-    /* Leaf container */
     position: absolute;
     bottom: 0;
     width: 100%;
     height: 100%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 40"><path d="M 10 40 C 0 30, 0 10, 10 0 C 20 10, 20 30, 10 40 Z" fill="rgba(119, 221, 119, 0.9)"/></svg>');
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 40"><defs><linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:%2398fb98"/><stop offset="100%" style="stop-color:%2366bb6a"/></linearGradient></defs><path d="M 10 40 C 0 30, 0 10, 10 0 C 20 10, 20 30, 10 40 Z" fill="url(%23leafGrad)"/><path d="M 10 40 L 10 5" stroke="%234caf50" stroke-width="0.8" fill="none"/></svg>');
     background-size: contain;
     background-repeat: no-repeat;
     transform-origin: bottom center;
@@ -4895,100 +5709,1060 @@ body {
 }
 
 .sprout .left {
-    transform: rotate(-15deg);
+    transform: rotate(-18deg);
+    animation-name: sprout-sway-left;
 }
 
 .sprout .right {
-    transform: rotate(15deg);
+    transform: rotate(18deg);
+    animation-name: sprout-sway-right;
 }
 
 @keyframes sprout-life-cycle {
     0% {
         transform: scaleY(0);
+        opacity: 0.8;
     }
 
-    /* Grow */
-    10% {
+    8% {
         transform: scaleY(1);
+        opacity: 1;
     }
 
-    15% {
-        /* Start swaying */
+    12% {
         animation-play-state: running;
     }
 
-    85% {
-        /* Stop swaying, start wilting */
+    88% {
         transform: scaleY(1);
-        filter: saturate(1);
-        animation-play-state: paused;
+        filter: saturate(1) brightness(1);
     }
 
     95% {
-        transform: scaleY(0.8);
-        filter: saturate(0.5);
+        transform: scaleY(0.85);
+        filter: saturate(0.6) brightness(0.9);
     }
 
     100% {
         transform: scaleY(0);
+        opacity: 0.5;
     }
 }
 
 @keyframes sprout-sway-left {
     from {
-        transform: rotate(-20deg);
+        transform: rotate(-22deg);
     }
 
     to {
-        transform: rotate(-10deg);
+        transform: rotate(-12deg);
     }
 }
 
 @keyframes sprout-sway-right {
     from {
-        transform: rotate(10deg);
+        transform: rotate(12deg);
     }
 
     to {
-        transform: rotate(20deg);
+        transform: rotate(22deg);
     }
-}
-
-.sprout .left {
-    animation-name: sprout-sway-left;
-}
-
-.sprout .right {
-    animation-name: sprout-sway-right;
 }
 
 .sprout::after {
-    /* Dewdrop */
     content: '';
     position: absolute;
-    top: 30%;
-    left: 45%;
-    width: 5px;
-    height: 5px;
-    background-color: rgba(220, 230, 255, 0.8);
+    top: 25%;
+    left: 42%;
+    width: 6px;
+    height: 6px;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(200, 230, 255, 0.6));
     border-radius: 50%;
-    box-shadow: 0 0 5px rgba(220, 230, 255, 1);
-    animation: glisten 4s ease-in-out infinite alternate;
+    box-shadow: 0 0 6px rgba(200, 230, 255, 0.8);
+    animation: sprout-dewdrop 5s ease-in-out infinite alternate;
     opacity: 0;
     animation-delay: inherit;
-    /* Inherit delay from parent .sprout */
 }
 
-@keyframes glisten {
-    from {
+@keyframes sprout-dewdrop {
+
+    0%,
+    30% {
         opacity: 0;
-        transform: scale(0.8);
+        transform: scale(0.6);
     }
 
-    to {
+    50% {
         opacity: 1;
         transform: scale(1);
     }
+
+    70%,
+    100% {
+        opacity: 0;
+        transform: scale(0.8) translateY(5px);
+    }
+}
+
+/* ============================================
+   🌺 MAGICAL COMBO FLOWER - The Heart of Spring
+   A breathtaking flower that grows with your combos
+   ============================================ */
+
+#spring-combo-flower {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 35vh;
+    /* Slightly taller to allow flowers to grow higher */
+    z-index: 50;
+    pointer-events: none;
+    perspective: 800px;
+    display: block;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+}
+
+.combo-flower-wrapper {
+    position: absolute;
+    /* Position is set dynamically via JS */
+    --growth-stage: 0;
+    --growth-progress: 0;
+    --flower-scale: 1;
+    --flower-rotation: 0deg;
+    --hue-shift: 0deg;
+    --growth-speed: 0.5;
+    --stem-height: 80px;
+    --center-size: 12px;
+    /* Dynamic scaling based on growth progress: 0.2 (dormant) -> 1.0 (blooming/radiant) */
+    transform: rotate(var(--flower-rotation)) scale(calc(var(--flower-scale) * (0.2 + var(--growth-progress) * 0.8)));
+    filter: hue-rotate(var(--hue-shift));
+    /* Optimized transitions */
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.5s ease-out;
+    transform-style: preserve-3d;
+    /* Removed contain: paint as it clips content for 0-size elements */
+    will-change: transform;
+    width: 0;
+    height: 0;
+    overflow: visible;
+}
+
+/* Magical Stem with Life Energy */
+.combo-flower-stem {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(3px + var(--growth-progress) * 3px);
+    height: calc(var(--stem-height) * var(--growth-progress));
+    /* Very slow growth transition */
+    transition: width 5s ease-out, height 5s ease-out;
+    background:
+        linear-gradient(90deg,
+            rgba(0, 0, 0, 0.1) 0%,
+            transparent 30%,
+            transparent 70%,
+            rgba(0, 0, 0, 0.1) 100%),
+        linear-gradient(to top,
+            #1b5e20 0%,
+            #2e7d32 20%,
+            #388e3c 40%,
+            #43a047 60%,
+            #4caf50 80%,
+            #66bb6a 100%);
+    border-radius: 4px;
+    transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow:
+        inset 2px 0 6px rgba(255, 255, 255, 0.25),
+        inset -1px 0 4px rgba(0, 0, 0, 0.15),
+        2px 0 8px rgba(76, 175, 80, 0.3),
+        -2px 0 8px rgba(76, 175, 80, 0.3);
+}
+
+/* Life energy flowing through stem */
+.combo-flower-stem::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(to top,
+            rgba(200, 255, 200, 0) 0%,
+            rgba(200, 255, 200, 0.6) 50%,
+            rgba(200, 255, 200, 0) 100%);
+    animation: stem-energy-flow 2s ease-in-out infinite;
+    opacity: var(--growth-progress);
+}
+
+@keyframes stem-energy-flow {
+
+    0%,
+    100% {
+        transform: translateX(-50%) scaleY(0.5);
+        opacity: calc(var(--growth-progress) * 0.3);
+    }
+
+    50% {
+        transform: translateX(-50%) scaleY(1);
+        opacity: var(--growth-progress);
+    }
+}
+
+/* Enchanted Leaves on stem */
+.combo-flower-leaf {
+    position: absolute;
+    width: calc(20px + var(--growth-progress) * 15px);
+    height: calc(12px + var(--growth-progress) * 8px);
+    background:
+        radial-gradient(ellipse 50% 50% at 30% 30%, rgba(255, 255, 255, 0.4) 0%, transparent 50%),
+        linear-gradient(135deg,
+            #98fb98 0%,
+            #66bb6a 40%,
+            #4caf50 70%,
+            #388e3c 100%);
+    border-radius: 0 85% 0 85%;
+    bottom: calc(20px + var(--growth-progress) * 45px);
+    opacity: calc(0.2 + var(--growth-progress) * 0.8);
+    transition: all 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+    box-shadow:
+        inset 2px 2px 5px rgba(255, 255, 255, 0.4),
+        inset -1px -1px 3px rgba(0, 100, 0, 0.2),
+        2px 3px 8px rgba(76, 175, 80, 0.3);
+    animation: leaf-gentle-sway 4s ease-in-out infinite;
+}
+
+.combo-flower-leaf.left {
+    left: 50%;
+    bottom: var(--leaf-position, 35%);
+    transform: translateX(-105%) rotate(-35deg) scale(calc(0.4 + var(--growth-progress) * 0.6));
+    animation-delay: 0s;
+    transition: transform 4s ease-out, opacity 3s ease-out;
+}
+
+.combo-flower-leaf.right {
+    right: 50%;
+    bottom: var(--leaf-position, 30%);
+    transform: translateX(105%) rotate(35deg) scaleX(-1) scale(calc(0.4 + var(--growth-progress) * 0.6));
+    animation-delay: -2s;
+    transition: transform 4s ease-out, opacity 3s ease-out;
+}
+
+/* Additional leaf pair */
+.combo-flower-leaf-pair {
+    position: absolute;
+    width: calc(15px + var(--growth-progress) * 10px);
+    height: calc(9px + var(--growth-progress) * 6px);
+    background:
+        radial-gradient(ellipse 50% 50% at 30% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 50%),
+        linear-gradient(135deg, #81c784 0%, #4caf50 60%, #388e3c 100%);
+    border-radius: 0 80% 0 80%;
+    bottom: calc(50px + var(--growth-progress) * 70px);
+    opacity: calc(var(--growth-progress) * 0.9);
+    transition: all 0.5s ease-out;
+    box-shadow: inset 1px 1px 3px rgba(255, 255, 255, 0.3);
+}
+
+@keyframes leaf-gentle-sway {
+
+    0%,
+    100% {
+        transform: translateX(-105%) rotate(-35deg) scale(calc(0.4 + var(--growth-progress) * 0.6));
+    }
+
+    50% {
+        transform: translateX(-105%) rotate(-30deg) scale(calc(0.42 + var(--growth-progress) * 0.6));
+    }
+}
+
+/* Magnificent Flower Head */
+.combo-flower-head {
+    position: absolute;
+    bottom: calc(var(--stem-height) * var(--growth-progress) - 10px);
+    left: 50%;
+    transform: translateX(-50%) scale(calc(0.05 + var(--growth-progress) * 0.95)) rotateX(5deg);
+    width: 80px;
+    height: 80px;
+    /* Very slow transition for gradual blooming */
+    transition: bottom 5s ease-out, transform 4s ease-out;
+    transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-style: preserve-3d;
+}
+
+/* Radiant Petals */
+.combo-flower-petal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 35px;
+    height: 18px;
+    --petal-scale: 1;
+    /* Very slow petal animation */
+    transition: transform 4s ease-out, opacity 3s ease-out;
+    background:
+        radial-gradient(ellipse 70% 50% at 70% 30%, rgba(255, 255, 255, 0.7) 0%, transparent 50%),
+        linear-gradient(100deg,
+            #ff8fab 0%,
+            #ffb3c6 25%,
+            #ffc8d7 50%,
+            #ffdce4 75%,
+            #fff0f5 100%);
+    border-radius: 50% 50% 45% 45% / 65% 65% 35% 35%;
+    transform-origin: 0% 50%;
+    transform: rotate(var(--petal-angle)) translateX(12px);
+    opacity: calc(var(--growth-progress) * 1);
+    transition: all 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+    /* Optimized box-shadow - reduced complexity */
+    box-shadow:
+        inset 3px 3px 8px rgba(255, 255, 255, 0.6),
+        0 2px 6px rgba(255, 105, 180, 0.3);
+    backface-visibility: hidden;
+}
+
+.combo-flower-petal::before {
+    content: '';
+    position: absolute;
+    top: 15%;
+    left: 25%;
+    width: 55%;
+    height: 35%;
+    background:
+        radial-gradient(ellipse at center, rgba(255, 255, 255, 0.6) 0%, transparent 70%);
+    border-radius: 50%;
+    filter: blur(2px);
+}
+
+.combo-flower-petal::after {
+    content: '';
+    position: absolute;
+    bottom: 20%;
+    right: 15%;
+    width: 25%;
+    height: 20%;
+    background: radial-gradient(circle, rgba(255, 150, 180, 0.4) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+/* ===== PETAL SHAPE VARIATIONS ===== */
+
+/* Round petals (default) */
+.combo-flower-petal.petal-round {
+    border-radius: 50% 50% 40% 40%;
+}
+
+/* Pointed petals (lily-like) */
+.combo-flower-petal.petal-pointed {
+    border-radius: 50% 50% 5% 5%;
+    width: 30px;
+    height: 24px;
+}
+
+/* Heart-shaped petals (pansy-like) */
+.combo-flower-petal.petal-heart {
+    border-radius: 50% 50% 50% 50%;
+    width: 28px;
+    height: 20px;
+    clip-path: path('M 14 0 C 22 0 28 8 28 16 L 14 24 L 0 16 C 0 8 6 0 14 0');
+}
+
+/* Thin petals (daisy-like) */
+.combo-flower-petal.petal-thin {
+    width: 25px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+/* Wavy petals (cosmos-like) */
+.combo-flower-petal.petal-wavy {
+    border-radius: 60% 60% 30% 30%;
+    width: 32px;
+    height: 18px;
+    clip-path: polygon(0% 50%, 15% 0%, 35% 20%, 50% 0%, 65% 20%, 85% 0%, 100% 50%, 85% 100%, 50% 80%, 15% 100%);
+}
+
+/* Star petals */
+.combo-flower-petal.petal-star {
+    width: 28px;
+    height: 20px;
+    border-radius: 0;
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    background: linear-gradient(180deg,
+            #fff8dc 0%,
+            #ffd700 50%,
+            #ffb347 100%);
+}
+
+/* ===== FLOWER VARIETY COLORS ===== */
+
+.combo-flower-wrapper.variety-cherry .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #ffc0cb 0%,
+            #ffb7c5 40%,
+            #ff91a4 100%);
+}
+
+.combo-flower-wrapper.variety-lily .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #ffffff 0%,
+            #fffaf0 40%,
+            #ffefd5 100%);
+}
+
+.combo-flower-wrapper.variety-rose .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #ff6b6b 0%,
+            #ee5a5a 40%,
+            #dc143c 100%);
+}
+
+.combo-flower-wrapper.variety-pansy .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #9370db 0%,
+            #8a2be2 40%,
+            #4b0082 100%);
+}
+
+.combo-flower-wrapper.variety-daisy .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #ffffff 0%,
+            #fffef0 50%,
+            #fffacd 100%);
+}
+
+.combo-flower-wrapper.variety-cosmos .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #ff69b4 0%,
+            #ff1493 40%,
+            #db7093 100%);
+}
+
+.combo-flower-wrapper.variety-star .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #fff8dc 0%,
+            #ffd700 50%,
+            #ffb347 100%);
+}
+
+.combo-flower-wrapper.variety-sunflower .combo-flower-petal {
+    background: linear-gradient(180deg,
+            #ffff00 0%,
+            #ffd700 40%,
+            #ff8c00 100%);
+}
+
+.combo-flower-wrapper.variety-sunflower .combo-flower-center {
+    width: calc(var(--center-size) * 1.5);
+    height: calc(var(--center-size) * 1.5);
+    background: radial-gradient(circle,
+            #8b4513 0%,
+            #654321 50%,
+            #3d2914 100%);
+}
+
+/* ===== WITHERING ANIMATION ===== */
+.combo-flower-wrapper.withering {
+    animation: flower-wither 2s ease-out forwards;
+}
+
+@keyframes flower-wither {
+    0% {
+        opacity: 1;
+        transform: rotate(var(--flower-rotation)) scale(var(--flower-scale));
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: rotate(calc(var(--flower-rotation) + 15deg)) scale(calc(var(--flower-scale) * 0.7));
+        filter: hue-rotate(var(--hue-shift)) grayscale(0.5);
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(calc(var(--flower-rotation) + 30deg)) scale(0);
+        filter: hue-rotate(var(--hue-shift)) grayscale(1);
+    }
+}
+
+/* Golden Radiant Center */
+.combo-flower-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(var(--center-size, 12px) + var(--growth-progress) * 6px);
+    transition: width 4s ease-out, height 4s ease-out, box-shadow 3s ease-out;
+    height: calc(18px + var(--growth-progress) * 8px);
+    background:
+        radial-gradient(circle at 35% 35%,
+            #fffef0 0%,
+            #fff8dc 20%,
+            #ffd700 45%,
+            #ffb300 70%,
+            #ff8f00 100%);
+    border-radius: 50%;
+    z-index: 2;
+    /* Optimized box-shadow */
+    box-shadow:
+        inset 2px 2px 5px rgba(255, 255, 255, 0.6),
+        0 0 10px rgba(255, 215, 0, 0.5);
+    transition: all 0.4s ease-out;
+}
+
+.combo-flower-center::before {
+    content: '';
+    position: absolute;
+    top: 15%;
+    left: 15%;
+    width: 40%;
+    height: 40%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.combo-flower-center::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120%;
+    height: 120%;
+    background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, transparent 60%);
+    border-radius: 50%;
+    animation: center-pulse 1.5s ease-in-out infinite;
+    opacity: var(--growth-progress);
+}
+
+@keyframes center-pulse {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: calc(var(--growth-progress) * 0.5);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: var(--growth-progress);
+    }
+}
+
+/* Magical Aura Glow - Simplified for performance */
+.combo-flower-glow {
+    display: none;
+    /* Disabled for performance */
+}
+
+/* Secondary outer aura - Simplified for performance */
+.combo-flower-aura {
+    display: none;
+    /* Disabled for performance */
+}
+
+/* Particle container */
+.combo-flower-particles {
+    position: absolute;
+    bottom: calc(var(--stem-height) * var(--growth-progress) + 20px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    transition: bottom 5s ease-out;
+    height: 140px;
+    pointer-events: none;
+}
+
+/* Enhanced Growth particles - Simplified */
+.combo-growth-particle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--particle-size, 5px);
+    height: var(--particle-size, 5px);
+    background: var(--particle-color, #ffd700);
+    border-radius: 50%;
+    animation: combo-particle-burst 1.4s ease-out forwards;
+    /* Removed expensive box-shadow */
+}
+
+@keyframes combo-particle-burst {
+    0% {
+        transform: translate(-50%, -50%) rotate(var(--particle-angle)) translateY(0) scale(1.2);
+        opacity: 1;
+    }
+
+    70% {
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(var(--particle-angle)) translateY(calc(-1 * var(--particle-distance))) scale(0);
+        opacity: 0;
+    }
+}
+
+/* ===== Spectacular Flower Growth Stages ===== */
+
+/* Stage: Dormant (seed waiting to bloom) */
+.combo-flower-wrapper.stage-dormant {
+    opacity: 0.25;
+    filter: grayscale(0.5);
+    /* Simplified filter */
+}
+
+.combo-flower-wrapper.stage-dormant .combo-flower-head {
+    transform: translateX(-50%) scale(0);
+    opacity: 0;
+}
+
+/* Stage: Sprouting (combo 1-2) - The awakening */
+.combo-flower-wrapper.stage-sprouting {
+    opacity: 0.75;
+    /* Removed filter saturation */
+}
+
+.combo-flower-wrapper.stage-sprouting .combo-flower-stem {
+    /* Removed filter animation */
+    opacity: 1;
+}
+
+.combo-flower-wrapper.stage-sprouting .combo-flower-petal {
+    opacity: 0.25;
+    transform: rotate(var(--petal-angle)) translateX(4px) scale(0.35);
+    /* Removed blur */
+}
+
+.combo-flower-wrapper.stage-sprouting .combo-flower-head {
+    transform: translateX(-50%) scale(0.4) rotateX(30deg);
+}
+
+/* Stage: Budding (combo 3-4) - Preparing to bloom */
+.combo-flower-wrapper.stage-budding {
+    opacity: 0.9;
+}
+
+.combo-flower-wrapper.stage-budding .combo-flower-petal {
+    opacity: 0.55;
+    transform: rotate(var(--petal-angle)) translateX(8px) scale(0.6);
+    animation: petal-unfurl 4s ease-in-out infinite;
+    animation-delay: calc(var(--petal-index) * 0.15s);
+}
+
+@keyframes petal-unfurl {
+
+    0%,
+    100% {
+        transform: rotate(var(--petal-angle)) translateX(8px) scale(0.6);
+        opacity: 0.55;
+    }
+
+    50% {
+        transform: rotate(calc(var(--petal-angle) + 2deg)) translateX(10px) scale(0.65);
+        opacity: 0.65;
+    }
+}
+
+.combo-flower-wrapper.stage-budding .combo-flower-center {
+    transform: translate(-50%, -50%) scale(0.7);
+    /* Removed shadow animation */
+}
+
+.combo-flower-wrapper.stage-budding .combo-flower-head {
+    transform: translateX(-50%) scale(0.7) rotateX(15deg);
+}
+
+/* Stage: Blooming (combo 5-7) - Full bloom begins */
+.combo-flower-wrapper.stage-blooming {
+    opacity: 1;
+}
+
+.combo-flower-wrapper.stage-blooming .combo-flower-petal {
+    opacity: 0.9;
+    transform: rotate(var(--petal-angle)) translateX(14px) scale(0.9);
+    animation: petal-bloom-sway 3.5s ease-in-out infinite;
+    animation-delay: calc(var(--petal-index) * 0.12s);
+}
+
+@keyframes petal-bloom-sway {
+
+    0%,
+    100% {
+        transform: rotate(var(--petal-angle)) translateX(14px) scale(0.9);
+    }
+
+    25% {
+        transform: rotate(calc(var(--petal-angle) + 4deg)) translateX(16px) scale(0.93);
+    }
+
+    50% {
+        transform: rotate(calc(var(--petal-angle) + 2deg)) translateX(15px) scale(0.92);
+    }
+
+    75% {
+        transform: rotate(calc(var(--petal-angle) - 2deg)) translateX(13px) scale(0.88);
+    }
+}
+
+.combo-flower-wrapper.stage-blooming .combo-flower-head {
+    transform: translateX(-50%) scale(0.95) rotateX(5deg);
+}
+
+/* Stage: Radiant (combo 8-10) - Glowing magnificence */
+.combo-flower-wrapper.stage-radiant {
+    opacity: 1;
+    /* Removed drop-shadows and saturation */
+}
+
+.combo-flower-wrapper.stage-radiant .combo-flower-petal {
+    opacity: 1;
+    transform: rotate(var(--petal-angle)) translateX(18px) scale(1.05);
+    animation: petal-radiant-dance 2.5s ease-in-out infinite;
+    animation-delay: calc(var(--petal-index) * 0.08s);
+    background:
+        radial-gradient(ellipse 70% 50% at 70% 30%, rgba(255, 255, 255, 0.8) 0%, transparent 50%),
+        linear-gradient(100deg,
+            #ffb3c6 0%,
+            #ffc8d7 30%,
+            #ffdce4 60%,
+            #fff5f8 90%,
+            #ffffff 100%);
+    /* Removed expensive box-shadows */
+}
+
+@keyframes petal-radiant-dance {
+
+    0%,
+    100% {
+        transform: rotate(var(--petal-angle)) translateX(18px) scale(1.05);
+    }
+
+    25% {
+        transform: rotate(calc(var(--petal-angle) + 6deg)) translateX(21px) scale(1.08);
+    }
+
+    50% {
+        transform: rotate(calc(var(--petal-angle) + 3deg)) translateX(20px) scale(1.06);
+    }
+
+    75% {
+        transform: rotate(calc(var(--petal-angle) - 3deg)) translateX(17px) scale(1.02);
+    }
+}
+
+.combo-flower-wrapper.stage-radiant .combo-flower-center {
+    animation: center-radiant-glow 1.8s ease-in-out infinite;
+    /* Simplified shadow */
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+
+@keyframes center-radiant-glow {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.1);
+        opacity: 0.9;
+    }
+}
+
+.combo-flower-wrapper.stage-radiant .combo-flower-head {
+    transform: translateX(-50%) scale(1.1) rotateX(0deg);
+    animation: head-radiant-sway 4s ease-in-out infinite;
+}
+
+@keyframes head-radiant-sway {
+
+    0%,
+    100% {
+        transform: translateX(-50%) scale(1.1) rotateX(0deg) rotateZ(0deg);
+    }
+
+    25% {
+        transform: translateX(-50%) scale(1.12) rotateX(2deg) rotateZ(1deg);
+    }
+
+    50% {
+        transform: translateX(-50%) scale(1.1) rotateX(0deg) rotateZ(0deg);
+    }
+
+    75% {
+        transform: translateX(-50%) scale(1.12) rotateX(-2deg) rotateZ(-1deg);
+    }
+}
+
+/* Stage: Transcendent (combo 11+) - Maximum glory */
+.combo-flower-wrapper.stage-transcendent {
+    opacity: 1;
+    /* transform scaling removed - handled by base class with --growth-progress */
+    filter:
+        hue-rotate(var(--hue-shift)) drop-shadow(0 0 20px rgba(255, 215, 0, 0.7)) drop-shadow(0 0 40px rgba(255, 182, 193, 0.4)) saturate(1.3) brightness(1.1);
+}
+
+.combo-flower-wrapper.stage-transcendent .combo-flower-petal {
+    opacity: 1;
+    transform: rotate(var(--petal-angle)) translateX(22px) scale(1.15);
+    animation: petal-transcendent-glory 2s ease-in-out infinite;
+    animation-delay: calc(var(--petal-index) * 0.05s);
+    background:
+        radial-gradient(ellipse 80% 60% at 65% 25%, rgba(255, 255, 255, 0.9) 0%, transparent 50%),
+        linear-gradient(100deg,
+            #ffc8d7 0%,
+            #ffdce4 20%,
+            #ffecf0 40%,
+            #fff8fa 60%,
+            #ffffff 80%,
+            #fffef0 100%);
+    box-shadow:
+        inset 4px 4px 12px rgba(255, 255, 255, 0.85),
+        inset -1px -1px 6px rgba(255, 182, 193, 0.2),
+        0 5px 20px rgba(255, 105, 180, 0.6),
+        0 0 35px rgba(255, 182, 193, 0.5),
+        0 0 50px rgba(255, 215, 0, 0.3);
+}
+
+@keyframes petal-transcendent-glory {
+
+    0%,
+    100% {
+        transform: rotate(var(--petal-angle)) translateX(22px) scale(1.15);
+        filter: brightness(1) saturate(1);
+    }
+
+    25% {
+        transform: rotate(calc(var(--petal-angle) + 10deg)) translateX(28px) scale(1.22);
+        filter: brightness(1.2) saturate(1.15);
+    }
+
+    50% {
+        transform: rotate(calc(var(--petal-angle) + 5deg)) translateX(25px) scale(1.18);
+        filter: brightness(1.3) saturate(1.2);
+    }
+
+    75% {
+        transform: rotate(calc(var(--petal-angle) - 5deg)) translateX(20px) scale(1.12);
+        filter: brightness(1.15) saturate(1.1);
+    }
+}
+
+.combo-flower-wrapper.stage-transcendent .combo-flower-center {
+    background:
+        radial-gradient(circle at 30% 30%,
+            #ffffff 0%,
+            #fffef0 20%,
+            #fff8dc 40%,
+            #ffd700 65%,
+            #ffb300 100%);
+    animation: center-transcendent-pulse 1.2s ease-in-out infinite;
+    box-shadow:
+        inset 4px 4px 12px rgba(255, 255, 255, 0.9),
+        0 0 30px rgba(255, 215, 0, 1),
+        0 0 60px rgba(255, 165, 0, 0.8),
+        0 8px 40px rgba(255, 140, 0, 0.6);
+}
+
+@keyframes center-transcendent-pulse {
+
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        filter: brightness(1);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.2);
+        filter: brightness(1.3);
+    }
+}
+
+.combo-flower-wrapper.stage-transcendent .combo-flower-head {
+    transform: translateX(-50%) scale(1.2) rotateX(0deg);
+    animation: head-transcendent-glory 3s ease-in-out infinite;
+}
+
+@keyframes head-transcendent-glory {
+
+    0%,
+    100% {
+        transform: translateX(-50%) scale(1.2) rotateX(0deg) rotateZ(0deg);
+        filter: brightness(1);
+    }
+
+    25% {
+        transform: translateX(-50%) scale(1.25) rotateX(5deg) rotateZ(3deg);
+        filter: brightness(1.1);
+    }
+
+    50% {
+        transform: translateX(-50%) scale(1.22) rotateX(0deg) rotateZ(0deg);
+        filter: brightness(1.2);
+    }
+
+    75% {
+        transform: translateX(-50%) scale(1.25) rotateX(-5deg) rotateZ(-3deg);
+        filter: brightness(1.1);
+    }
+}
+
+.combo-flower-wrapper.stage-transcendent .combo-flower-glow {
+    animation: transcendent-aura-burst 1.5s ease-in-out infinite;
+    background:
+        radial-gradient(circle,
+            rgba(255, 255, 240, 0.5) 0%,
+            rgba(255, 215, 0, 0.4) 20%,
+            rgba(255, 182, 193, 0.3) 40%,
+            rgba(255, 105, 180, 0.15) 60%,
+            transparent 80%);
+}
+
+@keyframes transcendent-aura-burst {
+
+    0%,
+    100% {
+        transform: translateX(-50%) scale(1);
+        opacity: 0.9;
+        filter: blur(5px) brightness(1);
+    }
+
+    50% {
+        transform: translateX(-50%) scale(1.4);
+        opacity: 1;
+        filter: blur(10px) brightness(1.3);
+    }
+}
+
+/* Rainbow ring effect for transcendent */
+.combo-flower-wrapper.stage-transcendent::after {
+    content: '';
+    position: absolute;
+    bottom: calc(25px + var(--growth-progress) * 120px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(160px + var(--growth-progress) * 200px);
+    height: calc(160px + var(--growth-progress) * 200px);
+    background: conic-gradient(from 0deg,
+            rgba(255, 0, 0, 0.15),
+            rgba(255, 165, 0, 0.15),
+            rgba(255, 255, 0, 0.15),
+            rgba(0, 255, 0, 0.15),
+            rgba(0, 255, 255, 0.15),
+            rgba(0, 0, 255, 0.15),
+            rgba(255, 0, 255, 0.15),
+            rgba(255, 0, 0, 0.15));
+    border-radius: 50%;
+    animation: rainbow-ring-spin 8s linear infinite;
+    opacity: 0.6;
+    filter: blur(20px);
+    pointer-events: none;
+}
+
+@keyframes rainbow-ring-spin {
+    from {
+        transform: translateX(-50%) rotate(0deg);
+    }
+
+    to {
+        transform: translateX(-50%) rotate(360deg);
+    }
+}
+
+/* Growth animation trigger - Spectacular bounce */
+.combo-flower-wrapper.growing {
+    animation: flower-grow-spectacular 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes flower-grow-spectacular {
+    0% {
+        transform: translateX(-50%) scale(var(--prev-scale, 0.8));
+        filter: brightness(1);
+    }
+
+    30% {
+        transform: translateX(-50%) scale(calc(1.05 + var(--growth-progress) * 0.45));
+        filter: brightness(1.3);
+    }
+
+    60% {
+        transform: translateX(-50%) scale(calc(0.95 + var(--growth-progress) * 0.35));
+        filter: brightness(1.15);
+    }
+
+    100% {
+        transform: translateX(-50%) scale(calc(1 + var(--growth-progress) * 0.4));
+        filter: brightness(1);
+    }
+}
+
+/* ===== Petal Burst Effect ===== */
+.spring-burst-petal {
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    background: var(--petal-color, #FFB7C5);
+    border-radius: 50% 0 50% 0;
+    pointer-events: none;
+    z-index: 60;
+    animation: spring-burst-fly 1.5s ease-out forwards;
+    box-shadow: 0 2px 8px rgba(255, 150, 180, 0.4);
+}
+
+@keyframes spring-burst-fly {
+    0% {
+        transform: translate(-50%, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(calc(-50% + cos(var(--burst-angle)) * var(--burst-distance)),
+                calc(sin(var(--burst-angle)) * var(--burst-distance) * -1)) rotate(720deg) scale(0);
+        opacity: 0;
+    }
+}
+
+/* ===== Screen Glow Effect ===== */
+.spring-screen-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at 50% 85%,
+            rgba(255, 215, 0, var(--glow-intensity, 0.2)) 0%,
+            rgba(255, 182, 193, calc(var(--glow-intensity, 0.2) * 0.5)) 30%,
+            transparent 70%);
+    pointer-events: none;
+    z-index: 100;
+    animation: screen-glow-fade 1s ease-out forwards;
+}
+
+@keyframes screen-glow-fade {
+    0% {
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+/* ===== Canvas for Particles ===== */
+#spring-combo-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1000;
 }
 
 /* --- Sakura Twilight Theme --- */
@@ -12158,12 +13932,21 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 #settings-modal .modal-content {
-    min-width: 700px;
-    max-width: 850px;
-    max-height: 90vh;
+    min-width: 800px;
+    max-width: 950px;
+    max-height: 85vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    box-shadow:
+        0 0 0 1px rgba(139, 92, 246, 0.1),
+        0 20px 50px rgba(0, 0, 0, 0.5),
+        0 0 100px rgba(139, 92, 246, 0.15);
+    border-radius: 24px;
 }
 
 /* Settings header with close button */
@@ -12171,10 +13954,11 @@ body.phaser-multiplayer-active #p2-canvas {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid rgba(139, 92, 246, 0.3);
+    margin-bottom: 0;
+    padding: 24px 32px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
+    background: rgba(0, 0, 0, 0.2);
 }
 
 .settings-header h1 {
@@ -12213,8 +13997,8 @@ body.phaser-multiplayer-active #p2-canvas {
     overflow-y: auto;
     overflow-x: hidden;
     flex-grow: 1;
-    margin: 20px 0;
-    padding-right: 10px;
+    margin: 0;
+    padding: 0 32px 32px;
 }
 
 /* Scrollbar for settings-scroll-container - always auto, only visible when needed */
@@ -12251,6 +14035,12 @@ body.phaser-multiplayer-active #p2-canvas {
     background-clip: text;
 }
 
+#game-over-modal h1 {
+    font-size: 36px;
+    margin-bottom: 8px;
+    line-height: 1;
+}
+
 .modal p {
     font-size: 18px;
     color: #c4b5fd;
@@ -12269,40 +14059,402 @@ body.phaser-multiplayer-active #p2-canvas {
     }
 }
 
+/* Game Over Stats HUD */
+.game-over-stats-hud {
+    max-width: 850px;
+    width: 95%;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 30px;
+}
+
+.stats-scroll-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 5px;
+    margin: 8px 0;
+}
+
+/* Custom scrollbar for stats */
+.stats-scroll-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.stats-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+
+.stats-scroll-container::-webkit-scrollbar-thumb {
+    background: #8b5cf6;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.5);
+}
+
+.stats-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #7c3aed;
+}
+
+/* Firefox scrollbar */
+.stats-scroll-container {
+    scrollbar-width: thin;
+    scrollbar-color: #8b5cf6 rgba(0, 0, 0, 0.3);
+}
+
+/* Stats Header */
+.stats-header {
+    text-align: center;
+    margin-bottom: 12px;
+    position: relative;
+}
+
+.score-display {
+    font-size: 42px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+    margin-bottom: 6px;
+    line-height: 1;
+}
+
+.ranking-display {
+    font-size: 17px;
+    font-weight: 700;
+    color: #00ffff;
+    margin-bottom: 4px;
+    line-height: 1.2;
+}
+
+.stat-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+}
+
+.stat-badge-gold {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    color: #1a1a1a;
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+}
+
+.stat-badge-purple {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    color: #ffffff;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+}
+
+/* Stats Grid - 2x2 Layout */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* Stat Cards */
+.stat-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 10px 12px;
+    backdrop-filter: blur(5px);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+/* Color-coded card borders and headers */
+.stat-card-purple {
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+.stat-card-purple:hover {
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
+
+.stat-card-purple .stat-card-header {
+    color: #a78bfa;
+}
+
+.stat-card-cyan {
+    border-color: rgba(0, 255, 255, 0.5);
+}
+
+.stat-card-cyan:hover {
+    box-shadow: 0 4px 20px rgba(0, 255, 255, 0.3);
+}
+
+.stat-card-cyan .stat-card-header {
+    color: #00ffff;
+}
+
+.stat-card-gold {
+    border-color: rgba(251, 191, 36, 0.5);
+}
+
+.stat-card-gold:hover {
+    box-shadow: 0 4px 20px rgba(251, 191, 36, 0.3);
+}
+
+.stat-card-gold .stat-card-header {
+    color: #fbbf24;
+}
+
+.stat-card-green {
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+.stat-card-green:hover {
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+}
+
+.stat-card-green .stat-card-header {
+    color: #10b981;
+}
+
+/* Card Header */
+.stat-card-header {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    line-height: 1.2;
+}
+
+/* Stat Rows */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+    font-size: 13px;
+    line-height: 1.3;
+}
+
+.stat-label {
+    color: rgba(224, 231, 255, 0.7);
+    font-weight: 500;
+}
+
+.stat-value {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.stat-comparison {
+    font-size: 13px;
+}
+
+/* Responsive Design - Tablet */
+@media (max-width: 768px) {
+    .game-over-stats-hud {
+        max-width: 95%;
+        padding: 30px 20px;
+    }
+
+    .stats-grid {
+        gap: 12px;
+    }
+
+    .score-display {
+        font-size: 40px;
+    }
+
+    .ranking-display {
+        font-size: 18px;
+    }
+
+    .stat-card {
+        padding: 14px;
+    }
+
+    .stat-card-header {
+        font-size: 13px;
+    }
+
+    .stat-row {
+        font-size: 13px;
+    }
+
+    .stat-value {
+        font-size: 15px;
+    }
+}
+
+/* Responsive Design - Mobile */
+@media (max-width: 600px) {
+    .game-over-stats-hud {
+        max-width: 100%;
+        padding: 25px 15px;
+        max-height: 90vh;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .score-display {
+        font-size: 36px;
+    }
+
+    .ranking-display {
+        font-size: 16px;
+    }
+
+    .stat-badge {
+        font-size: 11px;
+        padding: 5px 12px;
+    }
+
+    .stat-card {
+        padding: 12px;
+    }
+
+    .stat-card-header {
+        font-size: 12px;
+        margin-bottom: 10px;
+    }
+
+    .stat-row {
+        font-size: 12px;
+        padding: 5px 0;
+    }
+
+    .stat-value {
+        font-size: 14px;
+    }
+
+    #game-over-modal h1 {
+        font-size: 36px;
+    }
+
+    .modal p {
+        font-size: 16px;
+    }
+}
+
+/* Very Small Mobile Devices */
+@media (max-width: 400px) {
+    .score-display {
+        font-size: 32px;
+    }
+
+    .stat-card-header {
+        font-size: 11px;
+    }
+
+    .stat-row {
+        font-size: 11px;
+    }
+
+    .stat-value {
+        font-size: 13px;
+    }
+
+    #game-over-modal h1 {
+        font-size: 28px;
+    }
+}
+
 .settings-tabs {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid rgba(139, 92, 246, 0.3);
+    gap: 8px;
+    padding: 20px 32px 0;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
-    /* Prevent tabs from shrinking */
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Hide scrollbar */
+}
+
+.settings-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 #settings-modal h1 {
     flex-shrink: 0;
-    /* Prevent title from shrinking */
+    font-size: 32px;
+    letter-spacing: 0.05em;
+    margin: 0;
 }
 
 .settings-tab {
-    background: transparent;
-    border: none;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: rgba(224, 231, 255, 0.6);
-    padding: 10px 20px;
+    padding: 12px 24px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 15px;
     font-family: 'Space Mono', monospace;
-    transition: all 0.3s ease;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px 12px 0 0;
+    margin-bottom: -1px;
+    position: relative;
+    overflow: hidden;
+}
+
+.settings-tab::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, rgba(139, 92, 246, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .settings-tab:hover {
-    color: rgba(224, 231, 255, 0.8);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+}
+
+.settings-tab:hover::before {
+    opacity: 1;
 }
 
 .settings-tab.active {
     color: #00ffff;
-    border-bottom-color: #00ffff;
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    border-bottom-color: transparent;
+    /* Merge with content */
+    box-shadow: 0 -4px 12px rgba(139, 92, 246, 0.1);
+    z-index: 10;
+}
+
+.settings-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: #00ffff;
+    box-shadow: 0 0 10px #00ffff;
 }
 
 .settings-tab-content {
@@ -12328,10 +14480,9 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .controls-nav-group {
-    background: rgba(139, 92, 246, 0.08);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    border-radius: 16px;
-    padding: 18px 16px;
+    background: transparent;
+    border: none;
+    padding: 0;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -12357,32 +14508,33 @@ body.phaser-multiplayer-active #p2-canvas {
     justify-content: space-between;
     gap: 12px;
     width: 100%;
-    background: rgba(17, 24, 39, 0.4);
-    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: rgba(224, 231, 255, 0.65);
-    padding: 10px 14px;
+    padding: 12px 16px;
     cursor: pointer;
     font-size: 14px;
     font-family: 'Space Mono', monospace;
     transition: all 0.2s ease;
     border-left: 3px solid transparent;
-    border-radius: 10px;
+    border-radius: 8px;
     text-align: left;
 }
 
 .controls-subtab:hover,
 .controls-subtab:focus-visible {
-    color: rgba(224, 231, 255, 0.9);
-    background: rgba(45, 55, 72, 0.55);
-    border-color: rgba(139, 92, 246, 0.35);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateX(4px);
 }
 
 .controls-subtab.active {
-    color: #f0f9ff;
-    background: linear-gradient(135deg, rgba(14, 165, 233, 0.3), rgba(139, 92, 246, 0.35));
+    color: #00ffff;
+    background: rgba(139, 92, 246, 0.15);
     border-left-color: #00ffff;
-    border-color: rgba(129, 140, 248, 0.45);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .controls-subtab-icon {
@@ -12660,42 +14812,49 @@ body.phaser-multiplayer-active #p2-canvas {
     justify-self: end;
     align-self: center;
     white-space: normal;
-    padding-right: 15px;
+    padding-right: 24px;
     text-align: right;
     width: 100%;
-    line-height: 1.3;
+    line-height: 1.4;
+    font-size: 15px;
+    color: rgba(224, 231, 255, 0.9);
+    font-weight: 500;
 }
 
 /* Enhanced Input Styling */
 .key-input,
 .setting-select {
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid rgba(139, 92, 246, 0.3);
-    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
     color: #e0e7ff;
     padding: 12px 16px;
     font-family: 'Space Mono', monospace;
     font-size: 14px;
     cursor: pointer;
     min-width: 200px;
-    max-width: 300px;
+    max-width: 320px;
     width: 100%;
     justify-self: start;
-    transition: all 0.3s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .key-input:hover,
 .setting-select:hover {
-    border-color: rgba(139, 92, 246, 0.6);
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(139, 92, 246, 0.5);
+    transform: translateY(-1px);
 }
 
 .key-input:focus,
 .setting-select:focus {
     outline: none;
-    border-color: rgba(139, 92, 246, 0.8);
-    background: rgba(0, 0, 0, 0.6);
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+    background: rgba(15, 23, 42, 0.8);
+    border-color: #00ffff;
+    box-shadow:
+        0 0 0 4px rgba(0, 255, 255, 0.15),
+        0 0 20px rgba(0, 255, 255, 0.1);
 }
 
 .key-input {
@@ -12766,29 +14925,34 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .slider-container input[type=range]::-webkit-slider-runnable-track {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    height: 8px;
-    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    height: 6px;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.slider-container input[type=range]:hover::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .slider-container input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    margin-top: -5px;
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-    height: 18px;
-    width: 18px;
+    margin-top: -7px;
+    background: #00ffff;
+    height: 20px;
+    width: 20px;
     border-radius: 50%;
-    border: 2px solid rgba(167, 139, 253, 0.5);
-    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
-    transition: all 0.2s ease;
+    border: 2px solid rgba(15, 23, 42, 0.5);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .slider-container input[type=range]::-webkit-slider-thumb:hover {
-    background: linear-gradient(135deg, #7c3aed, #6d28d9);
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.8);
-    transform: scale(1.1);
+    background: #ffffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+    transform: scale(1.2);
 }
 
 .slider-container input[type=range]::-moz-range-track {
@@ -19093,28 +21257,34 @@ body.phaser-multiplayer-active #single-player-container {
     position: relative;
 }
 
-/* 2 players - horizontal row */
+/* 2 players - 1 row × 2 columns */
 .multiplayer-game-area.players-2 {
-    --board-width: 300px;
-    --board-height: 600px;
-    grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 36px)));
-    gap: 80px;
+    --board-width: min(380px, calc((100vw - 160px) / 2));
+    --board-height: calc(var(--board-width) * 2);
+    grid-template-columns: repeat(2, auto);
+    grid-template-rows: 1fr;
+    gap: 60px;
+    align-items: center;
 }
 
-/* 3 players - horizontal row */
+/* 3 players - 1 row × 3 columns */
 .multiplayer-game-area.players-3 {
-    --board-width: 260px;
-    --board-height: 520px;
-    grid-template-columns: repeat(3, minmax(0, calc(var(--board-width) + 32px)));
-    gap: 50px;
+    --board-width: min(300px, calc((100vw - 200px) / 3));
+    --board-height: calc(var(--board-width) * 2);
+    grid-template-columns: repeat(3, auto);
+    grid-template-rows: 1fr;
+    gap: 40px;
+    align-items: center;
 }
 
-/* 4 players - horizontal row */
+/* 4 players - 1 row × 4 columns */
 .multiplayer-game-area.players-4 {
-    --board-width: 240px;
-    --board-height: 480px;
-    grid-template-columns: repeat(4, minmax(0, calc(var(--board-width) + 32px)));
+    --board-width: min(280px, calc((100vw - 220px) / 4));
+    --board-height: calc(var(--board-width) * 2);
+    grid-template-columns: repeat(4, auto);
+    grid-template-rows: 1fr;
     gap: 30px;
+    align-items: center;
 }
 
 /* Individual player card */
@@ -19149,25 +21319,49 @@ body.phaser-multiplayer-active #single-player-container {
     gap: 20px;
 }
 
-/* Player card color variations */
+/* Player card color variations - Enhanced visual separation */
 .player-card[data-player="1"] {
-    border-color: #3B82F6;
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(59, 130, 246, 0.4),
+        inset 0 0 20px rgba(59, 130, 246, 0.1);
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(59, 130, 246, 0.05));
 }
 
 .player-card[data-player="2"] {
-    border-color: #EF4444;
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    border-color: rgba(239, 68, 68, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(239, 68, 68, 0.4),
+        inset 0 0 20px rgba(239, 68, 68, 0.1);
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(239, 68, 68, 0.05));
 }
 
 .player-card[data-player="3"] {
-    border-color: #10B981;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    border-color: rgba(16, 185, 129, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(16, 185, 129, 0.4),
+        inset 0 0 20px rgba(16, 185, 129, 0.1);
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(16, 185, 129, 0.05));
 }
 
 .player-card[data-player="4"] {
-    border-color: #F59E0B;
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    border-color: rgba(245, 158, 11, 0.8);
+    border-width: 3px;
+    box-shadow:
+        0 0 30px rgba(245, 158, 11, 0.4),
+        inset 0 0 20px rgba(245, 158, 11, 0.1);
+    background: linear-gradient(145deg,
+            rgba(0, 0, 0, 0.5),
+            rgba(245, 158, 11, 0.05));
 }
 
 /* Next pieces section - horizontal layout */
@@ -19352,94 +21546,104 @@ body.phaser-multiplayer-active #single-player-container {
     transform: rotate(90deg);
 }
 
-/* Board scaling for different player counts */
-.players-2 .phaser-board-container,
-.players-2 .phaser-board-container canvas,
-.players-2 .board-border-overlay {
-    width: 300px;
-    height: 600px;
+/* Board scaling - dynamic based on CSS variables */
+.phaser-board-container,
+.phaser-board-container canvas,
+.board-border-overlay {
+    width: var(--board-width);
+    height: var(--board-height);
 }
 
 /* ============================================
    RESPONSIVE BREAKPOINTS
    ============================================ */
 
-/* Large Desktop (1920px+) */
+/* Large Desktop (1920px+) - Maximum screen utilization */
 @media (min-width: 1920px) {
     .multiplayer-game-area.players-2 {
-        gap: 100px;
-    }
-}
-
-/* Desktop (1440px - 1920px) */
-@media (min-width: 1440px) and (max-width: 1919px) {
-    .multiplayer-game-area.players-2 {
+        --board-width: min(420px, calc((100vw - 200px) / 2));
         gap: 80px;
     }
 
     .multiplayer-game-area.players-3 {
+        --board-width: min(360px, calc((100vw - 240px) / 3));
         gap: 60px;
     }
 
     .multiplayer-game-area.players-4 {
+        --board-width: min(320px, calc((100vw - 280px) / 4));
+        gap: 50px;
+    }
+}
+
+/* Desktop (1440px - 1920px) - Optimal balanced layout */
+@media (min-width: 1440px) and (max-width: 1919px) {
+    .multiplayer-game-area.players-2 {
+        --board-width: min(380px, calc((100vw - 180px) / 2));
+        gap: 70px;
+    }
+
+    .multiplayer-game-area.players-3 {
+        --board-width: min(320px, calc((100vw - 220px) / 3));
+        gap: 50px;
+    }
+
+    .multiplayer-game-area.players-4 {
+        --board-width: min(290px, calc((100vw - 240px) / 4));
         gap: 40px;
     }
 }
 
-/* Laptop (1024px - 1440px) */
+/* Laptop (1024px - 1440px) - Compact but comfortable */
 @media (min-width: 1024px) and (max-width: 1439px) {
     .multiplayer-game-area.players-2 {
-        gap: 60px;
+        --board-width: min(340px, calc((100vw - 140px) / 2));
+        gap: 50px;
     }
 
     .multiplayer-game-area.players-3 {
+        --board-width: min(280px, calc((100vw - 180px) / 3));
         gap: 40px;
     }
 
     .multiplayer-game-area.players-4 {
+        --board-width: min(240px, calc((100vw - 200px) / 4));
         gap: 30px;
-        --board-width: 220px;
-        --board-height: 440px;
     }
 }
 
-/* Tablet/Small Laptop (768px - 1024px) */
+/* Tablet/Small Laptop (768px - 1024px) - Horizontal scrolling enabled */
 @media (min-width: 768px) and (max-width: 1023px) {
-
-    .multiplayer-game-area.players-3,
-    .multiplayer-game-area.players-4 {
-        overflow-y: auto;
-        max-height: 90vh;
-    }
-
     .multiplayer-game-area.players-2 {
+        --board-width: min(300px, calc((100vw - 120px) / 2));
         gap: 40px;
     }
 
-    .multiplayer-game-area.players-3,
-    .multiplayer-game-area.players-4 {
+    .multiplayer-game-area.players-3 {
+        --board-width: min(240px, calc((100vw - 160px) / 3));
         gap: 30px;
     }
 
-    .multiplayer-game-area.players-3 {
-        --board-width: 240px;
-        --board-height: 480px;
+    .multiplayer-game-area.players-4 {
+        --board-width: min(200px, calc((100vw - 180px) / 4));
+        gap: 25px;
     }
 
+    /* Allow horizontal scrolling for 3-4 players if needed */
+    .multiplayer-game-area.players-3,
     .multiplayer-game-area.players-4 {
-        --board-width: 200px;
-        --board-height: 400px;
-        grid-template-columns: repeat(2, minmax(0, calc(var(--board-width) + 28px)));
-        grid-template-rows: repeat(2, auto);
+        overflow-x: auto;
+        padding-bottom: 10px;
     }
 }
 
-/* Mobile (< 768px) */
+/* Mobile (< 768px) - Stack all players vertically */
 @media (max-width: 767px) {
     .multiplayer-game-area {
         grid-template-columns: 1fr !important;
         grid-template-rows: auto !important;
         gap: 20px;
+        padding: 10px;
     }
 
     .player-card {
@@ -19447,8 +21651,8 @@ body.phaser-multiplayer-active #single-player-container {
     }
 
     .multiplayer-game-area {
-        --board-width: 200px;
-        --board-height: 400px;
+        --board-width: min(280px, calc(100vw - 60px));
+        --board-height: calc(var(--board-width) * 2);
     }
 
     .stat-value {
@@ -20694,7 +22898,9 @@ body.serenity-mode.cursor-hidden * {
 }
 
 /* Gamepad focus state */
-.game-mode-card.gamepad-focused {
+/* Gamepad focus state */
+.game-mode-card.gamepad-focused,
+.game-mode-card:focus-visible {
     transform: translateY(-15px) scale(1.05);
     border-color: rgba(100, 200, 255, 0.9);
     box-shadow:
@@ -20702,9 +22908,12 @@ body.serenity-mode.cursor-hidden * {
         0 0 40px rgba(100, 200, 255, 0.4),
         inset 0 1px 1px rgba(255, 255, 255, 0.2);
     background: rgba(25, 25, 50, 0.85);
+    outline: none;
+    /* Remove default outline as we have custom styles */
 }
 
-.game-mode-card.gamepad-focused .mode-card-glow {
+.game-mode-card.gamepad-focused .mode-card-glow,
+.game-mode-card:focus-visible .mode-card-glow {
     opacity: 1;
     background: radial-gradient(circle,
             rgba(100, 200, 255, 0.5) 0%,

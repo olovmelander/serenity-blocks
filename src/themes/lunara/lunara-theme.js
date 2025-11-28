@@ -373,7 +373,7 @@ export default class LunaraTheme extends BaseTheme {
     shouldProcessComboEffects() {
         if (!this.isActive) return false;
         if (typeof window === 'undefined') return true;
-        const settings = window.settings;
+        const { settings } = window;
         return settings?.backgroundComboEffects !== false;
     }
 

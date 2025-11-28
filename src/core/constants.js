@@ -249,25 +249,25 @@ export const DEFAULT_SETTINGS = {
     },
     // Gamepad bindings (Player 1)
     gamepadBindings: {
-        moveLeft: 14,      // D-pad Left
-        moveRight: 15,     // D-pad Right
-        rotateRight: 0,    // A Button
-        rotateLeft: 3,     // Y Button
-        flip: 2,           // X Button
-        softDrop: 13,      // D-pad Down
-        hardDrop: 1,       // B Button
-        pause: 9,          // Start Button
+        moveLeft: 14, // D-pad Left
+        moveRight: 15, // D-pad Right
+        rotateRight: 0, // A Button
+        rotateLeft: 3, // Y Button
+        flip: 2, // X Button
+        softDrop: 13, // D-pad Down
+        hardDrop: 1, // B Button
+        pause: 9, // Start Button
     },
     // Player 2 gamepad bindings (for multiplayer)
     player2GamepadBindings: {
-        moveLeft: 14,      // D-pad Left
-        moveRight: 15,     // D-pad Right
-        rotateRight: 0,    // A Button
-        rotateLeft: 3,     // Y Button
-        flip: 2,           // X Button
-        softDrop: 13,      // D-pad Down
-        hardDrop: 1,       // B Button
-        pause: 9,          // Start Button
+        moveLeft: 14, // D-pad Left
+        moveRight: 15, // D-pad Right
+        rotateRight: 0, // A Button
+        rotateLeft: 3, // Y Button
+        flip: 2, // X Button
+        softDrop: 13, // D-pad Down
+        hardDrop: 1, // B Button
+        pause: 9, // Start Button
     },
     player3GamepadBindings: {
         moveLeft: 14,

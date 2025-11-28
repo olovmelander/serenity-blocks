@@ -1,17 +1,23 @@
 import { BaseGameMode } from './BaseGameMode.js';
-import { GAME_MODES, COLS, ROWS, BLOCK_SIZE } from '../constants.js';
-import { GameState, spawnPiece, fillBag, gameLoop } from '../game.js';
-import { expandGridIfNeeded, calculateTopRow, getGridStats, checkInfinityGameOver } from '../infinity-grid.js';
-import { updateStats } from '../../rendering/draw.js';
+import {
+    GAME_MODES, COLS, ROWS, BLOCK_SIZE,
+} from '../constants.js';
+import {
+    GameState, spawnPiece, fillBag, gameLoop,
+} from '../game.js';
+import {
+    expandGridIfNeeded, calculateTopRow, getGridStats, checkInfinityGameOver,
+} from '../infinity-grid.js';
+import {
+    updateStats,
+    triggerLineClearFlash as triggerLineClearFlashCanvas,
+    triggerBackgroundPulse as triggerBackgroundPulseCanvas,
+} from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { TranceStateEffects } from '../../rendering/phaser/trance-state-effects.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import {
-    triggerLineClearFlash as triggerLineClearFlashCanvas,
-    triggerBackgroundPulse as triggerBackgroundPulseCanvas
-} from '../../rendering/draw.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -68,12 +74,12 @@ export class InfinityMode extends BaseGameMode {
         // Cascade camera following configuration
         // Use faster lerp during cascades to keep up with falling blocks
         this.cascadeCameraLerpSpeed = 0.15; // Faster to track cascading blocks (was 0.02)
-        this.normalCameraLerpSpeed = 0.08;  // Default camera lerp speed
+        this.normalCameraLerpSpeed = 0.08; // Default camera lerp speed
 
         // Track cleared line positions for camera following
-        this.lastClearedLines = null;       // Array of cleared line Y coordinates
+        this.lastClearedLines = null; // Array of cleared line Y coordinates
         this.lastClearedLinesCenter = null; // Center position of cleared lines
-        this.lowestFallingBlock = null;     // Track the lowest block that's falling
+        this.lowestFallingBlock = null; // Track the lowest block that's falling
 
         // PERFORMANCE: Throttle camera updates during rapid gravity steps
         // Update camera every N gravity steps instead of every single step
@@ -156,7 +162,7 @@ export class InfinityMode extends BaseGameMode {
             maxRows: this.maxRows,
             disableLevelProgression: true, // Option A from plan: Fixed speed
             disableGarbage: true, // No garbage in infinity mode
-            initialInfinityRows: 44
+            initialInfinityRows: 44,
         });
 
         console.log('[Infinity] Game state initialized with infinity mode configuration');
@@ -190,7 +196,7 @@ export class InfinityMode extends BaseGameMode {
             this.gameState.nextPieces,
             typeof this.gameState.randomGenerator === 'function'
                 ? this.gameState.randomGenerator
-                : Math.random
+                : Math.random,
         );
 
         // Spawn first piece
@@ -198,7 +204,7 @@ export class InfinityMode extends BaseGameMode {
         spawnPiece(
             this.gameState,
             () => this._refreshNextQueue(),
-            () => this._handleGameOver()
+            () => this._handleGameOver(),
         );
 
         // Draw initial UI
@@ -462,7 +468,7 @@ export class InfinityMode extends BaseGameMode {
     }
 
     _preparePhaserScene() {
-        const phaserGame = this.deps.phaserGame;
+        const { phaserGame } = this.deps;
         if (!phaserGame?.scene) return;
 
         // Clear cached physics callbacks so they get recreated with fresh BoardScene references
@@ -608,7 +614,7 @@ export class InfinityMode extends BaseGameMode {
 
                 // Immediately update camera to the new position (no jump because we're compensating)
                 const blockSize = this.boardScene.boardConfig?.blockSize || 30;
-                const visibleRows = this.boardScene.cameraSettings.visibleRows;
+                const { visibleRows } = this.boardScene.cameraSettings;
                 const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
                 const { width } = this.boardScene.getBoardDimensions();
                 this.boardScene.cameras.main.centerOn(width / 2, centerY);
@@ -619,7 +625,7 @@ export class InfinityMode extends BaseGameMode {
             if (this.gameState.infinityStats) {
                 this.gameState.infinityStats.rowsReached = Math.max(
                     this.gameState.infinityStats.rowsReached,
-                    this.gameState.board.length
+                    this.gameState.board.length,
                 );
             }
         }
@@ -828,8 +834,8 @@ export class InfinityMode extends BaseGameMode {
                 const timeSinceLastUpdate = now - this.lastCameraUpdateTime;
 
                 // Update if either: enough steps have passed OR enough time has passed
-                const shouldUpdate = (this.gravityStepCount >= this.cameraUpdateInterval) ||
-                    (timeSinceLastUpdate >= this.minCameraUpdateInterval);
+                const shouldUpdate = (this.gravityStepCount >= this.cameraUpdateInterval)
+                    || (timeSinceLastUpdate >= this.minCameraUpdateInterval);
 
                 if (shouldUpdate && this.boardScene?.cameraSettings) {
                     this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
@@ -872,7 +878,7 @@ export class InfinityMode extends BaseGameMode {
                 spawnPiece(
                     this.gameState,
                     () => this._refreshNextQueue(),
-                    () => this._handleGameOver()
+                    () => this._handleGameOver(),
                 );
             },
             // Handle combo finalization (no garbage in infinity mode, but track combo stats)
@@ -975,7 +981,7 @@ export class InfinityMode extends BaseGameMode {
                 gameState: this.gameState,
                 mode: 'infinity',
                 infinityStats: this.gameState.infinityStats,
-            }
+            },
         }));
     }
 
@@ -1041,74 +1047,74 @@ export class InfinityMode extends BaseGameMode {
         let deltaRows = 0;
 
         switch (event.key) {
-            case 'ArrowUp':
-                deltaRows = -3; // Move camera up (show higher rows)
+        case 'ArrowUp':
+            deltaRows = -3; // Move camera up (show higher rows)
+            event.preventDefault();
+            event.stopPropagation(); // Prevent global controls from handling
+            break;
+        case 'ArrowDown':
+            deltaRows = 3; // Move camera down (show lower rows)
+            event.preventDefault();
+            event.stopPropagation(); // Prevent global controls from handling
+            break;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            // Block left/right arrows too during manual camera control
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        case 'PageUp':
+            deltaRows = -10; // Jump up faster
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'PageDown':
+            deltaRows = 10; // Jump down faster
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'p':
+        case 'P':
+            // Allow P key to propagate so it can toggle pause/resume
+            // Don't preventDefault or stopPropagation - let global handler manage pause state
+            return;
+        case 'Escape':
+            // Allow Escape to propagate so it can open settings menu
+            // Don't preventDefault or stopPropagation
+            return;
+        case ' ': // Space bar
+            // Block space bar (hard drop) during pause
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        case 'Home':
+            // Jump to top of build
+            if (this.gameState) {
+                const topRow = this.gameState.currentTopRow || 0;
+                this.boardScene.updateCameraPosition(topRow);
+                this._updateMinimapView();
                 event.preventDefault();
-                event.stopPropagation(); // Prevent global controls from handling
-                break;
-            case 'ArrowDown':
-                deltaRows = 3; // Move camera down (show lower rows)
+                event.stopPropagation();
+            }
+            return;
+        case 'End':
+            // Jump to bottom (spawn area)
+            if (this.gameState) {
+                const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
+                const bottomTopRow = Math.max(0, this.gameState.board.length - visibleRows);
+                this.boardScene.updateCameraPosition(bottomTopRow);
+                this._updateMinimapView();
                 event.preventDefault();
-                event.stopPropagation(); // Prevent global controls from handling
-                break;
-            case 'ArrowLeft':
-            case 'ArrowRight':
-                // Block left/right arrows too during manual camera control
+                event.stopPropagation();
+            }
+            return;
+        default:
+            // Block ALL other keys during manual camera control to prevent piece movement
+            if (event.key.length === 1 || event.key === 'Enter') {
                 event.preventDefault();
                 event.stopPropagation();
                 return;
-            case 'PageUp':
-                deltaRows = -10; // Jump up faster
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'PageDown':
-                deltaRows = 10; // Jump down faster
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'p':
-            case 'P':
-                // Allow P key to propagate so it can toggle pause/resume
-                // Don't preventDefault or stopPropagation - let global handler manage pause state
-                return;
-            case 'Escape':
-                // Allow Escape to propagate so it can open settings menu
-                // Don't preventDefault or stopPropagation
-                return;
-            case ' ': // Space bar
-                // Block space bar (hard drop) during pause
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            case 'Home':
-                // Jump to top of build
-                if (this.gameState) {
-                    const topRow = this.gameState.currentTopRow || 0;
-                    this.boardScene.updateCameraPosition(topRow);
-                    this._updateMinimapView();
-                    event.preventDefault();
-                    event.stopPropagation();
-                }
-                return;
-            case 'End':
-                // Jump to bottom (spawn area)
-                if (this.gameState) {
-                    const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-                    const bottomTopRow = Math.max(0, this.gameState.board.length - visibleRows);
-                    this.boardScene.updateCameraPosition(bottomTopRow);
-                    this._updateMinimapView();
-                    event.preventDefault();
-                    event.stopPropagation();
-                }
-                return;
-            default:
-                // Block ALL other keys during manual camera control to prevent piece movement
-                if (event.key.length === 1 || event.key === 'Enter') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    return;
-                }
+            }
         }
 
         if (deltaRows !== 0) {
@@ -1141,7 +1147,7 @@ export class InfinityMode extends BaseGameMode {
     _didPieceLockBelowViewport(piece) {
         if (!piece || !this.boardScene?.cameraSettings) return false;
 
-        const cameraSettings = this.boardScene.cameraSettings;
+        const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
         const cameraTopRow = Math.floor(cameraSettings.activeTopRow ?? cameraSettings.currentTopRow ?? 0);
         const cameraBottomRow = cameraTopRow + visibleRows - 1;
@@ -1158,7 +1164,7 @@ export class InfinityMode extends BaseGameMode {
     _snapCameraToTopArea() {
         if (!this.boardScene || !this.boardScene.cameraSettings) return;
 
-        const cameraSettings = this.boardScene.cameraSettings;
+        const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
         const highestBlockRow = this._findHighestBlockRow();
 
@@ -1209,7 +1215,7 @@ export class InfinityMode extends BaseGameMode {
         if (!this.boardScene || !this.boardScene.cameraSettings) return;
 
         const camera = this.boardScene.cameras.main;
-        const cameraSettings = this.boardScene.cameraSettings;
+        const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
 
         // Get block size from board config
@@ -1220,7 +1226,7 @@ export class InfinityMode extends BaseGameMode {
         const viewportBottomRow = currentCameraRow + visibleRows;
 
         // Check if we need to follow a falling piece
-        const currentPiece = this.gameState.currentPiece;
+        const { currentPiece } = this.gameState;
         if (this.snapCooldownFrames > 0) {
             this.snapCooldownFrames--;
             return;
@@ -1330,9 +1336,9 @@ export class InfinityMode extends BaseGameMode {
         if (!this.boardScene || !this.boardScene.cameraSettings) return;
         if (this.boardScene.cameraSettings.manualControl) return;
 
-        const cameraSettings = this.boardScene.cameraSettings;
+        const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const board = this.gameState.board;
+        const { board } = this.gameState;
         const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
 
         // Strategy: Follow the "action zone" where blocks are falling and lines are clearing
@@ -1393,7 +1399,7 @@ export class InfinityMode extends BaseGameMode {
         if (this.boardScene.cameraSettings.manualControl) return; // Don't interfere with manual control
 
         const camera = this.boardScene.cameras.main;
-        const cameraSettings = this.boardScene.cameraSettings;
+        const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
         const blockSize = this.boardScene.boardConfig?.blockSize || 30;
 

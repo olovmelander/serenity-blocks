@@ -229,7 +229,6 @@ export class TranceStateEffects {
         this.updateViewportAnchoredElements();
     }
 
-
     /**
      * Create floating particle emitters throughout the board
      * @private
@@ -368,7 +367,6 @@ export class TranceStateEffects {
         this.updateViewportAnchoredElements();
     }
 
-
     /**
      * Create breathing pulse effect on the board container
      * @private
@@ -424,7 +422,6 @@ export class TranceStateEffects {
         // Update particle colors
         this.updateParticleColors();
     }
-
 
     /**
      * Update particle emitter colors to cycle through trance palette
@@ -497,7 +494,6 @@ export class TranceStateEffects {
             }
         }
 
-
         if (this.activeEmitters.length > 0) {
             let floatingIndex = 0;
             this.activeEmitters.forEach((entry) => {
@@ -549,7 +545,6 @@ export class TranceStateEffects {
         this.updateBokehOrbs(screenCenterX, screenCenterY, screenWidth, screenHeight);
     }
 
-
     /**
      * Get the current camera viewport dimensions in world coordinates
      * @returns {{x:number,y:number,width:number,height:number,centerX:number,centerY:number}|null}
@@ -559,7 +554,7 @@ export class TranceStateEffects {
         const camera = this.scene?.cameras?.main;
         if (!camera) return null;
 
-        const worldView = camera.worldView;
+        const { worldView } = camera;
         if (worldView) {
             return {
                 x: worldView.x,

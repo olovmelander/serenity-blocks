@@ -134,10 +134,18 @@ export default class SwedishForestTheme extends BaseTheme {
         this.trees = [];
         // Create trees in parallax layers
         const layers = [
-            { count: 90, height: 180, color: '#0F1F26', spacing: 90, blur: 0 }, // Front
-            { count: 70, height: 300, color: '#162A33', spacing: 110, blur: 0 }, // Mid
-            { count: 50, height: 450, color: '#1C3642', spacing: 140, blur: 1 }, // Back
-            { count: 30, height: 600, color: '#224250', spacing: 200, blur: 2 }, // Far Back
+            {
+                count: 90, height: 180, color: '#0F1F26', spacing: 90, blur: 0,
+            }, // Front
+            {
+                count: 70, height: 300, color: '#162A33', spacing: 110, blur: 0,
+            }, // Mid
+            {
+                count: 50, height: 450, color: '#1C3642', spacing: 140, blur: 1,
+            }, // Back
+            {
+                count: 30, height: 600, color: '#224250', spacing: 200, blur: 2,
+            }, // Far Back
         ];
 
         layers.forEach((layer, layerIndex) => {
@@ -311,7 +319,7 @@ export default class SwedishForestTheme extends BaseTheme {
             }
         }
 
-        this.forestSpirits.forEach(s => {
+        this.forestSpirits.forEach((s) => {
             s.vx += (Math.random() - 0.5) * 2;
             s.vy += (Math.random() - 0.5) * 2;
             s.opacity = Math.min(s.opacity + 0.2, 0.8);
@@ -326,7 +334,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.magicGlow = Math.min(comboCount * 0.15, 1.0);
 
         if (comboCount >= 3) {
-            this.auroraLayers.forEach(layer => {
+            this.auroraLayers.forEach((layer) => {
                 layer.intensity = Math.min(layer.intensity + 0.2, 1.0);
             });
         }
@@ -343,7 +351,7 @@ export default class SwedishForestTheme extends BaseTheme {
             rotationSpeed: (Math.random() - 0.5) * 0.1,
             hue: Math.random() * 40 + 30,
             opacity: 1.0,
-            life: 1.0
+            life: 1.0,
         });
     }
 
@@ -359,7 +367,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.magicGlow *= 0.98;
         this.windSpeed *= 0.98;
 
-        this.auroraLayers.forEach(layer => {
+        this.auroraLayers.forEach((layer) => {
             layer.intensity *= 0.99;
         });
 
@@ -389,7 +397,7 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawAurora() {
-        const maxIntensity = Math.max(...this.auroraLayers.map(l => l.intensity));
+        const maxIntensity = Math.max(...this.auroraLayers.map((l) => l.intensity));
         if (maxIntensity < 0.01) return;
 
         this.ctx.save();
@@ -544,7 +552,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.ctx.save();
         this.ctx.globalCompositeOperation = 'screen';
 
-        this.godRays.forEach(ray => {
+        this.godRays.forEach((ray) => {
             ray.x += Math.sin(this.animationTime * 0.5) * 0.2;
 
             this.ctx.save();
@@ -560,7 +568,7 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     drawForestSpirits() {
-        this.forestSpirits.forEach(spirit => {
+        this.forestSpirits.forEach((spirit) => {
             // Logic update
             spirit.wanderPhase += 0.01;
             spirit.targetX += Math.cos(spirit.wanderPhase) * 2;
@@ -620,7 +628,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
     drawFireflies() {
         this.ctx.fillStyle = '#ccffaa';
-        this.fireflies.forEach(fly => {
+        this.fireflies.forEach((fly) => {
             fly.x += fly.vx + Math.sin(this.animationTime + fly.y * 0.01) * 0.5;
             fly.y += fly.vy;
 
@@ -682,7 +690,7 @@ export default class SwedishForestTheme extends BaseTheme {
             width: Math.random() * 2 + 1, // Thinner
             swirlTimer: Math.floor(Math.random() * 200),
             swirlDuration: 0,
-            color: `hsla(${160 + Math.random() * 30}, 70%, 65%,` // Less bright/saturated
+            color: `hsla(${160 + Math.random() * 30}, 70%, 65%,`, // Less bright/saturated
         };
     }
 
@@ -719,7 +727,7 @@ export default class SwedishForestTheme extends BaseTheme {
                 wind.swirlDuration--;
             } else {
                 // Return to horizontal-ish flow gently
-                wind.angle = wind.angle * 0.98;
+                wind.angle *= 0.98;
             }
 
             // 3. Trail Management
@@ -756,10 +764,10 @@ export default class SwedishForestTheme extends BaseTheme {
             }
             this.ctx.lineTo(wind.trail[wind.trail.length - 1].x, wind.trail[wind.trail.length - 1].y);
 
-            this.ctx.strokeStyle = wind.color + `${finalOpacity})`;
+            this.ctx.strokeStyle = `${wind.color}${finalOpacity})`;
             this.ctx.lineWidth = wind.width;
             this.ctx.shadowBlur = 20; // Softer blur
-            this.ctx.shadowColor = wind.color + '0.4)';
+            this.ctx.shadowColor = `${wind.color}0.4)`;
             this.ctx.stroke();
 
             // Draw Inner Core (Tinted, not pure white, and more transparent)

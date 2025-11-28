@@ -1,27 +1,27 @@
 /**
  * @fileoverview Weak Reference Cache Utilities (Phase 6.2)
- * 
+ *
  * Provides WeakMap and WeakSet based caches for automatic memory management.
  * When keys (objects) are garbage collected, their entries are automatically removed.
- * 
+ *
  * **When to Use:**
  * - DOM element metadata (element -> data)
  * - Component instance tracking (object -> metadata)
  * - Temporary object associations
  * - Event/object processing caches
- * 
+ *
  * **When NOT to Use:**
  * - Need to iterate over all keys (WeakMap keys not enumerable)
  * - Keys are primitives (strings, numbers) - use regular Map
  * - Need explicit LRU eviction - use regular Map with eviction logic
- * 
+ *
  * @example
  * import { ElementDataCache, ComponentTracker } from './utils/weak-cache.js';
- * 
+ *
  * const cache = new ElementDataCache();
  * const element = document.querySelector('.my-element');
  * cache.set(element, { initialized: true, data: {...} });
- * 
+ *
  * // Later, when element is removed from DOM and no references exist
  * // The cache entry is automatically garbage collected
  */
@@ -38,7 +38,7 @@ export class ElementDataCache {
             sets: 0,
             gets: 0,
             hits: 0,
-            deletes: 0
+            deletes: 0,
         };
     }
 
@@ -97,12 +97,12 @@ export class ElementDataCache {
      */
     getStats() {
         const hitRate = this.stats.gets > 0
-            ? ((this.stats.hits / this.stats.gets) * 100).toFixed(2) + '%'
+            ? `${((this.stats.hits / this.stats.gets) * 100).toFixed(2)}%`
             : '0.00%';
 
         return {
             ...this.stats,
-            hitRate
+            hitRate,
         };
     }
 
@@ -114,7 +114,7 @@ export class ElementDataCache {
             sets: 0,
             gets: 0,
             hits: 0,
-            deletes: 0
+            deletes: 0,
         };
     }
 }
@@ -142,7 +142,7 @@ export class ComponentTracker {
         this.metadata.set(component, {
             ...meta,
             createdAt: Date.now(),
-            id: this.createdCount++
+            id: this.createdCount++,
         });
     }
 
@@ -166,7 +166,7 @@ export class ComponentTracker {
             this.metadata.set(component, {
                 ...existing,
                 ...updates,
-                updatedAt: Date.now()
+                updatedAt: Date.now(),
             });
         }
     }
@@ -283,7 +283,7 @@ export class EventDataCache {
     getHitRate() {
         const total = this.hits + this.misses;
         if (total === 0) return '0.00%';
-        return ((this.hits / total) * 100).toFixed(2) + '%';
+        return `${((this.hits / total) * 100).toFixed(2)}%`;
     }
 
     /**
@@ -295,7 +295,7 @@ export class EventDataCache {
             hits: this.hits,
             misses: this.misses,
             total: this.hits + this.misses,
-            hitRate: this.getHitRate()
+            hitRate: this.getHitRate(),
         };
     }
 
@@ -318,7 +318,7 @@ export const globalComponentTracker = new ComponentTracker();
 if (typeof window !== 'undefined') {
     window.weakCacheUtils = {
         elementCache: globalElementCache,
-        componentTracker: globalComponentTracker
+        componentTracker: globalComponentTracker,
     };
     console.log('💡 Weak cache utilities available: window.weakCacheUtils');
 }
@@ -331,7 +331,7 @@ if (typeof window !== 'undefined') {
 export function weakMemoize(fn) {
     const cache = new WeakMap();
 
-    return function(obj, ...args) {
+    return function (obj, ...args) {
         if (!(obj instanceof Object)) {
             // For primitives, just call function (can't use WeakMap)
             return fn(obj, ...args);
@@ -362,7 +362,7 @@ export const WeakCacheExamples = {
         cache.set(button, {
             clicked: 0,
             lastClick: null,
-            initialized: true
+            initialized: true,
         });
 
         // Retrieve metadata
@@ -425,18 +425,16 @@ export const WeakCacheExamples = {
 
         document.addEventListener('mousemove', (e) => {
             // Expensive computation cached per event object
-            const data = eventCache.getOrCompute(e, (event) => {
+            const data = eventCache.getOrCompute(e, (event) =>
                 // Expensive calculation
-                return {
+                ({
                     distance: Math.sqrt(event.clientX ** 2 + event.clientY ** 2),
                     angle: Math.atan2(event.clientY, event.clientX),
-                    quadrant: Math.floor(Math.atan2(event.clientY, event.clientX) / (Math.PI / 2))
-                };
-            });
+                    quadrant: Math.floor(Math.atan2(event.clientY, event.clientX) / (Math.PI / 2)),
+                }));
 
             console.log('Event data:', data);
             console.log('Cache hit rate:', eventCache.getHitRate());
         });
-    }
+    },
 };
-

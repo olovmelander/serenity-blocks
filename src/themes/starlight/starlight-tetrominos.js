@@ -8,13 +8,13 @@ export const STARLIGHT_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#cfeaff',  // Ice blue
-        O: '#fff1c1',  // Starlight gold
-        T: '#d8c9ff',  // Lavender glow
-        S: '#a7ffe5',  // Mint aurora
-        Z: '#ffb4e0',  // Pink nebula
-        J: '#7a8bff',  // Indigo night
-        L: '#ffe6a3',  // Warm sunrise
+        I: '#cfeaff', // Ice blue
+        O: '#fff1c1', // Starlight gold
+        T: '#d8c9ff', // Lavender glow
+        S: '#a7ffe5', // Mint aurora
+        Z: '#ffb4e0', // Pink nebula
+        J: '#7a8bff', // Indigo night
+        L: '#ffe6a3', // Warm sunrise
         GARBAGE: '#111326', // Deep cosmos
     },
 

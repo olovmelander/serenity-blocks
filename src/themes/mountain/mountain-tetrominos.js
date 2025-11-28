@@ -9,13 +9,13 @@ export const MOUNTAIN_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#5a9fd8',  // Alpine sky - bright mountain atmosphere
-        O: '#e8f0f7',  // Snow cap - pristine peak snow
-        T: '#6b7a9e',  // Storm ridge - dramatic mountain weather
-        S: '#8b9cb3',  // Granite gray - solid mountain rock
-        Z: '#4a5d7a',  // Slate blue - weathered stone
-        J: '#2c3e50',  // Deep valley - shadowed mountain depths (matches mid-range)
-        L: '#d4a574',  // Dawn gold - sunrise over peaks
+        I: '#5a9fd8', // Alpine sky - bright mountain atmosphere
+        O: '#e8f0f7', // Snow cap - pristine peak snow
+        T: '#6b7a9e', // Storm ridge - dramatic mountain weather
+        S: '#8b9cb3', // Granite gray - solid mountain rock
+        Z: '#4a5d7a', // Slate blue - weathered stone
+        J: '#2c3e50', // Deep valley - shadowed mountain depths (matches mid-range)
+        L: '#d4a574', // Dawn gold - sunrise over peaks
         GARBAGE: '#1b2631', // Dark rock - deep mountain shadow (matches front-range)
     },
 
@@ -32,8 +32,8 @@ export const MOUNTAIN_TETROMINOS = {
 
         // Subtle atmospheric pulsing like mountain mist
         pulse: true,
-        pulseSpeed: 0.025,        // Slow, majestic breathing
-        pulseAmplitude: 0.15,     // Gentle variation
+        pulseSpeed: 0.025, // Slow, majestic breathing
+        pulseAmplitude: 0.15, // Gentle variation
 
         // Subtle shimmer like distant peaks in haze
         shimmer: true,

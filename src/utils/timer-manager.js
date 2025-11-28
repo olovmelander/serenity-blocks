@@ -1,19 +1,19 @@
 /**
  * @fileoverview Timer Manager - Tracks and manages setInterval/setTimeout for proper cleanup
- * 
+ *
  * Usage:
  * ```javascript
  * class MyComponent {
  *   constructor() {
  *     this.timers = new TimerManager();
  *   }
- * 
+ *
  *   start() {
  *     // Use wrapper methods instead of native setInterval/setTimeout
  *     this.timers.setInterval(() => this.update(), 1000);
  *     this.timers.setTimeout(() => this.delayedAction(), 5000);
  *   }
- * 
+ *
  *   destroy() {
  *     this.timers.clearAll(); // Clears all timers at once!
  *   }
@@ -24,15 +24,15 @@
 export class TimerManager {
     constructor() {
         this.intervals = new Map(); // id -> { callback, delay, nativeId }
-        this.timeouts = new Map();  // id -> { callback, delay, nativeId }
+        this.timeouts = new Map(); // id -> { callback, delay, nativeId }
         this.nextId = 1;
-        
+
         // Stats for debugging
         this.stats = {
             intervalsCreated: 0,
             timeoutsCreated: 0,
             intervalsCleared: 0,
-            timeoutsCleared: 0
+            timeoutsCleared: 0,
         };
     }
 
@@ -49,16 +49,16 @@ export class TimerManager {
 
         const id = this.nextId++;
         const nativeId = setInterval(callback, delay);
-        
+
         this.intervals.set(id, {
             callback,
             delay,
             nativeId,
-            createdAt: Date.now()
+            createdAt: Date.now(),
         });
-        
+
         this.stats.intervalsCreated++;
-        
+
         return id;
     }
 
@@ -79,16 +79,16 @@ export class TimerManager {
             this.timeouts.delete(id);
             callback();
         }, delay);
-        
+
         this.timeouts.set(id, {
             callback,
             delay,
             nativeId,
-            createdAt: Date.now()
+            createdAt: Date.now(),
         });
-        
+
         this.stats.timeoutsCreated++;
-        
+
         return id;
     }
 
@@ -106,7 +106,7 @@ export class TimerManager {
         clearInterval(timer.nativeId);
         this.intervals.delete(id);
         this.stats.intervalsCleared++;
-        
+
         return true;
     }
 
@@ -124,7 +124,7 @@ export class TimerManager {
         clearTimeout(timer.nativeId);
         this.timeouts.delete(id);
         this.stats.timeoutsCleared++;
-        
+
         return true;
     }
 
@@ -133,14 +133,14 @@ export class TimerManager {
      */
     clearAllIntervals() {
         const count = this.intervals.size;
-        
+
         for (const [id, timer] of this.intervals.entries()) {
             clearInterval(timer.nativeId);
             this.stats.intervalsCleared++;
         }
-        
+
         this.intervals.clear();
-        
+
         if (count > 0) {
             console.log(`[TimerManager] Cleared ${count} intervals`);
         }
@@ -151,14 +151,14 @@ export class TimerManager {
      */
     clearAllTimeouts() {
         const count = this.timeouts.size;
-        
+
         for (const [id, timer] of this.timeouts.entries()) {
             clearTimeout(timer.nativeId);
             this.stats.timeoutsCleared++;
         }
-        
+
         this.timeouts.clear();
-        
+
         if (count > 0) {
             console.log(`[TimerManager] Cleared ${count} timeouts`);
         }
@@ -172,14 +172,14 @@ export class TimerManager {
         const intervalCount = this.intervals.size;
         const timeoutCount = this.timeouts.size;
         const total = intervalCount + timeoutCount;
-        
+
         if (total > 0) {
             console.log(`[TimerManager] Clearing ${intervalCount} intervals and ${timeoutCount} timeouts`);
         }
-        
+
         this.clearAllIntervals();
         this.clearAllTimeouts();
-        
+
         if (total > 0) {
             console.log('✅ [TimerManager] All timers cleared');
         }
@@ -193,7 +193,7 @@ export class TimerManager {
         return {
             intervals: this.intervals.size,
             timeouts: this.timeouts.size,
-            total: this.intervals.size + this.timeouts.size
+            total: this.intervals.size + this.timeouts.size,
         };
     }
 
@@ -206,7 +206,7 @@ export class TimerManager {
             ...this.stats,
             activeIntervals: this.intervals.size,
             activeTimeouts: this.timeouts.size,
-            totalActive: this.intervals.size + this.timeouts.size
+            totalActive: this.intervals.size + this.timeouts.size,
         };
     }
 
@@ -216,27 +216,27 @@ export class TimerManager {
      */
     listActiveTimers() {
         const timers = [];
-        
+
         for (const [id, timer] of this.intervals.entries()) {
             timers.push({
                 id,
                 type: 'interval',
                 delay: timer.delay,
                 age: Date.now() - timer.createdAt,
-                callback: timer.callback.toString().substring(0, 100)
+                callback: timer.callback.toString().substring(0, 100),
             });
         }
-        
+
         for (const [id, timer] of this.timeouts.entries()) {
             timers.push({
                 id,
                 type: 'timeout',
                 delay: timer.delay,
                 age: Date.now() - timer.createdAt,
-                callback: timer.callback.toString().substring(0, 100)
+                callback: timer.callback.toString().substring(0, 100),
             });
         }
-        
+
         return timers;
     }
 
@@ -246,11 +246,11 @@ export class TimerManager {
      */
     warnIfLeaked() {
         const active = this.getActiveCount();
-        
+
         if (active.total > 0) {
             console.warn(
-                `[TimerManager] Potential timer leak detected! ` +
-                `${active.intervals} intervals and ${active.timeouts} timeouts still active.`
+                '[TimerManager] Potential timer leak detected! '
+                + `${active.intervals} intervals and ${active.timeouts} timeouts still active.`,
             );
             console.warn('[TimerManager] Active timers:', this.listActiveTimers());
         }
@@ -272,4 +272,3 @@ export class TimerManager {
  * Import this if you want a shared timer manager
  */
 export const globalTimerManager = new TimerManager();
-

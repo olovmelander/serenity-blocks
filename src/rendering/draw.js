@@ -42,7 +42,7 @@ const statElements = {
     speed: null,
 };
 
-let lastStatValues = {
+const lastStatValues = {
     score: null,
     lines: null,
     level: null,
@@ -205,7 +205,7 @@ export function draw(canvas, ctx, gameState) {
             const cell = row[worldX];
             if (!cell) continue;
 
-            let blockColor = COLORS[cell.color] || cell.color || '#808080';
+            const blockColor = COLORS[cell.color] || cell.color || '#808080';
             const visibleY = worldY - HIDDEN_ROWS;
             if (visibleY < 0 || visibleY >= ROWS) continue;
             drawBlock(

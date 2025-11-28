@@ -63,7 +63,7 @@ export default class SunsetTheme extends BaseTheme {
             this.solarUnsubscribe();
             this.solarUnsubscribe = null;
         }
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         if (this.sunEmitter) {
             this.sunEmitter.destroy();
@@ -859,7 +859,7 @@ export default class SunsetTheme extends BaseTheme {
 
     isStartOverlayActive() {
         if (typeof document === 'undefined') return false;
-        const body = document.body;
+        const { body } = document;
         if (!body) return false;
         const startModal = document.getElementById('start-modal');
         const modalVisible = !!(startModal && !startModal.classList.contains('hidden') && startModal.offsetParent !== null);

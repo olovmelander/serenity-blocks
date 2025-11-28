@@ -42,34 +42,36 @@ export class ThemesTab {
      */
     getCategories() {
         const categorySet = new Set();
-        this.themes.forEach(theme => {
+        this.themes.forEach((theme) => {
             if (theme.group) {
                 categorySet.add(theme.group);
             }
         });
 
         const categories = [
-            { id: 'all', name: 'All Themes', icon: '🌍', count: this.themes.length }
+            {
+                id: 'all', name: 'All Themes', icon: '🌍', count: this.themes.length,
+            },
         ];
 
         const categoryInfo = {
-            'biomes': { name: 'Nature', icon: '🌲' },
-            'cosmic': { name: 'Cosmic', icon: '✨' },
-            'meditation': { name: 'Meditation', icon: '🧘' },
-            'urban': { name: 'Urban', icon: '🏙️' },
-            'fantasy': { name: 'Fantasy', icon: '🔮' },
-            'abstract': { name: 'Abstract', icon: '🎨' },
-            'sky': { name: 'Sky', icon: '☁️' }
+            biomes: { name: 'Nature', icon: '🌲' },
+            cosmic: { name: 'Cosmic', icon: '✨' },
+            meditation: { name: 'Meditation', icon: '🧘' },
+            urban: { name: 'Urban', icon: '🏙️' },
+            fantasy: { name: 'Fantasy', icon: '🔮' },
+            abstract: { name: 'Abstract', icon: '🎨' },
+            sky: { name: 'Sky', icon: '☁️' },
         };
 
-        Array.from(categorySet).sort().forEach(cat => {
+        Array.from(categorySet).sort().forEach((cat) => {
             const info = categoryInfo[cat] || { name: cat, icon: '🎭' };
-            const count = this.themes.filter(t => t.group === cat).length;
+            const count = this.themes.filter((t) => t.group === cat).length;
             categories.push({
                 id: cat,
                 name: info.name,
                 icon: info.icon,
-                count: count
+                count,
             });
         });
 
@@ -83,15 +85,15 @@ export class ThemesTab {
      */
     getThemeColorScheme(group) {
         const schemes = {
-            'biomes': { primary: '#4CAF50', secondary: '#81C784', gradient: 'linear-gradient(135deg, #4CAF50, #81C784)' },
-            'cosmic': { primary: '#9C27B0', secondary: '#CE93D8', gradient: 'linear-gradient(135deg, #9C27B0, #CE93D8)' },
-            'meditation': { primary: '#FF9800', secondary: '#FFB74D', gradient: 'linear-gradient(135deg, #FF9800, #FFB74D)' },
-            'urban': { primary: '#607D8B', secondary: '#90A4AE', gradient: 'linear-gradient(135deg, #607D8B, #90A4AE)' },
-            'fantasy': { primary: '#E91E63', secondary: '#F48FB1', gradient: 'linear-gradient(135deg, #E91E63, #F48FB1)' },
-            'abstract': { primary: '#00BCD4', secondary: '#80DEEA', gradient: 'linear-gradient(135deg, #00BCD4, #80DEEA)' },
-            'sky': { primary: '#2196F3', secondary: '#64B5F6', gradient: 'linear-gradient(135deg, #2196F3, #64B5F6)' }
+            biomes: { primary: '#4CAF50', secondary: '#81C784', gradient: 'linear-gradient(135deg, #4CAF50, #81C784)' },
+            cosmic: { primary: '#9C27B0', secondary: '#CE93D8', gradient: 'linear-gradient(135deg, #9C27B0, #CE93D8)' },
+            meditation: { primary: '#FF9800', secondary: '#FFB74D', gradient: 'linear-gradient(135deg, #FF9800, #FFB74D)' },
+            urban: { primary: '#607D8B', secondary: '#90A4AE', gradient: 'linear-gradient(135deg, #607D8B, #90A4AE)' },
+            fantasy: { primary: '#E91E63', secondary: '#F48FB1', gradient: 'linear-gradient(135deg, #E91E63, #F48FB1)' },
+            abstract: { primary: '#00BCD4', secondary: '#80DEEA', gradient: 'linear-gradient(135deg, #00BCD4, #80DEEA)' },
+            sky: { primary: '#2196F3', secondary: '#64B5F6', gradient: 'linear-gradient(135deg, #2196F3, #64B5F6)' },
         };
-        return schemes[group] || schemes['biomes'];
+        return schemes[group] || schemes.biomes;
     }
 
     /**
@@ -101,7 +103,7 @@ export class ThemesTab {
      */
     getThemeIcon(theme) {
         // Check if theme has custom PNG icon
-        const themeMeta = THEME_REGISTRY.find(t => t.id === theme.id);
+        const themeMeta = THEME_REGISTRY.find((t) => t.id === theme.id);
         if (themeMeta?.icon) {
             // Extract just the filename from the icon path
             // themeMeta.icon is like './ice-temple/ice-temple-theme-icon.png'
@@ -113,21 +115,48 @@ export class ThemesTab {
 
         // Fallback to emoji icons
         const icons = {
-            'Forest': '🌲', 'Himalayan Peak': '🏔️', 'Ice Temple': '❄️',
-            'Moonlit Forest': '🌙', 'Wolfhour': '🐺', 'Ocean': '🌊',
-            'Sunset': '🌅', 'Mountain': '⛰️', 'Zen Garden': '🎋',
-            'Winter': '☃️', 'Fall': '🍂', 'Summer': '☀️', 'Spring': '🌸',
-            'Aurora': '🌌', 'Galaxy': '🌌', 'Rainy Window': '🌧️',
-            'Koi Pond': '🐟', 'Meadow': '🌼', 'Cosmic Chimes': '🎐',
-            'Singing Bowl': '🔔', 'Starlight': '⭐', 'Swedish Forest': '🌲',
-            'Geode': '💎', 'Bioluminescence': '🦑', 'Desert Oasis': '🏜️',
-            'Bamboo Grove': '🎋', 'Misty Lake': '🌫️', 'Waves': '🌊',
-            'Fluid Dreams': '💧', 'Lantern Festival': '🏮', 'Crystal Cave': '💎',
-            'Candlelit Monastery': '🕯️', 'Cherry Blossom Garden': '🌸',
-            'Floating Islands': '🏝️', 'Meditation Temple': '🛕',
-            'Moonlit Greenhouse': '🌿', 'Electric Dreams': '⚡',
-            'Nebula Flow': '🌀', 'Lunara': '🌙', 'Pyrestorm': '🔥',
-            'Neon Dusk': '🌆', 'Stillwater': '💧'
+            Forest: '🌲',
+            'Himalayan Peak': '🏔️',
+            'Ice Temple': '❄️',
+            'Moonlit Forest': '🌙',
+            Wolfhour: '🐺',
+            Ocean: '🌊',
+            Sunset: '🌅',
+            Mountain: '⛰️',
+            'Zen Garden': '🎋',
+            Winter: '☃️',
+            Fall: '🍂',
+            Summer: '☀️',
+            Spring: '🌸',
+            Aurora: '🌌',
+            Galaxy: '🌌',
+            'Rainy Window': '🌧️',
+            'Koi Pond': '🐟',
+            Meadow: '🌼',
+            'Cosmic Chimes': '🎐',
+            'Singing Bowl': '🔔',
+            Starlight: '⭐',
+            'Swedish Forest': '🌲',
+            Geode: '💎',
+            Bioluminescence: '🦑',
+            'Desert Oasis': '🏜️',
+            'Bamboo Grove': '🎋',
+            'Misty Lake': '🌫️',
+            Waves: '🌊',
+            'Fluid Dreams': '💧',
+            'Lantern Festival': '🏮',
+            'Crystal Cave': '💎',
+            'Candlelit Monastery': '🕯️',
+            'Cherry Blossom Garden': '🌸',
+            'Floating Islands': '🏝️',
+            'Meditation Temple': '🛕',
+            'Moonlit Greenhouse': '🌿',
+            'Electric Dreams': '⚡',
+            'Nebula Flow': '🌀',
+            Lunara: '🌙',
+            Pyrestorm: '🔥',
+            'Neon Dusk': '🌆',
+            Stillwater: '💧',
         };
         const emoji = icons[theme.displayName] || '🎨';
         return `<div class="theme-icon-emoji">${emoji}</div>`;
@@ -181,7 +210,7 @@ export class ThemesTab {
      * @returns {string} HTML for category filters
      */
     renderCategoryFilters() {
-        return this.categories.map(cat => `
+        return this.categories.map((cat) => `
             <button class="category-pill ${cat.id === this.selectedCategory ? 'active' : ''}"
                     data-category="${cat.id}">
                 <span class="pill-icon">${cat.icon}</span>
@@ -198,13 +227,16 @@ export class ThemesTab {
     renderThemeCards() {
         const filteredThemes = this.selectedCategory === 'all'
             ? this.themes
-            : this.themes.filter(t => t.group === this.selectedCategory);
+            : this.themes.filter((t) => t.group === this.selectedCategory);
 
         if (filteredThemes.length === 0) {
             return '<div class="no-themes">No themes in this category</div>';
         }
 
-        return filteredThemes.map(theme => {
+        // Sort themes alphabetically by display name
+        const sortedThemes = filteredThemes.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+        return sortedThemes.map((theme) => {
             const isActive = theme.id === this.currentTheme;
             const colorScheme = this.getThemeColorScheme(theme.group);
             const iconHtml = this.getThemeIcon(theme);
@@ -212,6 +244,7 @@ export class ThemesTab {
             return `
                 <div class="theme-card ${isActive ? 'active' : ''}"
                      data-theme="${theme.id}"
+                     tabindex="0"
                      style="--theme-gradient: ${colorScheme.gradient}">
                     <div class="theme-swatch" style="background: ${colorScheme.gradient}">
                         ${iconHtml}
@@ -232,7 +265,7 @@ export class ThemesTab {
      * @returns {string} Display name
      */
     getCategoryDisplayName(id) {
-        const category = this.categories.find(c => c.id === id);
+        const category = this.categories.find((c) => c.id === id);
         return category ? category.name : id;
     }
 
@@ -241,7 +274,7 @@ export class ThemesTab {
      * @returns {string} Current theme name
      */
     getCurrentThemeDisplayName() {
-        const theme = this.themes.find(t => t.id === this.currentTheme);
+        const theme = this.themes.find((t) => t.id === this.currentTheme);
         return theme ? theme.displayName : this.currentTheme;
     }
 
@@ -251,16 +284,16 @@ export class ThemesTab {
     attachEventListeners() {
         // Category filter pills
         const pills = document.querySelectorAll('.category-pill');
-        pills.forEach(pill => {
+        pills.forEach((pill) => {
             pill.addEventListener('click', () => {
-                const category = pill.dataset.category;
+                const { category } = pill.dataset;
                 this.selectCategory(category);
             });
         });
 
         // Theme cards
         const themeCards = document.querySelectorAll('.theme-card');
-        themeCards.forEach(card => {
+        themeCards.forEach((card) => {
             card.addEventListener('click', () => {
                 const themeId = card.dataset.theme;
                 this.selectTheme(themeId);
@@ -284,7 +317,7 @@ export class ThemesTab {
         this.selectedCategory = category;
 
         // Update filter pills
-        document.querySelectorAll('.category-pill').forEach(pill => {
+        document.querySelectorAll('.category-pill').forEach((pill) => {
             pill.classList.toggle('active', pill.dataset.category === category);
         });
 
@@ -295,7 +328,7 @@ export class ThemesTab {
 
             // Reattach event listeners to theme cards
             const themeCards = grid.querySelectorAll('.theme-card');
-            themeCards.forEach(card => {
+            themeCards.forEach((card) => {
                 card.addEventListener('click', () => {
                     const themeId = card.dataset.theme;
                     this.selectTheme(themeId);
@@ -334,7 +367,7 @@ export class ThemesTab {
      */
     async selectRandomTheme() {
         // Filter out current theme
-        const availableThemes = this.themes.filter(t => t.id !== this.currentTheme);
+        const availableThemes = this.themes.filter((t) => t.id !== this.currentTheme);
 
         if (availableThemes.length === 0) return;
 
@@ -364,7 +397,7 @@ export class ThemesTab {
 
         const cards = tabContainer.querySelectorAll('.theme-card');
 
-        cards.forEach(card => {
+        cards.forEach((card) => {
             const themeId = card.dataset.theme;
             const isActive = themeId === this.currentTheme;
 
