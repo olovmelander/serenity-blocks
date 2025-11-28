@@ -65,6 +65,7 @@ import {
     ModalManager,
     setupModalUI,
     showSettingsModal,
+    showGameOverModal,
     showHighScoresModal,
     toggleFullScreen,
     closeHighScoresModal,
@@ -3062,8 +3063,8 @@ class SerenityBlocks {
             timestamp: Date.now(),
         });
 
-        // Show game over modal
-        this.modalManager.show('gameOver');
+        // Show game over modal with stats
+        await showGameOverModal(this.modalManager, gameState, this.highScoreManager);
 
         console.log('💀 Game over!');
     }
