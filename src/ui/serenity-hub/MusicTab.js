@@ -160,7 +160,12 @@ export class MusicTab {
      * @returns {string} HTML string for playlist
      */
     renderPlaylist() {
-        return this.songs.map((song, index) => {
+        // Sort songs alphabetically by name
+        const sortedSongs = [...this.songs].sort((a, b) =>
+            a.name.localeCompare(b.name)
+        );
+
+        return sortedSongs.map((song, index) => {
             const songKey = this.nameToKey(song.name);
             const isActive = songKey === this.currentSong;
 
