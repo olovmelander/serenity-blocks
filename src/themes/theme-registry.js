@@ -207,6 +207,12 @@ export const THEME_REGISTRY = [
         group: 'abstract',
     },
     {
+        id: 'chromatic-impasto',
+        displayName: 'Chromatic Impasto',
+        module: './chromatic-impasto/chromatic-impasto-theme.js',
+        group: 'abstract',
+    },
+    {
         id: 'voltage-storm',
         displayName: 'Voltage Storm',
         module: './voltage-storm/voltage-storm-theme.js',
