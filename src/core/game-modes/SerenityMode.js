@@ -115,9 +115,7 @@ export class SerenityMode extends BaseGameMode {
         // Setup interactive effects (click/tap to trigger effects)
         this._setupInteractiveEffects();
 
-        // Show keyboard shortcuts overlay briefly
-        this._showKeyboardShortcuts();
-
+        // Don't auto-show keyboard shortcuts - user can press '/' to view them if needed
         // Don't auto-show breathing indicator - user must press Space to enable
         // This keeps focus on the beautiful themes
         console.log('[Serenity] Serenity mode active - Press H for Serenity Hub, Space for breathing guide');
