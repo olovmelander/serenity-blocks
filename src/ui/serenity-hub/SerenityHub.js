@@ -16,7 +16,7 @@ export class SerenityHub {
   constructor(serenityMode) {
     this.serenityMode = serenityMode;
     this.isOpen = false;
-    this.currentTab = 'breathing'; // 'breathing', 'music', 'themes'
+    this.currentTab = 'themes'; // 'themes', 'music', 'breathing'
 
     // DOM elements
     this.hubIcon = null;
@@ -221,15 +221,16 @@ export class SerenityHub {
 
       <nav class="hub-tabs" role="tablist">
         <button class="hub-tab active"
-                data-tab="breathing"
+                data-tab="themes"
                 role="tab"
                 aria-selected="true"
-                aria-controls="tab-breathing">
+                aria-controls="tab-themes">
           <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
-            <path d="M12 6v12M6 12h12"></path>
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"></path>
           </svg>
-          <span>Breathing</span>
+          <span>Themes</span>
         </button>
         <button class="hub-tab"
                 data-tab="music"
@@ -244,28 +245,27 @@ export class SerenityHub {
           <span>Music</span>
         </button>
         <button class="hub-tab"
-                data-tab="themes"
+                data-tab="breathing"
                 role="tab"
                 aria-selected="false"
-                aria-controls="tab-themes">
+                aria-controls="tab-breathing">
           <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="4"></circle>
-            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"></path>
+            <path d="M12 6v12M6 12h12"></path>
           </svg>
-          <span>Themes</span>
+          <span>Breathing</span>
         </button>
       </nav>
 
       <div class="hub-tab-content">
-        <div id="tab-breathing" class="tab-panel active" role="tabpanel" aria-labelledby="tab-breathing">
-          <div class="tab-loading">Loading breathing techniques...</div>
+        <div id="tab-themes" class="tab-panel active" role="tabpanel" aria-labelledby="tab-themes">
+          <div class="tab-loading">Loading themes...</div>
         </div>
         <div id="tab-music" class="tab-panel" role="tabpanel" aria-labelledby="tab-music">
           <div class="tab-loading">Loading music player...</div>
         </div>
-        <div id="tab-themes" class="tab-panel" role="tabpanel" aria-labelledby="tab-themes">
-          <div class="tab-loading">Loading themes...</div>
+        <div id="tab-breathing" class="tab-panel" role="tabpanel" aria-labelledby="tab-breathing">
+          <div class="tab-loading">Loading breathing techniques...</div>
         </div>
       </div>
     `;
@@ -611,13 +611,13 @@ export class SerenityHub {
       
       // Tab navigation
       switchTabLeft: () => {
-        const tabs = ['breathing', 'music', 'themes'];
+        const tabs = ['themes', 'music', 'breathing'];
         const currentIndex = tabs.indexOf(this.currentTab);
         const newIndex = (currentIndex - 1 + tabs.length) % tabs.length;
         this.switchTab(tabs[newIndex]);
       },
       switchTabRight: () => {
-        const tabs = ['breathing', 'music', 'themes'];
+        const tabs = ['themes', 'music', 'breathing'];
         const currentIndex = tabs.indexOf(this.currentTab);
         const newIndex = (currentIndex + 1) % tabs.length;
         this.switchTab(tabs[newIndex]);
