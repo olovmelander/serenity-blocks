@@ -205,8 +205,8 @@ export class SharedEffects {
                 mode: isInfinityMode ? 'infinity' : 'standard',
                 pieceGridY: piece.y,
                 hiddenRows: this.scene.hiddenRows,
-                centerY: centerY,
-                blockSize: this.scene.blockSize
+                centerY,
+                blockSize: this.scene.blockSize,
             });
 
             // Create expanding circle effect using tweens
@@ -451,13 +451,13 @@ export class SharedEffects {
 
         if (comboCount === 0) {
             return 0x00ffff; // Default cyan
-        } else if (comboCount === 2) {
+        } if (comboCount === 2) {
             return 0x00ff88; // Green-cyan
-        } else if (comboCount === 3) {
+        } if (comboCount === 3) {
             return 0xffaa00; // Orange
-        } else if (comboCount === 4) {
+        } if (comboCount === 4) {
             return 0xff00ff; // Magenta
-        } else if (comboCount >= 5) {
+        } if (comboCount >= 5) {
             // Rainbow effect for high combos
             const colors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x00ffff, 0x0088ff, 0xff00ff];
             return colors[index % colors.length];
@@ -511,7 +511,7 @@ export class SharedEffects {
                         blendMode: 'ADD',
                         on: false,
                         tint: this.getComboTint(comboCount, burst),
-                    }
+                    },
                 );
 
                 if (!emitter) {
@@ -626,7 +626,7 @@ export class SharedEffects {
         return {
             particles: true,
             shakeMultiplier: 1.0,
-            particleCount: 1.0
+            particleCount: 1.0,
         };
     }
 
@@ -641,12 +641,10 @@ export class SharedEffects {
         // For mega cascades (10+), show special effect instead
         if (cascadeCount >= 10) {
             this.showMegaCascadeEffect(cascadeCount);
-            return;
         }
 
         // DISABLED: Cascade wave effect removed per user request
         // The sweeping gradient wave is disabled to reduce visual clutter
-        return;
     }
 
     /**
@@ -676,7 +674,7 @@ export class SharedEffects {
                 strokeThickness: 6,
                 fontStyle: 'bold',
                 backgroundColor: 'transparent', // No background
-            }
+            },
         );
 
         megaText.setOrigin(0.5);
@@ -693,7 +691,7 @@ export class SharedEffects {
             ease: 'Back.easeOut',
             onComplete: () => {
                 megaText.destroy();
-            }
+            },
         });
 
         // Camera shake - more intense for mega cascades
@@ -734,7 +732,7 @@ export class SharedEffects {
             },
             onComplete: () => {
                 ringGraphics.destroy();
-            }
+            },
         });
     }
 
@@ -750,7 +748,7 @@ export class SharedEffects {
         const PhaserRef = window.Phaser;
         if (!PhaserRef || !PhaserRef.Geom || !PhaserRef.Geom.Rectangle) return;
 
-        pieces.forEach(piece => {
+        pieces.forEach((piece) => {
             if (!piece.shape || !piece.fallDistance || piece.fallDistance < 2) return;
 
             // Find bottom blocks of the piece
@@ -759,12 +757,12 @@ export class SharedEffects {
                 row.forEach((cell, localX) => {
                     if (cell > 0) {
                         // Check if this is a bottom block (no block below it)
-                        const isBottom = localY === piece.shape.length - 1 ||
-                                       piece.shape[localY + 1][localX] === 0;
+                        const isBottom = localY === piece.shape.length - 1
+                                       || piece.shape[localY + 1][localX] === 0;
                         if (isBottom) {
                             bottomBlocks.push({
                                 x: piece.x + localX,
-                                y: piece.finalY + localY
+                                y: piece.finalY + localY,
                             });
                         }
                     }
@@ -772,7 +770,7 @@ export class SharedEffects {
             });
 
             // Create impact particles at each bottom block
-            bottomBlocks.forEach(block => {
+            bottomBlocks.forEach((block) => {
                 const screenY = (block.y - this.scene.hiddenRows) * this.scene.blockSize;
                 const screenX = block.x * this.scene.blockSize;
 
@@ -795,7 +793,7 @@ export class SharedEffects {
                         blendMode: 'ADD',
                         on: false,
                         tint: parseInt(this.getPieceColor(piece, '#ffffff').replace('#', ''), 16) || 0xffffff,
-                    }
+                    },
                 );
 
                 if (!emitter) return;
@@ -881,7 +879,7 @@ export class SharedEffects {
         const MAX_TIMERS = 50;
         if (this.activeTimers.length >= MAX_TIMERS) {
             // Remove completed timers first
-            this.activeTimers = this.activeTimers.filter(t => t && !t.hasFinished);
+            this.activeTimers = this.activeTimers.filter((t) => t && !t.hasFinished);
 
             // If still at limit, remove oldest
             if (this.activeTimers.length >= MAX_TIMERS) {
@@ -899,13 +897,13 @@ export class SharedEffects {
      */
     _cleanupTrackedObjects() {
         // Remove destroyed graphics
-        this.activeGraphics = this.activeGraphics.filter(g => g && g.scene);
+        this.activeGraphics = this.activeGraphics.filter((g) => g && g.scene);
 
         // Remove destroyed text
-        this.activeTextObjects = this.activeTextObjects.filter(t => t && t.scene);
+        this.activeTextObjects = this.activeTextObjects.filter((t) => t && t.scene);
 
         // Remove completed timers
-        this.activeTimers = this.activeTimers.filter(t => t && !t.hasDispatched);
+        this.activeTimers = this.activeTimers.filter((t) => t && !t.hasDispatched);
     }
 
     /**
@@ -917,17 +915,17 @@ export class SharedEffects {
             particles: this.activeParticleSystems.size,
             graphics: this.activeGraphics.length,
             text: this.activeTextObjects.length,
-            timers: this.activeTimers.length
+            timers: this.activeTimers.length,
         });
 
         // Clean up particle systems
-        this.activeParticleSystems.forEach(system => {
+        this.activeParticleSystems.forEach((system) => {
             destroyParticleEmitter(system);
         });
         this.activeParticleSystems.clear();
 
         // PERFORMANCE: Clean up all graphics objects
-        this.activeGraphics.forEach(graphics => {
+        this.activeGraphics.forEach((graphics) => {
             if (graphics && graphics.scene) {
                 try {
                     graphics.destroy();
@@ -939,7 +937,7 @@ export class SharedEffects {
         this.activeGraphics = [];
 
         // PERFORMANCE: Clean up all text objects
-        this.activeTextObjects.forEach(text => {
+        this.activeTextObjects.forEach((text) => {
             if (text && text.scene) {
                 try {
                     text.destroy();
@@ -951,7 +949,7 @@ export class SharedEffects {
         this.activeTextObjects = [];
 
         // PERFORMANCE: Cancel all timers
-        this.activeTimers.forEach(timer => {
+        this.activeTimers.forEach((timer) => {
             if (timer && !timer.hasDispatched) {
                 try {
                     timer.remove();

@@ -314,7 +314,7 @@ export default class AetherTidesTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();
     }

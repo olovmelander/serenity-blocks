@@ -669,7 +669,7 @@ export default class NebulaFlowTheme extends BaseTheme {
     applyGentleFade() {
         if (!this.simulator || !this.simulator.programs || !this.simulator.dye) return;
 
-        const gl = this.simulator.gl;
+        const { gl } = this.simulator;
         const clearProgram = this.simulator.programs.clear;
 
         if (!clearProgram) return;
@@ -740,7 +740,7 @@ export default class NebulaFlowTheme extends BaseTheme {
      */
     updateEmitters() {
         // Automatic emission disabled - only triggered manually on line clears
-        return;
+
     }
 
     /**
@@ -754,7 +754,7 @@ export default class NebulaFlowTheme extends BaseTheme {
             if (this.lastTime === 0) {
                 this.lastTime = currentTime;
             }
-            
+
             let deltaTime = (currentTime - this.lastTime) / 1000;
             this.lastTime = currentTime;
 
@@ -820,7 +820,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         }
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Call parent stop
@@ -889,7 +889,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         console.log('[NebulaFlow] Color scheme changed to:', schemeName);
         this.resetColorState();
         // Also reset emitter colors
-        this.emitters.forEach(e => e.colorState = this.createColorState());
+        this.emitters.forEach((e) => e.colorState = this.createColorState());
     }
 
     /**
@@ -937,7 +937,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         return {
             r: color[0] * 0.45,
             g: color[1] * 0.45,
-            b: color[2] * 0.45
+            b: color[2] * 0.45,
         };
     }
 
@@ -951,8 +951,7 @@ export default class NebulaFlowTheme extends BaseTheme {
             const options = this.availableSchemes.filter(
                 (name) => name !== this.currentSchemeName,
             );
-            const nextScheme =
-                options[Math.floor(Math.random() * options.length)] || this.currentSchemeName;
+            const nextScheme = options[Math.floor(Math.random() * options.length)] || this.currentSchemeName;
 
             this.setColorScheme(nextScheme);
 

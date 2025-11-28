@@ -21,7 +21,7 @@ export default class WavesTheme extends BaseTheme {
 
         // Quality presets for performance scaling
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 maxRipples: 2,
                 maxBubbles: 8,
                 maxWaveSwells: 1,
@@ -34,7 +34,7 @@ export default class WavesTheme extends BaseTheme {
                 comboPressureDamping: 0.16,
                 minComboScale: 0.3,
             },
-            'Low': {
+            Low: {
                 maxRipples: 3,
                 maxBubbles: 12,
                 maxWaveSwells: 2,
@@ -47,7 +47,7 @@ export default class WavesTheme extends BaseTheme {
                 comboPressureDamping: 0.14,
                 minComboScale: 0.35,
             },
-            'Medium': {
+            Medium: {
                 maxRipples: 5,
                 maxBubbles: 20,
                 maxWaveSwells: 3,
@@ -60,7 +60,7 @@ export default class WavesTheme extends BaseTheme {
                 comboPressureDamping: 0.12,
                 minComboScale: 0.38,
             },
-            'High': {
+            High: {
                 maxRipples: 7,
                 maxBubbles: 28,
                 maxWaveSwells: 4,
@@ -73,7 +73,7 @@ export default class WavesTheme extends BaseTheme {
                 comboPressureDamping: 0.1,
                 minComboScale: 0.42,
             },
-            'Ultra': {
+            Ultra: {
                 maxRipples: 9,
                 maxBubbles: 34,
                 maxWaveSwells: 6,
@@ -86,7 +86,7 @@ export default class WavesTheme extends BaseTheme {
                 comboPressureDamping: 0.09,
                 minComboScale: 0.46,
             },
-            'Extreme': {
+            Extreme: {
                 maxRipples: 12,
                 maxBubbles: 45,
                 maxWaveSwells: 8,
@@ -98,12 +98,12 @@ export default class WavesTheme extends BaseTheme {
                 maxMaelstromSize: 1100,
                 comboPressureDamping: 0.08,
                 minComboScale: 0.5,
-            }
+            },
         };
 
         // Apply quality preset based on settings
         const quality = (typeof window !== 'undefined' && window.settings?.graphicsQuality) || 'High';
-        this.activeQuality = this.qualityPresets[quality] || this.qualityPresets['High'];
+        this.activeQuality = this.qualityPresets[quality] || this.qualityPresets.High;
 
         // Combo performance guardrails
         this.comboEffectCooldownMs = 260; // Throttle back-to-back combo FX
@@ -344,7 +344,7 @@ export default class WavesTheme extends BaseTheme {
 
         const scaledCount = Math.min(
             Math.floor(count * this.activeQuality.comboEffectScale),
-            this.activeQuality.maxBubbles
+            this.activeQuality.maxBubbles,
         );
 
         for (let i = 0; i < scaledCount; i++) {
@@ -392,7 +392,7 @@ export default class WavesTheme extends BaseTheme {
 
         const rippleCount = Math.min(
             Math.floor((intensity + 1) * this.activeQuality.comboEffectScale),
-            this.activeQuality.maxRipples
+            this.activeQuality.maxRipples,
         );
 
         for (let i = 0; i < rippleCount; i++) {
@@ -409,7 +409,7 @@ export default class WavesTheme extends BaseTheme {
                 ripple.style.transform = 'translate(-50%, -50%)';
                 ripple.style.pointerEvents = 'none';
                 ripple.style.zIndex = '9';
-                ripple.style.boxShadow = `0 0 20px rgba(100, 200, 255, 0.6)`;
+                ripple.style.boxShadow = '0 0 20px rgba(100, 200, 255, 0.6)';
 
                 theme.appendChild(ripple);
 
@@ -577,7 +577,7 @@ export default class WavesTheme extends BaseTheme {
             || Math.max(4, Math.floor(this.activeQuality.maxBubbles * comboScale));
         const scaledCount = Math.min(
             Math.max(1, Math.floor(count * comboScale * densityFalloff)),
-            maxOrbs
+            maxOrbs,
         );
 
         for (let i = 0; i < scaledCount; i++) {
@@ -714,7 +714,7 @@ export default class WavesTheme extends BaseTheme {
         const sizeCap = this.activeQuality.maxMaelstromSize || 850;
         const targetSize = Math.min(
             sizeCap,
-            (480 + comboCount * 40) * (0.7 + 0.3 * comboScale)
+            (480 + comboCount * 40) * (0.7 + 0.3 * comboScale),
         );
 
         vortex.style.transition = `all ${duration}ms ease-out`;
@@ -756,7 +756,7 @@ export default class WavesTheme extends BaseTheme {
         const bloomCap = this.activeQuality.maxBloomSize || 1050;
         const maxSize = Math.min(
             bloomCap,
-            (820 + comboCount * 55) * (0.75 + 0.25 * comboScale)
+            (820 + comboCount * 55) * (0.75 + 0.25 * comboScale),
         );
         const duration = 2400 * (0.85 + 0.35 * comboScale);
 
@@ -778,7 +778,7 @@ export default class WavesTheme extends BaseTheme {
         const baseParticleCap = this.activeQuality.bloomParticleCap || 6;
         const particleCount = Math.max(
             3,
-            Math.round(baseParticleCap * comboScale * densityFalloff)
+            Math.round(baseParticleCap * comboScale * densityFalloff),
         );
 
         for (let i = 0; i < particleCount; i++) {

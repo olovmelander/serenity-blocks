@@ -164,7 +164,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // Check if settings modal is open - block ALL input if it is
             const settingsModal = document.getElementById('settings-modal');
             const settingsModalVisible = settingsModal?.classList.contains('visible');
-            
+
             // Escape key behavior depends on context
             if (e.key === 'Escape') {
                 if (settingsModalVisible) {
@@ -213,8 +213,8 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             const startModal = document.getElementById('start-modal');
             const gameOverModal = document.getElementById('game-over-modal');
             if (
-                !isGlobalAction &&
-                ((startModal && startModal.classList.contains('visible'))
+                !isGlobalAction
+                && ((startModal && startModal.classList.contains('visible'))
                 || (gameOverModal && gameOverModal.classList.contains('visible')))
             ) {
                 // Only start game on Space or Enter
@@ -225,8 +225,8 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             }
 
             // Handle player 2 input first (if applicable)
-            if (actionP2 && !inputController.keyMap['p2-' + actionP2]) {
-                inputController.keyMap['p2-' + actionP2] = true;
+            if (actionP2 && !inputController.keyMap[`p2-${actionP2}`]) {
+                inputController.keyMap[`p2-${actionP2}`] = true;
                 handlePlayer2Action(actionP2, gameActions, inputController, settings);
             }
 
@@ -392,7 +392,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             }
 
             if (actionP2) {
-                inputController.keyMap['p2-' + actionP2] = false;
+                inputController.keyMap[`p2-${actionP2}`] = false;
             }
 
             // Clear DAS timers for movement (Player 1)

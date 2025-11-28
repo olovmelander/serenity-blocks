@@ -8,13 +8,13 @@ export const SINGING_BOWL_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#b5fff2',  // Soft aqua
-        O: '#fdda9b',  // Brass glow
-        T: '#e5b6ff',  // Lavender incense
-        S: '#a9ffd0',  // Lotus leaf
-        Z: '#ff9fbf',  // Rose petal
-        J: '#8d99ff',  // Indigo chant
-        L: '#ffe8aa',  // Candlelight
+        I: '#b5fff2', // Soft aqua
+        O: '#fdda9b', // Brass glow
+        T: '#e5b6ff', // Lavender incense
+        S: '#a9ffd0', // Lotus leaf
+        Z: '#ff9fbf', // Rose petal
+        J: '#8d99ff', // Indigo chant
+        L: '#ffe8aa', // Candlelight
         GARBAGE: '#1a1a21', // Meditation shadow
     },
 

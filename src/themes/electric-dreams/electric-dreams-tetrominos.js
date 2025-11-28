@@ -9,13 +9,13 @@ export const ELECTRIC_DREAMS_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#62f6ff',  // Cyan electric streak
-        O: '#ffb347',  // Neon amber
-        T: '#ff66f0',  // Hot pink glow
-        S: '#94ffb3',  // Mint pulse
-        Z: '#ff5c7c',  // Coral neon
-        J: '#8a8dff',  // Indigo haze
-        L: '#ffe066',  // Vapor gold
+        I: '#62f6ff', // Cyan electric streak
+        O: '#ffb347', // Neon amber
+        T: '#ff66f0', // Hot pink glow
+        S: '#94ffb3', // Mint pulse
+        Z: '#ff5c7c', // Coral neon
+        J: '#8a8dff', // Indigo haze
+        L: '#ffe066', // Vapor gold
         GARBAGE: '#1b1024', // Midnight background
     },
 

@@ -8,13 +8,13 @@ export const SUMMER_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#71e6ff',  // Ocean spray
-        O: '#ffe58f',  // Noon sun
-        T: '#ffb4d6',  // Bougainvillea pop
-        S: '#8deba3',  // Palm frond
-        Z: '#ff8a63',  // Sunset coral
-        J: '#6bb0ff',  // Horizon blue
-        L: '#ffd28a',  // Sandstone glow
+        I: '#71e6ff', // Ocean spray
+        O: '#ffe58f', // Noon sun
+        T: '#ffb4d6', // Bougainvillea pop
+        S: '#8deba3', // Palm frond
+        Z: '#ff8a63', // Sunset coral
+        J: '#6bb0ff', // Horizon blue
+        L: '#ffd28a', // Sandstone glow
         GARBAGE: '#3e2f1c', // Driftwood shadow
     },
 

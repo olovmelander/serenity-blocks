@@ -8,13 +8,13 @@ export const WAVES_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#a8f6ff',  // Cyan crest
-        O: '#f4ffb5',  // Pale sunlight
-        T: '#bdb9ff',  // Lavender foam
-        S: '#87ffd6',  // Mint tide
-        Z: '#ffa6e3',  // Coral bloom
-        J: '#6b8dff',  // Indigo depth
-        L: '#ffe08f',  // Golden shore
+        I: '#a8f6ff', // Cyan crest
+        O: '#f4ffb5', // Pale sunlight
+        T: '#bdb9ff', // Lavender foam
+        S: '#87ffd6', // Mint tide
+        Z: '#ffa6e3', // Coral bloom
+        J: '#6b8dff', // Indigo depth
+        L: '#ffe08f', // Golden shore
         GARBAGE: '#0c1b27', // Deep ocean shadow
     },
 

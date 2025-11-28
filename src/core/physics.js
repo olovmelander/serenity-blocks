@@ -162,7 +162,7 @@ export async function applyGravity(
     // Note: Viewport optimization removed - it was causing stuck pieces
     // All pieces must be processed for gravity to work correctly
     // The performance gain wasn't worth the correctness issues
-    let visiblePieces = lockedPieces;
+    const visiblePieces = lockedPieces;
 
     // PERFORMANCE: Only rebuild once at the start
     // The grid is already current from the previous physics phase
@@ -172,7 +172,7 @@ export async function applyGravity(
     // Calculate maximum potential fall distance to determine animation speed
     // For infinity mode with large grids, we need adaptive timing
     let maxPotentialFall = 0;
-    visiblePieces.forEach(piece => {
+    visiblePieces.forEach((piece) => {
         // Check how far this piece could potentially fall
         let fallDistance = 0;
         for (let y = piece.y + piece.shape.length; y < boardGrid.length; y++) {
@@ -786,9 +786,9 @@ export async function processPhysics(gameState, callbacks) {
         // Cascade 2-4: 0.8x (96ms) - Faster for cascades
         // Cascade 5-9: 0.6x (72ms) - Quick cascade speed
         // Cascade 10+: 0.5x (60ms) - Very fast for mega cascades
-        const speedMultiplier = cascadeCount === 1 ? 1.0 :
-                               cascadeCount <= 4 ? 0.8 :
-                               cascadeCount <= 9 ? 0.6 : 0.5;
+        const speedMultiplier = cascadeCount === 1 ? 1.0
+            : cascadeCount <= 4 ? 0.8
+                : cascadeCount <= 9 ? 0.6 : 0.5;
 
         // Stage 1: Keep original colors, full opacity - quick flash
         fullLines.forEach((y) => {

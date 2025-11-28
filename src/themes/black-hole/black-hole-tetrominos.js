@@ -10,13 +10,13 @@ export const BLACK_HOLE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#c4d1ff',  // Event horizon blue-white
-        O: '#8895ff',  // Accretion lavender
-        T: '#5f6dff',  // Ultraviolet violet
-        S: '#62ffe0',  // Teal ion stream
-        Z: '#ff78c4',  // Magenta flare
-        J: '#3a3f66',  // Shadow indigo
-        L: '#f8b24f',  // Golden lensing streak
+        I: '#c4d1ff', // Event horizon blue-white
+        O: '#8895ff', // Accretion lavender
+        T: '#5f6dff', // Ultraviolet violet
+        S: '#62ffe0', // Teal ion stream
+        Z: '#ff78c4', // Magenta flare
+        J: '#3a3f66', // Shadow indigo
+        L: '#f8b24f', // Golden lensing streak
         GARBAGE: '#11121b', // Deep void
     },
 

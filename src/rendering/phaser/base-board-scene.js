@@ -16,7 +16,7 @@ let cachedPhaserRef = null;
 /**
  * Create the BaseBoardScene class for Phaser 4.
  * Factory function that generates a Scene class once Phaser is available.
- * 
+ *
  * @param {typeof Phaser} phaserLib - Phaser 4 library reference
  * @returns {typeof Phaser.Scene} - BaseBoardScene class
  */
@@ -90,7 +90,7 @@ export function createBaseBoardScene(
             // Initialize Tetromino Style Manager for theme-based tetromino colors
             this.styleManager = new TetrominoStyleManager(
                 typeof window !== 'undefined' ? window.themeManager : null,
-                typeof window !== 'undefined' ? window.settingsManager : null
+                typeof window !== 'undefined' ? window.settingsManager : null,
             );
             if (this.styleManager) {
                 this.styleManager.init();
@@ -164,7 +164,6 @@ export function createBaseBoardScene(
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
-
         }
 
         /**
@@ -519,7 +518,7 @@ export function createBaseBoardScene(
                     this.gameState.cameraCenterRow = initialTopRow + visibleRows / 2;
                 }
 
-                console.log(`[BaseBoardScene] Infinity camera initialized:`);
+                console.log('[BaseBoardScene] Infinity camera initialized:');
                 console.log(`  - Total rows: ${totalRows}`);
                 console.log(`  - Showing rows ${initialTopRow} to ${initialTopRow + visibleRows}`);
                 console.log(`  - Camera Y position: ${centerY}px`);
@@ -542,7 +541,7 @@ export function createBaseBoardScene(
 
             this.updateCameraBounds();
 
-            const blockSize = this.boardConfig.blockSize;
+            const { blockSize } = this.boardConfig;
             const totalRows = this.gameState?.board?.length
                 ?? (this.rows + this.hiddenRows);
             const visibleRows = this.cameraSettings.visibleRows || this.rows;
@@ -582,7 +581,7 @@ export function createBaseBoardScene(
             const camera = this.cameras?.main;
             if (!camera || !this.cameraSettings) return;
 
-            const blockSize = this.boardConfig.blockSize;
+            const { blockSize } = this.boardConfig;
             const totalRows = this.gameState?.board?.length
                 ?? (this.rows + this.hiddenRows);
             const totalHeight = totalRows * blockSize;
@@ -831,12 +830,12 @@ export function createBaseBoardScene(
                     }
                 });
             });
-            
+
             // Draw outline around the entire piece
             const tempPiece = {
                 ...piece,
                 y: piece.y, // Already in world coordinates
-                x: piece.x
+                x: piece.x,
             };
             this.drawPieceOutline(tempPiece);
         }
@@ -868,7 +867,7 @@ export function createBaseBoardScene(
             this.pieceGraphics.fillStyle(colorInt, alpha);
             this.pieceGraphics.fillRect(px, py, size, size);
         }
-        
+
         /**
          * Draw outline around an entire tetromino piece
          * @param {Object} piece - The piece to outline
@@ -900,7 +899,7 @@ export function createBaseBoardScene(
                         const px = Math.round(worldX * this.blockSize);
                         const py = Math.round(worldY * this.blockSize);
                         const size = this.blockSize;
-                        
+
                         // Check each edge - only draw if it's an outer edge
                         // Top edge
                         if (y === 0 || !piece.shape[y - 1] || !piece.shape[y - 1][x]) {
@@ -910,7 +909,7 @@ export function createBaseBoardScene(
                             this.pieceGraphics.strokePath();
                             this.pieceGraphics.closePath();
                         }
-                        
+
                         // Bottom edge
                         if (y === piece.shape.length - 1 || !piece.shape[y + 1] || !piece.shape[y + 1][x]) {
                             this.pieceGraphics.beginPath();
@@ -919,7 +918,7 @@ export function createBaseBoardScene(
                             this.pieceGraphics.strokePath();
                             this.pieceGraphics.closePath();
                         }
-                        
+
                         // Left edge
                         if (x === 0 || !piece.shape[y][x - 1]) {
                             this.pieceGraphics.beginPath();
@@ -928,7 +927,7 @@ export function createBaseBoardScene(
                             this.pieceGraphics.strokePath();
                             this.pieceGraphics.closePath();
                         }
-                        
+
                         // Right edge
                         if (x === row.length - 1 || !piece.shape[y][x + 1]) {
                             this.pieceGraphics.beginPath();
@@ -987,7 +986,7 @@ export function createBaseBoardScene(
             if (this.sharedEffects && this.sharedEffects.activeParticleSystems) {
                 try {
                     const particleArray = Array.from(this.sharedEffects.activeParticleSystems);
-                    particleArray.forEach(emitter => {
+                    particleArray.forEach((emitter) => {
                         // Check if emitter is actually dead/stopped
                         if (emitter && emitter.on === false) {
                             this.sharedEffects.activeParticleSystems.delete(emitter);

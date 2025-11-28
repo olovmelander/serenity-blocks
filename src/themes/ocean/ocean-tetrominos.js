@@ -9,13 +9,13 @@ export const OCEAN_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#00e5ff',  // Bioluminescent cyan - glowing plankton and jellyfish
-        O: '#ff6b35',  // Vibrant coral orange - living coral reefs
-        T: '#a855f7',  // Jellyfish purple - majestic bell jellies
-        S: '#10b981',  // Tropical sea green - vibrant reef fish
-        Z: '#0284c7',  // Deep ocean blue - mysterious depths
-        J: '#fbbf24',  // Golden treasure - sunken gold and yellow tang fish
-        L: '#14b8a6',  // Teal aqua - clear tropical waters
+        I: '#00e5ff', // Bioluminescent cyan - glowing plankton and jellyfish
+        O: '#ff6b35', // Vibrant coral orange - living coral reefs
+        T: '#a855f7', // Jellyfish purple - majestic bell jellies
+        S: '#10b981', // Tropical sea green - vibrant reef fish
+        Z: '#0284c7', // Deep ocean blue - mysterious depths
+        J: '#fbbf24', // Golden treasure - sunken gold and yellow tang fish
+        L: '#14b8a6', // Teal aqua - clear tropical waters
         GARBAGE: '#0f172a', // Abyssal shadow - deepest ocean trenches
     },
 
@@ -32,8 +32,8 @@ export const OCEAN_TETROMINOS = {
 
         // Pulse like bioluminescent creatures breathing
         pulse: true,
-        pulseSpeed: 0.045,         // Rhythmic underwater pulsing
-        pulseAmplitude: 0.25,      // Strong bioluminescent effect
+        pulseSpeed: 0.045, // Rhythmic underwater pulsing
+        pulseAmplitude: 0.25, // Strong bioluminescent effect
 
         // Shimmer like light refracting through water
         shimmer: true,

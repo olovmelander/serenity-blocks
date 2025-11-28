@@ -86,7 +86,7 @@ export class ThemeManager {
             if (themeName !== this.activeThemeName) {
                 console.log(`[ThemeManager] Evicting old theme from cache: ${themeName}`);
                 const themeInstance = this.themeInstances.get(themeName);
-                
+
                 if (themeInstance) {
                     // Call cleanup to free resources
                     if (typeof themeInstance.cleanup === 'function') {
@@ -94,13 +94,13 @@ export class ThemeManager {
                     }
                     this.themeInstances.delete(themeName);
                 }
-                
+
                 // Remove from LRU tracking
                 const index = this.themeLRU.indexOf(themeName);
                 if (index > -1) {
                     this.themeLRU.splice(index, 1);
                 }
-                
+
                 console.log(`[ThemeManager] Cache size after eviction: ${this.themeInstances.size}/${this.maxCachedThemes}`);
                 break; // Only evict one at a time
             }
@@ -257,7 +257,7 @@ export class ThemeManager {
             if (this.activeTheme) {
                 console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
                 this.activeTheme.stop();
-                
+
                 // IMPORTANT: Clean up renderer resources before loading new theme
                 if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
                     console.log('[ThemeManager] Cleaning up renderer resources');
@@ -502,19 +502,19 @@ export class ThemeManager {
      */
     cleanup() {
         console.log('[ThemeManager] Starting full cleanup...');
-        
+
         this.stopRandomThemeInterval();
 
         if (this.activeTheme) {
             this.activeTheme.stop();
         }
-        
+
         // Stop all audio before cleaning up
         if (this.audioManager) {
             console.log('[ThemeManager] Stopping all audio');
             this.audioManager.stopAll();
         }
-        
+
         // Clean up renderer resources
         if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
             console.log('[ThemeManager] Cleaning up renderer');
@@ -530,13 +530,13 @@ export class ThemeManager {
             }
         }
         this.themeInstances.clear();
-        
+
         // Clear LRU tracking
         this.themeLRU = [];
 
         this.activeTheme = null;
         this.webglRenderer = null;
-        
+
         console.log('✅ [ThemeManager] Cleanup complete');
     }
 

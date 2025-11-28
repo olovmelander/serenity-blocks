@@ -1,21 +1,21 @@
 /**
  * @fileoverview Asset Manager - Centralized asset loading and caching with LRU eviction
- * 
+ *
  * Prevents duplicate asset loads, manages memory efficiently, and provides
  * preloading capabilities for faster theme switching.
- * 
+ *
  * @example
  * import { assetManager } from './utils/asset-manager.js';
- * 
+ *
  * // Load an image
  * const img = await assetManager.loadImage('/assets/theme.jpg');
- * 
+ *
  * // Load multiple assets
  * await assetManager.preload([
  *   { url: '/assets/bg.jpg', type: 'image' },
  *   { url: '/assets/music.mp3', type: 'audio' }
  * ]);
- * 
+ *
  * // Clear old assets
  * assetManager.clear();
  */
@@ -29,7 +29,7 @@ export class AssetManager {
         this.loading = new Map(); // url -> Promise (for deduplication)
         this.maxCacheSize = options.maxCacheSize || 50;
         this.cacheOrder = []; // LRU tracking (oldest to newest)
-        
+
         // Statistics
         this.stats = {
             cacheHits: 0,
@@ -37,9 +37,9 @@ export class AssetManager {
             assetsLoaded: 0,
             assetsEvicted: 0,
             bytesLoaded: 0,
-            loadErrors: 0
+            loadErrors: 0,
         };
-        
+
         // Asset metadata
         this.metadata = new Map(); // url -> { size, loadTime, lastAccess, type }
     }
@@ -70,7 +70,7 @@ export class AssetManager {
         // Start new load
         this.stats.cacheMisses++;
         console.log(`[AssetManager] Loading: ${url} (type: ${type})`);
-        
+
         const loadPromise = this.loadAsset(url, type, options);
         this.loading.set(url, loadPromise);
 
@@ -78,28 +78,28 @@ export class AssetManager {
             const startTime = performance.now();
             const asset = await loadPromise;
             const loadTime = performance.now() - startTime;
-            
+
             // Store in cache
             this.cache.set(url, asset);
             this.cacheOrder.push(url);
-            
+
             // Store metadata
             this.metadata.set(url, {
                 size: this.estimateSize(asset, type),
                 loadTime,
                 lastAccess: Date.now(),
                 type,
-                url
+                url,
             });
-            
+
             this.stats.assetsLoaded++;
             this.stats.bytesLoaded += this.metadata.get(url).size;
-            
+
             // Evict old assets if needed
             this.evictIfNeeded();
-            
+
             console.log(`[AssetManager] Loaded: ${url} in ${loadTime.toFixed(2)}ms (cache: ${this.cache.size}/${this.maxCacheSize})`);
-            
+
             return asset;
         } catch (error) {
             this.stats.loadErrors++;
@@ -116,18 +116,18 @@ export class AssetManager {
      */
     async loadAsset(url, type, options) {
         switch (type) {
-            case 'image':
-                return this.loadImage(url, options);
-            case 'audio':
-                return this.loadAudio(url, options);
-            case 'json':
-                return this.loadJSON(url, options);
-            case 'text':
-                return this.loadText(url, options);
-            case 'blob':
-                return this.loadBlob(url, options);
-            default:
-                throw new Error(`Unknown asset type: ${type}`);
+        case 'image':
+            return this.loadImage(url, options);
+        case 'audio':
+            return this.loadAudio(url, options);
+        case 'json':
+            return this.loadJSON(url, options);
+        case 'text':
+            return this.loadText(url, options);
+        case 'blob':
+            return this.loadBlob(url, options);
+        default:
+            throw new Error(`Unknown asset type: ${type}`);
         }
     }
 
@@ -137,14 +137,14 @@ export class AssetManager {
     loadImage(url, options = {}) {
         return new Promise((resolve, reject) => {
             const img = new Image();
-            
+
             if (options.crossOrigin) {
                 img.crossOrigin = options.crossOrigin;
             }
-            
+
             img.onload = () => resolve(img);
             img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
-            
+
             img.src = url;
         });
     }
@@ -155,14 +155,14 @@ export class AssetManager {
     loadAudio(url, options = {}) {
         return new Promise((resolve, reject) => {
             const audio = new Audio();
-            
+
             audio.addEventListener('canplaythrough', () => resolve(audio), { once: true });
             audio.addEventListener('error', () => reject(new Error(`Failed to load audio: ${url}`)), { once: true });
-            
+
             if (options.preload) {
                 audio.preload = options.preload;
             }
-            
+
             audio.src = url;
         });
     }
@@ -172,11 +172,11 @@ export class AssetManager {
      */
     async loadJSON(url, options = {}) {
         const response = await fetch(url, options);
-        
+
         if (!response.ok) {
             throw new Error(`Failed to load JSON: ${url} (${response.status})`);
         }
-        
+
         return response.json();
     }
 
@@ -185,11 +185,11 @@ export class AssetManager {
      */
     async loadText(url, options = {}) {
         const response = await fetch(url, options);
-        
+
         if (!response.ok) {
             throw new Error(`Failed to load text: ${url} (${response.status})`);
         }
-        
+
         return response.text();
     }
 
@@ -198,11 +198,11 @@ export class AssetManager {
      */
     async loadBlob(url, options = {}) {
         const response = await fetch(url, options);
-        
+
         if (!response.ok) {
             throw new Error(`Failed to load blob: ${url} (${response.status})`);
         }
-        
+
         return response.blob();
     }
 
@@ -214,21 +214,19 @@ export class AssetManager {
     async preload(assets) {
         console.log(`[AssetManager] Preloading ${assets.length} assets...`);
         const startTime = performance.now();
-        
-        const promises = assets.map(asset => 
-            this.load(asset.url, asset.type || 'image', asset.options || {})
-                .catch(error => {
-                    console.error(`[AssetManager] Preload failed for ${asset.url}:`, error);
-                    return null; // Don't fail entire batch
-                })
-        );
-        
+
+        const promises = assets.map((asset) => this.load(asset.url, asset.type || 'image', asset.options || {})
+            .catch((error) => {
+                console.error(`[AssetManager] Preload failed for ${asset.url}:`, error);
+                return null; // Don't fail entire batch
+            }));
+
         const results = await Promise.all(promises);
         const loadTime = performance.now() - startTime;
-        const successful = results.filter(r => r !== null).length;
-        
+        const successful = results.filter((r) => r !== null).length;
+
         console.log(`[AssetManager] Preloaded ${successful}/${assets.length} assets in ${loadTime.toFixed(2)}ms`);
-        
+
         return results;
     }
 
@@ -261,20 +259,20 @@ export class AssetManager {
      */
     estimateSize(asset, type) {
         switch (type) {
-            case 'image':
-                // Estimate: width * height * 4 bytes per pixel
-                return (asset.width || 0) * (asset.height || 0) * 4;
-            case 'audio':
-                // Rough estimate: 1MB for audio
-                return 1024 * 1024;
-            case 'json':
-            case 'text':
-                // Estimate string length * 2 (UTF-16)
-                return (JSON.stringify(asset).length || 0) * 2;
-            case 'blob':
-                return asset.size || 0;
-            default:
-                return 0;
+        case 'image':
+            // Estimate: width * height * 4 bytes per pixel
+            return (asset.width || 0) * (asset.height || 0) * 4;
+        case 'audio':
+            // Rough estimate: 1MB for audio
+            return 1024 * 1024;
+        case 'json':
+        case 'text':
+            // Estimate string length * 2 (UTF-16)
+            return (JSON.stringify(asset).length || 0) * 2;
+        case 'blob':
+            return asset.size || 0;
+        default:
+            return 0;
         }
     }
 
@@ -285,21 +283,21 @@ export class AssetManager {
     evictIfNeeded() {
         while (this.cache.size > this.maxCacheSize) {
             const oldestUrl = this.cacheOrder.shift();
-            
+
             if (!oldestUrl) break;
-            
+
             const asset = this.cache.get(oldestUrl);
             const meta = this.metadata.get(oldestUrl);
-            
+
             console.log(`[AssetManager] Evicting: ${oldestUrl}`);
-            
+
             // Clean up asset
             this.cleanupAsset(asset, meta?.type);
-            
+
             // Remove from cache and metadata
             this.cache.delete(oldestUrl);
             this.metadata.delete(oldestUrl);
-            
+
             this.stats.assetsEvicted++;
         }
     }
@@ -310,23 +308,23 @@ export class AssetManager {
      */
     cleanupAsset(asset, type) {
         if (!asset) return;
-        
+
         switch (type) {
-            case 'image':
-                // Clear image src to free memory
-                if (asset.src) {
-                    asset.src = '';
-                }
-                break;
-            case 'audio':
-                // Pause and clear audio
-                if (asset.pause) {
-                    asset.pause();
-                }
-                if (asset.src) {
-                    asset.src = '';
-                }
-                break;
+        case 'image':
+            // Clear image src to free memory
+            if (asset.src) {
+                asset.src = '';
+            }
+            break;
+        case 'audio':
+            // Pause and clear audio
+            if (asset.pause) {
+                asset.pause();
+            }
+            if (asset.src) {
+                asset.src = '';
+            }
+            break;
             // JSON, text, blob - garbage collected automatically
         }
     }
@@ -361,17 +359,17 @@ export class AssetManager {
     remove(url) {
         const asset = this.cache.get(url);
         const meta = this.metadata.get(url);
-        
+
         if (asset) {
             this.cleanupAsset(asset, meta?.type);
             this.cache.delete(url);
             this.metadata.delete(url);
-            
+
             const index = this.cacheOrder.indexOf(url);
             if (index > -1) {
                 this.cacheOrder.splice(index, 1);
             }
-            
+
             console.log(`[AssetManager] Removed: ${url}`);
         }
     }
@@ -381,18 +379,18 @@ export class AssetManager {
      */
     clear() {
         console.log(`[AssetManager] Clearing ${this.cache.size} cached assets...`);
-        
+
         // Clean up all assets
         for (const [url, asset] of this.cache.entries()) {
             const meta = this.metadata.get(url);
             this.cleanupAsset(asset, meta?.type);
         }
-        
+
         this.cache.clear();
         this.metadata.clear();
         this.cacheOrder = [];
         this.loading.clear();
-        
+
         console.log('✅ [AssetManager] Cache cleared');
     }
 
@@ -403,19 +401,19 @@ export class AssetManager {
     getStats() {
         const totalBytes = Array.from(this.metadata.values())
             .reduce((sum, meta) => sum + meta.size, 0);
-        
+
         const hitRate = this.stats.cacheHits + this.stats.cacheMisses > 0
             ? (this.stats.cacheHits / (this.stats.cacheHits + this.stats.cacheMisses) * 100).toFixed(2)
             : '0.00';
-        
+
         return {
             ...this.stats,
             cacheSize: this.cache.size,
             maxCacheSize: this.maxCacheSize,
             totalBytes,
             totalMB: (totalBytes / 1024 / 1024).toFixed(2),
-            hitRate: hitRate + '%',
-            loading: this.loading.size
+            hitRate: `${hitRate}%`,
+            loading: this.loading.size,
         };
     }
 
@@ -424,7 +422,7 @@ export class AssetManager {
      * @returns {Array} Array of cached asset info
      */
     getCacheInfo() {
-        return Array.from(this.cache.keys()).map(url => {
+        return Array.from(this.cache.keys()).map((url) => {
             const meta = this.metadata.get(url);
             return {
                 url,
@@ -433,7 +431,7 @@ export class AssetManager {
                 sizeMB: ((meta?.size || 0) / 1024 / 1024).toFixed(2),
                 loadTime: meta?.loadTime?.toFixed(2),
                 age: Date.now() - (meta?.lastAccess || 0),
-                lruPosition: this.cacheOrder.indexOf(url)
+                lruPosition: this.cacheOrder.indexOf(url),
             };
         });
     }
@@ -443,7 +441,7 @@ export class AssetManager {
      */
     logStatus() {
         const stats = this.getStats();
-        
+
         console.group('[AssetManager] Cache Status');
         console.log(`Cache: ${stats.cacheSize}/${stats.maxCacheSize} assets`);
         console.log(`Memory: ${stats.totalMB}MB`);
@@ -464,7 +462,7 @@ export class AssetManager {
             assetsLoaded: 0,
             assetsEvicted: 0,
             bytesLoaded: 0,
-            loadErrors: 0
+            loadErrors: 0,
         };
         console.log('[AssetManager] Statistics reset');
     }
@@ -474,7 +472,7 @@ export class AssetManager {
  * Global singleton asset manager
  */
 export const assetManager = new AssetManager({
-    maxCacheSize: 50 // Configurable
+    maxCacheSize: 50, // Configurable
 });
 
 // Expose to window for debugging
@@ -482,4 +480,3 @@ if (typeof window !== 'undefined') {
     window.assetManager = assetManager;
     console.log('💡 Asset manager available: window.assetManager.logStatus()');
 }
-

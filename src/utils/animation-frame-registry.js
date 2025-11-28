@@ -1,26 +1,26 @@
 /**
  * @fileoverview Animation Frame Registry - Track active animation frames for debugging
- * 
+ *
  * This is a development tool to help detect animation frame leaks.
- * 
+ *
  * Usage:
  * ```javascript
  * import { AnimationFrameRegistry } from './utils/animation-frame-registry.js';
- * 
+ *
  * const frameRegistry = new AnimationFrameRegistry();
- * 
+ *
  * // Instead of:
  * const id = requestAnimationFrame(callback);
- * 
+ *
  * // Use:
  * const id = frameRegistry.register(() => callback(), 'MyComponent');
- * 
+ *
  * // Cancel:
  * frameRegistry.cancel(id);
- * 
+ *
  * // Or cancel all from a source:
  * frameRegistry.cancelAll('MyComponent');
- * 
+ *
  * // Check for leaks:
  * console.log('Active frames:', frameRegistry.getActiveCount());
  * frameRegistry.listActive();
@@ -31,12 +31,12 @@ export class AnimationFrameRegistry {
     constructor(options = {}) {
         this.frames = new Map(); // frameId -> { source, callback, timestamp }
         this.enableLogging = options.enableLogging !== false;
-        
+
         // Stats
         this.stats = {
             registered: 0,
             cancelled: 0,
-            executed: 0
+            executed: 0,
         };
     }
 
@@ -56,26 +56,26 @@ export class AnimationFrameRegistry {
             // Remove from tracking when executed
             this.frames.delete(frameId);
             this.stats.executed++;
-            
+
             // Call original callback
             return callback(...args);
         };
 
         const frameId = requestAnimationFrame(wrappedCallback);
-        
+
         this.frames.set(frameId, {
             source,
             callback,
             timestamp: Date.now(),
-            stack: this.enableLogging ? new Error().stack : null
+            stack: this.enableLogging ? new Error().stack : null,
         });
-        
+
         this.stats.registered++;
-        
+
         if (this.enableLogging) {
             console.log(`[AnimationFrameRegistry] Registered frame #${frameId} from ${source}`);
         }
-        
+
         return frameId;
     }
 
@@ -86,7 +86,7 @@ export class AnimationFrameRegistry {
      */
     cancel(frameId) {
         const frame = this.frames.get(frameId);
-        
+
         if (!frame) {
             return false;
         }
@@ -94,11 +94,11 @@ export class AnimationFrameRegistry {
         cancelAnimationFrame(frameId);
         this.frames.delete(frameId);
         this.stats.cancelled++;
-        
+
         if (this.enableLogging) {
             console.log(`[AnimationFrameRegistry] Cancelled frame #${frameId} from ${frame.source}`);
         }
-        
+
         return true;
     }
 
@@ -109,7 +109,7 @@ export class AnimationFrameRegistry {
      */
     cancelAll(source) {
         let count = 0;
-        
+
         for (const [frameId, frame] of this.frames.entries()) {
             if (frame.source === source) {
                 cancelAnimationFrame(frameId);
@@ -118,11 +118,11 @@ export class AnimationFrameRegistry {
                 count++;
             }
         }
-        
+
         if (count > 0 && this.enableLogging) {
             console.log(`[AnimationFrameRegistry] Cancelled ${count} frames from ${source}`);
         }
-        
+
         return count;
     }
 
@@ -132,18 +132,18 @@ export class AnimationFrameRegistry {
      */
     cancelAllFrames() {
         const count = this.frames.size;
-        
+
         for (const frameId of this.frames.keys()) {
             cancelAnimationFrame(frameId);
             this.stats.cancelled++;
         }
-        
+
         this.frames.clear();
-        
+
         if (count > 0 && this.enableLogging) {
             console.log(`[AnimationFrameRegistry] Cancelled all ${count} frames`);
         }
-        
+
         return count;
     }
 
@@ -161,12 +161,12 @@ export class AnimationFrameRegistry {
      */
     getActiveBySource() {
         const bySource = new Map();
-        
+
         for (const frame of this.frames.values()) {
             const current = bySource.get(frame.source) || 0;
             bySource.set(frame.source, current + 1);
         }
-        
+
         return bySource;
     }
 
@@ -176,16 +176,16 @@ export class AnimationFrameRegistry {
      */
     listActive() {
         const activeFrames = [];
-        
+
         for (const [frameId, frame] of this.frames.entries()) {
             activeFrames.push({
                 frameId,
                 source: frame.source,
                 age: Date.now() - frame.timestamp,
-                callback: frame.callback.toString().substring(0, 100)
+                callback: frame.callback.toString().substring(0, 100),
             });
         }
-        
+
         return activeFrames;
     }
 
@@ -194,22 +194,22 @@ export class AnimationFrameRegistry {
      */
     logActiveFrames() {
         const bySource = this.getActiveBySource();
-        
+
         console.group('[AnimationFrameRegistry] Active Animation Frames');
         console.log(`Total active frames: ${this.frames.size}`);
-        
+
         if (bySource.size > 0) {
             console.log('\nBy source:');
             for (const [source, count] of bySource.entries()) {
                 console.log(`  ${source}: ${count}`);
             }
-            
+
             console.log('\nDetailed list:');
             console.table(this.listActive());
         } else {
             console.log('No active frames');
         }
-        
+
         console.groupEnd();
     }
 
@@ -222,7 +222,7 @@ export class AnimationFrameRegistry {
     detectLeaks(threshold = 5000) {
         const leaks = [];
         const now = Date.now();
-        
+
         for (const [frameId, frame] of this.frames.entries()) {
             const age = now - frame.timestamp;
             if (age > threshold) {
@@ -231,19 +231,19 @@ export class AnimationFrameRegistry {
                     source: frame.source,
                     age,
                     callback: frame.callback.toString().substring(0, 100),
-                    stack: frame.stack
+                    stack: frame.stack,
                 });
             }
         }
-        
+
         if (leaks.length > 0) {
             console.warn(
-                `[AnimationFrameRegistry] Detected ${leaks.length} potential leaks ` +
-                `(frames pending > ${threshold}ms)`
+                `[AnimationFrameRegistry] Detected ${leaks.length} potential leaks `
+                + `(frames pending > ${threshold}ms)`,
             );
             console.table(leaks);
         }
-        
+
         return leaks;
     }
 
@@ -255,9 +255,9 @@ export class AnimationFrameRegistry {
         return {
             ...this.stats,
             active: this.frames.size,
-            leakRate: this.stats.registered > 0 
-                ? ((this.stats.registered - this.stats.executed - this.stats.cancelled) / this.stats.registered * 100).toFixed(2) + '%'
-                : '0%'
+            leakRate: this.stats.registered > 0
+                ? `${((this.stats.registered - this.stats.executed - this.stats.cancelled) / this.stats.registered * 100).toFixed(2)}%`
+                : '0%',
         };
     }
 
@@ -280,7 +280,7 @@ export class AnimationFrameRegistry {
         this.stats = {
             registered: 0,
             cancelled: 0,
-            executed: 0
+            executed: 0,
         };
     }
 
@@ -300,47 +300,48 @@ export class AnimationFrameRegistry {
  */
 export class GlobalAnimationFrameMonitor {
     static instance = null;
+
     static enabled = false;
-    
+
     static enable(options = {}) {
         if (this.enabled) {
             console.warn('[GlobalAnimationFrameMonitor] Already enabled');
             return;
         }
-        
+
         this.instance = new AnimationFrameRegistry(options);
         this.enabled = true;
-        
+
         // Monkey-patch requestAnimationFrame for global tracking
         const original = window.requestAnimationFrame;
         window.requestAnimationFrame = (callback) => {
             if (this.enabled && this.instance) {
                 // Try to get caller info from stack
-                const stack = new Error().stack;
+                const { stack } = new Error();
                 const caller = this._extractCaller(stack);
                 return this.instance.register(callback, caller);
             }
             return original.call(window, callback);
         };
-        
+
         console.log('✅ [GlobalAnimationFrameMonitor] Enabled');
     }
-    
+
     static disable() {
         if (!this.enabled) return;
-        
+
         // TODO: Restore original requestAnimationFrame
         // (Requires storing original reference)
-        
+
         if (this.instance) {
             this.instance.destroy();
             this.instance = null;
         }
-        
+
         this.enabled = false;
         console.log('[GlobalAnimationFrameMonitor] Disabled');
     }
-    
+
     static _extractCaller(stack) {
         const lines = stack.split('\n');
         // Skip first 3 lines (Error, this function, requestAnimationFrame wrapper)
@@ -358,17 +359,17 @@ export class GlobalAnimationFrameMonitor {
         }
         return 'unknown';
     }
-    
+
     static getStats() {
         return this.instance ? this.instance.getStats() : null;
     }
-    
+
     static logActive() {
         if (this.instance) {
             this.instance.logActiveFrames();
         }
     }
-    
+
     static detectLeaks(threshold) {
         return this.instance ? this.instance.detectLeaks(threshold) : [];
     }
@@ -378,4 +379,3 @@ export class GlobalAnimationFrameMonitor {
 if (typeof window !== 'undefined') {
     window.AnimationFrameMonitor = GlobalAnimationFrameMonitor;
 }
-

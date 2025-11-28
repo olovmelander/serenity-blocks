@@ -24,15 +24,15 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Visual Elements
         this.bgMountainPoints = []; // Distant mountains
-        this.mountainPoints = [];   // Foreground mountains
-        this.lavaPaths = [];        // River path data
+        this.mountainPoints = []; // Foreground mountains
+        this.lavaPaths = []; // River path data
 
         // Particle Systems
-        this.riverParticles = [];   // Floating lava chunks (fluid)
-        this.particles = [];        // Standard air particles (embers, smoke)
-        this.sparkles = [];         // High-priority combo sparkles
-        this.geysers = [];          // Vertical lava eruptions
-        this.lightningBolts = [];   // Lightning
+        this.riverParticles = []; // Floating lava chunks (fluid)
+        this.particles = []; // Standard air particles (embers, smoke)
+        this.sparkles = []; // High-priority combo sparkles
+        this.geysers = []; // Vertical lava eruptions
+        this.lightningBolts = []; // Lightning
 
         this.lightningTimer = 0;
         this.lightningFlash = 0;
@@ -66,7 +66,7 @@ export default class PyrestormTheme extends BaseTheme {
                 riverGlow: false,
                 riverAnimation: true,
                 riverWidthMult: 0.7,
-                riverBrightness: 0.5
+                riverBrightness: 0.5,
             },
             Low: {
                 maxParticles: 80,
@@ -89,7 +89,7 @@ export default class PyrestormTheme extends BaseTheme {
                 riverGlow: true,
                 riverAnimation: true,
                 riverWidthMult: 0.8,
-                riverBrightness: 0.6
+                riverBrightness: 0.6,
             },
             Medium: {
                 maxParticles: 150,
@@ -112,7 +112,7 @@ export default class PyrestormTheme extends BaseTheme {
                 riverGlow: true,
                 riverAnimation: true,
                 riverWidthMult: 0.9,
-                riverBrightness: 0.7
+                riverBrightness: 0.7,
             },
             High: {
                 maxParticles: 300,
@@ -135,7 +135,7 @@ export default class PyrestormTheme extends BaseTheme {
                 riverGlow: true,
                 riverAnimation: true,
                 riverWidthMult: 1.0,
-                riverBrightness: 0.85
+                riverBrightness: 0.85,
             },
             Ultra: {
                 maxParticles: 550,
@@ -158,7 +158,7 @@ export default class PyrestormTheme extends BaseTheme {
                 riverGlow: true,
                 riverAnimation: true,
                 riverWidthMult: 1.2,
-                riverBrightness: 0.95
+                riverBrightness: 0.95,
             },
             Extreme: {
                 maxParticles: 900,
@@ -181,8 +181,8 @@ export default class PyrestormTheme extends BaseTheme {
                 riverGlow: true,
                 riverAnimation: true,
                 riverWidthMult: 1.4,
-                riverBrightness: 1.0
-            }
+                riverBrightness: 1.0,
+            },
         };
 
         // Current Quality Setting
@@ -374,7 +374,7 @@ export default class PyrestormTheme extends BaseTheme {
 
                 // --- RIVER COMBO EFFECTS ---
                 // 1. Surge: Boost river intensity and flow
-                this.lavaPaths.forEach(path => {
+                this.lavaPaths.forEach((path) => {
                     path.surgeIntensity = Math.min(2.0, (path.surgeIntensity || 0) + count * 0.3);
                 });
 
@@ -399,7 +399,7 @@ export default class PyrestormTheme extends BaseTheme {
                                 pulsePhase: Math.random() * Math.PI * 2,
                                 rotation: Math.random() * Math.PI * 2,
                                 rotationSpeed: (Math.random() - 0.5) * 0.5,
-                                stretch: 0.8 + Math.random() * 0.4
+                                stretch: 0.8 + Math.random() * 0.4,
                             });
                         }
                     });
@@ -455,10 +455,9 @@ export default class PyrestormTheme extends BaseTheme {
             const midY = (this.bgMountainPoints[this.bgMountainPoints.length - 1].y + y) / 2 + (Math.random() - 0.5) * 30;
 
             this.bgMountainPoints.push({ x: midX, y: midY });
-            this.bgMountainPoints.push({ x: x, y: y });
+            this.bgMountainPoints.push({ x, y });
         }
         this.bgMountainPoints.push({ x: this.width, y: this.height });
-
 
         // --- 2. Foreground Mountains ---
         const peakCount = this.config.fgMountainDetail;
@@ -474,7 +473,7 @@ export default class PyrestormTheme extends BaseTheme {
             const midY = (this.mountainPoints[this.mountainPoints.length - 1].y + y) / 2 + (Math.random() - 0.5) * 120;
 
             this.mountainPoints.push({ x: midX, y: midY });
-            this.mountainPoints.push({ x: x, y: y });
+            this.mountainPoints.push({ x, y });
 
             // --- Magma Rivers ---
             // Reduce river frequency on lower settings
@@ -500,7 +499,7 @@ export default class PyrestormTheme extends BaseTheme {
                     { x: cp1x, y: cp1y },
                     { x: cp2x, y: cp2y },
                     { x: endX, y: endY },
-                    this.config.riverDetail
+                    this.config.riverDetail,
                 );
 
                 // Calculate slope steepness at each point for speed variation
@@ -514,13 +513,17 @@ export default class PyrestormTheme extends BaseTheme {
                 slopeData.push(slopeData[slopeData.length - 1] || 1);
 
                 this.lavaPaths.push({
-                    startX, startY,
-                    cp1x, cp1y,
-                    cp2x, cp2y,
-                    endX, endY,
+                    startX,
+                    startY,
+                    cp1x,
+                    cp1y,
+                    cp2x,
+                    cp2y,
+                    endX,
+                    endY,
                     baseWidth: 5 + Math.random() * 10,
-                    pathPoints: pathPoints,
-                    slopeData: slopeData,
+                    pathPoints,
+                    slopeData,
                     // Source pool properties for natural emergence
                     sourceSize: 12 + Math.random() * 18,
                     sourcePhase: Math.random() * Math.PI * 2,
@@ -528,7 +531,7 @@ export default class PyrestormTheme extends BaseTheme {
                     // Flow animation properties
                     flowOffset: Math.random() * 1000,
                     flowSpeed: 2 + Math.random() * 2, // Reduced speed slightly
-                    surgeIntensity: 0 // Initialize surge
+                    surgeIntensity: 0, // Initialize surge
                 });
 
                 // Pre-populate river with particles so it flows all the way down immediately
@@ -539,7 +542,7 @@ export default class PyrestormTheme extends BaseTheme {
                         const isCrust = Math.random() < 0.6;
                         this.riverParticles.push({
                             pathIndex: this.lavaPaths.length - 1,
-                            progress: progress,
+                            progress,
                             baseSpeed: 0.04 + Math.random() * 0.05 + this.intensity * 0.02,
                             size: (5 + Math.random() * 10) * (isCrust ? 1.0 : 0.8) * this.config.effectMultiplier,
                             type: isCrust ? 'crust' : 'magma',
@@ -553,7 +556,7 @@ export default class PyrestormTheme extends BaseTheme {
                             pulsePhase: Math.random() * Math.PI * 2,
                             rotation: Math.random() * Math.PI * 2,
                             rotationSpeed: (Math.random() - 0.5) * 0.5,
-                            stretch: 0.8 + Math.random() * 0.4
+                            stretch: 0.8 + Math.random() * 0.4,
                         });
                     }
                 }
@@ -586,7 +589,7 @@ export default class PyrestormTheme extends BaseTheme {
                 decay: 0.015 + Math.random() * 0.02,
                 size: (3 + Math.random() * 5) * (0.5 + mult * 0.5),
                 color: Math.random() > 0.3 ? '#ffcc00' : '#ff4500',
-                type: 'spark'
+                type: 'spark',
             });
         }
     }
@@ -610,7 +613,7 @@ export default class PyrestormTheme extends BaseTheme {
                 color: '#ffffff',
                 glowColor: Math.random() > 0.5 ? '#ffd700' : '#ff4500',
                 rotation: Math.random() * Math.PI,
-                rotSpeed: (Math.random() - 0.5) * 0.08
+                rotSpeed: (Math.random() - 0.5) * 0.08,
             });
         }
     }
@@ -625,14 +628,14 @@ export default class PyrestormTheme extends BaseTheme {
         const height = this.height * (0.4 + Math.min(0.5, strength * 0.1)) * mult;
 
         this.geysers.push({
-            x: x,
+            x,
             y: this.height,
             targetHeight: height,
             currentHeight: 0,
             width: (35 + strength * 15) * mult, // Wider
             life: 1.0,
             decay: 0.015, // Slower decay
-            color: '#ff4500'
+            color: '#ff4500',
         });
 
         // Scale geyser particles by quality: 2-15 particles
@@ -648,7 +651,7 @@ export default class PyrestormTheme extends BaseTheme {
                 decay: 0.025,
                 size: 3 * mult,
                 color: '#ffaa00',
-                type: 'spark'
+                type: 'spark',
             });
         }
     }
@@ -673,13 +676,13 @@ export default class PyrestormTheme extends BaseTheme {
         const endX = startX + (Math.random() - 0.5) * 300 * mult;
 
         this.lightningBolts.push({
-            startX: startX,
+            startX,
             startY: 0,
-            endX: endX,
+            endX,
             endY: this.height * (0.5 + mult * 0.3),
             segments: [],
             life: 1.0,
-            width: (2 + combo) * mult
+            width: (2 + combo) * mult,
         });
 
         const bolt = this.lightningBolts[this.lightningBolts.length - 1];
@@ -750,7 +753,7 @@ export default class PyrestormTheme extends BaseTheme {
                             pulsePhase: Math.random() * Math.PI * 2,
                             rotation: Math.random() * Math.PI * 2,
                             rotationSpeed: (Math.random() - 0.5) * (isCrust ? 0.2 : 0.5),
-                            stretch: isCrust ? (0.8 + Math.random() * 0.4) : (0.7 + Math.random() * 0.6)
+                            stretch: isCrust ? (0.8 + Math.random() * 0.4) : (0.7 + Math.random() * 0.6),
                         });
                     }
                 }
@@ -834,7 +837,7 @@ export default class PyrestormTheme extends BaseTheme {
                     size: (1.5 + Math.random() * 3 + this.intensity) * (0.5 + mult * 0.5),
                     color: Math.random() > 0.6 ? '#ffaa00' : '#ff4400',
                     type: 'ember',
-                    wobble: Math.random() * Math.PI * 2
+                    wobble: Math.random() * Math.PI * 2,
                 });
             }
         }
@@ -850,7 +853,7 @@ export default class PyrestormTheme extends BaseTheme {
                 decay: 0.002,
                 size: (20 + Math.random() * 30) * (0.5 + mult * 0.5),
                 color: '#0a0202',
-                type: 'smoke'
+                type: 'smoke',
             });
         }
 
@@ -887,9 +890,9 @@ export default class PyrestormTheme extends BaseTheme {
 
     draw() {
         if (!this.ctx) return;
-        const ctx = this.ctx;
-        const width = this.width;
-        const height = this.height;
+        const { ctx } = this;
+        const { width } = this;
+        const { height } = this;
 
         // --- 1. Background (Sky) ---
         // Organic pulsing effect (breathing + flickering)
@@ -900,8 +903,12 @@ export default class PyrestormTheme extends BaseTheme {
         const skyPulse = breath * 0.3 + flicker * 0.15;
 
         const fireGradient = ctx.createRadialGradient(
-            width / 2, height * 1.2, 0,
-            width / 2, height * 0.8, height * 1.2
+            width / 2,
+            height * 1.2,
+            0,
+            width / 2,
+            height * 0.8,
+            height * 1.2,
         );
 
         // Dynamic colors that shift with the pulse - Amplified multipliers
@@ -1003,8 +1010,12 @@ export default class PyrestormTheme extends BaseTheme {
             // Outer crater glow (Medium+ only)
             if (layers >= 3) {
                 const craterGlow = ctx.createRadialGradient(
-                    path.startX, path.startY - sourceSize * 0.3, 0,
-                    path.startX, path.startY - sourceSize * 0.3, sourceSize * 2.5 * sourcePulse
+                    path.startX,
+                    path.startY - sourceSize * 0.3,
+                    0,
+                    path.startX,
+                    path.startY - sourceSize * 0.3,
+                    sourceSize * 2.5 * sourcePulse,
                 );
                 craterGlow.addColorStop(0, `rgba(255, 80, 0, ${0.4 * brightness})`);
                 craterGlow.addColorStop(0.4, `rgba(180, 30, 0, ${0.2 * brightness})`);
@@ -1017,8 +1028,12 @@ export default class PyrestormTheme extends BaseTheme {
 
             // Source pool (all qualities)
             const poolGrad = ctx.createRadialGradient(
-                path.startX, path.startY, 0,
-                path.startX, path.startY, sourceSize * 1.5
+                path.startX,
+                path.startY,
+                0,
+                path.startX,
+                path.startY,
+                sourceSize * 1.5,
             );
             poolGrad.addColorStop(0, `rgba(255, ${200 + surge * 50}, ${80 + surge * 100}, ${0.9 * brightness * bubblePulse})`);
             poolGrad.addColorStop(0.3, `rgba(255, ${120 + surge * 50}, ${20 + surge * 50}, ${0.7 * brightness})`);
@@ -1143,8 +1158,12 @@ export default class PyrestormTheme extends BaseTheme {
 
                     // Hot spot glow
                     const gradient = ctx.createRadialGradient(
-                        x, y, 0,
-                        x, y, spotSize * 2
+                        x,
+                        y,
+                        0,
+                        x,
+                        y,
+                        spotSize * 2,
                     );
                     gradient.addColorStop(0, `rgba(255, 240, 180, ${0.7 * hotPulse})`);
                     gradient.addColorStop(0.4, `rgba(255, 120, 40, ${0.4 * hotPulse})`);
@@ -1159,9 +1178,9 @@ export default class PyrestormTheme extends BaseTheme {
         });
 
         if (this.config.enableRiverParticles) {
-            const riverLayers = this.config.riverLayers;
+            const { riverLayers } = this.config;
 
-            this.riverParticles.forEach(p => {
+            this.riverParticles.forEach((p) => {
                 const path = this.lavaPaths[p.pathIndex];
                 if (!path || !path.pathPoints || path.pathPoints.length < 2) return;
 
@@ -1218,10 +1237,10 @@ export default class PyrestormTheme extends BaseTheme {
                         ctx.lineTo(size * 0.4, 0);
                         ctx.stroke();
                     }
-
                 } else {
                     // --- MAGMA PARTICLE (Bright, glowing) ---
-                    let r, g, b;
+                    let r; let g; let
+                        b;
                     if (p.colorType < 0.5) {
                         r = 255; g = Math.floor(100 + p.colorType * 200); b = 0;
                     } else {
@@ -1263,7 +1282,7 @@ export default class PyrestormTheme extends BaseTheme {
         if (this.config.enableGeysers) {
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
-            this.geysers.forEach(g => {
+            this.geysers.forEach((g) => {
                 const grad = ctx.createLinearGradient(g.x, this.height, g.x, this.height - g.currentHeight);
                 // Brighter core for visibility against lava
                 grad.addColorStop(0, '#ffffff');
@@ -1281,7 +1300,7 @@ export default class PyrestormTheme extends BaseTheme {
         // --- 5. Particles ---
         ctx.save();
         // Smoke
-        this.particles.forEach(p => {
+        this.particles.forEach((p) => {
             if (p.type !== 'smoke') return;
             ctx.globalAlpha = p.life * 0.5;
             ctx.fillStyle = p.color;
@@ -1292,7 +1311,7 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Fire/Sparks
         ctx.globalCompositeOperation = 'lighter';
-        this.particles.forEach(p => {
+        this.particles.forEach((p) => {
             if (p.type === 'smoke') return;
             ctx.globalAlpha = p.life;
             ctx.fillStyle = p.color;
@@ -1308,7 +1327,7 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Sparkles (High Priority)
         if (this.config.enableSparkles) {
-            this.sparkles.forEach(s => {
+            this.sparkles.forEach((s) => {
                 ctx.globalAlpha = s.life;
                 ctx.fillStyle = s.color;
                 if (this.config.shadows) {
@@ -1339,7 +1358,7 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Lightning
         if (this.config.enableLightning) {
-            this.lightningBolts.forEach(bolt => {
+            this.lightningBolts.forEach((bolt) => {
                 ctx.globalAlpha = bolt.life;
                 ctx.strokeStyle = '#fff5cc';
                 ctx.lineWidth = bolt.width;

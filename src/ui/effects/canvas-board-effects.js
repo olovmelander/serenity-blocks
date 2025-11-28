@@ -141,7 +141,7 @@ export class CanvasBoardEffects {
         this.lastTimestamp = timestamp;
         const dtSeconds = dt / 1000;
 
-        const ctx = this.ctx;
+        const { ctx } = this;
         ctx.clearRect(0, 0, this.width, this.height);
 
         let active = false;
@@ -154,7 +154,7 @@ export class CanvasBoardEffects {
         if (this.flash.alpha > 0) {
             this.flash.elapsed += dt;
             const progress = clamp(this.flash.elapsed / this.flash.duration, 0, 1);
-            const eased = 1 - Math.pow(progress, 2);
+            const eased = 1 - progress ** 2;
             const alpha = this.flash.alpha * eased;
             if (alpha > 0.01) {
                 ctx.fillStyle = toRGBA(this.flash.color, alpha);

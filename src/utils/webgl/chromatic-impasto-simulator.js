@@ -36,7 +36,7 @@ export default class ChromaticImpastoSimulator extends FluidSimulator {
             SUNRAYS: false,
             SUNRAYS_RESOLUTION: 196,
             SUNRAYS_WEIGHT: 1.0,
-            ...config
+            ...config,
         });
 
         // Track paint layers for blending and texture
@@ -50,8 +50,12 @@ export default class ChromaticImpastoSimulator extends FluidSimulator {
     splat(x, y, dx, dy, color) {
         // Add to paint layers history
         this.paintLayers.push({
-            x, y, dx, dy, color,
-            timestamp: Date.now()
+            x,
+            y,
+            dx,
+            dy,
+            color,
+            timestamp: Date.now(),
         });
 
         // Keep only recent layers
@@ -132,7 +136,7 @@ export default class ChromaticImpastoSimulator extends FluidSimulator {
         }
 
         // Find nearby paint layers
-        const nearby = this.paintLayers.filter(layer => {
+        const nearby = this.paintLayers.filter((layer) => {
             const dist = Math.sqrt((layer.x - x) ** 2 + (layer.y - y) ** 2);
             return dist < 0.1;
         });
@@ -142,8 +146,9 @@ export default class ChromaticImpastoSimulator extends FluidSimulator {
         }
 
         // Blend colors
-        let r = 0, g = 0, b = 0;
-        nearby.forEach(layer => {
+        let r = 0; let g = 0; let
+            b = 0;
+        nearby.forEach((layer) => {
             r += layer.color.r;
             g += layer.color.g;
             b += layer.color.b;
@@ -153,7 +158,7 @@ export default class ChromaticImpastoSimulator extends FluidSimulator {
         return {
             r: r / count,
             g: g / count,
-            b: b / count
+            b: b / count,
         };
     }
 

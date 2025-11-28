@@ -8,13 +8,13 @@ export const FLUID_DREAMS_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#79faff',  // Aqua glow
-        O: '#ffd59e',  // Soft amber
-        T: '#ff7cf0',  // Magenta shine
-        S: '#a1ffcf',  // Mint wave
-        Z: '#ff8ba0',  // Coral dream
-        J: '#8c9bff',  // Indigo haze
-        L: '#ffe066',  // Golden highlight
+        I: '#79faff', // Aqua glow
+        O: '#ffd59e', // Soft amber
+        T: '#ff7cf0', // Magenta shine
+        S: '#a1ffcf', // Mint wave
+        Z: '#ff8ba0', // Coral dream
+        J: '#8c9bff', // Indigo haze
+        L: '#ffe066', // Golden highlight
         GARBAGE: '#161428', // Deep night
     },
 

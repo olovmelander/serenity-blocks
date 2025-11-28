@@ -35,7 +35,7 @@ export default class AetherTidesSimulator extends FluidSimulator {
             SUNRAYS: false,
             SUNRAYS_RESOLUTION: 196,
             SUNRAYS_WEIGHT: 1.0,
-            ...config
+            ...config,
         });
     }
 
@@ -46,7 +46,7 @@ export default class AetherTidesSimulator extends FluidSimulator {
         // Call parent initPrograms first
         super.initPrograms();
 
-        const gl = this.gl;
+        const { gl } = this;
 
         // Base vertex shader (needed for gravity program)
         const baseVertexShaderSource = `
@@ -108,7 +108,7 @@ export default class AetherTidesSimulator extends FluidSimulator {
      * Helper to create a program (mimics the Program class from FluidSimulator)
      */
     createProgram(vertexShader, fragmentShader) {
-        const gl = this.gl;
+        const { gl } = this;
         const program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
@@ -130,7 +130,7 @@ export default class AetherTidesSimulator extends FluidSimulator {
             uniforms,
             bind() {
                 gl.useProgram(program);
-            }
+            },
         };
     }
 
@@ -143,7 +143,7 @@ export default class AetherTidesSimulator extends FluidSimulator {
      * @param {number} dt - Delta time
      */
     applyGravity(x, y, force, radius, dt) {
-        const gl = this.gl;
+        const { gl } = this;
 
         if (!this.programs.gravity) {
             console.error('[AetherTides] Gravity program not initialized');

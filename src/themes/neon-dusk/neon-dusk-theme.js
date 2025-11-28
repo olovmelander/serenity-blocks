@@ -42,7 +42,7 @@ export default class NeonDuskTheme extends BaseTheme {
         // Graphics quality state
         this.qualityChangeHandler = null;
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 starCount: 50,
                 cloudCount: 3,
                 meteorCount: 2,
@@ -54,7 +54,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxVortexes: 0,
                 maxGlitches: 4,
             },
-            'Low': {
+            Low: {
                 starCount: 80,
                 cloudCount: 4,
                 meteorCount: 3,
@@ -66,7 +66,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxVortexes: 1,
                 maxGlitches: 6,
             },
-            'Medium': {
+            Medium: {
                 starCount: 120,
                 cloudCount: 6,
                 meteorCount: 5,
@@ -78,7 +78,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxVortexes: 2,
                 maxGlitches: 10,
             },
-            'High': {
+            High: {
                 starCount: 150,
                 cloudCount: 8,
                 meteorCount: 6,
@@ -90,7 +90,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxVortexes: 3,
                 maxGlitches: 15,
             },
-            'Ultra': {
+            Ultra: {
                 starCount: 220,
                 cloudCount: 10,
                 meteorCount: 8,
@@ -102,7 +102,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxVortexes: 5,
                 maxGlitches: 22,
             },
-            'Extreme': {
+            Extreme: {
                 starCount: 300,
                 cloudCount: 14,
                 meteorCount: 12,
@@ -113,11 +113,11 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxRings: 18,
                 maxVortexes: 8,
                 maxGlitches: 35,
-            }
+            },
         };
 
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
+        this.activePreset = this.qualityPresets.High;
     }
 
     // Initialize color cache to avoid repeated hex conversions
@@ -522,7 +522,7 @@ export default class NeonDuskTheme extends BaseTheme {
         // Reduced particle count: was lineCount * 20, now lineCount * 12
         const burstCount = Math.min(
             lineCount * 12 + this.comboMultiplier * 8,
-            this.MAX_PARTICLES - this.neonBurstParticles.length
+            this.MAX_PARTICLES - this.neonBurstParticles.length,
         );
 
         for (let i = 0; i < burstCount; i++) {
@@ -550,8 +550,8 @@ export default class NeonDuskTheme extends BaseTheme {
         // Limit arcs
         if (this.electricArcs.length >= this.MAX_ARCS) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const arcCount = Math.min(Math.floor(comboCount / 2), this.MAX_ARCS - this.electricArcs.length);
         const colors = ['#00ffff', '#ff00ff', '#00ff88'];
 
@@ -598,7 +598,7 @@ export default class NeonDuskTheme extends BaseTheme {
         // Limit scan lines
         if (this.digitalScanLines.length >= this.MAX_SCANLINES) return;
 
-        const height = this.effectsCanvas.height;
+        const { height } = this.effectsCanvas;
         const colors = ['#00ffff', '#ff00ff', '#00ff88'];
         const scanCount = Math.min(lineCount * 2, this.MAX_SCANLINES - this.digitalScanLines.length);
 
@@ -648,8 +648,8 @@ export default class NeonDuskTheme extends BaseTheme {
         // Limit glitch pulses
         if (this.glitchPulses.length >= this.MAX_GLITCHES) return;
 
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
         const colors = ['#00ffff', '#ff00ff', '#ffff00'];
         const glitchCount = Math.min(comboCount * 2, this.MAX_GLITCHES - this.glitchPulses.length);
 
@@ -769,7 +769,7 @@ export default class NeonDuskTheme extends BaseTheme {
                     arc.startY,
                     arc.endX,
                     arc.endY,
-                    6  // Reduced from 8 segments to 6 for performance
+                    6, // Reduced from 8 segments to 6 for performance
                 );
             }
 
@@ -828,7 +828,7 @@ export default class NeonDuskTheme extends BaseTheme {
             vortex.life -= delta / vortex.maxLife;
 
             // Optimize particle updates
-            const particles = vortex.particles;
+            const { particles } = vortex;
             for (let j = 0; j < particles.length; j++) {
                 const p = particles[j];
                 p.angle += p.angularSpeed * delta;
@@ -846,8 +846,8 @@ export default class NeonDuskTheme extends BaseTheme {
         if (!this.effectsCanvas || !this.effectsCtx) return;
 
         const ctx = this.effectsCtx;
-        const width = this.effectsCanvas.width;
-        const height = this.effectsCanvas.height;
+        const { width } = this.effectsCanvas;
+        const { height } = this.effectsCanvas;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
@@ -937,7 +937,7 @@ export default class NeonDuskTheme extends BaseTheme {
             ctx.shadowColor = vortex.color;
 
             // Use Path2D for better performance with many particles
-            const particles = vortex.particles;
+            const { particles } = vortex;
             for (let j = 0; j < particles.length; j++) {
                 const p = particles[j];
                 const x = vortex.x + Math.cos(p.angle) * p.radius;

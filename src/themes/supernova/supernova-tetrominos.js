@@ -10,13 +10,13 @@ export const SUPERNOVA_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#64dcff',  // Shockwave cyan
-        O: '#ffd05e',  // Solar gold
-        T: '#d05bff',  // Stellar magenta
-        S: '#8cf6ff',  // Plasma teal
-        Z: '#ff6bb7',  // Fusion pink
-        J: '#7c8bff',  // Cosmic indigo
-        L: '#ff9150',  // Ember orange
+        I: '#64dcff', // Shockwave cyan
+        O: '#ffd05e', // Solar gold
+        T: '#d05bff', // Stellar magenta
+        S: '#8cf6ff', // Plasma teal
+        Z: '#ff6bb7', // Fusion pink
+        J: '#7c8bff', // Cosmic indigo
+        L: '#ff9150', // Ember orange
         GARBAGE: '#1b1022', // Deep space shadow
     },
 

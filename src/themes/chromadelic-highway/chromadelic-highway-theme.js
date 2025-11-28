@@ -40,7 +40,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 maxSparkles: 20,
                 maxStars: 12,
                 waveLayers: 2,
@@ -51,9 +51,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 trailSegments: 1,
                 shadowBlur: 0.3,
                 glowLayers: false,
-                waveGlowIntensity: 0.4
+                waveGlowIntensity: 0.4,
             },
-            'Low': {
+            Low: {
                 maxSparkles: 20,
                 maxStars: 15,
                 waveLayers: 3,
@@ -66,9 +66,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 glowLayers: false,
                 waveGlowIntensity: 0.4,
                 skipFrames: 2, // Render every 3rd frame
-                useSimpleGlow: true
+                useSimpleGlow: true,
             },
-            'Medium': {
+            Medium: {
                 maxSparkles: 30,
                 maxStars: 20,
                 waveLayers: 3,
@@ -81,9 +81,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 glowLayers: true,
                 waveGlowIntensity: 0.6,
                 skipFrames: 1, // Render every 2nd frame
-                useSimpleGlow: true
+                useSimpleGlow: true,
             },
-            'High': {
+            High: {
                 maxSparkles: 40,
                 maxStars: 25,
                 waveLayers: 4,
@@ -96,9 +96,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 glowLayers: true,
                 waveGlowIntensity: 0.8,
                 skipFrames: 0, // Render every frame
-                useSimpleGlow: true
+                useSimpleGlow: true,
             },
-            'Ultra': {
+            Ultra: {
                 maxSparkles: 60,
                 maxStars: 35,
                 waveLayers: 5,
@@ -111,9 +111,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 glowLayers: true,
                 waveGlowIntensity: 1.0,
                 skipFrames: 0, // Render every frame
-                useSimpleGlow: false
+                useSimpleGlow: false,
             },
-            'Extreme': {
+            Extreme: {
                 maxSparkles: 90,
                 maxStars: 50,
                 waveLayers: 7,
@@ -126,12 +126,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 glowLayers: true,
                 waveGlowIntensity: 1.3,
                 skipFrames: 0, // Render every frame
-                useSimpleGlow: false
-            }
+                useSimpleGlow: false,
+            },
         };
 
         this.currentQuality = 'Medium'; // Default to Medium for better performance
-        this.activePreset = this.qualityPresets['Medium'];
+        this.activePreset = this.qualityPresets.Medium;
         this.frameCounter = 0;
     }
 
@@ -272,14 +272,14 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Smooth rainbow color stops for gradient
         const rainbowStops = [
-            { pos: 0.0, color: [255, 0, 100] },      // Pink-Red
-            { pos: 0.15, color: [255, 100, 0] },     // Orange
-            { pos: 0.3, color: [255, 200, 0] },      // Yellow
-            { pos: 0.45, color: [0, 255, 150] },     // Green-Cyan
-            { pos: 0.6, color: [0, 150, 255] },      // Cyan-Blue
-            { pos: 0.75, color: [150, 50, 255] },    // Purple
-            { pos: 0.9, color: [255, 0, 200] },      // Magenta
-            { pos: 1.0, color: [255, 0, 100] },      // Back to Pink-Red (seamless loop)
+            { pos: 0.0, color: [255, 0, 100] }, // Pink-Red
+            { pos: 0.15, color: [255, 100, 0] }, // Orange
+            { pos: 0.3, color: [255, 200, 0] }, // Yellow
+            { pos: 0.45, color: [0, 255, 150] }, // Green-Cyan
+            { pos: 0.6, color: [0, 150, 255] }, // Cyan-Blue
+            { pos: 0.75, color: [150, 50, 255] }, // Purple
+            { pos: 0.9, color: [255, 0, 200] }, // Magenta
+            { pos: 1.0, color: [255, 0, 100] }, // Back to Pink-Red (seamless loop)
         ];
 
         // Apply color speed boost for combo effects (speeds up rainbow cycling)
@@ -320,7 +320,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Add color stops
             for (let i = 0; i < rainbowStops.length; i++) {
                 const stop = rainbowStops[i];
-                let pos = (stop.pos + colorOffset) % 1;
+                const pos = (stop.pos + colorOffset) % 1;
 
                 const [r, g, b] = stop.color;
                 const alpha = layerAlpha * breathe * pulseEffect;
@@ -422,7 +422,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         return {
             x: xPercent,
-            y: y / this.waveHeight
+            y: y / this.waveHeight,
         };
     }
 
@@ -468,20 +468,21 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Rainbow color spectrum positions (evenly distributed)
         const rainbowHues = [
-            0,      // Red
-            30,     // Orange
-            60,     // Yellow
-            120,    // Green
-            180,    // Cyan
-            240,    // Blue
-            280,    // Purple
-            320,    // Magenta
+            0, // Red
+            30, // Orange
+            60, // Yellow
+            120, // Green
+            180, // Cyan
+            240, // Blue
+            280, // Purple
+            320, // Magenta
         ];
 
         for (let i = 0; i < this.maxSparkles; i++) {
             // Create variety - some small stars, some medium, some larger particles
             const type = Math.random();
-            let size, speedY, speedX, twinkleSpeed, glowSize;
+            let size; let speedY; let speedX; let twinkleSpeed; let
+                glowSize;
 
             if (type < 0.5) {
                 // Tiny distant rainbow sparkles (50% of particles)
@@ -516,15 +517,15 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.sparkles.push({
                 x: Math.random(),
                 y: yPosition,
-                size: size,
-                speedY: speedY,
-                speedX: speedX,
+                size,
+                speedY,
+                speedX,
                 phase: Math.random() * Math.PI * 2,
-                twinkleSpeed: twinkleSpeed,
-                baseHue: baseHue, // Base rainbow color
+                twinkleSpeed,
+                baseHue, // Base rainbow color
                 hueOffset: this.random(-15, 15), // Slight variation
                 colorCycleSpeed: this.random(0.3, 1.5), // How fast color shifts
-                glowSize: glowSize,
+                glowSize,
                 baseAlpha: this.random(0.3, 0.8), // Varied base brightness
             });
         }
@@ -556,7 +557,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const time = this.animationTime + this.timeOffset;
 
         // Batch rendering without individual save/restore for performance
-        this.sparkles.forEach(sparkle => {
+        this.sparkles.forEach((sparkle) => {
             // Update sparkle position (drift with both vertical and horizontal movement)
             sparkle.y += sparkle.speedY;
             sparkle.x += sparkle.speedX;
@@ -621,7 +622,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         });
 
         // Draw stars at the top - no shadow blur for performance
-        this.stars.forEach(star => {
+        this.stars.forEach((star) => {
             const x = star.x * width;
             const y = star.y * height;
 
@@ -648,7 +649,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         });
 
         // Draw rainbow shockwave rings - optimized rendering
-        this.shockwaves = this.shockwaves.filter(wave => {
+        this.shockwaves = this.shockwaves.filter((wave) => {
             wave.radius += wave.speed;
             wave.life -= 0.008;
 
@@ -684,7 +685,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         });
 
         // Draw combo burst particles with trails - integrated with waves!
-        this.comboParticles = this.comboParticles.filter(particle => {
+        this.comboParticles = this.comboParticles.filter((particle) => {
             // Store previous position for trail
             const prevX = particle.x;
             const prevY = particle.y;
@@ -712,7 +713,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             // Normalize life for smoother fade (0-1)
             const lifeFactor = Math.min(1, particle.life / 2.0);
-            const alpha = Math.pow(lifeFactor, 0.6) * particle.baseAlpha;
+            const alpha = lifeFactor ** 0.6 * particle.baseAlpha;
             const size = particle.size * (0.6 + lifeFactor * 0.4);
 
             // Trail segments controlled by quality preset - optimized
@@ -828,7 +829,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 speed: 3 + i * 0.5,
                 startHue: (i * 120) % 360, // Different rainbow colors
                 life: 1,
-                maxLife: 1
+                maxLife: 1,
             });
         }
 
@@ -836,7 +837,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         // Particle count controlled by quality preset
         const particlesPerWave = Math.min(
             this.activePreset.particlesPerWave,
-            this.activePreset.particlesPerWave * 0.6 + comboCount * 0.5
+            this.activePreset.particlesPerWave * 0.6 + comboCount * 0.5,
         );
         const numWaveLayers = 3; // Spawn from multiple wave layers
 
@@ -866,11 +867,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 this.comboParticles.push({
                     x: surfacePoint.x,
                     y: surfacePoint.y,
-                    vx: vx,
-                    vy: vy,
+                    vx,
+                    vy,
                     size: this.random(2.5, 5) * (1 + intensity * 0.3),
                     hue: startHue,
-                    hueCycleSpeed: hueCycleSpeed,
+                    hueCycleSpeed,
                     life: 2.0, // Longer life for better trails
                     baseAlpha: 0.9,
                 });
@@ -909,7 +910,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     stop() {
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Remove quality change listener

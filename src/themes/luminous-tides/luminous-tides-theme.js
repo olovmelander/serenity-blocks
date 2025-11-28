@@ -88,8 +88,7 @@ export default class LuminousTidesTheme extends BaseTheme {
             this.lightingOverlay.style.left = '0';
             this.lightingOverlay.style.width = '100%';
             this.lightingOverlay.style.height = '100%';
-            this.lightingOverlay.style.background =
-                'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
+            this.lightingOverlay.style.background = 'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
             this.lightingOverlay.style.pointerEvents = 'none';
             this.lightingOverlay.style.mixBlendMode = 'screen';
             this.lightingOverlay.style.transition = 'none';
@@ -141,28 +140,28 @@ export default class LuminousTidesTheme extends BaseTheme {
             ...baseConfig,
 
             // Surf wave physics - tall and narrow, very fast fade
-            WAVE_DAMPING: 0.86,               // VERY fast fade-out to calm
-            SURFACE_TENSION: 0.03,            // Keeps waves focused/narrow
-            DISPLACEMENT_SCALE: 3.5,          // Tall surf waves
-            DIFFUSION: 0.004,                 // Low diffusion (narrow waves)
+            WAVE_DAMPING: 0.86, // VERY fast fade-out to calm
+            SURFACE_TENSION: 0.03, // Keeps waves focused/narrow
+            DISPLACEMENT_SCALE: 3.5, // Tall surf waves
+            DIFFUSION: 0.004, // Low diffusion (narrow waves)
             GRAVITY: 9.8,
 
             // Atmospheric deep ocean colors
-            WATER_COLOR: { r: 0.03, g: 0.12, b: 0.22 },    // Deep blue-green
-            DEEP_COLOR: { r: 0.01, g: 0.04, b: 0.10 },     // Abyssal depths
-            FOAM_COLOR: { r: 0.12, g: 0.25, b: 0.35 },     // Subtle foam
+            WATER_COLOR: { r: 0.03, g: 0.12, b: 0.22 }, // Deep blue-green
+            DEEP_COLOR: { r: 0.01, g: 0.04, b: 0.10 }, // Abyssal depths
+            FOAM_COLOR: { r: 0.12, g: 0.25, b: 0.35 }, // Subtle foam
 
             // Bioluminescent glow - bright but focused
             GLOW_ENABLED: true,
-            GLOW_COLOR: { r: 0.08, g: 0.45, b: 0.62 },     // Bioluminescent cyan
-            GLOW_INTENSITY: 1.4,              // Bright for tall waves
-            GLOW_SPREAD: 2.0,                 // Less spread (focused)
+            GLOW_COLOR: { r: 0.08, g: 0.45, b: 0.62 }, // Bioluminescent cyan
+            GLOW_INTENSITY: 1.4, // Bright for tall waves
+            GLOW_SPREAD: 2.0, // Less spread (focused)
 
             // Enhanced atmospheric lighting
-            DEPTH_FADE: 2.0,                  // Strong depth for tall waves
-            AMBIENT_LIGHT: 0.12,              // Subtle ambient
-            SPECULAR_INTENSITY: 0.50,         // Stronger highlights on tall waves
-            SPECULAR_POWER: 20.0,             // Sharp specular
+            DEPTH_FADE: 2.0, // Strong depth for tall waves
+            AMBIENT_LIGHT: 0.12, // Subtle ambient
+            SPECULAR_INTENSITY: 0.50, // Stronger highlights on tall waves
+            SPECULAR_POWER: 20.0, // Sharp specular
 
             // Effects (foam disabled for cleaner look)
             FOAM_ENABLED: false,
@@ -264,20 +263,18 @@ export default class LuminousTidesTheme extends BaseTheme {
             const decay = Math.exp(-2.0 * deltaTime);
             this.targetBrightness *= decay;
         } else {
-            this.targetBrightness *= Math.pow(0.05, deltaTime);
+            this.targetBrightness *= 0.05 ** deltaTime;
         }
 
         // Apply to overlay
         if (this.lightBrightness > 0.01) {
             const brightness = this.lightBrightness;
-            this.lightingOverlay.style.background =
-                `radial-gradient(ellipse at 50% 30%,
+            this.lightingOverlay.style.background = `radial-gradient(ellipse at 50% 30%,
                     rgba(20, 80, 120, ${(brightness * 0.3).toFixed(3)}) 0%,
                     rgba(10, 50, 80, ${(brightness * 0.15).toFixed(3)}) 40%,
                     rgba(0, 0, 0, 0) 80%)`;
         } else {
-            this.lightingOverlay.style.background =
-                'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
+            this.lightingOverlay.style.background = 'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
         }
     }
 
@@ -292,8 +289,8 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const currentAmplitude = amplitude * eased;
 
                 this.simulator.createSwell(x, y, {
-                    radius: radius,
-                    amplitude: currentAmplitude / buildup
+                    radius,
+                    amplitude: currentAmplitude / buildup,
                 });
             }, i * delay);
         }
@@ -325,7 +322,8 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const progress = i / Math.max(waveCount, 1);
 
                 // Alternate between flowing patterns
-                let x, y;
+                let x; let
+                    y;
                 if (i % 2 === 0) {
                     // Flow from left
                     x = 0.2 + progress * 0.3;
@@ -455,18 +453,18 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.nextAmbientPattern++;
 
         switch (pattern) {
-            case 0: // Single gentle swell
-                this.createGentleSwell();
-                break;
-            case 1: // Crossing waves
-                this.createCrossingWaves();
-                break;
-            case 2: // Circular ripple
-                this.createCircularRipple();
-                break;
-            case 3: // Edge wave
-                this.createEdgeWave();
-                break;
+        case 0: // Single gentle swell
+            this.createGentleSwell();
+            break;
+        case 1: // Crossing waves
+            this.createCrossingWaves();
+            break;
+        case 2: // Circular ripple
+            this.createCircularRipple();
+            break;
+        case 3: // Edge wave
+            this.createEdgeWave();
+            break;
         }
 
         // Subtle light pulse
@@ -520,25 +518,26 @@ export default class LuminousTidesTheme extends BaseTheme {
      */
     createEdgeWave() {
         const side = Math.floor(Math.random() * 4);
-        let x, y;
+        let x; let
+            y;
 
         switch (side) {
-            case 0: // Top
-                x = 0.3 + Math.random() * 0.4;
-                y = 0.15;
-                break;
-            case 1: // Right
-                x = 0.85;
-                y = 0.3 + Math.random() * 0.4;
-                break;
-            case 2: // Bottom
-                x = 0.3 + Math.random() * 0.4;
-                y = 0.85;
-                break;
-            case 3: // Left
-                x = 0.15;
-                y = 0.3 + Math.random() * 0.4;
-                break;
+        case 0: // Top
+            x = 0.3 + Math.random() * 0.4;
+            y = 0.15;
+            break;
+        case 1: // Right
+            x = 0.85;
+            y = 0.3 + Math.random() * 0.4;
+            break;
+        case 2: // Bottom
+            x = 0.3 + Math.random() * 0.4;
+            y = 0.85;
+            break;
+        case 3: // Left
+            x = 0.15;
+            y = 0.3 + Math.random() * 0.4;
+            break;
         }
 
         this.createSmoothWave(x, y, 0.11, 1.3, 7, 130); // Tall narrow
@@ -572,7 +571,7 @@ export default class LuminousTidesTheme extends BaseTheme {
             }
 
             // Decay wave energy
-            this.waveEnergy *= Math.pow(this.energyDecay, deltaTime * 60);
+            this.waveEnergy *= this.energyDecay ** (deltaTime * 60);
 
             // Update lighting
             this.updateLighting(deltaTime);
@@ -602,7 +601,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         if (!this.isActive) return;
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Call parent stop

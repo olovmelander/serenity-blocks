@@ -42,16 +42,15 @@ export function createParticleEmitter(scene, x, y, textureKey, config) {
             return null;
         }
 
-        console.log('[ParticleCompat] Particle emitter created successfully at position:', {x, y});
-        console.log('[ParticleCompat] Emitter actual position:', {x: emitter.x, y: emitter.y});
+        console.log('[ParticleCompat] Particle emitter created successfully at position:', { x, y });
+        console.log('[ParticleCompat] Emitter actual position:', { x: emitter.x, y: emitter.y });
         console.log('[ParticleCompat] Emitter config:', {
             hasEmitZone: !!config.emitZone,
             emitZoneType: config.emitZone?.type,
             depth: emitter.depth,
-            visible: emitter.visible
+            visible: emitter.visible,
         });
         return emitter;
-
     } catch (error) {
         console.error('[ParticleCompat] Failed to create particle emitter:', error);
         console.warn('[ParticleCompat] Particle effects will be disabled');
@@ -79,24 +78,23 @@ export function emitParticles(emitter, count) {
             hasStart: typeof emitter.start === 'function',
             visible: emitter.visible,
             active: emitter.active,
-            depth: emitter.depth
+            depth: emitter.depth,
         });
 
         if (typeof emitter.explode === 'function') {
-            console.log('[ParticleCompat] Calling explode(' + count + ')');
+            console.log(`[ParticleCompat] Calling explode(${count})`);
             const result = emitter.explode(count);
             console.log('[ParticleCompat] Explode result:', result);
             return true;
-        } else if (typeof emitter.emit === 'function') {
-            console.log('[ParticleCompat] Calling emit(' + count + ')');
+        } if (typeof emitter.emit === 'function') {
+            console.log(`[ParticleCompat] Calling emit(${count})`);
             const result = emitter.emit(count);
             console.log('[ParticleCompat] Emit result:', result);
             return true;
-        } else {
-            console.warn('[ParticleCompat] Emitter has no explode() or emit() method');
-            console.warn('[ParticleCompat] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(emitter)));
-            return false;
         }
+        console.warn('[ParticleCompat] Emitter has no explode() or emit() method');
+        console.warn('[ParticleCompat] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(emitter)));
+        return false;
     } catch (error) {
         console.error('[ParticleCompat] Failed to emit particles:', error);
         console.error('[ParticleCompat] Error stack:', error.stack);
@@ -116,10 +114,9 @@ export function destroyParticleEmitter(emitter) {
         if (typeof emitter.destroy === 'function') {
             emitter.destroy();
             return true;
-        } else {
-            console.warn('[ParticleCompat] Emitter has no destroy() method');
-            return false;
         }
+        console.warn('[ParticleCompat] Emitter has no destroy() method');
+        return false;
     } catch (error) {
         console.error('[ParticleCompat] Failed to destroy particle emitter:', error);
         return false;
@@ -133,10 +130,10 @@ export function destroyParticleEmitter(emitter) {
  */
 export function isParticleSystemAvailable(scene) {
     return !!(
-        scene &&
-        scene.add &&
-        typeof scene.add.particles === 'function' &&
-        scene.textures
+        scene
+        && scene.add
+        && typeof scene.add.particles === 'function'
+        && scene.textures
     );
 }
 
@@ -158,4 +155,3 @@ export function logParticleSystemInfo(scene) {
 
     console.log('[ParticleCompat] Particle System Info:', info);
 }
-

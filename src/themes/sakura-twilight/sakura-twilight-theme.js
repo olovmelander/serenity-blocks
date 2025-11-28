@@ -273,7 +273,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     angle + this.random(20, 50),
                     newWidth * 0.8,
                     blossomColor,
-                    depth + 1
+                    depth + 1,
                 );
                 drawSakuraTree(
                     ctx,
@@ -283,7 +283,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     angle - this.random(20, 50),
                     newWidth * 0.8,
                     blossomColor,
-                    depth + 1
+                    depth + 1,
                 );
             }
         };
@@ -393,30 +393,30 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // Distribute lanterns across tree layers with proper depth, size, and parallax
             const lanternsPerLayer = Math.ceil(this.qualityConfig.lanterns / 3);
             const lanternLayers = [
-                { 
+                {
                     name: 'back',
-                    count: lanternsPerLayer, 
-                    zIndex: 3,  // Behind mid trees, in front of back trees
+                    count: lanternsPerLayer,
+                    zIndex: 3, // Behind mid trees, in front of back trees
                     animation: 'sakura-lantern-parallax-back 280s linear infinite',
-                    scale: 0.6,  // Smaller (further away)
+                    scale: 0.6, // Smaller (further away)
                     opacity: 0.7,
                     blur: 1,
                 },
-                { 
+                {
                     name: 'mid',
-                    count: lanternsPerLayer, 
-                    zIndex: 5,  // Behind front trees, in front of mid trees
+                    count: lanternsPerLayer,
+                    zIndex: 5, // Behind front trees, in front of mid trees
                     animation: 'sakura-lantern-parallax-mid 200s linear infinite',
-                    scale: 0.85,  // Medium size
+                    scale: 0.85, // Medium size
                     opacity: 0.85,
                     blur: 0.5,
                 },
-                { 
+                {
                     name: 'front',
-                    count: lanternsPerLayer, 
-                    zIndex: 8,  // In front of all trees
+                    count: lanternsPerLayer,
+                    zIndex: 8, // In front of all trees
                     animation: 'sakura-lantern-parallax-front 120s linear infinite',
-                    scale: 1.0,  // Full size (closest)
+                    scale: 1.0, // Full size (closest)
                     opacity: 1.0,
                     blur: 0,
                 },
@@ -429,19 +429,19 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     lantern.style.left = `${Math.random() * 95}%`;
                     lantern.style.top = `${40 + Math.random() * 30}%`; // Constrained to 40-70%
                     lantern.style.zIndex = layerConfig.zIndex;
-                    
+
                     // Set scale via CSS variable (CSS already uses --lantern-scale in transform)
                     lantern.style.setProperty('--lantern-scale', layerConfig.scale.toString());
-                    
+
                     // Set opacity for depth
                     lantern.style.opacity = layerConfig.opacity.toString();
-                    
+
                     // Apply blur for depth of field effect (preserve existing box-shadow)
                     if (layerConfig.blur > 0) {
-                        const baseFilter = 'brightness(1)';  // Default from CSS animation
+                        const baseFilter = 'brightness(1)'; // Default from CSS animation
                         lantern.style.filter = `blur(${layerConfig.blur}px)`;
                     }
-                    
+
                     lantern.style.animation = layerConfig.animation;
                     lanternContainer.appendChild(lantern);
                     this.lanterns.push(lantern);
@@ -475,17 +475,17 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const petalDepthLayers = [
                 {
                     name: 'far-back',
-                    count: Math.ceil(this.qualityConfig.petals * 0.2),  // 20% furthest back
+                    count: Math.ceil(this.qualityConfig.petals * 0.2), // 20% furthest back
                     zIndex: 1,
-                    size: 0.5,  // Small (far away)
+                    size: 0.5, // Small (far away)
                     opacity: 0.4,
                     blur: 1.5,
-                    durationMultiplier: 1.5,  // Slower fall (parallax)
+                    durationMultiplier: 1.5, // Slower fall (parallax)
                     driftRange: 15,
                 },
                 {
                     name: 'back',
-                    count: Math.ceil(this.qualityConfig.petals * 0.25),  // 25% back layer
+                    count: Math.ceil(this.qualityConfig.petals * 0.25), // 25% back layer
                     zIndex: 3,
                     size: 0.65,
                     opacity: 0.55,
@@ -495,7 +495,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 },
                 {
                     name: 'mid',
-                    count: Math.ceil(this.qualityConfig.petals * 0.3),  // 30% middle layer
+                    count: Math.ceil(this.qualityConfig.petals * 0.3), // 30% middle layer
                     zIndex: 6,
                     size: 0.85,
                     opacity: 0.75,
@@ -505,12 +505,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 },
                 {
                     name: 'front',
-                    count: Math.ceil(this.qualityConfig.petals * 0.25),  // 25% front layer
+                    count: Math.ceil(this.qualityConfig.petals * 0.25), // 25% front layer
                     zIndex: 9,
                     size: 1.0,
                     opacity: 0.9,
                     blur: 0,
-                    durationMultiplier: 1.0,  // Normal speed
+                    durationMultiplier: 1.0, // Normal speed
                     driftRange: 22,
                 },
             ];
@@ -520,30 +520,30 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 for (let i = 0; i < layer.count; i++) {
                     const petal = document.createElement('div');
                     petal.className = 'sakura-petal';
-                    
+
                     // Position and movement
                     const xStart = Math.random() * 100;
                     petal.style.setProperty('--x-start', `${xStart}vw`);
                     petal.style.setProperty('--x-end', `${xStart + (Math.random() * layer.driftRange - layer.driftRange / 2)}vw`);
                     petal.style.setProperty('--r-start', `${Math.random() * 360}deg`);
                     petal.style.setProperty('--r-end', `${Math.random() * 720 - 360}deg`);
-                    
+
                     // Depth-based properties (use CSS variables for animation)
                     petal.style.setProperty('--petal-scale', layer.size.toString());
                     petal.style.setProperty('--petal-opacity', layer.opacity.toString());
                     petal.style.zIndex = layer.zIndex;
-                    
+
                     // Apply blur for depth of field effect
                     if (layer.blur > 0) {
                         petal.style.filter = `blur(${layer.blur}px) drop-shadow(0 0 3px rgba(255, 190, 200, 0.4))`;
                     }
-                    
+
                     // Duration varies by depth for parallax effect
                     const baseDuration = Math.random() * 10 + 10;
                     const duration = baseDuration * layer.durationMultiplier;
                     petal.style.animationDuration = `${duration}s`;
                     petal.style.animationDelay = `-${Math.random() * duration}s`;
-                    
+
                     themeContainer.appendChild(petal);
                     this.petals.push(petal);
                 }
@@ -558,27 +558,27 @@ export default class SakuraTwilightTheme extends BaseTheme {
             for (let i = 0; i < this.qualityConfig.stars; i++) {
                 const star = document.createElement('div');
                 star.className = 'sakura-star';
-                
+
                 // Random position across the sky
                 star.style.left = `${Math.random() * 100}%`;
                 star.style.top = `${Math.random() * 100}%`;
-                
+
                 // Varying star sizes (smaller and larger stars)
-                const size = Math.random() < 0.8 ? 
-                    Math.random() * 1.5 + 0.5 :  // Most stars are tiny
-                    Math.random() * 2.5 + 1.5;    // Some stars are brighter/bigger
+                const size = Math.random() < 0.8
+                    ? Math.random() * 1.5 + 0.5 // Most stars are tiny
+                    : Math.random() * 2.5 + 1.5; // Some stars are brighter/bigger
                 star.style.width = `${size}px`;
                 star.style.height = `${size}px`;
-                
+
                 // Varying twinkle speeds
                 const duration = Math.random() * 4 + 3; // 3-7 seconds
                 star.style.animationDuration = `${duration}s`;
                 star.style.animationDelay = `-${Math.random() * duration}s`;
-                
+
                 // Varying brightness
                 const brightness = Math.random() * 0.5 + 0.5; // 0.5 to 1
                 star.style.opacity = brightness;
-                
+
                 starsContainer.appendChild(star);
                 this.stars.push(star);
             }
@@ -622,7 +622,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
     onLineClear(lineCount) {
         if (!this.qualityConfig) return;
 
-        const comboEffects = this.qualityConfig.comboEffects;
+        const { comboEffects } = this.qualityConfig;
 
         // Brighten lanterns
         this.brightenLanterns(lineCount);
@@ -658,7 +658,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         if (!this.qualityConfig) return;
 
         this.currentComboLevel = comboCount;
-        const comboEffects = this.qualityConfig.comboEffects;
+        const { comboEffects } = this.qualityConfig;
 
         // Intensify sunset glow
         this.intensifySunsetGlow(comboCount);

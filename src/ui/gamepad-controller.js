@@ -5,28 +5,29 @@
  */
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
+import { SpatialNavigation } from './spatial-navigation.js';
 
 /**
  * Button mappings for standard gamepad (Xbox layout)
  * Based on the W3C Gamepad API standard mapping
  */
 const BUTTON_MAP = {
-    A: 0,           // Bottom button (A on Xbox, Cross on PS)
-    B: 1,           // Right button (B on Xbox, Circle on PS)
-    X: 2,           // Left button (X on Xbox, Square on PS)
-    Y: 3,           // Top button (Y on Xbox, Triangle on PS)
-    LB: 4,          // Left bumper
-    RB: 5,          // Right bumper
-    LT: 6,          // Left trigger
-    RT: 7,          // Right trigger
-    SELECT: 8,      // Select/Back/Share button
-    START: 9,       // Start/Menu/Options button
-    L_STICK: 10,    // Left stick press
-    R_STICK: 11,    // Right stick press
-    D_UP: 12,       // D-pad up
-    D_DOWN: 13,     // D-pad down
-    D_LEFT: 14,     // D-pad left
-    D_RIGHT: 15,    // D-pad right
+    A: 0, // Bottom button (A on Xbox, Cross on PS)
+    B: 1, // Right button (B on Xbox, Circle on PS)
+    X: 2, // Left button (X on Xbox, Square on PS)
+    Y: 3, // Top button (Y on Xbox, Triangle on PS)
+    LB: 4, // Left bumper
+    RB: 5, // Right bumper
+    LT: 6, // Left trigger
+    RT: 7, // Right trigger
+    SELECT: 8, // Select/Back/Share button
+    START: 9, // Start/Menu/Options button
+    L_STICK: 10, // Left stick press
+    R_STICK: 11, // Right stick press
+    D_UP: 12, // D-pad up
+    D_DOWN: 13, // D-pad down
+    D_LEFT: 14, // D-pad left
+    D_RIGHT: 15, // D-pad right
 };
 
 /**
@@ -59,7 +60,7 @@ const DEFAULT_GAMEPAD_CONFIG = {
  */
 function convertBindingsToConfig(bindings) {
     if (!bindings) return DEFAULT_GAMEPAD_CONFIG;
-    
+
     return {
         moveLeft: { type: 'button', index: bindings.moveLeft ?? BUTTON_MAP.D_LEFT, axisNegative: AXIS_MAP.LEFT_STICK_X },
         moveRight: { type: 'button', index: bindings.moveRight ?? BUTTON_MAP.D_RIGHT, axisPositive: AXIS_MAP.LEFT_STICK_X },
@@ -85,7 +86,7 @@ export class GamepadController {
         this.pollInterval = null;
         this.gameActions = null;
         this.enabled = false;
-        
+
         // Serenity Mode support
         this.serenityModeActive = false;
         this.serenityModeCallbacks = null;
@@ -95,7 +96,7 @@ export class GamepadController {
             { left: null, right: null, down: null },
             { left: null, right: null, down: null },
             { left: null, right: null, down: null },
-            { left: null, right: null, down: null }
+            { left: null, right: null, down: null },
         ];
         this.dasDelay = 120;
         this.dasInterval = 40;
@@ -269,7 +270,7 @@ export class GamepadController {
      * Handle gamepad connection
      */
     onGamepadConnected(event) {
-        const gamepad = event.gamepad;
+        const { gamepad } = event;
         this.assignGamepadToSlot(gamepad);
     }
 
@@ -277,7 +278,7 @@ export class GamepadController {
      * Handle gamepad disconnection
      */
     onGamepadDisconnected(event) {
-        const gamepad = event.gamepad;
+        const { gamepad } = event;
 
         // Find which slot this gamepad was in
         const slot = this.gamepads.findIndex((existing) => existing && existing.index === gamepad.index);
@@ -369,7 +370,7 @@ export class GamepadController {
                 this.processMenuNavigation(freshGamepad, slot);
             } else {
                 // Always check for Start button to open settings, even without gameActions
-            this.processGamepadInput(freshGamepad, slot);
+                this.processGamepadInput(freshGamepad, slot);
             }
         }
     }
@@ -383,16 +384,23 @@ export class GamepadController {
 
         // Get all game mode cards
         this.gameModeCards = Array.from(document.querySelectorAll('.game-mode-card'));
-        this.selectedGameModeIndex = 0;
+
+        // Make cards focusable
+        this.gameModeCards.forEach((card) => {
+            card.setAttribute('tabindex', '0');
+        });
 
         // Clear all previous button states
         for (let i = 0; i < this.previousStates.length; i++) {
             this.previousStates[i] = {};
         }
 
-        // Only apply focus to first card if a gamepad is actually connected
-        if (this.isAnyGamepadConnected()) {
-            this.updateGameModeCardFocus();
+        // Focus the first card or the previously selected one
+        if (this.isAnyGamepadConnected() && this.gameModeCards.length > 0) {
+            // Default to first card if no selection
+            const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
+            this.gameModeCards[index].focus();
+            this.selectedGameModeIndex = index;
         }
     }
 
@@ -404,7 +412,7 @@ export class GamepadController {
         console.log('[Gamepad] Game mode selection disabled');
 
         // Remove focus from all cards
-        this.gameModeCards.forEach(card => {
+        this.gameModeCards.forEach((card) => {
             card.classList.remove('gamepad-focused');
         });
 
@@ -421,7 +429,7 @@ export class GamepadController {
         // Only update focus if a gamepad is connected
         if (!this.isAnyGamepadConnected()) {
             // Remove all focus if no gamepad connected
-            this.gameModeCards.forEach(card => {
+            this.gameModeCards.forEach((card) => {
                 card.classList.remove('gamepad-focused');
             });
             return;
@@ -440,7 +448,7 @@ export class GamepadController {
      * Check if any gamepad is currently connected
      */
     isAnyGamepadConnected() {
-        return this.connected.some(isConnected => isConnected);
+        return this.connected.some((isConnected) => isConnected);
     }
 
     /**
@@ -452,66 +460,52 @@ export class GamepadController {
         // Only allow first gamepad to navigate
         if (slot !== 0) return;
 
+        // Get current focused element
+        const current = document.activeElement;
+
+        // Ensure we are focused on a card
+        if (!current || !current.classList.contains('game-mode-card')) {
+            if (this.gameModeCards.length > 0) {
+                this.gameModeCards[0].focus();
+            }
+            return;
+        }
+
+        // Helper to handle navigation
+        const handleDirection = (direction, pressed, prevPressed) => {
+            if (pressed && !prevPressed) {
+                const container = document.querySelector('.game-modes-grid') || document.body;
+                const next = SpatialNavigation.findNextElement(current, direction, container);
+                if (next && next.classList.contains('game-mode-card')) {
+                    next.focus();
+                    this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
+                }
+            }
+            return pressed;
+        };
+
         // D-pad / Left stick navigation
-        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed ||
-                           gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
-        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed ||
-                            gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
-        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed ||
-                         gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
-        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed ||
-                           gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+        prevState.gameModeLeft = handleDirection('left', leftPressed, prevState.gameModeLeft);
 
-        // Navigate left (decrement index)
-        if (leftPressed && !prevState.gameModeLeft) {
-            this.selectedGameModeIndex--;
-            if (this.selectedGameModeIndex < 0) {
-                this.selectedGameModeIndex = this.gameModeCards.length - 1;
-            }
-            this.updateGameModeCardFocus();
-        }
-        prevState.gameModeLeft = leftPressed;
+        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+        prevState.gameModeRight = handleDirection('right', rightPressed, prevState.gameModeRight);
 
-        // Navigate right (increment index)
-        if (rightPressed && !prevState.gameModeRight) {
-            this.selectedGameModeIndex++;
-            if (this.selectedGameModeIndex >= this.gameModeCards.length) {
-                this.selectedGameModeIndex = 0;
-            }
-            this.updateGameModeCardFocus();
-        }
-        prevState.gameModeRight = rightPressed;
+        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+        prevState.gameModeUp = handleDirection('up', upPressed, prevState.gameModeUp);
 
-        // Navigate up (move to card above in grid)
-        if (upPressed && !prevState.gameModeUp) {
-            this.selectedGameModeIndex -= 2; // Grid has 2 columns
-            if (this.selectedGameModeIndex < 0) {
-                // Wrap to bottom row
-                this.selectedGameModeIndex += this.gameModeCards.length;
-            }
-            this.updateGameModeCardFocus();
-        }
-        prevState.gameModeUp = upPressed;
-
-        // Navigate down (move to card below in grid)
-        if (downPressed && !prevState.gameModeDown) {
-            this.selectedGameModeIndex += 2; // Grid has 2 columns
-            if (this.selectedGameModeIndex >= this.gameModeCards.length) {
-                // Wrap to top row
-                this.selectedGameModeIndex %= this.gameModeCards.length;
-            }
-            this.updateGameModeCardFocus();
-        }
-        prevState.gameModeDown = downPressed;
+        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+        prevState.gameModeDown = handleDirection('down', downPressed, prevState.gameModeDown);
 
         // A button - Select game mode
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
         if (aPressed && !prevState.gameModeSelect) {
-            const selectedCard = this.gameModeCards[this.selectedGameModeIndex];
-            if (selectedCard) {
-                console.log('[Gamepad] Selecting game mode card:', selectedCard.id);
-                selectedCard.click();
-            }
+            console.log('[Gamepad] Selecting game mode card:', current.id);
+            current.click();
         }
         prevState.gameModeSelect = aPressed;
     }
@@ -522,7 +516,7 @@ export class GamepadController {
     enableMenuNavigation() {
         this.menuNavigationEnabled = true;
         console.log('[Gamepad] Menu navigation enabled');
-        
+
         this.exitSelectEditMode();
 
         // Clear all previous button states to prevent double-triggering
@@ -531,7 +525,7 @@ export class GamepadController {
             this.previousStates[i] = {};
         }
         console.log('[Gamepad] Cleared previous button states');
-        
+
         // Focus first element after a short delay to ensure modal is rendered
         setTimeout(() => {
             // Only focus if we're still in menu navigation mode
@@ -539,7 +533,7 @@ export class GamepadController {
                 console.log('[Gamepad] Menu navigation disabled before focus, skipping');
                 return;
             }
-            
+
             const firstFocusable = this.getFirstFocusableElement();
             if (firstFocusable) {
                 // Don't focus the settings button itself to avoid recursion
@@ -565,7 +559,7 @@ export class GamepadController {
     disableMenuNavigation() {
         this.menuNavigationEnabled = false;
         console.log('[Gamepad] Menu navigation disabled');
-        
+
         this.exitSelectEditMode({ cancel: true });
 
         // Clear all previous button states to prevent double-triggering
@@ -586,36 +580,36 @@ export class GamepadController {
         if (slot !== 0) return;
 
         // Exit select editing if focus changed away
-        if (this.selectEditState.active &&
-            document.activeElement !== this.selectEditState.element) {
+        if (this.selectEditState.active
+            && document.activeElement !== this.selectEditState.element) {
             this.exitSelectEditMode({ cancel: true });
         }
 
         // D-pad Up / Left stick up - Navigate up
-        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed || 
-                         gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
         if (upPressed && !prevState.menuUp) {
-            if (!(this.selectEditState.active &&
-                this.handleControlAdjustment('up'))) {
+            if (!(this.selectEditState.active
+                && this.handleControlAdjustment('up'))) {
                 this.navigateMenu('up');
             }
         }
         prevState.menuUp = upPressed;
 
         // D-pad Down / Left stick down - Navigate down
-        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed || 
-                           gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
         if (downPressed && !prevState.menuDown) {
-            if (!(this.selectEditState.active &&
-                this.handleControlAdjustment('down'))) {
+            if (!(this.selectEditState.active
+                && this.handleControlAdjustment('down'))) {
                 this.navigateMenu('down');
             }
         }
         prevState.menuDown = downPressed;
 
         // D-pad Left / Left stick left - Navigate left (tabs)
-        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed || 
-                           gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
         if (leftPressed && !prevState.menuLeft) {
             if (!this.handleControlAdjustment('left')) {
                 this.navigateMenu('left');
@@ -623,15 +617,29 @@ export class GamepadController {
         }
         prevState.menuLeft = leftPressed;
 
-        // D-pad Right / Left stick right - Navigate right (tabs)
-        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed || 
-                            gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+        // D-pad Right / Left stick right - Navigate right (tabs/subtabs)
+        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
         if (rightPressed && !prevState.menuRight) {
             if (!this.handleControlAdjustment('right')) {
                 this.navigateMenu('right');
             }
         }
         prevState.menuRight = rightPressed;
+
+        // LB - Previous Main Tab
+        const lbPressed = gamepad.buttons[BUTTON_MAP.LB]?.pressed;
+        if (lbPressed && !prevState.menuLB) {
+            this.switchMainTab(-1);
+        }
+        prevState.menuLB = lbPressed;
+
+        // RB - Next Main Tab
+        const rbPressed = gamepad.buttons[BUTTON_MAP.RB]?.pressed;
+        if (rbPressed && !prevState.menuRB) {
+            this.switchMainTab(1);
+        }
+        prevState.menuRB = rbPressed;
 
         // A button - Select/Activate
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
@@ -666,10 +674,13 @@ export class GamepadController {
     /**
      * Navigate menu in a direction
      */
+    /**
+     * Navigate menu in a direction
+     */
     navigateMenu(direction) {
         // Get currently focused element
-        let current = document.activeElement;
-        
+        const current = document.activeElement;
+
         // If nothing is focused, focus the first focusable element
         if (!current || current === document.body) {
             const firstFocusable = this.getFirstFocusableElement();
@@ -679,73 +690,114 @@ export class GamepadController {
             return;
         }
 
-        const focusable = this.getFocusableElements();
-        const currentIndex = focusable.indexOf(current);
+        // Use Spatial Navigation to find the best next element
+        // We restrict the search to the visible modal if one exists
+        let container = document.body;
+        const settingsModal = document.getElementById('settings-modal');
+        const highScoresModal = document.getElementById('high-scores-modal');
 
-        if (currentIndex === -1) {
-            if (focusable.length > 0) {
-                focusable[0].focus();
+        if (settingsModal && settingsModal.classList.contains('visible')) {
+            container = settingsModal.querySelector('.modal-content');
+        } else if (highScoresModal && highScoresModal.classList.contains('visible')) {
+            container = highScoresModal.querySelector('.modal-content');
+        }
+
+        const nextElement = SpatialNavigation.findNextElement(current, direction, container);
+
+        if (nextElement) {
+            nextElement.focus();
+            nextElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } else {
+            // If no element found in that direction, check if we should switch tabs (only for Left/Right)
+            // But only if we are NOT in a slider or special control
+            if (direction === 'left') {
+                // Try to navigate to previous tab if at the edge
+                // this.navigateTab(-1);
+                // Actually, let's keep tab navigation on LB/RB to avoid confusion,
+                // or only allow it if we are explicitly on the tab bar.
+                // For now, let's rely on LB/RB for tabs as requested.
+            } else if (direction === 'right') {
+                // this.navigateTab(1);
             }
-            return;
-        }
-
-        let nextIndex = currentIndex;
-
-        if (direction === 'up') {
-            nextIndex = currentIndex > 0 ? currentIndex - 1 : focusable.length - 1;
-        } else if (direction === 'down') {
-            nextIndex = currentIndex < focusable.length - 1 ? currentIndex + 1 : 0;
-        } else if (direction === 'left') {
-            // Navigate to previous tab
-            this.navigateTab(-1);
-            return;
-        } else if (direction === 'right') {
-            // Navigate to next tab
-            this.navigateTab(1);
-            return;
-        }
-
-        if (focusable[nextIndex]) {
-            focusable[nextIndex].focus();
-            focusable[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
     }
 
     /**
-     * Navigate between tabs
+     * Switch main tabs (LB/RB)
+     */
+    switchMainTab(direction) {
+        const settingsModal = document.getElementById('settings-modal');
+        if (settingsModal && settingsModal.classList.contains('visible')) {
+            const tabs = Array.from(document.querySelectorAll('.settings-tab'));
+            const activeTab = document.querySelector('.settings-tab.active');
+
+            if (activeTab && tabs.length > 0) {
+                const currentIndex = tabs.indexOf(activeTab);
+                let nextIndex = currentIndex + direction;
+
+                if (nextIndex < 0) nextIndex = tabs.length - 1;
+                if (nextIndex >= tabs.length) nextIndex = 0;
+
+                tabs[nextIndex].click();
+                // We don't necessarily focus the tab, as the user might be focused on content
+            }
+        }
+    }
+
+    /**
+     * Navigate between tabs (D-pad)
      */
     navigateTab(direction) {
         // Check if in settings modal
         const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal && settingsModal.classList.contains('active')) {
+        if (settingsModal && settingsModal.classList.contains('visible')) {
+            // Check if we are in the Controls tab
+            const controlsTab = document.querySelector('.settings-tab[data-tab="controls"]');
+            const isControlsActive = controlsTab && controlsTab.classList.contains('active');
+
+            // If Controls tab is active, try to navigate subtabs first
+            if (isControlsActive) {
+                const controlsSubtabs = Array.from(document.querySelectorAll('.controls-subtab'));
+                const activeSubtab = document.querySelector('.controls-subtab.active');
+
+                if (activeSubtab && controlsSubtabs.length > 0) {
+                    // Check if we are focused on the subtabs or inside the content
+                    // If we are focused on a subtab, navigate subtabs
+                    // If we are focused on a main tab, navigate main tabs
+                    // For now, let's assume if we are in controls, we want to navigate subtabs with D-pad
+                    // unless we implement a way to switch focus between main tabs and content.
+
+                    // Actually, let's stick to the plan: LB/RB for main tabs, D-pad for content/subtabs.
+                    // But this function is called by D-pad Left/Right in the current implementation.
+                    // I will update processMenuNavigation to use LB/RB for main tabs.
+                    // So here, if called by D-pad (which calls this function), we should navigate subtabs if in controls.
+
+                    const currentIndex = controlsSubtabs.indexOf(activeSubtab);
+                    let nextIndex = currentIndex + direction;
+
+                    if (nextIndex < 0) nextIndex = controlsSubtabs.length - 1;
+                    if (nextIndex >= controlsSubtabs.length) nextIndex = 0;
+
+                    controlsSubtabs[nextIndex].click();
+                    controlsSubtabs[nextIndex].focus();
+                    return; // Handled subtab navigation
+                }
+            }
+
+            // Navigate main tabs
             const tabs = Array.from(document.querySelectorAll('.settings-tab'));
             const activeTab = document.querySelector('.settings-tab.active');
-            
+
             if (activeTab && tabs.length > 0) {
                 const currentIndex = tabs.indexOf(activeTab);
                 let nextIndex = currentIndex + direction;
-                
+
                 if (nextIndex < 0) nextIndex = tabs.length - 1;
                 if (nextIndex >= tabs.length) nextIndex = 0;
-                
+
                 tabs[nextIndex].click();
                 tabs[nextIndex].focus();
             }
-        }
-        
-        // Check if in controls subtabs
-        const controlsSubtabs = Array.from(document.querySelectorAll('.controls-subtab'));
-        const activeSubtab = document.querySelector('.controls-subtab.active');
-        
-        if (activeSubtab && controlsSubtabs.length > 0) {
-            const currentIndex = controlsSubtabs.indexOf(activeSubtab);
-            let nextIndex = currentIndex + direction;
-            
-            if (nextIndex < 0) nextIndex = controlsSubtabs.length - 1;
-            if (nextIndex >= controlsSubtabs.length) nextIndex = 0;
-            
-            controlsSubtabs[nextIndex].click();
-            controlsSubtabs[nextIndex].focus();
         }
     }
 
@@ -792,7 +844,6 @@ export class GamepadController {
             if (closeBtn) {
                 closeBtn.click();
             }
-            return;
         }
     }
 
@@ -801,13 +852,13 @@ export class GamepadController {
      */
     toggleSettings(slot = 0) {
         console.log('[Gamepad] toggleSettings called');
-        
+
         if (typeof slot === 'number' && slot >= 0 && slot < this.waitingForStartRelease.length) {
             this.waitingForStartRelease[slot] = true;
         }
 
         const settingsModal = document.getElementById('settings-modal');
-        
+
         if (settingsModal && settingsModal.classList.contains('visible')) {
             // Settings is open, close it
             console.log('[Gamepad] Settings is open, closing...');
@@ -818,7 +869,7 @@ export class GamepadController {
         } else {
             // Settings is closed, open it via settings button (which handles pause)
             console.log('[Gamepad] Settings is closed, opening via button...');
-            
+
             // Prevent rapid toggling by adding a small delay flag
             if (this._toggleCooldown) {
                 console.log('[Gamepad] Toggle on cooldown, ignoring');
@@ -826,9 +877,9 @@ export class GamepadController {
             }
             this._toggleCooldown = true;
             setTimeout(() => { this._toggleCooldown = false; }, 500);
-            
-            const settingsBtn = document.getElementById('settings-btn') || 
-                               document.getElementById('settings-btn-mp');
+
+            const settingsBtn = document.getElementById('settings-btn')
+                || document.getElementById('settings-btn-mp');
             if (settingsBtn) {
                 console.log('[Gamepad] Clicking settings button');
                 settingsBtn.click();
@@ -844,13 +895,13 @@ export class GamepadController {
     getFocusableElements() {
         const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
         const elements = Array.from(document.querySelectorAll(selector));
-        
+
         // Filter out hidden elements
-        return elements.filter(el => {
+        return elements.filter((el) => {
             const style = window.getComputedStyle(el);
-            return style.display !== 'none' && 
-                   style.visibility !== 'hidden' && 
-                   el.offsetParent !== null;
+            return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && el.offsetParent !== null;
         });
     }
 
@@ -901,9 +952,9 @@ export class GamepadController {
             return true;
         }
 
-        if (this.selectEditState.active &&
-            current === this.selectEditState.element &&
-            current.matches('select')) {
+        if (this.selectEditState.active
+            && current === this.selectEditState.element
+            && current.matches('select')) {
             if (!['left', 'right', 'up', 'down'].includes(direction)) {
                 return true;
             }
@@ -1057,7 +1108,7 @@ export class GamepadController {
         const viewportHeight = window.innerHeight;
         const viewportWidth = window.innerWidth;
         let top = rect.bottom + 6;
-        let left = rect.left;
+        let { left } = rect;
 
         if (top + overlayHeight > viewportHeight && rect.top > overlayHeight) {
             top = Math.max(12, rect.top - overlayHeight - 6);
@@ -1146,12 +1197,12 @@ export class GamepadController {
      */
     processGamepadInput(gamepad, slot) {
         const prevState = this.previousStates[slot];
-        
+
         // Handle START button for settings (for player 1 only)
         // BUT skip if menu navigation is enabled (menus handle their own START button)
         if (slot === 0 && !this.menuNavigationEnabled) {
             const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
-            
+
             if (this.waitingForStartRelease[slot]) {
                 if (!startPressed) {
                     this.waitingForStartRelease[slot] = false;
@@ -1161,13 +1212,13 @@ export class GamepadController {
             }
             prevState.menuStart = startPressed;
         }
-        
+
         // If in Serenity Mode, use Serenity Mode input handling
         if (this.serenityModeActive && this.serenityModeCallbacks) {
             this.processSerenityModeInput(gamepad, slot);
             return;
         }
-        
+
         // Use custom bindings if available, otherwise use default
         const customBinding = this.customBindings[slot];
         const config = convertBindingsToConfig(customBinding);
@@ -1180,52 +1231,52 @@ export class GamepadController {
         // Get appropriate action functions based on player slot (0-3 = P1-P4)
         let actions;
         switch (slot) {
-            case 0: // Player 1
-                actions = {
-                    move: this.gameActions.move,
-                    rotate: this.gameActions.rotate,
-                    softDrop: this.gameActions.softDrop,
-                    hardDrop: this.gameActions.hardDrop,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            case 1: // Player 2
-                actions = {
-                    move: this.gameActions.moveP2,
-                    rotate: this.gameActions.rotateP2,
-                    softDrop: this.gameActions.softDropP2,
-                    hardDrop: this.gameActions.hardDropP2,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            case 2: // Player 3
-                actions = {
-                    move: this.gameActions.moveP3,
-                    rotate: this.gameActions.rotateP3,
-                    softDrop: this.gameActions.softDropP3,
-                    hardDrop: this.gameActions.hardDropP3,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            case 3: // Player 4
-                actions = {
-                    move: this.gameActions.moveP4,
-                    rotate: this.gameActions.rotateP4,
-                    softDrop: this.gameActions.softDropP4,
-                    hardDrop: this.gameActions.hardDropP4,
-                    pause: this.gameActions.togglePause,
-                };
-                break;
-            default:
-                console.warn(`[Gamepad] Invalid player slot: ${slot}`);
-                return;
+        case 0: // Player 1
+            actions = {
+                move: this.gameActions.move,
+                rotate: this.gameActions.rotate,
+                softDrop: this.gameActions.softDrop,
+                hardDrop: this.gameActions.hardDrop,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        case 1: // Player 2
+            actions = {
+                move: this.gameActions.moveP2,
+                rotate: this.gameActions.rotateP2,
+                softDrop: this.gameActions.softDropP2,
+                hardDrop: this.gameActions.hardDropP2,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        case 2: // Player 3
+            actions = {
+                move: this.gameActions.moveP3,
+                rotate: this.gameActions.rotateP3,
+                softDrop: this.gameActions.softDropP3,
+                hardDrop: this.gameActions.hardDropP3,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        case 3: // Player 4
+            actions = {
+                move: this.gameActions.moveP4,
+                rotate: this.gameActions.rotateP4,
+                softDrop: this.gameActions.softDropP4,
+                hardDrop: this.gameActions.hardDropP4,
+                pause: this.gameActions.togglePause,
+            };
+            break;
+        default:
+            console.warn(`[Gamepad] Invalid player slot: ${slot}`);
+            return;
         }
 
         // Process movement (D-pad left/right or left stick X)
-        const leftPressed = this.isButtonPressed(gamepad, config.moveLeft) ||
-                          this.isAxisNegative(gamepad, config.moveLeft.axisNegative);
-        const rightPressed = this.isButtonPressed(gamepad, config.moveRight) ||
-                           this.isAxisPositive(gamepad, config.moveRight.axisPositive);
+        const leftPressed = this.isButtonPressed(gamepad, config.moveLeft)
+            || this.isAxisNegative(gamepad, config.moveLeft.axisNegative);
+        const rightPressed = this.isButtonPressed(gamepad, config.moveRight)
+            || this.isAxisPositive(gamepad, config.moveRight.axisPositive);
 
         const prevLeft = prevState.moveLeft || false;
         const prevRight = prevState.moveRight || false;
@@ -1260,8 +1311,8 @@ export class GamepadController {
         prevState.moveRight = rightPressed;
 
         // Process soft drop (D-pad down or left stick Y)
-        const downPressed = this.isButtonPressed(gamepad, config.softDrop) ||
-                          this.isAxisPositive(gamepad, config.softDrop.axisPositive);
+        const downPressed = this.isButtonPressed(gamepad, config.softDrop)
+            || this.isAxisPositive(gamepad, config.softDrop.axisPositive);
         const prevDown = prevState.softDrop || false;
 
         if (downPressed && !prevDown) {
@@ -1404,7 +1455,7 @@ export class GamepadController {
      */
     getGamepad() {
         // Return the first connected gamepad
-        const slot = this.connected.findIndex(isConnected => isConnected);
+        const slot = this.connected.findIndex((isConnected) => isConnected);
         if (slot === -1) return null;
 
         const gamepad = this.gamepads[slot];
@@ -1531,17 +1582,25 @@ export class GamepadController {
         }
         prevState.serenityR3 = r3Pressed;
 
-        // LB - Previous Track
+        // LB - Previous Track (Closed) or Switch Tab Left (Open)
         const lbPressed = gamepad.buttons[BUTTON_MAP.LB]?.pressed;
         if (lbPressed && !prevState.serenityLB) {
-            callbacks.previousTrack?.();
+            if (callbacks.isHubOpen?.()) {
+                callbacks.switchTabLeft?.();
+            } else {
+                callbacks.previousTrack?.();
+            }
         }
         prevState.serenityLB = lbPressed;
 
-        // RB - Next Track
+        // RB - Next Track (Closed) or Switch Tab Right (Open)
         const rbPressed = gamepad.buttons[BUTTON_MAP.RB]?.pressed;
         if (rbPressed && !prevState.serenityRB) {
-            callbacks.nextTrack?.();
+            if (callbacks.isHubOpen?.()) {
+                callbacks.switchTabRight?.();
+            } else {
+                callbacks.nextTrack?.();
+            }
         }
         prevState.serenityRB = rbPressed;
 
@@ -1608,31 +1667,31 @@ export class GamepadController {
             prevState.serenityB = bPressed;
 
             // D-Pad for navigation
-            const dpadLeft = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed ||
-                           gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+            const dpadLeft = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
+                || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
             if (dpadLeft && !prevState.serenityDLeft) {
-                callbacks.switchTabLeft?.();
+                callbacks.navigate?.('left');
             }
             prevState.serenityDLeft = dpadLeft;
 
-            const dpadRight = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed ||
-                            gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+            const dpadRight = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
+                || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
             if (dpadRight && !prevState.serenityDRight) {
-                callbacks.switchTabRight?.();
+                callbacks.navigate?.('right');
             }
             prevState.serenityDRight = dpadRight;
 
-            const dpadUp = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed ||
-                         gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+            const dpadUp = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
+                || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
             if (dpadUp && !prevState.serenityDUp) {
-                callbacks.navigateUp?.();
+                callbacks.navigate?.('up');
             }
             prevState.serenityDUp = dpadUp;
 
-            const dpadDown = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed ||
-                           gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+            const dpadDown = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
+                || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
             if (dpadDown && !prevState.serenityDDown) {
-                callbacks.navigateDown?.();
+                callbacks.navigate?.('down');
             }
             prevState.serenityDDown = dpadDown;
 

@@ -1,19 +1,19 @@
 /**
  * @fileoverview Audio Manager - Centralized audio context and resource management
- * 
+ *
  * Manages Web Audio API contexts, prevents multiple context creation,
  * handles cleanup, and ensures proper audio resource disposal.
- * 
+ *
  * @example
  * import { audioManager } from './utils/audio-manager.js';
- * 
+ *
  * // Get audio context
  * const ctx = audioManager.getContext();
- * 
+ *
  * // Load and play audio
  * const buffer = await audioManager.loadBuffer('/music/theme.mp3');
  * const source = audioManager.playBuffer(buffer, { loop: true, volume: 0.5 });
- * 
+ *
  * // Clean up
  * audioManager.stopAll();
  */
@@ -28,15 +28,15 @@ export class AudioManager {
         this.activeSources = new Set(); // Active AudioBufferSourceNodes
         this.activeElements = new Set(); // Active <audio> elements
         this.masterGain = null;
-        
+
         // Statistics
         this.stats = {
             buffersLoaded: 0,
             cacheHits: 0,
             cacheMisses: 0,
-            activePlaying: 0
+            activePlaying: 0,
         };
-        
+
         // Auto-suspend on visibility change
         this.setupVisibilityHandling();
     }
@@ -50,26 +50,26 @@ export class AudioManager {
             try {
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 this.audioContext = new AudioContextClass();
-                
+
                 // Create master gain node
                 this.masterGain = this.audioContext.createGain();
                 this.masterGain.connect(this.audioContext.destination);
-                
+
                 console.log('[AudioManager] Audio context created:', {
                     sampleRate: this.audioContext.sampleRate,
-                    state: this.audioContext.state
+                    state: this.audioContext.state,
                 });
             } catch (error) {
                 console.error('[AudioManager] Failed to create audio context:', error);
                 return null;
             }
         }
-        
+
         // Resume if suspended (browsers may auto-suspend)
         if (this.audioContext.state === 'suspended') {
             this.resume();
         }
-        
+
         return this.audioContext;
     }
 
@@ -116,7 +116,7 @@ export class AudioManager {
 
         this.stats.cacheMisses++;
         console.log(`[AudioManager] Loading buffer: ${url}`);
-        
+
         const context = this.getContext();
         if (!context) {
             throw new Error('Audio context not available');
@@ -124,26 +124,26 @@ export class AudioManager {
 
         try {
             const startTime = performance.now();
-            
+
             // Fetch audio file
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`Failed to fetch audio: ${response.status}`);
             }
-            
+
             const arrayBuffer = await response.arrayBuffer();
-            
+
             // Decode audio data
             const audioBuffer = await context.decodeAudioData(arrayBuffer);
-            
+
             const loadTime = performance.now() - startTime;
-            
+
             // Cache the buffer
             this.bufferCache.set(url, audioBuffer);
             this.stats.buffersLoaded++;
-            
+
             console.log(`[AudioManager] Loaded buffer: ${url} in ${loadTime.toFixed(2)}ms (${audioBuffer.duration.toFixed(2)}s, ${audioBuffer.numberOfChannels}ch)`);
-            
+
             return audioBuffer;
         } catch (error) {
             console.error(`[AudioManager] Failed to load buffer: ${url}`, error);
@@ -170,7 +170,7 @@ export class AudioManager {
             detune = 0,
             startTime = 0,
             offset = 0,
-            duration = undefined
+            duration = undefined,
         } = options;
 
         try {
@@ -230,7 +230,7 @@ export class AudioManager {
             loop = false,
             volume = 1.0,
             autoplay = false,
-            preload = 'auto'
+            preload = 'auto',
         } = options;
 
         const audio = new Audio(url);
@@ -249,7 +249,7 @@ export class AudioManager {
         });
 
         if (autoplay) {
-            audio.play().catch(error => {
+            audio.play().catch((error) => {
                 console.warn('[AudioManager] Autoplay failed:', error);
             });
         }
@@ -336,7 +336,7 @@ export class AudioManager {
     fadeMasterVolume(targetVolume, duration = 1.0) {
         if (!this.masterGain || !this.audioContext) return;
 
-        const currentTime = this.audioContext.currentTime;
+        const { currentTime } = this.audioContext;
         this.masterGain.gain.cancelScheduledValues(currentTime);
         this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, currentTime);
         this.masterGain.gain.linearRampToValueAtTime(targetVolume, currentTime + duration);
@@ -382,7 +382,7 @@ export class AudioManager {
             activeSources: this.activeSources.size,
             activeElements: this.activeElements.size,
             contextState: this.audioContext?.state || 'none',
-            masterVolume: this.getMasterVolume()
+            masterVolume: this.getMasterVolume(),
         };
     }
 
@@ -391,7 +391,7 @@ export class AudioManager {
      */
     logStatus() {
         const stats = this.getStats();
-        
+
         console.group('[AudioManager] Status');
         console.log(`Context: ${stats.contextState}`);
         console.log(`Master Volume: ${stats.masterVolume.toFixed(2)}`);
@@ -425,10 +425,10 @@ export class AudioManager {
         if (this.audioContext) {
             this.audioContext.close().then(() => {
                 console.log('✅ [AudioManager] Audio context closed');
-            }).catch(error => {
+            }).catch((error) => {
                 console.error('[AudioManager] Failed to close context:', error);
             });
-            
+
             this.audioContext = null;
             this.masterGain = null;
         }
@@ -447,4 +447,3 @@ if (typeof window !== 'undefined') {
     window.audioManager = audioManager;
     console.log('💡 Audio manager available: window.audioManager.logStatus()');
 }
-

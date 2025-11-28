@@ -11,82 +11,83 @@ import { BreathingTab } from './BreathingTab.js';
 import { MusicTab } from './MusicTab.js';
 import { ThemesTab } from './ThemesTab.js';
 import { throttle } from '../../utils/performance-utils.js';
+import { SpatialNavigation } from '../spatial-navigation.js';
 
 export class SerenityHub {
-  constructor(serenityMode) {
-    this.serenityMode = serenityMode;
-    this.isOpen = false;
-    this.currentTab = 'themes'; // 'themes', 'music', 'breathing'
+    constructor(serenityMode) {
+        this.serenityMode = serenityMode;
+        this.isOpen = false;
+        this.currentTab = 'themes'; // 'themes', 'music', 'breathing'
 
-    // DOM elements
-    this.hubIcon = null;
-    this.settingsBtn = null;
-    this.panel = null;
-    this.backdrop = null;
+        // DOM elements
+        this.hubIcon = null;
+        this.settingsBtn = null;
+        this.panel = null;
+        this.backdrop = null;
 
-    // Auto-hide behavior
-    this.hideTimeout = null;
-    this.hideDelay = 3000; // 3 seconds
-    this.isMouseOverHub = false;
-    this.isMouseOverSettings = false;
+        // Auto-hide behavior
+        this.hideTimeout = null;
+        this.hideDelay = 3000; // 3 seconds
+        this.isMouseOverHub = false;
+        this.isMouseOverSettings = false;
 
-    // Tab instances
-    this.breathingTab = null;
-    this.musicTab = null;
-    this.themesTab = null;
+        // Tab instances
+        this.breathingTab = null;
+        this.musicTab = null;
+        this.themesTab = null;
 
-    // Gamepad support (uses global gamepadController from main app)
-    this.gamepadCallbacks = null;
+        // Gamepad support (uses global gamepadController from main app)
+        this.gamepadCallbacks = null;
 
-    // Pause/resume callbacks (set by main.js for pausing game in certain modes)
-    this.onPauseCallback = null;
-    this.onResumeCallback = null;
+        // Pause/resume callbacks (set by main.js for pausing game in certain modes)
+        this.onPauseCallback = null;
+        this.onResumeCallback = null;
 
-    // AbortController for easy event listener cleanup (Phase 6.3)
-    // All event listeners use this signal - single abort() removes them all!
-    this.abortController = new AbortController();
+        // AbortController for easy event listener cleanup (Phase 6.3)
+        // All event listeners use this signal - single abort() removes them all!
+        this.abortController = new AbortController();
 
-    // Track tab elements and their handlers separately (dynamic tabs)
-    this.tabElements = [];
-    this.tabAbortControllers = new Map(); // Per-tab AbortControllers
+        // Track tab elements and their handlers separately (dynamic tabs)
+        this.tabElements = [];
+        this.tabAbortControllers = new Map(); // Per-tab AbortControllers
 
-    this.init();
-  }
+        this.init();
+    }
 
-  /**
+    /**
    * Initialize the Serenity Hub
    */
-  init() {
-    this.createHubIcon();
-    this.createSettingsButton();
-    this.createPanel();
-    this.attachEventListeners();
-    this.setupAutoHide();
+    init() {
+        this.createHubIcon();
+        this.createSettingsButton();
+        this.createPanel();
+        this.attachEventListeners();
+        this.setupAutoHide();
 
-    // Setup gamepad controller integration
-    this.setupGamepadIntegration();
+        // Setup gamepad controller integration
+        this.setupGamepadIntegration();
 
-    console.log('✨ Serenity Hub initialized with gamepad support');
-  }
+        console.log('✨ Serenity Hub initialized with gamepad support');
+    }
 
-  /**
+    /**
    * Create the floating hub icon (top-right corner)
    * If icon already exists in DOM (from index.html), use it instead of creating new one
    */
-  createHubIcon() {
-    // Check if icon already exists in the DOM (added via index.html)
-    this.hubIcon = document.getElementById('serenity-hub-icon');
+    createHubIcon() {
+        // Check if icon already exists in the DOM (added via index.html)
+        this.hubIcon = document.getElementById('serenity-hub-icon');
 
-    if (!this.hubIcon) {
-      // Create icon dynamically if it doesn't exist
-      this.hubIcon = document.createElement('div');
-      this.hubIcon.id = 'serenity-hub-icon';
-      this.hubIcon.className = 'serenity-hub-icon visible';
-      this.hubIcon.setAttribute('role', 'button');
-      this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
-      this.hubIcon.setAttribute('tabindex', '0');
+        if (!this.hubIcon) {
+            // Create icon dynamically if it doesn't exist
+            this.hubIcon = document.createElement('div');
+            this.hubIcon.id = 'serenity-hub-icon';
+            this.hubIcon.className = 'serenity-hub-icon visible';
+            this.hubIcon.setAttribute('role', 'button');
+            this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
+            this.hubIcon.setAttribute('tabindex', '0');
 
-      this.hubIcon.innerHTML = `
+            this.hubIcon.innerHTML = `
         <svg class="hub-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
           <!-- Lotus flower icon -->
           <g class="lotus">
@@ -106,109 +107,109 @@ export class SerenityHub {
         <div class="hub-icon-pulse"></div>
       `;
 
-      document.body.appendChild(this.hubIcon);
+            document.body.appendChild(this.hubIcon);
+        }
+
+        // Ensure it's visible
+        this.hubIcon.classList.add('visible');
+
+        // Store bound handler references
+        this.hubIconClickHandler = () => this.toggle();
+
+        this.hubIconKeydownHandler = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.toggle();
+            }
+        };
+
+        this.hubIconMouseEnterHandler = () => {
+            this.isMouseOverHub = true;
+            this.cancelAutoHide();
+        };
+
+        this.hubIconMouseLeaveHandler = () => {
+            this.isMouseOverHub = false;
+            if (!this.isOpen) {
+                this.startAutoHide();
+            }
+        };
+
+        // Add event listeners with AbortController signal for easy cleanup
+        const { signal } = this.abortController;
+        this.hubIcon.addEventListener('click', this.hubIconClickHandler, { signal });
+        this.hubIcon.addEventListener('keydown', this.hubIconKeydownHandler, { signal });
+        this.hubIcon.addEventListener('mouseenter', this.hubIconMouseEnterHandler, { signal });
+        this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
     }
 
-    // Ensure it's visible
-    this.hubIcon.classList.add('visible');
-
-    // Store bound handler references
-    this.hubIconClickHandler = () => this.toggle();
-
-    this.hubIconKeydownHandler = (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        this.toggle();
-      }
-    };
-
-    this.hubIconMouseEnterHandler = () => {
-      this.isMouseOverHub = true;
-      this.cancelAutoHide();
-    };
-
-    this.hubIconMouseLeaveHandler = () => {
-      this.isMouseOverHub = false;
-      if (!this.isOpen) {
-        this.startAutoHide();
-      }
-    };
-
-    // Add event listeners with AbortController signal for easy cleanup
-    const signal = this.abortController.signal;
-    this.hubIcon.addEventListener('click', this.hubIconClickHandler, { signal });
-    this.hubIcon.addEventListener('keydown', this.hubIconKeydownHandler, { signal });
-    this.hubIcon.addEventListener('mouseenter', this.hubIconMouseEnterHandler, { signal });
-    this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
-  }
-
-  /**
+    /**
    * Create the floating settings button (bottom-right corner)
    */
-  createSettingsButton() {
-    this.settingsBtn = document.createElement('button');
-    this.settingsBtn.id = 'serenity-settings-btn';
-    this.settingsBtn.className = 'floating-settings-btn serenity-settings';
-    this.settingsBtn.setAttribute('aria-label', 'Open Settings');
+    createSettingsButton() {
+        this.settingsBtn = document.createElement('button');
+        this.settingsBtn.id = 'serenity-settings-btn';
+        this.settingsBtn.className = 'floating-settings-btn serenity-settings';
+        this.settingsBtn.setAttribute('aria-label', 'Open Settings');
 
-    this.settingsBtn.innerHTML = `
+        this.settingsBtn.innerHTML = `
       <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
         <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
     `;
 
-    // Store bound handler references
-    this.settingsBtnClickHandler = () => {
-      // Open settings modal
-      const settingsModal = document.getElementById('settings-modal');
-      if (settingsModal) {
-        settingsModal.classList.add('visible');
-      }
-    };
+        // Store bound handler references
+        this.settingsBtnClickHandler = () => {
+            // Open settings modal
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal) {
+                settingsModal.classList.add('visible');
+            }
+        };
 
-    this.settingsBtnMouseEnterHandler = () => {
-      this.isMouseOverSettings = true;
-      this.cancelAutoHide();
-    };
+        this.settingsBtnMouseEnterHandler = () => {
+            this.isMouseOverSettings = true;
+            this.cancelAutoHide();
+        };
 
-    this.settingsBtnMouseLeaveHandler = () => {
-      this.isMouseOverSettings = false;
-      if (!this.isOpen) {
-        this.startAutoHide();
-      }
-    };
+        this.settingsBtnMouseLeaveHandler = () => {
+            this.isMouseOverSettings = false;
+            if (!this.isOpen) {
+                this.startAutoHide();
+            }
+        };
 
-    // Add event listeners with AbortController signal
-    const signal = this.abortController.signal;
-    this.settingsBtn.addEventListener('click', this.settingsBtnClickHandler, { signal });
-    this.settingsBtn.addEventListener('mouseenter', this.settingsBtnMouseEnterHandler, { signal });
-    this.settingsBtn.addEventListener('mouseleave', this.settingsBtnMouseLeaveHandler, { signal });
+        // Add event listeners with AbortController signal
+        const { signal } = this.abortController;
+        this.settingsBtn.addEventListener('click', this.settingsBtnClickHandler, { signal });
+        this.settingsBtn.addEventListener('mouseenter', this.settingsBtnMouseEnterHandler, { signal });
+        this.settingsBtn.addEventListener('mouseleave', this.settingsBtnMouseLeaveHandler, { signal });
 
-    document.body.appendChild(this.settingsBtn);
-  }
+        document.body.appendChild(this.settingsBtn);
+    }
 
-  /**
+    /**
    * Create the main panel with tabs
    */
-  createPanel() {
-    // Create backdrop
-    this.backdrop = document.createElement('div');
-    this.backdrop.className = 'serenity-hub-backdrop';
-    
-    // Store handler reference
-    this.backdropClickHandler = () => this.hide();
-    this.backdrop.addEventListener('click', this.backdropClickHandler, { signal: this.abortController.signal });
+    createPanel() {
+        // Create backdrop
+        this.backdrop = document.createElement('div');
+        this.backdrop.className = 'serenity-hub-backdrop';
 
-    // Create panel
-    this.panel = document.createElement('div');
-    this.panel.id = 'serenity-hub-panel';
-    this.panel.className = 'serenity-hub-panel';
-    this.panel.setAttribute('role', 'dialog');
-    this.panel.setAttribute('aria-modal', 'true');
-    this.panel.setAttribute('aria-labelledby', 'hub-title');
+        // Store handler reference
+        this.backdropClickHandler = () => this.hide();
+        this.backdrop.addEventListener('click', this.backdropClickHandler, { signal: this.abortController.signal });
 
-    this.panel.innerHTML = `
+        // Create panel
+        this.panel = document.createElement('div');
+        this.panel.id = 'serenity-hub-panel';
+        this.panel.className = 'serenity-hub-panel';
+        this.panel.setAttribute('role', 'dialog');
+        this.panel.setAttribute('aria-modal', 'true');
+        this.panel.setAttribute('aria-labelledby', 'hub-title');
+
+        this.panel.innerHTML = `
       <div class="hub-panel-header">
         <h2 id="hub-title" class="hub-title">Serenity Hub</h2>
         <button class="hub-close-btn" aria-label="Close Serenity Hub">
@@ -270,501 +271,483 @@ export class SerenityHub {
       </div>
     `;
 
-    // Store handler references
-    this.closeBtnClickHandler = () => this.hide();
-    this.panelClickHandler = (e) => {
-      e.stopPropagation();
-    };
+        // Store handler references
+        this.closeBtnClickHandler = () => this.hide();
+        this.panelClickHandler = (e) => {
+            e.stopPropagation();
+        };
 
-    // Add close button handler with AbortController signal
-    const signal = this.abortController.signal;
-    const closeBtn = this.panel.querySelector('.hub-close-btn');
-    closeBtn.addEventListener('click', this.closeBtnClickHandler, { signal });
+        // Add close button handler with AbortController signal
+        const { signal } = this.abortController;
+        const closeBtn = this.panel.querySelector('.hub-close-btn');
+        closeBtn.addEventListener('click', this.closeBtnClickHandler, { signal });
 
-    // Prevent clicks inside panel from closing it
-    this.panel.addEventListener('click', this.panelClickHandler, { signal });
+        // Prevent clicks inside panel from closing it
+        this.panel.addEventListener('click', this.panelClickHandler, { signal });
 
-    document.body.appendChild(this.backdrop);
-    document.body.appendChild(this.panel);
-  }
+        document.body.appendChild(this.backdrop);
+        document.body.appendChild(this.panel);
+    }
 
-  /**
+    /**
    * Attach event listeners
    */
-  attachEventListeners() {
-    // Tab switching - use separate AbortControllers for each tab
-    const tabs = this.panel.querySelectorAll('.hub-tab');
-    this.tabElements = Array.from(tabs);
-    
-    tabs.forEach(tab => {
-      // Create AbortController for this tab
-      const tabAbortController = new AbortController();
-      const signal = tabAbortController.signal;
-      this.tabAbortControllers.set(tab, tabAbortController);
-      
-      const clickHandler = () => {
-        const tabName = tab.dataset.tab;
-        this.switchTab(tabName);
-      };
+    attachEventListeners() {
+        // Tab switching - use separate AbortControllers for each tab
+        const tabs = this.panel.querySelectorAll('.hub-tab');
+        this.tabElements = Array.from(tabs);
 
-      // Keyboard navigation for tabs
-      const keydownHandler = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          const tabName = tab.dataset.tab;
-          this.switchTab(tabName);
-        }
-      };
-      
-      // Add event listeners with AbortController signal
-      tab.addEventListener('click', clickHandler, { signal });
-      tab.addEventListener('keydown', keydownHandler, { signal });
-    });
+        tabs.forEach((tab) => {
+            // Create AbortController for this tab
+            const tabAbortController = new AbortController();
+            const { signal } = tabAbortController;
+            this.tabAbortControllers.set(tab, tabAbortController);
 
-    // Use main AbortController for global listeners
-    const signal = this.abortController.signal;
-    
-    // Document keydown handler (ESC to close)
-    this.documentKeydownHandler = (e) => {
-      if (e.key === 'Escape' && this.isOpen) {
-        this.hide();
-      }
-    };
-    document.addEventListener('keydown', this.documentKeydownHandler, { signal });
+            const clickHandler = () => {
+                const tabName = tab.dataset.tab;
+                this.switchTab(tabName);
+            };
 
-    // Panel mouse enter/leave handlers
-    this.panelMouseEnterHandler = () => {
-      this.isMouseOverHub = true;
-      this.cancelAutoHide();
-    };
-    
-    this.panelMouseLeaveHandler = () => {
-      this.isMouseOverHub = false;
-    };
+            // Keyboard navigation for tabs
+            const keydownHandler = (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const tabName = tab.dataset.tab;
+                    this.switchTab(tabName);
+                }
+            };
 
-    this.panel.addEventListener('mouseenter', this.panelMouseEnterHandler, { signal });
-    this.panel.addEventListener('mouseleave', this.panelMouseLeaveHandler, { signal });
-  }
+            // Add event listeners with AbortController signal
+            tab.addEventListener('click', clickHandler, { signal });
+            tab.addEventListener('keydown', keydownHandler, { signal });
+        });
 
-  /**
+        // Use main AbortController for global listeners
+        const { signal } = this.abortController;
+
+        // Document keydown handler (ESC to close)
+        this.documentKeydownHandler = (e) => {
+            if (e.key === 'Escape' && this.isOpen) {
+                this.hide();
+            }
+        };
+        document.addEventListener('keydown', this.documentKeydownHandler, { signal });
+
+        // Panel mouse enter/leave handlers
+        this.panelMouseEnterHandler = () => {
+            this.isMouseOverHub = true;
+            this.cancelAutoHide();
+        };
+
+        this.panelMouseLeaveHandler = () => {
+            this.isMouseOverHub = false;
+        };
+
+        this.panel.addEventListener('mouseenter', this.panelMouseEnterHandler, { signal });
+        this.panel.addEventListener('mouseleave', this.panelMouseLeaveHandler, { signal });
+    }
+
+    /**
    * Setup auto-hide behavior for the hub icon
    */
-  setupAutoHide() {
-    let mouseMoveTimeout = null;
+    setupAutoHide() {
+        let mouseMoveTimeout = null;
 
-    // Store document mousemove handler reference
-    const mouseMoveHandler = () => {
-      // Show icon on mouse movement
-      this.showIcon();
+        // Store document mousemove handler reference
+        const mouseMoveHandler = () => {
+            // Show icon on mouse movement
+            this.showIcon();
 
-      // Reset hide timeout
-      clearTimeout(mouseMoveTimeout);
+            // Reset hide timeout
+            clearTimeout(mouseMoveTimeout);
 
-      if (!this.isOpen && !this.isMouseOverHub) {
-        mouseMoveTimeout = setTimeout(() => {
-          this.startAutoHide();
-        }, this.hideDelay);
-      }
-    };
-    
-    // Throttle mousemove to max once every 16ms (~60fps) to reduce CPU usage
-    this.documentMouseMoveHandler = throttle(mouseMoveHandler, 16);
+            if (!this.isOpen && !this.isMouseOverHub) {
+                mouseMoveTimeout = setTimeout(() => {
+                    this.startAutoHide();
+                }, this.hideDelay);
+            }
+        };
 
-    // Use AbortController signal for easy cleanup
-    document.addEventListener('mousemove', this.documentMouseMoveHandler, { signal: this.abortController.signal });
-    console.log('[SerenityHub] Mousemove handler throttled to 16ms (~60fps)');
+        // Throttle mousemove to max once every 16ms (~60fps) to reduce CPU usage
+        this.documentMouseMoveHandler = throttle(mouseMoveHandler, 16);
 
-    // Initially hide after delay
-    this.startAutoHide();
-  }
+        // Use AbortController signal for easy cleanup
+        document.addEventListener('mousemove', this.documentMouseMoveHandler, { signal: this.abortController.signal });
+        console.log('[SerenityHub] Mousemove handler throttled to 16ms (~60fps)');
 
-  /**
+        // Initially hide after delay
+        this.startAutoHide();
+    }
+
+    /**
    * Show the hub icon and settings button
    */
-  showIcon() {
-    this.hubIcon.classList.add('visible');
-    if (this.settingsBtn) {
-      this.settingsBtn.classList.add('visible');
+    showIcon() {
+        this.hubIcon.classList.add('visible');
+        if (this.settingsBtn) {
+            this.settingsBtn.classList.add('visible');
+        }
+        this.cancelAutoHide();
     }
-    this.cancelAutoHide();
-  }
 
-  /**
+    /**
    * Start auto-hide timer for icon and settings button
    * DISABLED: Icon is now always visible everywhere
    */
-  startAutoHide() {
-    // Auto-hide disabled - icon is now always visible
-    // this.cancelAutoHide();
-    //
-    // if (!this.isOpen && !this.isMouseOverHub && !this.isMouseOverSettings) {
-    //   this.hideTimeout = setTimeout(() => {
-    //     this.hubIcon.classList.remove('visible');
-    //     if (this.settingsBtn) {
-    //       this.settingsBtn.classList.remove('visible');
-    //     }
-    //   }, this.hideDelay);
-    // }
-  }
+    startAutoHide() {
+        // Auto-hide disabled - icon is now always visible
+        // this.cancelAutoHide();
+        //
+        // if (!this.isOpen && !this.isMouseOverHub && !this.isMouseOverSettings) {
+        //   this.hideTimeout = setTimeout(() => {
+        //     this.hubIcon.classList.remove('visible');
+        //     if (this.settingsBtn) {
+        //       this.settingsBtn.classList.remove('visible');
+        //     }
+        //   }, this.hideDelay);
+        // }
+    }
 
-  /**
+    /**
    * Cancel auto-hide timer
    */
-  cancelAutoHide() {
-    if (this.hideTimeout) {
-      clearTimeout(this.hideTimeout);
-      this.hideTimeout = null;
+    cancelAutoHide() {
+        if (this.hideTimeout) {
+            clearTimeout(this.hideTimeout);
+            this.hideTimeout = null;
+        }
     }
-  }
 
-  /**
+    /**
    * Switch to a different tab
    */
-  switchTab(tabName) {
-    if (this.currentTab === tabName) return;
+    switchTab(tabName) {
+        if (this.currentTab === tabName) return;
 
-    this.currentTab = tabName;
+        this.currentTab = tabName;
 
-    // Update tab buttons
-    const tabs = this.panel.querySelectorAll('.hub-tab');
-    tabs.forEach(tab => {
-      const isActive = tab.dataset.tab === tabName;
-      tab.classList.toggle('active', isActive);
-      tab.setAttribute('aria-selected', isActive);
-    });
+        // Update tab buttons
+        const tabs = this.panel.querySelectorAll('.hub-tab');
+        tabs.forEach((tab) => {
+            const isActive = tab.dataset.tab === tabName;
+            tab.classList.toggle('active', isActive);
+            tab.setAttribute('aria-selected', isActive);
+        });
 
-    // Update tab panels
-    const panels = this.panel.querySelectorAll('.tab-panel');
-    panels.forEach(panel => {
-      const isActive = panel.id === `tab-${tabName}`;
-      panel.classList.toggle('active', isActive);
-    });
+        // Update tab panels
+        const panels = this.panel.querySelectorAll('.tab-panel');
+        panels.forEach((panel) => {
+            const isActive = panel.id === `tab-${tabName}`;
+            panel.classList.toggle('active', isActive);
+        });
 
-    // Load tab content if needed
-    this.loadTabContent(tabName);
+        // Load tab content if needed
+        this.loadTabContent(tabName);
 
-    console.log(`Switched to ${tabName} tab`);
-  }
+        console.log(`Switched to ${tabName} tab`);
+    }
 
-  /**
+    /**
    * Load content for a specific tab
    */
-  async loadTabContent(tabName) {
-    // Load breathing tab
-    if (tabName === 'breathing' && !this.breathingTab) {
-      if (window.breathingIndicator) {
-        this.breathingTab = new BreathingTab(this, window.breathingIndicator);
-        console.log('[SerenityHub] Breathing tab loaded');
-      } else {
-        console.warn('[SerenityHub] Breathing indicator not available');
-      }
-    }
-
-    // Load music tab
-    if (tabName === 'music' && !this.musicTab) {
-      const soundManager = this.serenityMode.deps?.soundManager;
-      if (soundManager) {
-        this.musicTab = new MusicTab(this, soundManager);
-        console.log('[SerenityHub] Music tab loaded');
-      } else {
-        console.warn('[SerenityHub] Sound manager not available');
-        const panel = this.panel.querySelector(`#tab-${tabName}`);
-        const loading = panel.querySelector('.tab-loading');
-        if (loading) {
-          loading.textContent = 'Sound manager not available...';
+    async loadTabContent(tabName) {
+        // Load breathing tab
+        if (tabName === 'breathing' && !this.breathingTab) {
+            if (window.breathingIndicator) {
+                this.breathingTab = new BreathingTab(this, window.breathingIndicator);
+                console.log('[SerenityHub] Breathing tab loaded');
+            } else {
+                console.warn('[SerenityHub] Breathing indicator not available');
+            }
         }
-      }
-    }
 
-    // Load themes tab
-    if (tabName === 'themes' && !this.themesTab) {
-      const themeManager = this.serenityMode.deps?.themeManager;
-      const settingsManager = this.serenityMode.deps?.settingsManager;
-      if (themeManager && settingsManager) {
-        this.themesTab = new ThemesTab(this, themeManager, settingsManager);
-        console.log('[SerenityHub] Themes tab loaded');
-      } else {
-        console.warn('[SerenityHub] Theme manager or settings manager not available');
-        const panel = this.panel.querySelector(`#tab-${tabName}`);
-        const loading = panel.querySelector('.tab-loading');
-        if (loading) {
-          loading.textContent = 'Theme manager not available...';
+        // Load music tab
+        if (tabName === 'music' && !this.musicTab) {
+            const soundManager = this.serenityMode.deps?.soundManager;
+            if (soundManager) {
+                this.musicTab = new MusicTab(this, soundManager);
+                console.log('[SerenityHub] Music tab loaded');
+            } else {
+                console.warn('[SerenityHub] Sound manager not available');
+                const panel = this.panel.querySelector(`#tab-${tabName}`);
+                const loading = panel.querySelector('.tab-loading');
+                if (loading) {
+                    loading.textContent = 'Sound manager not available...';
+                }
+            }
         }
-      }
+
+        // Load themes tab
+        if (tabName === 'themes' && !this.themesTab) {
+            const themeManager = this.serenityMode.deps?.themeManager;
+            const settingsManager = this.serenityMode.deps?.settingsManager;
+            if (themeManager && settingsManager) {
+                this.themesTab = new ThemesTab(this, themeManager, settingsManager);
+                console.log('[SerenityHub] Themes tab loaded');
+            } else {
+                console.warn('[SerenityHub] Theme manager or settings manager not available');
+                const panel = this.panel.querySelector(`#tab-${tabName}`);
+                const loading = panel.querySelector('.tab-loading');
+                if (loading) {
+                    loading.textContent = 'Theme manager not available...';
+                }
+            }
+        }
+
+        // Refresh theme tab if it's already loaded (in case theme changed externally)
+        if (tabName === 'themes' && this.themesTab) {
+            this.themesTab.refreshCurrentTheme();
+        }
+
+        // Refresh music tab if it's already loaded (in case music state changed)
+        if (tabName === 'music' && this.musicTab) {
+            this.musicTab.syncWithAudioState();
+        }
     }
 
-    // Refresh theme tab if it's already loaded (in case theme changed externally)
-    if (tabName === 'themes' && this.themesTab) {
-      this.themesTab.refreshCurrentTheme();
-    }
-
-    // Refresh music tab if it's already loaded (in case music state changed)
-    if (tabName === 'music' && this.musicTab) {
-      this.musicTab.syncWithAudioState();
-    }
-  }
-
-  /**
+    /**
    * Set pause/resume callbacks (called by main.js)
    */
-  setPauseResumeCallbacks(onPause, onResume) {
-    this.onPauseCallback = onPause;
-    this.onResumeCallback = onResume;
-  }
+    setPauseResumeCallbacks(onPause, onResume) {
+        this.onPauseCallback = onPause;
+        this.onResumeCallback = onResume;
+    }
 
-  /**
+    /**
    * Show the hub panel
    */
-  show() {
-    if (this.isOpen) return;
+    show() {
+        if (this.isOpen) return;
 
-    this.isOpen = true;
+        this.isOpen = true;
 
-    // Pause game if callback is set (for single player, local MP, infinity mode)
-    if (this.onPauseCallback) {
-      this.onPauseCallback();
+        // Pause game if callback is set (for single player, local MP, infinity mode)
+        if (this.onPauseCallback) {
+            this.onPauseCallback();
+        }
+
+        // Show backdrop and panel
+        this.backdrop.classList.add('visible');
+        this.panel.classList.add('open');
+
+        // Keep icon visible
+        this.showIcon();
+        this.cancelAutoHide();
+
+        // Load current tab content if not loaded
+        this.loadTabContent(this.currentTab);
+
+        // Focus the panel for accessibility
+        this.panel.focus();
+
+        // Update icon state
+        this.hubIcon.classList.add('active');
+        this.hubIcon.setAttribute('aria-label', 'Close Serenity Hub');
+
+        console.log('🎨 Serenity Hub opened');
     }
 
-    // Show backdrop and panel
-    this.backdrop.classList.add('visible');
-    this.panel.classList.add('open');
-
-    // Keep icon visible
-    this.showIcon();
-    this.cancelAutoHide();
-
-    // Load current tab content if not loaded
-    this.loadTabContent(this.currentTab);
-
-    // Focus the panel for accessibility
-    this.panel.focus();
-
-    // Update icon state
-    this.hubIcon.classList.add('active');
-    this.hubIcon.setAttribute('aria-label', 'Close Serenity Hub');
-
-    console.log('🎨 Serenity Hub opened');
-  }
-
-  /**
+    /**
    * Hide the hub panel
    */
-  hide() {
-    if (!this.isOpen) return;
+    hide() {
+        if (!this.isOpen) return;
 
-    this.isOpen = false;
+        this.isOpen = false;
 
-    // Hide backdrop and panel
-    this.backdrop.classList.remove('visible');
-    this.panel.classList.remove('open');
+        // Hide backdrop and panel
+        this.backdrop.classList.remove('visible');
+        this.panel.classList.remove('open');
 
-    // Update icon state
-    this.hubIcon.classList.remove('active');
-    this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
+        // Update icon state
+        this.hubIcon.classList.remove('active');
+        this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
 
-    // Resume game if callback is set (for single player, local MP, infinity mode)
-    if (this.onResumeCallback) {
-      this.onResumeCallback();
+        // Resume game if callback is set (for single player, local MP, infinity mode)
+        if (this.onResumeCallback) {
+            this.onResumeCallback();
+        }
+
+        // Restart auto-hide
+        this.startAutoHide();
+
+        console.log('Serenity Hub closed');
     }
 
-    // Restart auto-hide
-    this.startAutoHide();
-
-    console.log('Serenity Hub closed');
-  }
-
-  /**
+    /**
    * Toggle hub panel visibility
    */
-  toggle() {
-    if (this.isOpen) {
-      this.hide();
-    } else {
-      this.show();
+    toggle() {
+        if (this.isOpen) {
+            this.hide();
+        } else {
+            this.show();
+        }
     }
-  }
 
-  /**
+    /**
    * Update hub icon state based on Serenity Mode status
    */
-  updateIconState(options = {}) {
-    const { breathingActive = false, musicPlaying = false } = options;
+    updateIconState(options = {}) {
+        const { breathingActive = false, musicPlaying = false } = options;
 
-    // Add breathing pulse animation if breathing is active
-    const pulse = this.hubIcon.querySelector('.hub-icon-pulse');
-    pulse.classList.toggle('breathing-active', breathingActive);
+        // Add breathing pulse animation if breathing is active
+        const pulse = this.hubIcon.querySelector('.hub-icon-pulse');
+        pulse.classList.toggle('breathing-active', breathingActive);
 
-    // Add music playing indicator
-    this.hubIcon.classList.toggle('music-playing', musicPlaying);
-  }
+        // Add music playing indicator
+        this.hubIcon.classList.toggle('music-playing', musicPlaying);
+    }
 
-  /**
+    /**
    * Setup gamepad controller integration
    * Registers callbacks with the global gamepad controller
    */
-  setupGamepadIntegration() {
-    // Create callback functions for gamepad controller
-    this.gamepadCallbacks = {
-      toggleHub: () => this.toggle(),
-      closeHub: () => this.hide(),
-      isHubOpen: () => this.isOpen,
-      
-      // Tab navigation
-      switchTabLeft: () => {
-        const tabs = ['themes', 'music', 'breathing'];
-        const currentIndex = tabs.indexOf(this.currentTab);
-        const newIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-        this.switchTab(tabs[newIndex]);
-      },
-      switchTabRight: () => {
-        const tabs = ['themes', 'music', 'breathing'];
-        const currentIndex = tabs.indexOf(this.currentTab);
-        const newIndex = (currentIndex + 1) % tabs.length;
-        this.switchTab(tabs[newIndex]);
-      },
-      
-      // Item navigation
-      navigateUp: () => this.navigateItems(-1),
-      navigateDown: () => this.navigateItems(1),
-      confirmSelection: () => this.confirmItem(),
-      
-      // Scrolling
-      scrollContent: (delta) => {
+    setupGamepadIntegration() {
+        // Create callback functions for gamepad controller
+        this.gamepadCallbacks = {
+            toggleHub: () => this.toggle(),
+            closeHub: () => this.hide(),
+            isHubOpen: () => this.isOpen,
+
+            // Tab navigation
+            switchTabLeft: () => {
+                const tabs = ['themes', 'music', 'breathing'];
+                const currentIndex = tabs.indexOf(this.currentTab);
+                const newIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+                this.switchTab(tabs[newIndex]);
+            },
+            switchTabRight: () => {
+                const tabs = ['themes', 'music', 'breathing'];
+                const currentIndex = tabs.indexOf(this.currentTab);
+                const newIndex = (currentIndex + 1) % tabs.length;
+                this.switchTab(tabs[newIndex]);
+            },
+
+            // Item navigation
+            navigate: (direction) => this.handleNavigation(direction),
+            confirmSelection: () => this.confirmItem(),
+
+            // Scrolling
+            scrollContent: (delta) => {
+                const activePanel = this.panel.querySelector('.tab-panel.active');
+                if (activePanel) {
+                    activePanel.scrollTop += delta;
+                }
+            },
+
+            // Quick actions (work even when hub is closed)
+            toggleBreathing: () => this.serenityMode._toggleBreathingIndicator(),
+            nextBreathingTechnique: () => {
+                if (window.breathingIndicator) {
+                    console.log('[SerenityHub] Next breathing technique');
+                    window.breathingIndicator.cycleTechnique(1);
+                } else {
+                    console.warn('[SerenityHub] Breathing indicator not available');
+                }
+            },
+            previousBreathingTechnique: () => {
+                if (window.breathingIndicator) {
+                    console.log('[SerenityHub] Previous breathing technique');
+                    window.breathingIndicator.cycleTechnique(-1);
+                } else {
+                    console.warn('[SerenityHub] Breathing indicator not available');
+                }
+            },
+            randomTheme: () => this.serenityMode._randomTheme(),
+            toggleFullscreen: () => this.serenityMode._toggleFullscreen(),
+            previousTrack: () => this.serenityMode.deps?.soundManager?.previousTrack?.(),
+            nextTrack: () => this.serenityMode.deps?.soundManager?.nextTrack?.(),
+
+            // Volume control
+            volumeDown: () => {
+                const soundManager = this.serenityMode.deps?.soundManager;
+                if (soundManager) {
+                    const current = soundManager.musicVolume || 0.5;
+                    soundManager.setMusicVolume(Math.max(0, current - 0.02));
+                }
+            },
+            volumeUp: () => {
+                const soundManager = this.serenityMode.deps?.soundManager;
+                if (soundManager) {
+                    const current = soundManager.musicVolume || 0.5;
+                    soundManager.setMusicVolume(Math.min(1, current + 0.02));
+                }
+            },
+
+            // Button hints overlay
+            toggleHints: () => this.toggleButtonHints(),
+
+            // NOTE: START button for opening settings is handled globally by toggleSettings,
+            // not here to avoid conflicts between menu navigation and Serenity Mode
+        };
+
+        // Register with gamepad controller from dependencies
+        const gamepadController = this.serenityMode.deps?.gamepadController;
+        if (gamepadController) {
+            gamepadController.enableSerenityMode(this.gamepadCallbacks);
+            console.log('[SerenityHub] Gamepad callbacks registered');
+        } else {
+            console.warn('[SerenityHub] Gamepad controller not available in dependencies');
+        }
+    }
+
+    /**
+   * Handle spatial navigation
+   * @param {'up'|'down'|'left'|'right'} direction
+   */
+    handleNavigation(direction) {
+        if (!this.isOpen) return;
+
         const activePanel = this.panel.querySelector('.tab-panel.active');
-        if (activePanel) {
-          activePanel.scrollTop += delta;
+        if (!activePanel) return;
+
+        const currentElement = document.activeElement;
+
+        // If focus is not in panel, focus first element
+        if (!this.panel.contains(currentElement)) {
+            const first = SpatialNavigation.getFocusableElements(activePanel)[0];
+            if (first) first.focus();
+            return;
         }
-      },
-      
-      // Quick actions (work even when hub is closed)
-      toggleBreathing: () => this.serenityMode._toggleBreathingIndicator(),
-      nextBreathingTechnique: () => {
-        if (window.breathingIndicator) {
-          console.log('[SerenityHub] Next breathing technique');
-          window.breathingIndicator.cycleTechnique(1);
-        } else {
-          console.warn('[SerenityHub] Breathing indicator not available');
+
+        const nextElement = SpatialNavigation.findNextElement(currentElement, direction, activePanel);
+        if (nextElement) {
+            nextElement.focus();
+            nextElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-      },
-      previousBreathingTechnique: () => {
-        if (window.breathingIndicator) {
-          console.log('[SerenityHub] Previous breathing technique');
-          window.breathingIndicator.cycleTechnique(-1);
-        } else {
-          console.warn('[SerenityHub] Breathing indicator not available');
-        }
-      },
-      randomTheme: () => this.serenityMode._randomTheme(),
-      toggleFullscreen: () => this.serenityMode._toggleFullscreen(),
-      previousTrack: () => this.serenityMode.deps?.soundManager?.previousTrack?.(),
-      nextTrack: () => this.serenityMode.deps?.soundManager?.nextTrack?.(),
-      
-      // Volume control
-      volumeDown: () => {
-        const soundManager = this.serenityMode.deps?.soundManager;
-        if (soundManager) {
-          const current = soundManager.musicVolume || 0.5;
-          soundManager.setMusicVolume(Math.max(0, current - 0.02));
-        }
-      },
-      volumeUp: () => {
-        const soundManager = this.serenityMode.deps?.soundManager;
-        if (soundManager) {
-          const current = soundManager.musicVolume || 0.5;
-          soundManager.setMusicVolume(Math.min(1, current + 0.02));
-        }
-      },
-      
-      // Button hints overlay
-      toggleHints: () => this.toggleButtonHints()
-      
-      // NOTE: START button for opening settings is handled globally by toggleSettings,
-      // not here to avoid conflicts between menu navigation and Serenity Mode
-    };
-
-    // Register with gamepad controller from dependencies
-    const gamepadController = this.serenityMode.deps?.gamepadController;
-    if (gamepadController) {
-      gamepadController.enableSerenityMode(this.gamepadCallbacks);
-      console.log('[SerenityHub] Gamepad callbacks registered');
-    } else {
-      console.warn('[SerenityHub] Gamepad controller not available in dependencies');
-    }
-  }
-
-  /**
-   * Navigate items in current tab
-   */
-  navigateItems(direction) {
-    const items = this.getNavigableItems();
-    if (items.length === 0) return;
-
-    // Find currently focused item or start at 0
-    const currentIndex = items.findIndex(item => item.classList.contains('gamepad-focused'));
-    let newIndex = currentIndex === -1 ? 0 : currentIndex + direction;
-    
-    // Wrap around
-    if (newIndex < 0) newIndex = items.length - 1;
-    if (newIndex >= items.length) newIndex = 0;
-
-    // Update focus
-    items.forEach((item, idx) => {
-      if (idx === newIndex) {
-        item.classList.add('gamepad-focused');
-        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      } else {
-        item.classList.remove('gamepad-focused');
-      }
-    });
-  }
-
-  /**
-   * Get navigable items in current tab
-   */
-  getNavigableItems() {
-    const currentTab = this.currentTab;
-
-    if (currentTab === 'breathing') {
-      return Array.from(this.panel.querySelectorAll('.technique-card'));
-    } else if (currentTab === 'music') {
-      return Array.from(this.panel.querySelectorAll('.playlist-item'));
-    } else if (currentTab === 'themes') {
-      return Array.from(this.panel.querySelectorAll('.theme-card'));
     }
 
-    return [];
-  }
-
-  /**
-   * Confirm focused item
-   */
-  confirmItem() {
-    const focusedItem = this.panel.querySelector('.gamepad-focused');
-    if (focusedItem) {
-      focusedItem.click();
+    /**
+     * Confirm focused item
+     */
+    confirmItem() {
+        const focusedItem = document.activeElement;
+        if (focusedItem && this.panel.contains(focusedItem)) {
+            focusedItem.click();
+        }
     }
-  }
 
-  /**
+    /**
    * Toggle button hints overlay
    */
-  toggleButtonHints() {
-    let hintsOverlay = document.getElementById('gamepad-hints-overlay');
+    toggleButtonHints() {
+        let hintsOverlay = document.getElementById('gamepad-hints-overlay');
 
-    if (!hintsOverlay) {
-      // Detect if gamepad is connected
-      const gamepadController = this.serenityMode.deps?.gamepadController;
-      const connectionStatus = gamepadController?.getConnectionStatus?.();
-      const hasGamepad = connectionStatus?.controller1?.connected || connectionStatus?.controller2?.connected || false;
+        if (!hintsOverlay) {
+            // Detect if gamepad is connected
+            const gamepadController = this.serenityMode.deps?.gamepadController;
+            const connectionStatus = gamepadController?.getConnectionStatus?.();
+            const hasGamepad = connectionStatus?.controller1?.connected || connectionStatus?.controller2?.connected || false;
 
-      // Create hints overlay
-      hintsOverlay = document.createElement('div');
-      hintsOverlay.id = 'gamepad-hints-overlay';
-      hintsOverlay.className = 'gamepad-hints visible';
+            // Create hints overlay
+            hintsOverlay = document.createElement('div');
+            hintsOverlay.id = 'gamepad-hints-overlay';
+            hintsOverlay.className = 'gamepad-hints visible';
 
-      if (hasGamepad) {
-        // Show gamepad controls
-        hintsOverlay.innerHTML = `
+            if (hasGamepad) {
+                // Show gamepad controls
+                hintsOverlay.innerHTML = `
           <div class="hint-title">🎮 Serenity Mode Controls</div>
           <div class="hint-grid">
             <div class="hint-item"><span class="hint-button">Y</span> Toggle Hub</div>
@@ -785,14 +768,14 @@ export class SerenityHub {
             <div class="hint-item"><span class="hint-button">A</span> Confirm</div>
             <div class="hint-item"><span class="hint-button">B</span> Close Hub</div>
             <div class="hint-item"><span class="hint-button">D-Pad</span> Navigate</div>
-            <div class="hint-item"><span class="hint-button">L-Stick</span> Navigate</div>
+            <div class="hint-item"><span class="hint-button">LB/RB</span> Switch Tab</div>
             <div class="hint-item"><span class="hint-button">R-Stick</span> Scroll</div>
           </div>
           <div class="hint-footer">Press SELECT again to hide</div>
         `;
-      } else {
-        // Show keyboard controls
-        hintsOverlay.innerHTML = `
+            } else {
+                // Show keyboard controls
+                hintsOverlay.innerHTML = `
           <div class="hint-title">⌨️ Serenity Mode Controls</div>
           <div class="hint-grid">
             <div class="hint-item"><span class="hint-button">H</span> Toggle Hub</div>
@@ -813,109 +796,109 @@ export class SerenityHub {
           </div>
           <div class="hint-footer">Press / again to hide</div>
         `;
-      }
+            }
 
-      document.body.appendChild(hintsOverlay);
+            document.body.appendChild(hintsOverlay);
 
-      // Auto-hide after 10 seconds
-      setTimeout(() => {
-        if (hintsOverlay && hintsOverlay.parentNode) {
-          hintsOverlay.classList.remove('visible');
-          setTimeout(() => hintsOverlay.remove(), 300);
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                if (hintsOverlay && hintsOverlay.parentNode) {
+                    hintsOverlay.classList.remove('visible');
+                    setTimeout(() => hintsOverlay.remove(), 300);
+                }
+            }, 10000);
+        } else {
+            // Toggle visibility
+            if (hintsOverlay.classList.contains('visible')) {
+                hintsOverlay.classList.remove('visible');
+                setTimeout(() => hintsOverlay.remove(), 300);
+            }
         }
-      }, 10000);
-    } else {
-      // Toggle visibility
-      if (hintsOverlay.classList.contains('visible')) {
-        hintsOverlay.classList.remove('visible');
-        setTimeout(() => hintsOverlay.remove(), 300);
-      }
     }
-  }
 
-  /**
+    /**
    * Destroy the hub and clean up
    */
-  destroy() {
-    console.log('[SerenityHub] Starting cleanup...');
-    
-    // Clear timers
-    this.cancelAutoHide();
+    destroy() {
+        console.log('[SerenityHub] Starting cleanup...');
 
-    // Disable gamepad integration
-    const gamepadController = this.serenityMode.deps?.gamepadController;
-    if (gamepadController) {
-      gamepadController.disableSerenityMode();
-      console.log('[SerenityHub] Gamepad integration disabled');
-    }
+        // Clear timers
+        this.cancelAutoHide();
 
-    // ✨ PHASE 6.3: AbortController Pattern - Remove ALL event listeners with ONE line!
-    console.log('[SerenityHub] Aborting all event listeners via AbortController...');
-    if (this.abortController) {
-      this.abortController.abort();
-      console.log('  ✅ Main AbortController aborted (hub icon, backdrop, panel, document listeners)');
-    }
-    
-    // Abort all tab-specific listeners
-    if (this.tabAbortControllers.size > 0) {
-      for (const [tab, controller] of this.tabAbortControllers.entries()) {
-        controller.abort();
-      }
-      console.log(`  ✅ ${this.tabAbortControllers.size} tab AbortControllers aborted`);
-      this.tabAbortControllers.clear();
-    }
-    
-    // Clear tab tracking
-    this.tabElements = [];
+        // Disable gamepad integration
+        const gamepadController = this.serenityMode.deps?.gamepadController;
+        if (gamepadController) {
+            gamepadController.disableSerenityMode();
+            console.log('[SerenityHub] Gamepad integration disabled');
+        }
 
-    // Remove DOM elements (but keep hubIcon since it's permanent in index.html)
-    // Don't remove hubIcon - it's a permanent element now
-    // Just clear the reference and let event listeners be cleaned up by AbortController
-    this.hubIcon = null;
-    if (this.settingsBtn) {
-      this.settingsBtn.remove();
-      this.settingsBtn = null;
-    }
-    if (this.panel) {
-      this.panel.remove();
-      this.panel = null;
-    }
-    if (this.backdrop) {
-      this.backdrop.remove();
-      this.backdrop = null;
-    }
+        // ✨ PHASE 6.3: AbortController Pattern - Remove ALL event listeners with ONE line!
+        console.log('[SerenityHub] Aborting all event listeners via AbortController...');
+        if (this.abortController) {
+            this.abortController.abort();
+            console.log('  ✅ Main AbortController aborted (hub icon, backdrop, panel, document listeners)');
+        }
 
-    // Clean up tab instances
-    if (this.breathingTab) {
-      if (typeof this.breathingTab.destroy === 'function') {
-        this.breathingTab.destroy();
-      } else {
-        console.warn('[SerenityHub] BreathingTab missing destroy method');
-      }
-      this.breathingTab = null;
-    }
-    if (this.musicTab) {
-      if (typeof this.musicTab.destroy === 'function') {
-        this.musicTab.destroy();
-      } else {
-        console.warn('[SerenityHub] MusicTab missing destroy method');
-      }
-      this.musicTab = null;
-    }
-    if (this.themesTab) {
-      if (typeof this.themesTab.destroy === 'function') {
-        this.themesTab.destroy();
-      } else {
-        console.warn('[SerenityHub] ThemesTab missing destroy method');
-      }
-      this.themesTab = null;
-    }
+        // Abort all tab-specific listeners
+        if (this.tabAbortControllers.size > 0) {
+            for (const [tab, controller] of this.tabAbortControllers.entries()) {
+                controller.abort();
+            }
+            console.log(`  ✅ ${this.tabAbortControllers.size} tab AbortControllers aborted`);
+            this.tabAbortControllers.clear();
+        }
 
-    // Null out AbortController and references (Phase 6.1: Null Reference Cleanup)
-    this.abortController = null;
-    this.gamepadCallbacks = null;
-    this.serenityMode = null;
+        // Clear tab tracking
+        this.tabElements = [];
 
-    console.log('✅ [SerenityHub] Destroyed - all listeners removed via AbortController');
-  }
+        // Remove DOM elements (but keep hubIcon since it's permanent in index.html)
+        // Don't remove hubIcon - it's a permanent element now
+        // Just clear the reference and let event listeners be cleaned up by AbortController
+        this.hubIcon = null;
+        if (this.settingsBtn) {
+            this.settingsBtn.remove();
+            this.settingsBtn = null;
+        }
+        if (this.panel) {
+            this.panel.remove();
+            this.panel = null;
+        }
+        if (this.backdrop) {
+            this.backdrop.remove();
+            this.backdrop = null;
+        }
+
+        // Clean up tab instances
+        if (this.breathingTab) {
+            if (typeof this.breathingTab.destroy === 'function') {
+                this.breathingTab.destroy();
+            } else {
+                console.warn('[SerenityHub] BreathingTab missing destroy method');
+            }
+            this.breathingTab = null;
+        }
+        if (this.musicTab) {
+            if (typeof this.musicTab.destroy === 'function') {
+                this.musicTab.destroy();
+            } else {
+                console.warn('[SerenityHub] MusicTab missing destroy method');
+            }
+            this.musicTab = null;
+        }
+        if (this.themesTab) {
+            if (typeof this.themesTab.destroy === 'function') {
+                this.themesTab.destroy();
+            } else {
+                console.warn('[SerenityHub] ThemesTab missing destroy method');
+            }
+            this.themesTab = null;
+        }
+
+        // Null out AbortController and references (Phase 6.1: Null Reference Cleanup)
+        this.abortController = null;
+        this.gamepadCallbacks = null;
+        this.serenityMode = null;
+
+        console.log('✅ [SerenityHub] Destroyed - all listeners removed via AbortController');
+    }
 }

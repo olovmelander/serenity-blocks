@@ -368,13 +368,12 @@ export class InfinityMinimap {
 
         // PERFORMANCE: Only render if something actually changed
         // Note: Always render to support pulsing animation, but throttled by updateInterval
-        const shouldRender =
-            this.lastCameraRow !== cameraRow ||
-            this.lastBuildHeight !== buildHeight ||
-            this.lastTopRow !== topRow ||
-            this.lastLockedPiecesCount !== lockedPiecesCount ||
-            this.gameState === null || // First render
-            true; // Always render for smooth animations (throttled by updateInterval)
+        const shouldRender = this.lastCameraRow !== cameraRow
+            || this.lastBuildHeight !== buildHeight
+            || this.lastTopRow !== topRow
+            || this.lastLockedPiecesCount !== lockedPiecesCount
+            || this.gameState === null // First render
+            || true; // Always render for smooth animations (throttled by updateInterval)
 
         if (shouldRender) {
             this.gameState = gameState;
@@ -400,7 +399,7 @@ export class InfinityMinimap {
         if (!this.gameState || !this.ctx) return;
 
         const { width, height } = this.canvas;
-        const ctx = this.ctx;
+        const { ctx } = this;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
@@ -510,10 +509,10 @@ export class InfinityMinimap {
         // Define color stops
         const colors = [
             { pos: 0.00, color: [100, 255, 200] }, // Cyan-green (start)
-            { pos: 0.25, color: [50, 255, 150] },  // Green
+            { pos: 0.25, color: [50, 255, 150] }, // Green
             { pos: 0.50, color: [200, 255, 100] }, // Yellow-green
-            { pos: 0.75, color: [255, 200, 50] },  // Orange-yellow
-            { pos: 1.00, color: [255, 150, 50] }   // Orange (near goal)
+            { pos: 0.75, color: [255, 200, 50] }, // Orange-yellow
+            { pos: 1.00, color: [255, 150, 50] }, // Orange (near goal)
         ];
 
         // Find surrounding color stops
@@ -553,7 +552,7 @@ export class InfinityMinimap {
             { pos: 0.25, color: [50, 255, 150] },
             { pos: 0.50, color: [200, 255, 100] },
             { pos: 0.75, color: [255, 200, 50] },
-            { pos: 1.00, color: [255, 150, 50] }
+            { pos: 1.00, color: [255, 150, 50] },
         ];
 
         let lower = colors[0];
@@ -588,7 +587,7 @@ export class InfinityMinimap {
         ctx.font = '8px monospace';
         ctx.textAlign = 'right';
 
-        this.milestones.forEach(milestone => {
+        this.milestones.forEach((milestone) => {
             if (milestone <= totalRows) {
                 // Row 0 at top (y=0), Row 1000 at bottom (y=height)
                 const y = milestone * pixelsPerRow;
@@ -615,7 +614,7 @@ export class InfinityMinimap {
      */
     _drawRowLabels(ctx, width, height, totalRows, pixelsPerRow) {
         const labels = [
-            { row: 0, text: '0', color: '#ff0000' },      // Top (goal)
+            { row: 0, text: '0', color: '#ff0000' }, // Top (goal)
             { row: 250, text: '250', color: '#ffff00' },
             { row: 500, text: '500', color: '#ffff00' },
             { row: 750, text: '750', color: '#ffff00' },
@@ -646,7 +645,7 @@ export class InfinityMinimap {
      * @private
      */
     _drawBuild(ctx, width, height, totalRows, pixelsPerRow) {
-        const board = this.gameState.board;
+        const { board } = this.gameState;
 
         // Sample blocks for minimap (can't draw every single block at this scale)
         // Draw a simplified representation using actual row positions
@@ -848,8 +847,7 @@ export class InfinityMinimap {
      */
     _onContainerMouseLeave() {
         // Reset to default gradient
-        this.container.style.background =
-            'linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92))';
+        this.container.style.background = 'linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92))';
     }
 
     /**

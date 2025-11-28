@@ -9,13 +9,13 @@ export const SUNSET_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ffd700',  // Golden sun - brilliant golden hour light
-        O: '#ff6b1a',  // Blazing orange - sun at the horizon
-        T: '#ff4d8f',  // Sunset magenta - vibrant evening sky
-        S: '#b794f6',  // Twilight lavender - soft purple dusk
-        Z: '#dc2626',  // Deep crimson - intense sunset red
-        J: '#f59e0b',  // Warm amber - golden hour glow
-        L: '#ff8a65',  // Coral peach - dawn and dusk clouds
+        I: '#ffd700', // Golden sun - brilliant golden hour light
+        O: '#ff6b1a', // Blazing orange - sun at the horizon
+        T: '#ff4d8f', // Sunset magenta - vibrant evening sky
+        S: '#b794f6', // Twilight lavender - soft purple dusk
+        Z: '#dc2626', // Deep crimson - intense sunset red
+        J: '#f59e0b', // Warm amber - golden hour glow
+        L: '#ff8a65', // Coral peach - dawn and dusk clouds
         GARBAGE: '#1a1a2e', // Deep night - post-sunset darkness
     },
 
@@ -32,8 +32,8 @@ export const SUNSET_TETROMINOS = {
 
         // Pulse like the flickering sun and atmospheric shimmer
         pulse: true,
-        pulseSpeed: 0.038,         // Gentle, warm pulsing
-        pulseAmplitude: 0.2,       // Noticeable radiance
+        pulseSpeed: 0.038, // Gentle, warm pulsing
+        pulseAmplitude: 0.2, // Noticeable radiance
 
         // Shimmer like heat haze and atmospheric distortion
         shimmer: true,

@@ -449,9 +449,9 @@ export class PerformanceMonitor {
 
         const report = {
             summary: {
-                uptime: uptime.toFixed(2) + 's',
+                uptime: `${uptime.toFixed(2)}s`,
                 totalFrames: this.metrics.totalFrames,
-                frameDropRate: frameDropRate.toFixed(2) + '%',
+                frameDropRate: `${frameDropRate.toFixed(2)}%`,
             },
             fps: {
                 current: this.metrics.fps.toFixed(1),
@@ -460,18 +460,18 @@ export class PerformanceMonitor {
                 max: this.metrics.maxFPS.toFixed(1),
             },
             frameTime: {
-                current: this.metrics.frameTime.toFixed(2) + 'ms',
-                average: this.metrics.avgFrameTime.toFixed(2) + 'ms',
-                max: this.metrics.maxFrameTime.toFixed(2) + 'ms',
-                budget: FRAME_BUDGET_MS.toFixed(2) + 'ms',
+                current: `${this.metrics.frameTime.toFixed(2)}ms`,
+                average: `${this.metrics.avgFrameTime.toFixed(2)}ms`,
+                max: `${this.metrics.maxFrameTime.toFixed(2)}ms`,
+                budget: `${FRAME_BUDGET_MS.toFixed(2)}ms`,
             },
             performance: {
-                updateTime: this.metrics.updateTime.toFixed(2) + 'ms',
-                renderTime: this.metrics.renderTime.toFixed(2) + 'ms',
-                inputLatency: this.metrics.inputLatency.toFixed(2) + 'ms',
+                updateTime: `${this.metrics.updateTime.toFixed(2)}ms`,
+                renderTime: `${this.metrics.renderTime.toFixed(2)}ms`,
+                inputLatency: `${this.metrics.inputLatency.toFixed(2)}ms`,
             },
             memory: {
-                current: this.metrics.memoryUsed.toFixed(2) + 'MB',
+                current: `${this.metrics.memoryUsed.toFixed(2)}MB`,
                 history: this.memoryHistory.length > 0
                     ? `${Math.min(...this.memoryHistory).toFixed(2)}MB - ${Math.max(...this.memoryHistory).toFixed(2)}MB`
                     : 'N/A',
@@ -766,13 +766,13 @@ export class PerformanceMonitor {
                 <div style="margin-top: 10px; color: #888; font-size: 10px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
                     Hot Sections:
                     ${hotSections.map((section) => {
-                        const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
-                        return `
+        const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
+        return `
                             <div style="color: ${color}; margin-top: 2px;">
                                 ${section.name}: ${section.avg.toFixed(1)}ms avg (${section.last.toFixed(1)}ms last)
                             </div>
                         `;
-                    }).join('')}
+    }).join('')}
                 </div>
             ` : ''}
         `;
@@ -844,9 +844,7 @@ if (typeof window !== 'undefined') {
             performanceMonitor.setQualityMode(mode);
             console.log(`🎨 Quality mode set to: ${mode}`);
         },
-        report: () => {
-            return performanceMonitor.generateReport();
-        },
+        report: () => performanceMonitor.generateReport(),
         reset: () => {
             performanceMonitor.reset();
             console.log('🔄 Metrics reset');
@@ -854,9 +852,7 @@ if (typeof window !== 'undefined') {
         export: () => {
             performanceMonitor.exportMetrics();
         },
-        getMetrics: () => {
-            return performanceMonitor.getMetrics();
-        },
+        getMetrics: () => performanceMonitor.getMetrics(),
     };
 
     console.log('💡 Performance monitor available:');

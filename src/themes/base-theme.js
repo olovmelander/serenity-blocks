@@ -54,7 +54,7 @@ export class BaseTheme {
         // Set active state
         this.isActive = true;
         this.webglRenderer = webglRenderer;
-        
+
         // Store resource managers for efficient asset loading
         this.assetManager = managers.assetManager;
         this.audioManager = managers.audioManager;
@@ -162,7 +162,7 @@ export class BaseTheme {
     /**
      * Clean up all theme resources
      * Called when theme is being destroyed or evicted from cache
-     * 
+     *
      * IMPORTANT: Theme implementations should:
      * 1. Cancel all animation frames (use registerAnimation())
      * 2. Clear all intervals/timeouts
@@ -172,7 +172,7 @@ export class BaseTheme {
      */
     cleanup() {
         console.log(`[BaseTheme] Cleaning up theme: ${this.name}`);
-        
+
         // Stop animations and remove theme from active state
         this.stop();
 
@@ -198,14 +198,14 @@ export class BaseTheme {
 
         // Null out renderer reference
         this.webglRenderer = null;
-        
+
         // Null out managers (they're shared, so we just clear references)
         this.assetManager = null;
         this.audioManager = null;
-        
+
         // Null out options to release any closures
         this.options = null;
-        
+
         console.log(`✅ [BaseTheme] Cleanup complete for theme: ${this.name}`);
     }
 

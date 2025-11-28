@@ -8,13 +8,13 @@ export const DESERT_OASIS_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8be9ff',  // Oasis cyan
-        O: '#ffd38a',  // Dune gold
-        T: '#f9a8ff',  // Twilight magenta
-        S: '#a7ffcb',  // Mint mirage
-        Z: '#ff8d73',  // Sunset coral
-        J: '#6f7bff',  // Indigo night
-        L: '#ffe799',  // Lantern glow
+        I: '#8be9ff', // Oasis cyan
+        O: '#ffd38a', // Dune gold
+        T: '#f9a8ff', // Twilight magenta
+        S: '#a7ffcb', // Mint mirage
+        Z: '#ff8d73', // Sunset coral
+        J: '#6f7bff', // Indigo night
+        L: '#ffe799', // Lantern glow
         GARBAGE: '#1a1c2e', // Desert night shadow
     },
 

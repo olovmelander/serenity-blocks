@@ -43,19 +43,19 @@ export class EnhancedBreathingIndicator {
                 description: 'Natural tranquilizer • Fall asleep in 60 seconds',
                 color: { r: 255, g: 130, b: 200 }, // Dreamy pink
             },
-            'energizing': {
+            energizing: {
                 name: 'Energizing',
                 pattern: [3, 1, 3, 1], // Faster for energy
                 description: 'Quick refresh • Instant energy & alertness',
                 color: { r: 255, g: 200, b: 80 }, // Vibrant gold
             },
-            'coherence': {
+            coherence: {
                 name: 'Heart Coherence',
                 pattern: [5, 0, 5, 0], // 6 breaths per minute
                 description: 'Heart-brain balance • Optimal HRV frequency',
                 color: { r: 80, g: 255, b: 150 }, // Healing green
             },
-            'triangle': {
+            triangle: {
                 name: 'Triangle Breath',
                 pattern: [4, 0, 4, 4], // Three-sided pattern
                 description: 'Anxiety relief • Grounding & centering',
@@ -142,7 +142,7 @@ export class EnhancedBreathingIndicator {
         this.techniqueName = document.createElement('div');
         this.techniqueName.className = 'breathing-technique-name';
         this.techniqueName.textContent = this.technique.name;
-        
+
         // Add hover event to show description
         this.techniqueName.addEventListener('mouseenter', () => {
             this._showTechniqueInfo(5000);
@@ -170,7 +170,7 @@ export class EnhancedBreathingIndicator {
         // Assemble main indicator
         this.indicator.appendChild(this.hoverArea);
         this.indicator.appendChild(contentWrapper);
-        
+
         // Add to DOM
         this.container.appendChild(this.backdrop);
         this.container.appendChild(this.indicator);
@@ -192,7 +192,7 @@ export class EnhancedBreathingIndicator {
             button.className = 'technique-button';
             button.dataset.technique = key;
             button.textContent = this.techniques[key].name;
-            
+
             if (key === this.currentTechnique) {
                 button.classList.add('active');
             }
@@ -252,18 +252,18 @@ export class EnhancedBreathingIndicator {
 
         console.log('[EnhancedBreathingIndicator] Starting with technique:', this.currentTechnique);
         this.isActive = true;
-        
+
         // Show backdrop, indicator, and hover area
         this.backdrop.style.display = 'block';
         this.indicator.style.display = 'block';
         this.hoverArea.style.display = 'block';
-        
+
         // Setup keyboard listener for info display
         this._setupKeyboardListener();
-        
+
         // Show technique info briefly at start (selector is now in Serenity Hub)
         this._showTechniqueInfo(3000);
-        
+
         this.phaseStartTime = performance.now();
         this.currentPhase = 'inhale';
 
@@ -277,7 +277,7 @@ export class EnhancedBreathingIndicator {
         if (!this.isActive) return;
 
         this.isActive = false;
-        
+
         // Hide backdrop, indicator, and hover area
         this.backdrop.style.display = 'none';
         this.indicator.style.display = 'none';
@@ -285,7 +285,7 @@ export class EnhancedBreathingIndicator {
 
         // Clean up keyboard listener
         this._removeKeyboardListener();
-        
+
         // Clear selector timeout
         if (this.selectorTimeout) {
             clearTimeout(this.selectorTimeout);
@@ -430,29 +430,29 @@ export class EnhancedBreathingIndicator {
      */
     _animateTechniqueSpecific(progress) {
         switch (this.currentTechnique) {
-            case 'deep-relaxation':
-                this._animateDeepRelaxation(progress);
-                break;
-            case 'box-breathing':
-                this._animateBoxBreathing(progress);
-                break;
-            case 'calm-sleep':
-                this._animateSleepWaves(progress);
-                break;
-            case 'energizing':
-                this._animateEnergizing(progress);
-                break;
-            case 'coherence':
-                this._animateHeartCoherence(progress);
-                break;
-            case 'triangle':
-                this._animateTriangleBreath(progress);
-                break;
-            case 'wim-hof':
-                this._animatePowerBreath(progress);
-                break;
-            default:
-                this._animateDeepRelaxation(progress);
+        case 'deep-relaxation':
+            this._animateDeepRelaxation(progress);
+            break;
+        case 'box-breathing':
+            this._animateBoxBreathing(progress);
+            break;
+        case 'calm-sleep':
+            this._animateSleepWaves(progress);
+            break;
+        case 'energizing':
+            this._animateEnergizing(progress);
+            break;
+        case 'coherence':
+            this._animateHeartCoherence(progress);
+            break;
+        case 'triangle':
+            this._animateTriangleBreath(progress);
+            break;
+        case 'wim-hof':
+            this._animatePowerBreath(progress);
+            break;
+        default:
+            this._animateDeepRelaxation(progress);
         }
     }
 
@@ -516,7 +516,7 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
+        const { color } = this.technique;
 
         // Clear canvas
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
@@ -595,11 +595,11 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
-        
+        const { color } = this.technique;
+
         // Clear canvas
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
-        
+
         // Calculate scale
         let scale;
         if (this.currentPhase === 'inhale') {
@@ -609,25 +609,25 @@ export class EnhancedBreathingIndicator {
         } else {
             scale = this.currentPhase === 'hold1' ? 1.0 : 0.3;
         }
-        
+
         // Draw rotating square
         const size = 200 * scale;
         const rotation = (Date.now() / 5000) * Math.PI * 2; // Slow rotation
-        
+
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(rotation);
-        
+
         // Draw square outline
         ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.8 * scale})`;
         ctx.lineWidth = 3;
         ctx.shadowBlur = 20;
         ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
         ctx.strokeRect(-size, -size, size * 2, size * 2);
-        
+
         // Draw corner glows
         const corners = [
-            [-size, -size], [size, -size], [size, size], [-size, size]
+            [-size, -size], [size, -size], [size, size], [-size, size],
         ];
         corners.forEach(([x, y]) => {
             const gradient = ctx.createRadialGradient(x, y, 0, x, y, 30);
@@ -638,9 +638,9 @@ export class EnhancedBreathingIndicator {
             ctx.arc(x, y, 30, 0, Math.PI * 2);
             ctx.fill();
         });
-        
+
         ctx.restore();
-        
+
         // Hide rings, show center core
         this.outerRing.style.opacity = 0;
         this.middleRing.style.opacity = 0;
@@ -657,10 +657,10 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
-        
+        const { color } = this.technique;
+
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
-        
+
         // Calculate amplitude
         let amplitude;
         if (this.currentPhase === 'inhale') {
@@ -670,34 +670,34 @@ export class EnhancedBreathingIndicator {
         } else {
             amplitude = this.currentPhase === 'hold1' ? 80 : 20;
         }
-        
+
         const time = Date.now() / 1000;
-        
+
         // Draw multiple wave layers
         for (let layer = 0; layer < 3; layer++) {
             ctx.beginPath();
             const layerOffset = layer * 80;
             const layerAlpha = (0.6 - layer * 0.15) * (amplitude / 80);
-            
+
             for (let x = 0; x < this.particleCanvas.width; x += 5) {
-                const y = centerY + layerOffset + 
-                    Math.sin((x / 50) + time + layer) * amplitude * 0.8 +
-                    Math.sin((x / 30) + time * 1.5 + layer) * amplitude * 0.4;
-                
+                const y = centerY + layerOffset
+                    + Math.sin((x / 50) + time + layer) * amplitude * 0.8
+                    + Math.sin((x / 30) + time * 1.5 + layer) * amplitude * 0.4;
+
                 if (x === 0) {
                     ctx.moveTo(x, y);
                 } else {
                     ctx.lineTo(x, y);
                 }
             }
-            
+
             ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${layerAlpha})`;
             ctx.lineWidth = 3;
             ctx.shadowBlur = 15;
             ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${layerAlpha})`;
             ctx.stroke();
         }
-        
+
         // Subtle rings
         const scale = amplitude / 80;
         this.outerRing.style.transform = `translate(-50%, -50%) scale(${scale * 1.2})`;
@@ -716,10 +716,10 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
-        
+        const { color } = this.technique;
+
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
-        
+
         // Calculate burst intensity
         let intensity;
         if (this.currentPhase === 'inhale') {
@@ -729,32 +729,33 @@ export class EnhancedBreathingIndicator {
         } else {
             intensity = this.currentPhase === 'hold1' ? 1 : 0.2;
         }
-        
+
         // Draw radial rays
         const rayCount = 16;
         for (let i = 0; i < rayCount; i++) {
             const angle = (i / rayCount) * Math.PI * 2;
             const length = 150 * intensity;
-            
+
             const gradient = ctx.createLinearGradient(
-                centerX, centerY,
+                centerX,
+                centerY,
                 centerX + Math.cos(angle) * length,
-                centerY + Math.sin(angle) * length
+                centerY + Math.sin(angle) * length,
             );
             gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${0.8 * intensity})`);
             gradient.addColorStop(1, 'transparent');
-            
+
             ctx.strokeStyle = gradient;
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(centerX, centerY);
             ctx.lineTo(
                 centerX + Math.cos(angle) * length,
-                centerY + Math.sin(angle) * length
+                centerY + Math.sin(angle) * length,
             );
             ctx.stroke();
         }
-        
+
         // Bright center
         const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 50 * intensity);
         gradient.addColorStop(0, `rgba(255, 255, 255, ${0.9 * intensity})`);
@@ -764,7 +765,7 @@ export class EnhancedBreathingIndicator {
         ctx.beginPath();
         ctx.arc(centerX, centerY, 50 * intensity, 0, Math.PI * 2);
         ctx.fill();
-        
+
         // Rings
         this.outerRing.style.transform = `translate(-50%, -50%) scale(${intensity * 1.3})`;
         this.outerRing.style.opacity = intensity * 0.5;
@@ -782,10 +783,10 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
-        
+        const { color } = this.technique;
+
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
-        
+
         // Calculate pulse
         let pulse;
         if (this.currentPhase === 'inhale') {
@@ -795,9 +796,9 @@ export class EnhancedBreathingIndicator {
         } else {
             pulse = 0.5;
         }
-        
+
         const scale = 0.5 + pulse * 0.5;
-        
+
         // Draw sine wave (coherence wave)
         ctx.beginPath();
         const time = Date.now() / 1000;
@@ -811,7 +812,7 @@ export class EnhancedBreathingIndicator {
         ctx.shadowBlur = 15;
         ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
         ctx.stroke();
-        
+
         // Heart shape (simplified as pulsing circle)
         const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100 * scale);
         gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${0.4 * scale})`);
@@ -820,7 +821,7 @@ export class EnhancedBreathingIndicator {
         ctx.beginPath();
         ctx.arc(centerX, centerY, 100 * scale, 0, Math.PI * 2);
         ctx.fill();
-        
+
         // Rings
         this.outerRing.style.transform = `translate(-50%, -50%) scale(${scale * 1.2})`;
         this.outerRing.style.opacity = scale * 0.4;
@@ -839,10 +840,10 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
-        
+        const { color } = this.technique;
+
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
-        
+
         // Calculate scale
         let scale;
         if (this.currentPhase === 'inhale') {
@@ -852,14 +853,14 @@ export class EnhancedBreathingIndicator {
         } else {
             scale = this.currentPhase === 'hold1' ? 0.4 : 1.0;
         }
-        
+
         const size = 180 * scale;
         const rotation = (Date.now() / 6000) * Math.PI * 2;
-        
+
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(rotation);
-        
+
         // Draw triangle
         ctx.beginPath();
         for (let i = 0; i < 3; i++) {
@@ -870,19 +871,19 @@ export class EnhancedBreathingIndicator {
             else ctx.lineTo(x, y);
         }
         ctx.closePath();
-        
+
         ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.8 * scale})`;
         ctx.lineWidth = 3;
         ctx.shadowBlur = 20;
         ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
         ctx.stroke();
-        
+
         // Corner glows
         for (let i = 0; i < 3; i++) {
             const angle = (i / 3) * Math.PI * 2 - Math.PI / 2;
             const x = Math.cos(angle) * size;
             const y = Math.sin(angle) * size;
-            
+
             const gradient = ctx.createRadialGradient(x, y, 0, x, y, 25);
             gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${0.8 * scale})`);
             gradient.addColorStop(1, 'transparent');
@@ -891,9 +892,9 @@ export class EnhancedBreathingIndicator {
             ctx.arc(x, y, 25, 0, Math.PI * 2);
             ctx.fill();
         }
-        
+
         ctx.restore();
-        
+
         // Rings
         this.outerRing.style.opacity = 0;
         this.middleRing.style.opacity = 0;
@@ -910,10 +911,10 @@ export class EnhancedBreathingIndicator {
         const ctx = this.particleCtx;
         const centerX = this.particleCanvas.width / 2;
         const centerY = this.particleCanvas.height / 2;
-        const color = this.technique.color;
-        
+        const { color } = this.technique;
+
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
-        
+
         // Fast, intense breathing
         let intensity;
         if (this.currentPhase === 'inhale') {
@@ -921,7 +922,7 @@ export class EnhancedBreathingIndicator {
         } else {
             intensity = 1 - this._easeInOutQuart(progress);
         }
-        
+
         // Draw explosive particles
         const particleCount = 30;
         for (let i = 0; i < particleCount; i++) {
@@ -929,7 +930,7 @@ export class EnhancedBreathingIndicator {
             const distance = 50 + intensity * 150;
             const x = centerX + Math.cos(angle) * distance;
             const y = centerY + Math.sin(angle) * distance;
-            
+
             // Flame-like particles
             const gradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
             gradient.addColorStop(0, `rgba(255, 255, 100, ${intensity * 0.9})`);
@@ -940,7 +941,7 @@ export class EnhancedBreathingIndicator {
             ctx.arc(x, y, 15, 0, Math.PI * 2);
             ctx.fill();
         }
-        
+
         // Intense center
         const centerGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 60 * intensity);
         centerGradient.addColorStop(0, `rgba(255, 255, 255, ${0.9 * intensity})`);
@@ -951,7 +952,7 @@ export class EnhancedBreathingIndicator {
         ctx.beginPath();
         ctx.arc(centerX, centerY, 60 * intensity, 0, Math.PI * 2);
         ctx.fill();
-        
+
         // Rings
         this.outerRing.style.transform = `translate(-50%, -50%) scale(${intensity * 1.4})`;
         this.outerRing.style.opacity = intensity * 0.6;
@@ -966,7 +967,7 @@ export class EnhancedBreathingIndicator {
      * @private
      */
     _updateColors(progress) {
-        const color = this.technique.color;
+        const { color } = this.technique;
         const baseColor = `${color.r}, ${color.g}, ${color.b}`;
 
         // Update CSS custom properties for dynamic colors
@@ -994,7 +995,7 @@ export class EnhancedBreathingIndicator {
     _easeInOutQuart(t) {
         return t < 0.5
             ? 8 * t * t * t * t
-            : 1 - Math.pow(-2 * t + 2, 4) / 2;
+            : 1 - (-2 * t + 2) ** 4 / 2;
     }
 
     /**
@@ -1031,10 +1032,10 @@ export class EnhancedBreathingIndicator {
      */
     toggleSelector() {
         this.selectorVisible = !this.selectorVisible;
-        
+
         if (this.selectorVisible) {
             this.techniqueSelector.classList.add('visible');
-            
+
             // Clear any pending auto-hide
             if (this.selectorTimeout) {
                 clearTimeout(this.selectorTimeout);
@@ -1098,12 +1099,12 @@ export class EnhancedBreathingIndicator {
      */
     destroy() {
         this.stop();
-        
+
         // Remove backdrop
         if (this.backdrop && this.backdrop.parentElement) {
             this.backdrop.parentElement.removeChild(this.backdrop);
         }
-        
+
         // Remove indicator
         if (this.indicator && this.indicator.parentElement) {
             this.indicator.parentElement.removeChild(this.indicator);

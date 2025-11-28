@@ -17,13 +17,13 @@ import { MOONLIT_GREENHOUSE_TETROMINOS } from './moonlit-greenhouse-tetrominos.j
 export default class MoonlitGreenhouseTheme extends BaseTheme {
     constructor() {
         super('moonlit-greenhouse');
-        
+
         // Canvas for combo effects
         this.canvas = null;
         this.ctx = null;
         this.resizeHandler = null;
         this.time = 0;
-        
+
         // Combo effect arrays
         this.pollenParticles = [];
         this.fireflies = [];
@@ -33,25 +33,25 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         this.bloomingFlowers = [];
         this.mistWaves = [];
         this.bioluminescentRipples = [];
-        
+
         // State
         this.comboIntensity = 0;
         this.ambientGlow = 0;
         this.plantSway = 0;
-        
+
         // Performance limits
         this.MAX_POLLEN = 200;
         this.MAX_FIREFLIES = 30;
-        this.MAX_VINE_WAVES = 0;  // Disabled - vine waves removed
+        this.MAX_VINE_WAVES = 0; // Disabled - vine waves removed
         this.MAX_LEAF_SPIRALS = 40;
         this.MAX_MOSS_GLOWS = 8;
-        this.MAX_FLOWERS = 20;  // Increased to match Extreme preset
+        this.MAX_FLOWERS = 20; // Increased to match Extreme preset
         this.MAX_MIST_WAVES = 6;
         this.MAX_RIPPLES = 10;
-        
+
         // Graphics quality presets (FPS-optimized, balanced scaling)
         this.qualityPresets = {
-            'Minimal': {
+            Minimal: {
                 // Scene elements
                 plantsMid: 6,
                 plantsFront: 4,
@@ -61,10 +61,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 // Combo effects
                 maxPollen: 30,
                 maxFireflies: 5,
-                maxVineWaves: 0,  // Disabled - green lines removed
+                maxVineWaves: 0, // Disabled - green lines removed
                 maxLeafSpirals: 8,
                 maxMossGlows: 2,
-                maxFlowers: 4,  // Increased from 2
+                maxFlowers: 4, // Increased from 2
                 maxMistWaves: 1,
                 maxRipples: 2,
                 pollenBurstMultiplier: 0.2,
@@ -74,9 +74,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 flowerPetals: 5,
                 leafDetail: 0.4,
                 mistOpacity: 0.15,
-                enableAmbientGlow: false
+                enableAmbientGlow: false,
             },
-            'Low': {
+            Low: {
                 // Scene elements
                 plantsMid: 10,
                 plantsFront: 7,
@@ -86,10 +86,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 // Combo effects
                 maxPollen: 50,
                 maxFireflies: 8,
-                maxVineWaves: 0,  // Disabled - green lines removed
+                maxVineWaves: 0, // Disabled - green lines removed
                 maxLeafSpirals: 12,
                 maxMossGlows: 2,
-                maxFlowers: 6,  // Increased from 3
+                maxFlowers: 6, // Increased from 3
                 maxMistWaves: 2,
                 maxRipples: 3,
                 pollenBurstMultiplier: 0.3,
@@ -99,9 +99,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 flowerPetals: 5,
                 leafDetail: 0.5,
                 mistOpacity: 0.2,
-                enableAmbientGlow: false
+                enableAmbientGlow: false,
             },
-            'Medium': {
+            Medium: {
                 // Scene elements
                 plantsMid: 14,
                 plantsFront: 10,
@@ -111,10 +111,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 // Combo effects
                 maxPollen: 70,
                 maxFireflies: 12,
-                maxVineWaves: 0,  // Disabled - green lines removed
+                maxVineWaves: 0, // Disabled - green lines removed
                 maxLeafSpirals: 16,
                 maxMossGlows: 3,
-                maxFlowers: 8,  // Increased from 4
+                maxFlowers: 8, // Increased from 4
                 maxMistWaves: 2,
                 maxRipples: 4,
                 pollenBurstMultiplier: 0.4,
@@ -124,9 +124,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 flowerPetals: 6,
                 leafDetail: 0.65,
                 mistOpacity: 0.22,
-                enableAmbientGlow: true
+                enableAmbientGlow: true,
             },
-            'High': {
+            High: {
                 // Scene elements
                 plantsMid: 18,
                 plantsFront: 14,
@@ -136,10 +136,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 // Combo effects
                 maxPollen: 90,
                 maxFireflies: 15,
-                maxVineWaves: 0,  // Disabled - green lines removed
+                maxVineWaves: 0, // Disabled - green lines removed
                 maxLeafSpirals: 22,
                 maxMossGlows: 4,
-                maxFlowers: 12,  // Increased from 6
+                maxFlowers: 12, // Increased from 6
                 maxMistWaves: 3,
                 maxRipples: 5,
                 pollenBurstMultiplier: 0.5,
@@ -149,9 +149,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 flowerPetals: 6,
                 leafDetail: 0.8,
                 mistOpacity: 0.25,
-                enableAmbientGlow: true
+                enableAmbientGlow: true,
             },
-            'Ultra': {
+            Ultra: {
                 // Scene elements
                 plantsMid: 24,
                 plantsFront: 18,
@@ -161,10 +161,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 // Combo effects
                 maxPollen: 110,
                 maxFireflies: 18,
-                maxVineWaves: 0,  // Disabled - green lines removed
+                maxVineWaves: 0, // Disabled - green lines removed
                 maxLeafSpirals: 28,
                 maxMossGlows: 5,
-                maxFlowers: 16,  // Increased from 7
+                maxFlowers: 16, // Increased from 7
                 maxMistWaves: 4,
                 maxRipples: 6,
                 pollenBurstMultiplier: 0.6,
@@ -174,9 +174,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 flowerPetals: 6,
                 leafDetail: 0.9,
                 mistOpacity: 0.28,
-                enableAmbientGlow: true
+                enableAmbientGlow: true,
             },
-            'Extreme': {
+            Extreme: {
                 // Scene elements
                 plantsMid: 32,
                 plantsFront: 24,
@@ -186,10 +186,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 // Combo effects
                 maxPollen: 130,
                 maxFireflies: 20,
-                maxVineWaves: 0,  // Disabled - green lines removed
+                maxVineWaves: 0, // Disabled - green lines removed
                 maxLeafSpirals: 32,
                 maxMossGlows: 6,
-                maxFlowers: 20,  // Increased from 8
+                maxFlowers: 20, // Increased from 8
                 maxMistWaves: 4,
                 maxRipples: 7,
                 pollenBurstMultiplier: 0.7,
@@ -199,13 +199,13 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 flowerPetals: 7,
                 leafDetail: 1.0,
                 mistOpacity: 0.3,
-                enableAmbientGlow: true
-            }
+                enableAmbientGlow: true,
+            },
         };
-        
+
         this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets['High'];
-        
+        this.activePreset = this.qualityPresets.High;
+
         // Event handling
         this.eventUnsubscribers = [];
     }
@@ -298,7 +298,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             const ctx = canvas.getContext('2d');
 
             // Draw solid earth ground at bottom with gentle hills
-            ctx.fillStyle = '#0D1814';  // Dark earth color
+            ctx.fillStyle = '#0D1814'; // Dark earth color
             ctx.beginPath();
             ctx.moveTo(0, C_HEIGHT);
             let groundY = C_HEIGHT * 0.88; // Ground starts at 88% height
@@ -312,7 +312,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             ctx.fill();
 
             // Add grass texture on top of ground (quality-scaled)
-            const grassCount = this.activePreset.grassCount;
+            const { grassCount } = this.activePreset;
             for (let i = 0; i < grassCount; i++) {
                 const grassX = Math.random() * C_WIDTH;
                 const grassY = C_HEIGHT * (0.88 + Math.random() * 0.02);
@@ -329,7 +329,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                     grassX + (Math.random() - 0.5) * 6,
                     grassY - grassHeight / 2,
                     grassX + (Math.random() - 0.5) * 10,
-                    grassY - grassHeight
+                    grassY - grassHeight,
                 );
                 ctx.stroke();
             }
@@ -450,7 +450,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             this.setupQualityListener();
 
             // Start animation loop
-            console.log(`🌿 [Moonlit Greenhouse] Starting animation loop`);
+            console.log('🌿 [Moonlit Greenhouse] Starting animation loop');
             this.animate();
         }
     }
@@ -470,9 +470,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
     handleLineClear(data) {
         const count = data.lineCount || 1;
         const combo = data.comboCount || 0;
-        
+
         console.log(`🌿 [Greenhouse] Line clear: ${count} lines, combo: ${combo}`);
-        
+
         this.comboIntensity += count * 0.15;
         this.ambientGlow = Math.min(this.ambientGlow + count * 0.1, 1.0);
         this.plantSway += count * 0.2;
@@ -483,7 +483,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         for (let i = 0; i < numSpawnPoints; i++) {
             spawnPoints.push({
                 x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height
+                y: Math.random() * this.canvas.height,
             });
         }
 
@@ -492,7 +492,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             this.pollenParticles.splice(0, Math.floor(this.MAX_POLLEN * 0.4));
         }
         const pollenCount = Math.floor(count * 8 * this.activePreset.pollenBurstMultiplier);
-        spawnPoints.forEach(spawn => {
+        spawnPoints.forEach((spawn) => {
             for (let i = 0; i < pollenCount; i++) {
                 this.pollenParticles.push(this.createPollenParticle(spawn.x, spawn.y));
             }
@@ -516,7 +516,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
 
         // 4. Bioluminescent ripples (depth: deep background)
         if (this.bioluminescentRipples.length < this.MAX_RIPPLES) {
-            spawnPoints.forEach(spawn => {
+            spawnPoints.forEach((spawn) => {
                 this.bioluminescentRipples.push(this.createBioluminescentRipple(spawn.x, spawn.y, count));
             });
         }
@@ -547,7 +547,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
     handleCombo(data) {
         const combo = data.comboCount || 0;
         console.log(`🌿 [Greenhouse] Combo: ${combo}x`);
-        
+
         this.comboIntensity += combo * 0.08;
         this.ambientGlow = Math.min(this.ambientGlow + combo * 0.05, 1.0);
 
@@ -572,8 +572,8 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * 8 + 4;
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed - 2, // Slight upward bias
             size: Math.random() * 3 + 1,
@@ -581,7 +581,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             life: 1.0,
             color: Math.random() > 0.5 ? '#c8ff8c' : '#fff4a3', // Yellow-green or pale yellow
             glow: Math.random() * 0.5 + 0.5,
-            trail: []
+            trail: [],
         };
     }
 
@@ -598,21 +598,21 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             pulsePhase: Math.random() * Math.PI * 2,
             pulseSpeed: Math.random() * 0.05 + 0.03,
             glowIntensity: Math.random() * 0.5 + 0.5,
-            wanderPhase: Math.random() * Math.PI * 2
+            wanderPhase: Math.random() * Math.PI * 2,
         };
     }
 
     createVineWave(x, y, lineCount) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             radius: 0,
             maxRadius: 200 + lineCount * 40,
             alpha: 0.7,
             life: 1.0,
             tendrils: this.generateTendrils(8),
             rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.02
+            rotationSpeed: (Math.random() - 0.5) * 0.02,
         };
     }
 
@@ -621,9 +621,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             const angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
             tendrils.push({
-                angle: angle,
+                angle,
                 length: Math.random() * 0.3 + 0.7,
-                curve: Math.random() * 0.5 + 0.3
+                curve: Math.random() * 0.5 + 0.3,
             });
         }
         return tendrils;
@@ -633,8 +633,8 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * 2 + 1;
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed - 1,
             size: Math.random() * 8 + 6,
@@ -644,7 +644,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             alpha: Math.random() * 0.5 + 0.3,
             spiralAngle: 0,
             spiralRadius: 30,
-            color: Math.random() > 0.5 ? '#4a7c4e' : '#5d8f5f'
+            color: Math.random() > 0.5 ? '#4a7c4e' : '#5d8f5f',
         };
     }
 
@@ -655,21 +655,21 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             radius: Math.random() * 60 + 40,
             life: 1.0,
             pulsePhase: Math.random() * Math.PI * 2,
-            intensity: Math.random() * 0.5 + 0.5
+            intensity: Math.random() * 0.5 + 0.5,
         };
     }
 
     createBloomingFlower(x, y) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             petalCount: this.activePreset.flowerPetals,
             bloomProgress: 0,
             size: Math.random() * 30 + 25,
             rotation: Math.random() * Math.PI * 2,
             life: 1.0,
             color: this.getRandomFlowerColor(),
-            pulsePhase: Math.random() * Math.PI * 2
+            pulsePhase: Math.random() * Math.PI * 2,
         };
     }
 
@@ -678,7 +678,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             { r: 255, g: 230, b: 180 }, // Pale yellow
             { r: 220, g: 200, b: 255 }, // Pale purple
             { r: 255, g: 200, b: 220 }, // Pale pink
-            { r: 200, g: 255, b: 230 }  // Pale mint
+            { r: 200, g: 255, b: 230 }, // Pale mint
         ];
         return colors[Math.floor(Math.random() * colors.length)];
     }
@@ -691,19 +691,19 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             life: 1.0,
             speed: 1 + lineCount * 0.2,
             wavePhase: Math.random() * Math.PI * 2,
-            height: Math.random() * 150 + 100
+            height: Math.random() * 150 + 100,
         };
     }
 
     createBioluminescentRipple(x, y, lineCount) {
         return {
-            x: x,
-            y: y,
+            x,
+            y,
             radius: 0,
             maxRadius: 150 + lineCount * 30,
             alpha: 0.6,
             life: 1.0,
-            color: '#8cffda' // Cyan-green bioluminescence
+            color: '#8cffda', // Cyan-green bioluminescence
         };
     }
 
@@ -718,19 +718,19 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         // Update pollen particles
         for (let i = this.pollenParticles.length - 1; i >= 0; i--) {
             const p = this.pollenParticles[i];
-            
+
             if (this.activePreset.particleTrails) {
                 p.trail.unshift({ x: p.x, y: p.y, alpha: p.alpha });
                 if (p.trail.length > 5) p.trail.pop();
             }
-            
+
             p.x += p.vx;
             p.y += p.vy;
             p.vy += 0.15; // Gravity
             p.vx *= 0.98;
             p.life -= 0.01;
             p.alpha = p.life * 0.8;
-            
+
             if (p.life <= 0 || p.y > this.canvas.height) {
                 this.pollenParticles.splice(i, 1);
             }
@@ -739,17 +739,17 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         // Update fireflies with wandering behavior
         for (let i = this.fireflies.length - 1; i >= 0; i--) {
             const f = this.fireflies[i];
-            
+
             // Wandering motion
             f.wanderPhase += 0.02;
             f.vx = Math.sin(f.wanderPhase) * 1.5;
             f.vy = -1 + Math.cos(f.wanderPhase * 0.7) * 0.5;
-            
+
             f.x += f.vx;
             f.y += f.vy;
             f.life -= 0.003;
             f.pulsePhase += f.pulseSpeed;
-            
+
             if (f.life <= 0 || f.y < -50) {
                 this.fireflies.splice(i, 1);
             }
@@ -767,7 +767,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             wave.life -= 0.01;
             wave.alpha = wave.life * 0.6;
             wave.rotation += wave.rotationSpeed;
-            
+
             if (wave.life <= 0 || wave.radius > wave.maxRadius) {
                 this.vineWaves.splice(i, 1);
             }
@@ -776,17 +776,17 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         // Update leaf spirals
         for (let i = this.leafSpirals.length - 1; i >= 0; i--) {
             const leaf = this.leafSpirals[i];
-            
+
             leaf.spiralAngle += 0.05;
             leaf.vx = Math.cos(leaf.spiralAngle) * 2;
             leaf.vy -= 0.5;
-            
+
             leaf.x += leaf.vx;
             leaf.y += leaf.vy;
             leaf.rotation += leaf.rotationSpeed;
             leaf.life -= 0.008;
             leaf.alpha = leaf.life * 0.6;
-            
+
             if (leaf.life <= 0 || leaf.y < -50) {
                 this.leafSpirals.splice(i, 1);
             }
@@ -797,7 +797,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             const moss = this.mossGlows[i];
             moss.life -= 0.005;
             moss.pulsePhase += 0.03;
-            
+
             if (moss.life <= 0) {
                 this.mossGlows.splice(i, 1);
             }
@@ -806,13 +806,13 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         // Update blooming flowers
         for (let i = this.bloomingFlowers.length - 1; i >= 0; i--) {
             const flower = this.bloomingFlowers[i];
-            
+
             if (flower.bloomProgress < 1.0) {
                 flower.bloomProgress += 0.02;
             }
             flower.life -= 0.004;
             flower.pulsePhase += 0.05;
-            
+
             if (flower.life <= 0) {
                 this.bloomingFlowers.splice(i, 1);
             }
@@ -825,7 +825,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             mist.life -= 0.006;
             mist.alpha = mist.life * this.activePreset.mistOpacity;
             mist.wavePhase += 0.03;
-            
+
             if (mist.life <= 0 || mist.y < mist.targetY) {
                 this.mistWaves.splice(i, 1);
             }
@@ -837,7 +837,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             ripple.radius += 4;
             ripple.life -= 0.015;
             ripple.alpha = ripple.life * 0.5;
-            
+
             if (ripple.life <= 0 || ripple.radius > ripple.maxRadius) {
                 this.bioluminescentRipples.splice(i, 1);
             }
@@ -853,8 +853,12 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         // Draw ambient glow (if enabled)
         if (this.activePreset.enableAmbientGlow && this.ambientGlow > 0.01) {
             const gradient = this.ctx.createRadialGradient(
-                this.canvas.width / 2, this.canvas.height / 2, 0,
-                this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.6
+                this.canvas.width / 2,
+                this.canvas.height / 2,
+                0,
+                this.canvas.width / 2,
+                this.canvas.height / 2,
+                this.canvas.width * 0.6,
             );
             gradient.addColorStop(0, `rgba(140, 255, 200, ${this.ambientGlow * 0.15})`);
             gradient.addColorStop(0.5, `rgba(100, 200, 140, ${this.ambientGlow * 0.08})`);
@@ -865,11 +869,11 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
 
         // Layer 1: Bioluminescent ripples (deep background)
         this.ctx.globalCompositeOperation = 'screen';
-        this.bioluminescentRipples.forEach(ripple => {
+        this.bioluminescentRipples.forEach((ripple) => {
             for (let i = 0; i < 3; i++) {
                 const r = ripple.radius - i * 15;
                 if (r <= 0) continue;
-                
+
                 this.ctx.beginPath();
                 this.ctx.arc(ripple.x, ripple.y, r, 0, Math.PI * 2);
                 this.ctx.strokeStyle = `rgba(140, 255, 218, ${ripple.alpha * (0.4 - i * 0.1)})`;
@@ -879,19 +883,23 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         });
 
         // Layer 2: Moss glows (background)
-        this.mossGlows.forEach(moss => {
+        this.mossGlows.forEach((moss) => {
             const pulse = Math.sin(moss.pulsePhase) * 0.3 + 0.7;
-            const glowLayers = this.activePreset.glowLayers;
-            
+            const { glowLayers } = this.activePreset;
+
             for (let i = glowLayers; i > 0; i--) {
                 const gradient = this.ctx.createRadialGradient(
-                    moss.x, moss.y, 0,
-                    moss.x, moss.y, moss.radius * (1 + i * 0.3)
+                    moss.x,
+                    moss.y,
+                    0,
+                    moss.x,
+                    moss.y,
+                    moss.radius * (1 + i * 0.3),
                 );
                 gradient.addColorStop(0, `rgba(120, 255, 180, ${moss.life * pulse * 0.3 / i})`);
                 gradient.addColorStop(0.5, `rgba(80, 200, 130, ${moss.life * pulse * 0.15 / i})`);
                 gradient.addColorStop(1, 'rgba(40, 150, 90, 0)');
-                
+
                 this.ctx.fillStyle = gradient;
                 this.ctx.beginPath();
                 this.ctx.arc(moss.x, moss.y, moss.radius * (1 + i * 0.3), 0, Math.PI * 2);
@@ -901,12 +909,12 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
 
         // Layer 3: Leaf spirals (background)
         this.ctx.globalCompositeOperation = 'source-over';
-        this.leafSpirals.forEach(leaf => {
+        this.leafSpirals.forEach((leaf) => {
             this.ctx.save();
             this.ctx.translate(leaf.x, leaf.y);
             this.ctx.rotate(leaf.rotation);
             this.ctx.globalAlpha = leaf.alpha * this.activePreset.leafDetail;
-            
+
             // Draw leaf shape
             this.ctx.fillStyle = leaf.color;
             this.ctx.beginPath();
@@ -916,7 +924,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             this.ctx.quadraticCurveTo(-leaf.size * 0.2, leaf.size * 0.3, -leaf.size * 0.3, 0);
             this.ctx.quadraticCurveTo(-leaf.size * 0.4, -leaf.size * 0.5, 0, -leaf.size);
             this.ctx.fill();
-            
+
             // Leaf vein
             this.ctx.strokeStyle = `rgba(40, 80, 50, ${leaf.alpha * 0.5})`;
             this.ctx.lineWidth = 1;
@@ -924,20 +932,20 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             this.ctx.moveTo(0, -leaf.size * 0.8);
             this.ctx.lineTo(0, leaf.size * 0.3);
             this.ctx.stroke();
-            
+
             this.ctx.restore();
         });
 
         // Layer 4: Vine waves (middleground) - DISABLED, skip if not used
         if (this.MAX_VINE_WAVES > 0 && this.vineWaves.length > 0) {
             this.ctx.globalCompositeOperation = 'screen';
-            this.vineWaves.forEach(wave => {
+            this.vineWaves.forEach((wave) => {
                 this.ctx.save();
                 this.ctx.translate(wave.x, wave.y);
                 this.ctx.rotate(wave.rotation);
 
-                wave.tendrils.forEach(tendril => {
-                    const angle = tendril.angle;
+                wave.tendrils.forEach((tendril) => {
+                    const { angle } = tendril;
                     const length = wave.radius * tendril.length;
 
                     this.ctx.beginPath();
@@ -968,34 +976,34 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         }
 
         // Layer 5: Blooming flowers (middleground)
-        this.bloomingFlowers.forEach(flower => {
+        this.bloomingFlowers.forEach((flower) => {
             const pulse = Math.sin(flower.pulsePhase) * 0.2 + 0.8;
             const bloomSize = flower.size * flower.bloomProgress;
-            
+
             this.ctx.save();
             this.ctx.translate(flower.x, flower.y);
             this.ctx.rotate(flower.rotation);
             this.ctx.globalAlpha = flower.life * pulse;
-            
+
             // Draw petals
             for (let i = 0; i < flower.petalCount; i++) {
                 const angle = (Math.PI * 2 / flower.petalCount) * i;
                 this.ctx.save();
                 this.ctx.rotate(angle);
-                
+
                 // Petal glow
                 const petalGradient = this.ctx.createRadialGradient(0, -bloomSize * 0.4, 0, 0, -bloomSize * 0.4, bloomSize * 0.5);
                 petalGradient.addColorStop(0, `rgba(${flower.color.r}, ${flower.color.g}, ${flower.color.b}, 0.8)`);
                 petalGradient.addColorStop(1, `rgba(${flower.color.r}, ${flower.color.g}, ${flower.color.b}, 0)`);
-                
+
                 this.ctx.fillStyle = petalGradient;
                 this.ctx.beginPath();
                 this.ctx.ellipse(0, -bloomSize * 0.4, bloomSize * 0.3, bloomSize * 0.5, 0, 0, Math.PI * 2);
                 this.ctx.fill();
-                
+
                 this.ctx.restore();
             }
-            
+
             // Flower center
             const centerGradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, bloomSize * 0.2);
             centerGradient.addColorStop(0, 'rgba(255, 250, 180, 0.9)');
@@ -1004,27 +1012,27 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             this.ctx.beginPath();
             this.ctx.arc(0, 0, bloomSize * 0.2, 0, Math.PI * 2);
             this.ctx.fill();
-            
+
             this.ctx.restore();
         });
 
         // Layer 6: Mist waves (foreground)
         this.ctx.globalCompositeOperation = 'source-over';
-        this.mistWaves.forEach(mist => {
+        this.mistWaves.forEach((mist) => {
             const gradient = this.ctx.createLinearGradient(0, mist.y - mist.height, 0, mist.y);
             gradient.addColorStop(0, 'rgba(140, 200, 170, 0)');
             gradient.addColorStop(0.5, `rgba(140, 200, 170, ${mist.alpha})`);
             gradient.addColorStop(1, 'rgba(100, 160, 130, 0)');
-            
+
             this.ctx.fillStyle = gradient;
             this.ctx.beginPath();
             this.ctx.moveTo(0, mist.y);
-            
+
             for (let x = 0; x <= this.canvas.width; x += 20) {
                 const waveY = mist.y + Math.sin(mist.wavePhase + x * 0.01) * 20;
                 this.ctx.lineTo(x, waveY);
             }
-            
+
             this.ctx.lineTo(this.canvas.width, mist.y - mist.height);
             this.ctx.lineTo(0, mist.y - mist.height);
             this.ctx.closePath();
@@ -1033,7 +1041,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
 
         // Layer 7: Pollen particles (foreground)
         this.ctx.globalCompositeOperation = 'screen';
-        this.pollenParticles.forEach(p => {
+        this.pollenParticles.forEach((p) => {
             // Draw trail
             if (this.activePreset.particleTrails && p.trail.length > 1) {
                 for (let i = 1; i < p.trail.length; i++) {
@@ -1046,22 +1054,22 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                     this.ctx.fill();
                 }
             }
-            
+
             // Draw particle with glow layers
-            const glowLayers = this.activePreset.glowLayers;
+            const { glowLayers } = this.activePreset;
             for (let i = glowLayers; i > 0; i--) {
                 const glowGradient = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * (1 + i));
                 glowGradient.addColorStop(0, p.color);
-                glowGradient.addColorStop(0.5, p.color + 'aa');
-                glowGradient.addColorStop(1, p.color + '00');
-                
+                glowGradient.addColorStop(0.5, `${p.color}aa`);
+                glowGradient.addColorStop(1, `${p.color}00`);
+
                 this.ctx.fillStyle = glowGradient;
                 this.ctx.globalAlpha = p.alpha * p.glow / i;
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.size * (1 + i), 0, Math.PI * 2);
                 this.ctx.fill();
             }
-            
+
             // Core particle
             this.ctx.fillStyle = '#ffffff';
             this.ctx.globalAlpha = p.alpha;
@@ -1071,32 +1079,32 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         });
 
         // Layer 8: Fireflies (top foreground)
-        this.fireflies.forEach(f => {
+        this.fireflies.forEach((f) => {
             const pulse = Math.sin(f.pulsePhase) * 0.5 + 0.5;
             const glowRadius = f.size * (2 + pulse * 2);
-            
+
             // Outer glow
             const outerGlow = this.ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, glowRadius * 2);
             outerGlow.addColorStop(0, `rgba(255, 255, 180, ${f.life * pulse * 0.6})`);
             outerGlow.addColorStop(0.5, `rgba(200, 255, 150, ${f.life * pulse * 0.3})`);
             outerGlow.addColorStop(1, 'rgba(140, 255, 140, 0)');
-            
+
             this.ctx.fillStyle = outerGlow;
             this.ctx.beginPath();
             this.ctx.arc(f.x, f.y, glowRadius * 2, 0, Math.PI * 2);
             this.ctx.fill();
-            
+
             // Inner glow
             const innerGlow = this.ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, glowRadius);
             innerGlow.addColorStop(0, `rgba(255, 255, 255, ${f.life * pulse})`);
             innerGlow.addColorStop(0.6, `rgba(255, 255, 200, ${f.life * pulse * 0.7})`);
             innerGlow.addColorStop(1, `rgba(200, 255, 180, ${f.life * pulse * 0.2})`);
-            
+
             this.ctx.fillStyle = innerGlow;
             this.ctx.beginPath();
             this.ctx.arc(f.x, f.y, glowRadius, 0, Math.PI * 2);
             this.ctx.fill();
-            
+
             // Core
             this.ctx.fillStyle = '#ffffff';
             this.ctx.globalAlpha = f.life * pulse;
@@ -1118,21 +1126,21 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
 
     cleanup() {
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
-        
+
         // Remove resize listener
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
             this.resizeHandler = null;
         }
-        
+
         // Remove quality change listener
         if (this.qualityChangeHandler && typeof window !== 'undefined') {
             window.removeEventListener('settingsChanged', this.qualityChangeHandler);
             this.qualityChangeHandler = null;
         }
-        
+
         // Clear all effect arrays
         this.pollenParticles = [];
         this.fireflies = [];
@@ -1155,9 +1163,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         }
         this.canvas = null;
         this.ctx = null;
-        
+
         this.isActive = false;
-        
+
         super.cleanup();
     }
 
