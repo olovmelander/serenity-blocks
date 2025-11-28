@@ -204,7 +204,12 @@ export class ThemesTab {
             return '<div class="no-themes">No themes in this category</div>';
         }
 
-        return filteredThemes.map(theme => {
+        // Sort themes alphabetically by display name
+        const sortedThemes = filteredThemes.sort((a, b) =>
+            a.displayName.localeCompare(b.displayName)
+        );
+
+        return sortedThemes.map(theme => {
             const isActive = theme.id === this.currentTheme;
             const colorScheme = this.getThemeColorScheme(theme.group);
             const iconHtml = this.getThemeIcon(theme);

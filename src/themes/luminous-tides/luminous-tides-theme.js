@@ -1,13 +1,13 @@
 /**
- * Luminous Tides Theme - Bioluminescent water waves
+ * Luminous Tides Theme - Enhanced Bioluminescent Deep Ocean
  *
  * Features:
- * - WebGL-based wave simulation with realistic physics
- * - Bioluminescent cyan/turquoise glowing effects
- * - Gentle autonomous wave motion
- * - Game event reactions (ripples, swells, cascades)
- * - Underwater caustics and foam effects
- * - Calming, meditative atmosphere
+ * - Advanced WebGL wave simulation with realistic physics
+ * - Mesmerizing bioluminescent glow effects
+ * - Atmospheric depth and lighting
+ * - Subtle autonomous wave motion
+ * - Dynamic game event reactions
+ * - Deep ocean mystery and tranquility
  */
 
 import { BaseTheme } from '../base-theme.js';
@@ -21,28 +21,30 @@ export default class LuminousTidesTheme extends BaseTheme {
 
         this.simulator = null;
         this.canvas = null;
-        this.lightingOverlay = null; // For storm lighting effects
+        this.lightingOverlay = null;
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
         this.lastTime = 0;
 
-        // Storm lighting state
-        this.stormBrightness = 0; // 0-1, current brightness
-        this.targetBrightness = 0; // Target brightness to fade to
+        // Enhanced lighting state
+        this.lightBrightness = 0;
+        this.targetBrightness = 0;
+        this.lightPulsePhase = 0;
 
-        // Ambient wave state - puff pattern with natural dissipation
+        // Ambient wave system - tall narrow waves, very spread out
         this.ambientWaveTimer = 0;
-        this.AMBIENT_WAVE_INTERVAL = 30.0; // Time between wave cycles
-        this.waveResetTimer = 0;
-        this.WAVE_RESET_INTERVAL = 3.0; // Clear waves after 3 seconds of calm
-        this.isCalm = true; // Track if ocean is in calm state
-        this.lastWaveTime = 0; // Track when last wave was created
+        this.AMBIENT_WAVE_INTERVAL = 18.0; // Much less frequent
+        this.nextAmbientPattern = 0; // Track pattern variation
 
-        console.log('[LuminousTides] Constructor called');
+        // Energy tracking for visual feedback
+        this.waveEnergy = 0;
+        this.energyDecay = 0.75; // Very fast energy decay
+
+        console.log('[LuminousTides] Enhanced theme constructed');
     }
 
     async init() {
-        console.log('[LuminousTides] Initializing theme');
+        console.log('[LuminousTides] Initializing enhanced theme');
     }
 
     getTetrominoConfig() {
@@ -61,24 +63,24 @@ export default class LuminousTidesTheme extends BaseTheme {
             this.canvas.style.left = '0';
             this.canvas.style.width = '100%';
             this.canvas.style.height = '100%';
-            this.canvas.style.backgroundColor = '#000408'; // Very dark stormy ocean
+            this.canvas.style.backgroundColor = '#000204'; // Deep abyss
             this.canvas.style.pointerEvents = 'none';
 
             this.resize(window.innerWidth, window.innerHeight);
 
-            // Get container (should exist in HTML)
+            // Get container
             const container = document.getElementById('luminous-tides-theme');
             if (!container) {
-                console.error('[LuminousTides] Theme container not found in HTML!');
+                console.error('[LuminousTides] Theme container not found!');
                 return;
             }
 
-            // Clear any existing content from container to prevent duplicates
+            // Clear existing content
             while (container.firstChild) {
                 container.removeChild(container.firstChild);
             }
 
-            // Create lighting overlay for storm flash effects
+            // Create atmospheric lighting overlay
             this.lightingOverlay = document.createElement('div');
             this.lightingOverlay.id = 'luminous-tides-lighting';
             this.lightingOverlay.style.position = 'absolute';
@@ -86,8 +88,10 @@ export default class LuminousTidesTheme extends BaseTheme {
             this.lightingOverlay.style.left = '0';
             this.lightingOverlay.style.width = '100%';
             this.lightingOverlay.style.height = '100%';
-            this.lightingOverlay.style.backgroundColor = 'rgba(50, 120, 150, 0)'; // Cyan-blue tint
+            this.lightingOverlay.style.background =
+                'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
             this.lightingOverlay.style.pointerEvents = 'none';
+            this.lightingOverlay.style.mixBlendMode = 'screen';
             this.lightingOverlay.style.transition = 'none';
 
             // Add canvas and overlay to container
@@ -95,11 +99,11 @@ export default class LuminousTidesTheme extends BaseTheme {
             container.appendChild(this.lightingOverlay);
             this.registerContainer(container);
 
-            // Get quality setting
+            // Get quality setting and config
             const quality = this.getQualitySetting();
             const config = this.getConfig(quality);
 
-            // Create wave simulator
+            // Create enhanced wave simulator
             this.simulator = new WaveSimulator(this.canvas, config);
 
             const success = await this.simulator.init();
@@ -116,7 +120,7 @@ export default class LuminousTidesTheme extends BaseTheme {
             // Start animation loop
             this.startAnimation();
 
-            // Add initial waves for visual presence
+            // Add initial atmospheric waves
             this.addInitialWaves();
 
             console.log('[LuminousTides] createScene() completed successfully');
@@ -127,32 +131,45 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * Get wave simulator configuration based on quality
+     * Get enhanced wave simulator configuration
+     * Tall narrow surf waves that fade very quickly to calm
      */
     getConfig(quality) {
-        // Start with quality preset
         const baseConfig = WAVE_QUALITY_PRESETS[quality] || WAVE_QUALITY_PRESETS.medium;
 
-        // Wave simulation configuration - puff-style waves that dissipate quickly
         return {
             ...baseConfig,
 
-            // Wave surface colors (darker, stormy ocean)
-            WATER_COLOR: { r: 0.05, g: 0.15, b: 0.25 },    // Dark stormy water
-            FOAM_COLOR: { r: 0.15, g: 0.3, b: 0.4 },       // Darker foam
-            DEEP_COLOR: { r: 0.02, g: 0.08, b: 0.15 },     // Very dark depths
-
-            // Wave physics for puff pattern - stormy ocean waves
-            WAVE_DAMPING: 0.90,              // High damping for smooth dissipation
-            SURFACE_TENSION: 0.06,           // Higher tension keeps waves localized
-            DISPLACEMENT_SCALE: 2.3,         // Dramatic waves with natural fade
+            // Surf wave physics - tall and narrow, very fast fade
+            WAVE_DAMPING: 0.86,               // VERY fast fade-out to calm
+            SURFACE_TENSION: 0.03,            // Keeps waves focused/narrow
+            DISPLACEMENT_SCALE: 3.5,          // Tall surf waves
+            DIFFUSION: 0.004,                 // Low diffusion (narrow waves)
             GRAVITY: 9.8,
 
-            // Minimal effects - focus on wave simulation
-            FOAM_ENABLED: false,             // No foam effects
-            CAUSTICS_ENABLED: false,         // No caustic patterns
+            // Atmospheric deep ocean colors
+            WATER_COLOR: { r: 0.03, g: 0.12, b: 0.22 },    // Deep blue-green
+            DEEP_COLOR: { r: 0.01, g: 0.04, b: 0.10 },     // Abyssal depths
+            FOAM_COLOR: { r: 0.12, g: 0.25, b: 0.35 },     // Subtle foam
 
-            // Transparency
+            // Bioluminescent glow - bright but focused
+            GLOW_ENABLED: true,
+            GLOW_COLOR: { r: 0.08, g: 0.45, b: 0.62 },     // Bioluminescent cyan
+            GLOW_INTENSITY: 1.4,              // Bright for tall waves
+            GLOW_SPREAD: 2.0,                 // Less spread (focused)
+
+            // Enhanced atmospheric lighting
+            DEPTH_FADE: 2.0,                  // Strong depth for tall waves
+            AMBIENT_LIGHT: 0.12,              // Subtle ambient
+            SPECULAR_INTENSITY: 0.50,         // Stronger highlights on tall waves
+            SPECULAR_POWER: 20.0,             // Sharp specular
+
+            // Effects (foam disabled for cleaner look)
+            FOAM_ENABLED: false,
+            CAUSTICS_ENABLED: baseConfig.CAUSTICS_ENABLED,
+            CAUSTICS_INTENSITY: 0.4,
+            CAUSTICS_SCALE: 1.8,
+
             TRANSPARENT: false,
         };
     }
@@ -174,7 +191,6 @@ export default class LuminousTidesTheme extends BaseTheme {
     setupEventListeners() {
         console.log('[LuminousTides] Setting up event listeners');
 
-        // Listen for line clear events
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
@@ -182,7 +198,6 @@ export default class LuminousTidesTheme extends BaseTheme {
             }
         });
 
-        // Listen for combo events
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
@@ -190,7 +205,6 @@ export default class LuminousTidesTheme extends BaseTheme {
             }
         });
 
-        // Listen for piece lock events
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
@@ -203,327 +217,331 @@ export default class LuminousTidesTheme extends BaseTheme {
     }
 
     /**
-     * React to line clears with cascading luminous waves
+     * React to line clears with elegant bioluminescent waves
      */
     onLineClear(lineCount) {
         if (!this.simulator) return;
 
         if (lineCount >= 4) {
-            // Tetris! Create dramatic wave cascade
-            this.createTetrisCascade();
-            // Add extra ambient waves for Tetris
-            this.triggerAmbientWaves(5, 1.5);
+            // Tetris! Spectacular bioluminescent bloom
+            this.createTetrisBloom();
+            this.flashLight(0.4, 1.5);
+            this.waveEnergy = Math.min(this.waveEnergy + 0.8, 1.0);
         } else if (lineCount >= 2) {
-            // Multi-line: Flowing waves
-            this.createMultiLineWaves(lineCount);
-            // Add ambient waves for multi-line
-            this.triggerAmbientWaves(4, 1.2);
+            // Multi-line: Flowing luminous waves
+            this.createMultiLineFlow(lineCount);
+            this.flashLight(0.25, 1.0);
+            this.waveEnergy = Math.min(this.waveEnergy + 0.5, 1.0);
         } else {
-            // Single line: Simple ripple
-            this.createSimpleRipple();
-            // Add subtle ambient waves
-            this.triggerAmbientWaves(3, 1.0);
+            // Single line: Gentle ripple
+            this.createGentleRipple();
+            this.flashLight(0.15, 0.6);
+            this.waveEnergy = Math.min(this.waveEnergy + 0.25, 1.0);
         }
     }
 
     /**
-     * Trigger storm lighting flash effect
+     * Trigger light flash effect
      */
-    flashStormLight(intensity = 0.15) {
+    flashLight(intensity = 0.2, duration = 1.0) {
         this.targetBrightness = intensity;
+        this.lightPulsePhase = duration;
     }
 
     /**
-     * Update storm lighting overlay
+     * Update lighting overlay
      */
-    updateStormLighting(deltaTime) {
+    updateLighting(deltaTime) {
         if (!this.lightingOverlay) return;
 
-        // Smoothly interpolate brightness towards target
-        const fadeSpeed = 8.0; // Fast fade for lightning effect
-        this.stormBrightness += (this.targetBrightness - this.stormBrightness) * fadeSpeed * deltaTime;
+        // Smooth interpolation towards target
+        const fadeSpeed = 6.0;
+        this.lightBrightness += (this.targetBrightness - this.lightBrightness) * fadeSpeed * deltaTime;
 
-        // Auto-decay target brightness (creates flash then fade)
-        this.targetBrightness *= Math.pow(0.1, deltaTime);
+        // Auto-decay based on pulse phase
+        if (this.lightPulsePhase > 0) {
+            this.lightPulsePhase -= deltaTime;
+            const decay = Math.exp(-2.0 * deltaTime);
+            this.targetBrightness *= decay;
+        } else {
+            this.targetBrightness *= Math.pow(0.05, deltaTime);
+        }
 
-        // Apply brightness to overlay
-        this.lightingOverlay.style.backgroundColor = 
-            `rgba(50, 120, 150, ${this.stormBrightness.toFixed(3)})`;
+        // Apply to overlay
+        if (this.lightBrightness > 0.01) {
+            const brightness = this.lightBrightness;
+            this.lightingOverlay.style.background =
+                `radial-gradient(ellipse at 50% 30%,
+                    rgba(20, 80, 120, ${(brightness * 0.3).toFixed(3)}) 0%,
+                    rgba(10, 50, 80, ${(brightness * 0.15).toFixed(3)}) 40%,
+                    rgba(0, 0, 0, 0) 80%)`;
+        } else {
+            this.lightingOverlay.style.background =
+                'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
+        }
     }
 
     /**
-     * Create a smooth wave that builds up gradually
+     * Create smooth, organic wave
      */
-    createSmoothWave(x, y, radius, amplitude, steps = 5, duration = 150) {
-        const stepDelay = duration / steps;
-
-        for (let i = 0; i < steps; i++) {
+    createSmoothWave(x, y, radius, amplitude, buildup = 4, delay = 100) {
+        for (let i = 0; i < buildup; i++) {
             setTimeout(() => {
-                // Ease-in curve for smooth start
-                const t = (i + 1) / steps;
-                const eased = t * t; // Quadratic ease-in
+                const t = (i + 1) / buildup;
+                const eased = t * t * (3.0 - 2.0 * t); // Smooth step
                 const currentAmplitude = amplitude * eased;
 
                 this.simulator.createSwell(x, y, {
                     radius: radius,
-                    amplitude: currentAmplitude / steps // Divide to prevent over-accumulation
+                    amplitude: currentAmplitude / buildup
                 });
-            }, i * stepDelay);
+            }, i * delay);
         }
     }
 
     /**
-     * Simple ripple for single line clear - stormy wave puff from random location
+     * Gentle ripple for single line clear - tall narrow surf wave
      */
-    createSimpleRipple() {
-        this.lastWaveTime = performance.now();
+    createGentleRipple() {
+        // Single tall narrow wave
+        const x = 0.3 + Math.random() * 0.4;
+        const y = 0.3 + Math.random() * 0.4;
 
-        // Spawn from completely random position - anywhere on screen
-        const x = 0.1 + Math.random() * 0.8;
-        const y = 0.1 + Math.random() * 0.8;
+        const radius = 0.08 + Math.random() * 0.05; // Small radius (narrow)
+        const amplitude = 1.8 + Math.random() * 0.8; // Tall amplitude
 
-        // Highly varied radius and amplitude for unique waves each time
-        const radius = 0.08 + Math.random() * 0.18; // 0.08-0.26 (much wider range)
-        const amplitude = 0.6 + Math.random() * 0.8; // 0.6-1.4 (more dramatic variation)
-
-        this.createSmoothWave(x, y, radius, amplitude, 4, 120);
-
-        // Flash storm light
-        this.flashStormLight(0.12);
+        this.createSmoothWave(x, y, radius, amplitude, 7, 100);
     }
 
     /**
-     * Wave puffs for double/triple line clears - storm surge from multiple directions
+     * Flowing waves for double/triple line clears - tall narrow waves, far apart
      */
-    createMultiLineWaves(lineCount) {
-        this.lastWaveTime = performance.now();
+    createMultiLineFlow(lineCount) {
+        const waveCount = Math.max(1, lineCount - 1); // Very few waves
 
-        const puffCount = lineCount * 2; // Reduced waves for faster dissipation
-
-        // Stronger storm flash for multi-line
-        this.flashStormLight(0.18);
-
-        for (let i = 0; i < puffCount; i++) {
+        for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
-                // Random position across entire screen
-                const x = 0.05 + Math.random() * 0.9;
-                const y = 0.05 + Math.random() * 0.9;
+                // Create tall narrow waves
+                const progress = i / Math.max(waveCount, 1);
 
-                // Wide variation for each wave - mix of small ripples and large swells
-                const radius = 0.08 + Math.random() * 0.20; // 0.08-0.28
-                const amplitude = 0.7 + Math.random() * 1.0; // 0.7-1.7
-
-                this.createSmoothWave(x, y, radius, amplitude, 4, 120);
-            }, i * 120);  // Slightly slower succession
-        }
-    }
-
-    /**
-     * Dramatic puff cascade for Tetris (4 lines) - massive storm from all directions
-     */
-    createTetrisCascade() {
-        this.lastWaveTime = performance.now();
-
-        const puffCount = 10;  // Reduced for faster dissipation
-
-        // Dramatic storm lightning for Tetris
-        this.flashStormLight(0.3);
-
-        for (let i = 0; i < puffCount; i++) {
-            setTimeout(() => {
-                // Completely random positions - spawn from edges and center
-                const edgeRoll = Math.random();
+                // Alternate between flowing patterns
                 let x, y;
-
-                if (edgeRoll < 0.3) {
-                    // Spawn from edges (30% chance)
-                    const edge = Math.floor(Math.random() * 4);
-                    switch(edge) {
-                        case 0: x = Math.random(); y = 0.05; break; // Top
-                        case 1: x = Math.random(); y = 0.95; break; // Bottom
-                        case 2: x = 0.05; y = Math.random(); break; // Left
-                        case 3: x = 0.95; y = Math.random(); break; // Right
-                    }
+                if (i % 2 === 0) {
+                    // Flow from left
+                    x = 0.2 + progress * 0.3;
+                    y = 0.35 + Math.sin(progress * Math.PI) * 0.3;
                 } else {
-                    // Spawn randomly anywhere (70% chance)
-                    x = 0.05 + Math.random() * 0.9;
-                    y = 0.05 + Math.random() * 0.9;
+                    // Flow from right
+                    x = 0.8 - progress * 0.3;
+                    y = 0.4 + Math.cos(progress * Math.PI) * 0.25;
                 }
 
-                // Extremely varied waves - from tiny ripples to massive swells
-                const radius = 0.10 + Math.random() * 0.28; // 0.10-0.38 (huge range)
-                const amplitude = 1.0 + Math.random() * 1.5; // 1.0-2.5 (dramatic variation)
+                const radius = 0.10 + Math.random() * 0.06; // Small radius (narrow)
+                const amplitude = 1.6 + Math.random() * 1.0; // Tall amplitude
 
-                this.createSmoothWave(x, y, radius, amplitude, 5, 150);
-
-                // Additional flashes during cascade
-                if (i % 3 === 0) {
-                    this.flashStormLight(0.2);
-                }
-            }, i * 100);  // Slightly slower for less overlap
+                this.createSmoothWave(x, y, radius, amplitude, 7, 120);
+            }, i * 800); // Much more spacing
         }
     }
 
     /**
-     * React to combos with bursts of storm wave puffs from all directions
+     * Spectacular bioluminescent bloom for Tetris - tall narrow surf waves
+     */
+    createTetrisBloom() {
+        const bloomCount = 3; // Very few waves
+
+        // Tall center wave
+        setTimeout(() => {
+            this.createSmoothWave(0.5, 0.5, 0.14, 3.0, 9, 140);
+        }, 0);
+
+        // Radiating tall narrow waves
+        for (let i = 0; i < bloomCount; i++) {
+            setTimeout(() => {
+                const angle = (i / bloomCount) * Math.PI * 2;
+                const distance = 0.28 + Math.random() * 0.10;
+
+                const x = 0.5 + Math.cos(angle) * distance;
+                const y = 0.5 + Math.sin(angle) * distance;
+
+                const radius = 0.11 + Math.random() * 0.06; // Small radius (narrow)
+                const amplitude = 2.2 + Math.random() * 1.2; // Very tall
+
+                this.createSmoothWave(x, y, radius, amplitude, 8, 130);
+            }, i * 600 + 400); // Much more spacing
+        }
+
+        // One additional wave
+        setTimeout(() => {
+            const x = 0.35 + Math.random() * 0.3;
+            const y = 0.35 + Math.random() * 0.3;
+            const radius = 0.12 + Math.random() * 0.06;
+            const amplitude = 2.0 + Math.random() * 0.8;
+
+            this.createSmoothWave(x, y, radius, amplitude, 7, 140);
+        }, 2000); // Much later
+    }
+
+    /**
+     * React to combos with escalating bioluminescence - tall narrow waves
      */
     onCombo(comboCount) {
         if (!this.simulator) return;
 
-        this.lastWaveTime = performance.now();
+        const intensity = Math.min(1.0 + comboCount * 0.15, 2.5);
+        const waveCount = Math.min(comboCount, 4); // Very few waves
 
-        const puffCount = Math.min(comboCount + 3, 10);  // Reduced for faster dissipation
+        this.flashLight(0.2 + comboCount * 0.03, 1.2);
+        this.waveEnergy = Math.min(this.waveEnergy + 0.4 + comboCount * 0.05, 1.0);
 
-        // Escalating storm flash based on combo
-        this.flashStormLight(0.15 + (comboCount * 0.02));
-
-        // Create waves radiating from different quadrants
-        for (let i = 0; i < puffCount; i++) {
+        // Create tall narrow waves in a spiral pattern
+        for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
-                // Choose random quadrant and position within it
-                const quadrant = Math.floor(Math.random() * 4);
-                let x, y;
+                const angle = (i / waveCount) * Math.PI * 2 + comboCount * 0.5;
+                const distance = 0.20 + (i / waveCount) * 0.18;
 
-                switch(quadrant) {
-                    case 0: // Top-left
-                        x = 0.05 + Math.random() * 0.45;
-                        y = 0.05 + Math.random() * 0.45;
-                        break;
-                    case 1: // Top-right
-                        x = 0.5 + Math.random() * 0.45;
-                        y = 0.05 + Math.random() * 0.45;
-                        break;
-                    case 2: // Bottom-left
-                        x = 0.05 + Math.random() * 0.45;
-                        y = 0.5 + Math.random() * 0.45;
-                        break;
-                    case 3: // Bottom-right
-                        x = 0.5 + Math.random() * 0.45;
-                        y = 0.5 + Math.random() * 0.45;
-                        break;
-                }
+                const x = 0.5 + Math.cos(angle) * distance;
+                const y = 0.5 + Math.sin(angle) * distance;
 
-                // Highly varied waves - each combo wave looks different
-                const radius = 0.09 + Math.random() * 0.18; // 0.09-0.27 (wide range)
-                const amplitude = 1.0 + (comboCount * 0.12) + (Math.random() * 0.8); // More variation
+                const radius = 0.09 + Math.random() * 0.05; // Small radius (narrow)
+                const amplitude = (1.4 + Math.random() * 0.8) * intensity; // Tall
 
-                this.createSmoothWave(x, y, radius, amplitude, 4, 120);
-            }, i * 90);  // Slower to reduce overlap
+                this.createSmoothWave(x, y, radius, amplitude, 7, 110);
+            }, i * 500); // Much more spacing
         }
-
-        // Add intense ambient waves for combos
-        const intensity = Math.min(1.0 + (comboCount * 0.15), 2.0);
-        this.triggerAmbientWaves(comboCount + 2, intensity);
     }
 
     /**
-     * React to piece locks - DISABLED (no effects on piece locks)
+     * React to piece locks with subtle pulse
      */
     onPieceLock() {
-        // No piece lock effects in this theme
-        return;
+        if (!this.simulator) return;
+
+        // Subtle ripple - piece landing creates small disturbance
+        if (Math.random() < 0.3) { // Only 30% of the time for subtlety
+            const x = 0.3 + Math.random() * 0.4;
+            const y = 0.7 + Math.random() * 0.2;
+
+            this.createSmoothWave(x, y, 0.08, 0.4, 3, 60);
+        }
     }
 
     /**
-     * Add initial wave puffs for visual presence - stormy start from different directions
+     * Add initial atmospheric waves - tall narrow introduction
      */
     addInitialWaves() {
         if (!this.simulator) return;
 
-        // Start with stormy wave presence from different corners
+        // Create gentle introduction with tall narrow waves
         setTimeout(() => {
-            const corners = [
-                [0.15, 0.15], // Top-left
-                [0.85, 0.15], // Top-right
-                [0.5, 0.85]   // Bottom-center
-            ];
+            // Single initial wave to establish atmosphere
+            const x = 0.4 + Math.random() * 0.2;
+            const y = 0.4 + Math.random() * 0.2;
+            const radius = 0.10 + Math.random() * 0.05;
+            const amplitude = 1.2 + Math.random() * 0.6;
 
-            for (let i = 0; i < corners.length; i++) {
-                setTimeout(() => {
-                    const [baseX, baseY] = corners[i];
-                    // Add small random offset from corner
-                    const x = baseX + (Math.random() - 0.5) * 0.2;
-                    const y = baseY + (Math.random() - 0.5) * 0.2;
-
-                    // Each initial wave looks different
-                    const radius = 0.12 + Math.random() * 0.15; // 0.12-0.27 (varied)
-                    const amplitude = 0.8 + Math.random() * 0.6; // 0.8-1.4 (varied)
-
-                    this.createSmoothWave(x, y, radius, amplitude, 5, 200);
-                }, i * 180);
-            }
-        }, 300);
+            this.createSmoothWave(x, y, radius, amplitude, 8, 150);
+        }, 800);
     }
 
     /**
-     * Create ambient waves - DISABLED (now only triggered on line clears and combos)
+     * Create ambient wave patterns - subtle organic motion
      */
     createAmbientWave() {
-        // Automatic ambient waves disabled - only triggered on gameplay events
-        return;
+        if (!this.simulator) return;
+
+        // Cycle through different ambient patterns for variety
+        const pattern = this.nextAmbientPattern % 4;
+        this.nextAmbientPattern++;
+
+        switch (pattern) {
+            case 0: // Single gentle swell
+                this.createGentleSwell();
+                break;
+            case 1: // Crossing waves
+                this.createCrossingWaves();
+                break;
+            case 2: // Circular ripple
+                this.createCircularRipple();
+                break;
+            case 3: // Edge wave
+                this.createEdgeWave();
+                break;
+        }
+
+        // Subtle light pulse
+        this.flashLight(0.08, 0.5);
     }
 
     /**
-     * Trigger ambient-style waves manually (called during line clears and combos)
+     * Gentle swell from random position - tall narrow surf wave
      */
-    triggerAmbientWaves(count = 3, intensity = 1.0) {
-        if (!this.simulator) return;
+    createGentleSwell() {
+        const x = 0.3 + Math.random() * 0.4;
+        const y = 0.3 + Math.random() * 0.4;
+        const radius = 0.10 + Math.random() * 0.06; // Small radius (narrow)
+        const amplitude = 1.0 + Math.random() * 0.6; // Tall
 
-        // Mark that we're no longer calm and update last wave time
-        this.isCalm = false;
-        this.lastWaveTime = performance.now();
-
-        // Storm flash scaled by intensity
-        this.flashStormLight(0.10 * intensity);
-
-        // Create storm swells from different areas
-        const puffCount = Math.max(2, Math.round(count));
-
-        for (let i = 0; i < puffCount; i++) {
-            setTimeout(() => {
-                // Sometimes spawn from edges, sometimes from center
-                const fromEdge = Math.random() < 0.4;
-                let x, y;
-
-                if (fromEdge) {
-                    // Spawn near an edge
-                    const side = Math.floor(Math.random() * 4);
-                    switch(side) {
-                        case 0: x = 0.05 + Math.random() * 0.2; y = Math.random(); break; // Left edge
-                        case 1: x = 0.75 + Math.random() * 0.2; y = Math.random(); break; // Right edge
-                        case 2: x = Math.random(); y = 0.05 + Math.random() * 0.2; break; // Top edge
-                        case 3: x = Math.random(); y = 0.75 + Math.random() * 0.2; break; // Bottom edge
-                    }
-                } else {
-                    // Random center position
-                    x = 0.15 + Math.random() * 0.7;
-                    y = 0.15 + Math.random() * 0.7;
-                }
-
-                // Varied ambient waves scaled by intensity
-                const radius = (0.10 + Math.random() * 0.15) * intensity;
-                const amplitude = (0.7 + Math.random() * 0.7) * intensity;
-
-                this.createSmoothWave(x, y, radius, amplitude, 4, 150);
-            }, i * 160);
-        }
+        this.createSmoothWave(x, y, radius, amplitude, 8, 140);
     }
 
     /**
-     * Reset wave field to calm state - waves fade naturally through damping
+     * Two waves crossing paths - tall narrow waves far apart
      */
-    resetWaveField() {
-        if (!this.simulator) return;
+    createCrossingWaves() {
+        // First tall wave
+        const x1 = 0.25 + Math.random() * 0.25;
+        const y1 = 0.3 + Math.random() * 0.4;
+        this.createSmoothWave(x1, y1, 0.09, 1.2, 7, 120);
 
-        // Check if enough time has passed since last wave
-        const now = performance.now();
-        const timeSinceLastWave = (now - this.lastWaveTime) / 1000;
+        // Second tall wave (much more delayed)
+        setTimeout(() => {
+            const x2 = 0.5 + Math.random() * 0.25;
+            const y2 = 0.3 + Math.random() * 0.4;
+            this.createSmoothWave(x2, y2, 0.09, 1.2, 7, 120);
+        }, 1200); // Much more spacing
+    }
 
-        // Mark as calm after waves have had time to dissipate naturally
-        if (timeSinceLastWave >= this.WAVE_RESET_INTERVAL && !this.isCalm) {
-            this.isCalm = true;
-            console.log('[LuminousTides] Ocean returning to calm - waves fading naturally');
+    /**
+     * Circular expanding ripple - single tall narrow ring
+     */
+    createCircularRipple() {
+        const centerX = 0.4 + Math.random() * 0.2;
+        const centerY = 0.4 + Math.random() * 0.2;
+
+        // Just one tall ring
+        const radius = 0.08 + Math.random() * 0.04; // Small (narrow)
+        const amplitude = 1.4 + Math.random() * 0.6; // Tall
+        this.createSmoothWave(centerX, centerY, radius, amplitude, 7, 110);
+    }
+
+    /**
+     * Wave from edge - tall narrow wave
+     */
+    createEdgeWave() {
+        const side = Math.floor(Math.random() * 4);
+        let x, y;
+
+        switch (side) {
+            case 0: // Top
+                x = 0.3 + Math.random() * 0.4;
+                y = 0.15;
+                break;
+            case 1: // Right
+                x = 0.85;
+                y = 0.3 + Math.random() * 0.4;
+                break;
+            case 2: // Bottom
+                x = 0.3 + Math.random() * 0.4;
+                y = 0.85;
+                break;
+            case 3: // Left
+                x = 0.15;
+                y = 0.3 + Math.random() * 0.4;
+                break;
         }
+
+        this.createSmoothWave(x, y, 0.11, 1.3, 7, 130); // Tall narrow
     }
 
     /**
@@ -543,21 +561,21 @@ export default class LuminousTidesTheme extends BaseTheme {
 
             // Cap extremely large time steps
             if (deltaTime > 0.1) {
-                deltaTime = 0.016666; // Reset to 60fps equivalent
+                deltaTime = 0.016666;
             }
 
-            // Ambient wave timer - DISABLED (only triggered on gameplay events now)
-            // this.ambientWaveTimer += deltaTime;
-            // if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
-            //     this.ambientWaveTimer = 0;
-            //     this.createAmbientWave();
-            // }
+            // Ambient wave timer
+            this.ambientWaveTimer += deltaTime;
+            if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
+                this.ambientWaveTimer = 0;
+                this.createAmbientWave();
+            }
 
-            // Check if we should reset wave field (clear accumulated waves during calm periods)
-            this.resetWaveField();
+            // Decay wave energy
+            this.waveEnergy *= Math.pow(this.energyDecay, deltaTime * 60);
 
-            // Update storm lighting effect
-            this.updateStormLighting(deltaTime);
+            // Update lighting
+            this.updateLighting(deltaTime);
 
             // Run wave simulation
             if (this.simulator) {
@@ -619,13 +637,13 @@ export default class LuminousTidesTheme extends BaseTheme {
         }
         this.lightingOverlay = null;
 
-        // Reset timers and lighting state
+        // Reset state
         this.ambientWaveTimer = 0;
-        this.waveResetTimer = 0;
-        this.stormBrightness = 0;
+        this.lightBrightness = 0;
         this.targetBrightness = 0;
-        this.isCalm = true;
-        this.lastWaveTime = 0;
+        this.lightPulsePhase = 0;
+        this.waveEnergy = 0;
+        this.nextAmbientPattern = 0;
 
         // Call parent cleanup
         super.cleanup();
