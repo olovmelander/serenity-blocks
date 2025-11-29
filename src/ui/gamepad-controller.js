@@ -112,7 +112,7 @@ export class GamepadController {
         // Game mode selection state
         this.gameModeSelectionEnabled = false;
         this.gameModeCards = [];
-        this.selectedGameModeIndex = 0;
+        this.selectedGameModeIndex = -1;
 
         // Callback functions
         this.onPauseCallback = null;
@@ -363,6 +363,15 @@ export class GamepadController {
             const freshGamepad = gamepads[gamepad.index];
             if (!freshGamepad) continue;
 
+            // Check for game over modal - any button press restarts (only for player 1)
+            if (slot === 0) {
+                const gameOverModal = document.getElementById('game-over-modal');
+                if (gameOverModal && gameOverModal.classList.contains('visible')) {
+                    this.processGameOverInput(freshGamepad, slot);
+                    continue; // Don't process other input while game over modal is visible
+                }
+            }
+
             // Process game mode selection, menu navigation, or game input
             if (this.gameModeSelectionEnabled) {
                 this.processGameModeSelection(freshGamepad, slot);
@@ -373,6 +382,39 @@ export class GamepadController {
                 this.processGamepadInput(freshGamepad, slot);
             }
         }
+    }
+
+    /**
+     * Process gamepad input when game over modal is visible
+     * Any button press will restart the game
+     */
+    processGameOverInput(gamepad, slot) {
+        const prevState = this.previousStates[slot];
+        
+        // Check if any main button is pressed (A, B, X, Y, Start)
+        const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
+        const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
+        const xPressed = gamepad.buttons[BUTTON_MAP.X]?.pressed;
+        const yPressed = gamepad.buttons[BUTTON_MAP.Y]?.pressed;
+        const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
+        
+        const anyButtonPressed = aPressed || bPressed || xPressed || yPressed || startPressed;
+        const wasAnyButtonPressed = prevState.gameOverButton;
+        
+        // Trigger restart on button press (rising edge)
+        if (anyButtonPressed && !wasAnyButtonPressed) {
+            console.log('[Gamepad] Button pressed on game over screen - restarting');
+            
+            // Call the global startGame function if available
+            if (window.startGame) {
+                window.startGame();
+            } else {
+                // Fallback: dispatch a custom event
+                window.dispatchEvent(new CustomEvent('gamepadRestart'));
+            }
+        }
+        
+        prevState.gameOverButton = anyButtonPressed;
     }
 
     /**
@@ -398,9 +440,10 @@ export class GamepadController {
         // Focus the first card or the previously selected one
         if (this.isAnyGamepadConnected() && this.gameModeCards.length > 0) {
             // Default to first card if no selection
-            const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
-            this.gameModeCards[index].focus();
-            this.selectedGameModeIndex = index;
+            // const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
+            // Don't auto-focus immediately to avoid overriding mouse/hover state
+            // The first input will trigger focus
+            // this.selectedGameModeIndex = index;
         }
     }
 
@@ -461,53 +504,93 @@ export class GamepadController {
         if (slot !== 0) return;
 
         // Get current focused element
-        const current = document.activeElement;
+        let current = document.activeElement;
+
+        // Check for direction inputs
+        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
+            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+        
+        // Check for Select button (A)
+        const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
 
         // Ensure we are focused on a card
         if (!current || !current.classList.contains('game-mode-card')) {
-            if (this.gameModeCards.length > 0) {
-                this.gameModeCards[0].focus();
+            // If any direction or Select is pressed, focus the selected/default card
+            if ((leftPressed || rightPressed || upPressed || downPressed || aPressed) && this.gameModeCards.length > 0) {
+                 const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
+                 this.gameModeCards[index].focus();
+                 this.selectedGameModeIndex = index;
+                 current = this.gameModeCards[index];
             }
-            return;
         }
 
         // Helper to handle navigation
         const handleDirection = (direction, pressed, prevPressed) => {
             if (pressed && !prevPressed) {
-                const container = document.querySelector('.game-modes-grid') || document.body;
-                const next = SpatialNavigation.findNextElement(current, direction, container);
-                if (next && next.classList.contains('game-mode-card')) {
-                    next.focus();
-                    this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
+                // Only process navigation if we have a valid card focused
+                if (current && current.classList.contains('game-mode-card')) {
+                    const container = document.querySelector('.game-mode-cards-container') || document.body;
+                    const next = SpatialNavigation.findNextElement(current, direction, container);
+                    if (next && next.classList.contains('game-mode-card')) {
+                        next.focus();
+                        this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
+                    }
                 }
             }
             return pressed;
         };
 
         // D-pad / Left stick navigation
-        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
         prevState.gameModeLeft = handleDirection('left', leftPressed, prevState.gameModeLeft);
-
-        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
         prevState.gameModeRight = handleDirection('right', rightPressed, prevState.gameModeRight);
-
-        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
         prevState.gameModeUp = handleDirection('up', upPressed, prevState.gameModeUp);
-
-        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
         prevState.gameModeDown = handleDirection('down', downPressed, prevState.gameModeDown);
 
         // A button - Select game mode
-        const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
         if (aPressed && !prevState.gameModeSelect) {
-            console.log('[Gamepad] Selecting game mode card:', current.id);
-            current.click();
+            if (current && current.classList.contains('game-mode-card')) {
+                console.log('[Gamepad] Selecting game mode card:', current.id);
+                current.click();
+            }
         }
         prevState.gameModeSelect = aPressed;
+
+        // START button - Open settings
+        const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
+        if (this.waitingForStartRelease[slot]) {
+            if (!startPressed) {
+                this.waitingForStartRelease[slot] = false;
+            }
+        } else if (startPressed && !prevState.gameModeStart) {
+            console.log('[Gamepad] START pressed in game mode selection - opening settings');
+            this.toggleSettings(slot);
+        }
+        prevState.gameModeStart = startPressed;
+
+        // SELECT button - Toggle Serenity Hub (if available)
+        if (this.serenityModeActive && this.serenityModeCallbacks) {
+            const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
+            const wasSelectPressed = prevState.gameModeSelect_hub;
+            
+            // Check cooldown to prevent double-triggering
+            const now = performance.now();
+            if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
+            const cooldownActive = now - this._serenitySelectCooldown < 500;
+            
+            if (selectPressed && !wasSelectPressed && !cooldownActive) {
+                const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
+                console.log('[Gamepad] SELECT pressed in game mode selection - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
+                this.serenityModeCallbacks.toggleHub?.();
+                this._serenitySelectCooldown = now;
+            }
+            prevState.gameModeSelect_hub = selectPressed;
+        }
     }
 
     /**
@@ -669,6 +752,25 @@ export class GamepadController {
             this.toggleSettings(slot);
         }
         prevState.menuStart = startPressed;
+
+        // SELECT button - Toggle Serenity Hub (if available)
+        if (this.serenityModeActive && this.serenityModeCallbacks) {
+            const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
+            const wasSelectPressed = prevState.menuSelect_hub;
+            
+            // Check cooldown to prevent double-triggering
+            const now = performance.now();
+            if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
+            const cooldownActive = now - this._serenitySelectCooldown < 500;
+            
+            if (selectPressed && !wasSelectPressed && !cooldownActive) {
+                const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
+                console.log('[Gamepad] SELECT pressed in menu navigation - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
+                this.serenityModeCallbacks.toggleHub?.();
+                this._serenitySelectCooldown = now;
+            }
+            prevState.menuSelect_hub = selectPressed;
+        }
     }
 
     /**
@@ -867,8 +969,8 @@ export class GamepadController {
                 closeBtn.click();
             }
         } else {
-            // Settings is closed, open it via settings button (which handles pause)
-            console.log('[Gamepad] Settings is closed, opening via button...');
+            // Settings is closed, open it
+            console.log('[Gamepad] Settings is closed, opening...');
 
             // Prevent rapid toggling by adding a small delay flag
             if (this._toggleCooldown) {
@@ -878,12 +980,19 @@ export class GamepadController {
             this._toggleCooldown = true;
             setTimeout(() => { this._toggleCooldown = false; }, 500);
 
+            // Try clicking the settings button first
             const settingsBtn = document.getElementById('settings-btn-global');
             if (settingsBtn) {
                 console.log('[Gamepad] Clicking settings button');
                 settingsBtn.click();
             } else {
-                console.error('[Gamepad] Settings button not found!');
+                // Fallback: directly show the modal
+                console.log('[Gamepad] Settings button not found, showing modal directly');
+                if (settingsModal) {
+                    settingsModal.classList.add('visible');
+                    window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName: 'settings' } }));
+                    this.enableMenuNavigation();
+                }
             }
         }
     }
@@ -1212,10 +1321,19 @@ export class GamepadController {
             prevState.menuStart = startPressed;
         }
 
-        // If in Serenity Mode, use Serenity Mode input handling
+        // If in Serenity Mode AND the hub is open, use Serenity Mode input handling exclusively
+        // Otherwise, process both Serenity shortcuts (SELECT to open hub) AND game input
         if (this.serenityModeActive && this.serenityModeCallbacks) {
+            const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
+            
+            // Always process Serenity Mode input for hub toggle (SELECT button) and other shortcuts
             this.processSerenityModeInput(gamepad, slot);
-            return;
+            
+            // If hub is open, don't process game input (tetromino controls)
+            if (hubIsOpen) {
+                return;
+            }
+            // If hub is closed, continue to process game input below
         }
 
         // Use custom bindings if available, otherwise use default
@@ -1547,16 +1665,21 @@ export class GamepadController {
 
         // Don't process Serenity input if menu navigation is active (e.g., settings open)
         if (this.menuNavigationEnabled) {
+            // Log this to debug - this might be why SELECT doesn't work
+            const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
+            if (selectPressed) {
+                console.log('[Gamepad] SELECT pressed but menuNavigationEnabled=true, skipping Serenity input!');
+            }
             return;
         }
 
         const prevState = this.previousStates[slot];
         const callbacks = this.serenityModeCallbacks;
 
-        // Y button - Toggle Serenity Hub
+        // Y button - Toggle Serenity Hub (Legacy, now on SELECT)
         const yPressed = gamepad.buttons[BUTTON_MAP.Y]?.pressed;
         if (yPressed && !prevState.serenityY) {
-            callbacks.toggleHub?.();
+            // callbacks.toggleHub?.(); // Disabled on Y button
         }
         prevState.serenityY = yPressed;
 
@@ -1603,11 +1726,27 @@ export class GamepadController {
         }
         prevState.serenityRB = rbPressed;
 
-        // SELECT - Toggle Button Hints
+        // SELECT - Toggle Serenity Hub
         const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
-        if (selectPressed && !prevState.serenitySelect) {
-            callbacks.toggleHints?.();
+        const wasSelectPressed = prevState.serenitySelect;
+        
+        // Check cooldown to prevent double-triggering when states are cleared
+        // Store cooldown outside of prevState so it survives state clearing
+        const now = performance.now();
+        if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
+        const cooldownActive = now - this._serenitySelectCooldown < 500; // 500ms cooldown
+        
+        // Only trigger on rising edge (button just pressed) and not in cooldown
+        if (selectPressed && !wasSelectPressed && !cooldownActive) {
+            const hubIsOpen = callbacks.isHubOpen?.();
+            console.log('[Gamepad] SELECT pressed - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
+            callbacks.toggleHub?.();
+            
+            // Set cooldown to prevent re-triggering if states get cleared
+            this._serenitySelectCooldown = now;
         }
+        
+        // Always update the previous state
         prevState.serenitySelect = selectPressed;
 
         // D-Pad Up - Previous Breathing Technique (when hub is closed)
