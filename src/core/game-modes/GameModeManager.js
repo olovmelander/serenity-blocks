@@ -172,7 +172,7 @@ export class GameModeManager {
      * Start the current active mode
      * @returns {Promise<void>}
      */
-    async startCurrentMode() {
+    async startCurrentMode(options = {}) {
         if (!this.currentMode) {
             throw new Error('[GameModeManager] No mode is currently active');
         }
@@ -186,13 +186,13 @@ export class GameModeManager {
             return;
         }
 
-        console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`);
+        console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`, options);
 
         try {
             if (this.deps?.soundManager?.resumeThemeLinkedMusic) {
                 this.deps.soundManager.resumeThemeLinkedMusic(true);
             }
-            await this.currentMode.onStart();
+            await this.currentMode.onStart(options);
             if (this.deps?.themeManager?.resumeThemes) {
                 await this.deps.themeManager.resumeThemes();
             }

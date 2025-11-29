@@ -1138,7 +1138,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 export function setThemeSelectorVisibility(visible) {
     const selector = document.getElementById('theme-setting');
     if (selector) {
-        selector.style.display = visible ? 'contents' : 'none';
+        selector.style.display = visible ? '' : 'none';
     }
 }
 
@@ -1149,6 +1149,6 @@ export function setThemeSelectorVisibility(visible) {
 export function setRandomIntervalVisibility(visible) {
     const intervalControl = document.getElementById('random-theme-interval-setting');
     if (intervalControl) {
-        intervalControl.style.display = visible ? 'contents' : 'none';
+        intervalControl.style.display = visible ? '' : 'none';
     }
 }

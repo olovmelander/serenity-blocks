@@ -77,6 +77,8 @@ import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
 import { SerenityHub } from './ui/serenity-hub/SerenityHub.js';
+import { DemoManager } from './core/demo/DemoManager.js';
+import { DemoBrowser } from './ui/demo-browser.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -215,6 +217,8 @@ class SerenityBlocks {
         this.gameModeUI = null;
         this.gameModeManager = null; // NEW: Central game mode orchestrator
         this.serenityHub = null; // Global Serenity Hub (accessible from all modes)
+        this.demoManager = null;
+        this.demoBrowser = null;
         this.displayManager = null; // Phase 1: Display management
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.cleanupHandlers = [];
@@ -1035,6 +1039,10 @@ class SerenityBlocks {
         this.highScoreManager = new HighScoreManager();
         await this.highScoreManager.init();
 
+        // Demo Manager
+        this.demoManager = new DemoManager();
+        await this.demoManager.init();
+
         // Settings
         this.settingsManager = new SettingsManager();
         this.settingsManager.load(); // Load from localStorage
@@ -1284,16 +1292,16 @@ class SerenityBlocks {
         let initialTheme = 'forest'; // default
 
         switch (settings.backgroundMode) {
-        case 'Specific':
-            initialTheme = settings.backgroundTheme || 'forest';
-            break;
-        case 'Level':
-            initialTheme = this.themeManager.getThemeForLevel(1);
-            break;
-        case 'Random':
-            initialTheme = this.themeManager.getRandomTheme();
-            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-            break;
+            case 'Specific':
+                initialTheme = settings.backgroundTheme || 'forest';
+                break;
+            case 'Level':
+                initialTheme = this.themeManager.getThemeForLevel(1);
+                break;
+            case 'Random':
+                initialTheme = this.themeManager.getRandomTheme();
+                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+                break;
         }
 
         await this.themeManager.switchTheme(initialTheme);
@@ -1332,6 +1340,7 @@ class SerenityBlocks {
                 wolfhour: 'Wolfhour',
                 'neon-dusk': 'NeonDusk',
                 'blood-moon': 'BloodMoon',
+                'chromatic-impasto': 'ChromaticImpasto',
             };
 
             if (themeSoundMap[themeName]) {
@@ -1413,6 +1422,16 @@ class SerenityBlocks {
      * Setup UI buttons and interactions
      */
     setupUI() {
+        // Demo Browser
+        this.demoBrowser = new DemoBrowser(this.demoManager, this.gameModeManager);
+
+        const replaysBtn = document.getElementById('open-replays-btn');
+        if (replaysBtn) {
+            replaysBtn.addEventListener('click', () => {
+                this.demoBrowser.show();
+            });
+        }
+
         // Setup modal UI with callbacks (pass gameModeManager for Serenity Hub icon)
         setupModalUI(this.modalManager, {
             onSettingsOpen: () => {
@@ -2098,19 +2117,20 @@ class SerenityBlocks {
         };
 
         // Setup keyboard and touch controls with the exposed gameActions
+        // Use arrow functions to ensure we always call the CURRENT window functions (allows modes to hook them)
         const gameActions = {
-            move: window.move,
-            rotate: window.rotate,
-            softDrop: window.softDrop,
-            hardDrop: window.hardDrop,
-            togglePause: window.togglePause,
-            openSettingsMenu: window.openSettingsMenu,
-            startGame: window.startGame,
-            initSound: window.initSound,
-            nextTrack: window.nextTrack,
-            randomTheme: window.randomTheme,
-            toggleFullscreen: window.toggleFullscreen,
-            showHighScores: window.showHighScores,
+            move: (...args) => window.move?.(...args),
+            rotate: (...args) => window.rotate?.(...args),
+            softDrop: (...args) => window.softDrop?.(...args),
+            hardDrop: (...args) => window.hardDrop?.(...args),
+            togglePause: (...args) => window.togglePause?.(...args),
+            openSettingsMenu: (...args) => window.openSettingsMenu?.(...args),
+            startGame: (...args) => window.startGame?.(...args),
+            initSound: (...args) => window.initSound?.(...args),
+            nextTrack: (...args) => window.nextTrack?.(...args),
+            randomTheme: (...args) => window.randomTheme?.(...args),
+            toggleFullscreen: (...args) => window.toggleFullscreen?.(...args),
+            showHighScores: (...args) => window.showHighScores?.(...args),
             // Player 2 actions
             moveP2: window.moveP2,
             rotateP2: window.rotateP2,
@@ -2387,8 +2407,19 @@ class SerenityBlocks {
 
         // Use GameModeManager for all game modes
         try {
+            const activeMode = this.gameModeManager.getCurrentMode();
+
+            // Special handling for demo playback:
+            // If user presses Space/Enter (Restart) during demo playback game over,
+            // we want to return to demo browser, not start a new game.
+            if (activeMode && activeMode.getModeId() === 'single' && activeMode.isPlayingDemo) {
+                console.log('[Main] In demo playback mode, returning to demo browser instead of starting new game');
+                this.modalManager.hideAll();
+                return;
+            }
+
             // If a mode is already running, stop it first
-            if (this.gameModeManager.getCurrentMode()?.isRunning) {
+            if (activeMode?.isRunning) {
                 console.log('[Main] Stopping active game before restart');
                 await this.gameModeManager.stopCurrentMode();
             }

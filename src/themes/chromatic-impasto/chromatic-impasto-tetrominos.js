@@ -4,74 +4,48 @@
  */
 
 export const CHROMATIC_IMPASTO_TETROMINOS = {
-    I: {
-        shape: [
-            [0, 0, 0, 0],
-            [1, 1, 1, 1],
-            [0, 0, 0, 0],
-            [0, 0, 0, 0],
-        ],
-        color: '#00D9CC', // Bright turquoise/cyan (vibrant from the painting)
-        glowColor: '#00FFF5',
-        trailColor: 'rgba(0, 217, 204, 0.6)',
+    version: 1,
+
+    colors: {
+        I: '#00D9CC', // Bright turquoise/cyan
+        J: '#0033CC', // Deep saturated blue
+        L: '#FF7F00', // Pure saturated orange
+        O: '#FFD000', // Rich golden yellow
+        S: '#1A7F4D', // Deep forest green
+        T: '#B30000', // Deep blood red
+        Z: '#FFF8DC', // Warm cream white
+        GARBAGE: '#2A2A2A', // Dark charcoal (neutral canvas)
     },
-    J: {
-        shape: [
-            [1, 0, 0],
-            [1, 1, 1],
-            [0, 0, 0],
-        ],
-        color: '#0033CC', // Deep saturated blue
-        glowColor: '#3366FF',
-        trailColor: 'rgba(0, 51, 204, 0.6)',
+
+    renderMode: 'glow', // Using glow to simulate the "wet paint" look
+
+    effects: {
+        glowRadius: 12, // Slightly tighter glow for "thick paint" feel
+        glowIntensity: 0.8,
+        glowColor: 'auto',
+
+        outline: true,
+        outlineWidth: 3, // Thicker outline for "impasto" strokes
+        outlineColor: '#000000', // Black outline to separate colors like in the painting
+
+        pulse: false, // Paint doesn't usually pulse
+        shimmer: true, // Slight shimmer for "wetness"
+        shimmerSpeed: 0.02,
+        shimmerIntensity: 0.1,
+
+        trails: true,
+        trailLength: 0.2,
+        trailOpacity: 0.4,
     },
-    L: {
-        shape: [
-            [0, 0, 1],
-            [1, 1, 1],
-            [0, 0, 0],
-        ],
-        color: '#FF7F00', // Pure saturated orange
-        glowColor: '#FFB347',
-        trailColor: 'rgba(255, 127, 0, 0.6)',
-    },
-    O: {
-        shape: [
-            [1, 1],
-            [1, 1],
-        ],
-        color: '#FFD000', // Rich golden yellow
-        glowColor: '#FFED4E',
-        trailColor: 'rgba(255, 208, 0, 0.6)',
-    },
-    S: {
-        shape: [
-            [0, 1, 1],
-            [1, 1, 0],
-            [0, 0, 0],
-        ],
-        color: '#1A7F4D', // Deep forest green (almost black-green)
-        glowColor: '#2D995F',
-        trailColor: 'rgba(26, 127, 77, 0.6)',
-    },
-    T: {
-        shape: [
-            [0, 1, 0],
-            [1, 1, 1],
-            [0, 0, 0],
-        ],
-        color: '#B30000', // Deep blood red
-        glowColor: '#E61919',
-        trailColor: 'rgba(179, 0, 0, 0.6)',
-    },
-    Z: {
-        shape: [
-            [1, 1, 0],
-            [0, 1, 1],
-            [0, 0, 0],
-        ],
-        color: '#FFF8DC', // Warm cream white with slight yellow tint
-        glowColor: '#FFFFFF',
-        trailColor: 'rgba(255, 248, 220, 0.6)',
+
+    rendererOverrides: {
+        canvas: {
+            glowRadius: 10,
+            outlineWidth: 2.5,
+        },
+        phaser: {
+            glowRadius: 14,
+            outlineWidth: 3.5,
+        },
     },
 };
