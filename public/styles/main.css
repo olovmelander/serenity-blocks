@@ -13947,6 +13947,10 @@ body.phaser-multiplayer-active #p2-canvas {
         0 20px 50px rgba(0, 0, 0, 0.5),
         0 0 100px rgba(139, 92, 246, 0.15);
     border-radius: 24px;
+    box-shadow:
+        0 0 0 1px rgba(139, 92, 246, 0.1),
+        0 20px 50px rgba(0, 0, 0, 0.6),
+        0 0 100px rgba(139, 92, 246, 0.1);
 }
 
 /* Settings header with close button */
@@ -13955,10 +13959,10 @@ body.phaser-multiplayer-active #p2-canvas {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0;
-    padding: 24px 32px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 32px 40px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
     flex-shrink: 0;
-    background: rgba(0, 0, 0, 0.2);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.2), transparent);
 }
 
 .settings-header h1 {
@@ -14377,14 +14381,16 @@ body.phaser-multiplayer-active #p2-canvas {
 
 .settings-tabs {
     display: flex;
+    justify-content: center;
     gap: 8px;
-    padding: 20px 32px 0;
-    margin-bottom: 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 6px;
+    margin: 0 40px 24px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
     overflow-x: auto;
     scrollbar-width: none;
-    /* Hide scrollbar */
 }
 
 .settings-tabs::-webkit-scrollbar {
@@ -14394,68 +14400,45 @@ body.phaser-multiplayer-active #p2-canvas {
 #settings-modal h1 {
     flex-shrink: 0;
     font-size: 32px;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.02em;
     margin: 0;
+    font-weight: 800;
+    text-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
 }
 
 .settings-tab {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: transparent;
+    border: 1px solid transparent;
     color: rgba(224, 231, 255, 0.6);
-    padding: 12px 24px;
+    padding: 10px 24px;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 14px;
     font-family: 'Space Mono', monospace;
     font-weight: 600;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 12px 12px 0 0;
-    margin-bottom: -1px;
+    border-radius: 12px;
+    margin-bottom: 0;
     position: relative;
     overflow: hidden;
-}
-
-.settings-tab::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(to bottom, rgba(139, 92, 246, 0.1), transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .settings-tab:hover {
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateY(-2px);
-}
-
-.settings-tab:hover::before {
-    opacity: 1;
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
 }
 
 .settings-tab.active {
-    color: #00ffff;
-    background: rgba(139, 92, 246, 0.15);
+    color: #ffffff;
+    background: rgba(139, 92, 246, 0.2);
     border-color: rgba(139, 92, 246, 0.4);
-    border-bottom-color: transparent;
-    /* Merge with content */
-    box-shadow: 0 -4px 12px rgba(139, 92, 246, 0.1);
-    z-index: 10;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.15);
 }
 
-.settings-tab.active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: #00ffff;
-    box-shadow: 0 0 10px #00ffff;
-}
+
 
 .settings-tab-content {
     display: none;
@@ -14516,8 +14499,7 @@ body.phaser-multiplayer-active #p2-canvas {
     font-size: 14px;
     font-family: 'Space Mono', monospace;
     transition: all 0.2s ease;
-    border-left: 3px solid transparent;
-    border-radius: 8px;
+    border-radius: 12px;
     text-align: left;
 }
 
@@ -14530,11 +14512,10 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .controls-subtab.active {
-    color: #00ffff;
-    background: rgba(139, 92, 246, 0.15);
-    border-left-color: #00ffff;
+    color: #ffffff;
+    background: rgba(139, 92, 246, 0.2);
     border-color: rgba(139, 92, 246, 0.4);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.15);
 }
 
 .controls-subtab-icon {
@@ -14795,30 +14776,33 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .settings-grid {
-    display: grid;
-    grid-template-columns: 220px 1fr;
-    gap: 15px 20px;
-    margin: 20px auto;
-    text-align: left;
-    align-items: center;
-    max-width: 650px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 20px 0;
+    width: 100%;
 }
 
 .setting {
-    display: contents;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-radius: 12px;
+    transition: background 0.2s ease;
+}
+
+.setting:hover {
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .setting label {
-    justify-self: end;
-    align-self: center;
-    white-space: normal;
-    padding-right: 24px;
-    text-align: right;
-    width: 100%;
-    line-height: 1.4;
+    flex: 1;
+    text-align: left;
     font-size: 15px;
     color: rgba(224, 231, 255, 0.9);
     font-weight: 500;
+    padding-right: 24px;
 }
 
 /* Enhanced Input Styling */
@@ -14833,9 +14817,10 @@ body.phaser-multiplayer-active #p2-canvas {
     font-size: 14px;
     cursor: pointer;
     min-width: 200px;
-    max-width: 320px;
-    width: 100%;
-    justify-self: start;
+    width: 260px;
+    /* Fixed width for alignment */
+    flex-shrink: 0;
+    justify-self: end;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -14898,9 +14883,10 @@ body.phaser-multiplayer-active #p2-canvas {
     align-items: center;
     gap: 12px;
     min-width: 200px;
-    max-width: 300px;
-    width: 100%;
-    justify-self: start;
+    width: 260px;
+    /* Fixed width for alignment */
+    flex-shrink: 0;
+    justify-self: end;
 }
 
 .slider-container span {
@@ -14977,9 +14963,10 @@ body.phaser-multiplayer-active #p2-canvas {
     align-items: center;
     gap: 12px;
     min-width: 200px;
-    max-width: 300px;
-    width: 100%;
-    justify-self: start;
+    width: 260px;
+    /* Fixed width for alignment */
+    flex-shrink: 0;
+    justify-self: end;
 }
 
 .color-picker-wrapper {
