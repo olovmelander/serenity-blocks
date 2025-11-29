@@ -146,47 +146,37 @@ export class SerenityHub {
     /**
    * Create the floating settings button (bottom-right corner)
    */
+    /**
+   * Setup the settings button (uses global button)
+   */
     createSettingsButton() {
-        this.settingsBtn = document.createElement('button');
-        this.settingsBtn.id = 'serenity-settings-btn';
-        this.settingsBtn.className = 'floating-settings-btn serenity-settings';
-        this.settingsBtn.setAttribute('aria-label', 'Open Settings');
+        // Use the global settings button instead of creating a new one
+        this.settingsBtn = document.getElementById('settings-btn-global');
 
-        this.settingsBtn.innerHTML = `
-      <svg class="settings-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-        <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-      </svg>
-    `;
+        if (this.settingsBtn) {
+            // Add serenity-settings class for styling hooks
+            this.settingsBtn.classList.add('serenity-settings');
 
-        // Store bound handler references
-        this.settingsBtnClickHandler = () => {
-            // Open settings modal
-            const settingsModal = document.getElementById('settings-modal');
-            if (settingsModal) {
-                settingsModal.classList.add('visible');
-            }
-        };
+            // Note: Click handler is managed globally by modals.js
+            // Auto-hide handlers are attached below if needed
 
-        this.settingsBtnMouseEnterHandler = () => {
-            this.isMouseOverSettings = true;
-            this.cancelAutoHide();
-        };
+            this.settingsBtnMouseEnterHandler = () => {
+                this.isMouseOverSettings = true;
+                this.cancelAutoHide();
+            };
 
-        this.settingsBtnMouseLeaveHandler = () => {
-            this.isMouseOverSettings = false;
-            if (!this.isOpen) {
-                this.startAutoHide();
-            }
-        };
+            this.settingsBtnMouseLeaveHandler = () => {
+                this.isMouseOverSettings = false;
+                if (!this.isOpen) {
+                    this.startAutoHide();
+                }
+            };
 
-        // Add event listeners with AbortController signal
-        const { signal } = this.abortController;
-        this.settingsBtn.addEventListener('click', this.settingsBtnClickHandler, { signal });
-        this.settingsBtn.addEventListener('mouseenter', this.settingsBtnMouseEnterHandler, { signal });
-        this.settingsBtn.addEventListener('mouseleave', this.settingsBtnMouseLeaveHandler, { signal });
-
-        document.body.appendChild(this.settingsBtn);
+            // Add event listeners with AbortController signal
+            const { signal } = this.abortController;
+            this.settingsBtn.addEventListener('mouseenter', this.settingsBtnMouseEnterHandler, { signal });
+            this.settingsBtn.addEventListener('mouseleave', this.settingsBtnMouseLeaveHandler, { signal });
+        }
     }
 
     /**

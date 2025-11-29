@@ -578,7 +578,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     // Start physics processing
     if (physicsCallbacks) {
         gameState.isProcessingPhysics = true;
-        processPhysics(gameState, physicsCallbacks).then(() => {
+        gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks).then(() => {
             gameState.isProcessingPhysics = false;
             // Spawn next piece after physics is complete
             if (physicsCallbacks.spawnPiece) {
@@ -647,12 +647,18 @@ export function gameLoop(
             performanceMonitor.updateEnd();
             performanceMonitor.renderStart();
         }
+    }
 
+    // Draw if running OR if forced (e.g. during seek)
+    if (!gameState.isPaused || gameState.forceDraw) {
         if (drawCallback) drawCallback();
-        if (monitoring) {
+        if (monitoring && !gameState.isPaused) {
             performanceMonitor.renderEnd();
         }
         if (updateStatsCallback) updateStatsCallback();
+
+        // Reset force flag
+        gameState.forceDraw = false;
     } else {
         // When paused, still finish monitoring this frame
         if (monitoring) {

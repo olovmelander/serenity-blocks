@@ -21516,8 +21516,8 @@ body.phaser-multiplayer-active #single-player-container {
 
 /* Settings icon SVG styling */
 .settings-icon {
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     color: rgba(255, 255, 255, 0.7);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -22791,6 +22791,12 @@ body.serenity-mode.cursor-hidden * {
     z-index: 1001;
 }
 
+.modal.game-mode-selection .start-modal-actions {
+    pointer-events: all;
+    position: relative;
+    z-index: 1001;
+}
+
 .game-mode-cards-container {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -23339,4 +23345,321 @@ body.cursor-hidden * {
     /* PERFORMANCE: GPU acceleration hints */
     will-change: transform;
     transform: translateZ(0);
+}
+
+/* ==========================================================================
+   DEMO / REPLAY SYSTEM STYLES
+   ========================================================================== */
+
+/* Demo Browser Modal */
+.demo-browser-content {
+    display: flex;
+    flex-direction: column;
+    height: 80vh;
+    max-height: 800px;
+}
+
+.demo-browser-toolbar {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.demo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding-right: 10px;
+}
+
+.demo-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.demo-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(100, 200, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.demo-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.demo-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.demo-date {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.demo-mode {
+    background: rgba(100, 200, 255, 0.2);
+    color: #64c8ff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.demo-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.demo-stats .stat {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.demo-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.demo-actions button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2em;
+    transition: all 0.2s ease;
+}
+
+.demo-actions button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.demo-actions .btn-play:hover {
+    background: rgba(100, 255, 100, 0.2);
+    border-color: rgba(100, 255, 100, 0.4);
+    color: #64ff64;
+}
+
+.demo-actions .btn-share:hover {
+    background: rgba(100, 200, 255, 0.2);
+    border-color: rgba(100, 200, 255, 0.4);
+    color: #64c8ff;
+}
+
+.demo-actions .btn-delete:hover {
+    background: rgba(255, 100, 100, 0.2);
+    border-color: rgba(255, 100, 100, 0.4);
+    color: #ff6464;
+}
+
+/* Playback Controls Overlay */
+.playback-controls {
+    position: fixed;
+    bottom: 30px;
+    right: 80px;
+    left: auto;
+    transform: none;
+    background: rgba(10, 15, 30, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50px;
+    /* Pill shape */
+    padding: 12px 24px;
+    display: flex;
+    flex-direction: row;
+    /* Horizontal layout */
+    align-items: center;
+    gap: 20px;
+    z-index: 1000;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    animation: slideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+    min-width: 500px;
+    max-width: 90vw;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.playback-buttons {
+    display: flex;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.control-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9em;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.control-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+#pb-play-pause {
+    background: rgba(100, 200, 255, 0.15);
+    border-color: rgba(100, 200, 255, 0.3);
+    color: #64c8ff;
+}
+
+#pb-play-pause:hover {
+    background: rgba(100, 200, 255, 0.25);
+    box-shadow: 0 0 15px rgba(100, 200, 255, 0.3);
+}
+
+#pb-stop:hover {
+    background: rgba(255, 100, 100, 0.15);
+    border-color: rgba(255, 100, 100, 0.3);
+    color: #ff6464;
+}
+
+.playback-info {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.7);
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.playback-info .separator {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+#playback-time {
+    color: #64c8ff;
+    font-weight: bold;
+}
+
+.playback-progress-container {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    margin: 0;
+}
+
+#pb-progress {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    transition: height 0.2s ease;
+}
+
+#pb-progress:hover {
+    height: 6px;
+}
+
+#pb-progress::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #64c8ff;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+    transition: transform 0.2s ease;
+    margin-top: -4px;
+    /* Center thumb relative to 4px track */
+}
+
+#pb-progress::-webkit-slider-thumb:hover {
+    transform: scale(1.3);
+    background: #fff;
+}
+
+.playback-speed {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+.speed-select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8em;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.speed-select:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.speed-select option {
+    background: #1a1a2e;
+    color: white;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: #64c8ff;
 }
