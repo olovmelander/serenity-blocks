@@ -537,7 +537,7 @@ export class GamepadController {
             const firstFocusable = this.getFirstFocusableElement();
             if (firstFocusable) {
                 // Don't focus the settings button itself to avoid recursion
-                if (firstFocusable.id === 'settings-btn' || firstFocusable.id === 'settings-btn-mp') {
+                if (firstFocusable.id === 'settings-btn-global') {
                     console.log('[Gamepad] Skipping settings button, finding next element');
                     const focusables = this.getFocusableElements();
                     const nextElement = focusables[1] || focusables[0];
@@ -878,8 +878,7 @@ export class GamepadController {
             this._toggleCooldown = true;
             setTimeout(() => { this._toggleCooldown = false; }, 500);
 
-            const settingsBtn = document.getElementById('settings-btn')
-                || document.getElementById('settings-btn-mp');
+            const settingsBtn = document.getElementById('settings-btn-global');
             if (settingsBtn) {
                 console.log('[Gamepad] Clicking settings button');
                 settingsBtn.click();
@@ -1231,45 +1230,45 @@ export class GamepadController {
         // Get appropriate action functions based on player slot (0-3 = P1-P4)
         let actions;
         switch (slot) {
-        case 0: // Player 1
-            actions = {
-                move: this.gameActions.move,
-                rotate: this.gameActions.rotate,
-                softDrop: this.gameActions.softDrop,
-                hardDrop: this.gameActions.hardDrop,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        case 1: // Player 2
-            actions = {
-                move: this.gameActions.moveP2,
-                rotate: this.gameActions.rotateP2,
-                softDrop: this.gameActions.softDropP2,
-                hardDrop: this.gameActions.hardDropP2,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        case 2: // Player 3
-            actions = {
-                move: this.gameActions.moveP3,
-                rotate: this.gameActions.rotateP3,
-                softDrop: this.gameActions.softDropP3,
-                hardDrop: this.gameActions.hardDropP3,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        case 3: // Player 4
-            actions = {
-                move: this.gameActions.moveP4,
-                rotate: this.gameActions.rotateP4,
-                softDrop: this.gameActions.softDropP4,
-                hardDrop: this.gameActions.hardDropP4,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        default:
-            console.warn(`[Gamepad] Invalid player slot: ${slot}`);
-            return;
+            case 0: // Player 1
+                actions = {
+                    move: this.gameActions.move,
+                    rotate: this.gameActions.rotate,
+                    softDrop: this.gameActions.softDrop,
+                    hardDrop: this.gameActions.hardDrop,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 1: // Player 2
+                actions = {
+                    move: this.gameActions.moveP2,
+                    rotate: this.gameActions.rotateP2,
+                    softDrop: this.gameActions.softDropP2,
+                    hardDrop: this.gameActions.hardDropP2,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 2: // Player 3
+                actions = {
+                    move: this.gameActions.moveP3,
+                    rotate: this.gameActions.rotateP3,
+                    softDrop: this.gameActions.softDropP3,
+                    hardDrop: this.gameActions.hardDropP3,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 3: // Player 4
+                actions = {
+                    move: this.gameActions.moveP4,
+                    rotate: this.gameActions.rotateP4,
+                    softDrop: this.gameActions.softDropP4,
+                    hardDrop: this.gameActions.hardDropP4,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            default:
+                console.warn(`[Gamepad] Invalid player slot: ${slot}`);
+                return;
         }
 
         // Process movement (D-pad left/right or left stick X)

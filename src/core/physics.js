@@ -272,10 +272,12 @@ export async function applyGravity(
             callbacks.onGravityStep?.();
 
             // Use requestAnimationFrame-based timing for smooth, consistent gravity
-            const startTime = performance.now();
-            await waitForAnimationFrame(gravityDelay);
-            const actualDelay = performance.now() - startTime;
-            physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
+            if (!gameState.isSeeking) {
+                const startTime = performance.now();
+                await waitForAnimationFrame(gravityDelay);
+                const actualDelay = performance.now() - startTime;
+                physicsLog(`[Gravity] Step delay: expected ${gravityDelay}ms, actual ${actualDelay.toFixed(1)}ms`);
+            }
         }
     }
 

@@ -87,11 +87,13 @@ export class SerenityMode extends BaseGameMode {
         if (window.serenityBlocks && window.serenityBlocks.serenityHub) {
             console.log('[Serenity] Using global Serenity Hub instance');
             this.serenityHub = window.serenityBlocks.serenityHub;
+            this.usingGlobalHub = true;
             // Update the wrapper to point to this mode for breathing controls
             this.serenityHub.serenityMode = this;
         } else {
             console.log('[Serenity] Creating mode-specific Serenity Hub instance');
             this.serenityHub = new SerenityHub(this);
+            this.usingGlobalHub = false;
         }
         console.log('[Serenity] Serenity Hub initialized');
 
@@ -186,7 +188,12 @@ export class SerenityMode extends BaseGameMode {
 
         // Clean up Serenity Hub
         if (this.serenityHub) {
-            this.serenityHub.destroy();
+            if (this.usingGlobalHub) {
+                // Just hide it if it's global, don't destroy
+                this.serenityHub.hide();
+            } else {
+                this.serenityHub.destroy();
+            }
             this.serenityHub = null;
         }
 
@@ -410,48 +417,48 @@ export class SerenityMode extends BaseGameMode {
         const key = event.key.toLowerCase();
 
         switch (key) {
-        case 'm': // Next music track
-            this._nextMusicTrack();
-            break;
+            case 'm': // Next music track
+                this._nextMusicTrack();
+                break;
 
-        case 'b': // Random theme
-            this._randomTheme();
-            break;
+            case 'b': // Random theme
+                this._randomTheme();
+                break;
 
-        case 'f': // Toggle fullscreen
-            this._toggleFullscreen();
-            break;
+            case 'f': // Toggle fullscreen
+                this._toggleFullscreen();
+                break;
 
-        case 'escape': // Exit to main menu
-            this._exitToMenu();
-            break;
+            case 'escape': // Exit to main menu
+                this._exitToMenu();
+                break;
 
-        case 'h': // Toggle Serenity Hub
-            if (this.serenityHub) {
-                this.serenityHub.toggle();
-            }
-            event.preventDefault(); // Prevent global high score handler
-            event.stopPropagation(); // Stop event from bubbling
-            break;
+            case 'h': // Toggle Serenity Hub
+                if (this.serenityHub) {
+                    this.serenityHub.toggle();
+                }
+                event.preventDefault(); // Prevent global high score handler
+                event.stopPropagation(); // Stop event from bubbling
+                break;
 
-        case '?': // Show keyboard shortcuts (legacy)
-        case '/': // Toggle control hints
-            if (this.serenityHub) {
-                this.serenityHub.toggleButtonHints();
-            } else {
-                this._showKeyboardShortcuts();
-            }
-            break;
+            case '?': // Show keyboard shortcuts (legacy)
+            case '/': // Toggle control hints
+                if (this.serenityHub) {
+                    this.serenityHub.toggleButtonHints();
+                } else {
+                    this._showKeyboardShortcuts();
+                }
+                break;
 
-        case ' ': // Toggle breathing indicator
-            this._toggleBreathingIndicator();
-            event.preventDefault(); // Prevent page scroll
-            break;
+            case ' ': // Toggle breathing indicator
+                this._toggleBreathingIndicator();
+                event.preventDefault(); // Prevent page scroll
+                break;
 
-        case 't': // Cycle breathing technique
-            this._cycleBreathingTechnique();
-            event.preventDefault();
-            break;
+            case 't': // Cycle breathing technique
+                this._cycleBreathingTechnique();
+                event.preventDefault();
+                break;
         }
     }
 
