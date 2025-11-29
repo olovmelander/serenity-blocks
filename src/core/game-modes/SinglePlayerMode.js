@@ -190,6 +190,30 @@ export class SinglePlayerMode extends BaseGameMode {
             this._clearPhaserBoard();
             this._applyEffectQuality(this.deps.settingsManager.get().effectQuality || 'high');
 
+            // Create callbacks for DemoPlayer to drive the game loop
+            const drawCallback = () => {
+                const boardScene = this._getBoardScene();
+                if (boardScene) {
+                    boardScene.syncFromGameState(this.gameState);
+                } else if (this.canvas && this.ctx) {
+                    draw(this.canvas, this.ctx, this.gameState);
+                }
+            };
+
+            const statsCallback = () => {
+                // Update stats directly without throttling for smoother demo playback
+                this._updateStats();
+
+                // Handle theme switching if needed
+                const settings = this.deps.settingsManager.get();
+                if (settings.backgroundMode === 'Level') {
+                    const levelTheme = this.deps.themeManager.getThemeForLevel(this.gameState.level);
+                    if (levelTheme !== this.deps.themeManager.activeThemeName) {
+                        this.deps.themeManager.switchTheme(levelTheme);
+                    }
+                }
+            };
+
             // Start playback
             this.demoPlayer.startPlayback(
                 {
@@ -198,14 +222,12 @@ export class SinglePlayerMode extends BaseGameMode {
                         console.log('[SinglePlayer] Demo spawnPiece called');
                         spawnPiece(this.gameState);
                         updateNextQueue(this.gameState);
-                    }, // DemoPlayer handles spawning via inputs or state? No, DemoPlayer calls spawnPiece.
-                    updateStats: () => this._updateStats(),
+                    },
+                    updateStats: statsCallback, // Use the full stats callback
+                    drawCallback: drawCallback, // Pass draw callback
                     onStart: () => { },
                     playDropCallback: () => this.deps.soundManager.sfxPlayer.playDrop(),
-                    // Pass empty callbacks for sound/trail as DemoPlayer uses global move/rotate which we hooked?
-                    // No, DemoPlayer imports move/rotate from game.js directly.
-                    // So we need to pass the callbacks to DemoPlayer.
-                    playSoundCallback: () => { }, // We can pass sound callbacks if we want sound during replay
+                    playSoundCallback: () => { },
                     addTrailCallback: () => { },
                     physicsCallbacks: this._getPhysicsCallbacks()
                 },
@@ -213,7 +235,7 @@ export class SinglePlayerMode extends BaseGameMode {
             );
 
             // We need to hook into the game loop for rendering
-            this._startGameLoop();
+            // this._startGameLoop(); // DISABLED: DemoPlayer will drive the loop to ensure determinism
             return;
         }
 

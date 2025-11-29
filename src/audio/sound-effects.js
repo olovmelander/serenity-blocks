@@ -730,6 +730,102 @@ export function createSoundSets(createTone, createRichTone) {
                 });
             },
         },
+        ChromaticImpasto: {
+            move: () => richTone({
+                oscillators: [
+                    { type: 'sine', freq: 65, gain: 0.6 }, // Deep heart-beat sub
+                    { type: 'triangle', freq: 130, gain: 0.15 }, // Warm body
+                ],
+                noise: { type: 'brown', gain: 0.08 }, // Subtle organic texture
+                filter: {
+                    type: 'lowpass', frequency: 250, envAmount: 50, Q: 1,
+                },
+                envelope: { attack: 0.01, decay: 0.2, release: 0.15 }, // Smooth, weighted movement
+                volume: 0.5,
+            }),
+            rotate: () => richTone({
+                oscillators: [
+                    { type: 'sine', freq: 90, gain: 0.3 },
+                    { type: 'sawtooth', freq: 85, gain: 0.1, detune: 5 }, // Chorused texture
+                ],
+                noise: { type: 'pink', gain: 0.05 },
+                filter: {
+                    type: 'bandpass', frequency: 180, envAmount: 150, Q: 1.5,
+                }, // Deep "whoosh" rather than scrape
+                envelope: { attack: 0.03, decay: 0.25, release: 0.1 },
+                volume: 0.4,
+            }),
+            drop: () => richTone({
+                oscillators: [
+                    { type: 'sine', freq: 40, gain: 1.0 }, // Powerful sub-bass impact
+                    { type: 'sine', freq: 80, gain: 0.4 },
+                ],
+                noise: { type: 'brown', gain: 0.15 }, // Heavy impact thud
+                filter: { type: 'lowpass', frequency: 120, Q: 0.8, envAmount: -20 },
+                envelope: { attack: 0.005, decay: 0.6, release: 0.4 },
+                volume: 0.85,
+            }),
+            lineClear: () => {
+                // "Healing" Resonant Chord (C Minor 9: C2, Eb2, G2, Bb2, D3) - Deep, dark, meditative
+                const freqs = [65.41, 77.78, 98.00, 116.54, 146.83];
+                freqs.forEach((f, i) => {
+                    setTimeout(() => richTone({
+                        oscillators: [
+                            { type: 'sine', freq: f, gain: 0.4 }, // Pure fundamental
+                            { type: 'triangle', freq: f * 2, gain: 0.1 }, // First harmonic warmth
+                        ],
+                        filter: { type: 'lowpass', frequency: 400, envAmount: 200, Q: 2 }, // Gong-like resonance
+                        envelope: { attack: 0.1 + (i * 0.05), decay: 2.5, release: 2.0 }, // Long, sustaining tail
+                        volume: 0.5,
+                    }), i * 40); // Slower strum for grandeur
+                });
+                // Deep atmospheric shimmer
+                setTimeout(() => richTone({
+                    noise: { type: 'pink', gain: 0.08 },
+                    filter: { type: 'lowpass', frequency: 600, envAmount: -200, Q: 1 },
+                    envelope: { attack: 0.5, decay: 2.0, release: 1.5 },
+                    volume: 0.2,
+                }), 100);
+            },
+            levelUp: () => {
+                // Deep rising energy (Kundalini rise)
+                richTone({
+                    oscillators: [
+                        { type: 'sine', freq: 110, gain: 0.4 },
+                        { type: 'sine', freq: 112, gain: 0.4 }, // Binaural beat pulsing
+                    ],
+                    filter: {
+                        type: 'lowpass', frequency: 200, envAmount: 800, Q: 4,
+                    },
+                    envelope: { attack: 1.0, decay: 3.0, release: 2.0 },
+                    volume: 0.6,
+                });
+            },
+            gameOver: () => {
+                // Deep resolving drone (Om-like resolution into silence)
+                richTone({
+                    oscillators: [
+                        { type: 'sine', freq: 55, gain: 0.5 }, // Low A
+                        { type: 'sine', freq: 82.4, gain: 0.3 }, // E
+                    ],
+                    noise: { type: 'brown', gain: 0.2 },
+                    filter: { type: 'lowpass', frequency: 150, envAmount: -50 },
+                    envelope: { attack: 0.5, decay: 4.0, release: 3.0 },
+                    volume: 0.7,
+                });
+            },
+            garbageSend: () => {
+                // Heavy, grounded push
+                richTone({
+                    oscillators: [{ type: 'square', freq: 60, gain: 0.2 }],
+                    filter: {
+                        type: 'lowpass', frequency: 150, envAmount: 300, Q: 1,
+                    },
+                    envelope: { attack: 0.05, decay: 0.4, release: 0.2 },
+                    volume: 0.5,
+                });
+            },
+        },
     };
 }
 
