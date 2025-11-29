@@ -1539,27 +1539,25 @@ export class EnhancedBreathingIndicator {
             intensity = this.currentPhase === 'hold1' ? 1 : 0.4;
         }
 
-        // Global rotation for entire nebula - continuous spinning galaxy
-        const globalRotation = time * 0.5;
+        // Spinning rotation - this is the key rotation value
+        const spinAngle = time * 0.4; // Full rotation every ~15 seconds
 
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(globalRotation);
-
-        // Draw nebula gas clouds (rotating with galaxy)
-        for (let cloud = 0; cloud < 8; cloud++) {
-            const cloudAngle = (cloud / 8) * Math.PI * 2;
-            const cloudDist = 60 + cloud * 25;
-            const cloudX = Math.cos(cloudAngle) * cloudDist * intensity;
-            const cloudY = Math.sin(cloudAngle) * cloudDist * intensity;
-            const cloudSize = 80 + Math.sin(time * 0.5 + cloud) * 20;
+        // Draw nebula gas clouds with distinct positions that spin
+        for (let cloud = 0; cloud < 6; cloud++) {
+            // Each cloud has a unique offset so rotation is visible
+            const baseAngle = (cloud / 6) * Math.PI * 2;
+            const cloudAngle = baseAngle + spinAngle; // ADD spin to angle
+            const cloudDist = 100 + (cloud % 3) * 40;
+            const cloudX = centerX + Math.cos(cloudAngle) * cloudDist * intensity;
+            const cloudY = centerY + Math.sin(cloudAngle) * cloudDist * intensity;
+            const cloudSize = 60 + (cloud % 2) * 30 + Math.sin(time * 0.5 + cloud) * 15;
 
             const colors = [color, secondaryColor, tertiaryColor];
             const c = colors[cloud % 3];
 
             const cloudGradient = ctx.createRadialGradient(cloudX, cloudY, 0, cloudX, cloudY, cloudSize);
-            cloudGradient.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.35 * intensity})`);
-            cloudGradient.addColorStop(0.5, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.15 * intensity})`);
+            cloudGradient.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.4 * intensity})`);
+            cloudGradient.addColorStop(0.5, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.2 * intensity})`);
             cloudGradient.addColorStop(1, 'transparent');
             ctx.fillStyle = cloudGradient;
             ctx.beginPath();
@@ -1567,14 +1565,15 @@ export class EnhancedBreathingIndicator {
             ctx.fill();
         }
 
-        // Draw spiral arms (more prominent, spinning)
+        // Draw spinning spiral arms - the spin is built into the angle calculation
         for (let arm = 0; arm < 3; arm++) {
             ctx.beginPath();
-            for (let t = 0; t < 4; t += 0.03) {
-                const spiralR = 20 + t * 55 * intensity;
-                const spiralAngle = t * 2.5 + arm * (Math.PI * 2 / 3);
-                const x = Math.cos(spiralAngle) * spiralR;
-                const y = Math.sin(spiralAngle) * spiralR;
+            for (let t = 0; t < 4; t += 0.02) {
+                const spiralR = 15 + t * 60 * intensity;
+                // Add spinAngle to make arms rotate!
+                const spiralAngle = t * 2.5 + arm * (Math.PI * 2 / 3) + spinAngle;
+                const x = centerX + Math.cos(spiralAngle) * spiralR;
+                const y = centerY + Math.sin(spiralAngle) * spiralR;
 
                 if (t === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
@@ -1582,24 +1581,25 @@ export class EnhancedBreathingIndicator {
             
             const armColors = [secondaryColor, color, tertiaryColor];
             const ac = armColors[arm];
-            ctx.strokeStyle = `rgba(${ac.r}, ${ac.g}, ${ac.b}, ${0.5 * intensity})`;
-            ctx.lineWidth = 20;
+            ctx.strokeStyle = `rgba(${ac.r}, ${ac.g}, ${ac.b}, ${0.6 * intensity})`;
+            ctx.lineWidth = 18;
             ctx.lineCap = 'round';
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = `rgba(${ac.r}, ${ac.g}, ${ac.b}, 0.7)`;
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = `rgba(${ac.r}, ${ac.g}, ${ac.b}, 0.8)`;
             ctx.stroke();
         }
 
-        // Draw stars along spiral arms (rotating with galaxy)
-        for (let i = 0; i < 80; i++) {
-            const starT = (i / 80) * 4;
+        // Draw stars along spiral arms - they spin with the arms
+        for (let i = 0; i < 100; i++) {
+            const starT = (i / 100) * 4;
             const armIndex = i % 3;
-            const spiralAngle = starT * 2.5 + armIndex * (Math.PI * 2 / 3) + Math.sin(i * 0.5) * 0.3;
-            const spiralR = 20 + starT * 55 * intensity + Math.sin(i * 2) * 15;
-            const starX = Math.cos(spiralAngle) * spiralR;
-            const starY = Math.sin(spiralAngle) * spiralR;
-            const twinkle = Math.sin(time * 4 + i * 1.3) * 0.5 + 0.5;
-            const starSize = 1.5 + twinkle * 2;
+            // Add spinAngle to make stars rotate with the galaxy!
+            const spiralAngle = starT * 2.5 + armIndex * (Math.PI * 2 / 3) + spinAngle + Math.sin(i * 0.5) * 0.2;
+            const spiralR = 15 + starT * 60 * intensity + Math.sin(i * 2) * 12;
+            const starX = centerX + Math.cos(spiralAngle) * spiralR;
+            const starY = centerY + Math.sin(spiralAngle) * spiralR;
+            const twinkle = Math.sin(time * 5 + i * 1.3) * 0.5 + 0.5;
+            const starSize = 1.5 + twinkle * 2.5;
 
             const starGradient = ctx.createRadialGradient(starX, starY, 0, starX, starY, starSize * 2);
             starGradient.addColorStop(0, `rgba(255, 255, 255, ${twinkle * intensity})`);
@@ -1611,11 +1611,25 @@ export class EnhancedBreathingIndicator {
             ctx.fill();
         }
 
-        ctx.restore();
+        // Add some outer orbiting bright stars for extra spin visibility
+        for (let i = 0; i < 12; i++) {
+            const orbitAngle = (i / 12) * Math.PI * 2 + spinAngle * 1.2; // Slightly faster spin
+            const orbitDist = 180 + (i % 3) * 30;
+            const starX = centerX + Math.cos(orbitAngle) * orbitDist * intensity;
+            const starY = centerY + Math.sin(orbitAngle) * orbitDist * intensity;
+            const brightness = Math.sin(time * 3 + i * 2) * 0.3 + 0.7;
+            
+            ctx.fillStyle = `rgba(255, 255, 255, ${brightness * intensity * 0.8})`;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${brightness * intensity})`;
+            ctx.beginPath();
+            ctx.arc(starX, starY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // Central bright core (stationary, pulsing)
         const corePulse = Math.sin(time * 2) * 0.1 + 1;
-        const coreRadius = 50 * intensity * corePulse;
+        const coreRadius = 45 * intensity * corePulse;
         const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreRadius);
         coreGradient.addColorStop(0, `rgba(255, 255, 255, ${0.95 * intensity})`);
         coreGradient.addColorStop(0.2, `rgba(255, 240, 220, ${0.8 * intensity})`);
@@ -1630,11 +1644,11 @@ export class EnhancedBreathingIndicator {
         ctx.fill();
 
         // Ring animations (spinning opposite direction)
-        this.outerRing.style.transform = `translate(-50%, -50%) scale(${intensity * 1.3}) rotate(${-time * 20}deg)`;
+        this.outerRing.style.transform = `translate(-50%, -50%) scale(${intensity * 1.3}) rotate(${-time * 30}deg)`;
         this.outerRing.style.opacity = intensity * 0.2;
-        this.middleRing.style.transform = `translate(-50%, -50%) scale(${intensity}) rotate(${time * 25}deg)`;
+        this.middleRing.style.transform = `translate(-50%, -50%) scale(${intensity}) rotate(${time * 40}deg)`;
         this.middleRing.style.opacity = intensity * 0.25;
-        this.innerRing.style.transform = `translate(-50%, -50%) scale(${intensity * 0.7}) rotate(${-time * 30}deg)`;
+        this.innerRing.style.transform = `translate(-50%, -50%) scale(${intensity * 0.7}) rotate(${-time * 50}deg)`;
         this.innerRing.style.opacity = intensity * 0.3;
         this.coreCircle.style.transform = `translate(-50%, -50%) scale(${intensity * 0.5})`;
         this.coreCircle.style.opacity = intensity * 0.9;
