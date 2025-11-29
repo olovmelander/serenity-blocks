@@ -680,9 +680,9 @@ export class SerenityMode extends BaseGameMode {
             return;
         }
 
-        const techniques = ['deep-relaxation', 'box-breathing', 'calm-sleep', 'energizing', 'coherence', 'triangle', 'wim-hof'];
-        const settings = this.deps.settingsManager.get();
-        const currentTechnique = settings.breathingTechnique || 'deep-relaxation';
+        // Get techniques dynamically from the breathing indicator
+        const techniques = Object.keys(window.breathingIndicator.techniques);
+        const currentTechnique = window.breathingIndicator.currentTechnique || 'deep-relaxation';
         const currentIndex = techniques.indexOf(currentTechnique);
         const nextIndex = (currentIndex + 1) % techniques.length;
         const nextTechnique = techniques[nextIndex];
