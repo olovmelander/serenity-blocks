@@ -85,6 +85,7 @@ export const THEME_REGISTRY = [
         displayName: 'Aurora',
         module: './aurora/aurora-theme.js',
         group: 'sky',
+        icon: './aurora/aurora-theme-icon.png',
     },
     {
         id: 'galaxy',
@@ -213,6 +214,7 @@ export const THEME_REGISTRY = [
         displayName: 'Chromatic Impasto',
         module: './chromatic-impasto/chromatic-impasto-theme.js',
         group: 'abstract',
+        icon: './chromatic-impasto/chromatic-impasto-theme-icon.png',
     },
     {
         id: 'voltage-storm',

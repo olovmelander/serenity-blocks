@@ -601,23 +601,16 @@ const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
  */
-export function gameLoop(
-    time,
-    gameState,
-    drawCallback,
-    updateStatsCallback,
-    playDropCallback,
-    physicsCallbacks,
-) {
-    // SAFETY CHECK: Detect duplicate RAF loops
-    activeLoopCount++;
-    if (activeLoopCount > MAX_CONCURRENT_LOOPS) {
-        console.warn(`[PERFORMANCE WARNING] ${activeLoopCount} concurrent game loops detected! Canceling to prevent exponential growth.`);
-        activeLoopCount--;
-        return; // Exit early to prevent loop multiplication
-    }
-
+/**
+ * Core game update logic (separated from loop for external control)
+ * @param {number} time - Current timestamp
+ * @param {GameState} gameState - Current game state
+ * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
+ */
+export function updateGame(time, gameState, callbacks) {
+    const { drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks } = callbacks;
     const monitoring = performanceMonitor && performanceMonitor.enabled;
+
     if (monitoring) {
         performanceMonitor.updateStart();
     }
@@ -626,7 +619,6 @@ export function gameLoop(
         if (monitoring) {
             performanceMonitor.updateEnd();
         }
-        activeLoopCount--;
         return;
     }
 
@@ -664,6 +656,45 @@ export function gameLoop(
         if (monitoring) {
             performanceMonitor.updateEnd();
         }
+    }
+}
+
+/**
+ * Main game loop function
+ * @param {number} time - Current timestamp from requestAnimationFrame
+ * @param {GameState} gameState - Current game state
+ * @param {Function} drawCallback - Function to draw the game
+ * @param {Function} updateStatsCallback - Function to update stats display
+ * @param {Function} playDropCallback - Callback to play drop sound
+ * @param {Object} physicsCallbacks - Callbacks for physics processing
+ */
+export function gameLoop(
+    time,
+    gameState,
+    drawCallback,
+    updateStatsCallback,
+    playDropCallback,
+    physicsCallbacks,
+) {
+    // SAFETY CHECK: Detect duplicate RAF loops
+    activeLoopCount++;
+    if (activeLoopCount > MAX_CONCURRENT_LOOPS) {
+        console.warn(`[PERFORMANCE WARNING] ${activeLoopCount} concurrent game loops detected! Canceling to prevent exponential growth.`);
+        activeLoopCount--;
+        return; // Exit early to prevent loop multiplication
+    }
+
+    // Delegate to updateGame
+    updateGame(time, gameState, {
+        drawCallback,
+        updateStatsCallback,
+        playDropCallback,
+        physicsCallbacks
+    });
+
+    if (gameState.isGameOver) {
+        activeLoopCount--;
+        return;
     }
 
     // CRITICAL FIX: Schedule next frame ONCE at the end (not in pause branch)

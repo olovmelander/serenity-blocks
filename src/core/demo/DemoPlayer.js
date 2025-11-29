@@ -4,7 +4,7 @@
  */
 
 import { seededRandom } from '../../utils/helpers.js';
-import { GameState, gameLoop, spawnPiece, fillBag, move, rotate, softDrop, hardDrop } from '../game.js';
+import { GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop } from '../game.js';
 import { LEVEL_SPEEDS } from '../constants.js';
 
 export class DemoPlayer {
@@ -64,7 +64,10 @@ export class DemoPlayer {
 
         // Setup time
         this.startTime = performance.now();
-        this.gameState.lastTime = this.startTime;
+        // CRITICAL: Initialize lastTime to 0 because we will feed 'elapsedTime' (starting at 0) 
+        // to updateGame, ensuring deterministic physics steps regardless of real-world start time.
+        this.gameState.lastTime = 0;
+        this.lastSimulatedTime = 0;
 
         // Initialize bag and spawn first piece
         fillBag(this.gameState.nextPieces, this.gameState.randomGenerator);
@@ -99,7 +102,7 @@ export class DemoPlayer {
         this.startTime += pauseDuration;
         if (this.gameState) {
             this.gameState.isPaused = false;
-            this.gameState.lastTime = performance.now();
+            // We don't reset lastTime here because we are using elapsedTime derived from startTime
         }
     }
 
@@ -150,53 +153,75 @@ export class DemoPlayer {
      * Main playback loop (input scheduler)
      * @private
      */
-    _loop() {
+    async _loop() {
         if (!this.isPlaying) return;
 
         if (!this.isPaused) {
             const currentTime = performance.now();
-            // Calculate elapsed game time (scaled by speed if we were doing variable speed simulation, 
-            // but for deterministic replay we need to be careful. 
-            // Actually, we should process inputs based on elapsed real time * speed)
+            // Calculate target game time (scaled by speed)
+            const targetTime = (currentTime - this.startTime) * this.playbackSpeed;
 
-            const elapsedTime = (currentTime - this.startTime) * this.playbackSpeed;
+            // Catch up simulation to target time, stepping through inputs
+            while (this.lastSimulatedTime < targetTime) {
+                // Determine the time of the next input
+                let nextInputTime = Infinity;
+                if (this.currentInputIndex < this.demo.inputs.length) {
+                    nextInputTime = this.demo.inputs[this.currentInputIndex].t;
+                }
 
-            // Process pending inputs
-            while (this.currentInputIndex < this.demo.inputs.length) {
-                const input = this.demo.inputs[this.currentInputIndex];
+                // Determine our next step: either the target time or the next input time
+                // We clamp to targetTime so we don't run ahead of real time
+                let stepTime = Math.min(targetTime, nextInputTime);
 
-                if (input.t <= elapsedTime) {
+                // Ensure we make at least a tiny step to avoid infinite loops if times are identical
+                // but strictly speaking, if stepTime == lastSimulatedTime, we just process the input.
+
+                // 1. Advance physics to the step time
+                if (stepTime > this.lastSimulatedTime) {
+                    updateGame(stepTime, this.gameState, this.callbacks);
+                    this.lastSimulatedTime = stepTime;
+
+                    // CRITICAL: Wait for any async physics (locking/clearing) triggered by updateGame
+                    if (this.gameState.latestPhysicsPromise) {
+                        await this.gameState.latestPhysicsPromise;
+                        this.gameState.latestPhysicsPromise = null;
+                    }
+                }
+
+                // 2. If we reached an input time, apply it
+                if (this.currentInputIndex < this.demo.inputs.length &&
+                    this.lastSimulatedTime >= nextInputTime) {
+
+                    const input = this.demo.inputs[this.currentInputIndex];
                     this._applyInput(input);
+
+                    // CRITICAL: Wait for any async physics triggered by input
+                    if (this.gameState.latestPhysicsPromise) {
+                        await this.gameState.latestPhysicsPromise;
+                        this.gameState.latestPhysicsPromise = null;
+                    }
+
                     this.currentInputIndex++;
-                } else {
+
+                    // IMPORTANT: If we processed an input, we loop again. 
+                    // This allows multiple inputs at the same timestamp to be processed 
+                    // before advancing physics further, or allows physics to run immediately after.
+                    continue;
+                }
+
+                // If we reached targetTime and no inputs are pending at this exact time, we are done for this frame
+                if (this.lastSimulatedTime >= targetTime) {
                     break;
                 }
             }
 
             // Check if demo ended
             if (this.currentInputIndex >= this.demo.inputs.length && !this.gameState.currentPiece && !this.gameState.isProcessingPhysics) {
-                // Wait a bit after last input to show final state? 
-                // Or just rely on game over state if recorded
-                if (elapsedTime > this.demo.metadata.duration + 1000) {
+                if (this.lastSimulatedTime > this.demo.metadata.duration + 1000) {
                     this.stopPlayback();
                     return;
                 }
             }
-
-            // Run game loop logic
-            // We need to trick the game loop into thinking time has passed according to playback speed
-            // But gameLoop uses performance.now() internally. 
-            // For true speed control, we might need to modify gameLoop or pass a custom time provider.
-            // For now, let's just let the game loop run normally, but we inject inputs at the right time.
-            // Wait, if we change playback speed, the game physics (gravity) also needs to speed up?
-            // The current gameLoop uses delta time. If we want 2x speed, we can't just run gameLoop normally.
-            // We would need to call gameLoop logic multiple times or with larger delta?
-
-            // Actually, for simple replay at 1x, we just feed inputs.
-            // For >1x, we might need to step the physics faster.
-
-            // Let's stick to 1x for now to ensure determinism first. 
-            // Speed control is tricky with the current game loop structure without refactoring.
         }
 
         this.animationId = requestAnimationFrame(() => this._loop());
@@ -247,48 +272,60 @@ export class DemoPlayer {
 
         // 1. Reset Game State
         this._resetState();
+        this.gameState.lastTime = 0;
+        this.lastSimulatedTime = 0;
 
         // 2. Fast-forward inputs AND simulate time (gravity)
         this.isSeeking = true;
         this.gameState.isSeeking = true; // Flag for physics to skip delays
         this.currentInputIndex = 0;
 
-        let simulatedTime = 0;
+        // Use muted callbacks for seeking
+        const callbacks = this._getMutedCallbacks();
 
-        // We need to simulate the time passing between inputs to trigger auto-drops (gravity)
-        // Otherwise pieces won't fall and inputs will apply to wrong positions
-        while (simulatedTime < targetTime) {
-            // Find next event time (either next input or target time)
-            let nextInput = this.demo.inputs[this.currentInputIndex];
-            let nextEventTime = nextInput ? nextInput.t : targetTime;
-
-            // Cap at targetTime
-            if (nextEventTime > targetTime) nextEventTime = targetTime;
-
-            // Calculate time delta to simulate
-            let deltaTime = nextEventTime - simulatedTime;
-
-            // Simulate gravity/game loop for this delta
-            if (deltaTime > 0) {
-                await this._simulateGameLoop(deltaTime);
-                simulatedTime += deltaTime;
+        // Catch up simulation to target time, stepping through inputs
+        while (this.lastSimulatedTime < targetTime) {
+            // Determine the time of the next input
+            let nextInputTime = Infinity;
+            if (this.currentInputIndex < this.demo.inputs.length) {
+                nextInputTime = this.demo.inputs[this.currentInputIndex].t;
             }
 
-            // Apply input if we reached it
-            if (nextInput && nextInput.t <= simulatedTime) {
-                this._applyInput(nextInput);
+            // Determine our next step
+            let stepTime = Math.min(targetTime, nextInputTime);
 
-                // CRITICAL: Wait for any async physics to complete before processing next input
+            // 1. Advance physics to the step time
+            if (stepTime > this.lastSimulatedTime) {
+                updateGame(stepTime, this.gameState, callbacks);
+                this.lastSimulatedTime = stepTime;
+
+                // CRITICAL: Wait for any async physics (locking/clearing) triggered by updateGame
+                if (this.gameState.latestPhysicsPromise) {
+                    await this.gameState.latestPhysicsPromise;
+                    this.gameState.latestPhysicsPromise = null;
+                }
+            }
+
+            // 2. If we reached an input time, apply it
+            if (this.currentInputIndex < this.demo.inputs.length &&
+                this.lastSimulatedTime >= nextInputTime) {
+
+                const input = this.demo.inputs[this.currentInputIndex];
+                this._applyInput(input);
+
+                // CRITICAL: Wait for any async physics triggered by input (e.g. hard drop)
                 if (this.gameState.latestPhysicsPromise) {
                     await this.gameState.latestPhysicsPromise;
                     this.gameState.latestPhysicsPromise = null;
                 }
 
                 this.currentInputIndex++;
+                continue;
             }
 
-            // Break if we've processed all inputs and reached target
-            if (!nextInput && simulatedTime >= targetTime) break;
+            if (this.lastSimulatedTime >= targetTime) {
+                break;
+            }
         }
 
         // Update start time to match the seek position

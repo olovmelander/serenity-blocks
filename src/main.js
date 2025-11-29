@@ -1340,6 +1340,7 @@ class SerenityBlocks {
                 wolfhour: 'Wolfhour',
                 'neon-dusk': 'NeonDusk',
                 'blood-moon': 'BloodMoon',
+                'chromatic-impasto': 'ChromaticImpasto',
             };
 
             if (themeSoundMap[themeName]) {
