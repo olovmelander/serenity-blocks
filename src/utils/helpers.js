@@ -25,3 +25,16 @@ export function seededRandom(seed) {
         return state / 233280;
     };
 }
+
+/**
+ * Format time in MM:SS format
+ * @param {number} ms - Time in milliseconds
+ * @returns {string} Formatted time string
+ */
+export function formatTime(ms) {
+    if (!ms || isNaN(ms)) return '00:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}

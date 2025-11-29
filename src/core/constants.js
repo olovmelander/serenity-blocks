@@ -191,6 +191,9 @@ export const DEFAULT_SETTINGS = {
     // Game mode
     gameMode: GAME_MODES.SINGLE_PLAYER,
 
+    // Demo settings
+    autoRecordDemos: true,
+
     // Input settings
     dasDelay: 120,
     dasInterval: 40,

@@ -578,7 +578,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     // Start physics processing
     if (physicsCallbacks) {
         gameState.isProcessingPhysics = true;
-        processPhysics(gameState, physicsCallbacks).then(() => {
+        gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks).then(() => {
             gameState.isProcessingPhysics = false;
             // Spawn next piece after physics is complete
             if (physicsCallbacks.spawnPiece) {
@@ -591,6 +591,73 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
 // SAFETY: Track active RAF loops to detect duplicates
 let activeLoopCount = 0;
 const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
+
+/**
+ * Main game loop function
+ * @param {number} time - Current timestamp from requestAnimationFrame
+ * @param {GameState} gameState - Current game state
+ * @param {Function} drawCallback - Function to draw the game
+ * @param {Function} updateStatsCallback - Function to update stats display
+ * @param {Function} playDropCallback - Callback to play drop sound
+ * @param {Object} physicsCallbacks - Callbacks for physics processing
+ */
+/**
+ * Core game update logic (separated from loop for external control)
+ * @param {number} time - Current timestamp
+ * @param {GameState} gameState - Current game state
+ * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
+ */
+export function updateGame(time, gameState, callbacks) {
+    const { drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks } = callbacks;
+    const monitoring = performanceMonitor && performanceMonitor.enabled;
+
+    if (monitoring) {
+        performanceMonitor.updateStart();
+    }
+
+    if (gameState.isGameOver) {
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+        }
+        return;
+    }
+
+    // PERFORMANCE FIX: Process game logic only when not paused
+    if (!gameState.isPaused) {
+        const delta = time - gameState.lastTime;
+        gameState.lastTime = time;
+
+        // Auto drop
+        if (!gameState.isProcessingPhysics && gameState.currentPiece) {
+            gameState.dropCounter += delta;
+            if (gameState.dropCounter > gameState.dropInterval) {
+                softDrop(gameState, playDropCallback, physicsCallbacks);
+            }
+        }
+
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+            performanceMonitor.renderStart();
+        }
+    }
+
+    // Draw if running OR if forced (e.g. during seek)
+    if (!gameState.isPaused || gameState.forceDraw) {
+        if (drawCallback) drawCallback();
+        if (monitoring && !gameState.isPaused) {
+            performanceMonitor.renderEnd();
+        }
+        if (updateStatsCallback) updateStatsCallback();
+
+        // Reset force flag
+        gameState.forceDraw = false;
+    } else {
+        // When paused, still finish monitoring this frame
+        if (monitoring) {
+            performanceMonitor.updateEnd();
+        }
+    }
+}
 
 /**
  * Main game loop function
@@ -617,47 +684,17 @@ export function gameLoop(
         return; // Exit early to prevent loop multiplication
     }
 
-    const monitoring = performanceMonitor && performanceMonitor.enabled;
-    if (monitoring) {
-        performanceMonitor.updateStart();
-    }
+    // Delegate to updateGame
+    updateGame(time, gameState, {
+        drawCallback,
+        updateStatsCallback,
+        playDropCallback,
+        physicsCallbacks
+    });
 
     if (gameState.isGameOver) {
-        if (monitoring) {
-            performanceMonitor.updateEnd();
-        }
         activeLoopCount--;
         return;
-    }
-
-    // PERFORMANCE FIX: Process game logic only when not paused
-    if (!gameState.isPaused) {
-        const delta = time - gameState.lastTime;
-        gameState.lastTime = time;
-
-        // Auto drop
-        if (!gameState.isProcessingPhysics && gameState.currentPiece) {
-            gameState.dropCounter += delta;
-            if (gameState.dropCounter > gameState.dropInterval) {
-                softDrop(gameState, playDropCallback, physicsCallbacks);
-            }
-        }
-
-        if (monitoring) {
-            performanceMonitor.updateEnd();
-            performanceMonitor.renderStart();
-        }
-
-        if (drawCallback) drawCallback();
-        if (monitoring) {
-            performanceMonitor.renderEnd();
-        }
-        if (updateStatsCallback) updateStatsCallback();
-    } else {
-        // When paused, still finish monitoring this frame
-        if (monitoring) {
-            performanceMonitor.updateEnd();
-        }
     }
 
     // CRITICAL FIX: Schedule next frame ONCE at the end (not in pause branch)

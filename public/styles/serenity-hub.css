@@ -101,10 +101,13 @@
 }
 
 @keyframes gentle-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.5;
     transform: translate(-50%, -50%) scale(1);
   }
+
   50% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1.2);
@@ -132,10 +135,13 @@
 }
 
 @keyframes breathing-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(-50%, -50%) scale(1);
     opacity: 0.3;
   }
+
   50% {
     transform: translate(-50%, -50%) scale(1.5);
     opacity: 0.8;
@@ -148,12 +154,16 @@
 }
 
 @keyframes music-wave {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(-50%, -50%) scale(1);
   }
+
   25% {
     transform: translate(-50%, -50%) scale(1.1);
   }
+
   75% {
     transform: translate(-50%, -50%) scale(0.95);
   }
@@ -222,7 +232,7 @@
   border-radius: var(--hub-radius-lg);
   border: 1px solid var(--hub-border);
   box-shadow: 0 8px 32px var(--hub-shadow),
-              0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
   z-index: 2000;
   opacity: 0;
   pointer-events: none;
@@ -250,8 +260,8 @@
   padding: var(--hub-spacing-lg);
   border-bottom: 1px solid var(--hub-border);
   background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    transparent 100%);
+      rgba(255, 255, 255, 0.05) 0%,
+      transparent 100%);
 }
 
 .hub-title {
@@ -355,6 +365,7 @@
     transform: scaleX(0);
     opacity: 0;
   }
+
   to {
     transform: scaleX(1);
     opacity: 1;
@@ -410,6 +421,7 @@
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -505,6 +517,7 @@
    Reduced Motion Support
    =========================== */
 @media (prefers-reduced-motion: reduce) {
+
   .serenity-hub-icon,
   .serenity-hub-backdrop,
   .serenity-hub-panel,
@@ -541,6 +554,7 @@
    Print Styles
    =========================== */
 @media print {
+
   .serenity-hub-icon,
   .serenity-hub-backdrop,
   .serenity-hub-panel {
@@ -626,15 +640,15 @@
   border-radius: 50%;
 }
 
-.toggle-switch input:checked + .toggle-slider {
+.toggle-switch input:checked+.toggle-slider {
   background: var(--hub-accent);
 }
 
-.toggle-switch input:checked + .toggle-slider:before {
+.toggle-switch input:checked+.toggle-slider:before {
   transform: translateX(26px);
 }
 
-.toggle-switch input:focus-visible + .toggle-slider {
+.toggle-switch input:focus-visible+.toggle-slider {
   outline: 2px solid white;
   outline-offset: 2px;
 }
@@ -699,8 +713,15 @@
 }
 
 @keyframes gentle-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
 }
 
 .technique-emoji {
@@ -740,10 +761,13 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.6;
     text-shadow: 0 0 8px currentColor;
   }
+
   50% {
     opacity: 1;
     text-shadow: 0 0 16px currentColor;
@@ -906,8 +930,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 .now-playing-header h3 {
@@ -955,8 +986,13 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .vinyl-center {
@@ -1327,11 +1363,9 @@
 }
 
 .playlist-item.active {
-  background: linear-gradient(
-    90deg,
-    rgba(102, 126, 234, 0.2) 0%,
-    rgba(118, 75, 162, 0.1) 100%
-  );
+  background: linear-gradient(90deg,
+      rgba(102, 126, 234, 0.2) 0%,
+      rgba(118, 75, 162, 0.1) 100%);
   border-color: var(--music-primary);
 }
 
@@ -1377,8 +1411,15 @@
 }
 
 @keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
 /* Music Tab Mobile Responsive */
@@ -1622,8 +1663,15 @@
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 .active-indicator {
@@ -1645,9 +1693,17 @@
 }
 
 @keyframes pop {
-  0% { transform: scale(0); }
-  50% { transform: scale(1.2); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(0);
+  }
+
+  50% {
+    transform: scale(1.2);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Theme Info */
@@ -1723,8 +1779,13 @@
 }
 
 @keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .btn-text {
@@ -1868,18 +1929,39 @@
 }
 
 @keyframes swipe-left {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(-8px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(-8px);
+  }
 }
 
 @keyframes swipe-right {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(8px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(8px);
+  }
 }
 
 @keyframes swipe-bounce {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 .swipe-text {
@@ -1924,10 +2006,13 @@
 }
 
 @keyframes gamepad-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     outline-color: #667eea;
     box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
   }
+
   50% {
     outline-color: #764ba2;
     box-shadow: 0 0 25px rgba(118, 75, 162, 0.8);
@@ -2137,5 +2222,84 @@
   .hint-button {
     background: white;
     color: black;
+  }
+}
+
+/* ===========================
+   Replays Icon (Floating Button below Serenity Hub)
+   =========================== */
+.replays-icon {
+  position: fixed;
+  top: 90px;
+  right: 25px;
+  /* Adjusted to center with serenity hub (60px vs 50px width) */
+  width: 50px;
+  height: 50px;
+  cursor: pointer;
+  z-index: 1000;
+  opacity: 0;
+  /* Hidden by default */
+  transform: scale(0.9);
+  transition: all var(--hub-transition-normal);
+  pointer-events: none;
+  /* Not clickable when hidden */
+}
+
+.replays-icon.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+
+.replays-icon:hover {
+  transform: scale(1.05);
+}
+
+.replays-icon:active {
+  transform: scale(0.95);
+}
+
+/* Replays Icon SVG */
+.replays-icon-svg {
+  width: 100%;
+  height: 100%;
+  color: white;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+  transition: all var(--hub-transition-fast);
+}
+
+.replays-icon:hover .replays-icon-svg {
+  filter: drop-shadow(0 6px 16px rgba(255, 255, 255, 0.4));
+}
+
+/* Replays Icon Glow Effect */
+.replays-icon-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3), transparent);
+  filter: blur(10px);
+  animation: gentle-glow 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Focus state for accessibility */
+.replays-icon:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .replays-icon {
+    top: 75px;
+    right: 15px;
+    width: 42px;
+    height: 42px;
   }
 }

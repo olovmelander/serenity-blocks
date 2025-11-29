@@ -34,6 +34,11 @@ export class ModalManager {
             modal.classList.add('visible');
             if (modalName === 'start') {
                 document.body.classList.add('start-modal-open');
+                // Show replays icon when start modal is open
+                const replaysIcon = document.getElementById('open-replays-btn');
+                if (replaysIcon) {
+                    replaysIcon.classList.add('visible');
+                }
             }
             window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName } }));
 
@@ -54,6 +59,11 @@ export class ModalManager {
             modal.classList.remove('visible');
             if (modalName === 'start') {
                 document.body.classList.remove('start-modal-open');
+                // Hide replays icon when start modal closes
+                const replaysIcon = document.getElementById('open-replays-btn');
+                if (replaysIcon) {
+                    replaysIcon.classList.remove('visible');
+                }
             }
             window.dispatchEvent(new CustomEvent('modalHidden', { detail: { modalName } }));
 
@@ -96,8 +106,10 @@ export function showStartModal(modalManager) {
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} gameState - Current game state
  * @param {Object} highScoreManager - High score manager instance
+ * @param {Object} demoManager - Demo manager instance (optional)
+ * @param {Object} demo - Recorded demo object (optional)
  */
-export async function showGameOverModal(modalManager, gameState, highScoreManager) {
+export async function showGameOverModal(modalManager, gameState, highScoreManager, demoManager = null, demo = null) {
     const {
         score, lines, level, dropInterval, startTime, piecesPlaced,
     } = gameState;
@@ -123,6 +135,51 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
     // Calculate efficiency metrics
     const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
     const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
+
+    // Prepare demo buttons HTML
+    let demoButtonsHTML = '';
+
+    console.log('[Modals] showGameOverModal - demoManager:', !!demoManager, 'demo:', !!demo);
+    console.log('[Modals] Demo object details:', demo);
+    console.log('[Modals] DemoManager object details:', demoManager);
+
+    // Store original values for button functionality
+    const originalDemoManager = demoManager;
+    const originalDemo = demo;
+
+    // DEBUG: Force dummy objects if missing (for UI testing only)
+    if (!demo) {
+        console.warn('[Modals] Demo missing, creating dummy demo for UI testing');
+        demo = { version: '1.0', inputs: [], metadata: { duration: 0 } };
+    }
+
+    if (!demoManager) {
+        console.warn('[Modals] DemoManager missing, creating dummy manager for UI testing');
+        demoManager = {
+            saveDemo: async (d) => { console.log('Dummy save called'); alert('Demo saved (dummy)'); },
+            exportToURL: async (d) => { const url = 'http://dummy-url'; console.log('Dummy export called'); await navigator.clipboard.writeText(url); alert('Link copied (dummy)'); }
+        };
+    }
+
+    // ALWAYS show buttons
+    demoButtonsHTML = `
+        <div class="demo-actions" style="margin-top: 20px; display: flex; gap: 15px; justify-content: center; width: 100%;">
+            <button id="save-replay-btn" class="action-btn" style="flex: 1; min-width: 160px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; white-space: nowrap;">
+                <span class="icon" style="font-size: 18px;">💾</span> Save Replay
+            </button>
+            <button id="share-replay-btn" class="action-btn" style="flex: 1; min-width: 160px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; white-space: nowrap;">
+                <span class="icon" style="font-size: 18px;">🔗</span> Share Replay
+            </button>
+        </div>
+    `;
+
+    // Show debug info in footer
+    const footerText = document.querySelector('#game-over-modal p');
+    if (footerText) {
+        const realMgr = !!originalDemoManager;
+        const realDemo = !!originalDemo;
+        footerText.innerHTML = `Press any key or tap to restart<br><small style="font-size: 10px; color: #666;">Real: Demo=${realDemo}, Mgr=${realMgr} | Inputs=${originalDemo?.inputs?.length || 0}</small>`;
+    }
 
     try {
         // Get rank and statistics
@@ -244,6 +301,7 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                     </div>
                 </div>
             </div>
+            ${demoButtonsHTML}
         `;
     } catch (error) {
         console.error('Error displaying game over stats:', error);
@@ -269,10 +327,70 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                     </div>
                 </div>
             </div>
+            ${demoButtonsHTML}
         `;
     }
 
     modalManager.show('gameOver');
+
+    // Add event listeners for demo buttons - use ORIGINAL objects if available
+    const saveBtn = document.getElementById('save-replay-btn');
+    const shareBtn = document.getElementById('share-replay-btn');
+
+    if (saveBtn) {
+        console.log('[Modals] Save Replay button found, attaching listener');
+        console.log('[Modals] Using real demo:', !!originalDemo, 'real manager:', !!originalDemoManager);
+
+        saveBtn.addEventListener('click', async () => {
+            try {
+                saveBtn.innerHTML = '<span class="icon">⏳</span> Saving...';
+
+                // Use original demo and manager if available
+                if (originalDemoManager && originalDemo) {
+                    await originalDemoManager.saveDemo(originalDemo);
+                    saveBtn.innerHTML = '<span class="icon">✅</span> Saved!';
+                } else {
+                    // Fallback to dummy
+                    await demoManager.saveDemo(demo);
+                    saveBtn.innerHTML = '<span class="icon">✅</span> Saved (dummy)!';
+                }
+
+                saveBtn.disabled = true;
+                saveBtn.style.opacity = '0.7';
+                saveBtn.style.cursor = 'default';
+            } catch (err) {
+                console.error('Failed to save demo:', err);
+                saveBtn.innerHTML = '<span class="icon">❌</span> Error';
+            }
+        });
+    }
+
+    if (shareBtn) {
+        shareBtn.addEventListener('click', async () => {
+            try {
+                shareBtn.innerHTML = '<span class="icon">⏳</span> Generating...';
+
+                // Use original demo and manager if available
+                if (originalDemoManager && originalDemo) {
+                    const url = await originalDemoManager.exportToURL(originalDemo);
+                    await navigator.clipboard.writeText(url);
+                    shareBtn.innerHTML = '<span class="icon">🔗</span> Copied!';
+                } else {
+                    // Fallback to dummy
+                    const url = await demoManager.exportToURL(demo);
+                    await navigator.clipboard.writeText(url);
+                    shareBtn.innerHTML = '<span class="icon">🔗</span> Copied (dummy)!';
+                }
+
+                shareBtn.disabled = true;
+                shareBtn.style.opacity = '0.7';
+                shareBtn.style.cursor = 'default';
+            } catch (err) {
+                console.error('Failed to share demo:', err);
+                shareBtn.innerHTML = '<span class="icon">❌</span> Error';
+            }
+        });
+    }
 }
 
 /**
@@ -398,27 +516,10 @@ export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
     } = callbacks;
 
     // Settings button (single player)
-    const settingsBtn = document.getElementById('settings-btn');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', () => {
-            showSettingsModal(modalManager);
-            if (onSettingsOpen) onSettingsOpen();
-        });
-    }
-
-    // Settings button (multiplayer)
-    const settingsBtnMp = document.getElementById('settings-btn-mp');
-    if (settingsBtnMp) {
-        settingsBtnMp.addEventListener('click', () => {
-            showSettingsModal(modalManager);
-            if (onSettingsOpen) onSettingsOpen();
-        });
-    }
-
-    // Settings button (start modal)
-    const settingsBtnStart = document.getElementById('settings-btn-start');
-    if (settingsBtnStart) {
-        settingsBtnStart.addEventListener('click', () => {
+    // Global Settings button
+    const settingsBtnGlobal = document.getElementById('settings-btn-global');
+    if (settingsBtnGlobal) {
+        settingsBtnGlobal.addEventListener('click', () => {
             showSettingsModal(modalManager);
             if (onSettingsOpen) onSettingsOpen();
         });
