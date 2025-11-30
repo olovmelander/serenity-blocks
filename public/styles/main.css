@@ -9432,9 +9432,9 @@ body {
     }
 }
 
-/* --- Cosmic Chimes Theme --- */
+/* --- Cosmic Chimes Theme --- Enhanced Ethereal Experience */
 #cosmic-chimes-theme {
-    background-color: #0c0a1a;
+    background: radial-gradient(ellipse at 50% 30%, #151030 0%, #0c0a1a 50%, #080612 100%);
     overflow: hidden;
 }
 
@@ -9444,8 +9444,12 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at 50% 50%, rgba(100, 150, 200, 0.2) 0%, rgba(0, 0, 0, 0) 60%);
+    background: 
+        radial-gradient(ellipse 80% 60% at 30% 40%, rgba(100, 150, 200, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 80% at 70% 60%, rgba(150, 100, 180, 0.12) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 50%, rgba(100, 150, 200, 0.2) 0%, rgba(0, 0, 0, 0) 60%);
     animation: slow-rotate-3d 180s linear infinite;
+    will-change: filter, transform;
 }
 
 #space-dust {
@@ -9455,6 +9459,7 @@ body {
     width: 100%;
     height: 100%;
     z-index: 2;
+    pointer-events: none;
 }
 
 .dust-particle {
@@ -9462,6 +9467,8 @@ body {
     background-color: #aaddff;
     border-radius: 50%;
     animation: dust-float 30s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+    contain: layout paint;
 }
 
 @keyframes dust-float {
@@ -9469,39 +9476,398 @@ body {
         transform: translate(var(--x-start), var(--y-start));
         opacity: 0;
     }
-
     50% {
-        opacity: 0.5;
+        opacity: 0.6;
     }
-
     to {
         transform: translate(var(--x-end), var(--y-end));
         opacity: 0;
     }
 }
 
+#chimes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+}
+
 .chime {
     position: absolute;
     width: 3px;
-    height: 120px;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(173, 216, 230, 0.9), rgba(255, 255, 255, 0));
+    height: 100px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(173, 216, 230, 0.85), rgba(255, 255, 255, 0));
     animation: shimmer-chime 12s ease-in-out infinite;
-    z-index: 3;
+    border-radius: 2px;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+.chime::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 7px;
+    height: 7px;
+    background: radial-gradient(circle, rgba(200, 220, 255, 0.75) 0%, rgba(173, 216, 230, 0.3) 70%);
+    border-radius: 50%;
 }
 
 @keyframes shimmer-chime {
-
-    0%,
-    100% {
-        opacity: 0;
-        transform: scaleY(0.8) rotate(var(--r-start));
+    0%, 100% {
+        opacity: 0.25;
+        transform: scaleY(0.88) rotate(var(--r-start));
     }
-
     50% {
         opacity: 1;
         transform: scaleY(1) rotate(var(--r-end));
-        box-shadow: 0 0 20px #ade6e6, 0 0 35px #ade6e6;
     }
+}
+
+/* Chime struck state - simpler, no filter animation */
+.chime.chime-struck {
+    opacity: 1 !important;
+    transform: scaleY(1.02) !important;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(220, 240, 255, 0.95), rgba(255, 255, 255, 0)) !important;
+    transition: all 0.15s ease-out;
+}
+
+/* Effects Container - Optimized */
+#cosmic-chimes-effects {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    overflow: hidden;
+    contain: layout style;
+}
+
+/* ===== COMBO EFFECTS ===== */
+
+/* Chime Strike Effect - Optimized (no filter animation) */
+.chime-strike {
+    position: absolute;
+    width: 3px;
+    height: 70px;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.95) 35%, rgba(200, 220, 255, 0.85) 65%, transparent 100%);
+    transform: translateX(-50%);
+    animation: chime-strike-glow 0.9s ease-out forwards;
+    border-radius: 2px;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes chime-strike-glow {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.5);
+    }
+    25% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(1.05);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.7);
+    }
+}
+
+/* Sound Wave Ripples - Original (nested) */
+.sound-wave {
+    position: absolute;
+    transform: translate(-50%, -50%);
+}
+
+.sound-wave-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(173, 230, 230, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: sound-wave-expand 1.5s ease-out forwards;
+    will-change: width, height, opacity;
+}
+
+/* Sound Wave - Simplified (single element, better performance) */
+.sound-wave-simple {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(173, 230, 230, 0.7);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: sound-wave-expand-simple 1s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes sound-wave-expand-simple {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(8);
+        opacity: 0;
+    }
+}
+
+@keyframes sound-wave-expand {
+    0% {
+        width: 20px;
+        height: 20px;
+        opacity: 0.8;
+        border-width: 3px;
+    }
+    100% {
+        width: 200px;
+        height: 200px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Stardust Burst - Optimized */
+.stardust-burst {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    background: var(--dust-color, #abf4ff);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: stardust-fly 1s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes stardust-fly {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+    15% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(calc(-50% + var(--drift-x, 0)), calc(-50% + var(--drift-y, 0))) scale(0.2);
+        opacity: 0;
+    }
+}
+
+/* Aurora Wave - Optimized (no blur for better perf) */
+.aurora-wave {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50px;
+    background: linear-gradient(90deg, 
+        transparent 0%,
+        hsla(var(--wave-hue, 200), 70%, 60%, 0.15) 15%,
+        hsla(var(--wave-hue, 200), 80%, 70%, 0.35) 50%,
+        hsla(var(--wave-hue, 200), 70%, 60%, 0.15) 85%,
+        transparent 100%);
+    animation: aurora-wave-flow 1.8s ease-in-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes aurora-wave-flow {
+    0% {
+        transform: translateX(-100%) scaleY(0.6);
+        opacity: 0;
+    }
+    25% {
+        opacity: 1;
+        transform: translateX(-25%) scaleY(1);
+    }
+    75% {
+        opacity: 1;
+        transform: translateX(25%) scaleY(1.1);
+    }
+    100% {
+        transform: translateX(100%) scaleY(0.6);
+        opacity: 0;
+    }
+}
+
+/* Harmonic Pulse - Optimized */
+.harmonic-pulse {
+    position: absolute;
+    width: 25px;
+    height: 25px;
+    background: radial-gradient(circle, rgba(200, 180, 255, 0.7) 0%, rgba(150, 200, 230, 0.3) 60%, transparent 75%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: harmonic-pulse-anim 0.7s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes harmonic-pulse-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+    35% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(2.2);
+        opacity: 0;
+    }
+}
+
+/* Celestial Sparkle - Optimized */
+.celestial-sparkle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+    animation: celestial-sparkle-anim 0.4s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+.celestial-sparkle::before,
+.celestial-sparkle::after {
+    content: '';
+    position: absolute;
+    background: rgba(220, 230, 255, 0.95);
+    border-radius: 1px;
+}
+
+.celestial-sparkle::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
+.celestial-sparkle::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+
+@keyframes celestial-sparkle-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    35% {
+        transform: translate(-50%, -50%) scale(1.2) rotate(25deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* ===== PIECE LOCK EFFECTS ===== */
+
+/* Piece Lock Chime - Optimized (no pseudo-element) */
+.piece-lock-chime {
+    position: absolute;
+    width: 2px;
+    height: 35px;
+    background: linear-gradient(to bottom, transparent 10%, rgba(200, 220, 255, 0.6) 50%, transparent 90%);
+    transform: translateX(-50%);
+    animation: piece-lock-chime-anim 0.35s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes piece-lock-chime-anim {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.5);
+    }
+    35% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.6);
+    }
+}
+
+/* Piece Lock Sparkle for Chimes - Optimized */
+.piece-lock-sparkle-chimes {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-sparkle-chimes-anim 0.3s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+.piece-lock-sparkle-chimes::before,
+.piece-lock-sparkle-chimes::after {
+    content: '';
+    position: absolute;
+    background: rgba(200, 220, 255, 0.9);
+    border-radius: 1px;
+}
+
+.piece-lock-sparkle-chimes::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
+.piece-lock-sparkle-chimes::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+
+@keyframes piece-lock-sparkle-chimes-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    40% {
+        transform: translate(-50%, -50%) scale(1.2) rotate(25deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0.3) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* Nebula Pulse - triggered on events (uses CSS class for perf) */
+.chime-nebula.nebula-pulse {
+    filter: brightness(var(--pulse-intensity, 1.1)) saturate(calc(1 + (var(--pulse-intensity, 1.1) - 1) * 0.3));
+    transition: filter 0.25s ease-out;
+}
+
+.chime.chime-struck::after {
+    opacity: 1;
+    background: radial-gradient(circle, rgba(240, 250, 255, 0.9) 0%, rgba(200, 230, 255, 0.4) 70%);
 }
 
 /* --- Singing Bowl Theme --- */
