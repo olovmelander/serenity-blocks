@@ -8424,6 +8424,97 @@ body {
     }
 }
 
+/* Piece Lock Sparkle Effect */
+.piece-lock-sparkle {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-sparkle-anim 0.4s ease-out forwards;
+}
+
+.piece-lock-sparkle::before,
+.piece-lock-sparkle::after {
+    content: '';
+    position: absolute;
+    background: white;
+    border-radius: 1px;
+}
+
+.piece-lock-sparkle::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+    box-shadow: 0 0 6px rgba(200, 220, 255, 0.8);
+}
+
+.piece-lock-sparkle::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 6px rgba(200, 220, 255, 0.8);
+}
+
+@keyframes piece-lock-sparkle-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    30% {
+        transform: translate(-50%, -50%) scale(1.2) rotate(20deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0.3) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* Mini Shooting Star for Piece Lock */
+.mini-shooting-star {
+    position: absolute;
+    width: 40px;
+    height: 1px;
+    background: linear-gradient(to right, 
+        rgba(255, 255, 255, 0) 0%,
+        rgba(200, 230, 255, 0.6) 50%,
+        rgba(255, 255, 255, 0.9) 100%);
+    border-radius: 1px;
+    transform: rotate(var(--angle, -45deg));
+    animation: mini-shooting-star-fly 0.5s ease-out forwards;
+}
+
+.mini-shooting-star::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 3px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 4px white;
+}
+
+@keyframes mini-shooting-star-fly {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--angle, -45deg)) translateX(0) scaleX(0.5);
+    }
+    20% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: rotate(var(--angle, -45deg)) translateX(80px) scaleX(1);
+    }
+}
+
 /* --- Rainy Window Theme --- */
 #rainy-window-theme {
     background: linear-gradient(to bottom, #0a0e14 0%, #12171f 40%, #1a1f28 100%);
@@ -8492,40 +8583,84 @@ body {
     }
 }
 
-/* --- Koi Pond Theme --- */
+/* --- Koi Pond Theme --- Enhanced Serene Aquatic Experience */
 #koi-pond-theme {
-    background-color: #3b5249;
+    background: radial-gradient(ellipse at 50% 100%, #2d5a4a 0%, #3b5249 40%, #2a4a3d 70%, #1e3a2f 100%);
     overflow: hidden;
 }
 
+/* Enhanced water depth with multiple layers */
 .water-depth-overlay {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(to top, rgba(10, 20, 15, 0.4) 0%, transparent 50%);
+    background: 
+        linear-gradient(to top, rgba(10, 30, 20, 0.5) 0%, transparent 40%),
+        radial-gradient(ellipse 120% 60% at 50% 100%, rgba(5, 20, 15, 0.4) 0%, transparent 70%);
     z-index: 1;
 }
 
+/* Enhanced water surface with light caustics */
 .water-surface {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(175deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 5%);
+    background: 
+        linear-gradient(175deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 8%),
+        radial-gradient(ellipse 80% 30% at 30% 20%, rgba(200, 230, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 70% 30%, rgba(180, 220, 200, 0.08) 0%, transparent 40%);
     animation: shimmer-water 15s ease-in-out infinite alternate;
     z-index: 2;
+    will-change: opacity;
 }
 
 @keyframes shimmer-water {
-    from {
-        opacity: 0.7;
-    }
+    0% { opacity: 0.6; }
+    50% { opacity: 0.9; }
+    100% { opacity: 0.7; }
+}
 
-    to {
-        opacity: 1;
+/* Floating cherry blossom petals container */
+#koi-pond-petals {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.floating-petal {
+    position: absolute;
+    width: 12px;
+    height: 8px;
+    background: linear-gradient(135deg, #ffb6c1 0%, #ff69b4 50%, #ffb6c1 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    opacity: 0.7;
+    animation: petal-float linear infinite;
+    will-change: transform;
+}
+
+@keyframes petal-float {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+    }
+    25% {
+        transform: translate(calc(var(--drift-x) * 0.3), calc(var(--drift-y) * 0.3)) rotate(90deg) scale(1.1);
+    }
+    50% {
+        transform: translate(calc(var(--drift-x) * 0.6), calc(var(--drift-y) * 0.6)) rotate(var(--rotation)) scale(0.9);
+    }
+    75% {
+        transform: translate(calc(var(--drift-x) * 0.8), calc(var(--drift-y) * 0.8)) rotate(270deg) scale(1.05);
+    }
+    100% {
+        transform: translate(var(--drift-x), var(--drift-y)) rotate(360deg) scale(1);
     }
 }
 
@@ -8535,7 +8670,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 3;
+    z-index: 4;
 }
 
 .lily-pad {
@@ -8544,25 +8679,22 @@ body {
     height: 100px;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M 50 50 C 20 100, 80 100, 50 50 M 50 50 C 0 20, 0 80, 50 50 M 50 50 C 80 0, 20 0, 50 50" fill="%232d6a4f" stroke="%231b4332" stroke-width="2"/></svg>');
     animation: float-bob-complex 20s ease-in-out infinite alternate;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
 @keyframes float-bob-complex {
     0% {
         transform: translate(var(--x-pos), var(--y-pos)) rotate(-2deg) scale(1);
     }
-
     25% {
-        transform: translate(var(--x-pos), calc(var(--y-pos) - 2px)) rotate(0deg) scale(1.01);
+        transform: translate(var(--x-pos), calc(var(--y-pos) - 3px)) rotate(0deg) scale(1.01);
     }
-
     50% {
         transform: translate(var(--x-pos), var(--y-pos)) rotate(2deg) scale(1);
     }
-
     75% {
-        transform: translate(var(--x-pos), calc(var(--y-pos) + 2px)) rotate(0deg) scale(0.99);
+        transform: translate(var(--x-pos), calc(var(--y-pos) + 3px)) rotate(0deg) scale(0.99);
     }
-
     100% {
         transform: translate(var(--x-pos), var(--y-pos)) rotate(-2deg) scale(1);
     }
@@ -8574,7 +8706,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 4;
+    z-index: 5;
 }
 
 .koi {
@@ -8585,32 +8717,16 @@ body {
     background-position: center;
     background-size: contain;
     animation: swim-koi 25s ease-in-out infinite;
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.25));
 }
 
 @keyframes swim-koi {
-    0% {
-        transform: translate(var(--x1), var(--y1)) rotate(var(--r1));
-    }
-
-    20% {
-        transform: translate(var(--x2), var(--y2)) rotate(var(--r2));
-    }
-
-    40% {
-        transform: translate(var(--x3), var(--y3)) rotate(var(--r3));
-    }
-
-    60% {
-        transform: translate(var(--x4), var(--y4)) rotate(var(--r4));
-    }
-
-    80% {
-        transform: translate(var(--x5), var(--y5)) rotate(var(--r5));
-    }
-
-    100% {
-        transform: translate(var(--x1), var(--y1)) rotate(var(--r1));
-    }
+    0% { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); }
+    20% { transform: translate(var(--x2), var(--y2)) rotate(var(--r2)); }
+    40% { transform: translate(var(--x3), var(--y3)) rotate(var(--r3)); }
+    60% { transform: translate(var(--x4), var(--y4)) rotate(var(--r4)); }
+    80% { transform: translate(var(--x5), var(--y5)) rotate(var(--r5)); }
+    100% { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); }
 }
 
 #koi-ripples {
@@ -8619,12 +8735,13 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 5;
+    z-index: 6;
+    pointer-events: none;
 }
 
 .koi-ripple {
     position: absolute;
-    border: 1px solid rgba(200, 220, 240, 0.3);
+    border: 1px solid rgba(200, 220, 240, 0.35);
     border-radius: 50%;
     animation: expand-ripple 3s ease-out;
     transform-origin: center;
@@ -8635,9 +8752,467 @@ body {
         transform: scale(0);
         opacity: 1;
     }
-
     to {
         transform: scale(1);
+        opacity: 0;
+    }
+}
+
+/* Effects Container */
+#koi-pond-effects {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* ===== TOP-DOWN PERSPECTIVE COMBO EFFECTS ===== */
+
+/* Impact Ripple - concentric circles spreading from impact point */
+.impact-ripple {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(200, 230, 255, 0.7);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: impact-ripple-expand 1.8s ease-out forwards;
+}
+
+@keyframes impact-ripple-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 0.9;
+        border-width: 3px;
+    }
+    100% {
+        width: 180px;
+        height: 180px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Small ripple for trails */
+.small-ripple {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgba(200, 230, 255, 0.5);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: small-ripple-expand 0.8s ease-out forwards;
+}
+
+@keyframes small-ripple-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 0.7;
+    }
+    100% {
+        width: 60px;
+        height: 60px;
+        opacity: 0;
+    }
+}
+
+/* Darting Koi - fish viewed from above, darting away */
+.darting-koi {
+    position: absolute;
+    width: 50px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    animation: koi-dart 0.7s ease-out forwards;
+}
+
+.darting-koi::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: var(--koi-color, #f08c28);
+    clip-path: ellipse(50% 50% at 50% 50%);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.darting-koi::after {
+    content: '';
+    position: absolute;
+    right: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 16px;
+    background: var(--koi-color, #f08c28);
+    clip-path: polygon(0% 50%, 100% 0%, 100% 100%);
+    opacity: 0.8;
+}
+
+@keyframes koi-dart {
+    0% {
+        transform: translate(-50%, -50%) rotate(var(--dart-angle, 0deg)) translateX(0) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) rotate(var(--dart-angle, 0deg)) translateX(var(--dart-distance, 100px)) scale(0.7);
+        opacity: 0;
+    }
+}
+
+/* Frenzy Koi - fish circling excitedly (top-down) */
+.frenzy-koi {
+    position: absolute;
+    width: 40px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    animation: koi-frenzy 1.8s ease-in-out forwards;
+}
+
+.frenzy-koi::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: var(--koi-color, #f08c28);
+    clip-path: ellipse(50% 50% at 50% 50%);
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+}
+
+.frenzy-koi::after {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 12px;
+    background: var(--koi-color, #f08c28);
+    clip-path: polygon(0% 50%, 100% 0%, 100% 100%);
+    opacity: 0.8;
+}
+
+@keyframes koi-frenzy {
+    0% {
+        transform: translate(-50%, -50%) 
+            rotate(var(--start-angle, 0deg)) 
+            translateX(var(--orbit-radius, 50px)) 
+            rotate(calc(var(--start-angle, 0deg) * -1))
+            scale(0.5);
+        opacity: 0;
+    }
+    20% {
+        opacity: 1;
+        transform: translate(-50%, -50%) 
+            rotate(calc(var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 120deg))) 
+            translateX(var(--orbit-radius, 50px)) 
+            rotate(calc((var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 120deg)) * -1))
+            scale(1);
+    }
+    80% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) 
+            rotate(calc(var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 540deg))) 
+            translateX(calc(var(--orbit-radius, 50px) * 1.5)) 
+            rotate(calc((var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 540deg)) * -1))
+            scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* Lily Pad Wobble */
+.lily-pad.lily-pad-wobble {
+    animation: lily-wobble 0.6s ease-out !important;
+}
+
+@keyframes lily-wobble {
+    0% { transform: translate(var(--x-pos), var(--y-pos)) rotate(0deg) scale(1); }
+    25% { transform: translate(var(--x-pos), var(--y-pos)) rotate(-5deg) scale(calc(var(--wobble-intensity, 1.1))); }
+    50% { transform: translate(var(--x-pos), var(--y-pos)) rotate(4deg) scale(1); }
+    75% { transform: translate(var(--x-pos), var(--y-pos)) rotate(-2deg) scale(calc(var(--wobble-intensity, 1.05))); }
+    100% { transform: translate(var(--x-pos), var(--y-pos)) rotate(0deg) scale(1); }
+}
+
+/* Scatter Petal - petals disturbed on water surface */
+.scatter-petal {
+    position: absolute;
+    width: 14px;
+    height: 9px;
+    background: linear-gradient(135deg, #ffccd5 0%, #ff8fab 50%, #ffccd5 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%);
+    animation: petal-scatter 2s ease-out forwards;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+@keyframes petal-scatter {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg) scale(0);
+        opacity: 0;
+    }
+    20% {
+        transform: translate(calc(-50% + var(--drift-x) * 0.2), calc(-50% + var(--drift-y) * 0.2)) rotate(90deg) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(calc(-50% + var(--drift-x)), calc(-50% + var(--drift-y))) rotate(var(--rotation, 180deg)) scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* Droplet Ring - raindrop impact from above */
+.droplet-ring {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    animation: droplet-impact 0.8s ease-out forwards;
+}
+
+.droplet-ring::before,
+.droplet-ring::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border: 2px solid rgba(200, 230, 255, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.droplet-ring::before {
+    animation: droplet-ring-1 0.8s ease-out forwards;
+}
+
+.droplet-ring::after {
+    animation: droplet-ring-2 0.8s ease-out forwards;
+    animation-delay: 0.1s;
+}
+
+@keyframes droplet-impact {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes droplet-ring-1 {
+    0% { width: 5px; height: 5px; opacity: 1; }
+    100% { width: 80px; height: 80px; opacity: 0; }
+}
+
+@keyframes droplet-ring-2 {
+    0% { width: 5px; height: 5px; opacity: 0.8; }
+    100% { width: 60px; height: 60px; opacity: 0; }
+}
+
+/* Water Glint - light dancing on water surface */
+.water-glint {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+    animation: glint-sparkle 0.5s ease-out forwards;
+}
+
+.water-glint::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+.water-glint::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+@keyframes glint-sparkle {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    40% {
+        transform: translate(-50%, -50%) scale(1.3) rotate(45deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0) rotate(90deg);
+        opacity: 0;
+    }
+}
+
+/* Water Swirl - spiral current pattern (top-down) */
+.water-swirl {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    transform: translate(-50%, -50%);
+    animation: swirl-rotate 1.8s ease-out forwards;
+}
+
+.water-swirl::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 2px solid transparent;
+    border-top-color: rgba(150, 200, 220, 0.5);
+    border-right-color: rgba(150, 200, 220, 0.3);
+    border-radius: 50%;
+    animation: swirl-spiral 1.8s ease-out forwards;
+}
+
+.water-swirl::after {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: 20%;
+    width: 60%;
+    height: 60%;
+    border: 2px solid transparent;
+    border-top-color: rgba(150, 200, 220, 0.4);
+    border-left-color: rgba(150, 200, 220, 0.2);
+    border-radius: 50%;
+    animation: swirl-spiral-inner 1.8s ease-out forwards;
+}
+
+@keyframes swirl-rotate {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes swirl-spiral {
+    0% {
+        transform: rotate(0deg) scale(0.3);
+    }
+    100% {
+        transform: rotate(calc(var(--swirl-direction, 1) * 720deg)) scale(1.5);
+    }
+}
+
+@keyframes swirl-spiral-inner {
+    0% {
+        transform: rotate(0deg) scale(0.5);
+    }
+    100% {
+        transform: rotate(calc(var(--swirl-direction, 1) * -540deg)) scale(1.2);
+    }
+}
+
+/* ===== PIECE LOCK EFFECTS (Koi Pond) ===== */
+
+/* Small ripple for piece lock */
+.piece-lock-ripple {
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    border: 1px solid rgba(200, 230, 255, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-ripple-expand 0.7s ease-out forwards;
+}
+
+@keyframes piece-lock-ripple-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 0.8;
+        border-width: 2px;
+    }
+    100% {
+        width: 60px;
+        height: 60px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Water glint for piece lock */
+.piece-lock-glint {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-glint-flash 0.35s ease-out forwards;
+}
+
+.piece-lock-glint::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.8) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+.piece-lock-glint::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.8) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+@keyframes piece-lock-glint-flash {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    40% {
+        transform: translate(-50%, -50%) scale(1.3) rotate(30deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0.5) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* Petal drift for piece lock */
+.piece-lock-petal {
+    position: absolute;
+    width: 10px;
+    height: 6px;
+    background: linear-gradient(135deg, #ffccd5 0%, #ff8fab 50%, #ffccd5 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-petal-drift 1s ease-out forwards;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+@keyframes piece-lock-petal-drift {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg) scale(0.5);
+        opacity: 0;
+    }
+    20% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) rotate(45deg) scale(1);
+    }
+    100% {
+        transform: translate(calc(-50% + var(--drift-x, 20px)), calc(-50% + var(--drift-y, 20px))) rotate(180deg) scale(0.7);
         opacity: 0;
     }
 }
@@ -24110,4 +24685,5 @@ body.cursor-hidden * {
     text-align: center;
     padding: 40px;
     color: #64c8ff;
+}
 }

@@ -554,14 +554,64 @@ export default class GalaxyTheme extends BaseTheme {
     }
 
     /**
-     * Handle piece lock with subtle pulse
+     * Handle piece lock with subtle cosmic effects
      */
     onPieceLock() {
         const preset = this.activePreset;
         if (!preset.enableComboEffects) return;
         
-        // Subtle nebula pulse on piece lock
+        // Subtle nebula pulse
         this.pulseNebula(1.02);
+        
+        // Small chance for extra visual feedback
+        const roll = Math.random();
+        if (roll < 0.4) {
+            // 40% chance: tiny star sparkle
+            this.triggerPieceLockSparkle();
+        } else if (roll < 0.55) {
+            // 15% chance: brief shooting star
+            this.triggerMiniShootingStar();
+        }
+    }
+
+    /**
+     * Trigger a small sparkle effect for piece lock
+     */
+    triggerPieceLockSparkle() {
+        const effectsContainer = document.getElementById('galaxy-effects');
+        if (!effectsContainer) return;
+
+        const sparkle = document.createElement('div');
+        sparkle.className = 'piece-lock-sparkle';
+        
+        const pos = this.getEdgePosition('any');
+        sparkle.style.left = `${pos.x}%`;
+        sparkle.style.top = `${pos.y}%`;
+        
+        effectsContainer.appendChild(sparkle);
+        setTimeout(() => sparkle.remove(), 500);
+    }
+
+    /**
+     * Trigger a mini shooting star for piece lock
+     */
+    triggerMiniShootingStar() {
+        const container = document.getElementById('galaxy-shooting-stars');
+        if (!container) return;
+
+        const star = document.createElement('div');
+        star.className = 'mini-shooting-star';
+        
+        // Start from a random edge
+        const pos = this.getEdgePosition('corner');
+        star.style.left = `${pos.x}%`;
+        star.style.top = `${pos.y}%`;
+        
+        const angle = -30 - Math.random() * 60;
+        star.style.setProperty('--angle', `${angle}deg`);
+        
+        container.appendChild(star);
+        setTimeout(() => star.remove(), 600);
     }
 
     /**
