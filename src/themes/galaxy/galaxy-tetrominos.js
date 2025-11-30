@@ -1,58 +1,76 @@
 /**
  * Galaxy Theme - Tetromino Visual Configuration
  *
- * Electric magentas, ultraviolet blues, and comet golds that mirror the
- * rotating nebula layers and bright starlight streaking through the scene.
+ * A cosmic palette drawn from the depths of space:
+ * - Electric cyans like ion trails through nebulae
+ * - Blazing golds of stellar cores and supernovae
+ * - Deep violets of dark matter clouds
+ * - Aurora teals dancing at the edge of space
+ * - Hot magentas of solar flares
+ * - Midnight indigos of the void between stars
+ * - Ember oranges of dying comets
  */
 
 export const GALAXY_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#4fcfff', // Ion trail cyan
-        O: '#ffe26b', // Star core gold
-        T: '#c46bff', // Nebula violet
-        S: '#5bffd5', // Aurora teal
-        Z: '#ff5ed1', // Solar flare magenta
-        J: '#5256ff', // Deep midnight indigo
-        L: '#ff9c6b', // Comet ember
-        GARBAGE: '#050015', // Interstellar void
+        I: '#00e5ff', // Ion trail cyan - brighter, more electric
+        O: '#ffd54f', // Supernova gold - warm stellar core
+        T: '#d050ff', // Nebula violet - rich and cosmic
+        S: '#00ffc8', // Aurora teal - ethereal glow
+        Z: '#ff4da6', // Solar flare magenta - hot pink energy
+        J: '#6366f1', // Deep space indigo - mysterious depth
+        L: '#ff8a50', // Comet ember - trailing warmth
+        GARBAGE: '#0a0015', // Interstellar void - near black with hint of purple
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 15,
-        glowIntensity: 0.9,
-        glowColor: '#7ed2ff',
+        // Enhanced glow for cosmic feel
+        glowRadius: 18,
+        glowIntensity: 0.95,
+        glowColor: '#80d4ff',
 
+        // Subtle outline for definition against dark space
         outline: true,
-        outlineWidth: 2.1,
-        outlineColor: '#070014',
+        outlineWidth: 2.2,
+        outlineColor: '#050012',
 
+        // Gentle pulse like distant stars
         pulse: true,
-        pulseSpeed: 0.04,
-        pulseAmplitude: 0.32,
+        pulseSpeed: 0.035,
+        pulseAmplitude: 0.35,
 
+        // Cosmic shimmer effect
         shimmer: true,
-        shimmerSpeed: 0.09,
-        shimmerIntensity: 0.27,
+        shimmerSpeed: 0.08,
+        shimmerIntensity: 0.3,
 
+        // Light trails for movement
         trails: true,
-        trailLength: 0.28,
-        trailOpacity: 0.4,
+        trailLength: 0.32,
+        trailOpacity: 0.45,
+
+        // Inner glow for depth
+        innerGlow: true,
+        innerGlowRadius: 4,
+        innerGlowIntensity: 0.6,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 12,
-            glowIntensity: 0.82,
-            outlineWidth: 1.8,
+            glowRadius: 14,
+            glowIntensity: 0.88,
+            outlineWidth: 1.9,
+            pulseAmplitude: 0.28,
         },
         phaser: {
-            glowRadius: 17,
-            glowIntensity: 0.95,
-            outlineWidth: 2.4,
+            glowRadius: 20,
+            glowIntensity: 1.0,
+            outlineWidth: 2.5,
+            pulseAmplitude: 0.38,
         },
     },
 };
