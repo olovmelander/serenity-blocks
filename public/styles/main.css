@@ -7846,60 +7846,195 @@ body {
     }
 }
 
-/* --- Galaxy Theme --- */
+/* --- Galaxy Theme --- Enhanced Cosmic Experience */
 #galaxy-theme {
-    background-color: #000005;
+    background: radial-gradient(ellipse at 30% 20%, #0a0020 0%, #050010 30%, #020008 60%, #000005 100%);
     overflow: hidden;
-    perspective: 800px;
+    perspective: 1200px;
 }
 
+/* Deep Space Ambient Glow */
+#galaxy-theme::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse 80% 50% at 20% 80%, rgba(100, 50, 180, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 80% 20%, rgba(50, 100, 180, 0.1) 0%, transparent 40%),
+        radial-gradient(ellipse 100% 80% at 50% 50%, rgba(20, 10, 40, 0.3) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Starfield Container */
 #galaxy-stars-bg {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
+    z-index: 1;
 }
 
+/* Enhanced Stars with Depth */
 .galaxy-star-bg {
     position: absolute;
     background-color: white;
     border-radius: 50%;
-    animation: twinkle 15s ease-in-out infinite;
+    animation: galaxy-twinkle var(--twinkle-duration, 12s) ease-in-out infinite;
+    will-change: opacity, transform;
 }
 
+@keyframes galaxy-twinkle {
+
+    0%,
+    100% {
+        opacity: 0.4;
+        transform: scale(1);
+    }
+
+    25% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+
+    50% {
+        opacity: 0.6;
+        transform: scale(0.9);
+    }
+
+    75% {
+        opacity: 0.9;
+        transform: scale(1.1);
+    }
+}
+
+/* Star shimmer effect on combo */
+#galaxy-stars-bg.star-shimmer-active .galaxy-star-bg {
+    animation: star-shimmer-pulse 0.6s ease-out;
+}
+
+@keyframes star-shimmer-pulse {
+    0% {
+        filter: brightness(1);
+    }
+
+    30% {
+        filter: brightness(3) drop-shadow(0 0 4px white);
+    }
+
+    100% {
+        filter: brightness(1);
+    }
+}
+
+/* Cosmic Dust Particles */
+#galaxy-cosmic-dust {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.cosmic-dust-particle {
+    position: absolute;
+    border-radius: 50%;
+    animation: cosmic-dust-drift linear infinite;
+    will-change: transform;
+}
+
+@keyframes cosmic-dust-drift {
+    0% {
+        transform: translate(0, 0) rotate(0deg);
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(calc(var(--drift-x, 20vw)), calc(var(--drift-y, 30vh))) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Distant Galaxies */
+#galaxy-distant {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.distant-galaxy {
+    position: absolute;
+    border-radius: 50%;
+    background:
+        radial-gradient(ellipse 100% 30% at 50% 50%, rgba(200, 180, 255, 0.4) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(255, 200, 255, 0.3) 0%, transparent 30%);
+    animation: distant-galaxy-rotate 120s linear infinite;
+    filter: blur(2px);
+}
+
+@keyframes distant-galaxy-rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Enhanced Nebula Container */
 .nebula-container {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 100vmin;
-    height: 100vmin;
+    width: 120vmin;
+    height: 120vmin;
     transform-style: preserve-3d;
-    animation: nebula-drift-rotate 60s ease-in-out infinite;
+    animation: nebula-drift-rotate 90s ease-in-out infinite;
+    z-index: 3;
 }
 
 @keyframes nebula-drift-rotate {
     0% {
-        transform: translate(-50%, -50%) rotateY(0deg) rotateX(10deg);
+        transform: translate(-50%, -50%) rotateY(0deg) rotateX(8deg) rotateZ(0deg);
     }
 
     25% {
-        transform: translate(-40%, -55%) rotateY(90deg) rotateX(15deg);
+        transform: translate(-45%, -55%) rotateY(90deg) rotateX(12deg) rotateZ(5deg);
     }
 
     50% {
-        transform: translate(-60%, -50%) rotateY(180deg) rotateX(5deg);
+        transform: translate(-55%, -48%) rotateY(180deg) rotateX(6deg) rotateZ(-3deg);
     }
 
     75% {
-        transform: translate(-50%, -45%) rotateY(270deg) rotateX(20deg);
+        transform: translate(-48%, -52%) rotateY(270deg) rotateX(15deg) rotateZ(8deg);
     }
 
     100% {
-        transform: translate(-50%, -50%) rotateY(360deg) rotateX(10deg);
+        transform: translate(-50%, -50%) rotateY(360deg) rotateX(8deg) rotateZ(0deg);
     }
 }
 
+/* Enhanced Nebula Layers */
 .nebula {
     position: absolute;
     top: 0;
@@ -7908,71 +8043,557 @@ body {
     height: 100%;
     border-radius: 50%;
     mix-blend-mode: screen;
-    filter: blur(40px);
+    filter: blur(50px);
+    will-change: transform, opacity;
 }
 
 #nebula-layer-1 {
-    background: radial-gradient(circle, #ff33cc 0%, #ff33cc 10%, rgba(0, 0, 0, 0) 60%);
-    transform: translateZ(-100px) rotateY(60deg);
-    animation: nebula-pulse 20s ease-in-out infinite alternate;
+    background: radial-gradient(ellipse 70% 50% at 40% 50%,
+            rgba(255, 51, 204, 0.8) 0%,
+            rgba(255, 100, 180, 0.4) 20%,
+            rgba(180, 50, 150, 0.2) 40%,
+            transparent 70%);
+    transform: translateZ(-150px) rotateY(45deg);
+    animation: nebula-pulse-1 25s ease-in-out infinite alternate;
 }
 
 #nebula-layer-2 {
-    background: radial-gradient(circle, #33ccff 0%, #33ccff 10%, rgba(0, 0, 0, 0) 50%);
-    transform: translateZ(50px) rotateY(-40deg) scale(0.8);
-    animation: nebula-pulse 25s ease-in-out infinite alternate-reverse;
+    background: radial-gradient(ellipse 60% 70% at 60% 40%,
+            rgba(51, 204, 255, 0.7) 0%,
+            rgba(100, 180, 255, 0.35) 25%,
+            rgba(50, 150, 200, 0.15) 45%,
+            transparent 65%);
+    transform: translateZ(80px) rotateY(-30deg) scale(0.9);
+    animation: nebula-pulse-2 30s ease-in-out infinite alternate-reverse;
 }
 
 #nebula-layer-3 {
-    background: radial-gradient(circle, #9933ff 0%, #9933ff 10%, rgba(0, 0, 0, 0) 70%);
-    transform: translateZ(150px) rotateY(20deg) scale(1.2);
-    animation: nebula-pulse 30s ease-in-out infinite alternate;
+    background: radial-gradient(ellipse 80% 60% at 50% 60%,
+            rgba(153, 51, 255, 0.75) 0%,
+            rgba(180, 100, 255, 0.4) 15%,
+            rgba(120, 80, 200, 0.2) 35%,
+            transparent 60%);
+    transform: translateZ(200px) rotateY(15deg) scale(1.15);
+    animation: nebula-pulse-3 35s ease-in-out infinite alternate;
 }
 
-@keyframes nebula-pulse {
-    from {
+/* Additional nebula layer for depth */
+#nebula-layer-4 {
+    background: radial-gradient(ellipse 50% 80% at 30% 70%,
+            rgba(255, 180, 100, 0.5) 0%,
+            rgba(255, 150, 80, 0.25) 20%,
+            transparent 50%);
+    transform: translateZ(-50px) rotateY(-60deg) scale(0.7);
+    animation: nebula-pulse-4 40s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes nebula-pulse-1 {
+    0% {
+        opacity: 0.6;
+        filter: blur(50px) brightness(1);
+    }
+
+    50% {
+        opacity: 0.85;
+        filter: blur(45px) brightness(1.2);
+    }
+
+    100% {
         opacity: 0.7;
-        transform: scale(1);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1.1);
+        filter: blur(55px) brightness(0.9);
     }
 }
 
-#shooting-stars {
+@keyframes nebula-pulse-2 {
+    0% {
+        opacity: 0.55;
+        filter: blur(55px) brightness(0.9);
+    }
+
+    50% {
+        opacity: 0.8;
+        filter: blur(48px) brightness(1.15);
+    }
+
+    100% {
+        opacity: 0.65;
+        filter: blur(52px) brightness(1);
+    }
+}
+
+@keyframes nebula-pulse-3 {
+    0% {
+        opacity: 0.5;
+        filter: blur(48px) brightness(1.1);
+    }
+
+    50% {
+        opacity: 0.75;
+        filter: blur(42px) brightness(1.3);
+    }
+
+    100% {
+        opacity: 0.6;
+        filter: blur(50px) brightness(1);
+    }
+}
+
+@keyframes nebula-pulse-4 {
+    0% {
+        opacity: 0.4;
+        filter: blur(60px) brightness(0.8);
+    }
+
+    50% {
+        opacity: 0.6;
+        filter: blur(55px) brightness(1.1);
+    }
+
+    100% {
+        opacity: 0.45;
+        filter: blur(58px) brightness(0.9);
+    }
+}
+
+/* Shooting Stars Container */
+#galaxy-shooting-stars {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    transform: rotate(20deg);
-    z-index: 10;
+    z-index: 15;
+    pointer-events: none;
+    overflow: hidden;
 }
 
-.shooting-star {
+/* Dynamic Shooting Star Effect (for combos) */
+.shooting-star-effect {
+    position: absolute;
+    width: var(--length, 100px);
+    height: 2px;
+    background: linear-gradient(to right,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.3) 20%,
+            rgba(200, 230, 255, 0.8) 50%,
+            rgba(255, 255, 255, 1) 100%);
+    border-radius: 2px;
+    transform: rotate(var(--angle, -45deg));
+    animation: shooting-star-fly 0.8s ease-out forwards;
+    box-shadow:
+        0 0 6px rgba(200, 230, 255, 0.8),
+        0 0 12px rgba(150, 200, 255, 0.4);
+}
+
+.shooting-star-effect::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 4px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 8px white, 0 0 16px rgba(200, 230, 255, 0.8);
+}
+
+@keyframes shooting-star-fly {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--angle, -45deg)) translateX(0) scaleX(0.3);
+    }
+
+    15% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(var(--angle, -45deg)) translateX(calc(var(--length, 100px) * 3)) scaleX(1.5);
+    }
+}
+
+/* Effects Container */
+#galaxy-effects {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Supernova Burst Effect */
+.supernova-burst {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+}
+
+.supernova-burst::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    background: radial-gradient(circle, white 0%, rgba(255, 200, 255, 0.8) 30%, transparent 70%);
+    transform: translate(-50%, -50%);
+    animation: supernova-core 0.8s ease-out forwards;
+}
+
+@keyframes supernova-core {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+
+    30% {
+        transform: translate(-50%, -50%) scale(3);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0;
+    }
+}
+
+.supernova-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(200, 150, 255, 0.8);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: supernova-ring-expand 1.2s ease-out forwards;
+}
+
+@keyframes supernova-ring-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 1;
+        border-width: 3px;
+    }
+
+    100% {
+        width: 300px;
+        height: 300px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+.supernova-particle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    background: white;
+    border-radius: 50%;
+    animation: supernova-particle-fly 1s ease-out forwards;
+    box-shadow: 0 0 6px rgba(255, 200, 255, 0.8);
+}
+
+@keyframes supernova-particle-fly {
+    0% {
+        transform: translate(-50%, -50%) rotate(var(--angle, 0)) translateX(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(var(--angle, 0)) translateX(var(--distance, 100px));
+        opacity: 0;
+    }
+}
+
+/* Cosmic Ripple Effect */
+.cosmic-ripple {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    border: 2px solid rgba(100, 200, 255, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: cosmic-ripple-expand 1.5s ease-out forwards;
+    box-shadow:
+        0 0 10px rgba(100, 200, 255, 0.4),
+        inset 0 0 10px rgba(100, 200, 255, 0.2);
+}
+
+@keyframes cosmic-ripple-expand {
+    0% {
+        width: 20px;
+        height: 20px;
+        opacity: 0.8;
+        border-width: 3px;
+    }
+
+    100% {
+        width: 400px;
+        height: 400px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Constellation Burst Effect */
+.constellation-burst {
+    position: absolute;
+    width: 0;
+    height: 0;
+    transform: translate(-50%, -50%);
+}
+
+.constellation-star {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: white;
+    border-radius: 50%;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    animation: constellation-star-appear 0.8s ease-out forwards;
+    box-shadow:
+        0 0 8px rgba(200, 220, 255, 0.9),
+        0 0 16px rgba(150, 180, 255, 0.5);
+}
+
+@keyframes constellation-star-appear {
+    0% {
+        transform: translate(-50%, -50%) translate(0, 0) scale(0);
+        opacity: 0;
+    }
+
+    30% {
+        transform: translate(-50%, -50%) translate(var(--x, 0), var(--y, 0)) scale(1.5);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) translate(var(--x, 0), var(--y, 0)) scale(0);
+        opacity: 0;
+    }
+}
+
+.constellation-line {
     position: absolute;
     height: 1px;
-    background: linear-gradient(to right, white, transparent);
-    animation: shoot 10s linear infinite;
+    background: linear-gradient(to right,
+            rgba(200, 220, 255, 0) 0%,
+            rgba(200, 220, 255, 0.6) 50%,
+            rgba(200, 220, 255, 0) 100%);
+    transform-origin: left center;
+    animation: constellation-line-appear 0.6s ease-out forwards;
 }
 
-@keyframes shoot {
-    from {
-        left: -50%;
-        transform: scaleX(0.5);
-        opacity: 1;
-    }
-
-    70% {
-        opacity: 1;
-    }
-
-    to {
-        left: 150%;
-        transform: scaleX(1);
+@keyframes constellation-line-appear {
+    0% {
         opacity: 0;
+        transform: scaleX(0);
+    }
+
+    50% {
+        opacity: 0.8;
+        transform: scaleX(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scaleX(1);
+    }
+}
+
+/* Warp Speed Effect */
+.warp-speed-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    perspective: 500px;
+}
+
+.warp-streak {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    animation: warp-streak-fly 1s ease-in forwards;
+}
+
+@keyframes warp-streak-fly {
+    0% {
+        transform: translateZ(-200px) scale(0.5);
+        opacity: 0;
+        width: 2px;
+        height: 2px;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateZ(500px) scale(2);
+        opacity: 0;
+        width: 50px;
+        height: 2px;
+        border-radius: 1px;
+        box-shadow: 0 0 10px white, -30px 0 20px rgba(200, 220, 255, 0.5);
+    }
+}
+
+/* Star Burst Effect (small) */
+.star-burst-effect {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    transform: translate(-50%, -50%);
+    animation: star-burst 0.8s ease-out forwards;
+}
+
+.star-burst-effect::before,
+.star-burst-effect::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background: white;
+    transform: translate(-50%, -50%);
+}
+
+.star-burst-effect::before {
+    width: 100%;
+    height: 2px;
+    box-shadow: 0 0 10px white;
+}
+
+.star-burst-effect::after {
+    width: 2px;
+    height: 100%;
+    box-shadow: 0 0 10px white;
+}
+
+@keyframes star-burst {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 1;
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.5) rotate(45deg);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(2) rotate(90deg);
+        opacity: 0;
+    }
+}
+
+/* Piece Lock Sparkle Effect */
+.piece-lock-sparkle {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-sparkle-anim 0.4s ease-out forwards;
+}
+
+.piece-lock-sparkle::before,
+.piece-lock-sparkle::after {
+    content: '';
+    position: absolute;
+    background: white;
+    border-radius: 1px;
+}
+
+.piece-lock-sparkle::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+    box-shadow: 0 0 6px rgba(200, 220, 255, 0.8);
+}
+
+.piece-lock-sparkle::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 6px rgba(200, 220, 255, 0.8);
+}
+
+@keyframes piece-lock-sparkle-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    30% {
+        transform: translate(-50%, -50%) scale(1.2) rotate(20deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0.3) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* Mini Shooting Star for Piece Lock */
+.mini-shooting-star {
+    position: absolute;
+    width: 40px;
+    height: 1px;
+    background: linear-gradient(to right,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(200, 230, 255, 0.6) 50%,
+            rgba(255, 255, 255, 0.9) 100%);
+    border-radius: 1px;
+    transform: rotate(var(--angle, -45deg));
+    animation: mini-shooting-star-fly 0.5s ease-out forwards;
+}
+
+.mini-shooting-star::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 3px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 4px white;
+}
+
+@keyframes mini-shooting-star-fly {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--angle, -45deg)) translateX(0) scaleX(0.5);
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(var(--angle, -45deg)) translateX(80px) scaleX(1);
     }
 }
 
@@ -8044,40 +8665,96 @@ body {
     }
 }
 
-/* --- Koi Pond Theme --- */
+/* --- Koi Pond Theme --- Enhanced Serene Aquatic Experience */
 #koi-pond-theme {
-    background-color: #3b5249;
+    background: radial-gradient(ellipse at 50% 100%, #2d5a4a 0%, #3b5249 40%, #2a4a3d 70%, #1e3a2f 100%);
     overflow: hidden;
 }
 
+/* Enhanced water depth with multiple layers */
 .water-depth-overlay {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(to top, rgba(10, 20, 15, 0.4) 0%, transparent 50%);
+    background:
+        linear-gradient(to top, rgba(10, 30, 20, 0.5) 0%, transparent 40%),
+        radial-gradient(ellipse 120% 60% at 50% 100%, rgba(5, 20, 15, 0.4) 0%, transparent 70%);
     z-index: 1;
 }
 
+/* Enhanced water surface with light caustics */
 .water-surface {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(175deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 5%);
+    background:
+        linear-gradient(175deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 8%),
+        radial-gradient(ellipse 80% 30% at 30% 20%, rgba(200, 230, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 70% 30%, rgba(180, 220, 200, 0.08) 0%, transparent 40%);
     animation: shimmer-water 15s ease-in-out infinite alternate;
     z-index: 2;
+    will-change: opacity;
 }
 
 @keyframes shimmer-water {
-    from {
-        opacity: 0.7;
+    0% {
+        opacity: 0.6;
     }
 
-    to {
-        opacity: 1;
+    50% {
+        opacity: 0.9;
+    }
+
+    100% {
+        opacity: 0.7;
+    }
+}
+
+/* Floating cherry blossom petals container */
+#koi-pond-petals {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.floating-petal {
+    position: absolute;
+    width: 12px;
+    height: 8px;
+    background: linear-gradient(135deg, #ffb6c1 0%, #ff69b4 50%, #ffb6c1 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    opacity: 0.7;
+    animation: petal-float linear infinite;
+    will-change: transform;
+}
+
+@keyframes petal-float {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+    }
+
+    25% {
+        transform: translate(calc(var(--drift-x) * 0.3), calc(var(--drift-y) * 0.3)) rotate(90deg) scale(1.1);
+    }
+
+    50% {
+        transform: translate(calc(var(--drift-x) * 0.6), calc(var(--drift-y) * 0.6)) rotate(var(--rotation)) scale(0.9);
+    }
+
+    75% {
+        transform: translate(calc(var(--drift-x) * 0.8), calc(var(--drift-y) * 0.8)) rotate(270deg) scale(1.05);
+    }
+
+    100% {
+        transform: translate(var(--drift-x), var(--drift-y)) rotate(360deg) scale(1);
     }
 }
 
@@ -8087,7 +8764,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 3;
+    z-index: 4;
 }
 
 .lily-pad {
@@ -8096,6 +8773,7 @@ body {
     height: 100px;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M 50 50 C 20 100, 80 100, 50 50 M 50 50 C 0 20, 0 80, 50 50 M 50 50 C 80 0, 20 0, 50 50" fill="%232d6a4f" stroke="%231b4332" stroke-width="2"/></svg>');
     animation: float-bob-complex 20s ease-in-out infinite alternate;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
 @keyframes float-bob-complex {
@@ -8104,7 +8782,7 @@ body {
     }
 
     25% {
-        transform: translate(var(--x-pos), calc(var(--y-pos) - 2px)) rotate(0deg) scale(1.01);
+        transform: translate(var(--x-pos), calc(var(--y-pos) - 3px)) rotate(0deg) scale(1.01);
     }
 
     50% {
@@ -8112,7 +8790,7 @@ body {
     }
 
     75% {
-        transform: translate(var(--x-pos), calc(var(--y-pos) + 2px)) rotate(0deg) scale(0.99);
+        transform: translate(var(--x-pos), calc(var(--y-pos) + 3px)) rotate(0deg) scale(0.99);
     }
 
     100% {
@@ -8126,7 +8804,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 4;
+    z-index: 5;
 }
 
 .koi {
@@ -8137,6 +8815,7 @@ body {
     background-position: center;
     background-size: contain;
     animation: swim-koi 25s ease-in-out infinite;
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.25));
 }
 
 @keyframes swim-koi {
@@ -8171,12 +8850,13 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 5;
+    z-index: 6;
+    pointer-events: none;
 }
 
 .koi-ripple {
     position: absolute;
-    border: 1px solid rgba(200, 220, 240, 0.3);
+    border: 1px solid rgba(200, 220, 240, 0.35);
     border-radius: 50%;
     animation: expand-ripple 3s ease-out;
     transform-origin: center;
@@ -8190,6 +8870,515 @@ body {
 
     to {
         transform: scale(1);
+        opacity: 0;
+    }
+}
+
+/* Effects Container */
+#koi-pond-effects {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* ===== TOP-DOWN PERSPECTIVE COMBO EFFECTS ===== */
+
+/* Impact Ripple - concentric circles spreading from impact point */
+.impact-ripple {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(200, 230, 255, 0.7);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: impact-ripple-expand 1.8s ease-out forwards;
+}
+
+@keyframes impact-ripple-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 0.9;
+        border-width: 3px;
+    }
+
+    100% {
+        width: 180px;
+        height: 180px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Small ripple for trails */
+.small-ripple {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgba(200, 230, 255, 0.5);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: small-ripple-expand 0.8s ease-out forwards;
+}
+
+@keyframes small-ripple-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 0.7;
+    }
+
+    100% {
+        width: 60px;
+        height: 60px;
+        opacity: 0;
+    }
+}
+
+/* Darting Koi - fish viewed from above, darting away */
+.darting-koi {
+    position: absolute;
+    width: 50px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    animation: koi-dart 0.7s ease-out forwards;
+}
+
+.darting-koi::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: var(--koi-color, #f08c28);
+    clip-path: ellipse(50% 50% at 50% 50%);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.darting-koi::after {
+    content: '';
+    position: absolute;
+    right: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 16px;
+    background: var(--koi-color, #f08c28);
+    clip-path: polygon(0% 50%, 100% 0%, 100% 100%);
+    opacity: 0.8;
+}
+
+@keyframes koi-dart {
+    0% {
+        transform: translate(-50%, -50%) rotate(var(--dart-angle, 0deg)) translateX(0) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(var(--dart-angle, 0deg)) translateX(var(--dart-distance, 100px)) scale(0.7);
+        opacity: 0;
+    }
+}
+
+/* Frenzy Koi - fish circling excitedly (top-down) */
+.frenzy-koi {
+    position: absolute;
+    width: 40px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    animation: koi-frenzy 1.8s ease-in-out forwards;
+}
+
+.frenzy-koi::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: var(--koi-color, #f08c28);
+    clip-path: ellipse(50% 50% at 50% 50%);
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+}
+
+.frenzy-koi::after {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 12px;
+    background: var(--koi-color, #f08c28);
+    clip-path: polygon(0% 50%, 100% 0%, 100% 100%);
+    opacity: 0.8;
+}
+
+@keyframes koi-frenzy {
+    0% {
+        transform: translate(-50%, -50%) rotate(var(--start-angle, 0deg)) translateX(var(--orbit-radius, 50px)) rotate(calc(var(--start-angle, 0deg) * -1)) scale(0.5);
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+        transform: translate(-50%, -50%) rotate(calc(var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 120deg))) translateX(var(--orbit-radius, 50px)) rotate(calc((var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 120deg)) * -1)) scale(1);
+    }
+
+    80% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(calc(var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 540deg))) translateX(calc(var(--orbit-radius, 50px) * 1.5)) rotate(calc((var(--start-angle, 0deg) + calc(var(--orbit-direction, 1) * 540deg)) * -1)) scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* Lily Pad Wobble */
+.lily-pad.lily-pad-wobble {
+    animation: lily-wobble 0.6s ease-out !important;
+}
+
+@keyframes lily-wobble {
+    0% {
+        transform: translate(var(--x-pos), var(--y-pos)) rotate(0deg) scale(1);
+    }
+
+    25% {
+        transform: translate(var(--x-pos), var(--y-pos)) rotate(-5deg) scale(calc(var(--wobble-intensity, 1.1)));
+    }
+
+    50% {
+        transform: translate(var(--x-pos), var(--y-pos)) rotate(4deg) scale(1);
+    }
+
+    75% {
+        transform: translate(var(--x-pos), var(--y-pos)) rotate(-2deg) scale(calc(var(--wobble-intensity, 1.05)));
+    }
+
+    100% {
+        transform: translate(var(--x-pos), var(--y-pos)) rotate(0deg) scale(1);
+    }
+}
+
+/* Scatter Petal - petals disturbed on water surface */
+.scatter-petal {
+    position: absolute;
+    width: 14px;
+    height: 9px;
+    background: linear-gradient(135deg, #ffccd5 0%, #ff8fab 50%, #ffccd5 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%);
+    animation: petal-scatter 2s ease-out forwards;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+@keyframes petal-scatter {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg) scale(0);
+        opacity: 0;
+    }
+
+    20% {
+        transform: translate(calc(-50% + var(--drift-x) * 0.2), calc(-50% + var(--drift-y) * 0.2)) rotate(90deg) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(calc(-50% + var(--drift-x)), calc(-50% + var(--drift-y))) rotate(var(--rotation, 180deg)) scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* Droplet Ring - raindrop impact from above */
+.droplet-ring {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    animation: droplet-impact 0.8s ease-out forwards;
+}
+
+.droplet-ring::before,
+.droplet-ring::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border: 2px solid rgba(200, 230, 255, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.droplet-ring::before {
+    animation: droplet-ring-1 0.8s ease-out forwards;
+}
+
+.droplet-ring::after {
+    animation: droplet-ring-2 0.8s ease-out forwards;
+    animation-delay: 0.1s;
+}
+
+@keyframes droplet-impact {
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes droplet-ring-1 {
+    0% {
+        width: 5px;
+        height: 5px;
+        opacity: 1;
+    }
+
+    100% {
+        width: 80px;
+        height: 80px;
+        opacity: 0;
+    }
+}
+
+@keyframes droplet-ring-2 {
+    0% {
+        width: 5px;
+        height: 5px;
+        opacity: 0.8;
+    }
+
+    100% {
+        width: 60px;
+        height: 60px;
+        opacity: 0;
+    }
+}
+
+/* Water Glint - light dancing on water surface */
+.water-glint {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+    animation: glint-sparkle 0.5s ease-out forwards;
+}
+
+.water-glint::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+.water-glint::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+@keyframes glint-sparkle {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    40% {
+        transform: translate(-50%, -50%) scale(1.3) rotate(45deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0) rotate(90deg);
+        opacity: 0;
+    }
+}
+
+/* Water Swirl - spiral current pattern (top-down) */
+.water-swirl {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    transform: translate(-50%, -50%);
+    animation: swirl-rotate 1.8s ease-out forwards;
+}
+
+.water-swirl::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 2px solid transparent;
+    border-top-color: rgba(150, 200, 220, 0.5);
+    border-right-color: rgba(150, 200, 220, 0.3);
+    border-radius: 50%;
+    animation: swirl-spiral 1.8s ease-out forwards;
+}
+
+.water-swirl::after {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: 20%;
+    width: 60%;
+    height: 60%;
+    border: 2px solid transparent;
+    border-top-color: rgba(150, 200, 220, 0.4);
+    border-left-color: rgba(150, 200, 220, 0.2);
+    border-radius: 50%;
+    animation: swirl-spiral-inner 1.8s ease-out forwards;
+}
+
+@keyframes swirl-rotate {
+    0% {
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes swirl-spiral {
+    0% {
+        transform: rotate(0deg) scale(0.3);
+    }
+
+    100% {
+        transform: rotate(calc(var(--swirl-direction, 1) * 720deg)) scale(1.5);
+    }
+}
+
+@keyframes swirl-spiral-inner {
+    0% {
+        transform: rotate(0deg) scale(0.5);
+    }
+
+    100% {
+        transform: rotate(calc(var(--swirl-direction, 1) * -540deg)) scale(1.2);
+    }
+}
+
+/* ===== PIECE LOCK EFFECTS (Koi Pond) ===== */
+
+/* Small ripple for piece lock */
+.piece-lock-ripple {
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    border: 1px solid rgba(200, 230, 255, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-ripple-expand 0.7s ease-out forwards;
+}
+
+@keyframes piece-lock-ripple-expand {
+    0% {
+        width: 10px;
+        height: 10px;
+        opacity: 0.8;
+        border-width: 2px;
+    }
+
+    100% {
+        width: 60px;
+        height: 60px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Water glint for piece lock */
+.piece-lock-glint {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-glint-flash 0.35s ease-out forwards;
+}
+
+.piece-lock-glint::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.8) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+.piece-lock-glint::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.8) 50%, transparent 100%);
+    transform: translate(-50%, -50%);
+}
+
+@keyframes piece-lock-glint-flash {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    40% {
+        transform: translate(-50%, -50%) scale(1.3) rotate(30deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0.5) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* Petal drift for piece lock */
+.piece-lock-petal {
+    position: absolute;
+    width: 10px;
+    height: 6px;
+    background: linear-gradient(135deg, #ffccd5 0%, #ff8fab 50%, #ffccd5 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-petal-drift 1s ease-out forwards;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+@keyframes piece-lock-petal-drift {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg) scale(0.5);
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) rotate(45deg) scale(1);
+    }
+
+    100% {
+        transform: translate(calc(-50% + var(--drift-x, 20px)), calc(-50% + var(--drift-y, 20px))) rotate(180deg) scale(0.7);
         opacity: 0;
     }
 }
@@ -8409,9 +9598,9 @@ body {
     }
 }
 
-/* --- Cosmic Chimes Theme --- */
+/* --- Cosmic Chimes Theme --- Enhanced Ethereal Experience */
 #cosmic-chimes-theme {
-    background-color: #0c0a1a;
+    background: radial-gradient(ellipse at 50% 30%, #151030 0%, #0c0a1a 50%, #080612 100%);
     overflow: hidden;
 }
 
@@ -8421,8 +9610,12 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at 50% 50%, rgba(100, 150, 200, 0.2) 0%, rgba(0, 0, 0, 0) 60%);
+    background:
+        radial-gradient(ellipse 80% 60% at 30% 40%, rgba(100, 150, 200, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 80% at 70% 60%, rgba(150, 100, 180, 0.12) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 50%, rgba(100, 150, 200, 0.2) 0%, rgba(0, 0, 0, 0) 60%);
     animation: slow-rotate-3d 180s linear infinite;
+    will-change: filter, transform;
 }
 
 #space-dust {
@@ -8432,6 +9625,7 @@ body {
     width: 100%;
     height: 100%;
     z-index: 2;
+    pointer-events: none;
 }
 
 .dust-particle {
@@ -8439,6 +9633,8 @@ body {
     background-color: #aaddff;
     border-radius: 50%;
     animation: dust-float 30s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+    contain: layout paint;
 }
 
 @keyframes dust-float {
@@ -8448,7 +9644,7 @@ body {
     }
 
     50% {
-        opacity: 0.5;
+        opacity: 0.6;
     }
 
     to {
@@ -8457,28 +9653,409 @@ body {
     }
 }
 
+#chimes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+}
+
 .chime {
     position: absolute;
     width: 3px;
-    height: 120px;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(173, 216, 230, 0.9), rgba(255, 255, 255, 0));
+    height: 100px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(173, 216, 230, 0.85), rgba(255, 255, 255, 0));
     animation: shimmer-chime 12s ease-in-out infinite;
-    z-index: 3;
+    border-radius: 2px;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+.chime::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 7px;
+    height: 7px;
+    background: radial-gradient(circle, rgba(200, 220, 255, 0.75) 0%, rgba(173, 216, 230, 0.3) 70%);
+    border-radius: 50%;
 }
 
 @keyframes shimmer-chime {
 
     0%,
     100% {
-        opacity: 0;
-        transform: scaleY(0.8) rotate(var(--r-start));
+        opacity: 0.25;
+        transform: scaleY(0.88) rotate(var(--r-start));
     }
 
     50% {
         opacity: 1;
         transform: scaleY(1) rotate(var(--r-end));
-        box-shadow: 0 0 20px #ade6e6, 0 0 35px #ade6e6;
     }
+}
+
+/* Chime struck state - simpler, no filter animation */
+.chime.chime-struck {
+    opacity: 1 !important;
+    transform: scaleY(1.02) !important;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(220, 240, 255, 0.95), rgba(255, 255, 255, 0)) !important;
+    transition: all 0.15s ease-out;
+}
+
+/* Effects Container - Optimized */
+#cosmic-chimes-effects {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    overflow: hidden;
+    contain: layout style;
+}
+
+/* ===== COMBO EFFECTS ===== */
+
+/* Chime Strike Effect - Optimized (no filter animation) */
+.chime-strike {
+    position: absolute;
+    width: 3px;
+    height: 70px;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.95) 35%, rgba(200, 220, 255, 0.85) 65%, transparent 100%);
+    transform: translateX(-50%);
+    animation: chime-strike-glow 0.9s ease-out forwards;
+    border-radius: 2px;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes chime-strike-glow {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.5);
+    }
+
+    25% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(1.05);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.7);
+    }
+}
+
+/* Sound Wave Ripples - Original (nested) */
+.sound-wave {
+    position: absolute;
+    transform: translate(-50%, -50%);
+}
+
+.sound-wave-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(173, 230, 230, 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: sound-wave-expand 1.5s ease-out forwards;
+    will-change: width, height, opacity;
+}
+
+/* Sound Wave - Simplified (single element, better performance) */
+.sound-wave-simple {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(173, 230, 230, 0.7);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: sound-wave-expand-simple 1s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes sound-wave-expand-simple {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(8);
+        opacity: 0;
+    }
+}
+
+@keyframes sound-wave-expand {
+    0% {
+        width: 20px;
+        height: 20px;
+        opacity: 0.8;
+        border-width: 3px;
+    }
+
+    100% {
+        width: 200px;
+        height: 200px;
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+/* Stardust Burst - Optimized */
+.stardust-burst {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    background: var(--dust-color, #abf4ff);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: stardust-fly 1s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes stardust-fly {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+
+    15% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(calc(-50% + var(--drift-x, 0)), calc(-50% + var(--drift-y, 0))) scale(0.2);
+        opacity: 0;
+    }
+}
+
+/* Aurora Wave - Optimized (no blur for better perf) */
+.aurora-wave {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50px;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            hsla(var(--wave-hue, 200), 70%, 60%, 0.15) 15%,
+            hsla(var(--wave-hue, 200), 80%, 70%, 0.35) 50%,
+            hsla(var(--wave-hue, 200), 70%, 60%, 0.15) 85%,
+            transparent 100%);
+    animation: aurora-wave-flow 1.8s ease-in-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes aurora-wave-flow {
+    0% {
+        transform: translateX(-100%) scaleY(0.6);
+        opacity: 0;
+    }
+
+    25% {
+        opacity: 1;
+        transform: translateX(-25%) scaleY(1);
+    }
+
+    75% {
+        opacity: 1;
+        transform: translateX(25%) scaleY(1.1);
+    }
+
+    100% {
+        transform: translateX(100%) scaleY(0.6);
+        opacity: 0;
+    }
+}
+
+/* Harmonic Pulse - Optimized */
+.harmonic-pulse {
+    position: absolute;
+    width: 25px;
+    height: 25px;
+    background: radial-gradient(circle, rgba(200, 180, 255, 0.7) 0%, rgba(150, 200, 230, 0.3) 60%, transparent 75%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: harmonic-pulse-anim 0.7s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes harmonic-pulse-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+
+    35% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(2.2);
+        opacity: 0;
+    }
+}
+
+/* Celestial Sparkle - Optimized */
+.celestial-sparkle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+    animation: celestial-sparkle-anim 0.4s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+.celestial-sparkle::before,
+.celestial-sparkle::after {
+    content: '';
+    position: absolute;
+    background: rgba(220, 230, 255, 0.95);
+    border-radius: 1px;
+}
+
+.celestial-sparkle::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
+.celestial-sparkle::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+
+@keyframes celestial-sparkle-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    35% {
+        transform: translate(-50%, -50%) scale(1.2) rotate(25deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* ===== PIECE LOCK EFFECTS ===== */
+
+/* Piece Lock Chime - Optimized (no pseudo-element) */
+.piece-lock-chime {
+    position: absolute;
+    width: 2px;
+    height: 35px;
+    background: linear-gradient(to bottom, transparent 10%, rgba(200, 220, 255, 0.6) 50%, transparent 90%);
+    transform: translateX(-50%);
+    animation: piece-lock-chime-anim 0.35s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes piece-lock-chime-anim {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.5);
+    }
+
+    35% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.6);
+    }
+}
+
+/* Piece Lock Sparkle for Chimes - Optimized */
+.piece-lock-sparkle-chimes {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    transform: translate(-50%, -50%);
+    animation: piece-lock-sparkle-chimes-anim 0.3s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+.piece-lock-sparkle-chimes::before,
+.piece-lock-sparkle-chimes::after {
+    content: '';
+    position: absolute;
+    background: rgba(200, 220, 255, 0.9);
+    border-radius: 1px;
+}
+
+.piece-lock-sparkle-chimes::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
+.piece-lock-sparkle-chimes::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+
+@keyframes piece-lock-sparkle-chimes-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    40% {
+        transform: translate(-50%, -50%) scale(1.2) rotate(25deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0.3) rotate(45deg);
+        opacity: 0;
+    }
+}
+
+/* Nebula Pulse - triggered on events (uses CSS class for perf) */
+.chime-nebula.nebula-pulse {
+    filter: brightness(var(--pulse-intensity, 1.1)) saturate(calc(1 + (var(--pulse-intensity, 1.1) - 1) * 0.3));
+    transition: filter 0.25s ease-out;
+}
+
+.chime.chime-struck::after {
+    opacity: 1;
+    background: radial-gradient(circle, rgba(240, 250, 255, 0.9) 0%, rgba(200, 230, 255, 0.4) 70%);
 }
 
 /* --- Singing Bowl Theme --- */
@@ -9190,52 +10767,78 @@ body {
     }
 }
 
-/* --- Desert Dunes Theme --- */
+/* --- Desert Oasis Theme - Enchanted Desert Night --- */
 #desert-oasis-theme {
-    background: linear-gradient(to top, #f5d5a8 0%, #f4c8a0 20%, #f2ba8f 50%, #efa57d 80%, #eb8f6c 100%);
+    background: linear-gradient(175deg,
+            #050510 0%,
+            #0a0820 10%,
+            #10102a 25%,
+            #1a1840 45%,
+            #252050 65%,
+            #2d2858 80%,
+            #352d5a 100%);
     overflow: hidden;
 }
 
-.desert-sky {
+/* Base Sky Layer */
+.oasis-sky-base {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(to top, #f5d5a8 0%, #f4c8a0 20%, #f2ba8f 50%, #efa57d 80%, #eb8f6c 100%);
-    animation: desert-sky-cycle 180s ease-in-out infinite;
+    background:
+        radial-gradient(ellipse 150% 100% at 80% 10%, rgba(80, 50, 120, 0.25) 0%, transparent 50%),
+        radial-gradient(ellipse 100% 80% at 15% 25%, rgba(40, 60, 100, 0.2) 0%, transparent 40%),
+        radial-gradient(ellipse 80% 50% at 50% 80%, rgba(60, 40, 80, 0.15) 0%, transparent 50%);
     z-index: 1;
 }
 
-@keyframes desert-sky-cycle {
-    0% {
-        background: linear-gradient(to top, #f5d5a8 0%, #f4c8a0 20%, #f2ba8f 50%, #efa57d 80%, #eb8f6c 100%);
-    }
-
-    /* Golden Hour */
-    25% {
-        background: linear-gradient(to top, #fae3c8 0%, #f9d8b8 15%, #f7c5a0 35%, #f4a978 65%, #ef8755 85%, #e76f45 100%);
-    }
-
-    /* Warm Sunset */
-    50% {
-        background: linear-gradient(to top, #2a2440 0%, #3d3555 25%, #4d4660 50%, #655870 75%, #7d6a80 100%);
-    }
-
-    /* Twilight */
-    75% {
-        background: linear-gradient(to top, #f9dfc0 0%, #f8d0a8 20%, #f5bb90 45%, #f2a675 70%, #ed8f5d 90%, #e87850 100%);
-    }
-
-    /* Dawn */
-    100% {
-        background: linear-gradient(to top, #f5d5a8 0%, #f4c8a0 20%, #f2ba8f 50%, #efa57d 80%, #eb8f6c 100%);
-    }
-
-    /* Golden Hour */
+/* Aurora-like Desert Lights */
+.oasis-aurora {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 60%;
+    background:
+        linear-gradient(180deg,
+            transparent 0%,
+            rgba(100, 60, 140, 0.08) 20%,
+            rgba(60, 100, 140, 0.06) 40%,
+            transparent 60%);
+    animation: aurora-drift 20s ease-in-out infinite;
+    z-index: 1;
 }
 
-/* Stars with gradual emergence */
+@keyframes aurora-drift {
+
+    0%,
+    100% {
+        transform: translateX(-5%) skewX(-2deg);
+        opacity: 0.6;
+    }
+
+    50% {
+        transform: translateX(5%) skewX(2deg);
+        opacity: 1;
+    }
+}
+
+/* Distant Mountains Silhouette */
+.oasis-mountains {
+    position: absolute;
+    bottom: 25%;
+    left: 0;
+    width: 100%;
+    height: 35%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 200'%3E%3Cpath d='M0,200 L0,150 Q100,80 200,130 Q280,60 380,110 Q450,40 550,100 Q650,30 750,90 Q850,50 950,120 Q1050,70 1100,100 L1200,80 L1200,200 Z' fill='rgba(15,12,25,0.7)'/%3E%3Cpath d='M0,200 L0,160 Q150,100 280,140 Q380,80 500,130 Q620,70 750,120 Q880,90 1000,140 L1200,110 L1200,200 Z' fill='rgba(20,15,35,0.5)'/%3E%3C/svg%3E");
+    background-size: cover;
+    background-position: bottom;
+    z-index: 3;
+}
+
+/* Stars Container */
 #desert-stars {
     position: absolute;
     top: 0;
@@ -9246,295 +10849,179 @@ body {
     pointer-events: none;
 }
 
-.desert-star {
+/* Individual Stars */
+.oasis-star {
     position: absolute;
-    background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.6) 60%, transparent 100%);
     border-radius: 50%;
-    animation: star-emergence 180s ease-in-out infinite, star-twinkle 8s ease-in-out infinite;
+    animation: oasis-star-twinkle var(--twinkle-duration, 4s) ease-in-out infinite;
     animation-delay: var(--twinkle-delay, 0s);
+    will-change: opacity;
 }
 
-@keyframes star-emergence {
-
-    0%,
-    15% {
-        opacity: 0;
-        transform: scale(0);
-    }
-
-    /* Hidden during day */
-    25%,
-    75% {
-        opacity: 1;
-        transform: scale(1);
-    }
-
-    /* Visible at night */
-    85%,
-    100% {
-        opacity: 0;
-        transform: scale(0);
-    }
-
-    /* Fade out at dawn */
+.oasis-star.colored-star {
+    background: radial-gradient(circle, var(--star-color, #fff) 0%, rgba(255, 255, 255, 0.4) 70%, transparent 100%);
 }
 
-@keyframes star-twinkle {
+@keyframes oasis-star-twinkle {
 
     0%,
     100% {
-        opacity: 0.6;
-        filter: brightness(1);
+        opacity: 0.4;
     }
 
     50% {
         opacity: 1;
-        filter: brightness(1.5);
     }
 }
 
-/* Shooting stars */
-.shooting-star {
+/* Shooting Stars */
+.oasis-shooting-star {
     position: absolute;
     width: 3px;
     height: 3px;
-    background: white;
+    background: #fff;
     border-radius: 50%;
-    box-shadow: 0 0 8px 2px rgba(255, 255, 255, 0.8);
-    animation: shoot 2.5s ease-out forwards;
+    animation: oasis-shoot 1.8s ease-out forwards;
+    will-change: transform, opacity;
 }
 
-@keyframes shoot {
+.oasis-shooting-star::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 3px;
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(to left, transparent, rgba(255, 255, 255, 0.8), transparent);
+    transform: rotate(var(--angle, 40deg));
+    transform-origin: right center;
+}
+
+@keyframes oasis-shoot {
     0% {
-        transform: translateX(0) translateY(0) rotate(var(--angle, 45deg));
+        transform: translate(0, 0);
         opacity: 1;
     }
 
     100% {
-        transform: translateX(150vw) translateY(150vh) rotate(var(--angle, 45deg));
+        transform: translate(120vw, 80vh);
         opacity: 0;
-        box-shadow: 0 0 0 0 transparent;
     }
 }
 
-.shooting-star::after {
-    content: '';
+/* Moon Container */
+#desert-moon {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: 8%;
+    right: 12%;
     width: 80px;
-    height: 2px;
-    background: linear-gradient(to left, transparent, rgba(255, 255, 255, 0.8));
-    transform-origin: right;
-}
-
-/* Enhanced sand dunes with morphing */
-.desert-dunes {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 200%;
-    height: 45%;
-    background-repeat: repeat-x;
-    background-position: 0 bottom;
-    animation: slide linear infinite;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 140"><defs><linearGradient id="sand-grad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:%23c19a6b;stop-opacity:1" /><stop offset="100%" style="stop-color:%23a0826d;stop-opacity:1" /></linearGradient></defs><path d="M 0 140 Q 150 20, 300 80 T 600 90 T 800 140" fill="url(%23sand-grad)"/></svg>');
-    background-size: 800px 140px;
-}
-
-#desert-dunes-back {
-    animation-duration: 240s;
+    height: 80px;
     z-index: 3;
-    filter: brightness(0.55) saturate(0.8);
-    opacity: 0.7;
-}
-
-#desert-dunes-mid {
-    animation-duration: 170s;
-    z-index: 5;
-    filter: brightness(0.75) saturate(0.9);
-    opacity: 0.85;
-}
-
-#desert-dunes-front {
-    animation-duration: 110s;
-    z-index: 7;
-    filter: brightness(1);
-}
-
-/* Mountain silhouettes */
-#desert-rocks {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 200%;
-    height: 45%;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 200"><path d="M 0 200 L 80 100 L 150 140 L 230 60 L 320 200 Z" fill="rgba(35,25,40,0.75)"/><path d="M 400 200 L 500 40 L 600 200 Z" fill="rgba(40,28,45,0.7)"/><path d="M 700 200 L 800 80 L 900 180 L 1000 200 Z" fill="rgba(38,26,42,0.72)"/></svg>');
-    background-repeat: repeat-x;
-    background-size: 1000px 200px;
-    animation: slide 200s linear infinite;
-    z-index: 4;
-    filter: drop-shadow(-15px 8px 8px rgba(0, 0, 0, 0.4));
-}
-
-/* Heat mirage effects with vertical distortion */
-.desert-mirage {
-    position: absolute;
-    bottom: 15%;
-    left: 0;
-    width: 100%;
-    height: 40%;
-    z-index: 6;
     pointer-events: none;
 }
 
-.desert-mirage::before {
-    content: '';
+/* Crescent Moon */
+.oasis-moon {
     position: absolute;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(90deg,
-            transparent,
-            transparent 6%,
-            rgba(255, 235, 190, 0.05) 8%,
-            rgba(250, 220, 170, 0.04) 10%,
-            transparent 12%);
-    animation: heat-shimmer 5s ease-in-out infinite;
-    filter: blur(4px);
+    width: 60px;
+    height: 60px;
+    background: radial-gradient(circle at 35% 35%,
+            #fff8e8 0%,
+            #ffe8c0 40%,
+            #ffd090 70%,
+            rgba(255, 200, 140, 0.6) 100%);
+    border-radius: 50%;
+    box-shadow:
+        0 0 30px rgba(255, 230, 180, 0.6),
+        0 0 60px rgba(255, 220, 150, 0.4),
+        inset -15px -10px 20px rgba(0, 0, 0, 0.15);
 }
 
-@keyframes heat-shimmer {
+.moon-inner-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90px;
+    height: 90px;
+    background: radial-gradient(circle, rgba(255, 240, 200, 0.3) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: moon-glow 6s ease-in-out infinite alternate;
+}
 
-    0%,
+.moon-outer-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 150px;
+    height: 150px;
+    background: radial-gradient(circle, rgba(255, 230, 180, 0.15) 0%, transparent 60%);
+    border-radius: 50%;
+}
+
+@keyframes moon-glow {
+    0% {
+        opacity: 0.7;
+        transform: translate(-50%, -50%) scale(1);
+    }
+
     100% {
-        transform: translateY(0) scaleY(1) skewX(0deg);
-        opacity: 0.4;
-    }
-
-    20% {
-        transform: translateY(-10px) scaleY(1.04) skewX(0.5deg);
-        opacity: 0.6;
-    }
-
-    40% {
-        transform: translateY(6px) scaleY(0.96) skewX(-0.5deg);
-        opacity: 0.5;
-    }
-
-    60% {
-        transform: translateY(-7px) scaleY(1.03) skewX(0.3deg);
-        opacity: 0.55;
-    }
-
-    80% {
-        transform: translateY(4px) scaleY(0.98) skewX(-0.3deg);
-        opacity: 0.5;
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
     }
 }
 
-/* Sand particles flying in the wind */
+/* Sand Dune Silhouettes */
+.oasis-dune {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+}
+
+.oasis-dune-back {
+    height: 35%;
+    background: linear-gradient(to top,
+            #1a1228 0%,
+            #221830 60%,
+            transparent 100%);
+    clip-path: polygon(0% 100%, 0% 70%, 8% 55%, 20% 65%, 35% 45%, 50% 60%,
+            65% 40%, 78% 55%, 90% 48%, 100% 58%, 100% 100%);
+    z-index: 4;
+    opacity: 0.8;
+}
+
+.oasis-dune-mid {
+    height: 30%;
+    background: linear-gradient(to top,
+            #251a35 0%,
+            #2d2040 70%,
+            transparent 100%);
+    clip-path: polygon(0% 100%, 0% 60%, 12% 50%, 25% 65%, 40% 45%, 55% 55%,
+            70% 40%, 85% 50%, 100% 55%, 100% 100%);
+    z-index: 6;
+    opacity: 0.9;
+}
+
+.oasis-dune-front {
+    height: 25%;
+    background: linear-gradient(to top,
+            #2f2242 0%,
+            #3a2850 60%,
+            #4a3560 90%,
+            transparent 100%);
+    clip-path: polygon(0% 100%, 0% 55%, 15% 40%, 30% 55%, 45% 35%, 60% 50%,
+            75% 38%, 90% 48%, 100% 42%, 100% 100%);
+    z-index: 8;
+}
+
+/* Sand Particles Container */
 #desert-sand-particles {
     position: absolute;
     top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 8;
-    pointer-events: none;
-}
-
-.sand-particle {
-    position: absolute;
-    background: radial-gradient(circle, rgba(245, 200, 140, 0.9), rgba(230, 180, 120, 0.4));
-    border-radius: 50%;
-    filter: blur(0.6px);
-    box-shadow: 0 0 4px rgba(245, 195, 130, 0.5);
-    animation: sand-wind-drift ease-in-out infinite;
-}
-
-@keyframes sand-wind-drift {
-    0% {
-        transform: translate(var(--x-start), var(--y-start)) rotate(0deg) scale(0.5);
-        opacity: 0;
-    }
-
-    5% {
-        opacity: 0.7;
-    }
-
-    15% {
-        transform: translate(calc(var(--x-start) + var(--x-drift) * 0.2),
-                calc(var(--y-start) + var(--y-drift) * 0.2)) rotate(90deg) scale(1);
-        opacity: 0.8;
-    }
-
-    35% {
-        transform: translate(calc(var(--x-start) + var(--x-drift) * 0.5),
-                calc(var(--y-start) + var(--y-drift) * 0.5)) rotate(200deg) scale(1.2);
-        opacity: 0.9;
-    }
-
-    65% {
-        transform: translate(calc(var(--x-start) + var(--x-drift) * 0.8),
-                calc(var(--y-start) + var(--y-drift) * 0.8)) rotate(280deg) scale(1);
-        opacity: 0.7;
-    }
-
-    90% {
-        opacity: 0.3;
-    }
-
-    100% {
-        transform: translate(calc(var(--x-start) + var(--x-drift)),
-                calc(var(--y-start) + var(--y-drift))) rotate(360deg) scale(0.3);
-        opacity: 0;
-    }
-}
-
-/* Dust devil effect */
-.dust-devil {
-    position: absolute;
-    width: 100px;
-    height: 200px;
-    animation: dust-devil-rise 8s ease-out forwards;
-}
-
-@keyframes dust-devil-rise {
-    0% {
-        transform: translateY(0) rotate(0deg) scale(0.5);
-        opacity: 0.8;
-    }
-
-    100% {
-        transform: translateY(-120vh) rotate(1440deg) scale(1.5);
-        opacity: 0;
-    }
-}
-
-.dust-devil-particle {
-    position: absolute;
-    width: 3px;
-    height: 3px;
-    background: rgba(210, 180, 140, 0.7);
-    border-radius: 50%;
-    animation: orbit-dust 2s linear infinite;
-    animation-delay: var(--orbit-delay);
-}
-
-@keyframes orbit-dust {
-    0% {
-        transform: rotate(0deg) translateX(var(--orbit-radius)) rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg) translateX(var(--orbit-radius)) rotate(-360deg);
-    }
-}
-
-/* Enhanced desert fauna */
-#desert-fauna {
-    position: absolute;
-    bottom: 0;
     left: 0;
     width: 100%;
     height: 100%;
@@ -9542,311 +11029,522 @@ body {
     pointer-events: none;
 }
 
-.desert-lizard {
+/* Gentle Sand Drift */
+.oasis-sand-particle {
     position: absolute;
-    width: 50px;
-    height: 12px;
-    background: linear-gradient(to right, rgba(60, 45, 30, 0.9), rgba(40, 30, 20, 0.85), rgba(60, 45, 30, 0.9));
-    border-radius: 50% 0 50% 0;
-    animation: scurry-lizard 45s linear infinite;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.desert-lizard::after {
-    content: '';
-    position: absolute;
-    right: -20px;
-    top: 50%;
-    width: 30px;
-    height: 2px;
-    background: rgba(50, 35, 25, 0.7);
+    background: rgba(200, 170, 130, 0.6);
     border-radius: 50%;
+    animation: oasis-sand-drift var(--duration, 20s) linear infinite;
+    will-change: transform, opacity;
+    contain: layout paint;
 }
 
-@keyframes scurry-lizard {
+@keyframes oasis-sand-drift {
+    0% {
+        transform: translate(var(--start-x), var(--start-y));
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 0.5;
+    }
+
+    90% {
+        opacity: 0.4;
+    }
+
+    100% {
+        transform: translate(calc(var(--start-x) + var(--drift-x)), calc(var(--start-y) + var(--drift-y)));
+        opacity: 0;
+    }
+}
+
+/* Oasis Water Pool */
+#desert-oasis-water {
+    position: absolute;
+    bottom: 12%;
+    left: 35%;
+    width: 30%;
+    height: 18%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.oasis-water-pool {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse 100% 60% at 50% 60%,
+            rgba(40, 80, 120, 0.5) 0%,
+            rgba(30, 60, 100, 0.4) 40%,
+            rgba(20, 50, 90, 0.3) 70%,
+            transparent 100%);
+    border-radius: 50%;
+    animation: water-pool-shimmer 8s ease-in-out infinite;
+}
+
+.oasis-water-shimmer {
+    position: absolute;
+    width: 80%;
+    height: 60%;
+    top: 20%;
+    left: 10%;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(100, 150, 200, 0.15) 20%,
+            rgba(150, 200, 230, 0.25) 50%,
+            rgba(100, 150, 200, 0.15) 80%,
+            transparent 100%);
+    border-radius: 50%;
+    animation: water-shimmer-move 6s ease-in-out infinite;
+}
+
+.oasis-water-reflection {
+    position: absolute;
+    width: 40%;
+    height: 30%;
+    top: 30%;
+    left: 30%;
+    background: radial-gradient(ellipse, rgba(255, 240, 200, 0.2) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: moon-reflection 4s ease-in-out infinite alternate;
+}
+
+@keyframes water-pool-shimmer {
 
     0%,
     100% {
-        transform: translateX(-10vw) scaleX(1);
-        opacity: 0;
+        opacity: 0.8;
+        transform: scale(1);
     }
 
-    2% {
+    50% {
         opacity: 1;
+        transform: scale(1.02);
     }
+}
 
-    8%,
-    12% {
-        transform: translateX(15vw) scaleX(1);
-    }
+@keyframes water-shimmer-move {
 
-    20%,
-    24% {
-        transform: translateX(35vw) scaleX(1);
-    }
-
-    32%,
-    36% {
-        transform: translateX(60vw) scaleX(1);
-    }
-
-    44% {
-        transform: translateX(85vw) scaleX(1);
-        opacity: 1;
-    }
-
-    48%,
+    0%,
     100% {
-        transform: translateX(110vw) scaleX(1);
-        opacity: 0;
+        transform: translateX(-5%) scaleX(0.9);
+        opacity: 0.6;
+    }
+
+    50% {
+        transform: translateX(5%) scaleX(1.1);
+        opacity: 0.9;
     }
 }
 
-.desert-moth {
-    position: absolute;
-    width: 20px;
-    height: 8px;
-    animation: flutter-moth-erratic 25s ease-in-out infinite;
+@keyframes moon-reflection {
+    0% {
+        opacity: 0.3;
+        transform: scale(0.95);
+    }
+
+    100% {
+        opacity: 0.5;
+        transform: scale(1.05);
+    }
 }
 
-.desert-moth::before,
-.desert-moth::after {
-    content: '';
+.oasis-water-pool.oasis-pulse {
+    filter: brightness(var(--pulse-intensity, 1.2));
+    transition: filter 0.3s ease-out;
+}
+
+.oasis-water-shimmer.shimmer-pulse {
+    opacity: 1 !important;
+    transform: scaleX(1.2) !important;
+    transition: all 0.3s ease-out;
+}
+
+/* Palm Trees Container */
+#desert-palms {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 7;
+    pointer-events: none;
+}
+
+/* SVG-based Palm Tree */
+.oasis-palm {
+    position: absolute;
+    bottom: var(--palm-bottom, 15%);
+    width: var(--palm-width, 100px);
+    height: var(--palm-height, 180px);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 180'%3E%3C!-- Trunk --%3E%3Cpath d='M48,180 Q47,140 50,100 Q53,60 50,40' stroke='%23151020' stroke-width='8' fill='none' stroke-linecap='round'/%3E%3C!-- Trunk texture --%3E%3Cpath d='M45,160 Q50,158 55,160 M44,140 Q50,137 56,140 M45,120 Q50,117 55,120 M46,100 Q50,97 54,100 M47,80 Q50,77 53,80 M48,60 Q50,58 52,60' stroke='%23100a18' stroke-width='1.5' fill='none'/%3E%3C!-- Fronds --%3E%3Cpath d='M50,40 Q20,30 5,50' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q25,20 15,35' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q40,10 30,15' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q55,5 50,5' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q60,10 70,15' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q75,20 85,35' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q80,30 95,50' stroke='%23100a18' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C!-- Drooping fronds --%3E%3Cpath d='M50,40 Q15,45 0,70' stroke='%23100a18' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3Cpath d='M50,40 Q85,45 100,70' stroke='%23100a18' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: bottom center;
+    transform-origin: bottom center;
+    animation: palm-sway var(--sway-duration, 10s) ease-in-out infinite;
+    filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes palm-sway {
+
+    0%,
+    100% {
+        transform: rotate(calc(var(--sway-amount, 1.5deg) * -1)) scaleX(var(--scale-x, 1));
+    }
+
+    50% {
+        transform: rotate(var(--sway-amount, 1.5deg)) scaleX(var(--scale-x, 1));
+    }
+}
+
+/* Floating Lanterns Container */
+#desert-lanterns {
     position: absolute;
     top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Floating Lantern */
+.oasis-lantern {
+    position: absolute;
     width: 12px;
-    height: 18px;
-    background: radial-gradient(ellipse, rgba(240, 230, 140, 0.8) 0%, rgba(220, 210, 120, 0.5) 60%, transparent 100%);
+    height: 16px;
+    background: radial-gradient(ellipse 100% 120% at 50% 30%,
+            rgba(255, 200, 100, 0.95) 0%,
+            rgba(255, 160, 60, 0.8) 40%,
+            rgba(255, 120, 40, 0.6) 70%,
+            transparent 100%);
+    border-radius: 30% 30% 50% 50%;
+    box-shadow:
+        0 0 20px rgba(255, 180, 80, 0.6),
+        0 0 40px rgba(255, 150, 50, 0.3);
+    animation:
+        lantern-glow var(--glow-duration, 3s) ease-in-out infinite,
+        lantern-float var(--float-duration, 15s) ease-in-out infinite;
+    will-change: transform, opacity;
+}
+
+.oasis-lantern::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    background: rgba(255, 220, 150, 0.8);
     border-radius: 50%;
-    animation: flap-moth-wings 0.15s ease-in-out infinite;
 }
 
-.desert-moth::before {
-    left: -8px;
-}
-
-.desert-moth::after {
-    right: -8px;
-}
-
-@keyframes flap-moth-wings {
+@keyframes lantern-glow {
 
     0%,
     100% {
-        transform: rotateY(0deg) scaleX(1);
+        opacity: 0.7;
+        filter: brightness(0.9);
     }
 
     50% {
-        transform: rotateY(180deg) scaleX(0.3);
+        opacity: 1;
+        filter: brightness(1.1);
     }
 }
 
-@keyframes flutter-moth-erratic {
-    0% {
-        transform: translate(var(--x1), var(--y1)) rotate(0deg) scale(1);
+@keyframes lantern-float {
+
+    0%,
+    100% {
+        transform: translate(0, 0) rotate(-3deg);
     }
 
-    16% {
-        transform: translate(var(--x2), var(--y2)) rotate(25deg) scale(1.1);
-    }
-
-    33% {
-        transform: translate(var(--x3), var(--y3)) rotate(-15deg) scale(0.9);
+    25% {
+        transform: translate(var(--drift-x, 10px), calc(var(--drift-y, -20px) * 0.5)) rotate(2deg);
     }
 
     50% {
-        transform: translate(var(--x4), var(--y4)) rotate(20deg) scale(1);
+        transform: translate(calc(var(--drift-x, 10px) * 1.5), var(--drift-y, -20px)) rotate(-2deg);
     }
 
-    66% {
-        transform: translate(var(--x5), var(--y5)) rotate(-25deg) scale(1.05);
-    }
-
-    83% {
-        transform: translate(var(--x6), var(--y6)) rotate(10deg) scale(0.95);
-    }
-
-    100% {
-        transform: translate(var(--x1), var(--y1)) rotate(0deg) scale(1);
+    75% {
+        transform: translate(var(--drift-x, 10px), calc(var(--drift-y, -20px) * 0.7)) rotate(1deg);
     }
 }
 
-.desert-camel {
-    position: absolute;
-    bottom: var(--camel-y);
-    width: 60px;
-    height: 40px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40"><ellipse cx="20" cy="15" rx="15" ry="10" fill="rgba(30,20,15,0.6)"/><ellipse cx="40" cy="18" rx="12" ry="8" fill="rgba(30,20,15,0.6)"/><rect x="15" y="20" width="6" height="15" fill="rgba(25,18,12,0.6)"/><rect x="25" y="20" width="6" height="15" fill="rgba(25,18,12,0.6)"/><rect x="35" y="22" width="6" height="13" fill="rgba(25,18,12,0.6)"/><rect x="45" y="22" width="6" height="13" fill="rgba(25,18,12,0.6)"/></svg>');
-    background-size: contain;
-    animation: walk-camel 140s linear infinite;
-    filter: blur(1px);
+.oasis-lantern.lantern-flash {
+    filter: brightness(1.5) !important;
+    box-shadow:
+        0 0 30px rgba(255, 200, 100, 0.9),
+        0 0 60px rgba(255, 160, 60, 0.5);
+    transition: all 0.2s ease-out;
 }
 
-@keyframes walk-camel {
-    0% {
-        transform: translateX(-10vw);
-        opacity: 0;
-    }
-
-    5% {
-        opacity: 0.4;
-    }
-
-    95% {
-        opacity: 0.4;
-    }
-
-    100% {
-        transform: translateX(110vw);
-        opacity: 0;
-    }
-}
-
-/* Enhanced desert flora */
-#desert-flora {
+/* Oasis Vegetation Container */
+#desert-vegetation {
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
     height: 40%;
-    z-index: 10;
+    z-index: 7;
     pointer-events: none;
 }
 
-.palm-tree {
+/* Oasis Reeds/Grass */
+.oasis-reed {
     position: absolute;
-    width: 12px;
-    background: linear-gradient(to bottom, #6b4423 0%, #8b5a2b 50%, #6b4423 100%);
-    border-radius: 2px;
-    box-shadow: inset -2px 0 3px rgba(0, 0, 0, 0.3);
+    bottom: var(--reed-bottom, 12%);
+    width: 3px;
+    height: var(--reed-height, 40px);
+    background: linear-gradient(to top,
+            rgba(20, 15, 30, 0.9) 0%,
+            rgba(25, 20, 40, 0.7) 70%,
+            rgba(30, 25, 45, 0.5) 100%);
+    border-radius: 1px 1px 0 0;
+    transform-origin: bottom center;
+    animation: reed-sway var(--sway-duration, 4s) ease-in-out infinite;
 }
 
-.palm-frond {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: 50px;
-    height: 8px;
-    background: linear-gradient(to right, transparent, #2d5016, #3a6b1f, #2d5016, transparent);
-    border-radius: 50% 0;
-    transform-origin: left center;
-    transform: translateX(-50%) rotate(var(--frond-rotation)) translateX(25px);
-    animation: sway-frond var(--sway-duration, 6s) ease-in-out infinite alternate;
-    animation-delay: var(--frond-delay, 0s);
-}
-
-@keyframes sway-frond {
-    0% {
-        transform: translateX(-50%) rotate(var(--frond-rotation)) translateX(25px) rotate(-8deg);
-    }
-
-    100% {
-        transform: translateX(-50%) rotate(var(--frond-rotation)) translateX(25px) rotate(8deg);
-    }
-}
-
-.cactus {
-    position: absolute;
-    width: 12px;
-    background: linear-gradient(to right, #4a6b3a, #5d7d4d, #4a6b3a);
-    border-radius: 6px;
-    box-shadow: inset -2px 0 3px rgba(0, 0, 0, 0.2);
-}
-
-.cactus::before,
-.cactus::after {
+.oasis-reed::after {
     content: '';
     position: absolute;
-    width: 8px;
-    height: 40%;
-    background: linear-gradient(to right, #4a6b3a, #5d7d4d);
-    border-radius: 4px;
-}
-
-.cactus::before {
-    top: 25%;
-    left: -6px;
-    transform: rotate(-25deg);
-}
-
-.cactus::after {
-    top: 15%;
-    right: -6px;
-    transform: rotate(25deg);
-}
-
-.desert-flower {
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    background: radial-gradient(circle, hsl(var(--flower-hue, 320), 80%, 70%) 0%, hsl(var(--flower-hue, 320), 70%, 60%) 50%, transparent 80%);
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 10px;
+    background: radial-gradient(ellipse, rgba(25, 20, 35, 0.8) 0%, transparent 70%);
     border-radius: 50%;
-    animation: bloom-flower 8s ease-in-out infinite alternate;
-    filter: drop-shadow(0 0 3px hsl(var(--flower-hue, 320), 80%, 60%));
 }
 
-@keyframes bloom-flower {
-    0% {
-        transform: scale(0.7) rotate(0deg);
-        opacity: 0.6;
-    }
-
-    100% {
-        transform: scale(1) rotate(15deg);
-        opacity: 1;
-    }
-}
-
-.desert-rock {
-    position: absolute;
-    background: radial-gradient(ellipse, rgba(70, 60, 55, 0.8) 0%, rgba(50, 45, 40, 0.7) 60%, transparent 100%);
-    border-radius: 50%;
-    filter: blur(1px);
-}
-
-/* Oasis water pool */
-.oasis-water {
-    position: absolute;
-    left: 42%;
-    bottom: 15%;
-    width: 16%;
-    height: 25%;
-    background: radial-gradient(ellipse, rgba(60, 100, 140, 0.4) 0%, rgba(40, 80, 120, 0.3) 50%, transparent 80%);
-    border-radius: 50%;
-    animation: water-shimmer 6s ease-in-out infinite;
-}
-
-@keyframes water-shimmer {
+@keyframes reed-sway {
 
     0%,
     100% {
-        opacity: 0.6;
-        transform: scale(1);
+        transform: rotate(calc(var(--sway-amount, 5deg) * -1));
     }
 
     50% {
-        opacity: 0.8;
-        transform: scale(1.05);
+        transform: rotate(var(--sway-amount, 5deg));
     }
 }
 
-.water-ripple {
+/* Effects Container */
+#desert-effects {
     position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 1px solid rgba(150, 180, 210, 0.6);
-    border-radius: 50%;
-    animation: expand-ripple 3s ease-out forwards;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 11;
+    pointer-events: none;
+    overflow: hidden;
+    contain: layout style;
 }
 
-@keyframes expand-ripple {
+/* ===== COMBO EFFECTS ===== */
+
+/* Sand Swirl Effect */
+.sand-swirl {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg,
+            transparent 0deg,
+            rgba(200, 170, 130, 0.4) 90deg,
+            transparent 180deg,
+            rgba(180, 150, 110, 0.3) 270deg,
+            transparent 360deg);
+    animation: sand-swirl-spin 1.2s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes sand-swirl-spin {
     0% {
-        transform: scale(0);
+        transform: translate(-50%, -50%) rotate(0deg) scale(0.3);
+        opacity: 0;
+    }
+
+    20% {
         opacity: 0.8;
     }
 
     100% {
-        transform: scale(4);
+        transform: translate(-50%, -50%) rotate(720deg) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Oasis Water Ripple */
+.oasis-ripple {
+    position: absolute;
+    width: 20px;
+    height: 12px;
+    border: 2px solid rgba(100, 160, 200, 0.5);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: oasis-ripple-expand 1s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes oasis-ripple-expand {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(5);
+        opacity: 0;
+    }
+}
+
+/* Lantern Spark Particle */
+.lantern-spark {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: radial-gradient(circle, var(--glow-color, #ffcc70) 0%, rgba(255, 180, 60, 0.5) 50%, transparent 80%);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--glow-color, #ffcc70);
+    animation: lantern-spark-anim 0.75s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes lantern-spark-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+
+    15% {
+        transform: translate(-50%, -50%) scale(1.3);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(calc(-50% + var(--burst-x, 0)), calc(-50% + var(--burst-y, 0))) scale(0.2);
+        opacity: 0;
+    }
+}
+
+/* Moonbeam Ray */
+.moonbeam {
+    position: absolute;
+    width: 3px;
+    height: 150px;
+    background: linear-gradient(to bottom,
+            rgba(255, 240, 200, 0.4) 0%,
+            rgba(255, 230, 180, 0.2) 50%,
+            transparent 100%);
+    transform-origin: top center;
+    transform: rotate(var(--beam-angle, 20deg));
+    animation: moonbeam-shine 1.5s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes moonbeam-shine {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--beam-angle, 20deg)) scaleY(0);
+    }
+
+    30% {
+        opacity: 0.8;
+        transform: rotate(var(--beam-angle, 20deg)) scaleY(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(var(--beam-angle, 20deg)) scaleY(1.2);
+    }
+}
+
+/* Sand Puff (piece lock) */
+.sand-puff {
+    position: absolute;
+    width: 25px;
+    height: 25px;
+    background: radial-gradient(circle, rgba(180, 150, 110, 0.5) 0%, transparent 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: sand-puff-anim 0.5s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout paint;
+}
+
+@keyframes sand-puff-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0.6;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Desert Sparkle Effect */
+.desert-sparkle {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    animation: desert-sparkle-anim 0.6s ease-out forwards;
+    pointer-events: none;
+    z-index: 12;
+}
+
+.desert-sparkle::before,
+.desert-sparkle::after {
+    content: '';
+    position: absolute;
+    background: #ffe8cc;
+    border-radius: 50%;
+}
+
+.desert-sparkle::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+    box-shadow: 0 0 8px rgba(255, 200, 100, 0.8);
+}
+
+.desert-sparkle::after {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 8px rgba(255, 200, 100, 0.8);
+}
+
+@keyframes desert-sparkle-anim {
+    0% {
+        transform: translate(-50%, -50%) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+
+    40% {
+        transform: translate(-50%, -50%) scale(1) rotate(45deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0) rotate(90deg);
         opacity: 0;
     }
 }

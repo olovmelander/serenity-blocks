@@ -1,57 +1,73 @@
 /**
  * Desert Oasis Theme - Tetromino Visual Configuration
  *
- * Warm sand and twilight palette with glowing highlights to match the serene desert sky.
+ * A magical desert night palette featuring:
+ * - Warm lantern glows and firefly lights
+ * - Cool moonlit blues and purples
+ * - Sandy gold and amber tones
+ * - Oasis water reflections
  */
 
 export const DESERT_OASIS_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8be9ff', // Oasis cyan
-        O: '#ffd38a', // Dune gold
-        T: '#f9a8ff', // Twilight magenta
-        S: '#a7ffcb', // Mint mirage
-        Z: '#ff8d73', // Sunset coral
-        J: '#6f7bff', // Indigo night
-        L: '#ffe799', // Lantern glow
-        GARBAGE: '#1a1c2e', // Desert night shadow
+        I: '#7ec8ff', // Moonlit oasis - soft blue water
+        O: '#ffd06a', // Lantern gold - warm amber glow
+        T: '#c9a0ff', // Twilight purple - desert dusk
+        S: '#7fffb8', // Desert mint - cool oasis green
+        Z: '#ff9070', // Sunset coral - warm horizon
+        J: '#8090ff', // Night sky indigo - deep blue
+        L: '#ffb855', // Firefly amber - glowing orange
+        GARBAGE: '#1a1528', // Desert shadow - deep night
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 10,
-        glowIntensity: 0.7,
+        // Warm mystical glow
+        glowRadius: 11,
+        glowIntensity: 0.72,
         glowColor: 'auto',
 
+        // Soft sand-colored outline
         outline: true,
-        outlineWidth: 1.7,
+        outlineWidth: 1.8,
         outlineColor: 'lighten',
 
+        // Gentle firefly pulse
         pulse: true,
-        pulseSpeed: 0.04,
-        pulseAmplitude: 0.22,
+        pulseSpeed: 0.035,
+        pulseAmplitude: 0.24,
 
+        // Moonlight shimmer
         shimmer: true,
-        shimmerSpeed: 0.06,
-        shimmerIntensity: 0.2,
+        shimmerSpeed: 0.05,
+        shimmerIntensity: 0.22,
 
+        // Desert wind trails
         trails: true,
         trailLength: 0.18,
-        trailOpacity: 0.32,
+        trailOpacity: 0.35,
+
+        // Inner oasis glow
+        innerGlow: true,
+        innerGlowRadius: 3.5,
+        innerGlowIntensity: 0.45,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 8,
-            glowIntensity: 0.65,
+            glowRadius: 9,
+            glowIntensity: 0.68,
             outlineWidth: 1.5,
+            pulseAmplitude: 0.2,
         },
         phaser: {
-            glowRadius: 12,
-            glowIntensity: 0.75,
-            outlineWidth: 1.9,
+            glowRadius: 13,
+            glowIntensity: 0.78,
+            outlineWidth: 2.0,
+            pulseAmplitude: 0.28,
         },
     },
 };
