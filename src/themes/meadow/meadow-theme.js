@@ -42,7 +42,7 @@ export default class MeadowTheme extends BaseTheme {
                 cloudAnimationEnabled: false,
                 
                 // Ground elements
-                grassBladeCount: 15,
+                grassBladeCount: 12,
                 flowerCount: 2,
                 simplifiedFlowers: true,
                 
@@ -52,7 +52,7 @@ export default class MeadowTheme extends BaseTheme {
                 fireflyCount: 0,
                 
                 // Particles
-                pollenCount: 4,
+                pollenCount: 3,
                 dandelionSeedCount: 0,
                 
                 // Effects
@@ -64,8 +64,9 @@ export default class MeadowTheme extends BaseTheme {
                 fireflyShowerCount: 0,
                 
                 // Performance
-                animationFrameSkip: 8,
+                animationFrameSkip: 10,
                 useSimpleAnimations: true,
+                useCSSAnimationsOnly: true,
             },
             Low: {
                 // Sky elements
@@ -73,17 +74,17 @@ export default class MeadowTheme extends BaseTheme {
                 cloudAnimationEnabled: true,
                 
                 // Ground elements
-                grassBladeCount: 22,
+                grassBladeCount: 18,
                 flowerCount: 3,
                 simplifiedFlowers: true,
                 
                 // Creatures
                 butterflyCount: 1,
                 beeCount: 1,
-                fireflyCount: 2,
+                fireflyCount: 1,
                 
                 // Particles
-                pollenCount: 8,
+                pollenCount: 5,
                 dandelionSeedCount: 1,
                 
                 // Effects
@@ -95,8 +96,9 @@ export default class MeadowTheme extends BaseTheme {
                 fireflyShowerCount: 2,
                 
                 // Performance
-                animationFrameSkip: 5,
+                animationFrameSkip: 7,
                 useSimpleAnimations: true,
+                useCSSAnimationsOnly: true,
             },
             Medium: {
                 // Sky elements
@@ -104,8 +106,40 @@ export default class MeadowTheme extends BaseTheme {
                 cloudAnimationEnabled: true,
                 
                 // Ground elements
-                grassBladeCount: 32,
-                flowerCount: 5,
+                grassBladeCount: 26,
+                flowerCount: 4,
+                simplifiedFlowers: true,
+                
+                // Creatures
+                butterflyCount: 2,
+                beeCount: 1,
+                fireflyCount: 2,
+                
+                // Particles
+                pollenCount: 10,
+                dandelionSeedCount: 2,
+                
+                // Effects
+                enableComboEffects: true,
+                bloomBurstParticles: 3,
+                butterflySwarmCount: 2,
+                pollenStormMultiplier: 0.15,
+                rainbowEnabled: true,
+                fireflyShowerCount: 3,
+                
+                // Performance
+                animationFrameSkip: 5,
+                useSimpleAnimations: true,
+                useCSSAnimationsOnly: false,
+            },
+            High: {
+                // Sky elements
+                cloudCount: 2,
+                cloudAnimationEnabled: true,
+                
+                // Ground elements
+                grassBladeCount: 38,
+                flowerCount: 6,
                 simplifiedFlowers: true,
                 
                 // Creatures
@@ -114,51 +148,21 @@ export default class MeadowTheme extends BaseTheme {
                 fireflyCount: 3,
                 
                 // Particles
-                pollenCount: 14,
-                dandelionSeedCount: 2,
+                pollenCount: 16,
+                dandelionSeedCount: 3,
                 
                 // Effects
                 enableComboEffects: true,
-                bloomBurstParticles: 4,
-                butterflySwarmCount: 2,
-                pollenStormMultiplier: 0.2,
+                bloomBurstParticles: 5,
+                butterflySwarmCount: 3,
+                pollenStormMultiplier: 0.25,
                 rainbowEnabled: true,
-                fireflyShowerCount: 3,
+                fireflyShowerCount: 5,
                 
                 // Performance
                 animationFrameSkip: 4,
-                useSimpleAnimations: true,
-            },
-            High: {
-                // Sky elements
-                cloudCount: 2,
-                cloudAnimationEnabled: true,
-                
-                // Ground elements
-                grassBladeCount: 45,
-                flowerCount: 8,
-                simplifiedFlowers: true,
-                
-                // Creatures
-                butterflyCount: 3,
-                beeCount: 1,
-                fireflyCount: 4,
-                
-                // Particles
-                pollenCount: 22,
-                dandelionSeedCount: 4,
-                
-                // Effects
-                enableComboEffects: true,
-                bloomBurstParticles: 6,
-                butterflySwarmCount: 3,
-                pollenStormMultiplier: 0.35,
-                rainbowEnabled: true,
-                fireflyShowerCount: 6,
-                
-                // Performance
-                animationFrameSkip: 3,
                 useSimpleAnimations: false,
+                useCSSAnimationsOnly: false,
             },
             Ultra: {
                 // Sky elements
@@ -166,30 +170,31 @@ export default class MeadowTheme extends BaseTheme {
                 cloudAnimationEnabled: true,
                 
                 // Ground elements
-                grassBladeCount: 60,
-                flowerCount: 12,
+                grassBladeCount: 50,
+                flowerCount: 9,
                 simplifiedFlowers: false,
                 
                 // Creatures
-                butterflyCount: 4,
+                butterflyCount: 3,
                 beeCount: 1,
-                fireflyCount: 5,
+                fireflyCount: 4,
                 
                 // Particles
-                pollenCount: 32,
-                dandelionSeedCount: 6,
+                pollenCount: 24,
+                dandelionSeedCount: 5,
                 
                 // Effects
                 enableComboEffects: true,
-                bloomBurstParticles: 10,
+                bloomBurstParticles: 8,
                 butterflySwarmCount: 4,
-                pollenStormMultiplier: 0.5,
+                pollenStormMultiplier: 0.4,
                 rainbowEnabled: true,
-                fireflyShowerCount: 10,
+                fireflyShowerCount: 8,
                 
                 // Performance
-                animationFrameSkip: 2,
+                animationFrameSkip: 3,
                 useSimpleAnimations: false,
+                useCSSAnimationsOnly: false,
             },
             Extreme: {
                 // Sky elements
@@ -197,30 +202,31 @@ export default class MeadowTheme extends BaseTheme {
                 cloudAnimationEnabled: true,
                 
                 // Ground elements
-                grassBladeCount: 80,
-                flowerCount: 14,
+                grassBladeCount: 65,
+                flowerCount: 12,
                 simplifiedFlowers: false,
                 
                 // Creatures
-                butterflyCount: 5,
+                butterflyCount: 4,
                 beeCount: 2,
-                fireflyCount: 7,
+                fireflyCount: 6,
                 
                 // Particles
-                pollenCount: 48,
-                dandelionSeedCount: 10,
+                pollenCount: 36,
+                dandelionSeedCount: 8,
                 
                 // Effects
                 enableComboEffects: true,
-                bloomBurstParticles: 14,
+                bloomBurstParticles: 12,
                 butterflySwarmCount: 5,
-                pollenStormMultiplier: 0.8,
+                pollenStormMultiplier: 0.6,
                 rainbowEnabled: true,
-                fireflyShowerCount: 14,
+                fireflyShowerCount: 12,
                 
                 // Performance
-                animationFrameSkip: 1,
+                animationFrameSkip: 2,
                 useSimpleAnimations: false,
+                useCSSAnimationsOnly: false,
             },
         };
         
@@ -248,6 +254,16 @@ export default class MeadowTheme extends BaseTheme {
 
         this.currentQuality = quality;
         this.activePreset = this.qualityPresets[quality];
+
+        // Apply performance mode class for lower quality presets
+        const themeContainer = document.getElementById('meadow-theme');
+        if (themeContainer) {
+            if (this.activePreset.useSimpleAnimations) {
+                themeContainer.classList.add('perf-mode');
+            } else {
+                themeContainer.classList.remove('perf-mode');
+            }
+        }
 
         // If scene is active, refresh quality-dependent elements
         if (this.isActive) {
@@ -570,11 +586,11 @@ export default class MeadowTheme extends BaseTheme {
         const delayGroups = 12;
         
         for (let i = 0; i < bladeCount; i++) {
-            const blade = document.createElement('div');
-            blade.className = 'grass-blade';
+                const blade = document.createElement('div');
+                blade.className = 'grass-blade';
             
             // Random positioning with slight clustering
-            blade.style.left = `${Math.random() * 100}%`;
+                blade.style.left = `${Math.random() * 100}%`;
             
             // Varied heights using 6 classes (weighted toward medium heights)
             const heightRoll = Math.random();
@@ -599,8 +615,8 @@ export default class MeadowTheme extends BaseTheme {
         }
         
         grassContainer.appendChild(fragment);
-        this.registerContainer(grassContainer);
-    }
+            this.registerContainer(grassContainer);
+        }
 
     /**
      * Create colorful wildflowers (optimized for quality presets)
@@ -635,8 +651,8 @@ export default class MeadowTheme extends BaseTheme {
         const fragment = document.createDocumentFragment();
         
         for (let i = 0; i < flowerCount; i++) {
-            const flower = document.createElement('div');
-            flower.className = 'meadow-flower';
+                const flower = document.createElement('div');
+                flower.className = 'meadow-flower';
             
             const type = flowerTypes[Math.floor(Math.random() * flowerTypes.length)];
             flower.classList.add(`flower-${type.name}`);
@@ -688,8 +704,8 @@ export default class MeadowTheme extends BaseTheme {
         }
         
         flowerContainer.appendChild(fragment);
-        this.registerContainer(flowerContainer);
-    }
+            this.registerContainer(flowerContainer);
+        }
 
     /**
      * Create dancing butterflies with varied colors
@@ -736,21 +752,21 @@ export default class MeadowTheme extends BaseTheme {
         ];
         
         for (let i = 0; i < butterflyCount; i++) {
-            const butterfly = document.createElement('div');
-            butterfly.className = 'butterfly';
+                const butterfly = document.createElement('div');
+                butterfly.className = 'butterfly';
             
             // Each butterfly gets a unique random pattern
             const pattern = wingPatterns[Math.floor(Math.random() * wingPatterns.length)];
             
             // Create wings
-            const wingLeft = document.createElement('div');
-            wingLeft.className = 'butterfly-wing left';
+                const wingLeft = document.createElement('div');
+                wingLeft.className = 'butterfly-wing left';
             wingLeft.style.setProperty('--wing-primary', pattern.primary);
             wingLeft.style.setProperty('--wing-secondary', pattern.secondary);
             wingLeft.style.setProperty('--wing-accent', pattern.accent);
             
-            const wingRight = document.createElement('div');
-            wingRight.className = 'butterfly-wing right';
+                const wingRight = document.createElement('div');
+                wingRight.className = 'butterfly-wing right';
             wingRight.style.setProperty('--wing-primary', pattern.primary);
             wingRight.style.setProperty('--wing-secondary', pattern.secondary);
             wingRight.style.setProperty('--wing-accent', pattern.accent);
@@ -758,36 +774,36 @@ export default class MeadowTheme extends BaseTheme {
             // Create body
             const body = document.createElement('div');
             body.className = 'butterfly-body';
-            
-            butterfly.appendChild(wingLeft);
+
+                butterfly.appendChild(wingLeft);
             butterfly.appendChild(body);
-            butterfly.appendChild(wingRight);
-            
+                butterfly.appendChild(wingRight);
+
             // Flight path waypoints
-            for (let j = 1; j <= 8; j++) {
-                butterfly.style.setProperty(`--x${j}`, `${Math.random() * 90}vw`);
+                for (let j = 1; j <= 8; j++) {
+                    butterfly.style.setProperty(`--x${j}`, `${Math.random() * 90}vw`);
                 butterfly.style.setProperty(`--y${j}`, `${10 + Math.random() * 60}vh`);
-            }
+                }
             
             // Animation timing
             const duration = 15 + Math.random() * 15;
-            butterfly.style.animationDuration = `${duration}s`;
-            butterfly.style.animationDelay = `-${Math.random() * duration}s`;
+                butterfly.style.animationDuration = `${duration}s`;
+                butterfly.style.animationDelay = `-${Math.random() * duration}s`;
             
             // Wing flap speed
             const flapSpeed = 0.2 + Math.random() * 0.3;
-            wingLeft.style.animationDuration = `${flapSpeed}s`;
-            wingRight.style.animationDuration = `${flapSpeed}s`;
+                wingLeft.style.animationDuration = `${flapSpeed}s`;
+                wingRight.style.animationDuration = `${flapSpeed}s`;
             
             // Size variation
             const scale = 0.7 + Math.random() * 0.6;
             butterfly.style.setProperty('--butterfly-scale', scale);
-            
-            butterflyContainer.appendChild(butterfly);
-        }
+
+                butterflyContainer.appendChild(butterfly);
+            }
         
-        this.registerContainer(butterflyContainer);
-    }
+            this.registerContainer(butterflyContainer);
+        }
 
     /**
      * Create buzzing bees
@@ -895,8 +911,8 @@ export default class MeadowTheme extends BaseTheme {
         const sizeClasses = ['pollen-small', 'pollen-medium', 'pollen-large'];
         
         for (let i = 0; i < pollenCount; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'pollen-particle';
+                const particle = document.createElement('div');
+                particle.className = 'pollen-particle';
             
             // Use path variant groups instead of unique paths per particle
             const variant = i % pathVariants;
@@ -916,8 +932,8 @@ export default class MeadowTheme extends BaseTheme {
         }
         
         pollenContainer.appendChild(fragment);
-        this.registerContainer(pollenContainer);
-    }
+            this.registerContainer(pollenContainer);
+        }
 
     /**
      * Create floating dandelion seeds
@@ -1053,24 +1069,34 @@ export default class MeadowTheme extends BaseTheme {
     }
 
     /**
-     * Handle piece lock with subtle meadow effects
+     * Handle piece lock with meadow-themed effects
      */
     onPieceLock() {
         const preset = this.activePreset;
         if (!preset.enableComboEffects) return;
         
-        // Subtle grass sway
-        this.pulseGrass(1.02);
-        
-        // Small chance for extra visual feedback
+        // Cycle through different subtle effects for variety
         const roll = Math.random();
-        if (roll < 0.3) {
-            // 30% chance: tiny sparkle
-            this.triggerPieceLockSparkle();
+        
+        if (roll < 0.25) {
+            // 25% chance: Grass ripple from bottom
+            this.triggerGrassRipple();
         } else if (roll < 0.45) {
-            // 15% chance: single petal float
-            this.triggerSinglePetal();
+            // 20% chance: Dewdrop sparkle
+            this.triggerDewdropSparkle();
+        } else if (roll < 0.60) {
+            // 15% chance: Single leaf drift
+            this.triggerLeafDrift();
+        } else if (roll < 0.72) {
+            // 12% chance: Tiny pollen puff
+            this.triggerPollenPuff();
+        } else if (roll < 0.82) {
+            // 10% chance: Firefly flash (if fireflies enabled)
+            if (preset.fireflyCount > 0) {
+                this.triggerFireflyFlash();
+            }
         }
+        // 18% chance: No effect (for performance)
     }
 
     /**
@@ -1382,6 +1408,101 @@ export default class MeadowTheme extends BaseTheme {
         
         effectsContainer.appendChild(petal);
         setTimeout(() => petal.remove(), 2000);
+    }
+
+    // ========================================
+    // PIECE LOCK EFFECTS - Meadow themed
+    // ========================================
+
+    /**
+     * Grass ripple effect - subtle wave through grass from bottom
+     */
+    triggerGrassRipple() {
+        const grassContainer = document.querySelector('.meadow-grass');
+        if (!grassContainer) return;
+        
+        grassContainer.classList.add('grass-ripple');
+        setTimeout(() => grassContainer.classList.remove('grass-ripple'), 400);
+    }
+
+    /**
+     * Dewdrop sparkle - tiny gleaming water droplet effect
+     */
+    triggerDewdropSparkle() {
+        const effectsContainer = document.getElementById('meadow-effects');
+        if (!effectsContainer) return;
+
+        const dewdrop = document.createElement('div');
+        dewdrop.className = 'dewdrop-sparkle';
+        
+        // Position in bottom half (on grass/flowers)
+        dewdrop.style.left = `${10 + Math.random() * 80}%`;
+        dewdrop.style.top = `${70 + Math.random() * 25}%`;
+        
+        effectsContainer.appendChild(dewdrop);
+        setTimeout(() => dewdrop.remove(), 500);
+    }
+
+    /**
+     * Leaf drift - single small leaf floats up
+     */
+    triggerLeafDrift() {
+        const effectsContainer = document.getElementById('meadow-effects');
+        if (!effectsContainer) return;
+
+        const leaf = document.createElement('div');
+        leaf.className = 'drift-leaf';
+        
+        // Start from bottom area
+        leaf.style.left = `${5 + Math.random() * 90}%`;
+        leaf.style.bottom = `${5 + Math.random() * 20}%`;
+        leaf.style.setProperty('--drift-rotate', `${Math.random() * 360}deg`);
+        leaf.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 60}px`);
+        
+        effectsContainer.appendChild(leaf);
+        setTimeout(() => leaf.remove(), 1200);
+    }
+
+    /**
+     * Pollen puff - tiny burst of pollen particles
+     */
+    triggerPollenPuff() {
+        const effectsContainer = document.getElementById('meadow-effects');
+        if (!effectsContainer) return;
+
+        const puff = document.createElement('div');
+        puff.className = 'pollen-puff';
+        
+        // Position near flowers/grass
+        puff.style.left = `${10 + Math.random() * 80}%`;
+        puff.style.top = `${65 + Math.random() * 25}%`;
+        
+        // Create 3-5 tiny particles
+        const count = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'puff-particle';
+            const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+            particle.style.setProperty('--puff-angle', `${angle}rad`);
+            particle.style.setProperty('--puff-dist', `${15 + Math.random() * 25}px`);
+            puff.appendChild(particle);
+        }
+        
+        effectsContainer.appendChild(puff);
+        setTimeout(() => puff.remove(), 600);
+    }
+
+    /**
+     * Firefly flash - existing firefly briefly glows brighter
+     */
+    triggerFireflyFlash() {
+        const fireflies = document.querySelectorAll('.meadow-firefly');
+        if (fireflies.length === 0) return;
+        
+        // Pick a random firefly to flash
+        const firefly = fireflies[Math.floor(Math.random() * fireflies.length)];
+        firefly.classList.add('firefly-flash');
+        setTimeout(() => firefly.classList.remove('firefly-flash'), 300);
     }
 
     /**
