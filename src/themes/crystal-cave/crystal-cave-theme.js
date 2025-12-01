@@ -321,8 +321,9 @@ export default class CrystalCaveTheme extends BaseTheme {
 
     createLayer(count, scale, opacity, parallaxFactor, mistOpacity) {
         const crystals = [];
-        const sides = ['top', 'bottom', 'left', 'right'];
-        const countPerSide = Math.ceil(count / 4);
+        // Removed 'bottom' to improve performance - bottom crystals overlap with water pool
+        const sides = ['top', 'left', 'right'];
+        const countPerSide = Math.ceil(count / 3);
 
         sides.forEach((side) => {
             for (let i = 0; i < countPerSide; i++) {
