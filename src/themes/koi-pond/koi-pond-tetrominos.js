@@ -1,57 +1,75 @@
 /**
  * Koi Pond Theme - Tetromino Visual Configuration
  *
- * Inspired by koi fish, lily pads, and lantern reflections.
+ * A serene aquatic palette inspired by:
+ * - Crystal clear pond water
+ * - Glowing paper lantern reflections
+ * - Delicate cherry blossom petals
+ * - Vibrant koi fish scales
+ * - Fresh lily pad greens
+ * - Deep water shadows
  */
 
 export const KOI_POND_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8ef6ff', // Pond cyan
-        O: '#ffd58a', // Lantern gold
-        T: '#ff9fbf', // Blossom pink
-        S: '#a5ffc9', // Lily green
-        Z: '#ff8865', // Koi orange
-        J: '#6982d8', // Indigo ripple
-        L: '#ffe7a3', // Candle glow
-        GARBAGE: '#152033', // Deep water shadow
+        I: '#7eeeff', // Crystal pond cyan - clearer, more vibrant
+        O: '#ffc852', // Lantern gold - warm amber glow
+        T: '#ffadd2', // Blossom pink - soft sakura
+        S: '#7dffb8', // Lily pad green - fresh and bright
+        Z: '#ff7b52', // Koi orange - vivid scales
+        J: '#7b94ff', // Twilight indigo - evening reflection
+        L: '#ffe48a', // Candle glow - soft warm light
+        GARBAGE: '#0f1f1a', // Deep pond shadow
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 9,
-        glowIntensity: 0.65,
+        // Soft water-like glow
+        glowRadius: 11,
+        glowIntensity: 0.7,
         glowColor: 'auto',
 
+        // Subtle water ripple outline
         outline: true,
-        outlineWidth: 1.6,
+        outlineWidth: 1.8,
         outlineColor: 'lighten',
 
+        // Gentle floating pulse
         pulse: true,
-        pulseSpeed: 0.035,
-        pulseAmplitude: 0.2,
+        pulseSpeed: 0.03,
+        pulseAmplitude: 0.22,
 
+        // Water shimmer effect
         shimmer: true,
-        shimmerSpeed: 0.05,
-        shimmerIntensity: 0.15,
+        shimmerSpeed: 0.045,
+        shimmerIntensity: 0.18,
 
+        // Soft movement trails
         trails: true,
-        trailLength: 0.14,
-        trailOpacity: 0.28,
+        trailLength: 0.16,
+        trailOpacity: 0.32,
+
+        // Inner reflection glow
+        innerGlow: true,
+        innerGlowRadius: 3,
+        innerGlowIntensity: 0.5,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 7,
-            glowIntensity: 0.6,
-            outlineWidth: 1.4,
+            glowRadius: 9,
+            glowIntensity: 0.65,
+            outlineWidth: 1.5,
+            pulseAmplitude: 0.18,
         },
         phaser: {
-            glowRadius: 11,
-            glowIntensity: 0.7,
-            outlineWidth: 1.8,
+            glowRadius: 13,
+            glowIntensity: 0.75,
+            outlineWidth: 2.0,
+            pulseAmplitude: 0.25,
         },
     },
 };
