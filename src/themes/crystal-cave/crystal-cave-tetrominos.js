@@ -9,38 +9,38 @@ export const CRYSTAL_CAVE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#8ffbff', // Cyan shard
-        O: '#ffd48f', // Amber crystal
-        T: '#d598ff', // Amethyst glow
-        S: '#66ffc7', // Emerald glimmer
-        Z: '#ff7bd9', // Rose quartz
-        J: '#8090ff', // Sapphire edge
-        L: '#ffb88b', // Citrine orange
-        GARBAGE: '#101428', // Cavern shadow
+        I: '#70f0ff', // Luminous Aquamarine
+        O: '#ffc860', // Radiant Amber Crystal
+        T: '#c080ff', // Deep Amethyst Glow
+        S: '#50ffc0', // Vibrant Emerald
+        Z: '#ff60c0', // Brilliant Rose Quartz
+        J: '#6080ff', // Deep Sapphire
+        L: '#ffa060', // Glowing Citrine
+        GARBAGE: '#0a0818', // Abyssal Shadow
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 12,
-        glowIntensity: 0.8,
+        glowRadius: 16,
+        glowIntensity: 0.9,
         glowColor: 'auto',
 
         outline: true,
-        outlineWidth: 2,
+        outlineWidth: 2.5,
         outlineColor: 'lighten',
 
         pulse: true,
-        pulseSpeed: 0.045,
-        pulseAmplitude: 0.25,
+        pulseSpeed: 0.04,
+        pulseAmplitude: 0.3,
 
         shimmer: true,
-        shimmerSpeed: 0.07,
-        shimmerIntensity: 0.2,
+        shimmerSpeed: 0.06,
+        shimmerIntensity: 0.25,
 
         trails: true,
-        trailLength: 0.18,
-        trailOpacity: 0.35,
+        trailLength: 0.22,
+        trailOpacity: 0.4,
     },
 
     rendererOverrides: {
