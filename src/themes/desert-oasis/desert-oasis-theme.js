@@ -577,10 +577,15 @@ export default class DesertOasisTheme extends BaseTheme {
         const preset = this.activePreset;
         if (!preset.enableComboEffects) return;
 
-        if (Math.random() < 0.2) {
-            this.triggerSandPuff();
-        } else if (Math.random() < 0.25) {
-            this.triggerLanternGlow();
+        // Consistent subtle feedback (like Galaxy's nebula pulse)
+        this.pulseOasis(1.03);
+
+        // Desert Sparkle is now 100%
+        this.triggerDesertSparkle();
+
+        // Chance for a second sparkle (40%)
+        if (Math.random() < 0.4) {
+            setTimeout(() => this.triggerDesertSparkle(), 150);
         }
     }
 
@@ -739,6 +744,21 @@ export default class DesertOasisTheme extends BaseTheme {
         const randomLantern = this.lanternElements[Math.floor(Math.random() * this.lanternElements.length)];
         randomLantern.classList.add('lantern-flash');
         setTimeout(() => randomLantern.classList.remove('lantern-flash'), 350);
+    }
+
+    triggerDesertSparkle() {
+        const container = document.getElementById('desert-effects');
+        if (!container) return;
+
+        const sparkle = document.createElement('div');
+        sparkle.className = 'desert-sparkle';
+
+        const pos = this.getEdgePosition('any');
+        sparkle.style.left = `${pos.x}%`;
+        sparkle.style.top = `${pos.y}%`;
+
+        container.appendChild(sparkle);
+        setTimeout(() => sparkle.remove(), 600);
     }
 
     getTetrominoConfig() {
