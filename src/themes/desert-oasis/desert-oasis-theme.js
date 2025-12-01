@@ -27,13 +27,13 @@ export default class DesertOasisTheme extends BaseTheme {
         super('desert-oasis');
         this.eventUnsubscribers = [];
         this.shootingStarTimeout = null;
-        
+
         // Performance tracking
         this.activeEffectCount = 0;
         this.maxActiveEffects = 15;
         this.lastEffectTime = 0;
         this.effectCooldown = 100;
-        
+
         // Quality presets
         this.qualityChangeHandler = null;
         this.currentQuality = 'High';
@@ -117,7 +117,7 @@ export default class DesertOasisTheme extends BaseTheme {
                 maxActiveEffects: 25,
             },
         };
-        
+
         this.activePreset = this.qualityPresets.High;
         this.lanternElements = [];
     }
@@ -221,10 +221,10 @@ export default class DesertOasisTheme extends BaseTheme {
         for (let i = 0; i < preset.starCount; i++) {
             const star = document.createElement('div');
             star.className = 'oasis-star';
-            
+
             const size = Math.random() * 2.5 + 0.5;
             const isColoredStar = Math.random() < 0.12;
-            
+
             star.style.cssText = `
                 width: ${size}px;
                 height: ${size}px;
@@ -233,13 +233,13 @@ export default class DesertOasisTheme extends BaseTheme {
                 --twinkle-delay: ${Math.random() * 5}s;
                 --twinkle-duration: ${2.5 + Math.random() * 3}s;
             `;
-            
+
             if (isColoredStar) {
                 const colors = ['#ffecd0', '#d0e8ff', '#ffe8cc', '#e0d0ff'];
                 star.style.setProperty('--star-color', colors[Math.floor(Math.random() * colors.length)]);
                 star.classList.add('colored-star');
             }
-            
+
             fragment.appendChild(star);
         }
 
@@ -253,17 +253,17 @@ export default class DesertOasisTheme extends BaseTheme {
 
         const moon = document.createElement('div');
         moon.className = 'oasis-moon';
-        
+
         const innerGlow = document.createElement('div');
         innerGlow.className = 'moon-inner-glow';
-        
+
         const outerGlow = document.createElement('div');
         outerGlow.className = 'moon-outer-glow';
-        
+
         moonContainer.appendChild(outerGlow);
         moonContainer.appendChild(innerGlow);
         moonContainer.appendChild(moon);
-        
+
         this.registerContainer(moonContainer);
     }
 
@@ -277,7 +277,7 @@ export default class DesertOasisTheme extends BaseTheme {
         for (let i = 0; i < preset.sandParticleCount; i++) {
             const particle = document.createElement('div');
             particle.className = 'oasis-sand-particle';
-            
+
             const size = Math.random() * 2 + 1;
             particle.style.cssText = `
                 width: ${size}px;
@@ -289,7 +289,7 @@ export default class DesertOasisTheme extends BaseTheme {
                 --duration: ${18 + Math.random() * 15}s;
                 animation-delay: -${Math.random() * 20}s;
             `;
-            
+
             fragment.appendChild(particle);
         }
 
@@ -306,14 +306,14 @@ export default class DesertOasisTheme extends BaseTheme {
 
         // Strategic palm positions for a natural look
         const positions = [
-            { x: 8, bottom: 18, width: 70, height: 140, scaleX: 1, sway: 1.2, delay: 0 },
-            { x: 18, bottom: 20, width: 90, height: 170, scaleX: -1, sway: 1.5, delay: 1 },
-            { x: 75, bottom: 19, width: 85, height: 160, scaleX: 1, sway: 1.3, delay: 2 },
-            { x: 88, bottom: 17, width: 65, height: 130, scaleX: -1, sway: 1.0, delay: 3 },
-            { x: 28, bottom: 16, width: 55, height: 110, scaleX: 1, sway: 1.8, delay: 1.5 },
-            { x: 65, bottom: 21, width: 100, height: 190, scaleX: 1, sway: 1.4, delay: 0.5 },
-            { x: 45, bottom: 15, width: 50, height: 100, scaleX: -1, sway: 2.0, delay: 2.5 },
-            { x: 55, bottom: 18, width: 75, height: 145, scaleX: 1, sway: 1.6, delay: 1.2 },
+            { x: 8, bottom: 13, width: 70, height: 140, scaleX: 1, sway: 1.2, delay: 0 },
+            { x: 18, bottom: 12, width: 90, height: 170, scaleX: -1, sway: 1.5, delay: 1 },
+            { x: 75, bottom: 16, width: 85, height: 160, scaleX: 1, sway: 1.3, delay: 2 },
+            { x: 88, bottom: 13.5, width: 65, height: 130, scaleX: -1, sway: 1.0, delay: 3 },
+            { x: 28, bottom: 10.5, width: 55, height: 110, scaleX: 1, sway: 1.8, delay: 1.5 },
+            { x: 65, bottom: 15.5, width: 100, height: 190, scaleX: 1, sway: 1.4, delay: 0.5 },
+            { x: 45, bottom: 14.5, width: 50, height: 100, scaleX: -1, sway: 2.0, delay: 2.5 },
+            { x: 55, bottom: 12.5, width: 75, height: 145, scaleX: 1, sway: 1.6, delay: 1.2 },
         ];
 
         const palmsToCreate = Math.min(preset.palmCount, positions.length);
@@ -322,7 +322,7 @@ export default class DesertOasisTheme extends BaseTheme {
             const pos = positions[i];
             const palm = document.createElement('div');
             palm.className = 'oasis-palm';
-            
+
             palm.style.cssText = `
                 left: ${pos.x}%;
                 --palm-bottom: ${pos.bottom}%;
@@ -333,7 +333,7 @@ export default class DesertOasisTheme extends BaseTheme {
                 --sway-duration: ${8 + Math.random() * 4}s;
                 animation-delay: -${pos.delay}s;
             `;
-            
+
             fragment.appendChild(palm);
         }
 
@@ -352,11 +352,11 @@ export default class DesertOasisTheme extends BaseTheme {
         for (let i = 0; i < preset.lanternCount; i++) {
             const lantern = document.createElement('div');
             lantern.className = 'oasis-lantern';
-            
+
             // Position lanterns around the oasis area
             const xPos = 20 + Math.random() * 60;
             const yPos = 25 + Math.random() * 45;
-            
+
             lantern.style.cssText = `
                 left: ${xPos}%;
                 top: ${yPos}%;
@@ -366,7 +366,7 @@ export default class DesertOasisTheme extends BaseTheme {
                 --float-duration: ${12 + Math.random() * 10}s;
                 animation-delay: -${Math.random() * 15}s;
             `;
-            
+
             fragment.appendChild(lantern);
             this.lanternElements.push(lantern);
         }
@@ -386,11 +386,11 @@ export default class DesertOasisTheme extends BaseTheme {
         for (let i = 0; i < preset.reedCount; i++) {
             const reed = document.createElement('div');
             reed.className = 'oasis-reed';
-            
+
             // Position near oasis (center-ish of screen)
             const xPos = 30 + Math.random() * 40;
             const height = 25 + Math.random() * 35;
-            
+
             reed.style.cssText = `
                 left: ${xPos}%;
                 --reed-bottom: ${10 + Math.random() * 8}%;
@@ -399,7 +399,7 @@ export default class DesertOasisTheme extends BaseTheme {
                 --sway-duration: ${3 + Math.random() * 3}s;
                 animation-delay: -${Math.random() * 4}s;
             `;
-            
+
             fragment.appendChild(reed);
         }
 
@@ -413,43 +413,43 @@ export default class DesertOasisTheme extends BaseTheme {
 
         const water = document.createElement('div');
         water.className = 'oasis-water-pool';
-        
+
         const shimmer = document.createElement('div');
         shimmer.className = 'oasis-water-shimmer';
-        
+
         const reflection = document.createElement('div');
         reflection.className = 'oasis-water-reflection';
-        
+
         container.appendChild(water);
         container.appendChild(shimmer);
         container.appendChild(reflection);
-        
+
         this.registerContainer(container);
     }
 
     startShootingStars() {
         const createShootingStar = () => {
             if (!this.isActive) return;
-            
+
             const starsContainer = document.getElementById('desert-stars');
             if (!starsContainer) return;
-            
+
             const star = document.createElement('div');
             star.className = 'oasis-shooting-star';
             star.style.left = `${Math.random() * 50 + 10}%`;
             star.style.top = `${Math.random() * 25 + 5}%`;
             star.style.setProperty('--angle', `${30 + Math.random() * 25}deg`);
-            
+
             starsContainer.appendChild(star);
-            
+
             setTimeout(() => star.remove(), 2000);
-            
+
             this.shootingStarTimeout = setTimeout(
                 createShootingStar,
                 25000 + Math.random() * 35000
             );
         };
-        
+
         this.shootingStarTimeout = setTimeout(createShootingStar, 8000);
     }
 
@@ -595,17 +595,17 @@ export default class DesertOasisTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const swirl = document.createElement('div');
                 swirl.className = 'sand-swirl';
-                
+
                 const pos = this.getEdgePosition('side');
                 swirl.style.left = `${pos.x}%`;
                 swirl.style.top = `${pos.y}%`;
-                
+
                 container.appendChild(swirl);
                 this.trackEffect(swirl, 1400);
             }, i * 120);
@@ -621,17 +621,17 @@ export default class DesertOasisTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const ripple = document.createElement('div');
                 ripple.className = 'oasis-ripple';
-                
+
                 const pos = this.getEdgePosition('oasis');
                 ripple.style.left = `${pos.x}%`;
                 ripple.style.top = `${pos.y}%`;
-                
+
                 container.appendChild(ripple);
                 this.trackEffect(ripple, 1100);
             }, i * 150);
@@ -652,7 +652,7 @@ export default class DesertOasisTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             const spark = document.createElement('div');
             spark.className = 'lantern-spark';
-            
+
             const pos = this.getEdgePosition('any');
             spark.style.cssText = `
                 left: ${pos.x}%;
@@ -662,14 +662,14 @@ export default class DesertOasisTheme extends BaseTheme {
                 --glow-color: ${colors[Math.floor(Math.random() * colors.length)]};
                 animation-delay: ${i * 35}ms;
             `;
-            
+
             fragment.appendChild(spark);
             particles.push(spark);
             this.activeEffectCount++;
         }
-        
+
         container.appendChild(fragment);
-        
+
         setTimeout(() => {
             particles.forEach(p => p.remove());
             this.activeEffectCount = Math.max(0, this.activeEffectCount - particles.length);
@@ -685,17 +685,17 @@ export default class DesertOasisTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const beam = document.createElement('div');
                 beam.className = 'moonbeam';
-                
+
                 beam.style.left = `${65 + Math.random() * 25}%`;
                 beam.style.top = '0';
                 beam.style.setProperty('--beam-angle', `${12 + Math.random() * 18}deg`);
-                
+
                 container.appendChild(beam);
                 this.trackEffect(beam, 1600);
             }, i * 180);
@@ -705,13 +705,13 @@ export default class DesertOasisTheme extends BaseTheme {
     pulseOasis(intensity = 1.1) {
         const water = document.querySelector('.oasis-water-pool');
         const shimmer = document.querySelector('.oasis-water-shimmer');
-        
+
         if (water) {
             water.style.setProperty('--pulse-intensity', intensity);
             water.classList.add('oasis-pulse');
             setTimeout(() => water.classList.remove('oasis-pulse'), 500);
         }
-        
+
         if (shimmer) {
             shimmer.classList.add('shimmer-pulse');
             setTimeout(() => shimmer.classList.remove('shimmer-pulse'), 500);
@@ -724,18 +724,18 @@ export default class DesertOasisTheme extends BaseTheme {
 
         const puff = document.createElement('div');
         puff.className = 'sand-puff';
-        
+
         const pos = this.getEdgePosition('side');
         puff.style.left = `${pos.x}%`;
         puff.style.top = `${pos.y}%`;
-        
+
         container.appendChild(puff);
         this.trackEffect(puff, 550);
     }
 
     triggerLanternGlow() {
         if (this.lanternElements.length === 0) return;
-        
+
         const randomLantern = this.lanternElements[Math.floor(Math.random() * this.lanternElements.length)];
         randomLantern.classList.add('lantern-flash');
         setTimeout(() => randomLantern.classList.remove('lantern-flash'), 350);
@@ -747,21 +747,21 @@ export default class DesertOasisTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
-        
+
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.teardownQualityListener();
-        
+
         if (this.shootingStarTimeout) {
             clearTimeout(this.shootingStarTimeout);
             this.shootingStarTimeout = null;
         }
-        
+
         const container = document.getElementById('desert-effects');
         if (container) container.innerHTML = '';
         this.activeEffectCount = 0;
         this.lanternElements = [];
-        
+
         super.stop();
     }
 
