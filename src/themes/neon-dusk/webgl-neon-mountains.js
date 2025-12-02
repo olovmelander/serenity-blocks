@@ -76,6 +76,10 @@ export default class WebGLNeonMountains {
                 vec2 uv = gl_FragCoord.xy / uResolution.xy;
                 vec2 p = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
 
+                // Boost glow based on combo intensity
+                float glowBoost = 1.0 + uGlowIntensity * 2.0;
+                float widthBoost = 1.0 + uGlowIntensity * 0.5;
+
                 vec4 color = vec4(0.0, 0.0, 0.0, 0.0); // Start transparent
 
                 // --- MOUNTAINS (2 Layers) ---
@@ -85,8 +89,8 @@ export default class WebGLNeonMountains {
                 float m1 = mountain(uv, 4.0, 0.015, 0.0, 0.18);
                 float h1 = horizon + m1;
                 vec3 colM1 = mix(cMountainBack, cSkyBot, 0.1); // Very subtle fade
-                // Add stronger rim light from sun (magenta/purple)
-                float rim1 = smoothstep(0.008, 0.0, abs((uv.y - h1))) * 0.7; // Brighter rim
+                // Add stronger rim light from sun (magenta/purple) with combo glow boost
+                float rim1 = smoothstep(0.008 * widthBoost, 0.0, abs((uv.y - h1))) * 0.7 * glowBoost; // Brighter rim
                 colM1 += vec3(0.8, 0.0, 1.0) * rim1; // Purple rim
                 float mask1 = step(uv.y, h1);
                 color = mix(color, vec4(colM1, 1.0), mask1);
@@ -98,10 +102,6 @@ export default class WebGLNeonMountains {
 
                 // Multi-layer rim light for highly visible outline
                 float edgeDist = abs(uv.y - h2);
-
-                // Boost glow based on combo intensity
-                float glowBoost = 1.0 + uGlowIntensity * 2.0;
-                float widthBoost = 1.0 + uGlowIntensity * 0.5;
 
                 // Bright core rim (thin, intense)
                 float rimCore = smoothstep(0.003 * widthBoost, 0.0, edgeDist) * 2.0 * glowBoost;
