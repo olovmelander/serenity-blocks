@@ -1,12 +1,16 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
+import WebGLBioRenderer from './webgl-bio-renderer.js';
 
 export default class BioluminescenceTheme extends BaseTheme {
     constructor() {
         super('bioluminescence');
         this.canvas = null;
         this.ctx = null;
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.useWebGL = false;
         this.resizeHandler = null;
         this.time = 0;
 
@@ -198,7 +202,22 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
 
         this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
+        this.activePreset = { ...this.qualityPresets[quality] };
+
+        if (this.useWebGL) {
+            // Boost particle counts for WebGL
+            this.activePreset.fireflies *= 20;
+            this.activePreset.spores *= 10;
+            this.activePreset.ambientGlows *= 2;
+
+            console.log(`🍄 Bioluminescence: WebGL active, boosting particles (Fireflies: ${this.activePreset.fireflies}, Spores: ${this.activePreset.spores})`);
+
+            // Allocate WebGL buffers
+            const totalParticles = this.activePreset.fireflies + this.activePreset.spores + this.activePreset.ambientGlows;
+            if (this.webglRenderer) {
+                this.webglRenderer.allocateParticles(totalParticles * 2); // Buffer for extra particles
+            }
+        }
 
         console.log(`🍄 Bioluminescence: Applying ${quality} quality preset`);
 
@@ -256,11 +275,35 @@ export default class BioluminescenceTheme extends BaseTheme {
             willReadFrequently: false,
         });
 
+        // Create WebGL canvas
+        this.webglCanvas = document.createElement('canvas');
+        this.webglCanvas.id = 'bio-webgl-canvas';
+        this.webglCanvas.style.position = 'absolute';
+        this.webglCanvas.style.top = '0';
+        this.webglCanvas.style.left = '0';
+        this.webglCanvas.style.width = '100%';
+        this.webglCanvas.style.height = '100%';
+        this.webglCanvas.style.pointerEvents = 'none';
+        this.webglCanvas.style.zIndex = '0'; // Behind main canvas
+        themeContainer.appendChild(this.webglCanvas);
+
         // Set initial canvas size BEFORE creating elements
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         this.staticCanvas.width = window.innerWidth;
         this.staticCanvas.height = window.innerHeight;
+        this.webglCanvas.width = window.innerWidth;
+        this.webglCanvas.height = window.innerHeight;
+
+        // Initialize WebGL renderer
+        this.webglRenderer = new WebGLBioRenderer(this.webglCanvas);
+        if (this.webglRenderer.init()) {
+            this.useWebGL = true;
+            console.log('🍄 Bioluminescence: WebGL renderer active');
+        } else {
+            console.warn('🍄 Bioluminescence: WebGL initialization failed, falling back to Canvas2D');
+            this.useWebGL = false;
+        }
 
         this.resizeHandler = () => this.resizeCanvas();
         window.addEventListener('resize', this.resizeHandler, false);
@@ -345,6 +388,13 @@ export default class BioluminescenceTheme extends BaseTheme {
         if (this.staticCanvas) {
             this.staticCanvas.width = window.innerWidth;
             this.staticCanvas.height = window.innerHeight;
+        }
+        if (this.webglCanvas) {
+            this.webglCanvas.width = window.innerWidth;
+            this.webglCanvas.height = window.innerHeight;
+            if (this.webglRenderer) {
+                this.webglRenderer.gl.viewport(0, 0, window.innerWidth, window.innerHeight);
+            }
         }
         this.cacheGradients();
         this.needsStaticRedraw = true;
@@ -1517,15 +1567,17 @@ export default class BioluminescenceTheme extends BaseTheme {
             if (spore.y < -10) spore.y = this.canvas.height + 10;
 
             // Draw spore with glow
-            const gradient = this.ctx.createRadialGradient(spore.x, spore.y, 0, spore.x, spore.y, spore.size * 3);
-            gradient.addColorStop(0, `rgba(150, 255, 220, ${spore.opacity})`);
-            gradient.addColorStop(0.5, `rgba(100, 220, 180, ${spore.opacity * 0.5})`);
-            gradient.addColorStop(1, 'rgba(50, 180, 150, 0)');
+            if (!this.useWebGL) {
+                const gradient = this.ctx.createRadialGradient(spore.x, spore.y, 0, spore.x, spore.y, spore.size * 3);
+                gradient.addColorStop(0, `rgba(150, 255, 220, ${spore.opacity})`);
+                gradient.addColorStop(0.5, `rgba(100, 220, 180, ${spore.opacity * 0.5})`);
+                gradient.addColorStop(1, 'rgba(50, 180, 150, 0)');
 
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(spore.x, spore.y, spore.size * 3, 0, Math.PI * 2);
-            this.ctx.fill();
+                this.ctx.fillStyle = gradient;
+                this.ctx.beginPath();
+                this.ctx.arc(spore.x, spore.y, spore.size * 3, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
         }
     }
 
@@ -1555,64 +1607,66 @@ export default class BioluminescenceTheme extends BaseTheme {
             const pulse = Math.sin(firefly.pulsePhase) * 0.4 + 0.6;
             const alpha = firefly.brightness * pulse;
 
-            // Draw trail
-            firefly.trail.push({ x: firefly.x, y: firefly.y });
-            if (firefly.trail.length > this.activePreset.fireflyTrailLength) firefly.trail.shift();
+            if (!this.useWebGL) {
+                // Draw trail
+                firefly.trail.push({ x: firefly.x, y: firefly.y });
+                if (firefly.trail.length > this.activePreset.fireflyTrailLength) firefly.trail.shift();
 
-            for (let i = 0; i < firefly.trail.length; i++) {
-                const trailPoint = firefly.trail[i];
-                const trailAlpha = (i / firefly.trail.length) * alpha * 0.3;
-                const trailSize = (i / firefly.trail.length) * firefly.size;
+                for (let i = 0; i < firefly.trail.length; i++) {
+                    const trailPoint = firefly.trail[i];
+                    const trailAlpha = (i / firefly.trail.length) * alpha * 0.3;
+                    const trailSize = (i / firefly.trail.length) * firefly.size;
 
-                const trailGradient = this.ctx.createRadialGradient(
-                    trailPoint.x,
-                    trailPoint.y,
+                    const trailGradient = this.ctx.createRadialGradient(
+                        trailPoint.x,
+                        trailPoint.y,
+                        0,
+                        trailPoint.x,
+                        trailPoint.y,
+                        trailSize * 2,
+                    );
+
+                    if (firefly.color === 'cyan') {
+                        trailGradient.addColorStop(0, `rgba(100, 255, 255, ${trailAlpha})`);
+                        trailGradient.addColorStop(1, 'rgba(50, 200, 200, 0)');
+                    } else {
+                        trailGradient.addColorStop(0, `rgba(150, 255, 100, ${trailAlpha})`);
+                        trailGradient.addColorStop(1, 'rgba(100, 200, 50, 0)');
+                    }
+
+                    this.ctx.fillStyle = trailGradient;
+                    this.ctx.beginPath();
+                    this.ctx.arc(trailPoint.x, trailPoint.y, trailSize * 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+
+                // Draw main firefly glow
+                const gradient = this.ctx.createRadialGradient(
+                    firefly.x,
+                    firefly.y,
                     0,
-                    trailPoint.x,
-                    trailPoint.y,
-                    trailSize * 2,
+                    firefly.x,
+                    firefly.y,
+                    firefly.size * 3,
                 );
 
                 if (firefly.color === 'cyan') {
-                    trailGradient.addColorStop(0, `rgba(100, 255, 255, ${trailAlpha})`);
-                    trailGradient.addColorStop(1, 'rgba(50, 200, 200, 0)');
+                    gradient.addColorStop(0, `rgba(200, 255, 255, ${alpha})`);
+                    gradient.addColorStop(0.3, `rgba(100, 255, 255, ${alpha * 0.7})`);
+                    gradient.addColorStop(0.6, `rgba(50, 200, 200, ${alpha * 0.3})`);
+                    gradient.addColorStop(1, 'rgba(20, 150, 150, 0)');
                 } else {
-                    trailGradient.addColorStop(0, `rgba(150, 255, 100, ${trailAlpha})`);
-                    trailGradient.addColorStop(1, 'rgba(100, 200, 50, 0)');
+                    gradient.addColorStop(0, `rgba(220, 255, 150, ${alpha})`);
+                    gradient.addColorStop(0.3, `rgba(150, 255, 100, ${alpha * 0.7})`);
+                    gradient.addColorStop(0.6, `rgba(100, 200, 50, ${alpha * 0.3})`);
+                    gradient.addColorStop(1, 'rgba(50, 150, 20, 0)');
                 }
 
-                this.ctx.fillStyle = trailGradient;
+                this.ctx.fillStyle = gradient;
                 this.ctx.beginPath();
-                this.ctx.arc(trailPoint.x, trailPoint.y, trailSize * 2, 0, Math.PI * 2);
+                this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
                 this.ctx.fill();
             }
-
-            // Draw main firefly glow
-            const gradient = this.ctx.createRadialGradient(
-                firefly.x,
-                firefly.y,
-                0,
-                firefly.x,
-                firefly.y,
-                firefly.size * 3,
-            );
-
-            if (firefly.color === 'cyan') {
-                gradient.addColorStop(0, `rgba(200, 255, 255, ${alpha})`);
-                gradient.addColorStop(0.3, `rgba(100, 255, 255, ${alpha * 0.7})`);
-                gradient.addColorStop(0.6, `rgba(50, 200, 200, ${alpha * 0.3})`);
-                gradient.addColorStop(1, 'rgba(20, 150, 150, 0)');
-            } else {
-                gradient.addColorStop(0, `rgba(220, 255, 150, ${alpha})`);
-                gradient.addColorStop(0.3, `rgba(150, 255, 100, ${alpha * 0.7})`);
-                gradient.addColorStop(0.6, `rgba(100, 200, 50, ${alpha * 0.3})`);
-                gradient.addColorStop(1, 'rgba(50, 150, 20, 0)');
-            }
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
-            this.ctx.fill();
         }
     }
 
@@ -1831,6 +1885,25 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         this.drawFireflies();
 
+        // WebGL Rendering
+        if (this.useWebGL && this.webglRenderer) {
+            // Collect particles
+            const particles = [];
+
+            // Add fireflies
+            for (const f of this.fireflies) {
+                particles.push(f);
+            }
+
+            // Add spores
+            for (const s of this.spores) {
+                particles.push(s);
+            }
+
+            this.webglRenderer.uploadParticles(particles);
+            this.webglRenderer.render(this.time * 0.001, this.pulseIntensity);
+        }
+
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
     }
@@ -1864,6 +1937,16 @@ export default class BioluminescenceTheme extends BaseTheme {
         if (this.staticCanvas) {
             this.staticCanvas = null;
             this.staticCtx = null;
+        }
+
+        // Clean up WebGL
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+        if (this.webglCanvas && this.webglCanvas.parentNode) {
+            this.webglCanvas.parentNode.removeChild(this.webglCanvas);
+            this.webglCanvas = null;
         }
 
         super.stop();
