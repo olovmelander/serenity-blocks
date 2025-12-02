@@ -6,6 +6,7 @@ import WebGLNeonEffects from './webgl-neon-effects.js';
 import WebGLNeonSun from './webgl-neon-sun.js';
 import WebGLNeonMountains from './webgl-neon-mountains.js';
 import WebGLNeonGrid from './webgl-neon-grid.js';
+import WebGLNeonOverlay from './webgl-neon-overlay.js';
 
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
@@ -262,6 +263,9 @@ export default class NeonDuskTheme extends BaseTheme {
         // Setup WebGL Grid (In front of mountains)
         this.setupWebGLGrid();
 
+        // Setup WebGL Overlay (Topmost layer for VHS effects)
+        this.setupWebGLOverlay(); // Add Overlay
+
         // Setup WebGL Effects (Particles: Ambient & Gameplay)
         this.setupGameplayEffects();
 
@@ -473,6 +477,46 @@ export default class NeonDuskTheme extends BaseTheme {
             const rect = themeContainer.getBoundingClientRect();
             if (this.gridCanvas && this.webglGrid) {
                 this.webglGrid.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupWebGLOverlay() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing overlay canvas
+        const existingOverlay = document.getElementById('neon-dusk-overlay-canvas');
+        if (existingOverlay) existingOverlay.remove();
+
+        // Create overlay canvas (Topmost layer)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-overlay-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '2000'; // Topmost layer, above everything
+        canvas.style.pointerEvents = 'none';
+        // Use mix-blend-mode if needed, but WebGL blending handles it
+        themeContainer.appendChild(canvas);
+
+        this.overlayCanvas = canvas;
+
+        // Initialize Overlay Renderer
+        this.webglOverlay = new WebGLNeonOverlay(canvas);
+        if (!this.webglOverlay.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Overlay');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.overlayCanvas && this.webglOverlay) {
+                this.webglOverlay.resize(rect.width, rect.height);
             }
         };
         resize();
@@ -1041,6 +1085,11 @@ export default class NeonDuskTheme extends BaseTheme {
                 this.ambientParticles // Pass ambient particles
             );
         }
+
+        // Render Overlay (VHS Effects)
+        if (this.webglOverlay) {
+            this.webglOverlay.render(time);
+        }
     }
 
     stop() {
@@ -1082,6 +1131,10 @@ export default class NeonDuskTheme extends BaseTheme {
         if (this.backEffectsCanvas) {
             this.backEffectsCanvas.remove();
             this.backEffectsCanvas = null;
+        }
+        if (this.overlayCanvas) {
+            this.overlayCanvas.remove();
+            this.overlayCanvas = null;
         }
     }
 
