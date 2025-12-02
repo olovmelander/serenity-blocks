@@ -1,6 +1,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { WINTER_TETROMINOS } from './winter-tetrominos.js';
+import WebGLSnowRenderer from './webgl-snow-renderer.js';
 
 export default class WinterTheme extends BaseTheme {
     constructor() {
@@ -36,6 +37,11 @@ export default class WinterTheme extends BaseTheme {
         this.pendingComboCount = 0;
         this.comboWindTimer = 0;
 
+        // WebGL Renderer
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.useWebGL = true;
+
         // Performance optimization: Cache gradients and reusable objects
         this.gradientCache = {
             background: null,
@@ -65,8 +71,8 @@ export default class WinterTheme extends BaseTheme {
         this.qualityPresets = {
             Minimal: {
                 // Snow particles
-                maxParticles: 250,
-                initialParticlePercent: 0.4,
+                maxParticles: 2000,
+                initialParticlePercent: 0.1,
                 groundSnowCount: 12,
                 // Combo effects
                 iceBurstCap: 40,
@@ -86,8 +92,8 @@ export default class WinterTheme extends BaseTheme {
             },
             Low: {
                 // Snow particles
-                maxParticles: 400,
-                initialParticlePercent: 0.5,
+                maxParticles: 4000,
+                initialParticlePercent: 0.1,
                 groundSnowCount: 20,
                 // Combo effects
                 iceBurstCap: 75,
@@ -107,8 +113,8 @@ export default class WinterTheme extends BaseTheme {
             },
             Medium: {
                 // Snow particles
-                maxParticles: 800,
-                initialParticlePercent: 0.6,
+                maxParticles: 8000,
+                initialParticlePercent: 0.1,
                 groundSnowCount: 35,
                 // Combo effects
                 iceBurstCap: 150,
@@ -128,8 +134,8 @@ export default class WinterTheme extends BaseTheme {
             },
             High: {
                 // Snow particles
-                maxParticles: 1200,
-                initialParticlePercent: 0.7,
+                maxParticles: 12000,
+                initialParticlePercent: 0.1,
                 groundSnowCount: 50,
                 // Combo effects
                 iceBurstCap: 200,
@@ -149,8 +155,8 @@ export default class WinterTheme extends BaseTheme {
             },
             Ultra: {
                 // Snow particles
-                maxParticles: 1600,
-                initialParticlePercent: 0.8,
+                maxParticles: 16000,
+                initialParticlePercent: 0.1,
                 groundSnowCount: 70,
                 // Combo effects
                 iceBurstCap: 250,
@@ -170,8 +176,8 @@ export default class WinterTheme extends BaseTheme {
             },
             Extreme: {
                 // Snow particles
-                maxParticles: 2200,
-                initialParticlePercent: 0.9,
+                maxParticles: 24000,
+                initialParticlePercent: 0.1,
                 groundSnowCount: 100,
                 // Combo effects
                 iceBurstCap: 350,
@@ -287,6 +293,34 @@ export default class WinterTheme extends BaseTheme {
         }
     }
 
+    initWebGLRenderer() {
+        if (!this.canvas) return;
+
+        try {
+            this.webglCanvas = document.createElement('canvas');
+            this.webglCanvas.width = this.canvas.width;
+            this.webglCanvas.height = this.canvas.height;
+
+            this.webglRenderer = new WebGLSnowRenderer(this.webglCanvas);
+
+            if (this.webglRenderer.init()) {
+                this.webglRenderer.allocateParticles(this.activePreset.maxParticles * 1.5); // Allocate with buffer
+                this.useWebGL = true;
+                console.log('❄️ Winter: WebGL snow renderer active');
+            } else {
+                this.useWebGL = false;
+                this.webglRenderer = null;
+                this.webglCanvas = null;
+                console.log('❄️ Winter: Falling back to Canvas2D snow rendering');
+            }
+        } catch (e) {
+            console.warn('❄️ Winter: WebGL init failed, using Canvas2D:', e);
+            this.useWebGL = false;
+            this.webglRenderer = null;
+            this.webglCanvas = null;
+        }
+    }
+
     async createScene() {
         // Apply graphics quality preset at scene creation
         this.applyQualityPreset(this.getGraphicsQuality());
@@ -302,6 +336,9 @@ export default class WinterTheme extends BaseTheme {
         this.resizeHandler = () => this.resizeCanvas();
         window.addEventListener('resize', this.resizeHandler, false);
         this.resizeCanvas();
+
+        // Initialize WebGL
+        this.initWebGLRenderer();
 
         // Initialize snow particles progressively for better startup performance
         this.snowParticles = [];
@@ -331,6 +368,11 @@ export default class WinterTheme extends BaseTheme {
         if (!this.canvas) return;
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+
+        if (this.useWebGL && this.webglRenderer) {
+            this.webglRenderer.resize(this.canvas.width, this.canvas.height);
+        }
+
         // Invalidate gradient cache on resize
         this.gradientCache.lastWidth = 0;
         this.gradientCache.lastHeight = 0;
@@ -649,7 +691,7 @@ export default class WinterTheme extends BaseTheme {
             particle.x = isInitial ? Math.random() * this.canvas.width : Math.random() * this.canvas.width * 1.2 - this.canvas.width * 0.1;
             particle.y = isInitial ? Math.random() * this.canvas.height : -Math.random() * 50;
             particle.z = depth;
-            particle.size = (Math.random() * 3 + 0.5) * depthScale;
+            particle.size = (Math.random() * 5 + 2) * depthScale; // Larger snowflakes (2-7px base)
             particle.vx = (Math.random() - 0.5) * 0.5;
             particle.vy = (Math.random() * 2 + 0.5) * depthScale;
             particle.opacity = (Math.random() * 0.7 + 0.3) * (0.4 + depth * 0.6);
@@ -667,7 +709,7 @@ export default class WinterTheme extends BaseTheme {
             x: isInitial ? Math.random() * this.canvas.width : Math.random() * this.canvas.width * 1.2 - this.canvas.width * 0.1,
             y: isInitial ? Math.random() * this.canvas.height : -Math.random() * 50,
             z: depth,
-            size: (Math.random() * 3 + 0.5) * depthScale,
+            size: (Math.random() * 5 + 2) * depthScale, // Larger snowflakes (2-7px base)
             vx: (Math.random() - 0.5) * 0.5,
             vy: (Math.random() * 2 + 0.5) * depthScale,
             opacity: (Math.random() * 0.7 + 0.3) * (0.4 + depth * 0.6),
@@ -1148,10 +1190,23 @@ export default class WinterTheme extends BaseTheme {
         }
 
         // Spawn new snow particles during gusts (more during combos)
+        // Spawn new snow particles during gusts (more during combos)
+        // Accelerated spawning if count is low
         const spawnChance = (0.8 + this.gustIntensity * 0.4) * this.comboMultiplier;
         const maxParticlesWithCombo = Math.floor(this.maxParticles * Math.min(this.comboMultiplier, 1.5)); // Cap combo boost
-        if (this.snowParticles.length < maxParticlesWithCombo && Math.random() < spawnChance) {
-            this.snowParticles.push(this.createSnowParticle(false));
+
+        // If we are far below capacity, spawn multiple particles per frame to fill up faster
+        let spawnCount = 1;
+        if (this.snowParticles.length < maxParticlesWithCombo * 0.5) {
+            spawnCount = 10; // Spawn 10x faster if below 50% capacity
+        } else if (this.snowParticles.length < maxParticlesWithCombo * 0.8) {
+            spawnCount = 4; // Spawn 4x faster if below 80% capacity
+        }
+
+        for (let i = 0; i < spawnCount; i++) {
+            if (this.snowParticles.length < maxParticlesWithCombo && Math.random() < spawnChance) {
+                this.snowParticles.push(this.createSnowParticle(false));
+            }
         }
 
         // Sort only occasionally for performance - using quality preset interval
@@ -1203,20 +1258,14 @@ export default class WinterTheme extends BaseTheme {
                 continue;
             }
 
-            // Trail rendering based on quality settings
+            // Trail rendering (Canvas2D - kept for style)
             if (this.activePreset.enableTrails && particle.trail.length > 2) {
                 const { trailComplexity } = this.activePreset;
-
-                // Quality 0: no trails
-                // Quality 1: only very near particles with simplified trails
-                // Quality 2: near particles with full trails
-                // Quality 3: all particles with enhanced trails
                 const shouldRenderTrail = trailComplexity === 3
                     || (trailComplexity === 2 && particle.z > 0.4)
                     || (trailComplexity === 1 && particle.z > 0.5);
 
                 if (shouldRenderTrail) {
-                    // Draw simplified trail using line instead of circles (much faster)
                     this.ctx.globalAlpha = particle.opacity * 0.3;
                     this.ctx.strokeStyle = 'rgba(180, 195, 220, 1)';
                     this.ctx.lineWidth = particle.size * 0.5;
@@ -1224,7 +1273,6 @@ export default class WinterTheme extends BaseTheme {
                     this.ctx.beginPath();
                     this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
 
-                    // Skip more points for lower complexity
                     const skipPoints = trailComplexity === 3 ? 2 : 3;
                     for (let j = skipPoints; j < particle.trail.length; j += skipPoints) {
                         this.ctx.lineTo(particle.trail[j].x, particle.trail[j].y);
@@ -1234,37 +1282,44 @@ export default class WinterTheme extends BaseTheme {
                 }
             }
 
-            // Draw main particle with rotation (optimized - no shadow blur)
-            this.ctx.save();
-            this.ctx.translate(particle.x, particle.y);
-            this.ctx.rotate(particle.rotation);
+            // Draw main particle (Canvas2D fallback)
+            if (!this.useWebGL) {
+                this.ctx.save();
+                this.ctx.translate(particle.x, particle.y);
+                this.ctx.rotate(particle.rotation);
 
-            // Main particle (elongated for wind streak effect)
-            const streakLength = 1 + Math.abs(this.windForce) * 0.4 * particle.z;
-            this.ctx.globalAlpha = particle.opacity;
-            this.ctx.fillStyle = 'rgba(240, 245, 255, 1)';
-            this.ctx.beginPath();
-            this.ctx.ellipse(
-                0,
-                0,
-                particle.size,
-                particle.size * streakLength,
-                Math.atan2(particle.vy, particle.vx),
-                0,
-                Math.PI * 2,
-            );
-            this.ctx.fill();
-
-            // Highlight (only for very near particles to save performance)
-            if (particle.z > 0.6) {
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                const streakLength = 1 + Math.abs(this.windForce) * 0.4 * particle.z;
+                this.ctx.globalAlpha = particle.opacity;
+                this.ctx.fillStyle = 'rgba(240, 245, 255, 1)';
                 this.ctx.beginPath();
-                this.ctx.arc(-particle.size * 0.2, -particle.size * 0.2, particle.size * 0.5, 0, Math.PI * 2);
+                this.ctx.ellipse(
+                    0,
+                    0,
+                    particle.size,
+                    particle.size * streakLength,
+                    Math.atan2(particle.vy, particle.vx),
+                    0,
+                    Math.PI * 2,
+                );
                 this.ctx.fill();
-            }
 
-            this.ctx.globalAlpha = 1;
-            this.ctx.restore();
+                if (particle.z > 0.6) {
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    this.ctx.beginPath();
+                    this.ctx.arc(-particle.size * 0.2, -particle.size * 0.2, particle.size * 0.5, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+
+                this.ctx.globalAlpha = 1;
+                this.ctx.restore();
+            }
+        }
+
+        // WebGL Rendering for snow particles
+        if (this.useWebGL && this.webglRenderer) {
+            this.webglRenderer.updateParticles(this.snowParticles);
+            this.webglRenderer.render();
+            this.ctx.drawImage(this.webglCanvas, 0, 0);
         }
 
         // Atmospheric overlay during intense gusts
