@@ -497,7 +497,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 color: colors[Math.floor(Math.random() * colors.length)],
                 life: 1.0, // Always alive
                 maxLife: 1.0,
-                type: 0 // Circle/Particle
+                type: 0, // Circle/Particle
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 2.0 // Radians per second
             });
             // Initialize baseSize
             this.ambientParticles[i].baseSize = this.ambientParticles[i].size;
@@ -636,7 +638,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxLife: 1.5,
                 size: size,
                 color: color,
-                type: 2 // Squared particle
+                type: 2, // Squared particle
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 4.0 // Faster rotation for rising squares
             });
         }
     }
@@ -830,6 +834,11 @@ export default class NeonDuskTheme extends BaseTheme {
                 p.vy += 0.15;
             }
 
+            // Update rotation
+            if (p.rotationSpeed) {
+                p.rotation += p.rotationSpeed * delta;
+            }
+
             p.life -= delta / p.maxLife;
 
             if (p.life > 0) {
@@ -919,6 +928,11 @@ export default class NeonDuskTheme extends BaseTheme {
             const p = this.ambientParticles[i];
             p.x += p.vx;
             p.y += p.vy;
+
+            // Update rotation
+            if (p.rotationSpeed) {
+                p.rotation += p.rotationSpeed * delta;
+            }
 
             // Handle pulsing
             if (p.pulsing) {
