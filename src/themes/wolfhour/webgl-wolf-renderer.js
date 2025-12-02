@@ -33,6 +33,19 @@ export default class WebGLWolfRenderer {
 
         // Color palette as normalized RGB
         this.colorPalette = [];
+
+        // Particle System Data
+        this.maxParticles = 2000;
+        this.particleCount = 0;
+        this.particleProgram = null;
+        this.particleBuffers = {};
+        this.particleAttributes = {};
+        this.particleUniforms = {};
+
+        // Particle Arrays
+        this.pPositionData = new Float32Array(this.maxParticles * 2);
+        this.pSizeData = new Float32Array(this.maxParticles);
+        this.pColorData = new Float32Array(this.maxParticles * 4); // r,g,b,a
     }
 
     /**
@@ -65,6 +78,10 @@ export default class WebGLWolfRenderer {
 
         // Create buffers
         this.initBuffers();
+
+        // Init Particle System
+        this.initParticleShaders();
+        this.initParticleBuffers();
 
         return true;
     }
@@ -217,6 +234,70 @@ export default class WebGLWolfRenderer {
             color: gl.createBuffer(),
             twinkle: gl.createBuffer(),
             brightness: gl.createBuffer(),
+        };
+    }
+
+    initParticleShaders() {
+        const gl = this.gl;
+
+        const vsSource = `
+            precision highp float;
+            attribute vec2 aPosition;
+            attribute float aSize;
+            attribute vec4 aColor;
+            uniform vec2 uResolution;
+            varying vec4 vColor;
+            void main() {
+                vec2 clipSpace = (aPosition / uResolution) * 2.0 - 1.0;
+                clipSpace.y *= -1.0;
+                gl_Position = vec4(clipSpace, 0.0, 1.0);
+                gl_PointSize = aSize;
+                vColor = aColor;
+            }
+        `;
+
+        const fsSource = `
+            precision highp float;
+            varying vec4 vColor;
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float dist = length(coord) * 2.0;
+                float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
+                if (alpha < 0.01) discard;
+                // Additive blending: rgb * alpha
+                gl_FragColor = vec4(vColor.rgb * alpha * vColor.a, alpha * vColor.a);
+            }
+        `;
+
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSource);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+
+        this.particleProgram = gl.createProgram();
+        gl.attachShader(this.particleProgram, vs);
+        gl.attachShader(this.particleProgram, fs);
+        gl.linkProgram(this.particleProgram);
+
+        this.particleAttributes = {
+            position: gl.getAttribLocation(this.particleProgram, 'aPosition'),
+            size: gl.getAttribLocation(this.particleProgram, 'aSize'),
+            color: gl.getAttribLocation(this.particleProgram, 'aColor'),
+        };
+        this.particleUniforms = {
+            resolution: gl.getUniformLocation(this.particleProgram, 'uResolution'),
+        };
+    }
+
+    initParticleBuffers() {
+        const gl = this.gl;
+        this.particleBuffers = {
+            position: gl.createBuffer(),
+            size: gl.createBuffer(),
+            color: gl.createBuffer(),
         };
     }
 
@@ -411,6 +492,75 @@ export default class WebGLWolfRenderer {
 
         // Draw all stars in ONE call!
         gl.drawArrays(gl.POINTS, 0, this.starCount);
+    }
+
+    /**
+     * Render generic particles
+     * @param {Array} particles - Array of particle objects {x, y, size, hue, brightness, opacity}
+     */
+    renderParticles(particles) {
+        const gl = this.gl;
+        if (!gl || !this.particleProgram) return;
+
+        const count = Math.min(particles.length, this.maxParticles);
+        if (count === 0) return;
+
+        // Update data arrays
+        for (let i = 0; i < count; i++) {
+            const p = particles[i];
+            const i2 = i * 2;
+            const i4 = i * 4;
+
+            this.pPositionData[i2] = p.x;
+            this.pPositionData[i2 + 1] = p.y;
+            this.pSizeData[i] = p.size;
+
+            // Convert HSL to RGB (approximate for performance)
+            // H: 0-360, S: 0-100 (assume low saturation ~20%), L: brightness
+            // Simplified: mostly white/blueish for Wolfhour
+            // Let's just use a helper or simple conversion
+            const h = p.hue;
+            const s = 30; // Fixed low saturation for silver
+            const l = p.brightness || 90;
+
+            // Quick HSL to RGB conversion
+            const c = (1 - Math.abs(2 * l / 100 - 1)) * (s / 100);
+            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            const m = l / 100 - c / 2;
+
+            let r = 0, g = 0, b = 0;
+            if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+            else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+            else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+            else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+            else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+            else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+
+            this.pColorData[i4] = r + m;
+            this.pColorData[i4 + 1] = g + m;
+            this.pColorData[i4 + 2] = b + m;
+            this.pColorData[i4 + 3] = p.opacity;
+        }
+
+        gl.useProgram(this.particleProgram);
+        gl.uniform2f(this.particleUniforms.resolution, this.canvas.width, this.canvas.height);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffers.position);
+        gl.bufferData(gl.ARRAY_BUFFER, this.pPositionData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.particleAttributes.position);
+        gl.vertexAttribPointer(this.particleAttributes.position, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffers.size);
+        gl.bufferData(gl.ARRAY_BUFFER, this.pSizeData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.particleAttributes.size);
+        gl.vertexAttribPointer(this.particleAttributes.size, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffers.color);
+        gl.bufferData(gl.ARRAY_BUFFER, this.pColorData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.particleAttributes.color);
+        gl.vertexAttribPointer(this.particleAttributes.color, 4, gl.FLOAT, false, 0, 0);
+
+        gl.drawArrays(gl.POINTS, 0, count);
     }
 
     /**
