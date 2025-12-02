@@ -142,7 +142,7 @@ export default class WebGLSynthwaveEffects {
         } : { r: 1, g: 1, b: 1 };
     }
 
-    render(streaks, bursts, particles) {
+    render(streaks, bursts, particles, sparkles) {
         const gl = this.gl;
         if (!gl || !this.program) return;
 
@@ -228,6 +228,15 @@ export default class WebGLSynthwaveEffects {
                 const rgb = this.hexToRgb(p.color);
                 // Use rotation if available
                 addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life, p.rotation || 0);
+            }
+        }
+
+        // 4. Sun Sparkles
+        if (sparkles) {
+            for (const s of sparkles) {
+                const rgb = this.hexToRgb(s.color);
+                // Sparkles are small, bright, and rotated
+                addQuad(s.x, s.y, s.size * 2, s.size * 2, rgb.r, rgb.g, rgb.b, s.life, s.rotation || 0);
             }
         }
 
