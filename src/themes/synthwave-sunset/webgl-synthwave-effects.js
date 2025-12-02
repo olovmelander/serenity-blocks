@@ -208,7 +208,7 @@ export default class WebGLSynthwaveEffects {
         if (streaks) {
             for (const s of streaks) {
                 const rgb = this.hexToRgb(s.color);
-                addQuad(s.x, s.y, s.width, s.height, rgb.r, rgb.g, rgb.b, s.life * 0.7, 0);
+                addQuad(s.x, s.y, s.width, s.height, rgb.r, rgb.g, rgb.b, s.life * 1.2, 0);
             }
         }
 

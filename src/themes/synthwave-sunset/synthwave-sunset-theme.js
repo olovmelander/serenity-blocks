@@ -1007,7 +1007,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 life: 1.0,
                 maxLife: 0.6 + Math.random() * 0.4,
                 width: (Math.random() * 150 + 100) * widthScale,
-                height: (Math.random() * 3 + 2) * heightScale,
+                height: (Math.random() * 6 + 4) * heightScale, // Thicker streaks for better visibility
                 color,
             });
         }
