@@ -10,6 +10,7 @@ export class IntroAnimation {
     constructor() {
         this.container = null;
         this.isActive = false;
+        this.isAnimating = false;
         this.hasCompleted = false;
         this.boundHandlers = {};
         this.phaserGame = null;
@@ -39,6 +40,7 @@ export class IntroAnimation {
         this.ensureIntroMusic();
 
         this.isActive = true;
+        this.isAnimating = true;
         this.createIntroHTML();
         this.setupEventListeners();
 
@@ -57,7 +59,7 @@ export class IntroAnimation {
      * Animation loop for WebGL renderer
      */
     animate(time) {
-        if (!this.isActive) return;
+        if (!this.isAnimating) return;
 
         if (this.webglRenderer) {
             // Convert to seconds
@@ -1078,6 +1080,7 @@ export class IntroAnimation {
         if (!this.container) return;
 
         this.isActive = false;
+        this.isAnimating = false;
         this.hasCompleted = true;
 
         // Remove event listeners if still attached
@@ -1157,6 +1160,7 @@ export class IntroAnimation {
         this.cosmicScene = null;
 
         this.hasCompleted = true;
+        this.isAnimating = false;
         if (this.onComplete) {
             this.onComplete();
         }
@@ -1168,6 +1172,7 @@ export class IntroAnimation {
     reset() {
         this.hasCompleted = false;
         this.isActive = false;
+        this.isAnimating = false;
 
         // Cleanup Phaser
         if (this.phaserGame) {
@@ -1210,6 +1215,7 @@ export class IntroAnimation {
 
         this.ensureIntroMusic();
         this.isActive = false; // Not active for interaction
+        this.isAnimating = true; // Keep animating
         this.hasCompleted = true; // Mark as completed so show() won't work
 
         // Create container
@@ -1290,7 +1296,7 @@ export class IntroAnimation {
 
         const width = window.innerWidth;
         const height = window.innerHeight;
-        const starCount = 20000; // High density starfield
+        const starCount = 15000; // High density starfield
 
         const galaxyColors = [
             '#9333ea', // Purple
@@ -1316,10 +1322,10 @@ export class IntroAnimation {
             stars.push({
                 x: Math.random() * width,
                 y: Math.random() * height,
-                size: Math.random() * 2 + 0.5,
+                size: Math.random() * 2.5 + 0.7,
                 colorRGB: [r, g, b],
                 twinklePhase: Math.random() * Math.PI * 2,
-                twinkleSpeed: 0.02 + Math.random() * 0.05,
+                twinkleSpeed: 0.005 + Math.random() * 0.02,
                 brightness: 0.5 + Math.random() * 0.5,
             });
         }

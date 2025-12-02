@@ -17,17 +17,6 @@ export default class WebGLSynthwaveRenderer {
         this.gridBuffers = {};
         this.gridUniforms = {};
         this.gridAttributes = {};
-
-        // Star Program (reused from Wolfhour concept but simplified)
-        this.starProgram = null;
-        this.starBuffers = {};
-        this.starUniforms = {};
-        this.starAttributes = {};
-
-        // Data
-        this.starCount = 0;
-        this.maxStars = 2000;
-        this.starData = null; // Float32Array for star data
     }
 
     init() {
@@ -62,7 +51,6 @@ export default class WebGLSynthwaveRenderer {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // Additive blending for neon glow
 
         if (!this.initGridShaders()) return false;
-        if (!this.initStarShaders()) return false;
 
         this.initBuffers();
 
@@ -262,28 +250,7 @@ export default class WebGLSynthwaveRenderer {
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        // 1. Render Stars (Background)
-        if (this.starCount > 0) {
-            gl.useProgram(this.starProgram);
-            gl.uniform2f(this.starUniforms.resolution, this.canvas.width, this.canvas.height);
-            gl.uniform1f(this.starUniforms.time, time);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.position);
-            gl.enableVertexAttribArray(this.starAttributes.position);
-            gl.vertexAttribPointer(this.starAttributes.position, 2, gl.FLOAT, false, 0, 0);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.size);
-            gl.enableVertexAttribArray(this.starAttributes.size);
-            gl.vertexAttribPointer(this.starAttributes.size, 1, gl.FLOAT, false, 0, 0);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.brightness);
-            gl.enableVertexAttribArray(this.starAttributes.brightness);
-            gl.vertexAttribPointer(this.starAttributes.brightness, 1, gl.FLOAT, false, 0, 0);
-
-            gl.drawArrays(gl.POINTS, 0, this.starCount);
-        }
-
-        // 2. Render Grid
+        // Render Grid (Foreground)
         gl.useProgram(this.gridProgram);
         gl.uniform1f(this.gridUniforms.time, time);
         gl.uniform2f(this.gridUniforms.resolution, this.canvas.width, this.canvas.height);
@@ -331,68 +298,6 @@ export default class WebGLSynthwaveRenderer {
         return true;
     }
 
-    initStarShaders() {
-        const gl = this.gl;
-
-        // Simple point sprite shader for stars
-        const vsSource = `
-            precision highp float;
-            attribute vec2 aPosition;
-            attribute float aSize;
-            attribute float aBrightness;
-            
-            uniform vec2 uResolution;
-            uniform float uTime;
-            
-            varying float vBrightness;
-            
-            void main() {
-                vec2 clipSpace = (aPosition / uResolution) * 2.0 - 1.0;
-                clipSpace.y *= -1.0;
-                gl_Position = vec4(clipSpace, 0.0, 1.0);
-                
-                // Twinkle
-                float twinkle = 0.8 + 0.2 * sin(uTime * 5.0 + aPosition.x * 0.1);
-                vBrightness = aBrightness * twinkle;
-                
-                gl_PointSize = aSize;
-            }
-        `;
-
-        const fsSource = `
-            precision highp float;
-            varying float vBrightness;
-            
-            void main() {
-                vec2 coord = gl_PointCoord - vec2(0.5);
-                float dist = length(coord) * 2.0;
-                float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
-                
-                if (alpha < 0.01) discard;
-                
-                // White/Blueish stars
-                vec3 color = vec3(0.9, 0.9, 1.0);
-                gl_FragColor = vec4(color * alpha * vBrightness, alpha * vBrightness);
-            }
-        `;
-
-        this.starProgram = this.createProgram(vsSource, fsSource);
-        if (!this.starProgram) return false;
-
-        this.starAttributes = {
-            position: gl.getAttribLocation(this.starProgram, 'aPosition'),
-            size: gl.getAttribLocation(this.starProgram, 'aSize'),
-            brightness: gl.getAttribLocation(this.starProgram, 'aBrightness'),
-        };
-
-        this.starUniforms = {
-            resolution: gl.getUniformLocation(this.starProgram, 'uResolution'),
-            time: gl.getUniformLocation(this.starProgram, 'uTime'),
-        };
-
-        return true;
-    }
-
     createProgram(vsSource, fsSource) {
         const gl = this.gl;
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -434,44 +339,6 @@ export default class WebGLSynthwaveRenderer {
             -1, 1,
             1, 1,
         ]), gl.STATIC_DRAW);
-
-        // Stars
-        this.starBuffers.position = gl.createBuffer();
-        this.starBuffers.size = gl.createBuffer();
-        this.starBuffers.brightness = gl.createBuffer();
-    }
-
-    allocateStars(count) {
-        this.maxStars = count;
-        this.starCount = 0;
-
-        this.starData = {
-            position: new Float32Array(count * 2),
-            size: new Float32Array(count),
-            brightness: new Float32Array(count),
-        };
-    }
-
-    uploadStars(stars) {
-        const gl = this.gl;
-        const count = Math.min(stars.length, this.maxStars);
-        this.starCount = count;
-
-        for (let i = 0; i < count; i++) {
-            this.starData.position[i * 2] = stars[i].x;
-            this.starData.position[i * 2 + 1] = stars[i].y;
-            this.starData.size[i] = stars[i].size;
-            this.starData.brightness[i] = stars[i].brightness;
-        }
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.position);
-        gl.bufferData(gl.ARRAY_BUFFER, this.starData.position, gl.DYNAMIC_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.size);
-        gl.bufferData(gl.ARRAY_BUFFER, this.starData.size, gl.DYNAMIC_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.brightness);
-        gl.bufferData(gl.ARRAY_BUFFER, this.starData.brightness, gl.DYNAMIC_DRAW);
     }
 
     resize(width, height) {
@@ -481,6 +348,4 @@ export default class WebGLSynthwaveRenderer {
             this.gl.viewport(0, 0, width, height);
         }
     }
-
-
 }

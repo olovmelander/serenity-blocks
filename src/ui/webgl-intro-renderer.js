@@ -108,7 +108,7 @@ export default class WebGLIntroRenderer {
                 vSize = aSize;
                 
                 // Point size (in pixels)
-                gl_PointSize = vSize * 2.5;
+                gl_PointSize = vSize * 2.8;
             }
         `;
 

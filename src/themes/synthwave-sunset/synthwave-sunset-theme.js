@@ -3,6 +3,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import WebGLSynthwaveRenderer from './webgl-synthwave-renderer.js';
 import WebGLSynthwaveEffects from './webgl-synthwave-effects.js';
+import WebGLSynthwaveSun from './webgl-synthwave-sun.js';
 
 export default class SynthwaveSunsetTheme extends BaseTheme {
     constructor() {
@@ -36,6 +37,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.retroParticles = [];
         this.gridWaves = [];
         this.gridHighlights = []; // Array of {x, y, intensity, life}
+        this.sunSparkles = [];
         this.sunPulseIntensity = 0;
         this.comboMultiplier = 1.0;
         this.cityGlowIntensity = 0;
@@ -47,7 +49,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.MAX_BURSTS = 5;
         this.MAX_STREAKS = 8;
         this.MAX_PARTICLES = 150;
+        this.MAX_PARTICLES = 150;
         this.MAX_WAVES = 4;
+        this.MAX_SPARKLES = 500;
 
         // Graphics quality presets - optimized for better performance
         this.qualityPresets = {
@@ -63,7 +67,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 particlesPerBurstMin: 5,
                 particlesPerBurstMax: 10,
                 streakMultiplier: 0.6,
-                gridScrollSpeed: 22,
+                gridScrollSpeed: 5,
                 glowIntensity: 0.5,
                 useShadowBlur: false,
                 useDropShadow: false,
@@ -81,7 +85,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 particlesPerBurstMin: 8,
                 particlesPerBurstMax: 15,
                 streakMultiplier: 0.8,
-                gridScrollSpeed: 25,
+                gridScrollSpeed: 6,
                 glowIntensity: 0.7,
                 useShadowBlur: false,
                 useDropShadow: false,
@@ -99,7 +103,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 particlesPerBurstMin: 10,
                 particlesPerBurstMax: 20,
                 streakMultiplier: 1.2,
-                gridScrollSpeed: 28,
+                gridScrollSpeed: 7,
                 glowIntensity: 0.85,
                 useShadowBlur: false,
                 useDropShadow: true,
@@ -117,7 +121,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 particlesPerBurstMin: 12,
                 particlesPerBurstMax: 28,
                 streakMultiplier: 1.6,
-                gridScrollSpeed: 30,
+                gridScrollSpeed: 8,
                 glowIntensity: 1.0,
                 useShadowBlur: true,
                 useDropShadow: true,
@@ -135,7 +139,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 particlesPerBurstMin: 15,
                 particlesPerBurstMax: 40,
                 streakMultiplier: 2.2,
-                gridScrollSpeed: 35,
+                gridScrollSpeed: 9,
                 glowIntensity: 1.2,
                 useShadowBlur: true,
                 useDropShadow: true,
@@ -153,7 +157,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 particlesPerBurstMin: 20,
                 particlesPerBurstMax: 60,
                 streakMultiplier: 3.0,
-                gridScrollSpeed: 40,
+                gridScrollSpeed: 10,
                 glowIntensity: 1.5,
                 useShadowBlur: true,
                 useDropShadow: true,
@@ -198,6 +202,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         clampArray(this.retroStreaks, this.MAX_STREAKS);
         clampArray(this.retroParticles, this.MAX_PARTICLES);
         clampArray(this.gridWaves, this.MAX_WAVES);
+        clampArray(this.sunSparkles, this.MAX_SPARKLES);
     }
 
     getGraphicsQuality() {
@@ -271,6 +276,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
             // Start animation loop
             this.animate();
+
+            // Ensure everything is sized correctly after DOM creation
+            requestAnimationFrame(() => this.resizeGrid());
         } catch (error) {
             console.error('Synthwave Sunset: Error creating scene:', error);
         }
@@ -284,31 +292,37 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             return;
         }
 
-        // Ensure the sun core exists
-        let sun = sunContainer.querySelector('.synthwave-sun');
-        if (!sun) {
-            sun = document.createElement('div');
-            sun.className = 'synthwave-sun';
-            sunContainer.appendChild(sun);
+        // Create canvas for WebGL Sun
+        let canvas = sunContainer.querySelector('.synthwave-sun-canvas');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.className = 'synthwave-sun-canvas';
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            sunContainer.appendChild(canvas);
         }
 
-        // Remove existing glow layers so we can rebuild for the new preset
-        const existingGlows = sunContainer.querySelectorAll('.synthwave-sun-glow');
-        existingGlows.forEach((glow) => glow.remove());
+        this.webglSun = new WebGLSynthwaveSun(canvas);
+        if (this.webglSun.init()) {
+            this.webglSun.resize(sunContainer.clientWidth, sunContainer.clientHeight);
 
-        const layerCount = this.activePreset?.sunGlowLayers ?? 3;
-        for (let i = 0; i < layerCount; i++) {
-            const glow = document.createElement('div');
-            const classIndex = Math.min(i, 2);
-            glow.className = `synthwave-sun-glow glow-layer-${classIndex}`;
+            // Create some retro background stars
+            const count = 200; // Sparse retro stars
+            const stars = [];
 
-            if (i > 2) {
-                const extraScale = 1 + (i - 2) * 0.2;
-                glow.style.transform = `translate(-50%, -50%) scale(${extraScale})`;
-                glow.style.opacity = `${Math.max(0.3, 0.8 - (i - 2) * 0.15)}`;
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * sunContainer.clientWidth,
+                    y: Math.random() * sunContainer.clientHeight,
+                    size: Math.random() * 2 + 1,
+                    brightness: Math.random() * 0.5 + 0.5,
+                });
             }
 
-            sunContainer.appendChild(glow);
+            this.webglSun.allocateStars(count);
+            this.webglSun.uploadStars(stars);
+        } else {
+            console.warn('Synthwave Sunset: WebGL Sun init failed');
         }
 
         // Store reference to sun container for animation
@@ -320,15 +334,15 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // The sun drifts continuously from left to right with subtle vertical float
 
         // Movement range (percentage of viewport from center)
-        const horizontalRange = 25; // Extended range for longer glide to the sides (50% total travel)
+        const horizontalRange = 80; // Full screen width + margin to go completely off-screen
         const verticalRange = 3; // Subtle up-down floating
 
         // Apply time offset so sun starts at different position each time
         const time = this.animationTime + this.timeOffset;
 
         // Continuous left-to-right drift using modulo to loop smoothly
-        // Drift cycle takes about 30 seconds for a full left-to-right pass
-        const driftSpeed = 0.002; // Speed of the drift (increased 10x for visible movement)
+        // Drift cycle takes longer now for a meditative pace
+        const driftSpeed = 0.0005; // Slower speed for wider range
         const driftProgress = (time * driftSpeed) % 1; // 0 to 1 progress through drift cycle
 
         // Map progress to position: -horizontalRange (left) to +horizontalRange (right)
@@ -344,9 +358,22 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     updateSunPosition() {
+        const pos = this.calculateSunPosition();
+        this.sunPosition = pos;
+
         if (!this.sunContainer) return;
 
-        const pos = this.calculateSunPosition();
+        // If using WebGL, we don't move the container, we move the sun in the shader.
+        // We also ensure the container is full screen to prevent distortion.
+        if (this.useWebGL && this.webglSun) {
+            this.sunContainer.style.transform = 'none';
+            this.sunContainer.style.width = '100%';
+            this.sunContainer.style.height = '100%';
+            this.sunContainer.style.top = '0';
+            this.sunContainer.style.left = '0';
+            this.sunContainer.style.position = 'absolute';
+            return;
+        }
 
         // Combine the centering transform (-50%, -50%) with the movement offset
         // The CSS centers the sun, and we add the drift on top of that
@@ -358,6 +385,13 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     updateSunPulse() {
         if (!this.sunContainer) return;
+
+        // If using WebGL, pulse is handled in shader
+        if (this.useWebGL && this.webglSun) {
+            this.sunContainer.style.filter = '';
+            this.sunContainer.style.scale = '1';
+            return;
+        }
 
         // Apply pulse effect by adjusting filter brightness
         if (this.sunPulseIntensity > 0) {
@@ -546,9 +580,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 this.useWebGL = true;
                 this.resizeGrid();
 
-                // Create some retro background stars
-                this.createWebGLStars();
-
                 window.addEventListener('resize', () => this.resizeGrid());
             } else {
                 console.warn('Synthwave Sunset: WebGL init failed, falling back to Canvas2D');
@@ -559,25 +590,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             console.error('Synthwave Sunset: Error initializing WebGL:', error);
             this.useWebGL = false;
         }
-    }
-
-    createWebGLStars() {
-        if (!this.useWebGL || !this.webglRenderer) return;
-
-        const count = 200; // Sparse retro stars
-        const stars = [];
-
-        for (let i = 0; i < count; i++) {
-            stars.push({
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight * 0.6, // Top 60% only
-                size: Math.random() * 2 + 1,
-                brightness: Math.random() * 0.5 + 0.5,
-            });
-        }
-
-        this.webglRenderer.allocateStars(count);
-        this.webglRenderer.uploadStars(stars);
     }
 
     createPerspectiveGrid() {
@@ -606,8 +618,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 this.webglCanvas.width = window.innerWidth;
                 this.webglCanvas.height = window.innerHeight;
             }
-            // Re-upload stars on resize to fit new screen? 
-            // Or just let them be. For now, let's just resize viewport.
+
+            // Resize Sun Renderer
+            if (this.webglSun && this.sunContainer) {
+                this.webglSun.resize(this.sunContainer.clientWidth, this.sunContainer.clientHeight);
+            }
             return;
         }
 
@@ -618,6 +633,18 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     drawPerspectiveGrid() {
         if (this.useWebGL && this.webglRenderer) {
+            // Hide old DOM sun elements if WebGL is active, but keep the container visible for the canvas
+            if (this.sunContainer) {
+                const domSun = this.sunContainer.querySelector('.synthwave-sun');
+                if (domSun) domSun.style.display = 'none';
+
+                const glows = this.sunContainer.querySelectorAll('.synthwave-sun-glow');
+                glows.forEach(glow => glow.style.display = 'none');
+
+                // Ensure container is visible
+                this.sunContainer.style.display = 'block';
+            }
+
             const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
             // Convert scroll speed to WebGL speed unit
             const webglSpeed = scrollSpeed * 0.05;
@@ -640,7 +667,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             // Update highlights
             for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
                 const h = this.gridHighlights[i];
-                h.intensity *= 0.95; // Fade out
+                h.intensity *= 0.99; // Fade out much slower
                 h.life -= h.decay;
 
                 if (h.life <= 0 || h.intensity < 0.01) {
@@ -648,6 +675,26 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 }
             }
 
+            // Sun Parameters
+            const aspect = window.innerWidth / window.innerHeight;
+            const sunX = ((this.sunPosition?.x || 0) / 100.0) * aspect;
+            const sunY = ((this.sunPosition?.y || 0) / 100.0) + 0.05; // Position lower to set behind buildings
+
+            const sunParams = {
+                x: sunX,
+                y: sunY,
+                radius: 0.25 + this.sunPulseIntensity * 0.05,
+                colorTop: [1.0, 0.9 + this.sunPulseIntensity * 0.1, 0.0], // Yellow/Orange
+                colorBottom: [1.0, 0.0, 0.6 + this.sunPulseIntensity * 0.2], // Hot Pink
+                stripeCount: 40.0
+            };
+
+            // Render Sun (Standalone)
+            if (this.webglSun) {
+                this.webglSun.render(this.animationTime, sunParams);
+            }
+
+            // Render Grid
             this.webglRenderer.render(this.animationTime, {
                 speed: webglSpeed,
                 color: [r, g, b],
@@ -660,11 +707,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             if (this.gridPulseIntensity > 0) {
                 this.gridPulseIntensity *= 0.95;
                 if (this.gridPulseIntensity < 0.01) this.gridPulseIntensity = 0;
-            }
-
-            if (this.comboColorShift !== 0) {
-                this.comboColorShift *= 0.95;
-                if (Math.abs(this.comboColorShift) < 0.1) this.comboColorShift = 0;
             }
             return;
         }
@@ -831,7 +873,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                     y: gridZ + ry,
                     intensity: 2.0 + Math.random(), // Varying brightness
                     life: 1.0,
-                    decay: 0.03 + Math.random() * 0.04, // Varying decay
+                    decay: 0.005 + Math.random() * 0.01, // Much slower decay for meditative feel
                     color: color
                 });
             }
@@ -888,6 +930,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (comboCount >= 4) {
             this.createRetroStreaks(Math.floor(comboCount / 2));
         }
+
+        // Create sun sparkles
+        this.createSunSparkles(comboCount);
     }
 
     createHorizonBursts(lineCount) {
@@ -1017,6 +1062,61 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         });
     }
 
+    createSunSparkles(comboCount) {
+        if (!this.effectsCanvas) return;
+        if (this.sunSparkles.length >= this.MAX_SPARKLES) return;
+
+        const { width, height } = this.effectsCanvas;
+
+        // Calculate sun screen position
+        // sunX (shader) = (pos.x / 100) * aspect
+        // uv.x = (pixelX - width/2) / height
+        // pixelX = width/2 + (pos.x / 100) * width
+        const sunX = width * (0.5 + (this.sunPosition?.x || 0) / 100);
+
+        // sunY (shader) = (pos.y / 100) + 0.05
+        // uv.y = (pixelY - height/2) / height
+        // pixelY (from bottom) = height/2 + height * ((pos.y / 100) + 0.05)
+        // pixelY (from top) = height - (height * (0.55 + pos.y/100))
+        // Canvas Y = height * (0.5 - shaderY) = height * (0.5 - (pos.y/100 + 0.05)) = height * (0.45 - pos.y/100)
+        const sunY = height * (0.45 - (this.sunPosition?.y || 0) / 100);
+
+        // Sun Radius (pixels)
+        // Base radius 0.25 + pulse
+        const baseRadius = 0.25;
+        const pulseRadius = this.sunPulseIntensity * 0.05;
+        const radius = (baseRadius + pulseRadius) * height;
+
+        const count = Math.min(comboCount * 25, 150);
+        // Fire colors: OrangeRed, DarkOrange, Gold, Red
+        const colors = ['#ff4500', '#ff8c00', '#ffd700', '#ff0000'];
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI; // Upper half only
+            // Spawn at edge with slight variation
+            const r = radius * (0.95 + Math.random() * 0.1);
+
+            const spawnX = sunX + Math.cos(angle) * r;
+            const spawnY = sunY - Math.sin(angle) * r; // Invert Y for canvas
+
+            // Slower, fire-like motion (outward)
+            const speed = Math.random() * 0.8 + 0.2;
+
+            this.sunSparkles.push({
+                x: spawnX,
+                y: spawnY,
+                vx: Math.cos(angle) * speed,
+                vy: -Math.sin(angle) * speed,
+                life: 1.0,
+                maxLife: Math.random() * 0.8 + 0.8, // Longer life
+                size: Math.random() * 4 + 2, // Slightly larger
+                color: colors[Math.floor(Math.random() * colors.length)],
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+    }
+
     updateEffects(delta) {
         // Update horizon bursts
         for (let i = this.horizonBursts.length - 1; i >= 0; i--) {
@@ -1071,15 +1171,33 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
         }
 
+        // Update sun sparkles
+        for (let i = this.sunSparkles.length - 1; i >= 0; i--) {
+            const s = this.sunSparkles[i];
+            s.x += s.vx;
+            s.y += s.vy;
+            s.rotation += s.rotationSpeed;
+            s.life -= delta / s.maxLife;
+
+            if (s.life <= 0) {
+                this.sunSparkles.splice(i, 1);
+            }
+        }
+
         // Decay sun pulse
         if (this.sunPulseIntensity > 0) {
-            this.sunPulseIntensity *= 0.92;
+            this.sunPulseIntensity *= 0.98; // Slower pulse decay
             if (this.sunPulseIntensity < 0.01) this.sunPulseIntensity = 0;
+        }
+
+        if (this.comboColorShift !== 0) {
+            this.comboColorShift *= 0.98; // Slower color shift decay
+            if (Math.abs(this.comboColorShift) < 0.1) this.comboColorShift = 0;
         }
 
         // Decay city glow
         if (this.cityGlowIntensity > 0) {
-            this.cityGlowIntensity *= 0.92;
+            this.cityGlowIntensity *= 0.98; // Much slower decay
             if (this.cityGlowIntensity < 0.01) this.cityGlowIntensity = 0;
         }
     }
@@ -1091,7 +1209,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.webglEffects.render(
                 this.retroStreaks,
                 this.horizonBursts,
-                this.retroParticles
+                this.retroParticles,
+                this.sunSparkles
             );
         } catch (error) {
             console.error('Synthwave Sunset: Error rendering effects:', error);
@@ -1151,7 +1270,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.horizonBursts = [];
         this.retroStreaks = [];
         this.retroParticles = [];
+        this.retroParticles = [];
         this.gridWaves = [];
+        this.sunSparkles = [];
         this.sunPulseIntensity = 0;
         this.comboMultiplier = 1.0;
         this.cityGlowIntensity = 0;
