@@ -22,6 +22,9 @@ export default class WebGLNeonGrid {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // Additive blending for glow
 
+        // Enable derivatives extension
+        gl.getExtension('OES_standard_derivatives');
+
         // Full screen quad
         const vsSource = `
             precision highp float;
@@ -62,15 +65,27 @@ export default class WebGLNeonGrid {
                      // Pulsing effect
                      float pulse = 0.9 + 0.1 * sin(uTime * 2.0);
 
-                     // Grid lines
-                     float gw = 0.08 * z; 
-                     float g = max(
-                        smoothstep(1.0-gw, 1.0, fract(gp.x)),
-                        smoothstep(1.0-gw, 1.0, fract(gp.y))
-                     );
+                     // Grid lines - High Definition Manual AA
+                     // Fallback since fwidth is not reliably supported
+                     
+                     float lineScale = 0.0025 * z; // Ultra thin lines (was 0.005)
+                     
+                     // Manual derivative approximation
+                     // Calculate rate of change based on perspective depth 'z'
+                     // At horizon (z high), change is fast. Near camera (z low), change is slow.
+                     vec2 derivative = vec2(z * 0.05, z * 0.05); 
+                     
+                     // Distance to nearest grid line
+                     vec2 dist = abs(fract(gp + 0.5) - 0.5);
+                     
+                     // Smoothstep with manual width adjustment
+                     float gx = 1.0 - smoothstep(lineScale, lineScale + derivative.x, dist.x);
+                     float gy = 1.0 - smoothstep(lineScale, lineScale + derivative.y, dist.y);
+                     
+                     float g = max(gx, gy);
 
-                     // Glow
-                     float gwGlow = 0.25 * z;
+                     // Glow - softer
+                     float gwGlow = 0.15 * z;
                      float gGlow = max(
                         smoothstep(1.0-gwGlow, 1.0, fract(gp.x)),
                         smoothstep(1.0-gwGlow, 1.0, fract(gp.y))

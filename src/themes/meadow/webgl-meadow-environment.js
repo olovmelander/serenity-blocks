@@ -1,9 +1,8 @@
 
 /**
- * WebGL Neon Environment - Renders the complete background scene (Sky, Sun, Mountains, Grid)
- * for the Neon Dusk theme in a single efficient pass.
+ * WebGL Meadow Environment - Renders the sky, sun, and clouds
  */
-export default class WebGLNeonEnvironment {
+export default class WebGLMeadowEnvironment {
     constructor(canvas) {
         this.canvas = canvas;
         this.gl = null;
@@ -36,71 +35,83 @@ export default class WebGLNeonEnvironment {
             uniform float uTime;
             uniform vec2 uResolution;
             
-            // Colors - Enhanced for better depth and vibrancy (Photo Match)
-            const vec3 cSkyTop = vec3(0.1, 0.0, 0.3);        // Deep Purple/Blue
-            const vec3 cSkyBot = vec3(0.8, 0.0, 0.5);        // Vibrant Magenta/Pink
+            // Meadow Sky Colors - Softer, more pastel
+            const vec3 cSkyTop = vec3(0.2, 0.6, 0.9);     // Deep Blue
+            const vec3 cSkyBot = vec3(1.0, 0.9, 0.7);     // Golden Haze
+            const vec3 cSunColor = vec3(1.0, 0.6, 0.1);   // Deep Golden Orange Sun
             
-            // Pseudo-random
+            // Noise function for clouds
             float hash(vec2 p) {
                 return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
             }
-            
-            // Sharp Star Generator
-            float getStar(vec2 uv, float scale, float density) {
-                vec2 grid = uv * scale;
-                vec2 id = floor(grid);
-                vec2 local = fract(grid) - 0.5;
-                
-                float rnd = hash(id);
-                if (rnd > density) return 0.0;
-                
-                // Random position offset
-                vec2 offset = vec2(hash(id * 12.34), hash(id * 56.78)) - 0.5;
-                
-                float d = length(local - offset);
-                
-                // Much sharper, smaller core
-                // 0.05 is the radius, anything outside is black
-                float size = 0.03 + rnd * 0.04; 
-                
-                // Sharp circle
-                float star = smoothstep(size, size - 0.01, d);
-                
-                // Twinkle
-                float twinkle = 0.7 + 0.3 * sin(uTime * (2.0 + rnd * 5.0) + rnd * 100.0);
-                
-                return star * twinkle;
+
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), f.x),
+                           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
             }
 
+            float fbm(vec2 p) {
+                float v = 0.0;
+                v += 0.5 * noise(p); p *= 2.0;
+                v += 0.25 * noise(p); p *= 2.0;
+                v += 0.125 * noise(p); p *= 2.0;
+                return v;
+            }
+            
             void main() {
                 vec2 uv = gl_FragCoord.xy / uResolution.xy;
                 
-                vec3 color = vec3(0.0);
+                // Sky Gradient
+                vec3 color = mix(cSkyBot, cSkyTop, smoothstep(0.0, 1.0, uv.y));
                 
-                // --- SKY ---
-                float skyGradient = smoothstep(0.0, 1.0, uv.y);
-                color = mix(cSkyBot, cSkyTop, skyGradient);
+                // Sun - Softer, more atmospheric
+                vec2 sunPos = vec2(0.85, 0.85);
+                float aspectRatio = uResolution.x / uResolution.y;
+                vec2 sunUV = uv;
+                sunUV.x *= aspectRatio;
+                vec2 sunPosCorrected = sunPos;
+                sunPosCorrected.x *= aspectRatio;
                 
-                // Stars - Crisp and Clean
-                if (uv.y > 0.4) {
-                    float fade = smoothstep(0.4, 0.6, uv.y);
-                    
-                    // Layer 1: Many small crisp stars
-                    float s1 = getStar(uv, 80.0, 0.95); 
-                    
-                    // Layer 2: Medium stars
-                    float s2 = getStar(uv + vec2(0.5), 50.0, 0.98);
-                    
-                    // Layer 3: Few bright stars
-                    float s3 = getStar(uv + vec2(0.2), 30.0, 0.99);
-                    
-                    vec3 starColor = vec3(1.0); // Pure white
-                    color += (s1 * 0.5 + s2 * 0.8 + s3 * 1.0) * starColor * fade;
-                }
-
-                // Minimal Vignette - Only at extreme edges
-                float vig = 1.0 - length(uv - 0.5) * 0.15; // Very minimal effect
-                vig = pow(vig, 0.98); // Almost no falloff
+                float sunDist = length(sunUV - sunPosCorrected);
+                
+                // Sun Core (Soft circle)
+                float sunCore = smoothstep(0.12, 0.06, sunDist);
+                
+                // Sun Glow (Wide atmospheric glow)
+                float sunGlow = exp(-sunDist * 2.5) * 0.8;
+                
+                // Sun Rays (Subtle)
+                float angle = atan(uv.y - sunPos.y, uv.x - sunPos.x);
+                float rays = sin(angle * 12.0 + uTime * 0.05) * 0.05 + 0.95; // Very subtle rays
+                sunGlow *= rays;
+                
+                // Mix sun color: mostly golden, very little white even in center
+                vec3 sunFinalColor = mix(cSunColor, vec3(1.0, 0.9, 0.6), sunCore * 0.3);
+                
+                color += sunFinalColor * (sunCore * 0.6 + sunGlow);
+                
+                // Clouds - Fluffy and slow
+                float cloudTime = uTime * 0.02; // Very slow
+                vec2 cloudUV = uv * vec2(1.5, 1.0) + vec2(cloudTime, 0.0);
+                float cloudNoise = fbm(cloudUV * 2.5);
+                
+                // Cloud shape
+                float cloudDensity = smoothstep(0.45, 0.75, cloudNoise);
+                // Soft edges and fade at bottom
+                cloudDensity *= smoothstep(0.0, 0.2, uv.y - 0.3); 
+                
+                vec3 cloudColor = vec3(1.0, 1.0, 0.98);
+                // Add shading to clouds
+                float shadow = fbm(cloudUV * 2.5 + vec2(0.03, -0.03));
+                cloudColor = mix(cloudColor, vec3(0.9, 0.9, 0.95), shadow);
+                
+                color = mix(color, cloudColor, cloudDensity * 0.7);
+                
+                // Vignette - Very subtle
+                float vig = 1.0 - length(uv - 0.5) * 0.2;
                 color *= vig;
 
                 gl_FragColor = vec4(color, 1.0);
@@ -124,7 +135,6 @@ export default class WebGLNeonEnvironment {
         this.positionAttribute = gl.getAttribLocation(program, 'aPosition');
         this.timeUniform = gl.getUniformLocation(program, 'uTime');
         this.resolutionUniform = gl.getUniformLocation(program, 'uResolution');
-        this.wavesUniform = gl.getUniformLocation(program, 'uWaves');
 
         return true;
     }
@@ -161,10 +171,9 @@ export default class WebGLNeonEnvironment {
         }
     }
 
-    render(time, waves = []) {
+    render(time) {
         if (!this.gl || !this.program) return;
         const gl = this.gl;
-        const currentTime = time || (Date.now() - this.startTime) * 0.001;
 
         gl.useProgram(this.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -173,17 +182,8 @@ export default class WebGLNeonEnvironment {
         gl.enableVertexAttribArray(this.positionAttribute);
         gl.vertexAttribPointer(this.positionAttribute, 2, gl.FLOAT, false, 0, 0);
 
-        gl.uniform1f(this.timeUniform, currentTime);
+        gl.uniform1f(this.timeUniform, time);
         gl.uniform2f(this.resolutionUniform, this.canvas.width, this.canvas.height);
-
-        // Pass wave data to shader
-        const waveData = new Float32Array(15); // 5 waves * 3 floats (x, radius, intensity)
-        for (let i = 0; i < Math.min(waves.length, 5); i++) {
-            waveData[i * 3] = waves[i].x;
-            waveData[i * 3 + 1] = waves[i].radius;
-            waveData[i * 3 + 2] = waves[i].intensity;
-        }
-        gl.uniform3fv(this.wavesUniform, waveData);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
