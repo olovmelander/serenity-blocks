@@ -495,9 +495,9 @@ export class IntroAnimation {
         };
 
         const shapeNames = Object.keys(tetrominoShapes);
-        const blockSize = 6;
+        const blockSize = 8;
         const cellSize = blockSize;
-        const maxTetrominos = 15; // Max tetrominos on screen at once
+        const maxTetrominos = 20; // Max tetrominos on screen at once
         let activeTetrominos = 0;
 
         // Array to store all active tetromino containers for collision detection
