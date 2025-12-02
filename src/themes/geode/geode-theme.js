@@ -11,6 +11,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { GEODE_TETROMINOS } from './geode-tetrominos.js';
+import WebGLStarRenderer from './webgl-star-renderer.js';
 
 export default class GeodeTheme extends BaseTheme {
     constructor() {
@@ -79,6 +80,11 @@ export default class GeodeTheme extends BaseTheme {
         
         // Performance: Pre-rendered brightness sprites (avoids globalAlpha changes)
         this.brightnessSpriteCache = {};
+        
+        // Performance: WebGL star renderer (GPU-accelerated)
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.useWebGL = true; // Try to use WebGL, fall back to Canvas2D
 
         // Event tracking
         this.eventUnsubscribers = [];
@@ -97,7 +103,7 @@ export default class GeodeTheme extends BaseTheme {
         this.qualityPresets = {
             Minimal: {
                 // Element counts
-                starCount: 800,
+                starCount: 20000,
                 strandCount: 0,
                 ambientParticleCount: 30,
                 maxEnergyPulses: 3,
@@ -117,6 +123,7 @@ export default class GeodeTheme extends BaseTheme {
                 particleFrameSkip: 2,     // Update particles every 2nd frame
                 starCanvasScale: 0.4,     // Render stars at 40% resolution (huge perf gain!)
                 useSimpleComposite: true, // Skip expensive 'screen' blend mode
+                useWebGL: true,           // WebGL is beneficial even at low star counts
                 // Effect toggles
                 enableChromaticAberration: false,
                 enableScreenShake: true,
@@ -131,7 +138,7 @@ export default class GeodeTheme extends BaseTheme {
             },
             Low: {
                 // Element counts
-                starCount: 1500,
+                starCount: 40000,
                 strandCount: 0,
                 ambientParticleCount: 50,
                 maxEnergyPulses: 5,
@@ -151,6 +158,7 @@ export default class GeodeTheme extends BaseTheme {
                 particleFrameSkip: 2,
                 starCanvasScale: 0.5,     // Render stars at 50% resolution
                 useSimpleComposite: true,
+                useWebGL: true,
                 // Effect toggles
                 enableChromaticAberration: false,
                 enableScreenShake: true,
@@ -165,7 +173,7 @@ export default class GeodeTheme extends BaseTheme {
             },
             Medium: {
                 // Element counts
-                starCount: 3000,
+                starCount: 50000,
                 strandCount: 0,
                 ambientParticleCount: 60,
                 maxEnergyPulses: 8,
@@ -185,6 +193,7 @@ export default class GeodeTheme extends BaseTheme {
                 particleFrameSkip: 1,     // Update every frame
                 starCanvasScale: 0.6,     // Render stars at 60% resolution
                 useSimpleComposite: false,
+                useWebGL: true,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -199,7 +208,7 @@ export default class GeodeTheme extends BaseTheme {
             },
             High: {
                 // Element counts
-                starCount: 5000,
+                starCount: 70000,
                 strandCount: 0,
                 ambientParticleCount: 70,
                 maxEnergyPulses: 12,
@@ -219,6 +228,7 @@ export default class GeodeTheme extends BaseTheme {
                 particleFrameSkip: 1,
                 starCanvasScale: 0.75,    // Render stars at 75% resolution
                 useSimpleComposite: false,
+                useWebGL: true,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -233,7 +243,7 @@ export default class GeodeTheme extends BaseTheme {
             },
             Ultra: {
                 // Element counts
-                starCount: 7000,
+                starCount: 80000,
                 strandCount: 0,
                 ambientParticleCount: 80,
                 maxEnergyPulses: 16,
@@ -253,6 +263,7 @@ export default class GeodeTheme extends BaseTheme {
                 particleFrameSkip: 1,
                 starCanvasScale: 0.85,    // Render stars at 85% resolution
                 useSimpleComposite: false,
+                useWebGL: true,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -267,7 +278,7 @@ export default class GeodeTheme extends BaseTheme {
             },
             Extreme: {
                 // Element counts
-                starCount: 8000,
+                starCount: 100000,
                 strandCount: 0,
                 ambientParticleCount: 100,
                 maxEnergyPulses: 20,
@@ -287,6 +298,7 @@ export default class GeodeTheme extends BaseTheme {
                 particleFrameSkip: 1,
                 starCanvasScale: 1.0,     // Full resolution for Extreme quality
                 useSimpleComposite: false,
+                useWebGL: true,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -313,7 +325,52 @@ export default class GeodeTheme extends BaseTheme {
         this.starRedrawInterval = preset.starRedrawInterval || 50;
         this.starCanvasScale = preset.starCanvasScale || 0.6;
         this.useSimpleComposite = preset.useSimpleComposite || false;
-        console.log(`💎 Geode: Applied ${this.currentQuality} quality (stars at ${(this.starCanvasScale * 100).toFixed(0)}% resolution)`);
+        // Note: useWebGL is checked in initWebGLRenderer and respected there
+        console.log(`💎 Geode: Applied ${this.currentQuality} quality`);
+    }
+    
+    /**
+     * Initialize WebGL star renderer for GPU-accelerated star rendering
+     * Falls back to Canvas2D if WebGL is not available or disabled in preset
+     */
+    initWebGLRenderer() {
+        if (!this.canvas) return;
+        
+        // Check if preset allows WebGL
+        if (this.activePreset.useWebGL === false) {
+            this.useWebGL = false;
+            console.log('💎 Geode: WebGL disabled by quality preset, using Canvas2D');
+            return;
+        }
+        
+        try {
+            // Create a separate canvas for WebGL stars (layered on top of background)
+            this.webglCanvas = document.createElement('canvas');
+            this.webglCanvas.width = this.canvas.width;
+            this.webglCanvas.height = this.canvas.height;
+            
+            // Initialize WebGL renderer
+            this.webglRenderer = new WebGLStarRenderer(this.webglCanvas);
+            
+            if (this.webglRenderer.init()) {
+                // Set color palette
+                this.webglRenderer.setColorPalette(this.starColors);
+                // Allocate space for stars
+                this.webglRenderer.allocateStars(this.activePreset.starCount);
+                this.useWebGL = true;
+                console.log(`💎 Geode: WebGL star renderer active (${this.activePreset.starCount} stars in 1 draw call!)`);
+            } else {
+                this.useWebGL = false;
+                this.webglRenderer = null;
+                this.webglCanvas = null;
+                console.log('💎 Geode: Falling back to Canvas2D star rendering');
+            }
+        } catch (e) {
+            console.warn('💎 Geode: WebGL init failed, using Canvas2D:', e);
+            this.useWebGL = false;
+            this.webglRenderer = null;
+            this.webglCanvas = null;
+        }
     }
     
     // Performance: Fast sin/cos using lookup table
@@ -410,12 +467,18 @@ export default class GeodeTheme extends BaseTheme {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         
-        // Performance: Create offscreen canvas for star layer at reduced resolution
-        const scale = this.starCanvasScale;
-        this.starCanvas = document.createElement('canvas');
-        this.starCanvas.width = Math.ceil(this.canvas.width * scale);
-        this.starCanvas.height = Math.ceil(this.canvas.height * scale);
-        this.starCtx = this.starCanvas.getContext('2d', { alpha: true });
+        // Performance: Try to initialize WebGL star renderer (GPU-accelerated)
+        this.initWebGLRenderer();
+        
+        // Fallback: Create offscreen canvas for star layer at reduced resolution
+        if (!this.useWebGL) {
+            const scale = this.starCanvasScale;
+            this.starCanvas = document.createElement('canvas');
+            this.starCanvas.width = Math.ceil(this.canvas.width * scale);
+            this.starCanvas.height = Math.ceil(this.canvas.height * scale);
+            this.starCtx = this.starCanvas.getContext('2d', { alpha: true });
+        }
+        
         // Enable image smoothing for nice upscaling
         this.ctx.imageSmoothingEnabled = true;
         this.ctx.imageSmoothingQuality = 'low'; // 'low' is faster than 'high'
@@ -432,6 +495,11 @@ export default class GeodeTheme extends BaseTheme {
         
         // Performance: Build spatial grid for star ripple lookups
         this.buildStarGrid();
+        
+        // Upload stars to WebGL if available
+        if (this.useWebGL && this.webglRenderer) {
+            this.webglRenderer.uploadStars(this.stars);
+        }
 
         this.setupEventListeners();
         this.lastFrameTime = performance.now();
@@ -621,8 +689,12 @@ export default class GeodeTheme extends BaseTheme {
             if (!this.canvas) return;
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
-            // Resize star canvas at scaled resolution
-            if (this.starCanvas) {
+            
+            // Resize WebGL canvas if using WebGL
+            if (this.useWebGL && this.webglRenderer) {
+                this.webglRenderer.resize(this.canvas.width, this.canvas.height);
+            } else if (this.starCanvas) {
+                // Resize Canvas2D star canvas at scaled resolution
                 const scale = this.starCanvasScale;
                 this.starCanvas.width = Math.ceil(this.canvas.width * scale);
                 this.starCanvas.height = Math.ceil(this.canvas.height * scale);
@@ -940,6 +1012,7 @@ export default class GeodeTheme extends BaseTheme {
         const h = this.canvas.height;
         const stars = this.stars;
         const starCount = stars.length;
+        const useWebGL = this.useWebGL; // WebGL handles twinkle in shader
         
         for (let i = 0; i < starCount; i++) {
             const star = stars[i];
@@ -954,8 +1027,10 @@ export default class GeodeTheme extends BaseTheme {
             if (star.y < -5) star.y = h + 5;
             else if (star.y > h + 5) star.y = -5;
 
-            // Update twinkle phase
-            star.twinklePhase += star.twinkleSpeed;
+            // Update twinkle phase (only needed for Canvas2D - WebGL uses shader)
+            if (!useWebGL) {
+                star.twinklePhase += star.twinkleSpeed;
+            }
         }
     }
     
@@ -1047,6 +1122,13 @@ export default class GeodeTheme extends BaseTheme {
         // Always update star positions (cheap operation)
         this.updateStarPositions();
         
+        // Use WebGL renderer if available (MUCH faster - single GPU draw call!)
+        if (this.useWebGL && this.webglRenderer) {
+            this.drawStarsWebGL(hasActiveRipples);
+            return;
+        }
+        
+        // Fallback: Canvas2D rendering
         // Determine if we need to redraw the star layer
         // Redraw if: dirty flag set, enough time passed, or active ripples
         const timeSinceRedraw = now - this.lastStarRedrawTime;
@@ -1064,6 +1146,35 @@ export default class GeodeTheme extends BaseTheme {
             // Draw scaled star canvas to full size - GPU handles the upscaling efficiently
             this.ctx.drawImage(this.starCanvas, 0, 0, this.canvas.width, this.canvas.height);
         }
+    }
+    
+    /**
+     * GPU-accelerated star rendering using WebGL point sprites
+     * Renders ALL stars in a single draw call!
+     */
+    drawStarsWebGL(hasActiveRipples) {
+        const renderer = this.webglRenderer;
+        const preset = this.activePreset;
+        
+        // Update star positions in GPU buffer
+        renderer.updatePositions(this.stars);
+        
+        // Update brightness/ripple if ripples are active
+        if (hasActiveRipples || this.pulseIntensity > 0.01) {
+            renderer.updateBrightness(this.stars);
+        }
+        
+        // Render all stars in ONE GPU draw call!
+        renderer.render(
+            this.animationTime,
+            this.pulseIntensity,
+            this.ambientPulse,
+            preset.starBrightnessThreshold,
+            preset.enableStarGlow
+        );
+        
+        // Composite WebGL canvas onto main canvas
+        this.ctx.drawImage(this.webglCanvas, 0, 0);
     }
 
     drawStrands() {
@@ -1571,6 +1682,13 @@ export default class GeodeTheme extends BaseTheme {
         this.clearAllElements();
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.chromaticAberration = 0;
+        
+        // Clean up WebGL resources
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+        this.webglCanvas = null;
         
         // Clear offscreen canvas
         if (this.starCtx && this.starCanvas) {
