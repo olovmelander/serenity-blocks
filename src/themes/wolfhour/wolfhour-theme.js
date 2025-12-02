@@ -6,6 +6,7 @@ import { BaseTheme } from '../base-theme.js';
 import { wolfhourBackgroundCache } from '../../utils/cache.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { WOLFHOUR_TETROMINOS } from './wolfhour-tetrominos.js';
+import WebGLWolfRenderer from './webgl-wolf-renderer.js';
 
 /**
  * Wolfhour Theme
@@ -33,6 +34,9 @@ export default class WolfhourTheme extends BaseTheme {
         this.celestialBeams = [];
         this.moonGlowPulses = [];
         this.constellationLines = [];
+        this.starRipples = [];
+        this.novaFlashes = [];
+        this.sparkles = [];
         this.cachedStarElements = [];
 
         // Canvas for effects
@@ -42,6 +46,12 @@ export default class WolfhourTheme extends BaseTheme {
         // Separate canvas for celestial beams (between mountain layers)
         this.beamsCanvas = null;
         this.beamsCtx = null;
+
+        // WebGL Renderer
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.useWebGL = true;
+        this.stars = []; // Data model for WebGL stars
 
         // Animation
         this.animationTime = 0;
@@ -76,6 +86,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.qualityPresets = {
             Minimal: {
                 starCount: 25,
+                webglStarCount: 2000,
                 shootingStarInterval: 20000,
                 lightRayCount: 3,
                 cosmicRiftCount: 1,
@@ -100,6 +111,7 @@ export default class WolfhourTheme extends BaseTheme {
             },
             Low: {
                 starCount: 50,
+                webglStarCount: 5000,
                 shootingStarInterval: 15000,
                 lightRayCount: 6,
                 cosmicRiftCount: 3,
@@ -124,6 +136,7 @@ export default class WolfhourTheme extends BaseTheme {
             },
             Medium: {
                 starCount: 80,
+                webglStarCount: 10000,
                 shootingStarInterval: 12000,
                 lightRayCount: 8,
                 cosmicRiftCount: 5,
@@ -148,6 +161,7 @@ export default class WolfhourTheme extends BaseTheme {
             },
             High: {
                 starCount: 120,
+                webglStarCount: 20000,
                 shootingStarInterval: 10000,
                 lightRayCount: 10,
                 cosmicRiftCount: 6,
@@ -172,6 +186,7 @@ export default class WolfhourTheme extends BaseTheme {
             },
             Ultra: {
                 starCount: 150,
+                webglStarCount: 40000,
                 shootingStarInterval: 8000,
                 lightRayCount: 12,
                 cosmicRiftCount: 8,
@@ -196,6 +211,7 @@ export default class WolfhourTheme extends BaseTheme {
             },
             Extreme: {
                 starCount: 200,
+                webglStarCount: 80000,
                 shootingStarInterval: 5000,
                 lightRayCount: 15,
                 cosmicRiftCount: 10,
@@ -294,6 +310,10 @@ export default class WolfhourTheme extends BaseTheme {
         if (this.constellationLines.length > this.activeQuality.maxConstellationLines) {
             this.constellationLines = this.constellationLines.slice(0, this.activeQuality.maxConstellationLines);
         }
+        // New effects
+        if (this.starRipples.length > 5) this.starRipples = this.starRipples.slice(0, 5);
+        if (this.novaFlashes.length > 3) this.novaFlashes = this.novaFlashes.slice(0, 3);
+        if (this.sparkles.length > 100) this.sparkles = this.sparkles.slice(0, 100);
     }
 
     restartShootingStarInterval() {
@@ -325,6 +345,83 @@ export default class WolfhourTheme extends BaseTheme {
         }, this.activeQuality.shootingStarInterval);
     }
 
+    initWebGLRenderer() {
+        const themeContainer = document.getElementById('wolfhour-theme');
+        if (!themeContainer) return;
+
+        try {
+            // Remove existing canvas if any
+            const existingCanvas = document.getElementById('wolfhour-webgl-canvas');
+            if (existingCanvas) existingCanvas.remove();
+
+            this.webglCanvas = document.createElement('canvas');
+            this.webglCanvas.id = 'wolfhour-webgl-canvas';
+            Object.assign(this.webglCanvas.style, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: '2', // Above sky (1), below nebula/mountains
+            });
+
+            themeContainer.insertBefore(this.webglCanvas, themeContainer.firstChild);
+
+            this.webglRenderer = new WebGLWolfRenderer(this.webglCanvas);
+
+            if (this.webglRenderer.init()) {
+                // Silver/Cool White Palette
+                const starColors = [
+                    '#ffffff', // Pure white
+                    '#e0e0ff', // Blueish white
+                    '#d0d0e0', // Silver
+                    '#c0c0d0', // Dim silver
+                    '#a0a0b0', // Grey
+                ];
+                this.webglRenderer.setColorPalette(starColors);
+                this.webglRenderer.allocateStars(this.activeQuality.webglStarCount);
+                this.useWebGL = true;
+                console.log(`🐺 Wolfhour: WebGL renderer active (${this.activeQuality.webglStarCount} stars)`);
+            } else {
+                this.useWebGL = false;
+                if (this.webglCanvas) {
+                    this.webglCanvas.remove();
+                    this.webglCanvas = null;
+                }
+            }
+        } catch (e) {
+            console.warn('🐺 Wolfhour: WebGL init failed:', e);
+            this.useWebGL = false;
+        }
+    }
+
+    createWebGLStars() {
+        if (!this.useWebGL) return;
+
+        const count = this.activeQuality.webglStarCount;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+
+        this.stars = [];
+        const starColors = ['#ffffff', '#e0e0ff', '#d0d0e0', '#c0c0d0', '#a0a0b0'];
+
+        for (let i = 0; i < count; i++) {
+            this.stars.push({
+                x: Math.random() * w,
+                y: Math.random() * h,
+                size: 0.5 + Math.random() * 2.5,
+                color: starColors[Math.floor(Math.random() * starColors.length)],
+                brightness: 0.2 + Math.random() * 0.8,
+                twinklePhase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.02 + Math.random() * 0.05,
+                rippleBoost: 0,
+            });
+        }
+
+        this.webglRenderer.uploadStars(this.stars);
+    }
+
     async init() {
         // Theme resources are created on-demand in createScene()
     }
@@ -333,25 +430,35 @@ export default class WolfhourTheme extends BaseTheme {
         // Apply quality preset
         this.applyQualityPreset();
 
+        // Initialize WebGL
+        this.initWebGLRenderer();
+        if (this.useWebGL) {
+            this.webglRenderer.resize(window.innerWidth, window.innerHeight);
+            this.createWebGLStars();
+        }
+
         // 1. Create dense star field (quality-based count)
         const starsContainer = this.getContainer('wolfhour-stars');
-        if (starsContainer && starsContainer.children.length === 0) {
-            const { starCount } = this.activeQuality;
-            this.cachedStarElements = [];
-            for (let i = 0; i < starCount; i++) {
-                const star = document.createElement('div');
-                star.className = 'wolfhour-star';
-                const size = Math.random() * 2 + 0.5;
-                star.style.width = `${size}px`;
-                star.style.height = `${size}px`;
-                star.style.left = `${Math.random() * 100}%`;
-                star.style.top = `${Math.random() * 100}%`;
-                star.style.setProperty('--min-opacity', `${Math.random() * 0.3 + 0.2}`);
-                star.style.setProperty('--max-opacity', `${Math.random() * 0.3 + 0.7}`);
-                star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
-                star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
-                starsContainer.appendChild(star);
-                this.cachedStarElements.push(star);
+        if (starsContainer) {
+            // Only create DOM stars if WebGL is disabled
+            if (!this.useWebGL && starsContainer.children.length === 0) {
+                const { starCount } = this.activeQuality;
+                this.cachedStarElements = [];
+                for (let i = 0; i < starCount; i++) {
+                    const star = document.createElement('div');
+                    star.className = 'wolfhour-star';
+                    const size = Math.random() * 2 + 0.5;
+                    star.style.width = `${size}px`;
+                    star.style.height = `${size}px`;
+                    star.style.left = `${Math.random() * 100}%`;
+                    star.style.top = `${Math.random() * 100}%`;
+                    star.style.setProperty('--min-opacity', `${Math.random() * 0.3 + 0.2}`);
+                    star.style.setProperty('--max-opacity', `${Math.random() * 0.3 + 0.7}`);
+                    star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
+                    star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
+                    starsContainer.appendChild(star);
+                    this.cachedStarElements.push(star);
+                }
             }
 
             // Create shooting stars periodically (quality-based interval)
@@ -659,13 +766,18 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Handle resize
         const resizeHandler = () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
             if (this.effectCanvas) {
-                this.effectCanvas.width = window.innerWidth;
-                this.effectCanvas.height = window.innerHeight;
+                this.effectCanvas.width = w;
+                this.effectCanvas.height = h;
             }
             if (this.beamsCanvas) {
-                this.beamsCanvas.width = window.innerWidth;
-                this.beamsCanvas.height = window.innerHeight;
+                this.beamsCanvas.width = w;
+                this.beamsCanvas.height = h;
+            }
+            if (this.useWebGL && this.webglRenderer) {
+                this.webglRenderer.resize(w, h);
             }
         };
         window.addEventListener('resize', resizeHandler);
@@ -686,7 +798,14 @@ export default class WolfhourTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     handleLineClear(eventPayload) {
@@ -711,6 +830,56 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         this.onCombo(comboCount);
+    }
+
+    handlePieceLock() {
+        // Silver Nova & Ripple Effect
+        const w = this.effectCanvas ? this.effectCanvas.width : window.innerWidth;
+        const h = this.effectCanvas ? this.effectCanvas.height : window.innerHeight;
+
+        // 1. Nova Flash (Silver) - More subtle
+        if (this.novaFlashes.length < 3) {
+            this.novaFlashes.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.5,
+                radius: 0,
+                maxRadius: 60 + Math.random() * 60, // Reduced from 100+100
+                opacity: 0.5, // Reduced from 1.0
+                decay: 0.04, // Faster fade (was 0.03)
+                hue: 210, // Silver/Blue
+            });
+        }
+
+        // 2. Star Ripple (WebGL) - More subtle wave
+        // Creates a wave that boosts star brightness
+        if (this.starRipples.length < 5) {
+            this.starRipples.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.5,
+                radius: 0,
+                speed: 12 + Math.random() * 8, // Slightly slower
+                width: 60 + Math.random() * 40, // Reduced width
+                life: 0.7, // Reduced initial intensity
+                decay: 0.015, // Faster decay
+            });
+        }
+
+        // 3. Silver Sparkles - Fewer and smaller
+        const sparkleCount = 5 + Math.floor(Math.random() * 8); // Reduced count
+        for (let i = 0; i < sparkleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1.5 + Math.random() * 4;
+            this.sparkles.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.5,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 0.5 + Math.random() * 2, // Reduced size
+                opacity: 0.7, // Reduced opacity
+                decay: 0.03 + Math.random() * 0.03, // Faster decay
+                hue: 200 + Math.random() * 30, // Silver range
+            });
+        }
     }
 
     onLineClear(lineCount) {
@@ -872,34 +1041,6 @@ export default class WolfhourTheme extends BaseTheme {
 
     createConstellationLines(comboCount, throttled = false) {
         // Connect random stars with mystical lines (quality-based)
-        // Cache star positions to avoid expensive getBoundingClientRect calls
-        const now = Date.now();
-        const cacheDuration = throttled ? this.starPositionsCacheDuration * 2 : this.starPositionsCacheDuration;
-        const needRefresh = now - this.starPositionsCacheTime > cacheDuration || this.cachedStarPositions.length === 0;
-
-        if (needRefresh) {
-            if (throttled && this.cachedStarPositions.length > 0 && now - this.starPositionsCacheTime <= cacheDuration * 1.5) {
-                // Use stale cache to avoid heavy DOM queries during throttling
-            } else {
-                const stars = this.cachedStarElements.length > 0
-                    ? this.cachedStarElements
-                    : Array.from(document.querySelectorAll('.wolfhour-star'));
-                if (stars.length === 0) {
-                    return;
-                }
-                this.cachedStarElements = stars;
-                this.cachedStarPositions = stars.map((star) => {
-                    const rect = star.getBoundingClientRect();
-                    return {
-                        x: rect.left + rect.width / 2,
-                        y: rect.top + rect.height / 2,
-                    };
-                });
-                this.starPositionsCacheTime = now;
-            }
-        }
-
-        if (this.cachedStarPositions.length < 2) return;
 
         // Quality-based line count
         const maxLines = this.activeQuality.maxConstellationLines - this.constellationLines.length;
@@ -909,32 +1050,77 @@ export default class WolfhourTheme extends BaseTheme {
         }
         if (lineCount <= 0) return;
 
+        let getStarPos;
+        let starCount;
+
+        if (this.useWebGL && this.stars.length > 0) {
+            starCount = this.stars.length;
+            getStarPos = (index) => this.stars[index];
+        } else {
+            // Cache star positions to avoid expensive getBoundingClientRect calls
+            const now = Date.now();
+            const cacheDuration = throttled ? this.starPositionsCacheDuration * 2 : this.starPositionsCacheDuration;
+            const needRefresh = now - this.starPositionsCacheTime > cacheDuration || this.cachedStarPositions.length === 0;
+
+            if (needRefresh) {
+                if (throttled && this.cachedStarPositions.length > 0 && now - this.starPositionsCacheTime <= cacheDuration * 1.5) {
+                    // Use stale cache to avoid heavy DOM queries during throttling
+                } else {
+                    const stars = this.cachedStarElements.length > 0
+                        ? this.cachedStarElements
+                        : Array.from(document.querySelectorAll('.wolfhour-star'));
+                    if (stars.length === 0) return;
+
+                    this.cachedStarElements = stars;
+                    this.cachedStarPositions = stars.map((star) => {
+                        const rect = star.getBoundingClientRect();
+                        return {
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height / 2,
+                        };
+                    });
+                    this.starPositionsCacheTime = now;
+                }
+            }
+
+            if (this.cachedStarPositions.length < 2) return;
+            starCount = this.cachedStarPositions.length;
+            getStarPos = (index) => this.cachedStarPositions[index];
+        }
+
         for (let i = 0; i < lineCount; i++) {
-            const idx1 = Math.floor(Math.random() * this.cachedStarPositions.length);
-            const idx2 = Math.floor(Math.random() * this.cachedStarPositions.length);
+            // Try to find a valid pair
+            let attempts = 0;
+            while (attempts < 5) {
+                attempts++;
+                const idx1 = Math.floor(Math.random() * starCount);
+                const idx2 = Math.floor(Math.random() * starCount);
 
-            if (idx1 === idx2) continue;
+                if (idx1 === idx2) continue;
 
-            const pos1 = this.cachedStarPositions[idx1];
-            const pos2 = this.cachedStarPositions[idx2];
+                const pos1 = getStarPos(idx1);
+                const pos2 = getStarPos(idx2);
 
-            // Calculate distance - skip if stars are too far apart (performance)
-            const dx = pos2.x - pos1.x;
-            const dy = pos2.y - pos1.y;
-            const distSq = dx * dx + dy * dy; // Use squared distance to avoid sqrt
+                // Calculate distance - skip if stars are too far apart (performance)
+                const dx = pos2.x - pos1.x;
+                const dy = pos2.y - pos1.y;
+                const distSq = dx * dx + dy * dy; // Use squared distance to avoid sqrt
 
-            if (distSq > 160000) continue; // 400^2 = 160000
+                if (distSq > 160000) continue; // 400^2 = 160000
 
-            this.constellationLines.push({
-                x1: pos1.x,
-                y1: pos1.y,
-                x2: pos2.x,
-                y2: pos2.y,
-                opacity: 0.7,
-                life: 1.0,
-                decay: 0.012,
-                hue: Math.random() * 40 + 200,
-            });
+                // Found a good pair
+                this.constellationLines.push({
+                    x1: pos1.x,
+                    y1: pos1.y,
+                    x2: pos2.x,
+                    y2: pos2.y,
+                    opacity: 0.7,
+                    life: 1.0,
+                    decay: 0.012,
+                    hue: Math.random() * 40 + 200,
+                });
+                break;
+            }
         }
     }
 
@@ -1096,9 +1282,79 @@ export default class WolfhourTheme extends BaseTheme {
                 this.lastEffectCleanup = now;
             }
 
+            // Update WebGL Star Ripples
+            if (this.useWebGL && this.webglRenderer && this.stars.length > 0) {
+                // Reset ripple boost for all stars first (optimization: only if we had ripples)
+                // For now, simple reset
+                if (this.starRipples.length > 0) {
+                    for (let i = 0; i < this.stars.length; i++) {
+                        this.stars[i].rippleBoost = 0;
+                    }
+                }
+
+                // Process ripples
+                for (let i = this.starRipples.length - 1; i >= 0; i--) {
+                    const ripple = this.starRipples[i];
+                    ripple.radius += ripple.speed;
+                    ripple.life -= ripple.decay;
+
+                    if (ripple.life <= 0) {
+                        this.starRipples.splice(i, 1);
+                        continue;
+                    }
+
+                    // Apply to stars
+                    // Optimization: Spatial grid would be better, but for now brute force is okay for GPU upload
+                    // actually, we calculate on CPU then upload. 
+                    // To keep 60fps with 40k stars, we need to be careful.
+                    // Let's only check stars if we have ripples.
+
+                    const rSq = ripple.radius * ripple.radius;
+                    const rOuterSq = (ripple.radius + ripple.width) * (ripple.radius + ripple.width);
+
+                    // Optimization: Only iterate stars if we really need to. 
+                    // But we need to reset rippleBoost anyway.
+                    // Let's do a single pass over stars if there are ripples.
+                }
+
+                if (this.starRipples.length > 0) {
+                    const ripples = this.starRipples;
+                    for (let i = 0; i < this.stars.length; i++) {
+                        const star = this.stars[i];
+                        let totalBoost = 0;
+
+                        for (let j = 0; j < ripples.length; j++) {
+                            const r = ripples[j];
+                            const dx = star.x - r.x;
+                            const dy = star.y - r.y;
+                            const distSq = dx * dx + dy * dy;
+
+                            const dist = Math.sqrt(distSq);
+                            if (dist >= r.radius && dist <= r.radius + r.width) {
+                                // Inside ripple ring
+                                const relPos = (dist - r.radius) / r.width; // 0 to 1
+                                const intensity = Math.sin(relPos * Math.PI) * r.life;
+                                totalBoost += intensity * 2.0; // Boost factor
+                            }
+                        }
+
+                        star.rippleBoost = totalBoost;
+                    }
+                    this.webglRenderer.updateBrightness(this.stars);
+                }
+            }
+
+            // Render WebGL stars
+            if (this.useWebGL && this.webglRenderer) {
+                // Pulse intensity from wolfhourPower or cosmicEnergy
+                const pulse = this.wolfhourPower * 0.5;
+                this.webglRenderer.render(this.animationTime, pulse, 1.0, 0.05, true);
+            }
+
             // Clear canvases - only if there are effects to draw (performance optimization)
             const hasEffects = this.starBursts.length > 0 || this.cosmicWaves.length > 0
-                || this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
+                || this.moonGlowPulses.length > 0 || this.constellationLines.length > 0
+                || this.novaFlashes.length > 0 || this.sparkles.length > 0;
             const hasBeams = this.celestialBeams.length > 0;
 
             if (hasEffects) {
@@ -1110,11 +1366,13 @@ export default class WolfhourTheme extends BaseTheme {
 
             // Draw effects - skip if performance is poor and no active effects
             if (hasEffects || hasBeams) {
+                this.drawNovaFlashes();
+                this.drawCelestialBeams(); // Draw beams behind bursts
                 this.drawStarBursts();
                 this.drawCosmicWaves();
-                if (hasBeams) this.drawCelestialBeams();
                 this.drawMoonPulses();
                 this.drawConstellationLines();
+                this.drawSparkles();
             }
 
             this.animationFrameId = requestAnimationFrame(animate);
@@ -1123,9 +1381,128 @@ export default class WolfhourTheme extends BaseTheme {
         animate(performance.now());
     }
 
+    drawNovaFlashes() {
+        for (let i = this.novaFlashes.length - 1; i >= 0; i--) {
+            const nova = this.novaFlashes[i];
+            nova.radius += (nova.maxRadius - nova.radius) * 0.1;
+            nova.opacity -= nova.decay;
+
+            if (nova.opacity <= 0) {
+                this.novaFlashes.splice(i, 1);
+                continue;
+            }
+
+            const gradient = this.effectCtx.createRadialGradient(nova.x, nova.y, 0, nova.x, nova.y, nova.radius);
+            gradient.addColorStop(0, `hsla(${nova.hue}, 20%, 95%, ${nova.opacity})`);
+            gradient.addColorStop(0.4, `hsla(${nova.hue}, 15%, 80%, ${nova.opacity * 0.5})`);
+            gradient.addColorStop(1, `hsla(${nova.hue}, 10%, 50%, 0)`);
+
+            this.effectCtx.fillStyle = gradient;
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(nova.x, nova.y, nova.radius, 0, Math.PI * 2);
+            this.effectCtx.fill();
+        }
+    }
+
+    drawSparkles() {
+        if (!this.useWebGL || !this.webglRenderer) {
+            // Fallback to Canvas2D if WebGL is disabled
+            for (let i = this.sparkles.length - 1; i >= 0; i--) {
+                const p = this.sparkles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.opacity -= p.decay;
+
+                if (p.opacity <= 0) {
+                    this.sparkles.splice(i, 1);
+                    continue;
+                }
+
+                this.effectCtx.fillStyle = `hsla(${p.hue}, 20%, 90%, ${p.opacity})`;
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.effectCtx.fill();
+
+                // Cross shape for sparkle
+                this.effectCtx.fillRect(p.x - p.size * 2, p.y - p.size * 0.5, p.size * 4, p.size);
+                this.effectCtx.fillRect(p.x - p.size * 0.5, p.y - p.size * 2, p.size, p.size * 4);
+            }
+            return;
+        }
+
+        // WebGL Rendering
+        const particlesToRender = [];
+        for (let i = this.sparkles.length - 1; i >= 0; i--) {
+            const p = this.sparkles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.opacity -= p.decay;
+
+            if (p.opacity <= 0) {
+                this.sparkles.splice(i, 1);
+                continue;
+            }
+
+            particlesToRender.push({
+                x: p.x,
+                y: p.y,
+                size: p.size * 2, // Scale up for visibility
+                hue: p.hue,
+                brightness: 90,
+                opacity: p.opacity
+            });
+        }
+
+        if (particlesToRender.length > 0) {
+            this.webglRenderer.renderParticles(particlesToRender);
+        }
+    }
+
     drawStarBursts() {
         if (this.starBursts.length === 0) return;
 
+        // If WebGL is active, collect all burst particles and render them
+        if (this.useWebGL && this.webglRenderer) {
+            const particlesToRender = [];
+
+            for (let i = this.starBursts.length - 1; i >= 0; i--) {
+                const burst = this.starBursts[i];
+                burst.life -= burst.decay;
+
+                if (burst.life <= 0) {
+                    this.starBursts.splice(i, 1);
+                    continue;
+                }
+
+                const opacity = burst.life * 0.9;
+                const currentLife = burst.life;
+
+                for (let j = 0; j < burst.particles.length; j++) {
+                    const p = burst.particles[j];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.12;
+
+                    const currentSize = p.size * currentLife;
+
+                    particlesToRender.push({
+                        x: p.x,
+                        y: p.y,
+                        size: currentSize * 2,
+                        hue: p.hue,
+                        brightness: p.brightness,
+                        opacity: opacity
+                    });
+                }
+            }
+
+            if (particlesToRender.length > 0) {
+                this.webglRenderer.renderParticles(particlesToRender);
+            }
+            return;
+        }
+
+        // Canvas2D Fallback
         const useShadows = this.activeQuality.useShadows && this.averageFrameTime < 20; // Disable shadows if < 50 FPS
         const useComplexGradients = this.activeQuality.useComplexGradients && this.averageFrameTime < 25;
 
@@ -1497,6 +1874,15 @@ export default class WolfhourTheme extends BaseTheme {
         this.cosmicEnergy = 0;
         this.wolfhourPower = 0;
         this.animationTime = 0;
+
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+        if (this.webglCanvas) {
+            this.webglCanvas.remove();
+            this.webglCanvas = null;
+        }
 
         super.stop();
     }

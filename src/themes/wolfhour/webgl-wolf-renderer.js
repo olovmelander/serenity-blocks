@@ -1,12 +1,13 @@
 /**
- * WebGL Intro Renderer - GPU-accelerated star field rendering for Intro
+ * WebGL Wolf Renderer - GPU-accelerated star field rendering for Wolfhour Theme
  * 
- * Adapted from the Geode theme's WebGLStarRenderer.
+ * Adapted from Geode Theme's WebGLStarRenderer.
  * - Renders ALL stars in a single GPU draw call using point sprites
- * - Moves twinkle/brightness calculations to fragment shader (parallel on GPU)
+ * - Moves twinkle/brightness calculations to fragment shader
+ * - Optimized for Wolfhour's silver/mystical aesthetic
  */
 
-export default class WebGLIntroRenderer {
+export default class WebGLWolfRenderer {
     constructor(canvas) {
         this.canvas = canvas;
         this.gl = null;
@@ -32,6 +33,19 @@ export default class WebGLIntroRenderer {
 
         // Color palette as normalized RGB
         this.colorPalette = [];
+
+        // Particle System Data
+        this.maxParticles = 2000;
+        this.particleCount = 0;
+        this.particleProgram = null;
+        this.particleBuffers = {};
+        this.particleAttributes = {};
+        this.particleUniforms = {};
+
+        // Particle Arrays
+        this.pPositionData = new Float32Array(this.maxParticles * 2);
+        this.pSizeData = new Float32Array(this.maxParticles);
+        this.pColorData = new Float32Array(this.maxParticles * 4); // r,g,b,a
     }
 
     /**
@@ -65,6 +79,10 @@ export default class WebGLIntroRenderer {
         // Create buffers
         this.initBuffers();
 
+        // Init Particle System
+        this.initParticleShaders();
+        this.initParticleBuffers();
+
         return true;
     }
 
@@ -83,6 +101,8 @@ export default class WebGLIntroRenderer {
             
             uniform vec2 uResolution;
             uniform float uTime;
+            uniform float uPulseIntensity;
+            uniform float uAmbientPulse;
             
             varying vec3 vColor;
             varying float vBrightness;
@@ -95,20 +115,24 @@ export default class WebGLIntroRenderer {
                 
                 gl_Position = vec4(clipSpace, 0.0, 1.0);
                 
-                // Calculate twinkle
+                // Calculate twinkle (scale time to match Canvas2D frame-by-frame accumulation)
                 float phase = aTwinkle.x + uTime * aTwinkle.y * 62.5;
                 float twinkle = sin(phase) * 0.4 + 0.6;
                 
                 // Calculate final brightness
-                float baseBrightness = aBrightness.x * twinkle;
+                float pulseBoost = 1.0 + uPulseIntensity * 0.4;
+                float baseBrightness = aBrightness.x * twinkle * pulseBoost * uAmbientPulse;
+                float rippleBoost = aBrightness.y;
                 
-                vBrightness = min(baseBrightness, 1.2);
+                vBrightness = min(baseBrightness + rippleBoost, 1.2);
                 vColor = aColor;
                 
-                vSize = aSize;
+                // Size with ripple boost
+                float sizeBoost = 1.0 + rippleBoost * 0.8;
+                vSize = aSize * sizeBoost;
                 
                 // Point size (in pixels)
-                gl_PointSize = vSize * 2.8;
+                gl_PointSize = vSize * 2.5;
             }
         `;
 
@@ -120,7 +144,15 @@ export default class WebGLIntroRenderer {
             varying float vBrightness;
             varying float vSize;
             
+            uniform float uBrightnessThreshold;
+            uniform float uEnableGlow;
+            
             void main() {
+                // Skip very dim stars
+                if (vBrightness < uBrightnessThreshold) {
+                    discard;
+                }
+                
                 // Distance from center of point sprite
                 vec2 center = gl_PointCoord - vec2(0.5);
                 float dist = length(center) * 2.0;
@@ -130,7 +162,7 @@ export default class WebGLIntroRenderer {
                 
                 // Add glow effect for larger stars
                 float glow = 0.0;
-                if (vSize > 2.0) {
+                if (uEnableGlow > 0.5 && vSize > 2.0) {
                     glow = exp(-dist * 2.0) * 0.4;
                 }
                 
@@ -184,6 +216,10 @@ export default class WebGLIntroRenderer {
         this.uniforms = {
             resolution: gl.getUniformLocation(this.program, 'uResolution'),
             time: gl.getUniformLocation(this.program, 'uTime'),
+            pulseIntensity: gl.getUniformLocation(this.program, 'uPulseIntensity'),
+            ambientPulse: gl.getUniformLocation(this.program, 'uAmbientPulse'),
+            brightnessThreshold: gl.getUniformLocation(this.program, 'uBrightnessThreshold'),
+            enableGlow: gl.getUniformLocation(this.program, 'uEnableGlow'),
         };
 
         return true;
@@ -201,24 +237,78 @@ export default class WebGLIntroRenderer {
         };
     }
 
+    initParticleShaders() {
+        const gl = this.gl;
+
+        const vsSource = `
+            precision highp float;
+            attribute vec2 aPosition;
+            attribute float aSize;
+            attribute vec4 aColor;
+            uniform vec2 uResolution;
+            varying vec4 vColor;
+            void main() {
+                vec2 clipSpace = (aPosition / uResolution) * 2.0 - 1.0;
+                clipSpace.y *= -1.0;
+                gl_Position = vec4(clipSpace, 0.0, 1.0);
+                gl_PointSize = aSize;
+                vColor = aColor;
+            }
+        `;
+
+        const fsSource = `
+            precision highp float;
+            varying vec4 vColor;
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float dist = length(coord) * 2.0;
+                float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
+                if (alpha < 0.01) discard;
+                // Additive blending: rgb * alpha
+                gl_FragColor = vec4(vColor.rgb * alpha * vColor.a, alpha * vColor.a);
+            }
+        `;
+
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSource);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+
+        this.particleProgram = gl.createProgram();
+        gl.attachShader(this.particleProgram, vs);
+        gl.attachShader(this.particleProgram, fs);
+        gl.linkProgram(this.particleProgram);
+
+        this.particleAttributes = {
+            position: gl.getAttribLocation(this.particleProgram, 'aPosition'),
+            size: gl.getAttribLocation(this.particleProgram, 'aSize'),
+            color: gl.getAttribLocation(this.particleProgram, 'aColor'),
+        };
+        this.particleUniforms = {
+            resolution: gl.getUniformLocation(this.particleProgram, 'uResolution'),
+        };
+    }
+
+    initParticleBuffers() {
+        const gl = this.gl;
+        this.particleBuffers = {
+            position: gl.createBuffer(),
+            size: gl.createBuffer(),
+            color: gl.createBuffer(),
+        };
+    }
+
     /**
      * Set the color palette (hex strings)
      */
     setColorPalette(colors) {
         this.colorPalette = colors.map(hex => {
-            // Handle hex strings with or without #, and potentially 0x prefix if passed from Phaser
-            let cleanHex = hex;
-            if (typeof hex === 'number') {
-                cleanHex = hex.toString(16).padStart(6, '0');
-            } else if (hex.startsWith('#')) {
-                cleanHex = hex.slice(1);
-            } else if (hex.startsWith('0x')) {
-                cleanHex = hex.slice(2);
-            }
-
-            const r = parseInt(cleanHex.slice(0, 2), 16) / 255;
-            const g = parseInt(cleanHex.slice(2, 4), 16) / 255;
-            const b = parseInt(cleanHex.slice(4, 6), 16) / 255;
+            const r = parseInt(hex.slice(1, 3), 16) / 255;
+            const g = parseInt(hex.slice(3, 5), 16) / 255;
+            const b = parseInt(hex.slice(5, 7), 16) / 255;
             return [r, g, b];
         });
     }
@@ -261,25 +351,32 @@ export default class WebGLIntroRenderer {
             // Size
             this.sizeData[i] = star.size;
 
-            // Color
-            if (star.colorRGB) {
-                this.colorData[i3] = star.colorRGB[0];
-                this.colorData[i3 + 1] = star.colorRGB[1];
-                this.colorData[i3 + 2] = star.colorRGB[2];
+            // Color (find in palette or parse)
+            const colorIdx = this.colorPalette.findIndex((_, idx) =>
+                this.colorPalette[idx] && star.color === this.getHexFromRGB(this.colorPalette[idx])
+            );
+            if (colorIdx >= 0) {
+                const [r, g, b] = this.colorPalette[colorIdx];
+                this.colorData[i3] = r;
+                this.colorData[i3 + 1] = g;
+                this.colorData[i3 + 2] = b;
             } else {
-                // Default to white if no color provided
-                this.colorData[i3] = 1.0;
-                this.colorData[i3 + 1] = 1.0;
-                this.colorData[i3 + 2] = 1.0;
+                // Parse hex color
+                const r = parseInt(star.color.slice(1, 3), 16) / 255;
+                const g = parseInt(star.color.slice(3, 5), 16) / 255;
+                const b = parseInt(star.color.slice(5, 7), 16) / 255;
+                this.colorData[i3] = r;
+                this.colorData[i3 + 1] = g;
+                this.colorData[i3 + 2] = b;
             }
 
             // Twinkle (phase, speed)
             this.twinkleData[i2] = star.twinklePhase;
             this.twinkleData[i2 + 1] = star.twinkleSpeed;
 
-            // Brightness (base)
+            // Brightness (base, ripple boost)
             this.brightnessData[i2] = star.brightness;
-            this.brightnessData[i2 + 1] = 0; // Unused in intro
+            this.brightnessData[i2 + 1] = star.rippleBoost || 0;
         }
 
         // Upload to GPU
@@ -302,10 +399,55 @@ export default class WebGLIntroRenderer {
         this.brightnessDirty = false;
     }
 
+    getHexFromRGB(rgb) {
+        const r = Math.round(rgb[0] * 255).toString(16).padStart(2, '0');
+        const g = Math.round(rgb[1] * 255).toString(16).padStart(2, '0');
+        const b = Math.round(rgb[2] * 255).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`;
+    }
+
+    /**
+     * Update star positions (call each frame for drifting)
+     */
+    updatePositions(stars) {
+        const gl = this.gl;
+        if (!gl) return;
+
+        const count = Math.min(stars.length, this.starCount);
+
+        for (let i = 0; i < count; i++) {
+            const i2 = i * 2;
+            this.positionData[i2] = stars[i].x;
+            this.positionData[i2 + 1] = stars[i].y;
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.position);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.positionData);
+    }
+
+    /**
+     * Update brightness/ripple boost (call when ripples are active)
+     */
+    updateBrightness(stars) {
+        const gl = this.gl;
+        if (!gl) return;
+
+        const count = Math.min(stars.length, this.starCount);
+
+        for (let i = 0; i < count; i++) {
+            const i2 = i * 2;
+            this.brightnessData[i2] = stars[i].brightness;
+            this.brightnessData[i2 + 1] = stars[i].rippleBoost || 0;
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.brightness);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.brightnessData);
+    }
+
     /**
      * Render all stars in a single draw call!
      */
-    render(time) {
+    render(time, pulseIntensity, ambientPulse, brightnessThreshold, enableGlow) {
         const gl = this.gl;
         if (!gl || this.starCount === 0) return;
 
@@ -314,6 +456,10 @@ export default class WebGLIntroRenderer {
         // Set uniforms
         gl.uniform2f(this.uniforms.resolution, this.canvas.width, this.canvas.height);
         gl.uniform1f(this.uniforms.time, time);
+        gl.uniform1f(this.uniforms.pulseIntensity, pulseIntensity);
+        gl.uniform1f(this.uniforms.ambientPulse, ambientPulse);
+        gl.uniform1f(this.uniforms.brightnessThreshold, brightnessThreshold);
+        gl.uniform1f(this.uniforms.enableGlow, enableGlow ? 1.0 : 0.0);
 
         // Bind position buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.position);
@@ -346,6 +492,75 @@ export default class WebGLIntroRenderer {
 
         // Draw all stars in ONE call!
         gl.drawArrays(gl.POINTS, 0, this.starCount);
+    }
+
+    /**
+     * Render generic particles
+     * @param {Array} particles - Array of particle objects {x, y, size, hue, brightness, opacity}
+     */
+    renderParticles(particles) {
+        const gl = this.gl;
+        if (!gl || !this.particleProgram) return;
+
+        const count = Math.min(particles.length, this.maxParticles);
+        if (count === 0) return;
+
+        // Update data arrays
+        for (let i = 0; i < count; i++) {
+            const p = particles[i];
+            const i2 = i * 2;
+            const i4 = i * 4;
+
+            this.pPositionData[i2] = p.x;
+            this.pPositionData[i2 + 1] = p.y;
+            this.pSizeData[i] = p.size;
+
+            // Convert HSL to RGB (approximate for performance)
+            // H: 0-360, S: 0-100 (assume low saturation ~20%), L: brightness
+            // Simplified: mostly white/blueish for Wolfhour
+            // Let's just use a helper or simple conversion
+            const h = p.hue;
+            const s = 30; // Fixed low saturation for silver
+            const l = p.brightness || 90;
+
+            // Quick HSL to RGB conversion
+            const c = (1 - Math.abs(2 * l / 100 - 1)) * (s / 100);
+            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            const m = l / 100 - c / 2;
+
+            let r = 0, g = 0, b = 0;
+            if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+            else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+            else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+            else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+            else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+            else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+
+            this.pColorData[i4] = r + m;
+            this.pColorData[i4 + 1] = g + m;
+            this.pColorData[i4 + 2] = b + m;
+            this.pColorData[i4 + 3] = p.opacity;
+        }
+
+        gl.useProgram(this.particleProgram);
+        gl.uniform2f(this.particleUniforms.resolution, this.canvas.width, this.canvas.height);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffers.position);
+        gl.bufferData(gl.ARRAY_BUFFER, this.pPositionData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.particleAttributes.position);
+        gl.vertexAttribPointer(this.particleAttributes.position, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffers.size);
+        gl.bufferData(gl.ARRAY_BUFFER, this.pSizeData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.particleAttributes.size);
+        gl.vertexAttribPointer(this.particleAttributes.size, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffers.color);
+        gl.bufferData(gl.ARRAY_BUFFER, this.pColorData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.particleAttributes.color);
+        gl.vertexAttribPointer(this.particleAttributes.color, 4, gl.FLOAT, false, 0, 0);
+
+        gl.drawArrays(gl.POINTS, 0, count);
     }
 
     /**

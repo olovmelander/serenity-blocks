@@ -1,12 +1,12 @@
 /**
- * WebGL Intro Renderer - GPU-accelerated star field rendering for Intro
+ * WebGL Blood Renderer - GPU-accelerated particle/star rendering for Blood Moon theme
  * 
- * Adapted from the Geode theme's WebGLStarRenderer.
- * - Renders ALL stars in a single GPU draw call using point sprites
- * - Moves twinkle/brightness calculations to fragment shader (parallel on GPU)
+ * Adapted from WebGL Star Renderer (Geode theme)
+ * - Renders stars/particles in a single GPU draw call
+ * - Handles blood-moon specific atmosphere and pulsing
  */
 
-export default class WebGLIntroRenderer {
+export default class WebGLBloodRenderer {
     constructor(canvas) {
         this.canvas = canvas;
         this.gl = null;
@@ -15,23 +15,21 @@ export default class WebGLIntroRenderer {
         this.uniforms = {};
         this.attributes = {};
 
-        // Star data
-        this.starCount = 0;
-        this.maxStars = 0;
+        // Particle data
+        this.particleCount = 0;
+        this.maxParticles = 0;
 
         // Typed arrays for GPU upload
-        this.positionData = null;      // x, y per star
-        this.sizeData = null;          // size per star
-        this.colorData = null;         // r, g, b per star
-        this.twinkleData = null;       // phase, speed per star
-        this.brightnessData = null;    // base brightness, ripple boost per star
+        this.positionData = null;      // x, y per particle
+        this.sizeData = null;          // size per particle
+        this.colorData = null;         // r, g, b per particle
+        this.twinkleData = null;       // phase, speed per particle
+        this.brightnessData = null;    // base brightness, pulse boost per particle
 
-        // Dirty flags for partial updates
+        // Dirty flags
         this.positionsDirty = true;
         this.brightnessDirty = true;
-
-        // Color palette as normalized RGB
-        this.colorPalette = [];
+        this.colorsDirty = true;
     }
 
     /**
@@ -53,9 +51,9 @@ export default class WebGLIntroRenderer {
 
         this.gl = gl;
 
-        // Enable blending for transparent stars
+        // Enable blending for transparent particles
         gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // Additive blending for glow effect
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // Additive blending for glow
 
         // Compile shaders
         if (!this.initShaders()) {
@@ -71,7 +69,7 @@ export default class WebGLIntroRenderer {
     initShaders() {
         const gl = this.gl;
 
-        // Vertex shader - positions stars and passes data to fragment shader
+        // Vertex shader
         const vertexShaderSource = `
             precision highp float;
             
@@ -79,14 +77,18 @@ export default class WebGLIntroRenderer {
             attribute float aSize;
             attribute vec3 aColor;
             attribute vec2 aTwinkle;      // x = phase, y = speed
-            attribute vec2 aBrightness;   // x = base, y = ripple boost
+            attribute vec2 aBrightness;   // x = base, y = pulse boost
             
             uniform vec2 uResolution;
             uniform float uTime;
+            uniform float uGlobalPulse;   // Global heartbeat pulse
+            uniform vec2 uMoonPos;        // Moon position (canvas coords)
+            uniform float uMoonRadius;    // Moon radius
             
             varying vec3 vColor;
             varying float vBrightness;
             varying float vSize;
+            varying vec2 vPos;            // Screen position
             
             void main() {
                 // Convert pixel coords to clip space
@@ -95,32 +97,56 @@ export default class WebGLIntroRenderer {
                 
                 gl_Position = vec4(clipSpace, 0.0, 1.0);
                 
-                // Calculate twinkle
-                float phase = aTwinkle.x + uTime * aTwinkle.y * 62.5;
-                float twinkle = sin(phase) * 0.4 + 0.6;
+                // Pass position to fragment shader
+                vPos = aPosition;
                 
-                // Calculate final brightness
-                float baseBrightness = aBrightness.x * twinkle;
+                // Calculate twinkle/pulse
+                float phase = aTwinkle.x + uTime * aTwinkle.y * 50.0;
+                float twinkle = sin(phase) * 0.3 + 0.7;
                 
-                vBrightness = min(baseBrightness, 1.2);
+                // Combine local twinkle with global heartbeat pulse
+                float pulseEffect = 1.0 + uGlobalPulse * 0.3;
+                
+                // Final brightness
+                float baseBrightness = aBrightness.x * twinkle * pulseEffect;
+                float boost = aBrightness.y;
+                
+                vBrightness = min(baseBrightness + boost, 1.5);
                 vColor = aColor;
                 
-                vSize = aSize;
+                // Size pulsation
+                float sizePulse = 1.0 + uGlobalPulse * 0.1;
+                vSize = aSize * sizePulse;
                 
                 // Point size (in pixels)
-                gl_PointSize = vSize * 2.8;
+                gl_PointSize = vSize * 2.5;
             }
         `;
 
-        // Fragment shader - renders circular star with glow
+        // Fragment shader - Soft blood glow
         const fragmentShaderSource = `
             precision highp float;
             
             varying vec3 vColor;
             varying float vBrightness;
             varying float vSize;
+            varying vec2 vPos;
+            
+            uniform vec2 uMoonPos;
+            uniform float uMoonRadius;
+            uniform vec2 uResolution;
             
             void main() {
+                // Check moon occlusion
+                // Note: vPos is the center of the star. We can use that for simple occlusion.
+                // Or we can use gl_FragCoord for per-pixel occlusion.
+                // Using vPos is faster and likely sufficient for stars.
+                
+                float distToMoon = distance(vPos, uMoonPos);
+                if (distToMoon < uMoonRadius * 1.2) {
+                    discard;
+                }
+                
                 // Distance from center of point sprite
                 vec2 center = gl_PointCoord - vec2(0.5);
                 float dist = length(center) * 2.0;
@@ -128,13 +154,15 @@ export default class WebGLIntroRenderer {
                 // Soft circular falloff
                 float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
                 
-                // Add glow effect for larger stars
-                float glow = 0.0;
-                if (vSize > 2.0) {
-                    glow = exp(-dist * 2.0) * 0.4;
-                }
+                // Blood glow effect
+                // Redder colors get more glow
+                float redness = vColor.r * (1.0 - vColor.g) * (1.0 - vColor.b);
+                float glow = exp(-dist * 2.5) * 0.5 * redness;
                 
                 float finalAlpha = (alpha + glow) * vBrightness;
+                
+                // Discard fully transparent pixels
+                if (finalAlpha < 0.01) discard;
                 
                 gl_FragColor = vec4(vColor * finalAlpha, finalAlpha);
             }
@@ -184,6 +212,9 @@ export default class WebGLIntroRenderer {
         this.uniforms = {
             resolution: gl.getUniformLocation(this.program, 'uResolution'),
             time: gl.getUniformLocation(this.program, 'uTime'),
+            globalPulse: gl.getUniformLocation(this.program, 'uGlobalPulse'),
+            moonPos: gl.getUniformLocation(this.program, 'uMoonPos'),
+            moonRadius: gl.getUniformLocation(this.program, 'uMoonRadius'),
         };
 
         return true;
@@ -202,33 +233,11 @@ export default class WebGLIntroRenderer {
     }
 
     /**
-     * Set the color palette (hex strings)
+     * Allocate buffers for particles
      */
-    setColorPalette(colors) {
-        this.colorPalette = colors.map(hex => {
-            // Handle hex strings with or without #, and potentially 0x prefix if passed from Phaser
-            let cleanHex = hex;
-            if (typeof hex === 'number') {
-                cleanHex = hex.toString(16).padStart(6, '0');
-            } else if (hex.startsWith('#')) {
-                cleanHex = hex.slice(1);
-            } else if (hex.startsWith('0x')) {
-                cleanHex = hex.slice(2);
-            }
-
-            const r = parseInt(cleanHex.slice(0, 2), 16) / 255;
-            const g = parseInt(cleanHex.slice(2, 4), 16) / 255;
-            const b = parseInt(cleanHex.slice(4, 6), 16) / 255;
-            return [r, g, b];
-        });
-    }
-
-    /**
-     * Allocate buffers for stars
-     */
-    allocateStars(count) {
-        this.maxStars = count;
-        this.starCount = 0;
+    allocateParticles(count) {
+        this.maxParticles = count;
+        this.particleCount = 0;
 
         // Allocate typed arrays
         this.positionData = new Float32Array(count * 2);
@@ -239,47 +248,52 @@ export default class WebGLIntroRenderer {
     }
 
     /**
-     * Upload star data from theme's star array
+     * Upload particle data
      */
-    uploadStars(stars) {
+    uploadParticles(particles) {
         const gl = this.gl;
         if (!gl) return;
 
-        const count = Math.min(stars.length, this.maxStars);
-        this.starCount = count;
+        const count = Math.min(particles.length, this.maxParticles);
+        this.particleCount = count;
 
-        // Fill typed arrays from star objects
         for (let i = 0; i < count; i++) {
-            const star = stars[i];
+            const p = particles[i];
             const i2 = i * 2;
             const i3 = i * 3;
 
             // Position
-            this.positionData[i2] = star.x;
-            this.positionData[i2 + 1] = star.y;
+            this.positionData[i2] = p.x;
+            this.positionData[i2 + 1] = p.y;
 
             // Size
-            this.sizeData[i] = star.size;
+            this.sizeData[i] = p.size;
 
-            // Color
-            if (star.colorRGB) {
-                this.colorData[i3] = star.colorRGB[0];
-                this.colorData[i3 + 1] = star.colorRGB[1];
-                this.colorData[i3 + 2] = star.colorRGB[2];
+            // Color - handle 'red' vs 'white' or hex/rgb
+            let r, g, b;
+            if (p.color === 'red') {
+                r = 1.0; g = 0.59; b = 0.59; // rgba(255, 150, 150)
+            } else if (p.color === 'white') {
+                r = 1.0; g = 1.0; b = 1.0;
+            } else if (typeof p.color === 'string' && p.color.startsWith('#')) {
+                r = parseInt(p.color.slice(1, 3), 16) / 255;
+                g = parseInt(p.color.slice(3, 5), 16) / 255;
+                b = parseInt(p.color.slice(5, 7), 16) / 255;
             } else {
-                // Default to white if no color provided
-                this.colorData[i3] = 1.0;
-                this.colorData[i3 + 1] = 1.0;
-                this.colorData[i3 + 2] = 1.0;
+                r = 1.0; g = 1.0; b = 1.0;
             }
 
-            // Twinkle (phase, speed)
-            this.twinkleData[i2] = star.twinklePhase;
-            this.twinkleData[i2 + 1] = star.twinkleSpeed;
+            this.colorData[i3] = r;
+            this.colorData[i3 + 1] = g;
+            this.colorData[i3 + 2] = b;
 
-            // Brightness (base)
-            this.brightnessData[i2] = star.brightness;
-            this.brightnessData[i2 + 1] = 0; // Unused in intro
+            // Twinkle
+            this.twinkleData[i2] = p.twinklePhase || 0;
+            this.twinkleData[i2 + 1] = p.twinkleSpeed || 0;
+
+            // Brightness
+            this.brightnessData[i2] = p.brightness || 1.0;
+            this.brightnessData[i2 + 1] = p.pulseBoost || 0;
         }
 
         // Upload to GPU
@@ -303,54 +317,75 @@ export default class WebGLIntroRenderer {
     }
 
     /**
-     * Render all stars in a single draw call!
+     * Update positions (for moving particles)
      */
-    render(time) {
+    updatePositions(particles) {
         const gl = this.gl;
-        if (!gl || this.starCount === 0) return;
+        if (!gl) return;
+
+        const count = Math.min(particles.length, this.particleCount);
+
+        for (let i = 0; i < count; i++) {
+            const i2 = i * 2;
+            this.positionData[i2] = particles[i].x;
+            this.positionData[i2 + 1] = particles[i].y;
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.position);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.positionData);
+    }
+
+    /**
+     * Render
+     */
+    render(time, globalPulse, moonPos, moonRadius) {
+        const gl = this.gl;
+        if (!gl || this.particleCount === 0) return;
 
         gl.useProgram(this.program);
 
         // Set uniforms
         gl.uniform2f(this.uniforms.resolution, this.canvas.width, this.canvas.height);
         gl.uniform1f(this.uniforms.time, time);
+        gl.uniform1f(this.uniforms.globalPulse, globalPulse);
 
-        // Bind position buffer
+        if (moonPos) {
+            gl.uniform2f(this.uniforms.moonPos, moonPos.x, moonPos.y);
+            gl.uniform1f(this.uniforms.moonRadius, moonRadius || 0);
+        } else {
+            gl.uniform2f(this.uniforms.moonPos, -1000, -1000); // Far away
+            gl.uniform1f(this.uniforms.moonRadius, 0);
+        }
+
+        // Bind buffers
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.position);
         gl.enableVertexAttribArray(this.attributes.position);
         gl.vertexAttribPointer(this.attributes.position, 2, gl.FLOAT, false, 0, 0);
 
-        // Bind size buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.size);
         gl.enableVertexAttribArray(this.attributes.size);
         gl.vertexAttribPointer(this.attributes.size, 1, gl.FLOAT, false, 0, 0);
 
-        // Bind color buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.color);
         gl.enableVertexAttribArray(this.attributes.color);
         gl.vertexAttribPointer(this.attributes.color, 3, gl.FLOAT, false, 0, 0);
 
-        // Bind twinkle buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.twinkle);
         gl.enableVertexAttribArray(this.attributes.twinkle);
         gl.vertexAttribPointer(this.attributes.twinkle, 2, gl.FLOAT, false, 0, 0);
 
-        // Bind brightness buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.brightness);
         gl.enableVertexAttribArray(this.attributes.brightness);
         gl.vertexAttribPointer(this.attributes.brightness, 2, gl.FLOAT, false, 0, 0);
 
-        // Clear with transparent
+        // Clear (transparent)
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        // Draw all stars in ONE call!
-        gl.drawArrays(gl.POINTS, 0, this.starCount);
+        // Draw
+        gl.drawArrays(gl.POINTS, 0, this.particleCount);
     }
 
-    /**
-     * Resize the canvas
-     */
     resize(width, height) {
         if (this.gl) {
             this.canvas.width = width;
@@ -359,19 +394,14 @@ export default class WebGLIntroRenderer {
         }
     }
 
-    /**
-     * Clean up WebGL resources
-     */
     destroy() {
         const gl = this.gl;
         if (!gl) return;
 
-        // Delete buffers
         Object.values(this.buffers).forEach(buffer => {
             if (buffer) gl.deleteBuffer(buffer);
         });
 
-        // Delete program
         if (this.program) {
             gl.deleteProgram(this.program);
         }
