@@ -89,8 +89,8 @@ export default class WebGLNeonEffects {
                     // Soft glow
                     float glow = (1.0 - smoothstep(0.4, 1.0, d.x)) * (1.0 - smoothstep(0.4, 1.0, d.y));
                     
-                    // Combine - Core is bright, glow is softer
-                    alpha = core + glow * 0.8;
+                    // Combine - Core is bright, glow is intense
+                    alpha = core + glow * 2.5;
                 } else {
                     // Type 3: Glitch/Noise
                     float noise = random(vTexCoord + vec2(vColor.r, vColor.g)); // Static noise
@@ -240,11 +240,12 @@ export default class WebGLNeonEffects {
             }
         }
 
-        // 1. Neon Bursts (Type 0)
+        // 1. Neon Bursts (Type 0 or custom)
         if (bursts) {
             for (const p of bursts) {
                 const rgb = this.hexToRgb(p.color);
-                addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life, 0, 0);
+                const type = p.type !== undefined ? p.type : 0;
+                addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life, 0, type);
             }
         }
 

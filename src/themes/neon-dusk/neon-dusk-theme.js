@@ -492,12 +492,16 @@ export default class NeonDuskTheme extends BaseTheme {
                 y: Math.random() * window.innerHeight,
                 vx: (Math.random() - 0.5) * 0.5,
                 vy: (Math.random() - 0.5) * 0.5,
-                size: Math.random() * 3 + 1,
+                size: Math.random() * 2 + 1, // Smaller size (was 3+1)
+                baseSize: 0, // Will be set below
                 color: colors[Math.floor(Math.random() * colors.length)],
                 life: 1.0, // Always alive
                 maxLife: 1.0,
                 type: 0 // Circle/Particle
             });
+            // Initialize baseSize
+            this.ambientParticles[i].baseSize = this.ambientParticles[i].size;
+
         }
     }
 
@@ -561,7 +565,14 @@ export default class NeonDuskTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     handleLineClear(data) {
@@ -583,23 +594,52 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Boost mountain glow
         this.mountainGlowIntensity = Math.min(this.mountainGlowIntensity + 0.3, 1.0);
-
-        if (comboCount >= 2) {
-            this.createGlitchPulse(comboCount);
-        }
-
-        if (comboCount >= 4) {
-            this.createElectricArcs(comboCount);
-        }
-
-        if (comboCount >= 4) {
-            this.createElectricArcs(comboCount);
-        }
-
-        // Removed createCyberVortex to stop center sparkles
+        this.createElectricArcs(comboCount);
     }
 
+    // Removed createCyberVortex to stop center sparkles
 
+    handlePieceLock(data) {
+        // 1. Pulse existing ambient particles
+        for (const p of this.ambientParticles) {
+            // Randomly trigger pulse on some particles
+            // Only trigger if not already pulsing to avoid compounding growth
+            if (!p.pulsing && Math.random() > 0.3) {
+                p.pulsing = true;
+                p.pulseTime = 0;
+                // p.baseSize is already set during initialization
+            }
+        }
+
+        // 2. Spawn a burst of rising squared particles
+        // Random position across full screen width
+        const spawnX = Math.random() * window.innerWidth;
+        this.createRisingSquares(spawnX);
+    }
+
+    createRisingSquares(x) {
+        if (!this.effectsCanvas) return;
+
+        const count = 8;
+        const colors = ['#00ffff', '#ff00ff', '#ffff00'];
+
+        for (let i = 0; i < count; i++) {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const size = Math.random() * 3 + 1; // Smaller size (was 5+3)
+
+            this.neonBurstParticles.push({
+                x: x + (Math.random() - 0.5) * 100,
+                y: window.innerHeight, // Start from bottom
+                vx: (Math.random() - 0.5) * 2,
+                vy: -(Math.random() * 5 + 5), // Fast upward
+                life: 1.0,
+                maxLife: 1.5,
+                size: size,
+                color: color,
+                type: 2 // Squared particle
+            });
+        }
+    }
 
 
 
@@ -775,8 +815,28 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     updateEffects(delta) {
-        // Removed neon burst update logic
-        this.neonBurstParticles = []; // Ensure empty
+        // Update neon burst particles (and rising squares)
+        let writeIndex = 0;
+        for (let i = 0; i < this.neonBurstParticles.length; i++) {
+            const p = this.neonBurstParticles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            // Gravity/Physics
+            if (p.type === 2) {
+                // Rising squares: No gravity, just friction on X
+                p.vx *= 0.95;
+            } else {
+                // Standard burst: Gravity
+                p.vy += 0.15;
+            }
+
+            p.life -= delta / p.maxLife;
+
+            if (p.life > 0) {
+                this.neonBurstParticles[writeIndex++] = p;
+            }
+        }
+        this.neonBurstParticles.length = writeIndex;
 
         // Decay mountain glow
         if (this.mountainGlowIntensity > 0) {
@@ -785,7 +845,7 @@ export default class NeonDuskTheme extends BaseTheme {
         }
 
         // Update electric arcs - reduced flicker frequency for performance
-        let writeIndex = 0;
+        writeIndex = 0;
         for (let i = 0; i < this.electricArcs.length; i++) {
             const arc = this.electricArcs[i];
             arc.life -= delta / arc.maxLife;
@@ -860,6 +920,24 @@ export default class NeonDuskTheme extends BaseTheme {
             p.x += p.vx;
             p.y += p.vy;
 
+            // Handle pulsing
+            if (p.pulsing) {
+                p.pulseTime += delta * 5.0; // Speed of pulse
+
+                // Sine wave pulse: starts at 0, goes to 1, back to 0
+                // We want it to go from 1.0 to 1.5 back to 1.0
+                // sin(0) = 0, sin(PI/2) = 1, sin(PI) = 0
+
+                if (p.pulseTime <= Math.PI) {
+                    const scale = 1.0 + Math.sin(p.pulseTime) * 0.5; // Scale 1.0 -> 1.5 -> 1.0
+                    p.size = p.baseSize * scale;
+                } else {
+                    // End pulse
+                    p.pulsing = false;
+                    p.size = p.baseSize; // Reset to original size
+                }
+            }
+
             // Wrap around screen
             if (p.x < 0) p.x = window.innerWidth;
             if (p.x > window.innerWidth) p.x = 0;
@@ -873,7 +951,8 @@ export default class NeonDuskTheme extends BaseTheme {
         // The sun drifts continuously from left to right in a straight line
 
         // Movement range (percentage of viewport from center)
-        const horizontalRange = 1.8; // Normalized range (screen width is roughly aspect ratio, e.g. 1.77)
+        // Movement range (percentage of viewport from center)
+        const horizontalRange = 0.6; // Reduced from 1.8 to keep sun on screen longer (screen half-width is 0.5 * aspect)
 
         // Apply time offset so sun starts at different position each time
         const t = time + this.timeOffset;
