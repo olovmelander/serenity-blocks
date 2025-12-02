@@ -31,12 +31,23 @@ export default class WebGLSynthwaveRenderer {
     }
 
     init() {
-        const gl = this.canvas.getContext('webgl', {
+        // Try WebGL 2 first for better shader support (dynamic indexing)
+        let gl = this.canvas.getContext('webgl2', {
             alpha: true,
             premultipliedAlpha: false,
             antialias: false, // Retro feel
             preserveDrawingBuffer: false,
-        }) || this.canvas.getContext('experimental-webgl');
+        });
+
+        if (!gl) {
+            console.warn('WebGL 2 not supported, falling back to WebGL 1');
+            gl = this.canvas.getContext('webgl', {
+                alpha: true,
+                premultipliedAlpha: false,
+                antialias: false,
+                preserveDrawingBuffer: false,
+            }) || this.canvas.getContext('experimental-webgl');
+        }
 
         if (!gl) {
             console.warn('WebGL not supported');
@@ -44,6 +55,7 @@ export default class WebGLSynthwaveRenderer {
         }
 
         this.gl = gl;
+        this.isWebGL2 = (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext);
 
         // Enable blending
         gl.enable(gl.BLEND);
@@ -59,106 +71,165 @@ export default class WebGLSynthwaveRenderer {
 
     initGridShaders() {
         const gl = this.gl;
+        const isWebGL2 = this.isWebGL2;
 
         // Full screen quad vertex shader
-        const vsSource = `
-            precision highp float;
-            attribute vec2 aPosition;
-            varying vec2 vUv;
-            void main() {
-                vUv = aPosition * 0.5 + 0.5;
-                gl_Position = vec4(aPosition, 0.0, 1.0);
-            }
-        `;
+        let vsSource;
+        if (isWebGL2) {
+            vsSource = `#version 300 es
+                precision highp float;
+                in vec2 aPosition;
+                out vec2 vUv;
+                void main() {
+                    vUv = aPosition * 0.5 + 0.5;
+                    gl_Position = vec4(aPosition, 0.0, 1.0);
+                }
+            `;
+        } else {
+            vsSource = `
+                precision highp float;
+                attribute vec2 aPosition;
+                varying vec2 vUv;
+                void main() {
+                    vUv = aPosition * 0.5 + 0.5;
+                    gl_Position = vec4(aPosition, 0.0, 1.0);
+                }
+            `;
+        }
 
         // Procedural Grid Fragment Shader
-        // Creates an infinite moving grid on a floor plane
-        const fsSource = `
-            precision highp float;
-            
-            varying vec2 vUv;
-            
-            uniform float uTime;
-            uniform vec2 uResolution;
-            uniform float uSpeed;
-            uniform vec3 uGridColor;
-            uniform float uGlowIntensity;
-            uniform float uBendFactor; // For curvature effect
-            
-            // Pseudo-random function
-            float random(vec2 st) {
-                return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-            }
+        let fsSource;
+        if (isWebGL2) {
+            fsSource = `#version 300 es
+                precision highp float;
+                
+                in vec2 vUv;
+                out vec4 outColor;
+                
+                uniform float uTime;
+                uniform vec2 uResolution;
+                uniform float uSpeed;
+                uniform vec3 uGridColor;
+                uniform float uGlowIntensity;
+                uniform float uBendFactor;
+                
+                uniform vec3 uHighlights[24];
+                uniform vec3 uHighlightColors[24];
 
-            void main() {
-                // Normalize coordinates -1 to 1
-                vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
-                
-                // Horizon height (0.0 is center)
-                // Container is 40% height, City starts at 36% screen height
-                // 36/40 = 0.9 -> 90% of container
-                // UV.y is -0.5 to 0.5, so 90% is 0.4
-                float horizon = 0.4; 
-                
-                // Sky/Ground separation
-                if (uv.y > horizon) {
-                    discard; // Don't draw grid in sky
+                float random(vec2 st) {
+                    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
                 }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
+                    float horizon = 0.4; 
+                    
+                    if (uv.y > horizon) {
+                        discard;
+                    }
+                    
+                    float camHeight = 1.0;
+                    float z = camHeight / (horizon - uv.y);
+                    float curve = (1.0 - z * 0.05) * uBendFactor; 
+                    float x = uv.x * z * 2.0;
+                    
+                    float timeOffset = uTime * uSpeed;
+                    float worldZ = z + timeOffset;
+                    
+                    float terrain = sin(worldZ * 0.1) * 0.5 + sin(x * 0.5) * 0.5;
+                    float warpedX = x + sin(worldZ * 0.2) * z * 0.1;
+                    
+                    float gridSize = 1.0;
+                    vec2 gridUV = vec2(warpedX, worldZ) / gridSize;
+                    vec2 gridFract = fract(gridUV);
+                    vec2 cellID = floor(gridUV);
+                    
+                    float lineThickness = 0.02 * z; 
+                    float lineX = smoothstep(0.0, lineThickness, gridFract.x) - smoothstep(1.0 - lineThickness, 1.0, gridFract.x);
+                    float lineZ = smoothstep(0.0, lineThickness, gridFract.y) - smoothstep(1.0 - lineThickness, 1.0, gridFract.y);
+                    float lines = 1.0 - (lineX * lineZ);
+                    
+                    float bloomThickness = lineThickness * 4.0;
+                    float bloomX = smoothstep(0.0, bloomThickness, gridFract.x) - smoothstep(1.0 - bloomThickness, 1.0, gridFract.x);
+                    float bloomZ = smoothstep(0.0, bloomThickness, gridFract.y) - smoothstep(1.0 - bloomThickness, 1.0, gridFract.y);
+                    float bloom = (1.0 - (bloomX * bloomZ)) * 0.5;
+                    
+                    float fog = 1.0 - smoothstep(20.0, 200.0, z);
+                    
+                    float noise = random(floor(gridUV));
+                    float sparkle = step(0.98, noise) * sin(uTime * 10.0) * 0.5;
+                    
+                    vec3 farColor = vec3(0.5, 0.0, 1.0);
+                    vec3 nearColor = uGridColor;
+                    float colorMix = smoothstep(0.0, 50.0, z);
+                    vec3 finalColor = mix(nearColor, farColor, colorMix);
+                    
+                    float reflectionWidth = 1.0 + z * 0.1;
+                    float reflection = smoothstep(reflectionWidth, 0.0, abs(uv.x * z));
+                    reflection *= 0.3;
+                    
+                    vec3 activeHighlightColor = vec3(0.0);
+                    float maxIntensity = 0.0;
+                    
+                    for (int i = 0; i < 24; i++) {
+                        if (uHighlights[i].z > 0.01) {
+                            if (abs(cellID.x - uHighlights[i].x) < 0.1 && abs(cellID.y - uHighlights[i].y) < 0.1) {
+                                if (uHighlights[i].z > maxIntensity) {
+                                    maxIntensity = uHighlights[i].z;
+                                    activeHighlightColor = uHighlightColors[i];
+                                }
+                            }
+                        }
+                    }
+                    
+                    float cellFill = maxIntensity * 0.6;
+                    
+                    vec3 color = (finalColor * (lines + bloom + sparkle) + reflection * nearColor) * fog * uGlowIntensity;
+                    color += activeHighlightColor * cellFill * fog;
+                    
+                    float alpha = (lines + bloom + sparkle + reflection + cellFill) * fog;
+                    
+                    outColor = vec4(color, alpha);
+                }
+            `;
+        } else {
+            // WebGL 1 Fallback (simplified to avoid loop issues)
+            fsSource = `
+                precision highp float;
+                varying vec2 vUv;
+                uniform float uTime;
+                uniform vec2 uResolution;
+                uniform float uSpeed;
+                uniform vec3 uGridColor;
+                uniform float uGlowIntensity;
+                uniform float uBendFactor;
+                // Reduced support for highlights in WebGL 1
                 
-                // 3D Projection
-                // Map screen UV to World Plane (y = 0)
-                float camHeight = 1.0;
-                float fov = 1.0;
-                
-                // Perspective projection math
-                // z = camHeight / (horizon - uv.y)
-                // x = uv.x * z / fov
-                
-                float z = camHeight / (horizon - uv.y);
-                
-                // Curvature effect (bend x based on distance)
-                float curve = (1.0 - z * 0.05) * uBendFactor; 
-                
-                float x = uv.x * z * 2.0;
-                
-                // Movement
-                float timeOffset = uTime * uSpeed;
-                float worldZ = z + timeOffset;
-                
-                // Grid Logic
-                float gridSize = 1.0;
-                
-                // Lines
-                // Use fract to get repeating pattern
-                vec2 gridUV = vec2(x, worldZ) / gridSize;
-                vec2 gridFract = fract(gridUV);
-                
-                // Line thickness based on distance (thinner far away to avoid moire, but thicker close up)
-                float lineThickness = 0.02 * z; 
-                
-                // Smoothstep for anti-aliased lines
-                float lineX = smoothstep(0.0, lineThickness, gridFract.x) - smoothstep(1.0 - lineThickness, 1.0, gridFract.x);
-                float lineZ = smoothstep(0.0, lineThickness, gridFract.y) - smoothstep(1.0 - lineThickness, 1.0, gridFract.y);
-                
-                // Invert to get lines
-                float lines = 1.0 - (lineX * lineZ);
-                
-                // Fade out into distance (fog)
-                // Extend fog further to ensure it reaches the buildings
-                float fog = 1.0 - smoothstep(20.0, 200.0, z);
-                
-                // Add some variation/noise to the grid for "retro" feel
-                float noise = random(floor(gridUV));
-                float sparkle = step(0.98, noise) * sin(uTime * 10.0) * 0.5;
-                
-                vec3 color = uGridColor * (lines + sparkle) * fog * uGlowIntensity;
-                
-                // Alpha for blending
-                float alpha = (lines + sparkle) * fog;
-                
-                gl_FragColor = vec4(color, alpha);
-            }
-        `;
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
+                    float horizon = 0.4; 
+                    if (uv.y > horizon) discard;
+                    
+                    float camHeight = 1.0;
+                    float z = camHeight / (horizon - uv.y);
+                    float x = uv.x * z * 2.0;
+                    float timeOffset = uTime * uSpeed;
+                    float worldZ = z + timeOffset;
+                    
+                    vec2 gridUV = vec2(x, worldZ);
+                    vec2 gridFract = fract(gridUV);
+                    
+                    float lineThickness = 0.02 * z; 
+                    float lineX = smoothstep(0.0, lineThickness, gridFract.x) - smoothstep(1.0 - lineThickness, 1.0, gridFract.x);
+                    float lineZ = smoothstep(0.0, lineThickness, gridFract.y) - smoothstep(1.0 - lineThickness, 1.0, gridFract.y);
+                    float lines = 1.0 - (lineX * lineZ);
+                    
+                    float fog = 1.0 - smoothstep(20.0, 200.0, z);
+                    vec3 color = uGridColor * lines * fog * uGlowIntensity;
+                    gl_FragColor = vec4(color, lines * fog);
+                }
+            `;
+        }
 
         this.gridProgram = this.createProgram(vsSource, fsSource);
         if (!this.gridProgram) return false;
@@ -174,7 +245,88 @@ export default class WebGLSynthwaveRenderer {
             gridColor: gl.getUniformLocation(this.gridProgram, 'uGridColor'),
             glowIntensity: gl.getUniformLocation(this.gridProgram, 'uGlowIntensity'),
             bendFactor: gl.getUniformLocation(this.gridProgram, 'uBendFactor'),
+            highlights: gl.getUniformLocation(this.gridProgram, 'uHighlights'),
+            highlightColors: gl.getUniformLocation(this.gridProgram, 'uHighlightColors'),
         };
+
+        return true;
+    }
+
+    // ... (rest of methods)
+
+    render(time, gridParams) {
+        const gl = this.gl;
+        if (!gl) return;
+
+        // Clear
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // 1. Render Stars (Background)
+        if (this.starCount > 0) {
+            gl.useProgram(this.starProgram);
+            gl.uniform2f(this.starUniforms.resolution, this.canvas.width, this.canvas.height);
+            gl.uniform1f(this.starUniforms.time, time);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.position);
+            gl.enableVertexAttribArray(this.starAttributes.position);
+            gl.vertexAttribPointer(this.starAttributes.position, 2, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.size);
+            gl.enableVertexAttribArray(this.starAttributes.size);
+            gl.vertexAttribPointer(this.starAttributes.size, 1, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.brightness);
+            gl.enableVertexAttribArray(this.starAttributes.brightness);
+            gl.vertexAttribPointer(this.starAttributes.brightness, 1, gl.FLOAT, false, 0, 0);
+
+            gl.drawArrays(gl.POINTS, 0, this.starCount);
+        }
+
+        // 2. Render Grid
+        gl.useProgram(this.gridProgram);
+        gl.uniform1f(this.gridUniforms.time, time);
+        gl.uniform2f(this.gridUniforms.resolution, this.canvas.width, this.canvas.height);
+        gl.uniform1f(this.gridUniforms.speed, gridParams.speed || 1.0);
+
+        const color = gridParams.color || [1.0, 0.0, 0.4]; // Default hot pink
+        gl.uniform3f(this.gridUniforms.gridColor, color[0], color[1], color[2]);
+
+        gl.uniform1f(this.gridUniforms.glowIntensity, gridParams.glowIntensity || 1.0);
+        gl.uniform1f(this.gridUniforms.bendFactor, gridParams.bendFactor || 0.0);
+
+        // Pass highlights
+        // Expects array of {x, y, intensity, color: [r,g,b]} objects
+        const highlights = new Float32Array(72); // 24 * 3
+        const highlightColors = new Float32Array(72); // 24 * 3
+
+        if (gridParams.highlights && gridParams.highlights.length > 0) {
+            for (let i = 0; i < Math.min(gridParams.highlights.length, 24); i++) {
+                const h = gridParams.highlights[i];
+                highlights[i * 3] = h.x;
+                highlights[i * 3 + 1] = h.y;
+                highlights[i * 3 + 2] = h.intensity;
+
+                if (h.color) {
+                    highlightColors[i * 3] = h.color[0];
+                    highlightColors[i * 3 + 1] = h.color[1];
+                    highlightColors[i * 3 + 2] = h.color[2];
+                } else {
+                    // Default cyan
+                    highlightColors[i * 3] = 0.0;
+                    highlightColors[i * 3 + 1] = 1.0;
+                    highlightColors[i * 3 + 2] = 1.0;
+                }
+            }
+        }
+        gl.uniform3fv(this.gridUniforms.highlights, highlights);
+        gl.uniform3fv(this.gridUniforms.highlightColors, highlightColors);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.gridBuffers.position);
+        gl.enableVertexAttribArray(this.gridAttributes.position);
+        gl.vertexAttribPointer(this.gridAttributes.position, 2, gl.FLOAT, false, 0, 0);
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
         return true;
     }
@@ -330,51 +482,5 @@ export default class WebGLSynthwaveRenderer {
         }
     }
 
-    render(time, gridParams) {
-        const gl = this.gl;
-        if (!gl) return;
 
-        // Clear
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        // 1. Render Stars (Background)
-        if (this.starCount > 0) {
-            gl.useProgram(this.starProgram);
-            gl.uniform2f(this.starUniforms.resolution, this.canvas.width, this.canvas.height);
-            gl.uniform1f(this.starUniforms.time, time);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.position);
-            gl.enableVertexAttribArray(this.starAttributes.position);
-            gl.vertexAttribPointer(this.starAttributes.position, 2, gl.FLOAT, false, 0, 0);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.size);
-            gl.enableVertexAttribArray(this.starAttributes.size);
-            gl.vertexAttribPointer(this.starAttributes.size, 1, gl.FLOAT, false, 0, 0);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.brightness);
-            gl.enableVertexAttribArray(this.starAttributes.brightness);
-            gl.vertexAttribPointer(this.starAttributes.brightness, 1, gl.FLOAT, false, 0, 0);
-
-            gl.drawArrays(gl.POINTS, 0, this.starCount);
-        }
-
-        // 2. Render Grid
-        gl.useProgram(this.gridProgram);
-        gl.uniform1f(this.gridUniforms.time, time);
-        gl.uniform2f(this.gridUniforms.resolution, this.canvas.width, this.canvas.height);
-        gl.uniform1f(this.gridUniforms.speed, gridParams.speed || 1.0);
-
-        const color = gridParams.color || [1.0, 0.0, 0.4]; // Default hot pink
-        gl.uniform3f(this.gridUniforms.gridColor, color[0], color[1], color[2]);
-
-        gl.uniform1f(this.gridUniforms.glowIntensity, gridParams.glowIntensity || 1.0);
-        gl.uniform1f(this.gridUniforms.bendFactor, gridParams.bendFactor || 0.0);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.gridBuffers.position);
-        gl.enableVertexAttribArray(this.gridAttributes.position);
-        gl.vertexAttribPointer(this.gridAttributes.position, 2, gl.FLOAT, false, 0, 0);
-
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
 }
