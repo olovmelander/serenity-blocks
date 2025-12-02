@@ -23,7 +23,7 @@ export default class RainyWindowTheme extends BaseTheme {
         this.maxDrops = 3000; // Increased for WebGL
         this.dropSpawnProbability = 1.5;
         this.currentDropCap = 1200; // Increased for WebGL
-        this.maxRipples = 120;
+        this.maxRipples = 75;
         this.lightningFlashIntensity = 0;
         this.lightningRipples = [];
         this.gustIntensity = 0;
@@ -69,7 +69,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 maxDrops: 200,
                 dropSpawnProbability: 0.3,
                 currentDropCap: 80,
-                maxRipples: 30,
+                maxRipples: 20,
                 maxMistParticles: 80,
                 maxSplashes: 12,
                 maxActiveDrops: 300,
@@ -89,7 +89,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 maxDrops: 500,
                 dropSpawnProbability: 0.5,
                 currentDropCap: 200,
-                maxRipples: 50,
+                maxRipples: 35,
                 maxMistParticles: 120,
                 maxSplashes: 20,
                 maxActiveDrops: 800,
@@ -109,7 +109,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 maxDrops: 1000,
                 dropSpawnProbability: 0.8,
                 currentDropCap: 400,
-                maxRipples: 60,
+                maxRipples: 45,
                 maxMistParticles: 170,
                 maxSplashes: 30,
                 maxActiveDrops: 1500,
@@ -129,7 +129,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 maxDrops: 2000,
                 dropSpawnProbability: 1.2,
                 currentDropCap: 800,
-                maxRipples: 80,
+                maxRipples: 60,
                 maxMistParticles: 210,
                 maxSplashes: 40,
                 maxActiveDrops: 2500,
@@ -149,7 +149,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 maxDrops: 3000,
                 dropSpawnProbability: 1.5,
                 currentDropCap: 1200,
-                maxRipples: 100,
+                maxRipples: 75,
                 maxMistParticles: 250,
                 maxSplashes: 50,
                 maxActiveDrops: 3500,
@@ -169,7 +169,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 maxDrops: 5000,
                 dropSpawnProbability: 2.0,
                 currentDropCap: 2000,
-                maxRipples: 140,
+                maxRipples: 100,
                 maxMistParticles: 350,
                 maxSplashes: 70,
                 maxActiveDrops: 6000,
@@ -405,7 +405,12 @@ export default class RainyWindowTheme extends BaseTheme {
             this.handleCombo(data);
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            if (!this.shouldProcessComboEffects()) return;
+            this.handlePieceLock();
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     teardownEventListeners() {
@@ -456,6 +461,52 @@ export default class RainyWindowTheme extends BaseTheme {
         if (comboCount > 0) {
             this.pendingComboCount = comboCount;
         }
+    }
+
+    handlePieceLock() {
+        // 1. Visual Flash (Lightning) - Instant feedback
+        // Only if lightning is enabled in preset, or force a small one for feedback
+        this.lightningFlashIntensity = Math.max(this.lightningFlashIntensity, 0.15);
+
+        // 2. Heavy Rain Burst - More drops, faster
+        const burstCount = 20;
+        for (let i = 0; i < burstCount; i++) {
+            const drop = this.createRainBurstDrop(2); // Higher intensity
+            drop.glow = 1.0; // Max glow
+            drop.vy *= 1.5; // Faster
+            this.rainBurstDrops.push(drop);
+        }
+
+        // 3. Mist Burst at bottom
+        const mistCount = 5;
+        for (let i = 0; i < mistCount; i++) {
+            const x = Math.random() * this.canvas.width;
+            const waterY = this.getWaterY(Math.random());
+            const newMist = this.createMist(x, waterY - 20, Math.random());
+            // Make them rise faster and be more visible
+            newMist.forEach(p => {
+                p.vy -= 1.5;
+                p.opacity = 0.6;
+                p.size *= 1.5;
+            });
+            if (this.mistParticles.length < this.maxMistParticles) {
+                this.mistParticles.push(...newMist);
+            }
+        }
+
+        // 4. Create larger ripples
+        const rippleCount = 3;
+        for (let i = 0; i < rippleCount; i++) {
+            const x = Math.random() * this.canvas.width;
+            const depth = Math.random();
+            const waterY = this.getWaterY(depth);
+            if (this.ripples.length < this.maxRipples) {
+                this.ripples.push(this.createRipple(x, waterY, 25 + Math.random() * 15, depth));
+            }
+        }
+
+        // 5. Wind Gust
+        this.targetWindForce += (Math.random() > 0.5 ? 1 : -1) * 1.5;
     }
 
     onLineClear(lineCount, comboCount) {
