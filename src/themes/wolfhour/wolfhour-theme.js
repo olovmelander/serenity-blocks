@@ -34,6 +34,9 @@ export default class WolfhourTheme extends BaseTheme {
         this.celestialBeams = [];
         this.moonGlowPulses = [];
         this.constellationLines = [];
+        this.starRipples = [];
+        this.novaFlashes = [];
+        this.sparkles = [];
         this.cachedStarElements = [];
 
         // Canvas for effects
@@ -307,6 +310,10 @@ export default class WolfhourTheme extends BaseTheme {
         if (this.constellationLines.length > this.activeQuality.maxConstellationLines) {
             this.constellationLines = this.constellationLines.slice(0, this.activeQuality.maxConstellationLines);
         }
+        // New effects
+        if (this.starRipples.length > 5) this.starRipples = this.starRipples.slice(0, 5);
+        if (this.novaFlashes.length > 3) this.novaFlashes = this.novaFlashes.slice(0, 3);
+        if (this.sparkles.length > 100) this.sparkles = this.sparkles.slice(0, 100);
     }
 
     restartShootingStarInterval() {
@@ -791,7 +798,14 @@ export default class WolfhourTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     handleLineClear(eventPayload) {
@@ -816,6 +830,56 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         this.onCombo(comboCount);
+    }
+
+    handlePieceLock() {
+        // Silver Nova & Ripple Effect
+        const w = this.effectCanvas ? this.effectCanvas.width : window.innerWidth;
+        const h = this.effectCanvas ? this.effectCanvas.height : window.innerHeight;
+
+        // 1. Nova Flash (Silver) - More subtle
+        if (this.novaFlashes.length < 3) {
+            this.novaFlashes.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.5,
+                radius: 0,
+                maxRadius: 60 + Math.random() * 60, // Reduced from 100+100
+                opacity: 0.5, // Reduced from 1.0
+                decay: 0.04, // Faster fade (was 0.03)
+                hue: 210, // Silver/Blue
+            });
+        }
+
+        // 2. Star Ripple (WebGL) - More subtle wave
+        // Creates a wave that boosts star brightness
+        if (this.starRipples.length < 5) {
+            this.starRipples.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.5,
+                radius: 0,
+                speed: 12 + Math.random() * 8, // Slightly slower
+                width: 60 + Math.random() * 40, // Reduced width
+                life: 0.7, // Reduced initial intensity
+                decay: 0.015, // Faster decay
+            });
+        }
+
+        // 3. Silver Sparkles - Fewer and smaller
+        const sparkleCount = 5 + Math.floor(Math.random() * 8); // Reduced count
+        for (let i = 0; i < sparkleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1.5 + Math.random() * 4;
+            this.sparkles.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.5,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 0.5 + Math.random() * 2, // Reduced size
+                opacity: 0.7, // Reduced opacity
+                decay: 0.03 + Math.random() * 0.03, // Faster decay
+                hue: 200 + Math.random() * 30, // Silver range
+            });
+        }
     }
 
     onLineClear(lineCount) {
@@ -1218,6 +1282,68 @@ export default class WolfhourTheme extends BaseTheme {
                 this.lastEffectCleanup = now;
             }
 
+            // Update WebGL Star Ripples
+            if (this.useWebGL && this.webglRenderer && this.stars.length > 0) {
+                // Reset ripple boost for all stars first (optimization: only if we had ripples)
+                // For now, simple reset
+                if (this.starRipples.length > 0) {
+                    for (let i = 0; i < this.stars.length; i++) {
+                        this.stars[i].rippleBoost = 0;
+                    }
+                }
+
+                // Process ripples
+                for (let i = this.starRipples.length - 1; i >= 0; i--) {
+                    const ripple = this.starRipples[i];
+                    ripple.radius += ripple.speed;
+                    ripple.life -= ripple.decay;
+
+                    if (ripple.life <= 0) {
+                        this.starRipples.splice(i, 1);
+                        continue;
+                    }
+
+                    // Apply to stars
+                    // Optimization: Spatial grid would be better, but for now brute force is okay for GPU upload
+                    // actually, we calculate on CPU then upload. 
+                    // To keep 60fps with 40k stars, we need to be careful.
+                    // Let's only check stars if we have ripples.
+
+                    const rSq = ripple.radius * ripple.radius;
+                    const rOuterSq = (ripple.radius + ripple.width) * (ripple.radius + ripple.width);
+
+                    // Optimization: Only iterate stars if we really need to. 
+                    // But we need to reset rippleBoost anyway.
+                    // Let's do a single pass over stars if there are ripples.
+                }
+
+                if (this.starRipples.length > 0) {
+                    const ripples = this.starRipples;
+                    for (let i = 0; i < this.stars.length; i++) {
+                        const star = this.stars[i];
+                        let totalBoost = 0;
+
+                        for (let j = 0; j < ripples.length; j++) {
+                            const r = ripples[j];
+                            const dx = star.x - r.x;
+                            const dy = star.y - r.y;
+                            const distSq = dx * dx + dy * dy;
+
+                            const dist = Math.sqrt(distSq);
+                            if (dist >= r.radius && dist <= r.radius + r.width) {
+                                // Inside ripple ring
+                                const relPos = (dist - r.radius) / r.width; // 0 to 1
+                                const intensity = Math.sin(relPos * Math.PI) * r.life;
+                                totalBoost += intensity * 2.0; // Boost factor
+                            }
+                        }
+
+                        star.rippleBoost = totalBoost;
+                    }
+                    this.webglRenderer.updateBrightness(this.stars);
+                }
+            }
+
             // Render WebGL stars
             if (this.useWebGL && this.webglRenderer) {
                 // Pulse intensity from wolfhourPower or cosmicEnergy
@@ -1227,7 +1353,8 @@ export default class WolfhourTheme extends BaseTheme {
 
             // Clear canvases - only if there are effects to draw (performance optimization)
             const hasEffects = this.starBursts.length > 0 || this.cosmicWaves.length > 0
-                || this.moonGlowPulses.length > 0 || this.constellationLines.length > 0;
+                || this.moonGlowPulses.length > 0 || this.constellationLines.length > 0
+                || this.novaFlashes.length > 0 || this.sparkles.length > 0;
             const hasBeams = this.celestialBeams.length > 0;
 
             if (hasEffects) {
@@ -1239,17 +1366,65 @@ export default class WolfhourTheme extends BaseTheme {
 
             // Draw effects - skip if performance is poor and no active effects
             if (hasEffects || hasBeams) {
+                this.drawNovaFlashes();
+                this.drawCelestialBeams(); // Draw beams behind bursts
                 this.drawStarBursts();
                 this.drawCosmicWaves();
-                if (hasBeams) this.drawCelestialBeams();
                 this.drawMoonPulses();
                 this.drawConstellationLines();
+                this.drawSparkles();
             }
 
             this.animationFrameId = requestAnimationFrame(animate);
         };
 
         animate(performance.now());
+    }
+
+    drawNovaFlashes() {
+        for (let i = this.novaFlashes.length - 1; i >= 0; i--) {
+            const nova = this.novaFlashes[i];
+            nova.radius += (nova.maxRadius - nova.radius) * 0.1;
+            nova.opacity -= nova.decay;
+
+            if (nova.opacity <= 0) {
+                this.novaFlashes.splice(i, 1);
+                continue;
+            }
+
+            const gradient = this.effectCtx.createRadialGradient(nova.x, nova.y, 0, nova.x, nova.y, nova.radius);
+            gradient.addColorStop(0, `hsla(${nova.hue}, 20%, 95%, ${nova.opacity})`);
+            gradient.addColorStop(0.4, `hsla(${nova.hue}, 15%, 80%, ${nova.opacity * 0.5})`);
+            gradient.addColorStop(1, `hsla(${nova.hue}, 10%, 50%, 0)`);
+
+            this.effectCtx.fillStyle = gradient;
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(nova.x, nova.y, nova.radius, 0, Math.PI * 2);
+            this.effectCtx.fill();
+        }
+    }
+
+    drawSparkles() {
+        for (let i = this.sparkles.length - 1; i >= 0; i--) {
+            const p = this.sparkles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.opacity -= p.decay;
+
+            if (p.opacity <= 0) {
+                this.sparkles.splice(i, 1);
+                continue;
+            }
+
+            this.effectCtx.fillStyle = `hsla(${p.hue}, 20%, 90%, ${p.opacity})`;
+            this.effectCtx.beginPath();
+            this.effectCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            this.effectCtx.fill();
+
+            // Cross shape for sparkle
+            this.effectCtx.fillRect(p.x - p.size * 2, p.y - p.size * 0.5, p.size * 4, p.size);
+            this.effectCtx.fillRect(p.x - p.size * 0.5, p.y - p.size * 2, p.size, p.size * 4);
+        }
     }
 
     drawStarBursts() {
