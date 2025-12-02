@@ -31,7 +31,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.horizonBursts = [];
         this.retroStreaks = [];
         this.retroParticles = [];
+        this.retroParticles = [];
         this.gridWaves = [];
+        this.gridHighlights = []; // Array of {x, y, intensity, life}
         this.sunPulseIntensity = 0;
         this.comboMultiplier = 1.0;
         this.cityGlowIntensity = 0;
@@ -622,15 +624,34 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const glow = baseGlow + this.gridPulseIntensity * 0.5;
 
             // Grid color
-            const r = 1.0;
-            const g = 0.0;
-            const b = 0.4 + this.comboColorShift * 0.5; // Shift to purple on combo
+            // Base: Hot Pink [1.0, 0.0, 0.6]
+            // Combo: Electric Cyan [0.0, 1.0, 1.0] or Bright White/Blue
+
+            // Normalize combo shift (it goes up to 60, but let's cap effect around 20)
+            const shiftFactor = Math.min(1.0, this.comboColorShift / 20.0);
+
+            // Interpolate
+            const r = 1.0 * (1.0 - shiftFactor) + 0.0 * shiftFactor;
+            const g = 0.0 * (1.0 - shiftFactor) + 1.0 * shiftFactor;
+            const b = 0.6 * (1.0 - shiftFactor) + 1.0 * shiftFactor;
+
+            // Update highlights
+            for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
+                const h = this.gridHighlights[i];
+                h.intensity *= 0.95; // Fade out
+                h.life -= h.decay;
+
+                if (h.life <= 0 || h.intensity < 0.01) {
+                    this.gridHighlights.splice(i, 1);
+                }
+            }
 
             this.webglRenderer.render(this.animationTime, {
                 speed: webglSpeed,
                 color: [r, g, b],
                 glowIntensity: glow,
                 bendFactor: 0.2, // Slight curvature
+                highlights: this.gridHighlights
             });
 
             // Decay effects
@@ -724,7 +745,62 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    handlePieceLock() {
+        // Pick random grid cells to highlight
+        // x: -10 to 10 (center is 0)
+        // y: relative to current time/scroll
+
+        const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
+        const webglSpeed = scrollSpeed * 0.05;
+
+        // Current 'Z' position of the camera/grid offset
+        const currentZ = this.animationTime * webglSpeed;
+
+        // Spawn 10 highlights
+        const count = 10;
+
+        // Neon colors palette
+        const neonColors = [
+            [0.0, 1.0, 1.0], // Cyan
+            [1.0, 0.0, 1.0], // Magenta
+            [1.0, 1.0, 0.0], // Yellow
+            [0.0, 1.0, 0.0], // Lime
+            [0.6, 0.0, 1.0], // Electric Purple
+            [1.0, 0.5, 0.0]  // Neon Orange
+        ];
+
+        for (let i = 0; i < count; i++) {
+            // Pick a spot slightly ahead of the camera
+            // Spread them out a bit more
+            const zOffset = 5 + Math.random() * 25;
+            const gridZ = Math.floor(currentZ + zOffset);
+
+            const gridX = Math.floor(Math.random() * 24 - 12); // Wider spread
+
+            const color = neonColors[Math.floor(Math.random() * neonColors.length)];
+
+            this.gridHighlights.push({
+                x: gridX,
+                y: gridZ,
+                intensity: 2.0 + Math.random(), // Varying brightness
+                life: 1.0,
+                decay: 0.03 + Math.random() * 0.04, // Varying decay
+                color: color
+            });
+        }
+
+        // Add a small pulse to the grid
+        this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.2);
     }
 
     handleLineClear(data) {
