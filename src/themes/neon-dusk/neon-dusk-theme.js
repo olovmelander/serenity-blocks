@@ -6,6 +6,7 @@ import WebGLNeonEffects from './webgl-neon-effects.js';
 import WebGLNeonSun from './webgl-neon-sun.js';
 import WebGLNeonMountains from './webgl-neon-mountains.js';
 import WebGLNeonGrid from './webgl-neon-grid.js';
+import WebGLNeonOverlay from './webgl-neon-overlay.js';
 
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
@@ -262,6 +263,9 @@ export default class NeonDuskTheme extends BaseTheme {
         // Setup WebGL Grid (In front of mountains)
         this.setupWebGLGrid();
 
+        // Setup WebGL Overlay (Topmost layer for VHS effects)
+        this.setupWebGLOverlay(); // Add Overlay
+
         // Setup WebGL Effects (Particles: Ambient & Gameplay)
         this.setupGameplayEffects();
 
@@ -479,6 +483,46 @@ export default class NeonDuskTheme extends BaseTheme {
         window.addEventListener('resize', resize);
     }
 
+    setupWebGLOverlay() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing overlay canvas
+        const existingOverlay = document.getElementById('neon-dusk-overlay-canvas');
+        if (existingOverlay) existingOverlay.remove();
+
+        // Create overlay canvas (Topmost layer)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-overlay-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '2000'; // Topmost layer, above everything
+        canvas.style.pointerEvents = 'none';
+        // Use mix-blend-mode if needed, but WebGL blending handles it
+        themeContainer.appendChild(canvas);
+
+        this.overlayCanvas = canvas;
+
+        // Initialize Overlay Renderer
+        this.webglOverlay = new WebGLNeonOverlay(canvas);
+        if (!this.webglOverlay.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Overlay');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.overlayCanvas && this.webglOverlay) {
+                this.webglOverlay.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
     initAmbientParticles() {
         // Clear existing
         this.ambientParticles = [];
@@ -497,7 +541,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 color: colors[Math.floor(Math.random() * colors.length)],
                 life: 1.0, // Always alive
                 maxLife: 1.0,
-                type: 0 // Circle/Particle
+                type: 0, // Circle/Particle
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 2.0 // Radians per second
             });
             // Initialize baseSize
             this.ambientParticles[i].baseSize = this.ambientParticles[i].size;
@@ -636,7 +682,9 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxLife: 1.5,
                 size: size,
                 color: color,
-                type: 2 // Squared particle
+                type: 2, // Squared particle
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 4.0 // Faster rotation for rising squares
             });
         }
     }
@@ -830,6 +878,11 @@ export default class NeonDuskTheme extends BaseTheme {
                 p.vy += 0.15;
             }
 
+            // Update rotation
+            if (p.rotationSpeed) {
+                p.rotation += p.rotationSpeed * delta;
+            }
+
             p.life -= delta / p.maxLife;
 
             if (p.life > 0) {
@@ -919,6 +972,11 @@ export default class NeonDuskTheme extends BaseTheme {
             const p = this.ambientParticles[i];
             p.x += p.vx;
             p.y += p.vy;
+
+            // Update rotation
+            if (p.rotationSpeed) {
+                p.rotation += p.rotationSpeed * delta;
+            }
 
             // Handle pulsing
             if (p.pulsing) {
@@ -1027,6 +1085,11 @@ export default class NeonDuskTheme extends BaseTheme {
                 this.ambientParticles // Pass ambient particles
             );
         }
+
+        // Render Overlay (VHS Effects)
+        if (this.webglOverlay) {
+            this.webglOverlay.render(time);
+        }
     }
 
     stop() {
@@ -1068,6 +1131,10 @@ export default class NeonDuskTheme extends BaseTheme {
         if (this.backEffectsCanvas) {
             this.backEffectsCanvas.remove();
             this.backEffectsCanvas = null;
+        }
+        if (this.overlayCanvas) {
+            this.overlayCanvas.remove();
+            this.overlayCanvas = null;
         }
     }
 
