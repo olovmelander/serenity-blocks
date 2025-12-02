@@ -61,6 +61,24 @@ export default class GeodeTheme extends BaseTheme {
         
         // Performance: Reusable typed arrays for batch operations
         this.tempVec2 = new Float32Array(2);
+        
+        // Performance: Offscreen canvas for static star layer
+        this.starCanvas = null;
+        this.starCtx = null;
+        this.starLayerDirty = true; // Flag to trigger star canvas redraw
+        this.lastStarRedrawTime = 0;
+        this.starRedrawInterval = 50; // Redraw stars every 50ms max (20 fps for star twinkle)
+        this.starCanvasScale = 0.6;   // Render stars at reduced resolution (0.4-1.0)
+        this.useSimpleComposite = false; // Skip 'screen' blend mode for perf
+        
+        // Performance: Track active ripple regions for partial redraws
+        this.activeRippleRegions = [];
+        
+        // Performance: Frame skip counters
+        this.particleUpdateFrame = 0;
+        
+        // Performance: Pre-rendered brightness sprites (avoids globalAlpha changes)
+        this.brightnessSpriteCache = {};
 
         // Event tracking
         this.eventUnsubscribers = [];
@@ -94,6 +112,11 @@ export default class GeodeTheme extends BaseTheme {
                 enableSparkleCore: false,
                 maxTrailLength: 8,
                 trailBatchCount: 2,
+                // Performance: Star layer settings
+                starRedrawInterval: 100,  // 10 fps for star layer
+                particleFrameSkip: 2,     // Update particles every 2nd frame
+                starCanvasScale: 0.4,     // Render stars at 40% resolution (huge perf gain!)
+                useSimpleComposite: true, // Skip expensive 'screen' blend mode
                 // Effect toggles
                 enableChromaticAberration: false,
                 enableScreenShake: true,
@@ -123,6 +146,11 @@ export default class GeodeTheme extends BaseTheme {
                 enableSparkleCore: true,
                 maxTrailLength: 10,
                 trailBatchCount: 2,
+                // Performance
+                starRedrawInterval: 80,   // 12.5 fps for star layer
+                particleFrameSkip: 2,
+                starCanvasScale: 0.5,     // Render stars at 50% resolution
+                useSimpleComposite: true,
                 // Effect toggles
                 enableChromaticAberration: false,
                 enableScreenShake: true,
@@ -152,6 +180,11 @@ export default class GeodeTheme extends BaseTheme {
                 enableSparkleCore: true,
                 maxTrailLength: 12,
                 trailBatchCount: 3,
+                // Performance
+                starRedrawInterval: 50,   // 20 fps for star layer
+                particleFrameSkip: 1,     // Update every frame
+                starCanvasScale: 0.6,     // Render stars at 60% resolution
+                useSimpleComposite: false,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -181,6 +214,11 @@ export default class GeodeTheme extends BaseTheme {
                 enableSparkleCore: true,
                 maxTrailLength: 15,
                 trailBatchCount: 3,
+                // Performance
+                starRedrawInterval: 40,   // 25 fps for star layer
+                particleFrameSkip: 1,
+                starCanvasScale: 0.75,    // Render stars at 75% resolution
+                useSimpleComposite: false,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -210,6 +248,11 @@ export default class GeodeTheme extends BaseTheme {
                 enableSparkleCore: true,
                 maxTrailLength: 18,
                 trailBatchCount: 3,
+                // Performance
+                starRedrawInterval: 33,   // 30 fps for star layer
+                particleFrameSkip: 1,
+                starCanvasScale: 0.85,    // Render stars at 85% resolution
+                useSimpleComposite: false,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -239,6 +282,11 @@ export default class GeodeTheme extends BaseTheme {
                 enableSparkleCore: true,
                 maxTrailLength: 20,
                 trailBatchCount: 4,
+                // Performance
+                starRedrawInterval: 25,   // 40 fps for star layer
+                particleFrameSkip: 1,
+                starCanvasScale: 1.0,     // Full resolution for Extreme quality
+                useSimpleComposite: false,
                 // Effect toggles
                 enableChromaticAberration: true,
                 enableScreenShake: true,
@@ -261,7 +309,11 @@ export default class GeodeTheme extends BaseTheme {
         const preset = this.qualityPresets[quality] ?? this.qualityPresets.Medium;
         this.currentQuality = quality in this.qualityPresets ? quality : 'Medium';
         this.activePreset = preset;
-        console.log(`💎 Geode: Applied ${this.currentQuality} quality preset`);
+        // Apply performance settings from preset
+        this.starRedrawInterval = preset.starRedrawInterval || 50;
+        this.starCanvasScale = preset.starCanvasScale || 0.6;
+        this.useSimpleComposite = preset.useSimpleComposite || false;
+        console.log(`💎 Geode: Applied ${this.currentQuality} quality (stars at ${(this.starCanvasScale * 100).toFixed(0)}% resolution)`);
     }
     
     // Performance: Fast sin/cos using lookup table
@@ -344,6 +396,10 @@ export default class GeodeTheme extends BaseTheme {
                 height: '100%',
                 pointerEvents: 'none',
                 zIndex: '1',
+                // Performance: GPU acceleration hints
+                willChange: 'contents',
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden',
             });
             themeContainer.appendChild(this.canvas);
         }
@@ -353,6 +409,17 @@ export default class GeodeTheme extends BaseTheme {
         this.ctx = this.canvas.getContext('2d', { alpha: false });
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        
+        // Performance: Create offscreen canvas for star layer at reduced resolution
+        const scale = this.starCanvasScale;
+        this.starCanvas = document.createElement('canvas');
+        this.starCanvas.width = Math.ceil(this.canvas.width * scale);
+        this.starCanvas.height = Math.ceil(this.canvas.height * scale);
+        this.starCtx = this.starCanvas.getContext('2d', { alpha: true });
+        // Enable image smoothing for nice upscaling
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'low'; // 'low' is faster than 'high'
+        this.starLayerDirty = true;
 
         this.clearAllElements();
         this.cacheGradients();
@@ -554,6 +621,13 @@ export default class GeodeTheme extends BaseTheme {
             if (!this.canvas) return;
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
+            // Resize star canvas at scaled resolution
+            if (this.starCanvas) {
+                const scale = this.starCanvasScale;
+                this.starCanvas.width = Math.ceil(this.canvas.width * scale);
+                this.starCanvas.height = Math.ceil(this.canvas.height * scale);
+                this.starLayerDirty = true;
+            }
             this.cacheGradients();
             // Rebuild spatial grid for new dimensions
             this.buildStarGrid();
@@ -860,24 +934,13 @@ export default class GeodeTheme extends BaseTheme {
         }
     }
 
-    drawStars() {
+    // Performance: Update star positions without drawing (called every frame)
+    updateStarPositions() {
         const w = this.canvas.width;
         const h = this.canvas.height;
-        const ctx = this.ctx;
-        const preset = this.activePreset;
-        const pulseIntensityFactor = 1 + this.pulseIntensity * 0.4;
-        const ambientPulse = this.ambientPulse;
         const stars = this.stars;
         const starCount = stars.length;
-        const spriteCache = this.spriteCache;
-        const whiteSprite = spriteCache['#ffffff'];
         
-        // Quality settings
-        const brightnessThreshold = preset.starBrightnessThreshold;
-        const enableGlow = preset.enableStarGlow;
-        const glowSizeThreshold = preset.starGlowSizeThreshold;
-        
-        // Performance: Process stars in batches, skip very dim stars
         for (let i = 0; i < starCount; i++) {
             const star = stars[i];
             
@@ -891,8 +954,44 @@ export default class GeodeTheme extends BaseTheme {
             if (star.y < -5) star.y = h + 5;
             else if (star.y > h + 5) star.y = -5;
 
-            // Twinkle using fast lookup
+            // Update twinkle phase
             star.twinklePhase += star.twinkleSpeed;
+        }
+    }
+    
+    // Performance: Render stars to offscreen canvas at reduced resolution
+    renderStarsToOffscreen() {
+        if (!this.starCanvas || !this.starCtx) return;
+        
+        const w = this.starCanvas.width;
+        const h = this.starCanvas.height;
+        const ctx = this.starCtx;
+        const preset = this.activePreset;
+        const scale = this.starCanvasScale; // Scale factor for positions
+        const pulseIntensityFactor = 1 + this.pulseIntensity * 0.4;
+        const ambientPulse = this.ambientPulse;
+        const stars = this.stars;
+        const starCount = stars.length;
+        const spriteCache = this.spriteCache;
+        const whiteSprite = spriteCache['#ffffff'];
+        
+        // Quality settings
+        const brightnessThreshold = preset.starBrightnessThreshold;
+        const enableGlow = preset.enableStarGlow;
+        const glowSizeThreshold = preset.starGlowSizeThreshold;
+        
+        // Clear the offscreen canvas
+        ctx.clearRect(0, 0, w, h);
+        
+        // Draw all stars to offscreen canvas (positions scaled down)
+        for (let i = 0; i < starCount; i++) {
+            const star = stars[i];
+            
+            // Scale star position to match reduced canvas size
+            const scaledX = star.x * scale;
+            const scaledY = star.y * scale;
+            
+            // Twinkle using fast lookup
             const twinkle = this.fastSin(star.twinklePhase) * 0.4 + 0.6;
 
             // Include ripple boost in brightness calculation
@@ -900,13 +999,14 @@ export default class GeodeTheme extends BaseTheme {
             const baseBrightness = star.brightness * twinkle * pulseIntensityFactor * ambientPulse;
             const brightness = baseBrightness + rippleBoost;
             
-            // Performance: Skip nearly invisible stars (uses preset threshold)
+            // Skip nearly invisible stars
             if (brightness < brightnessThreshold) continue;
             
             const clampedBrightness = brightness > 1 ? 1 : brightness;
 
-            // Size boost from ripple
-            const effectiveSize = rippleBoost > 0 ? star.size * (1 + rippleBoost * 0.8) : star.size;
+            // Size boost from ripple (also scale the size)
+            const baseSize = rippleBoost > 0 ? star.size * (1 + rippleBoost * 0.8) : star.size;
+            const effectiveSize = baseSize * scale;
 
             // Draw star using sprite
             const sprite = spriteCache[star.color];
@@ -914,29 +1014,56 @@ export default class GeodeTheme extends BaseTheme {
                 ctx.globalAlpha = clampedBrightness;
                 const diameter = effectiveSize * 2.3;
                 const offset = diameter * 0.5;
-                ctx.drawImage(sprite, star.x - offset, star.y - offset, diameter, diameter);
+                ctx.drawImage(sprite, scaledX - offset, scaledY - offset, diameter, diameter);
             }
 
-            // Extra glow only for larger/brighter stars (uses preset settings)
+            // Extra glow only for larger/brighter stars
             if (enableGlow && ((star.size > glowSizeThreshold && brightness > 0.6) || rippleBoost > 0.4)) {
                 ctx.globalAlpha = clampedBrightness * 0.4;
-                const glowDiameter = effectiveSize * 5.06; // 2.2 * 2.3
+                const glowDiameter = effectiveSize * 5.06;
                 const glowOffset = glowDiameter * 0.5;
 
                 if (sprite) {
-                    ctx.drawImage(sprite, star.x - glowOffset, star.y - glowOffset, glowDiameter, glowDiameter);
+                    ctx.drawImage(sprite, scaledX - glowOffset, scaledY - glowOffset, glowDiameter, glowDiameter);
                 }
 
                 // White core only for intense ripple effect
                 if (rippleBoost > 0.5 && whiteSprite) {
                     ctx.globalAlpha = rippleBoost * 0.7;
-                    const coreDiameter = effectiveSize * 1.38; // 0.6 * 2.3
+                    const coreDiameter = effectiveSize * 1.38;
                     const coreOffset = coreDiameter * 0.5;
-                    ctx.drawImage(whiteSprite, star.x - coreOffset, star.y - coreOffset, coreDiameter, coreDiameter);
+                    ctx.drawImage(whiteSprite, scaledX - coreOffset, scaledY - coreOffset, coreDiameter, coreDiameter);
                 }
             }
         }
         ctx.globalAlpha = 1;
+        this.starLayerDirty = false;
+    }
+
+    drawStars() {
+        const now = performance.now();
+        const hasActiveRipples = this.starRipples.length > 0;
+        
+        // Always update star positions (cheap operation)
+        this.updateStarPositions();
+        
+        // Determine if we need to redraw the star layer
+        // Redraw if: dirty flag set, enough time passed, or active ripples
+        const timeSinceRedraw = now - this.lastStarRedrawTime;
+        const shouldRedraw = this.starLayerDirty || 
+                            timeSinceRedraw > this.starRedrawInterval ||
+                            hasActiveRipples;
+        
+        if (shouldRedraw) {
+            this.renderStarsToOffscreen();
+            this.lastStarRedrawTime = now;
+        }
+        
+        // Composite the offscreen star canvas to main canvas (scaled up to full size)
+        if (this.starCanvas) {
+            // Draw scaled star canvas to full size - GPU handles the upscaling efficiently
+            this.ctx.drawImage(this.starCanvas, 0, 0, this.canvas.width, this.canvas.height);
+        }
     }
 
     drawStrands() {
@@ -1104,7 +1231,10 @@ export default class GeodeTheme extends BaseTheme {
         const animTime = this.animationTime * 18;
         const enableCore = preset.enableSparkleCore;
         
-        ctx.globalCompositeOperation = 'screen';
+        // Performance: Skip expensive 'screen' blend on low quality
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'screen';
+        }
 
         for (let i = sparkles.length - 1; i >= 0; i--) {
             const s = sparkles[i];
@@ -1149,7 +1279,9 @@ export default class GeodeTheme extends BaseTheme {
             }
         }
 
-        ctx.globalCompositeOperation = 'source-over';
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'source-over';
+        }
         ctx.globalAlpha = 1;
     }
 
@@ -1163,7 +1295,10 @@ export default class GeodeTheme extends BaseTheme {
         const whiteSprite = spriteCache['#ffffff'];
         const trailBatchCount = preset.trailBatchCount;
         
-        ctx.globalCompositeOperation = 'screen';
+        // Performance: Skip expensive 'screen' blend on low quality
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'screen';
+        }
         ctx.lineCap = 'round';
 
         for (let i = shootingStars.length - 1; i >= 0; i--) {
@@ -1241,7 +1376,9 @@ export default class GeodeTheme extends BaseTheme {
             }
         }
 
-        ctx.globalCompositeOperation = 'source-over';
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'source-over';
+        }
         ctx.globalAlpha = 1;
         ctx.lineCap = 'butt';
     }
@@ -1251,7 +1388,10 @@ export default class GeodeTheme extends BaseTheme {
         const novas = this.novaFlashes;
         const enableRays = this.activePreset.enableNovaRays;
         
-        ctx.globalCompositeOperation = 'screen';
+        // Performance: Skip expensive 'screen' blend on low quality
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'screen';
+        }
 
         for (let i = novas.length - 1; i >= 0; i--) {
             const nova = novas[i];
@@ -1309,7 +1449,9 @@ export default class GeodeTheme extends BaseTheme {
             }
         }
 
-        ctx.globalCompositeOperation = 'source-over';
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'source-over';
+        }
         ctx.globalAlpha = 1;
     }
 
@@ -1429,6 +1571,12 @@ export default class GeodeTheme extends BaseTheme {
         this.clearAllElements();
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.chromaticAberration = 0;
+        
+        // Clear offscreen canvas
+        if (this.starCtx && this.starCanvas) {
+            this.starCtx.clearRect(0, 0, this.starCanvas.width, this.starCanvas.height);
+        }
+        this.starLayerDirty = true;
 
         // Reset any ripple boost on stars
         this.stars.forEach((star) => {
