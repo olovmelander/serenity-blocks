@@ -66,9 +66,11 @@ export default class WebGLNeonMountains {
             float mountain(vec2 uv, float scale, float speed, float offset, float height) {
                 float x = uv.x * scale + uTime * speed + offset;
                 float n = noise(vec2(x, 0.0));
-                // Add some detail
+                // Add some detail - High Definition
                 n += 0.5 * noise(vec2(x * 2.0, 10.0));
                 n += 0.25 * noise(vec2(x * 4.0, 20.0));
+                n += 0.125 * noise(vec2(x * 8.0, 30.0)); // Fine detail
+                n += 0.06 * noise(vec2(x * 16.0, 40.0)); // Micro detail
                 return n * height;
             }
 
@@ -103,14 +105,14 @@ export default class WebGLNeonMountains {
                 // Multi-layer rim light for highly visible outline
                 float edgeDist = abs(uv.y - h2);
 
-                // Bright core rim (thin, intense)
-                float rimCore = smoothstep(0.003 * widthBoost, 0.0, edgeDist) * 2.0 * glowBoost;
+                // Bright core rim (thin, intense, anti-aliased)
+                float rimCore = smoothstep(0.0025 * widthBoost, 0.0005 * widthBoost, edgeDist) * 2.0 * glowBoost;
 
-                // Medium glow layer
-                float rimGlow1 = smoothstep(0.008 * widthBoost, 0.0, edgeDist) * 1.5 * glowBoost;
+                // Medium glow layer - smoother
+                float rimGlow1 = smoothstep(0.006 * widthBoost, 0.002 * widthBoost, edgeDist) * 1.5 * glowBoost;
 
-                // Wide outer glow
-                float rimGlow2 = smoothstep(0.02 * widthBoost, 0.0, edgeDist) * 0.8 * glowBoost;
+                // Wide outer glow - smoother
+                float rimGlow2 = smoothstep(0.018 * widthBoost, 0.005 * widthBoost, edgeDist) * 0.8 * glowBoost;
 
                 // Combine all rim layers for maximum visibility
                 vec3 rimLight = cNeonPink * (rimCore + rimGlow1 + rimGlow2);

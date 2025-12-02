@@ -45,6 +45,33 @@ export default class WebGLNeonEnvironment {
                 return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
             }
             
+            // Sharp Star Generator
+            float getStar(vec2 uv, float scale, float density) {
+                vec2 grid = uv * scale;
+                vec2 id = floor(grid);
+                vec2 local = fract(grid) - 0.5;
+                
+                float rnd = hash(id);
+                if (rnd > density) return 0.0;
+                
+                // Random position offset
+                vec2 offset = vec2(hash(id * 12.34), hash(id * 56.78)) - 0.5;
+                
+                float d = length(local - offset);
+                
+                // Much sharper, smaller core
+                // 0.05 is the radius, anything outside is black
+                float size = 0.03 + rnd * 0.04; 
+                
+                // Sharp circle
+                float star = smoothstep(size, size - 0.01, d);
+                
+                // Twinkle
+                float twinkle = 0.7 + 0.3 * sin(uTime * (2.0 + rnd * 5.0) + rnd * 100.0);
+                
+                return star * twinkle;
+            }
+
             void main() {
                 vec2 uv = gl_FragCoord.xy / uResolution.xy;
                 
@@ -54,12 +81,22 @@ export default class WebGLNeonEnvironment {
                 float skyGradient = smoothstep(0.0, 1.0, uv.y);
                 color = mix(cSkyBot, cSkyTop, skyGradient);
                 
-                // Stars - More visible with color variation
-                float star = step(0.997, hash(uv * 1.5));
-                float twinkle = 0.6 + 0.4 * sin(uTime * 2.0 + uv.x * 50.0);
-                float starHue = hash(uv * 2.0);
-                vec3 starColor = mix(vec3(1.0), vec3(0.5, 0.8, 1.0), starHue * 0.3); // Slight blue tint
-                color += star * twinkle * starColor * 1.2;
+                // Stars - Crisp and Clean
+                if (uv.y > 0.4) {
+                    float fade = smoothstep(0.4, 0.6, uv.y);
+                    
+                    // Layer 1: Many small crisp stars
+                    float s1 = getStar(uv, 80.0, 0.95); 
+                    
+                    // Layer 2: Medium stars
+                    float s2 = getStar(uv + vec2(0.5), 50.0, 0.98);
+                    
+                    // Layer 3: Few bright stars
+                    float s3 = getStar(uv + vec2(0.2), 30.0, 0.99);
+                    
+                    vec3 starColor = vec3(1.0); // Pure white
+                    color += (s1 * 0.5 + s2 * 0.8 + s3 * 1.0) * starColor * fade;
+                }
 
                 // Minimal Vignette - Only at extreme edges
                 float vig = 1.0 - length(uv - 0.5) * 0.15; // Very minimal effect
