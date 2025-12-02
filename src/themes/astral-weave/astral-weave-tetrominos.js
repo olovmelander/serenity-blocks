@@ -13,16 +13,16 @@
 export const ASTRAL_WEAVE_TETROMINOS = {
     version: 1,
 
-    // Ethereal crystalline palette
+    // Enhanced ethereal crystalline palette
     colors: {
-        I: '#00ffff', // Cyan Starlight
-        O: '#ffd700', // Golden Thread
-        T: '#ff00ff', // Mystic Magenta
-        S: '#00ff7f', // Spring Green Aurora
-        Z: '#ff6b6b', // Coral Nova
-        J: '#1e90ff', // Dodger Blue Void
-        L: '#ffa500', // Orange Comet
-        GARBAGE: '#4b0082', // Indigo/Deep Purple
+        I: '#00f5ff', // Brilliant Cyan Starlight
+        O: '#ffc800', // Radiant Golden Thread
+        T: '#f050ff', // Vivid Mystic Magenta
+        S: '#00ff90', // Bright Aurora Green
+        Z: '#ff5080', // Coral Nova Pink
+        J: '#40a0ff', // Electric Blue Void
+        L: '#ff8020', // Blazing Orange Comet
+        GARBAGE: '#6020a0', // Deep Cosmic Purple
     },
 
     // Crystal render mode

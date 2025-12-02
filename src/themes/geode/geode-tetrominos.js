@@ -1,58 +1,59 @@
 /**
  * Geode Theme - Tetromino Visual Configuration
  *
- * Deep cave palette inspired by amethyst, sapphire, and emerald crystals,
- * complete with glowing rims to match the geode atmosphere.
+ * Warm cosmic starfield palette inspired by fiber-optic lights -
+ * glowing oranges, magentas, teals, and cosmic yellows.
+ * Enhanced glow effects to match the luminous starfield atmosphere.
  */
 
 export const GEODE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#6beaff', // Aquamarine vein
-        O: '#d6a4ff', // Amethyst heart
-        T: '#8b63ff', // Deep geode violet
-        S: '#43f0c0', // Emerald glimmer
-        Z: '#ff81c7', // Rose quartz flare
-        J: '#5c6dff', // Sapphire ridge
-        L: '#99ffe5', // Opal highlight
-        GARBAGE: '#05070d', // Basalt shadow
+        I: '#60ffff', // Cosmic Teal
+        O: '#ffd060', // Solar Gold
+        T: '#e060ff', // Nebula Magenta
+        S: '#60ff90', // Aurora Green
+        Z: '#ff6040', // Ember Orange
+        J: '#ff70ff', // Starlight Pink
+        L: '#ffa050', // Supernova Amber
+        GARBAGE: '#0a0608', // Void Shadow
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 14,
-        glowIntensity: 0.85,
+        glowRadius: 18,
+        glowIntensity: 0.95,
         glowColor: 'auto',
 
         outline: true,
-        outlineWidth: 2.2,
-        outlineColor: '#0a0816',
+        outlineWidth: 2,
+        outlineColor: '#080406',
 
         pulse: true,
-        pulseSpeed: 0.045,
-        pulseAmplitude: 0.28,
+        pulseSpeed: 0.06,
+        pulseAmplitude: 0.35,
 
         shimmer: true,
-        shimmerSpeed: 0.08,
-        shimmerIntensity: 0.24,
+        shimmerSpeed: 0.1,
+        shimmerIntensity: 0.32,
 
         trails: true,
-        trailLength: 0.22,
-        trailOpacity: 0.38,
+        trailLength: 0.3,
+        trailOpacity: 0.45,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 11,
-            glowIntensity: 0.78,
-            outlineWidth: 1.9,
+            glowRadius: 16,
+            glowIntensity: 0.88,
+            outlineWidth: 1.8,
         },
         phaser: {
-            glowRadius: 16,
-            glowIntensity: 0.9,
-            outlineWidth: 2.4,
+            glowRadius: 20,
+            glowIntensity: 0.98,
+            outlineWidth: 2.2,
         },
     },
 };
