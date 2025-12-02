@@ -22284,84 +22284,13 @@ body.phaser-multiplayer-active #p2-canvas {
             #c96db5 100%);
 }
 
-/* Layer 1 - Sky Base with Stars */
-#neon-dusk-sky {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: radial-gradient(ellipse at 50% 35%,
-            rgba(255, 140, 100, 0.4) 0%,
-            rgba(255, 80, 150, 0.3) 15%,
-            rgba(138, 43, 226, 0.2) 30%,
-            transparent 50%);
-    z-index: 1;
-}
+/* All visual elements now rendered via WebGL canvases - no legacy DOM CSS needed */
 
-/* Neon Sun */
-#neon-dusk-sun {
-    position: absolute;
-    top: 25%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 360px;
-    height: 360px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%,
-            #ffeb3b 0%,
-            #ff9800 20%,
-            #ff5722 40%,
-            #e91e63 60%,
-            #9c27b0 100%);
-    box-shadow:
-        0 0 60px rgba(255, 140, 0, 0.8),
-        0 0 120px rgba(255, 80, 150, 0.6),
-        0 0 180px rgba(233, 30, 99, 0.4);
-    z-index: 2;
-    animation: neon-sun-pulse 8s ease-in-out infinite;
-}
+/* =================================================================================
+   🌆 SYNTHWAVE SUNSET THEME - 80s Retrowave City Sunset
+   ================================================================================= */
 
-@keyframes neon-sun-pulse {
-
-    0%,
-    100% {
-        box-shadow:
-            0 0 60px rgba(255, 140, 0, 0.8),
-            0 0 120px rgba(255, 80, 150, 0.6),
-            0 0 180px rgba(233, 30, 99, 0.4);
-        transform: translateX(-50%) scale(1);
-    }
-
-    50% {
-        box-shadow:
-            0 0 80px rgba(255, 140, 0, 0.9),
-            0 0 150px rgba(255, 80, 150, 0.7),
-            0 0 220px rgba(233, 30, 99, 0.5);
-        transform: translateX(-50%) scale(1.02);
-    }
-}
-
-/* Scanlines on Sun - Retro CRT Effect */
-#neon-dusk-scanlines-sun {
-    position: absolute;
-    top: 25%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 360px;
-    height: 360px;
-    border-radius: 50%;
-    background: repeating-linear-gradient(0deg,
-            transparent,
-            transparent 2px,
-            rgba(0, 0, 0, 0.3) 2px,
-            rgba(0, 0, 0, 0.3) 4px);
-    z-index: 3;
-    pointer-events: none;
-}
-
-/* Twinkling Stars */
-#neon-dusk-stars {
+#synthwave-sunset-theme {
     position: absolute;
     top: 0;
     left: 0;
@@ -22583,102 +22512,6 @@ body.phaser-multiplayer-active #p2-canvas {
             105% 100%);
     border-top: 2px solid rgba(255, 0, 255, 0.7);
     box-shadow: 0 -3px 40px rgba(255, 0, 255, 0.6);
-}
-
-/* Infinite Neon Grid Floor */
-#neon-dusk-grid {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 70%;
-    background:
-        linear-gradient(rgba(255, 0, 255, 0.3) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 0, 255, 0.3) 1px, transparent 1px),
-        linear-gradient(to top,
-            rgba(139, 77, 139, 0.9) 0%,
-            rgba(139, 77, 139, 0.85) 20%,
-            rgba(139, 77, 139, 0.6) 40%,
-            rgba(139, 77, 139, 0.3) 60%,
-            transparent 100%);
-    background-size: 50px 50px, 50px 50px, 100% 100%;
-    background-position: 0 0, 0 0, 0 0;
-    transform-origin: bottom center;
-    transform: perspective(500px) rotateX(60deg);
-    z-index: 10;
-    animation: neon-grid-scroll 10s linear infinite;
-}
-
-@keyframes neon-grid-scroll {
-    0% {
-        background-position: 0 0, 0 0, 0 0;
-    }
-
-    100% {
-        background-position: 0 50px, 0 50px, 0 0;
-    }
-}
-
-/* Grid Overlay - Adds depth with brighter lines */
-#neon-dusk-grid-overlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 70%;
-    transform-origin: bottom center;
-    transform: perspective(500px) rotateX(60deg);
-    z-index: 11;
-}
-
-#neon-dusk-grid-overlay::before,
-#neon-dusk-grid-overlay::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-}
-
-#neon-dusk-grid-overlay::before {
-    background: linear-gradient(to top,
-            rgba(255, 0, 255, 0.4) 0%,
-            rgba(255, 0, 255, 0.2) 30%,
-            transparent 100%);
-    animation: neon-grid-fade-out 30s ease-in-out infinite;
-}
-
-#neon-dusk-grid-overlay::after {
-    background: linear-gradient(to top,
-            rgba(0, 200, 255, 0.4) 0%,
-            rgba(0, 200, 255, 0.2) 30%,
-            transparent 100%);
-    animation: neon-grid-fade-in 30s ease-in-out infinite;
-}
-
-@keyframes neon-grid-fade-out {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0;
-    }
-}
-
-@keyframes neon-grid-fade-in {
-
-    0%,
-    100% {
-        opacity: 0;
-    }
-
-    50% {
-        opacity: 1;
-    }
 }
 
 /* Floating Neon Polygons / Pixelated Sparks */
