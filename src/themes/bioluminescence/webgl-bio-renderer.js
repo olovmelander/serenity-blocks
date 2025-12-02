@@ -96,7 +96,7 @@ export default class WebGLBioRenderer {
                 float pulse = sin(phase) * 0.3 + 0.7; // Pulse between 0.4 and 1.0
                 
                 // Calculate final opacity
-                float boost = 1.0 + uGlobalPulse * 0.3;
+                float boost = 1.0 + uGlobalPulse * 0.8; // Stronger global pulse influence
                 vOpacity = min(aOpacity.x * pulse * boost + aOpacity.y, 1.0);
                 vColor = aColor;
                 
@@ -311,6 +311,9 @@ export default class WebGLBioRenderer {
 
         gl.useProgram(this.program);
 
+        // Use Additive blending for glowing particles
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
         // Set uniforms
         gl.uniform2f(this.uniforms.resolution, this.canvas.width, this.canvas.height);
         gl.uniform1f(this.uniforms.time, time);
@@ -345,6 +348,253 @@ export default class WebGLBioRenderer {
         gl.drawArrays(gl.POINTS, 0, this.particleCount);
     }
 
+    /**
+     * Initialize texture shader program
+     */
+    initTextureShaders() {
+        const gl = this.gl;
+
+        const vertexShaderSource = `
+            precision highp float;
+            
+            attribute vec2 aPosition;
+            attribute float aSize;
+            attribute vec4 aUV;           // x, y, width, height
+            attribute float aOpacity;
+            attribute float aRotation;
+            attribute float aSway;        // Sway amplitude
+            
+            uniform vec2 uResolution;
+            uniform float uTime;
+            
+            varying vec4 vUV;
+            varying float vOpacity;
+            varying float vRotation;
+            varying float vSway;
+            varying float vY; // For phase offset
+            
+            void main() {
+                vec2 clipSpace = (aPosition / uResolution) * 2.0 - 1.0;
+                clipSpace.y *= -1.0;
+                
+                gl_Position = vec4(clipSpace, 0.0, 1.0);
+                gl_PointSize = aSize;
+                
+                vUV = aUV;
+                vOpacity = aOpacity;
+                vRotation = aRotation;
+                vSway = aSway;
+                vY = aPosition.y; // Use Y position for sway phase
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            
+            uniform sampler2D uTexture;
+            uniform float uTime;
+            
+            varying vec4 vUV;
+            varying float vOpacity;
+            varying float vRotation;
+            varying float vSway;
+            varying float vY;
+            
+            void main() {
+                vec2 coord = gl_PointCoord;
+                
+                // Wind/Sway effect (Shear)
+                // We want the bottom (y=1.0) to be fixed, and top (y=0.0) to sway
+                // Note: gl_PointCoord y is 0 at top, 1 at bottom usually
+                
+                if (vSway > 0.0) {
+                    float swayAmount = sin(uTime * 2.0 + vY * 0.01) * vSway * 0.2;
+                    // Apply shear: x += sway * (1.0 - y) -> moves top more
+                    // But we want bottom fixed. If y=1 is bottom, (1-y) is 0 at bottom.
+                    coord.x += swayAmount * (1.0 - coord.y);
+                }
+                
+                // Center for rotation
+                vec2 centered = coord - 0.5;
+                
+                // Rotate
+                float s = sin(-vRotation);
+                float c = cos(-vRotation);
+                mat2 rot = mat2(c, -s, s, c);
+                centered = rot * centered;
+                
+                coord = centered + 0.5;
+                
+                // Map to atlas UV
+                vec2 uv = vUV.xy + coord * vUV.zw;
+                
+                vec4 texColor = texture2D(uTexture, uv);
+                
+                // Discard if out of sprite bounds or transparent
+                if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0 || texColor.a < 0.01) discard;
+                
+                gl_FragColor = texColor * vOpacity;
+            }
+        `;
+
+        // Compile shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+            console.error('Texture VS error:', gl.getShaderInfoLog(vertexShader));
+            return false;
+        }
+
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+            console.error('Texture FS error:', gl.getShaderInfoLog(fragmentShader));
+            return false;
+        }
+
+        this.textureProgram = gl.createProgram();
+        gl.attachShader(this.textureProgram, vertexShader);
+        gl.attachShader(this.textureProgram, fragmentShader);
+        gl.linkProgram(this.textureProgram);
+
+        if (!gl.getProgramParameter(this.textureProgram, gl.LINK_STATUS)) {
+            console.error('Texture Program link error:', gl.getProgramInfoLog(this.textureProgram));
+            return false;
+        }
+
+        // Locations
+        this.texAttribs = {
+            position: gl.getAttribLocation(this.textureProgram, 'aPosition'),
+            size: gl.getAttribLocation(this.textureProgram, 'aSize'),
+            uv: gl.getAttribLocation(this.textureProgram, 'aUV'),
+            opacity: gl.getAttribLocation(this.textureProgram, 'aOpacity'),
+            rotation: gl.getAttribLocation(this.textureProgram, 'aRotation'),
+            sway: gl.getAttribLocation(this.textureProgram, 'aSway'),
+        };
+
+        this.texUniforms = {
+            resolution: gl.getUniformLocation(this.textureProgram, 'uResolution'),
+            time: gl.getUniformLocation(this.textureProgram, 'uTime'),
+            texture: gl.getUniformLocation(this.textureProgram, 'uTexture'),
+        };
+
+        // Buffers
+        this.texBuffers = {
+            position: gl.createBuffer(),
+            size: gl.createBuffer(),
+            uv: gl.createBuffer(),
+            opacity: gl.createBuffer(),
+            rotation: gl.createBuffer(),
+            sway: gl.createBuffer(),
+        };
+
+        return true;
+    }
+
+    uploadTexture(image) {
+        const gl = this.gl;
+        if (!gl) return;
+
+        if (!this.texture) {
+            this.texture = gl.createTexture();
+        }
+
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    }
+
+    renderTexturedParticles(particles, time) {
+        const gl = this.gl;
+        if (!gl || !this.textureProgram || particles.length === 0) return;
+
+        const count = particles.length;
+
+        // Prepare data arrays
+        // Note: For production, reuse allocated Float32Arrays instead of creating new ones
+        const positions = new Float32Array(count * 2);
+        const sizes = new Float32Array(count);
+        const uvs = new Float32Array(count * 4);
+        const opacities = new Float32Array(count);
+        const rotations = new Float32Array(count);
+        const sways = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const p = particles[i];
+            const i2 = i * 2;
+            const i4 = i * 4;
+
+            positions[i2] = p.x;
+            positions[i2 + 1] = p.y;
+            sizes[i] = p.size || p.width; // Use width/size as point size
+
+            // UVs (x, y, w, h)
+            if (p.uv) {
+                uvs[i4] = p.uv.x;
+                uvs[i4 + 1] = p.uv.y;
+                uvs[i4 + 2] = p.uv.w;
+                uvs[i4 + 3] = p.uv.h;
+            }
+
+            opacities[i] = p.opacity !== undefined ? p.opacity : 1.0;
+            rotations[i] = p.rotation || 0;
+            sways[i] = p.sway || 0;
+        }
+
+        gl.useProgram(this.textureProgram);
+
+        // Use Normal blending for textured sprites (so they look solid)
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        gl.uniform2f(this.texUniforms.resolution, this.canvas.width, this.canvas.height);
+        gl.uniform1f(this.texUniforms.time, time); // Pass time for sway
+        gl.uniform1i(this.texUniforms.texture, 0);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+
+        // Bind and upload buffers
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texBuffers.position);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.texAttribs.position);
+        gl.vertexAttribPointer(this.texAttribs.position, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texBuffers.size);
+        gl.bufferData(gl.ARRAY_BUFFER, sizes, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.texAttribs.size);
+        gl.vertexAttribPointer(this.texAttribs.size, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texBuffers.uv);
+        gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.texAttribs.uv);
+        gl.vertexAttribPointer(this.texAttribs.uv, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texBuffers.opacity);
+        gl.bufferData(gl.ARRAY_BUFFER, opacities, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.texAttribs.opacity);
+        gl.vertexAttribPointer(this.texAttribs.opacity, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texBuffers.rotation);
+        gl.bufferData(gl.ARRAY_BUFFER, rotations, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.texAttribs.rotation);
+        gl.vertexAttribPointer(this.texAttribs.rotation, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.texBuffers.sway);
+        gl.bufferData(gl.ARRAY_BUFFER, sways, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(this.texAttribs.sway);
+        gl.vertexAttribPointer(this.texAttribs.sway, 1, gl.FLOAT, false, 0, 0);
+
+        gl.drawArrays(gl.POINTS, 0, count);
+
+        // Restore additive blending for other particles
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    }
+
     destroy() {
         const gl = this.gl;
         if (!gl) return;
@@ -353,9 +603,15 @@ export default class WebGLBioRenderer {
             if (buffer) gl.deleteBuffer(buffer);
         });
 
-        if (this.program) {
-            gl.deleteProgram(this.program);
+        if (this.texBuffers) {
+            Object.values(this.texBuffers).forEach(buffer => {
+                if (buffer) gl.deleteBuffer(buffer);
+            });
         }
+
+        if (this.program) gl.deleteProgram(this.program);
+        if (this.textureProgram) gl.deleteProgram(this.textureProgram);
+        if (this.texture) gl.deleteTexture(this.texture);
 
         this.gl = null;
     }

@@ -123,7 +123,7 @@ export default class VoltageStormTheme extends BaseTheme {
         });
 
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (this.isActive) this.onPieceLock();
+            if (this.isActive) this.onPieceLock(data);
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
@@ -202,16 +202,66 @@ export default class VoltageStormTheme extends BaseTheme {
         }
     }
 
-    onPieceLock() {
+    onPieceLock(data) {
         if (!this.simulator) return;
-        // Small spark
-        const x = Math.random();
-        const y = Math.random();
-        const color = this.getRandomElectricColor();
-        this.simulator.splat(x, y, (Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500, color);
 
-        // Add subtle electric sparks
-        this.triggerSparkPulses(2, 0.6);
+        const piece = data?.piece;
+        if (!piece || !piece.shape || !piece.shape.length) {
+            // Fallback to simple spark
+            const x = Math.random();
+            const y = Math.random();
+            const color = this.getRandomElectricColor();
+            this.simulator.splat(x, y, (Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500, color);
+            this.triggerSparkPulses(2, 0.6);
+            return;
+        }
+
+        // Create electric sparks in the shape of the tetromino
+        // Random position within the central area
+        const baseX = 0.3 + Math.random() * 0.4;
+        const baseY = 0.3 + Math.random() * 0.4;
+        const blockSize = 0.05;
+
+        // Iterate through the shape matrix
+        for (let row = 0; row < piece.shape.length; row++) {
+            for (let col = 0; col < piece.shape[row].length; col++) {
+                if (piece.shape[row][col]) {
+                    const x = baseX + (col - 1.5) * blockSize;
+                    const y = baseY + (row - 1.5) * blockSize;
+
+                    // Delay each block slightly for a "charging" effect
+                    setTimeout(() => {
+                        this.createElectricBurst(x, y);
+                    }, (row * piece.shape[row].length + col) * 30);
+                }
+            }
+        }
+
+        // Add subtle electric sparks globally
+        this.triggerSparkPulses(3, 0.8);
+    }
+
+    createElectricBurst(x, y) {
+        if (!this.simulator) return;
+
+        const color = this.getRandomElectricColor();
+
+        // Main burst - high force for electric feel
+        const force = 4000;
+
+        // Create a few "sparks" flying out from this point
+        for (let i = 0; i < 3; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dx = Math.cos(angle) * force;
+            const dy = Math.sin(angle) * force;
+
+            this.simulator.splat(x, y, dx, dy, color);
+        }
+
+        // White hot center flash
+        setTimeout(() => {
+            this.simulator.splat(x, y, 0, 0, { r: 1.0, g: 1.0, b: 1.0 });
+        }, 40);
     }
 
     addInitialStorm() {
