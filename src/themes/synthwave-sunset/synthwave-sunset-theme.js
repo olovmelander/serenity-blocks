@@ -2,6 +2,7 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import WebGLSynthwaveRenderer from './webgl-synthwave-renderer.js';
+import WebGLSynthwaveEffects from './webgl-synthwave-effects.js';
 
 export default class SynthwaveSunsetTheme extends BaseTheme {
     constructor() {
@@ -27,7 +28,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Combo effects
         this.effectsCanvas = null;
-        this.effectsCtx = null;
+        this.effectsCanvas = null;
+        this.webglEffects = null;
         this.horizonBursts = [];
         this.retroStreaks = [];
         this.retroParticles = [];
@@ -705,10 +707,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
 
             this.effectsCanvas = canvas;
-            this.effectsCtx = canvas.getContext('2d', { alpha: true });
+            this.webglEffects = new WebGLSynthwaveEffects(canvas);
 
-            if (!this.effectsCtx) {
-                console.error('Synthwave Sunset: Failed to get 2D context for effects canvas');
+            if (!this.webglEffects.init()) {
+                console.error('Synthwave Sunset: Failed to init WebGL effects renderer');
+                // Fallback or just return? 
+                // Since user asked for WebGL, we assume it works or we fail gracefully.
                 return;
             }
 
@@ -717,8 +721,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 if (!this.effectsCanvas || !themeContainer) return;
                 try {
                     const rect = themeContainer.getBoundingClientRect();
-                    this.effectsCanvas.width = rect.width;
-                    this.effectsCanvas.height = rect.height;
+                    this.webglEffects.resize(rect.width, rect.height);
                 } catch (error) {
                     console.error('Synthwave Sunset: Error resizing effects canvas:', error);
                 }
@@ -1082,104 +1085,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     renderEffects() {
-        if (!this.effectsCanvas || !this.effectsCtx) return;
+        if (!this.webglEffects) return;
 
         try {
-            const ctx = this.effectsCtx;
-            const { width } = this.effectsCanvas;
-            const { height } = this.effectsCanvas;
-            const { useShadowBlur } = this.activePreset;
-
-            // Clear canvas
-            ctx.clearRect(0, 0, width, height);
-
-            // Render retro streaks - optimized (no save/restore)
-            this.retroStreaks.forEach((streak) => {
-                const alpha = streak.life * 0.7;
-
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle = streak.color;
-
-                // Only use shadow blur if quality allows
-                if (useShadowBlur) {
-                    ctx.shadowBlur = 20;
-                    ctx.shadowColor = streak.color;
-                }
-
-                ctx.fillRect(streak.x, streak.y, streak.width, streak.height);
-
-                // Reset shadow blur
-                if (useShadowBlur) {
-                    ctx.shadowBlur = 0;
-                }
-            });
-
-            // Reset alpha
-            ctx.globalAlpha = 1;
-
-            // Render horizon bursts - optimized batch rendering
-            this.horizonBursts.forEach((burst) => {
-                // Set shadow blur once per burst if quality allows
-                if (useShadowBlur) {
-                    ctx.shadowBlur = 12;
-                    ctx.shadowColor = burst.color;
-                }
-
-                ctx.fillStyle = burst.color;
-
-                burst.particles.forEach((p) => {
-                    const alpha = p.life * burst.life;
-
-                    ctx.globalAlpha = alpha;
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
-                // Reset shadow blur after burst
-                if (useShadowBlur) {
-                    ctx.shadowBlur = 0;
-                }
-            });
-
-            // Reset alpha
-            ctx.globalAlpha = 1;
-
-            // Render retro particles - optimized
-            this.retroParticles.forEach((p) => {
-                const alpha = p.life;
-
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle = p.color;
-
-                // Only use shadow blur if quality allows
-                if (useShadowBlur) {
-                    ctx.shadowBlur = p.glow;
-                    ctx.shadowColor = p.color;
-                }
-
-                ctx.translate(p.x, p.y);
-                ctx.rotate(p.rotation);
-
-                if (p.isSquare) {
-                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-                } else {
-                    ctx.beginPath();
-                    ctx.arc(0, 0, p.size, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-
-                // Reset transform
-                ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-                // Reset shadow blur
-                if (useShadowBlur) {
-                    ctx.shadowBlur = 0;
-                }
-            });
-
-            // Final reset
-            ctx.globalAlpha = 1;
+            this.webglEffects.render(
+                this.retroStreaks,
+                this.horizonBursts,
+                this.retroParticles
+            );
         } catch (error) {
             console.error('Synthwave Sunset: Error rendering effects:', error);
         }
