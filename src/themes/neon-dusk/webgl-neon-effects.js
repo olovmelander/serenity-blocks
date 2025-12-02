@@ -236,7 +236,7 @@ export default class WebGLNeonEffects {
             for (const p of ambientParticles) {
                 const rgb = this.hexToRgb(p.color);
                 // Render as small squares (Type 2) for digital look
-                addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life * 1.0, 0, 2);
+                addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life * 1.0, p.rotation || 0, 2);
             }
         }
 
@@ -245,7 +245,7 @@ export default class WebGLNeonEffects {
             for (const p of bursts) {
                 const rgb = this.hexToRgb(p.color);
                 const type = p.type !== undefined ? p.type : 0;
-                addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life, 0, type);
+                addQuad(p.x, p.y, p.size * 2, p.size * 2, rgb.r, rgb.g, rgb.b, p.life, p.rotation || 0, type);
             }
         }
 
