@@ -793,12 +793,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             [1.0, 0.5, 0.0]  // Neon Orange
         ];
 
-        // Spawn 10 tetromino shapes
-        const count = 10;
+        // Spawn 6 tetromino shapes
+        const count = 6;
 
         for (let i = 0; i < count; i++) {
-            // Pick a spot slightly ahead of the camera
-            const zOffset = 5 + Math.random() * 30;
+            // Pick a spot closer to the camera (foreground only)
+            // zOffset represents distance from camera. 
+            // Previous range was 5-35. New range 2-17 keeps it in the "near" half.
+            const zOffset = 2 + Math.random() * 15;
             const gridZ = Math.floor(currentZ + zOffset);
             const gridX = Math.floor(Math.random() * 20 - 10); // Center spread
 
