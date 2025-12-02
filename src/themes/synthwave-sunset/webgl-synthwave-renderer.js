@@ -113,8 +113,8 @@ export default class WebGLSynthwaveRenderer {
                 uniform float uGlowIntensity;
                 uniform float uBendFactor;
                 
-                uniform vec3 uHighlights[24];
-                uniform vec3 uHighlightColors[24];
+                uniform vec3 uHighlights[60];
+                uniform vec3 uHighlightColors[60];
 
                 float random(vec2 st) {
                     return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -171,7 +171,7 @@ export default class WebGLSynthwaveRenderer {
                     vec3 activeHighlightColor = vec3(0.0);
                     float maxIntensity = 0.0;
                     
-                    for (int i = 0; i < 24; i++) {
+                    for (int i = 0; i < 60; i++) {
                         if (uHighlights[i].z > 0.01) {
                             if (abs(cellID.x - uHighlights[i].x) < 0.1 && abs(cellID.y - uHighlights[i].y) < 0.1) {
                                 if (uHighlights[i].z > maxIntensity) {
@@ -297,11 +297,11 @@ export default class WebGLSynthwaveRenderer {
 
         // Pass highlights
         // Expects array of {x, y, intensity, color: [r,g,b]} objects
-        const highlights = new Float32Array(72); // 24 * 3
-        const highlightColors = new Float32Array(72); // 24 * 3
+        const highlights = new Float32Array(180); // 60 * 3
+        const highlightColors = new Float32Array(180); // 60 * 3
 
         if (gridParams.highlights && gridParams.highlights.length > 0) {
-            for (let i = 0; i < Math.min(gridParams.highlights.length, 24); i++) {
+            for (let i = 0; i < Math.min(gridParams.highlights.length, 60); i++) {
                 const h = gridParams.highlights[i];
                 highlights[i * 3] = h.x;
                 highlights[i * 3 + 1] = h.y;

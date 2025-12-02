@@ -754,7 +754,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
-
     handlePieceLock() {
         // Pick random grid cells to highlight
         // x: -10 to 10 (center is 0)
@@ -766,8 +765,23 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Current 'Z' position of the camera/grid offset
         const currentZ = this.animationTime * webglSpeed;
 
-        // Spawn 10 highlights
-        const count = 10;
+        // Tetromino shapes (relative coordinates)
+        const shapes = [
+            // I
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
+            // J
+            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            // L
+            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            // O
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            // S
+            [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            // T
+            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            // Z
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }]
+        ];
 
         // Neon colors palette
         const neonColors = [
@@ -779,28 +793,47 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             [1.0, 0.5, 0.0]  // Neon Orange
         ];
 
+        // Spawn 10 tetromino shapes
+        const count = 10;
+
         for (let i = 0; i < count; i++) {
             // Pick a spot slightly ahead of the camera
-            // Spread them out a bit more
-            const zOffset = 5 + Math.random() * 25;
+            const zOffset = 5 + Math.random() * 30;
             const gridZ = Math.floor(currentZ + zOffset);
+            const gridX = Math.floor(Math.random() * 20 - 10); // Center spread
 
-            const gridX = Math.floor(Math.random() * 24 - 12); // Wider spread
-
+            // Pick random shape and color
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
             const color = neonColors[Math.floor(Math.random() * neonColors.length)];
 
-            this.gridHighlights.push({
-                x: gridX,
-                y: gridZ,
-                intensity: 2.0 + Math.random(), // Varying brightness
-                life: 1.0,
-                decay: 0.03 + Math.random() * 0.04, // Varying decay
-                color: color
-            });
+            // Random rotation (0, 90, 180, 270)
+            const rotation = Math.floor(Math.random() * 4);
+
+            // Add all 4 blocks of the tetromino
+            for (const block of shape) {
+                let rx = block.x;
+                let ry = block.y;
+
+                // Rotate
+                for (let r = 0; r < rotation; r++) {
+                    const temp = rx;
+                    rx = -ry;
+                    ry = temp;
+                }
+
+                this.gridHighlights.push({
+                    x: gridX + rx,
+                    y: gridZ + ry,
+                    intensity: 2.0 + Math.random(), // Varying brightness
+                    life: 1.0,
+                    decay: 0.03 + Math.random() * 0.04, // Varying decay
+                    color: color
+                });
+            }
         }
 
         // Add a small pulse to the grid
-        this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.2);
+        this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.25);
     }
 
     handleLineClear(data) {
