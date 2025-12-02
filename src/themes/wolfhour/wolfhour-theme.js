@@ -1405,6 +1405,33 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     drawSparkles() {
+        if (!this.useWebGL || !this.webglRenderer) {
+            // Fallback to Canvas2D if WebGL is disabled
+            for (let i = this.sparkles.length - 1; i >= 0; i--) {
+                const p = this.sparkles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.opacity -= p.decay;
+
+                if (p.opacity <= 0) {
+                    this.sparkles.splice(i, 1);
+                    continue;
+                }
+
+                this.effectCtx.fillStyle = `hsla(${p.hue}, 20%, 90%, ${p.opacity})`;
+                this.effectCtx.beginPath();
+                this.effectCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.effectCtx.fill();
+
+                // Cross shape for sparkle
+                this.effectCtx.fillRect(p.x - p.size * 2, p.y - p.size * 0.5, p.size * 4, p.size);
+                this.effectCtx.fillRect(p.x - p.size * 0.5, p.y - p.size * 2, p.size, p.size * 4);
+            }
+            return;
+        }
+
+        // WebGL Rendering
+        const particlesToRender = [];
         for (let i = this.sparkles.length - 1; i >= 0; i--) {
             const p = this.sparkles[i];
             p.x += p.vx;
@@ -1416,20 +1443,66 @@ export default class WolfhourTheme extends BaseTheme {
                 continue;
             }
 
-            this.effectCtx.fillStyle = `hsla(${p.hue}, 20%, 90%, ${p.opacity})`;
-            this.effectCtx.beginPath();
-            this.effectCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            this.effectCtx.fill();
+            particlesToRender.push({
+                x: p.x,
+                y: p.y,
+                size: p.size * 2, // Scale up for visibility
+                hue: p.hue,
+                brightness: 90,
+                opacity: p.opacity
+            });
+        }
 
-            // Cross shape for sparkle
-            this.effectCtx.fillRect(p.x - p.size * 2, p.y - p.size * 0.5, p.size * 4, p.size);
-            this.effectCtx.fillRect(p.x - p.size * 0.5, p.y - p.size * 2, p.size, p.size * 4);
+        if (particlesToRender.length > 0) {
+            this.webglRenderer.renderParticles(particlesToRender);
         }
     }
 
     drawStarBursts() {
         if (this.starBursts.length === 0) return;
 
+        // If WebGL is active, collect all burst particles and render them
+        if (this.useWebGL && this.webglRenderer) {
+            const particlesToRender = [];
+
+            for (let i = this.starBursts.length - 1; i >= 0; i--) {
+                const burst = this.starBursts[i];
+                burst.life -= burst.decay;
+
+                if (burst.life <= 0) {
+                    this.starBursts.splice(i, 1);
+                    continue;
+                }
+
+                const opacity = burst.life * 0.9;
+                const currentLife = burst.life;
+
+                for (let j = 0; j < burst.particles.length; j++) {
+                    const p = burst.particles[j];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.12;
+
+                    const currentSize = p.size * currentLife;
+
+                    particlesToRender.push({
+                        x: p.x,
+                        y: p.y,
+                        size: currentSize * 2,
+                        hue: p.hue,
+                        brightness: p.brightness,
+                        opacity: opacity
+                    });
+                }
+            }
+
+            if (particlesToRender.length > 0) {
+                this.webglRenderer.renderParticles(particlesToRender);
+            }
+            return;
+        }
+
+        // Canvas2D Fallback
         const useShadows = this.activeQuality.useShadows && this.averageFrameTime < 20; // Disable shadows if < 50 FPS
         const useComplexGradients = this.activeQuality.useComplexGradients && this.averageFrameTime < 25;
 
