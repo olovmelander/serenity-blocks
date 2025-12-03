@@ -1,6 +1,17 @@
+/**
+ * @fileoverview Geode Theme - Luminous Fiber-Optic Starfield
+ * 
+ * An immersive cosmic cavern featuring:
+ * - Dense starfield spanning the entire screen
+ * - Fiber-optic strands hanging and floating throughout
+ * - Dynamic sparkle bursts on gameplay events
+ * - Warm cosmic color palette (oranges, reds, magentas)
+ */
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { GEODE_TETROMINOS } from './geode-tetrominos.js';
+import WebGLStarRenderer from './webgl-star-renderer.js';
 
 export default class GeodeTheme extends BaseTheme {
     constructor() {
@@ -8,140 +19,415 @@ export default class GeodeTheme extends BaseTheme {
         this.canvas = null;
         this.ctx = null;
         this.animationTime = 0;
+        this.frameCount = 0;
+        this.lastFrameTime = 0;
 
-        // Cave structure elements
-        this.crystalClusters = [];
-        this.caveWalls = [];
-        this.stalactites = [];
-        this.stalagmites = [];
-        this.caveFloor = [];
-        this.rockFormations = [];
-
-        // Atmospheric elements
-        this.dustParticles = [];
-        this.lightRays = [];
-        this.ambientGlows = [];
-        this.mist = [];
+        // Scene elements
+        this.stars = [];
+        this.strands = [];
+        this.ambientParticles = [];
 
         // Gameplay reactive elements
         this.energyPulses = [];
-        this.crystalResonance = [];
-        this.floorRipples = [];
+        this.sparkles = [];
+        this.shootingStars = [];
+        this.novaFlashes = [];
+        this.starRipples = [];
 
         // Visual state
         this.comboMultiplier = 1.0;
         this.pulseIntensity = 0.0;
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.chromaticAberration = 0;
-        this.crystalShakeIntensity = 0;
-
-        // Performance limits (default to Medium)
-        this.wallCount = 6;
-        this.stalactiteCount = 8;
-        this.stalagmiteCount = 12;
-        this.mistCount = 10;
-        this.crystalClusterCount = 12;
-        this.ambientGlowCount = 8;
-        this.maxDustParticles = 40;
-        this.maxLightRays = 8;
-        this.maxEnergyPulses = 15;
+        this.ambientPulse = 0;
 
         // Cached gradients
         this.cachedGradients = {};
+        this.spriteCache = {};
+        
+        // Performance: Spatial grid for star ripple checks
+        this.starGrid = null;
+        this.gridCellSize = 80;
+        this.gridCols = 0;
+        this.gridRows = 0;
+        
+        // Performance: Pre-computed sin/cos lookup table
+        this.sinTable = new Float32Array(360);
+        this.cosTable = new Float32Array(360);
+        for (let i = 0; i < 360; i++) {
+            const rad = (i / 360) * Math.PI * 2;
+            this.sinTable[i] = Math.sin(rad);
+            this.cosTable[i] = Math.cos(rad);
+        }
+        
+        // Performance: Reusable typed arrays for batch operations
+        this.tempVec2 = new Float32Array(2);
+        
+        // Performance: Offscreen canvas for static star layer
+        this.starCanvas = null;
+        this.starCtx = null;
+        this.starLayerDirty = true; // Flag to trigger star canvas redraw
+        this.lastStarRedrawTime = 0;
+        this.starRedrawInterval = 50; // Redraw stars every 50ms max (20 fps for star twinkle)
+        this.starCanvasScale = 0.6;   // Render stars at reduced resolution (0.4-1.0)
+        this.useSimpleComposite = false; // Skip 'screen' blend mode for perf
+        
+        // Performance: Track active ripple regions for partial redraws
+        this.activeRippleRegions = [];
+        
+        // Performance: Frame skip counters
+        this.particleUpdateFrame = 0;
+        
+        // Performance: Pre-rendered brightness sprites (avoids globalAlpha changes)
+        this.brightnessSpriteCache = {};
+        
+        // Performance: WebGL star renderer (GPU-accelerated)
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.useWebGL = true; // Try to use WebGL, fall back to Canvas2D
 
         // Event tracking
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
 
+        // Color palette - warm cosmic spectrum
+        this.starColors = [
+            '#ff6030', '#ff8040', '#ffa050', '#ffb060', '#ffc070', // oranges
+            '#ff5040', '#ff4050', '#ff3060', '#ff2070', // reds
+            '#ffd060', '#ffe080', '#fff0a0', // yellows
+            '#ff70ff', '#ff60e0', '#e060ff', '#c060ff', '#a050ff', // magentas/purples
+            '#60ffff', '#50e0ff', '#40c0ff', // teals (accent)
+            '#60ff90', '#50ffa0', // greens (accent)
+        ];
+
         this.qualityPresets = {
             Minimal: {
-                wallCount: 2,
-                stalactiteCount: 2,
-                stalagmiteCount: 4,
-                mistCount: 4,
-                crystalClusterCount: 4,
-                ambientGlowCount: 3,
-                maxDustParticles: 15,
-                maxLightRays: 2,
-                maxEnergyPulses: 5,
+                // Element counts
+                starCount: 20000,
+                strandCount: 0,
+                ambientParticleCount: 30,
+                maxEnergyPulses: 3,
+                maxSparkles: 30,
+                maxShootingStars: 4,
+                maxNovaFlashes: 2,
+                maxStarRipples: 2,
+                // Rendering quality
+                enableStarGlow: false,
+                starGlowSizeThreshold: 3,
+                starBrightnessThreshold: 0.1,
+                enableSparkleCore: false,
+                maxTrailLength: 8,
+                trailBatchCount: 2,
+                // Performance: Star layer settings
+                starRedrawInterval: 100,  // 10 fps for star layer
+                particleFrameSkip: 2,     // Update particles every 2nd frame
+                starCanvasScale: 0.4,     // Render stars at 40% resolution (huge perf gain!)
+                useSimpleComposite: true, // Skip expensive 'screen' blend mode
+                useWebGL: true,           // WebGL is beneficial even at low star counts
+                // Effect toggles
+                enableChromaticAberration: false,
+                enableScreenShake: true,
+                enableVignette: false,
+                enableNovaRays: false,
+                enableAmbientPulseGlow: false,
+                // Burst counts
+                shootingStarsPerLock: 2,
+                sparklesPerLock: 2,
+                sparklesPerLineClear: 3,
+                burstPointsPerLineClear: 4,
             },
             Low: {
-                wallCount: 4,
-                stalactiteCount: 4,
-                stalagmiteCount: 6,
-                mistCount: 6,
-                crystalClusterCount: 7,
-                ambientGlowCount: 5,
-                maxDustParticles: 25,
-                maxLightRays: 4,
-                maxEnergyPulses: 8,
+                // Element counts
+                starCount: 40000,
+                strandCount: 0,
+                ambientParticleCount: 50,
+                maxEnergyPulses: 5,
+                maxSparkles: 50,
+                maxShootingStars: 6,
+                maxNovaFlashes: 3,
+                maxStarRipples: 3,
+                // Rendering quality
+                enableStarGlow: false,
+                starGlowSizeThreshold: 2.5,
+                starBrightnessThreshold: 0.08,
+                enableSparkleCore: true,
+                maxTrailLength: 10,
+                trailBatchCount: 2,
+                // Performance
+                starRedrawInterval: 80,   // 12.5 fps for star layer
+                particleFrameSkip: 2,
+                starCanvasScale: 0.5,     // Render stars at 50% resolution
+                useSimpleComposite: true,
+                useWebGL: true,
+                // Effect toggles
+                enableChromaticAberration: false,
+                enableScreenShake: true,
+                enableVignette: true,
+                enableNovaRays: false,
+                enableAmbientPulseGlow: true,
+                // Burst counts
+                shootingStarsPerLock: 2,
+                sparklesPerLock: 3,
+                sparklesPerLineClear: 4,
+                burstPointsPerLineClear: 6,
             },
             Medium: {
-                wallCount: 6,
-                stalactiteCount: 8,
-                stalagmiteCount: 12,
-                mistCount: 10,
-                crystalClusterCount: 12,
-                ambientGlowCount: 8,
-                maxDustParticles: 40,
-                maxLightRays: 8,
-                maxEnergyPulses: 15,
+                // Element counts
+                starCount: 50000,
+                strandCount: 0,
+                ambientParticleCount: 60,
+                maxEnergyPulses: 8,
+                maxSparkles: 80,
+                maxShootingStars: 10,
+                maxNovaFlashes: 4,
+                maxStarRipples: 4,
+                // Rendering quality
+                enableStarGlow: true,
+                starGlowSizeThreshold: 2.5,
+                starBrightnessThreshold: 0.05,
+                enableSparkleCore: true,
+                maxTrailLength: 12,
+                trailBatchCount: 3,
+                // Performance
+                starRedrawInterval: 50,   // 20 fps for star layer
+                particleFrameSkip: 1,     // Update every frame
+                starCanvasScale: 0.6,     // Render stars at 60% resolution
+                useSimpleComposite: false,
+                useWebGL: true,
+                // Effect toggles
+                enableChromaticAberration: true,
+                enableScreenShake: true,
+                enableVignette: true,
+                enableNovaRays: true,
+                enableAmbientPulseGlow: true,
+                // Burst counts
+                shootingStarsPerLock: 3,
+                sparklesPerLock: 4,
+                sparklesPerLineClear: 5,
+                burstPointsPerLineClear: 8,
             },
             High: {
-                wallCount: 8,
-                stalactiteCount: 12,
-                stalagmiteCount: 16,
-                mistCount: 14,
-                crystalClusterCount: 16,
-                ambientGlowCount: 10,
-                maxDustParticles: 55,
-                maxLightRays: 12,
-                maxEnergyPulses: 22,
+                // Element counts
+                starCount: 70000,
+                strandCount: 0,
+                ambientParticleCount: 70,
+                maxEnergyPulses: 12,
+                maxSparkles: 120,
+                maxShootingStars: 15,
+                maxNovaFlashes: 5,
+                maxStarRipples: 5,
+                // Rendering quality
+                enableStarGlow: true,
+                starGlowSizeThreshold: 2,
+                starBrightnessThreshold: 0.05,
+                enableSparkleCore: true,
+                maxTrailLength: 15,
+                trailBatchCount: 3,
+                // Performance
+                starRedrawInterval: 40,   // 25 fps for star layer
+                particleFrameSkip: 1,
+                starCanvasScale: 0.75,    // Render stars at 75% resolution
+                useSimpleComposite: false,
+                useWebGL: true,
+                // Effect toggles
+                enableChromaticAberration: true,
+                enableScreenShake: true,
+                enableVignette: true,
+                enableNovaRays: true,
+                enableAmbientPulseGlow: true,
+                // Burst counts
+                shootingStarsPerLock: 3,
+                sparklesPerLock: 5,
+                sparklesPerLineClear: 6,
+                burstPointsPerLineClear: 10,
             },
             Ultra: {
-                wallCount: 10,
-                stalactiteCount: 16,
-                stalagmiteCount: 20,
-                mistCount: 18,
-                crystalClusterCount: 22,
-                ambientGlowCount: 14,
-                maxDustParticles: 70,
-                maxLightRays: 16,
-                maxEnergyPulses: 30,
+                // Element counts
+                starCount: 80000,
+                strandCount: 0,
+                ambientParticleCount: 80,
+                maxEnergyPulses: 16,
+                maxSparkles: 160,
+                maxShootingStars: 20,
+                maxNovaFlashes: 6,
+                maxStarRipples: 6,
+                // Rendering quality
+                enableStarGlow: true,
+                starGlowSizeThreshold: 1.8,
+                starBrightnessThreshold: 0.04,
+                enableSparkleCore: true,
+                maxTrailLength: 18,
+                trailBatchCount: 3,
+                // Performance
+                starRedrawInterval: 33,   // 30 fps for star layer
+                particleFrameSkip: 1,
+                starCanvasScale: 0.85,    // Render stars at 85% resolution
+                useSimpleComposite: false,
+                useWebGL: true,
+                // Effect toggles
+                enableChromaticAberration: true,
+                enableScreenShake: true,
+                enableVignette: true,
+                enableNovaRays: true,
+                enableAmbientPulseGlow: true,
+                // Burst counts
+                shootingStarsPerLock: 4,
+                sparklesPerLock: 6,
+                sparklesPerLineClear: 7,
+                burstPointsPerLineClear: 12,
             },
             Extreme: {
-                wallCount: 14,
-                stalactiteCount: 22,
-                stalagmiteCount: 27,
-                mistCount: 24,
-                crystalClusterCount: 30,
-                ambientGlowCount: 19,
-                maxDustParticles: 95,
-                maxLightRays: 22,
-                maxEnergyPulses: 40,
+                // Element counts
+                starCount: 100000,
+                strandCount: 0,
+                ambientParticleCount: 100,
+                maxEnergyPulses: 20,
+                maxSparkles: 200,
+                maxShootingStars: 25,
+                maxNovaFlashes: 8,
+                maxStarRipples: 8,
+                // Rendering quality
+                enableStarGlow: true,
+                starGlowSizeThreshold: 1.5,
+                starBrightnessThreshold: 0.03,
+                enableSparkleCore: true,
+                maxTrailLength: 20,
+                trailBatchCount: 4,
+                // Performance
+                starRedrawInterval: 25,   // 40 fps for star layer
+                particleFrameSkip: 1,
+                starCanvasScale: 1.0,     // Full resolution for Extreme quality
+                useSimpleComposite: false,
+                useWebGL: true,
+                // Effect toggles
+                enableChromaticAberration: true,
+                enableScreenShake: true,
+                enableVignette: true,
+                enableNovaRays: true,
+                enableAmbientPulseGlow: true,
+                // Burst counts
+                shootingStarsPerLock: 4,
+                sparklesPerLock: 7,
+                sparklesPerLineClear: 8,
+                burstPointsPerLineClear: 14,
             },
         };
+
         this.currentQuality = 'Medium';
         this.activePreset = this.qualityPresets.Medium;
-        this.applyQualityPreset('Medium');
     }
 
     applyQualityPreset(quality) {
         const preset = this.qualityPresets[quality] ?? this.qualityPresets.Medium;
         this.currentQuality = quality in this.qualityPresets ? quality : 'Medium';
         this.activePreset = preset;
-
-        this.wallCount = preset.wallCount;
-        this.stalactiteCount = preset.stalactiteCount;
-        this.stalagmiteCount = preset.stalagmiteCount;
-        this.mistCount = preset.mistCount;
-        this.crystalClusterCount = preset.crystalClusterCount;
-        this.ambientGlowCount = preset.ambientGlowCount;
-        this.maxDustParticles = preset.maxDustParticles;
-        this.maxLightRays = preset.maxLightRays;
-        this.maxEnergyPulses = preset.maxEnergyPulses;
-
-        console.log(`💎 Geode: Applying ${this.currentQuality} quality preset`);
+        // Apply performance settings from preset
+        this.starRedrawInterval = preset.starRedrawInterval || 50;
+        this.starCanvasScale = preset.starCanvasScale || 0.6;
+        this.useSimpleComposite = preset.useSimpleComposite || false;
+        // Note: useWebGL is checked in initWebGLRenderer and respected there
+        console.log(`💎 Geode: Applied ${this.currentQuality} quality`);
+    }
+    
+    /**
+     * Initialize WebGL star renderer for GPU-accelerated star rendering
+     * Falls back to Canvas2D if WebGL is not available or disabled in preset
+     */
+    initWebGLRenderer() {
+        if (!this.canvas) return;
+        
+        // Check if preset allows WebGL
+        if (this.activePreset.useWebGL === false) {
+            this.useWebGL = false;
+            console.log('💎 Geode: WebGL disabled by quality preset, using Canvas2D');
+            return;
+        }
+        
+        try {
+            // Create a separate canvas for WebGL stars (layered on top of background)
+            this.webglCanvas = document.createElement('canvas');
+            this.webglCanvas.width = this.canvas.width;
+            this.webglCanvas.height = this.canvas.height;
+            
+            // Initialize WebGL renderer
+            this.webglRenderer = new WebGLStarRenderer(this.webglCanvas);
+            
+            if (this.webglRenderer.init()) {
+                // Set color palette
+                this.webglRenderer.setColorPalette(this.starColors);
+                // Allocate space for stars
+                this.webglRenderer.allocateStars(this.activePreset.starCount);
+                this.useWebGL = true;
+                console.log(`💎 Geode: WebGL star renderer active (${this.activePreset.starCount} stars in 1 draw call!)`);
+            } else {
+                this.useWebGL = false;
+                this.webglRenderer = null;
+                this.webglCanvas = null;
+                console.log('💎 Geode: Falling back to Canvas2D star rendering');
+            }
+        } catch (e) {
+            console.warn('💎 Geode: WebGL init failed, using Canvas2D:', e);
+            this.useWebGL = false;
+            this.webglRenderer = null;
+            this.webglCanvas = null;
+        }
+    }
+    
+    // Performance: Fast sin/cos using lookup table
+    fastSin(phase) {
+        const index = ((phase * 57.2957795) % 360 + 360) % 360 | 0; // radians to degrees, ensure positive
+        return this.sinTable[index];
+    }
+    
+    fastCos(phase) {
+        const index = ((phase * 57.2957795) % 360 + 360) % 360 | 0;
+        return this.cosTable[index];
+    }
+    
+    // Performance: Build spatial grid for efficient star lookups
+    buildStarGrid() {
+        if (!this.canvas) return;
+        
+        this.gridCols = Math.ceil(this.canvas.width / this.gridCellSize);
+        this.gridRows = Math.ceil(this.canvas.height / this.gridCellSize);
+        this.starGrid = new Array(this.gridCols * this.gridRows);
+        
+        for (let i = 0; i < this.starGrid.length; i++) {
+            this.starGrid[i] = [];
+        }
+        
+        // Assign stars to grid cells
+        for (let i = 0; i < this.stars.length; i++) {
+            const star = this.stars[i];
+            const cellX = Math.floor(star.x / this.gridCellSize);
+            const cellY = Math.floor(star.y / this.gridCellSize);
+            if (cellX >= 0 && cellX < this.gridCols && cellY >= 0 && cellY < this.gridRows) {
+                this.starGrid[cellY * this.gridCols + cellX].push(star);
+            }
+        }
+    }
+    
+    // Performance: Get stars in cells that intersect a circle
+    getStarsInRadius(x, y, radius) {
+        if (!this.starGrid) return this.stars;
+        
+        const minCellX = Math.max(0, Math.floor((x - radius) / this.gridCellSize));
+        const maxCellX = Math.min(this.gridCols - 1, Math.floor((x + radius) / this.gridCellSize));
+        const minCellY = Math.max(0, Math.floor((y - radius) / this.gridCellSize));
+        const maxCellY = Math.min(this.gridRows - 1, Math.floor((y + radius) / this.gridCellSize));
+        
+        const result = [];
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+            for (let cx = minCellX; cx <= maxCellX; cx++) {
+                const cell = this.starGrid[cy * this.gridCols + cx];
+                if (cell) {
+                    for (let i = 0; i < cell.length; i++) {
+                        result.push(cell[i]);
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     getGraphicsQuality() {
@@ -159,57 +445,76 @@ export default class GeodeTheme extends BaseTheme {
         if (!this.canvas && themeContainer) {
             this.canvas = document.createElement('canvas');
             this.canvas.id = 'geode-canvas';
-            this.canvas.style.position = 'absolute';
-            this.canvas.style.top = '0';
-            this.canvas.style.left = '0';
-            this.canvas.style.width = '100%';
-            this.canvas.style.height = '100%';
-            this.canvas.style.pointerEvents = 'none';
-            this.canvas.style.zIndex = '1';
+            Object.assign(this.canvas.style, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: '1',
+                // Performance: GPU acceleration hints
+                willChange: 'contents',
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden',
+            });
             themeContainer.appendChild(this.canvas);
         }
 
         if (!this.canvas) return;
 
-        this.ctx = this.canvas.getContext('2d', {
-            alpha: false,
-            desynchronized: true,
-        });
-
-        // CRITICAL: Set canvas size BEFORE creating elements
+        this.ctx = this.canvas.getContext('2d', { alpha: false });
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        
+        // Performance: Try to initialize WebGL star renderer (GPU-accelerated)
+        this.initWebGLRenderer();
+        
+        // Fallback: Create offscreen canvas for star layer at reduced resolution
+        if (!this.useWebGL) {
+            const scale = this.starCanvasScale;
+            this.starCanvas = document.createElement('canvas');
+            this.starCanvas.width = Math.ceil(this.canvas.width * scale);
+            this.starCanvas.height = Math.ceil(this.canvas.height * scale);
+            this.starCtx = this.starCanvas.getContext('2d', { alpha: true });
+        }
+        
+        // Enable image smoothing for nice upscaling
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'low'; // 'low' is faster than 'high'
+        this.starLayerDirty = true;
 
-        // Clear all existing scene elements to prevent duplicates
-        this.crystalClusters = [];
-        this.caveWalls = [];
-        this.stalactites = [];
-        this.stalagmites = [];
-        this.caveFloor = [];
-        this.rockFormations = [];
-        this.dustParticles = [];
-        this.lightRays = [];
-        this.ambientGlows = [];
-        this.mist = [];
-        this.energyPulses = [];
-        this.crystalResonance = [];
-        this.floorRipples = [];
-
+        this.clearAllElements();
         this.cacheGradients();
+        this.cacheStarSprites();
 
-        // Initialize scene elements in order (back to front)
-        this.createCaveStructure();
-        this.createCaveFloor();
-        this.createRockFormations();
-        this.createStalagmites();
-        this.createCrystalClusters();
-        this.createMist();
-        this.createDustParticles();
-        this.createLightRays();
-        this.createAmbientGlows();
+        // Initialize scene elements
+        this.createStars();
+        this.createStrands();
+        this.createAmbientParticles();
+        
+        // Performance: Build spatial grid for star ripple lookups
+        this.buildStarGrid();
+        
+        // Upload stars to WebGL if available
+        if (this.useWebGL && this.webglRenderer) {
+            this.webglRenderer.uploadStars(this.stars);
+        }
 
         this.setupEventListeners();
+        this.lastFrameTime = performance.now();
         this.animate();
+    }
+
+    clearAllElements() {
+        this.stars = [];
+        this.strands = [];
+        this.ambientParticles = [];
+        this.energyPulses = [];
+        this.sparkles = [];
+        this.shootingStars = [];
+        this.novaFlashes = [];
+        this.starRipples = [];
     }
 
     cacheGradients() {
@@ -218,302 +523,140 @@ export default class GeodeTheme extends BaseTheme {
         const w = this.canvas.width;
         const h = this.canvas.height;
 
-        // Deep cave background gradient - more natural with multiple centers
-        const bgGradient = this.ctx.createRadialGradient(
-            w * 0.4,
-            h * 0.3,
-            0,
-            w / 2,
-            h / 2,
-            Math.max(w, h) * 0.7,
-        );
-        bgGradient.addColorStop(0, 'hsla(270, 35%, 10%, 1)');
-        bgGradient.addColorStop(0.3, 'hsla(265, 30%, 8%, 1)');
-        bgGradient.addColorStop(0.6, 'hsla(275, 25%, 6%, 1)');
-        bgGradient.addColorStop(1, 'hsla(280, 20%, 4%, 1)');
+        // Deep space background with warm undertones
+        const bgGradient = this.ctx.createRadialGradient(w * 0.5, h * 0.3, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.9);
+        bgGradient.addColorStop(0, '#0c0408');
+        bgGradient.addColorStop(0.3, '#080306');
+        bgGradient.addColorStop(0.6, '#050204');
+        bgGradient.addColorStop(1, '#020102');
         this.cachedGradients.background = bgGradient;
+
+        // Vignette
+        const vignette = this.ctx.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w * 0.9);
+        vignette.addColorStop(0, 'transparent');
+        vignette.addColorStop(0.6, 'rgba(0, 0, 0, 0.15)');
+        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+        this.cachedGradients.vignette = vignette;
     }
 
-    createCaveStructure() {
-        // Create cave walls for depth and structure
-        const wallCount = this.wallCount ?? 6;
-        for (let i = 0; i < wallCount; i++) {
-            const side = i < wallCount / 2 ? 'left' : 'right';
-            const x = side === 'left' ? Math.random() * this.canvas.width * 0.15 : this.canvas.width * 0.85 + Math.random() * this.canvas.width * 0.15;
-            const y = Math.random() * this.canvas.height;
-            const width = Math.random() * 100 + 80;
-            const height = Math.random() * 200 + 150;
+    cacheStarSprites() {
+        this.spriteCache = {};
+        // Create a sprite for each color
+        // Base size 32x32 to allow for scaling up without blur
+        const size = 32;
+        const center = size / 2;
+        const radius = size / 2 - 2;
 
-            this.caveWalls.push({
-                x,
-                y,
-                baseX: x,
-                baseY: y,
-                width,
-                height,
-                side,
-                roughness: Math.random() * 20 + 10,
-                baseRoughness: Math.random() * 20 + 10,
-                hue: Math.random() * 20 + 260, // Purple-blue range
-                // Slow breathing movement
-                breathPhase: Math.random() * Math.PI * 2,
-                breathSpeed: Math.random() * 0.0003 + 0.0001,
-                breathAmplitude: Math.random() * 8 + 3,
+        // Cache colored stars
+        this.starColors.forEach(color => {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(center, center, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            this.spriteCache[color] = canvas;
+        });
+
+        // Cache white star for cores/intense effects
+        const whiteCanvas = document.createElement('canvas');
+        whiteCanvas.width = size;
+        whiteCanvas.height = size;
+        const wCtx = whiteCanvas.getContext('2d');
+        wCtx.fillStyle = '#ffffff';
+        wCtx.beginPath();
+        wCtx.arc(center, center, radius, 0, Math.PI * 2);
+        wCtx.fill();
+        this.spriteCache['#ffffff'] = whiteCanvas;
+    }
+
+    createStars() {
+        const preset = this.activePreset;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        // Dense starfield across entire screen
+        // More density at top, gradually thinning toward bottom
+        for (let i = 0; i < preset.starCount; i++) {
+            // Bias toward top but cover whole screen
+            const yBias = Math.pow(Math.random(), 1.8);
+            const y = yBias * h;
+
+            // Size varies - smaller stars more common
+            const sizeBias = Math.pow(Math.random(), 2);
+            const size = 0.3 + sizeBias * 3;
+
+            this.stars.push({
+                x: Math.random() * w,
+                y: y,
+                size: size,
+                color: this.starColors[(Math.random() * this.starColors.length) | 0],
+                brightness: 0.2 + Math.random() * 0.8,
+                twinklePhase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.015 + Math.random() * 0.045,
+                // Slight drift for parallax feel
+                driftX: (Math.random() - 0.5) * 0.05,
+                driftY: (Math.random() - 0.5) * 0.02,
+                rippleBoost: 0, // Initialize to 0 for faster checks
             });
         }
+    }
 
-        // Create stalactites from ceiling
-        const stalactiteCount = this.stalactiteCount ?? 8;
-        for (let i = 0; i < stalactiteCount; i++) {
-            const x = Math.random() * this.canvas.width;
-            const length = Math.random() * 150 + 80;
-            const width = Math.random() * 40 + 20;
+    createStrands() {
+        const preset = this.activePreset;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
 
-            this.stalactites.push({
-                x,
+        // Fiber-optic strands distributed across screen
+        for (let i = 0; i < preset.strandCount; i++) {
+            const x = Math.random() * w;
+            // Start from various heights, mostly from top half
+            const startY = Math.random() * h * 0.6;
+            // Longer strands
+            const length = 80 + Math.random() * 350;
+            const color = this.starColors[Math.floor(Math.random() * this.starColors.length)];
+
+            this.strands.push({
+                x: x,
                 baseX: x,
-                y: 0,
-                length,
-                width,
-                hue: Math.random() * 30 + 260,
-                glowIntensity: Math.random() * 0.3 + 0.5,
-                // Gentle swaying movement
+                startY: startY,
+                length: length,
+                width: 0.4 + Math.random() * 1.8,
+                color: color,
                 swayPhase: Math.random() * Math.PI * 2,
-                swaySpeed: Math.random() * 0.0004 + 0.0002,
-                swayAmplitude: Math.random() * 12 + 5,
-            });
-        }
-    }
-
-    createCaveFloor() {
-        // Create a natural cave floor with subtle texture
-        const floorSegments = 15;
-        for (let i = 0; i < floorSegments; i++) {
-            const x = (this.canvas.width / floorSegments) * i;
-            const y = this.canvas.height * 0.85 + Math.random() * 40 - 20;
-
-            this.caveFloor.push({
-                x,
-                y,
-                baseY: y,
-                width: this.canvas.width / floorSegments + 5,
-                roughness: Math.random() * 15 + 10,
-                hue: Math.random() * 15 + 265,
-                // Subtle floor breathing
-                breathPhase: Math.random() * Math.PI * 2,
-                breathSpeed: Math.random() * 0.0002 + 0.00005,
-                breathAmplitude: Math.random() * 3 + 1,
-            });
-        }
-    }
-
-    createRockFormations() {
-        // Add natural rock formations on floor and walls
-        const rockCount = 20;
-        for (let i = 0; i < rockCount; i++) {
-            const isFloor = Math.random() > 0.3;
-            const x = Math.random() * this.canvas.width;
-            const y = isFloor
-                ? this.canvas.height * 0.8 + Math.random() * this.canvas.height * 0.15
-                : Math.random() * this.canvas.height * 0.7;
-
-            const size = Math.random() * 60 + 30;
-            const aspectRatio = Math.random() * 0.4 + 0.6;
-
-            this.rockFormations.push({
-                x,
-                y,
-                baseX: x,
-                baseY: y,
-                width: size,
-                height: size * aspectRatio,
-                hue: Math.random() * 20 + 260,
-                roughness: Math.random() * 10 + 5,
-                isFloor,
-                // Very subtle movement
-                floatPhase: Math.random() * Math.PI * 2,
-                floatSpeed: Math.random() * 0.0001 + 0.00005,
-                floatAmplitude: Math.random() * 2 + 1,
-            });
-        }
-    }
-
-    createStalagmites() {
-        // Create stalagmites (growing up from floor) to match stalactites
-        const stalagmiteCount = this.stalagmiteCount ?? 12;
-        for (let i = 0; i < stalagmiteCount; i++) {
-            const x = Math.random() * this.canvas.width;
-            const height = Math.random() * 120 + 60;
-            const width = Math.random() * 35 + 15;
-
-            this.stalagmites.push({
-                x,
-                baseX: x,
-                y: this.canvas.height,
-                height,
-                width,
-                hue: Math.random() * 30 + 260,
-                glowIntensity: Math.random() * 0.3 + 0.5,
-                // Subtle swaying
-                swayPhase: Math.random() * Math.PI * 2,
-                swaySpeed: Math.random() * 0.0003 + 0.0001,
-                swayAmplitude: Math.random() * 8 + 3,
-            });
-        }
-    }
-
-    createMist() {
-        // Add low-lying mist for atmosphere
-        const mistCount = this.mistCount ?? 10;
-        for (let i = 0; i < mistCount; i++) {
-            this.mist.push({
-                x: Math.random() * this.canvas.width,
-                y: this.canvas.height * 0.7 + Math.random() * this.canvas.height * 0.25,
-                width: Math.random() * 300 + 150,
-                height: Math.random() * 80 + 40,
-                opacity: Math.random() * 0.15 + 0.05,
-                hue: Math.random() * 30 + 270,
-                // Slow drifting
-                driftPhase: Math.random() * Math.PI * 2,
-                driftSpeed: Math.random() * 0.0002 + 0.00008,
-                driftAmplitude: Math.random() * 40 + 20,
-                baseX: 0, // Will be set on first update
-            });
-        }
-    }
-
-    createCrystalClusters() {
-        // Create natural crystal formations - fewer but more impressive clusters
-        const clusterCount = this.crystalClusterCount ?? 12;
-
-        const crystalPalettes = [
-            {
-                hues: [280, 285, 275, 290], saturation: 65, lightness: [40, 50, 35], name: 'amethyst',
-            },
-            {
-                hues: [190, 195, 185, 200], saturation: 70, lightness: [45, 55, 40], name: 'aquamarine',
-            },
-            {
-                hues: [340, 345, 335, 350], saturation: 60, lightness: [42, 52, 38], name: 'rose-quartz',
-            },
-            {
-                hues: [270, 275, 265, 280], saturation: 55, lightness: [35, 45, 30], name: 'deep-purple',
-            },
-            {
-                hues: [180, 185, 175, 190], saturation: 65, lightness: [38, 48, 33], name: 'cyan-crystal',
-            },
-            {
-                hues: [160, 165, 155, 170], saturation: 75, lightness: [40, 50, 35], name: 'emerald',
-            },
-        ];
-
-        for (let i = 0; i < clusterCount; i++) {
-            const palette = crystalPalettes[Math.floor(Math.random() * crystalPalettes.length)];
-            const x = Math.random() * this.canvas.width;
-            const y = Math.random() * this.canvas.height;
-            const size = Math.random() * 120 + 80;
-            const crystalCount = Math.floor(Math.random() * 5) + 3;
-
-            const crystals = [];
-            for (let j = 0; j < crystalCount; j++) {
-                const angle = (Math.random() * Math.PI) - Math.PI / 2; // Point upward mostly
-                const height = Math.random() * size * 0.8 + size * 0.4;
-                const width = height * (Math.random() * 0.2 + 0.15);
-                const offsetX = (Math.random() - 0.5) * size * 0.6;
-                const offsetY = (Math.random() - 0.5) * size * 0.3;
-                const hue = palette.hues[Math.floor(Math.random() * palette.hues.length)];
-
-                crystals.push({
-                    offsetX,
-                    offsetY,
-                    baseOffsetX: offsetX,
-                    baseOffsetY: offsetY,
-                    width,
-                    height,
-                    angle,
-                    baseAngle: angle,
-                    hue,
-                    saturation: palette.saturation,
-                    glowIntensity: Math.random() * 0.5 + 0.7,
-                    // Individual crystal subtle movement
-                    wobblePhase: Math.random() * Math.PI * 2,
-                    wobbleSpeed: Math.random() * 0.0004 + 0.0001,
-                    wobbleAmount: Math.random() * 0.03 + 0.01,
-                });
-            }
-
-            this.crystalClusters.push({
-                x,
-                y,
-                baseX: x, // Store original position
-                baseY: y,
-                size,
-                crystals,
-                palette: palette.name,
+                swaySpeed: 0.0008 + Math.random() * 0.002,
+                swayAmount: 3 + Math.random() * 12,
+                brightness: 0.3 + Math.random() * 0.7,
                 pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.02 + 0.01,
-                baseGlow: Math.random() * 0.3 + 0.6,
-                glowIntensity: 1.0,
-                // Movement properties
-                floatPhase: Math.random() * Math.PI * 2,
-                floatSpeedX: Math.random() * 0.0005 + 0.0002,
-                floatSpeedY: Math.random() * 0.0008 + 0.0003,
-                floatAmplitudeX: Math.random() * 15 + 5,
-                floatAmplitudeY: Math.random() * 20 + 8,
-                rotationPhase: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.0003,
-                rotationAmount: (Math.random() - 0.5) * 0.08,
+                pulseSpeed: 0.008 + Math.random() * 0.02,
+                // Tip properties
+                tipSize: 1 + Math.random() * 2.5,
+                tipBrightness: 0.6 + Math.random() * 0.4,
             });
         }
     }
 
-    createDustParticles() {
-        for (let i = 0; i < this.maxDustParticles; i++) {
-            this.dustParticles.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                vx: (Math.random() - 0.5) * 0.3,
-                vy: (Math.random() - 0.5) * 0.3,
-                size: Math.random() * 2.5 + 0.5,
-                opacity: Math.random() * 0.4 + 0.2,
-                hue: Math.random() * 60 + 260,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.03 + 0.01,
-            });
-        }
-    }
+    createAmbientParticles() {
+        const preset = this.activePreset;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
 
-    createLightRays() {
-        for (let i = 0; i < this.maxLightRays; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const length = Math.random() * this.canvas.height * 0.8 + this.canvas.height * 0.3;
-
-            this.lightRays.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                angle,
-                length,
-                width: Math.random() * 2 + 0.5,
-                hue: Math.random() * 60 + 260,
-                opacity: Math.random() * 0.2 + 0.1,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.02 + 0.005,
-                rotationSpeed: (Math.random() - 0.5) * 0.001,
-            });
-        }
-    }
-
-    createAmbientGlows() {
-        const glowCount = this.ambientGlowCount ?? 8;
-        for (let i = 0; i < glowCount; i++) {
-            this.ambientGlows.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                radius: Math.random() * 200 + 100,
-                hue: Math.random() * 60 + 260,
-                opacity: Math.random() * 0.15 + 0.05,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.015 + 0.005,
+        // Floating particles drifting slowly
+        for (let i = 0; i < preset.ambientParticleCount; i++) {
+            this.ambientParticles.push({
+                x: Math.random() * w,
+                y: Math.random() * h,
+                vx: (Math.random() - 0.5) * 0.4,
+                vy: -0.15 - Math.random() * 0.3,
+                size: 0.8 + Math.random() * 2.5,
+                color: this.starColors[Math.floor(Math.random() * this.starColors.length)],
+                opacity: 0.3 + Math.random() * 0.5,
+                twinklePhase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.02 + Math.random() * 0.04,
             });
         }
     }
@@ -521,26 +664,138 @@ export default class GeodeTheme extends BaseTheme {
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.handleLineClear(data);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.handleCombo(data);
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
+                this.handlePieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
 
         window.addEventListener('resize', () => {
             if (!this.canvas) return;
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
+            
+            // Resize WebGL canvas if using WebGL
+            if (this.useWebGL && this.webglRenderer) {
+                this.webglRenderer.resize(this.canvas.width, this.canvas.height);
+            } else if (this.starCanvas) {
+                // Resize Canvas2D star canvas at scaled resolution
+                const scale = this.starCanvasScale;
+                this.starCanvas.width = Math.ceil(this.canvas.width * scale);
+                this.starCanvas.height = Math.ceil(this.canvas.height * scale);
+                this.starLayerDirty = true;
+            }
             this.cacheGradients();
+            // Rebuild spatial grid for new dimensions
+            this.buildStarGrid();
         });
+    }
+
+    handlePieceLock() {
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.1, 0.4);
+
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const preset = this.activePreset;
+
+        // === SHOOTING STARS ===
+        // Spawn shooting stars streaking across the screen (uses preset count)
+        const shootingCount = preset.shootingStarsPerLock + Math.floor(Math.random() * 2);
+        const maxTrailLen = preset.maxTrailLength;
+        for (let i = 0; i < shootingCount && this.shootingStars.length < preset.maxShootingStars; i++) {
+            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
+            // Random direction - mostly diagonal
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 8 + Math.random() * 12;
+
+            // Start from edges or random positions
+            let startX, startY;
+            if (Math.random() > 0.5) {
+                // Start from top/sides
+                startX = Math.random() * w;
+                startY = Math.random() * h * 0.4;
+            } else {
+                // Start from random position
+                startX = Math.random() * w;
+                startY = Math.random() * h * 0.6;
+            }
+
+            this.shootingStars.push({
+                x: startX,
+                y: startY,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 2 + Math.random() * 3,
+                color: color,
+                life: 1.0,
+                decay: 0.025 + Math.random() * 0.015,
+                trail: [], // Store trail positions
+                maxTrailLength: maxTrailLen + ((Math.random() * 4) | 0), // Uses preset with small variance
+            });
+        }
+
+        // === NOVA FLASH ===
+        // Create a bright flash that illuminates nearby stars
+        if (Math.random() > 0.3 && this.novaFlashes.length < preset.maxNovaFlashes) {
+            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
+            this.novaFlashes.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.1 + Math.random() * h * 0.5,
+                radius: 0,
+                maxRadius: 80 + Math.random() * 60,
+                brightness: 1.0,
+                decay: 0.04 + Math.random() * 0.02,
+                color: color,
+            });
+        }
+
+        // === STAR RIPPLE ===
+        // A wave that makes stars pulse brighter as it passes
+        if (Math.random() > 0.5 && this.starRipples.length < preset.maxStarRipples) {
+            this.starRipples.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.1 + Math.random() * h * 0.5,
+                radius: 0,
+                speed: 6 + Math.random() * 4,
+                width: 40 + Math.random() * 30, // Width of the ripple ring
+                life: 1.0,
+                decay: 0.012,
+            });
+        }
+
+        // Spawn some sparkles too (uses preset count)
+        const sparkleCount = preset.sparklesPerLock + ((Math.random() * 2) | 0);
+        for (let i = 0; i < sparkleCount; i++) {
+            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1 + Math.random() * 2;
+
+            this.sparkles.push({
+                x: w * 0.3 + Math.random() * w * 0.4,
+                y: h * 0.2 + Math.random() * h * 0.4,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 1.5 + Math.random() * 2,
+                color: color,
+                life: 1.0,
+                decay: 0.02 + Math.random() * 0.015,
+            });
+        }
     }
 
     handleLineClear(eventPayload) {
@@ -568,39 +823,51 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     onLineClear(lineCount, comboCount = 0) {
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3 * lineCount, 1.5);
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3 * lineCount, 2.0);
 
-        // Make crystals glow and shake
-        this.crystalClusters.forEach((cluster) => {
-            cluster.glowIntensity = Math.min(cluster.glowIntensity + 0.4, 2.5);
-        });
+        const preset = this.activePreset;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
 
-        // Add crystal shake based on combo
-        this.crystalShakeIntensity = Math.min(this.crystalShakeIntensity + 0.15 * (1 + comboCount * 0.3), 1.0);
+        // Spawn sparkle bursts from multiple points (uses preset counts)
+        const burstCount = Math.min(lineCount * 2 + 2, preset.burstPointsPerLineClear);
+        const sparklesPerBurst = preset.sparklesPerLineClear + lineCount;
+        
+        for (let c = 0; c < burstCount; c++) {
+            const x = Math.random() * w;
+            const y = Math.random() * h * 0.7;
+            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
 
-        // Create energy pulse effect
-        if (this.energyPulses.length < this.maxEnergyPulses) {
-            const sourceCluster = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
-            if (sourceCluster) {
-                this.energyPulses.push({
-                    x: sourceCluster.x,
-                    y: sourceCluster.y,
-                    radius: 10,
-                    maxRadius: 200 + lineCount * 50,
-                    opacity: 0.6,
-                    hue: sourceCluster.crystals[0].hue,
-                    growthRate: 3 + lineCount * 0.5,
+            for (let i = 0; i < sparklesPerBurst; i++) {
+                const angle = (i / sparklesPerBurst) * Math.PI * 2 + Math.random() * 0.3;
+                const speed = 1.5 + Math.random() * 3;
+
+                this.sparkles.push({
+                    x: x + (Math.random() - 0.5) * 30,
+                    y: y + (Math.random() - 0.5) * 30,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 2 + Math.random() * 2.5,
+                    color: color,
+                    life: 1.0,
+                    decay: 0.015 + Math.random() * 0.01,
                 });
+            }
+        }
 
-                // Create floor ripple from crystal
-                this.floorRipples.push({
-                    x: sourceCluster.x,
-                    y: this.canvas.height * 0.85,
-                    radius: 0,
-                    maxRadius: 300 + lineCount * 80,
+        // Energy pulses
+        const pulseCount = Math.min(lineCount, 3);
+        for (let p = 0; p < pulseCount; p++) {
+            if (this.energyPulses.length < preset.maxEnergyPulses) {
+                const color = this.starColors[(Math.random() * this.starColors.length) | 0];
+                this.energyPulses.push({
+                    x: Math.random() * w,
+                    y: Math.random() * h * 0.6,
+                    radius: 10,
+                    maxRadius: 100 + lineCount * 40,
                     opacity: 0.5,
-                    hue: sourceCluster.crystals[0].hue,
-                    growthRate: 4 + lineCount * 0.8,
+                    color: color,
+                    growthRate: 3 + lineCount * 0.5,
                 });
             }
         }
@@ -608,40 +875,44 @@ export default class GeodeTheme extends BaseTheme {
 
     onCombo(comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.5 * comboCount, 2.0);
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.4 * comboCount, 2.0);
 
-        // Screen shake for high combos - INTENSE for 5+
-        if (comboCount >= 5) {
-            this.screenShake.intensity = Math.min(6 + (comboCount - 5) * 2, 14);
-            // Chromatic aberration for top-level combos (7+)
-            if (comboCount >= 7) {
-                this.chromaticAberration = Math.min(4 + (comboCount - 7) * 1.2, 10);
+        const preset = this.activePreset;
+
+        // Screen shake for high combos (uses preset toggle)
+        if (preset.enableScreenShake) {
+            if (comboCount >= 5) {
+                this.screenShake.intensity = Math.min(5 + (comboCount - 5) * 1.8, 12);
+                // Chromatic aberration for very high combos (uses preset toggle)
+                if (preset.enableChromaticAberration && comboCount >= 7) {
+                    this.chromaticAberration = Math.min(3 + (comboCount - 7) * 1, 8);
+                }
+            } else if (comboCount >= 3) {
+                this.screenShake.intensity = Math.min(2 + comboCount * 0.6, 5);
             }
-        } else if (comboCount >= 3) {
-            this.screenShake.intensity = Math.min(2 + comboCount * 0.6, 5);
         }
 
-        // Create crystal resonance between nearby crystals
+        // Big sparkle burst for combos
         if (comboCount >= 2) {
-            for (let i = 0; i < Math.min(comboCount, 3); i++) {
-                if (this.crystalResonance.length < 10) {
-                    const cluster1 = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
-                    const cluster2 = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
+            const burstCount = Math.min(comboCount * 4, 30);
+            const cx = this.canvas.width / 2;
+            const cy = this.canvas.height / 2;
 
-                    if (cluster1 && cluster2 && cluster1 !== cluster2) {
-                        this.crystalResonance.push({
-                            x1: cluster1.x,
-                            y1: cluster1.y,
-                            x2: cluster2.x,
-                            y2: cluster2.y,
-                            opacity: 0.6 + comboCount * 0.05,
-                            hue: cluster1.crystals[0].hue,
-                            life: 1.0,
-                            decay: 0.015,
-                            width: 2 + comboCount * 0.3,
-                        });
-                    }
-                }
+            for (let i = 0; i < burstCount; i++) {
+                const angle = (i / burstCount) * Math.PI * 2;
+                const speed = 2 + Math.random() * 4;
+                const color = this.starColors[(Math.random() * this.starColors.length) | 0];
+
+                this.sparkles.push({
+                    x: cx + (Math.random() - 0.5) * 50,
+                    y: cy + (Math.random() - 0.5) * 50,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 2 + Math.random() * 3,
+                    color: color,
+                    life: 1.0,
+                    decay: 0.012,
+                });
             }
         }
     }
@@ -649,29 +920,31 @@ export default class GeodeTheme extends BaseTheme {
     animate() {
         if (!this.isActive || !this.ctx || !this.canvas) return;
 
-        this.animationTime += 0.016;
+        // Use delta time for frame-rate independent animation
+        const now = performance.now();
+        const deltaTime = Math.min((now - this.lastFrameTime) / 16.667, 2); // Cap at 2x to prevent huge jumps
+        this.lastFrameTime = now;
+        this.frameCount++;
 
-        // Decay effects
-        if (this.pulseIntensity > 0) {
-            this.pulseIntensity *= 0.985;
-        }
-        if (this.comboMultiplier > 1) {
-            this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.01);
-        }
-        if (this.screenShake.intensity > 0) {
-            this.screenShake.intensity *= 0.92;
-            if (this.screenShake.intensity < 0.1) this.screenShake.intensity = 0;
-        }
-        if (this.chromaticAberration > 0) {
-            this.chromaticAberration *= 0.94;
-            if (this.chromaticAberration < 0.1) this.chromaticAberration = 0;
-        }
-        if (this.crystalShakeIntensity > 0) {
-            this.crystalShakeIntensity *= 0.95;
-            if (this.crystalShakeIntensity < 0.05) this.crystalShakeIntensity = 0;
-        }
+        this.animationTime += 0.016 * deltaTime;
+        this.ambientPulse = this.fastSin(this.animationTime * 0.4) * 0.1 + 0.9;
 
-        // Update screen shake position
+        // Decay effects (frame-rate independent)
+        const decayFactor = Math.pow(0.97, deltaTime);
+        this.pulseIntensity *= decayFactor;
+        if (this.pulseIntensity < 0.01) this.pulseIntensity = 0;
+
+        this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.005 * deltaTime);
+
+        const shakeDecay = Math.pow(0.9, deltaTime);
+        this.screenShake.intensity *= shakeDecay;
+        if (this.screenShake.intensity < 0.1) this.screenShake.intensity = 0;
+
+        const chromaDecay = Math.pow(0.92, deltaTime);
+        this.chromaticAberration *= chromaDecay;
+        if (this.chromaticAberration < 0.1) this.chromaticAberration = 0;
+
+        // Screen shake
         if (this.screenShake.intensity > 0) {
             this.screenShake.x = (Math.random() - 0.5) * this.screenShake.intensity * 2;
             this.screenShake.y = (Math.random() - 0.5) * this.screenShake.intensity * 2;
@@ -680,35 +953,27 @@ export default class GeodeTheme extends BaseTheme {
             this.screenShake.y = 0;
         }
 
-        // Update element positions for smooth movement
-        this.updateMovements();
-
-        // Apply screen shake transform
-        this.ctx.save();
+        const ctx = this.ctx;
+        
+        // Draw
+        ctx.save();
         if (this.screenShake.intensity > 0) {
-            this.ctx.translate(this.screenShake.x, this.screenShake.y);
+            ctx.translate(this.screenShake.x, this.screenShake.y);
         }
 
-        // Draw scene (back to front for proper layering)
         this.drawBackground();
-        this.drawCaveWalls();
-        this.drawCaveFloor();
-        this.drawFloorRipples();
-        this.drawAmbientGlows();
-        this.drawLightRays();
-        this.drawRockFormations();
-        this.drawMist();
-        this.drawDustParticles();
-        this.drawStalagmites();
-        this.drawCrystalClusters();
-        this.drawStalactites();
+        this.updateStarRipples(); // Update star brightness from ripples
+        this.drawStars();
+        this.drawStrands();
+        this.drawAmbientParticles();
         this.drawEnergyPulses();
-        this.drawCrystalResonance();
+        this.drawNovaFlashes();
+        this.drawShootingStars();
+        this.drawSparkles();
+        this.drawVignette();
 
-        // Restore transform
-        this.ctx.restore();
+        ctx.restore();
 
-        // Apply chromatic aberration if active (drawn separately for effect)
         if (this.chromaticAberration > 0) {
             this.drawChromaticAberration();
         }
@@ -716,635 +981,696 @@ export default class GeodeTheme extends BaseTheme {
         this.registerAnimation(requestAnimationFrame(() => this.animate()));
     }
 
-    updateMovements() {
-        // Update crystal cluster positions with floating motion
-        this.crystalClusters.forEach((cluster) => {
-            cluster.floatPhase += cluster.floatSpeedX;
-            const floatX = Math.sin(cluster.floatPhase) * cluster.floatAmplitudeX;
-            const floatY = Math.sin(cluster.floatPhase * 1.3 + cluster.floatSpeedY * 100) * cluster.floatAmplitudeY;
-
-            cluster.x = cluster.baseX + floatX;
-            cluster.y = cluster.baseY + floatY;
-
-            // Update rotation
-            cluster.rotationPhase += cluster.rotationSpeed;
-
-            // Update individual crystal wobbling
-            cluster.crystals.forEach((crystal) => {
-                crystal.wobblePhase += crystal.wobbleSpeed;
-                crystal.angle = crystal.baseAngle + Math.sin(crystal.wobblePhase) * crystal.wobbleAmount;
-            });
-        });
-
-        // Update stalactite swaying
-        this.stalactites.forEach((stalactite) => {
-            stalactite.swayPhase += stalactite.swaySpeed;
-            stalactite.x = stalactite.baseX + Math.sin(stalactite.swayPhase) * stalactite.swayAmplitude;
-        });
-
-        // Update cave wall breathing
-        this.caveWalls.forEach((wall) => {
-            wall.breathPhase += wall.breathSpeed;
-            const breathe = Math.sin(wall.breathPhase) * wall.breathAmplitude;
-            wall.roughness = wall.baseRoughness + breathe;
-            wall.x = wall.baseX + breathe * 0.5;
-        });
-
-        // Update light ray slow rotation
-        this.lightRays.forEach((ray) => {
-            ray.angle += ray.rotationSpeed * 0.3; // Slower rotation
-        });
-
-        // Update ambient glow drifting
-        this.ambientGlows.forEach((glow) => {
-            if (!glow.driftPhase) {
-                glow.driftPhase = Math.random() * Math.PI * 2;
-                glow.driftSpeed = Math.random() * 0.0003 + 0.0001;
-                glow.driftAmplitude = Math.random() * 30 + 15;
-                glow.baseX = glow.x;
-                glow.baseY = glow.y;
-            }
-
-            glow.driftPhase += glow.driftSpeed;
-            glow.x = glow.baseX + Math.sin(glow.driftPhase) * glow.driftAmplitude;
-            glow.y = glow.baseY + Math.cos(glow.driftPhase * 0.7) * glow.driftAmplitude * 0.8;
-        });
-
-        // Update stalagmite swaying
-        this.stalagmites.forEach((stalagmite) => {
-            stalagmite.swayPhase += stalagmite.swaySpeed;
-            stalagmite.x = stalagmite.baseX + Math.sin(stalagmite.swayPhase) * stalagmite.swayAmplitude;
-        });
-
-        // Update rock formation floating
-        this.rockFormations.forEach((rock) => {
-            rock.floatPhase += rock.floatSpeed;
-            const float = Math.sin(rock.floatPhase) * rock.floatAmplitude;
-            rock.y = rock.baseY + float;
-        });
-
-        // Update cave floor breathing
-        this.caveFloor.forEach((segment) => {
-            segment.breathPhase += segment.breathSpeed;
-            segment.y = segment.baseY + Math.sin(segment.breathPhase) * segment.breathAmplitude;
-        });
-
-        // Update mist drifting
-        this.mist.forEach((m) => {
-            if (!m.baseX) {
-                m.baseX = m.x;
-            }
-            m.driftPhase += m.driftSpeed;
-            m.x = m.baseX + Math.sin(m.driftPhase) * m.driftAmplitude;
-        });
-    }
-
     drawBackground() {
-        if (!this.ctx || !this.canvas) return;
-
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        
         if (this.cachedGradients.background) {
-            this.ctx.fillStyle = this.cachedGradients.background;
+            ctx.fillStyle = this.cachedGradients.background;
         } else {
-            this.ctx.fillStyle = 'hsla(270, 25%, 8%, 1)';
+            ctx.fillStyle = '#030204';
         }
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.fillRect(0, 0, w, h);
+
+        // Ambient pulse glow during combos (uses preset toggle)
+        if (this.activePreset.enableAmbientPulseGlow && this.pulseIntensity > 0.05) {
+            const cx = w / 2;
+            const cy = h * 0.4;
+            const glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.6);
+            glowGrad.addColorStop(0, `rgba(255, 120, 80, ${this.pulseIntensity * 0.06})`);
+            glowGrad.addColorStop(0.4, `rgba(200, 80, 150, ${this.pulseIntensity * 0.03})`);
+            glowGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGrad;
+            ctx.fillRect(0, 0, w, h);
+        }
     }
 
-    drawCaveWalls() {
-        this.caveWalls.forEach((wall) => {
-            this.ctx.save();
+    // Performance: Update star positions without drawing (called every frame)
+    updateStarPositions() {
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const stars = this.stars;
+        const starCount = stars.length;
+        const useWebGL = this.useWebGL; // WebGL handles twinkle in shader
+        
+        for (let i = 0; i < starCount; i++) {
+            const star = stars[i];
+            
+            // Update position with slight drift
+            star.x += star.driftX;
+            star.y += star.driftY;
 
-            // Create rough, organic wall shape
-            this.ctx.beginPath();
-            const segments = 8;
-            for (let i = 0; i <= segments; i++) {
-                const t = i / segments;
-                const x = wall.x + (wall.side === 'left' ? 1 : -1) * Math.sin(t * Math.PI) * wall.roughness;
-                const y = wall.y - wall.height / 2 + t * wall.height;
+            // Wrap around
+            if (star.x < -5) star.x = w + 5;
+            else if (star.x > w + 5) star.x = -5;
+            if (star.y < -5) star.y = h + 5;
+            else if (star.y > h + 5) star.y = -5;
 
-                if (i === 0) {
-                    this.ctx.moveTo(x, y);
-                } else {
-                    this.ctx.lineTo(x, y);
+            // Update twinkle phase (only needed for Canvas2D - WebGL uses shader)
+            if (!useWebGL) {
+                star.twinklePhase += star.twinkleSpeed;
+            }
+        }
+    }
+    
+    // Performance: Render stars to offscreen canvas at reduced resolution
+    renderStarsToOffscreen() {
+        if (!this.starCanvas || !this.starCtx) return;
+        
+        const w = this.starCanvas.width;
+        const h = this.starCanvas.height;
+        const ctx = this.starCtx;
+        const preset = this.activePreset;
+        const scale = this.starCanvasScale; // Scale factor for positions
+        const pulseIntensityFactor = 1 + this.pulseIntensity * 0.4;
+        const ambientPulse = this.ambientPulse;
+        const stars = this.stars;
+        const starCount = stars.length;
+        const spriteCache = this.spriteCache;
+        const whiteSprite = spriteCache['#ffffff'];
+        
+        // Quality settings
+        const brightnessThreshold = preset.starBrightnessThreshold;
+        const enableGlow = preset.enableStarGlow;
+        const glowSizeThreshold = preset.starGlowSizeThreshold;
+        
+        // Clear the offscreen canvas
+        ctx.clearRect(0, 0, w, h);
+        
+        // Draw all stars to offscreen canvas (positions scaled down)
+        for (let i = 0; i < starCount; i++) {
+            const star = stars[i];
+            
+            // Scale star position to match reduced canvas size
+            const scaledX = star.x * scale;
+            const scaledY = star.y * scale;
+            
+            // Twinkle using fast lookup
+            const twinkle = this.fastSin(star.twinklePhase) * 0.4 + 0.6;
+
+            // Include ripple boost in brightness calculation
+            const rippleBoost = star.rippleBoost;
+            const baseBrightness = star.brightness * twinkle * pulseIntensityFactor * ambientPulse;
+            const brightness = baseBrightness + rippleBoost;
+            
+            // Skip nearly invisible stars
+            if (brightness < brightnessThreshold) continue;
+            
+            const clampedBrightness = brightness > 1 ? 1 : brightness;
+
+            // Size boost from ripple (also scale the size)
+            const baseSize = rippleBoost > 0 ? star.size * (1 + rippleBoost * 0.8) : star.size;
+            const effectiveSize = baseSize * scale;
+
+            // Draw star using sprite
+            const sprite = spriteCache[star.color];
+            if (sprite) {
+                ctx.globalAlpha = clampedBrightness;
+                const diameter = effectiveSize * 2.3;
+                const offset = diameter * 0.5;
+                ctx.drawImage(sprite, scaledX - offset, scaledY - offset, diameter, diameter);
+            }
+
+            // Extra glow only for larger/brighter stars
+            if (enableGlow && ((star.size > glowSizeThreshold && brightness > 0.6) || rippleBoost > 0.4)) {
+                ctx.globalAlpha = clampedBrightness * 0.4;
+                const glowDiameter = effectiveSize * 5.06;
+                const glowOffset = glowDiameter * 0.5;
+
+                if (sprite) {
+                    ctx.drawImage(sprite, scaledX - glowOffset, scaledY - glowOffset, glowDiameter, glowDiameter);
+                }
+
+                // White core only for intense ripple effect
+                if (rippleBoost > 0.5 && whiteSprite) {
+                    ctx.globalAlpha = rippleBoost * 0.7;
+                    const coreDiameter = effectiveSize * 1.38;
+                    const coreOffset = coreDiameter * 0.5;
+                    ctx.drawImage(whiteSprite, scaledX - coreOffset, scaledY - coreOffset, coreDiameter, coreDiameter);
                 }
             }
-
-            // Fill with subtle gradient
-            const gradient = this.ctx.createLinearGradient(wall.x - 50, wall.y, wall.x + 50, wall.y);
-            gradient.addColorStop(0, `hsla(${wall.hue}, 20%, 10%, 0.3)`);
-            gradient.addColorStop(0.5, `hsla(${wall.hue}, 25%, 15%, 0.5)`);
-            gradient.addColorStop(1, `hsla(${wall.hue}, 20%, 10%, 0.3)`);
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.fill();
-
-            this.ctx.restore();
-        });
+        }
+        ctx.globalAlpha = 1;
+        this.starLayerDirty = false;
     }
 
-    drawStalactites() {
-        this.stalactites.forEach((stalactite) => {
-            this.ctx.save();
-
-            const pulse = Math.sin(this.animationTime * 2 + stalactite.x) * 0.2 + 0.8;
-            const glow = stalactite.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
-
-            // Draw stalactite shape
-            this.ctx.beginPath();
-            this.ctx.moveTo(stalactite.x, stalactite.y);
-            this.ctx.quadraticCurveTo(
-                stalactite.x - stalactite.width / 2,
-                stalactite.length * 0.3,
-                stalactite.x - stalactite.width * 0.3,
-                stalactite.length * 0.6,
-            );
-            this.ctx.lineTo(stalactite.x, stalactite.length);
-            this.ctx.lineTo(stalactite.x + stalactite.width * 0.3, stalactite.length * 0.6);
-            this.ctx.quadraticCurveTo(
-                stalactite.x + stalactite.width / 2,
-                stalactite.length * 0.3,
-                stalactite.x,
-                stalactite.y,
-            );
-
-            // Gradient fill
-            const gradient = this.ctx.createLinearGradient(stalactite.x, 0, stalactite.x, stalactite.length);
-            gradient.addColorStop(0, `hsla(${stalactite.hue}, 50%, 30%, 0.4)`);
-            gradient.addColorStop(0.7, `hsla(${stalactite.hue}, 60%, 40%, 0.6)`);
-            gradient.addColorStop(1, `hsla(${stalactite.hue}, 70%, 50%, ${0.3 + glow * 0.3})`);
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.fill();
-
-            // Glow at tip
-            const glowGradient = this.ctx.createRadialGradient(
-                stalactite.x,
-                stalactite.length,
-                0,
-                stalactite.x,
-                stalactite.length,
-                stalactite.width * 2,
-            );
-            glowGradient.addColorStop(0, `hsla(${stalactite.hue}, 80%, 60%, ${0.4 * glow})`);
-            glowGradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.fillRect(
-                stalactite.x - stalactite.width * 2,
-                stalactite.length - stalactite.width * 2,
-                stalactite.width * 4,
-                stalactite.width * 4,
-            );
-
-            this.ctx.restore();
-        });
+    drawStars() {
+        const now = performance.now();
+        const hasActiveRipples = this.starRipples.length > 0;
+        
+        // Always update star positions (cheap operation)
+        this.updateStarPositions();
+        
+        // Use WebGL renderer if available (MUCH faster - single GPU draw call!)
+        if (this.useWebGL && this.webglRenderer) {
+            this.drawStarsWebGL(hasActiveRipples);
+            return;
+        }
+        
+        // Fallback: Canvas2D rendering
+        // Determine if we need to redraw the star layer
+        // Redraw if: dirty flag set, enough time passed, or active ripples
+        const timeSinceRedraw = now - this.lastStarRedrawTime;
+        const shouldRedraw = this.starLayerDirty || 
+                            timeSinceRedraw > this.starRedrawInterval ||
+                            hasActiveRipples;
+        
+        if (shouldRedraw) {
+            this.renderStarsToOffscreen();
+            this.lastStarRedrawTime = now;
+        }
+        
+        // Composite the offscreen star canvas to main canvas (scaled up to full size)
+        if (this.starCanvas) {
+            // Draw scaled star canvas to full size - GPU handles the upscaling efficiently
+            this.ctx.drawImage(this.starCanvas, 0, 0, this.canvas.width, this.canvas.height);
+        }
+    }
+    
+    /**
+     * GPU-accelerated star rendering using WebGL point sprites
+     * Renders ALL stars in a single draw call!
+     */
+    drawStarsWebGL(hasActiveRipples) {
+        const renderer = this.webglRenderer;
+        const preset = this.activePreset;
+        
+        // Update star positions in GPU buffer
+        renderer.updatePositions(this.stars);
+        
+        // Update brightness/ripple if ripples are active
+        if (hasActiveRipples || this.pulseIntensity > 0.01) {
+            renderer.updateBrightness(this.stars);
+        }
+        
+        // Render all stars in ONE GPU draw call!
+        renderer.render(
+            this.animationTime,
+            this.pulseIntensity,
+            this.ambientPulse,
+            preset.starBrightnessThreshold,
+            preset.enableStarGlow
+        );
+        
+        // Composite WebGL canvas onto main canvas
+        this.ctx.drawImage(this.webglCanvas, 0, 0);
     }
 
-    drawCrystalClusters() {
-        this.crystalClusters.forEach((cluster) => {
-            cluster.pulsePhase += cluster.pulseSpeed;
-            const pulse = Math.sin(cluster.pulsePhase) * 0.3 + 0.7;
+    drawStrands() {
+        const ctx = this.ctx;
+        const strands = this.strands;
+        const strandCount = strands.length;
+        const spriteCache = this.spriteCache;
+        const whiteSprite = spriteCache['#ffffff'];
+        const pulseIntensityFactor = 1 + this.pulseIntensity * 0.5;
+        const ambientPulse = this.ambientPulse;
+        
+        ctx.lineCap = 'round';
+        
+        for (let i = 0; i < strandCount; i++) {
+            const strand = strands[i];
+            
+            // Sway animation using fast lookup
+            strand.swayPhase += strand.swaySpeed;
+            strand.pulsePhase += strand.pulseSpeed;
 
-            // Decay glow intensity
-            if (cluster.glowIntensity > 1.0) {
-                cluster.glowIntensity *= 0.98;
+            const swayX = this.fastSin(strand.swayPhase) * strand.swayAmount;
+            const pulse = this.fastSin(strand.pulsePhase) * 0.3 + 0.7;
+            const brightness = strand.brightness * pulse * pulseIntensityFactor * ambientPulse;
+            
+            // Performance: Skip dim strands
+            if (brightness < 0.08) continue;
+
+            // End position with sway
+            const endX = strand.x + swayX;
+            const endY = strand.startY + strand.length;
+
+            // Performance: Use solid color with alpha fade instead of gradient for most strands
+            ctx.strokeStyle = strand.color;
+            ctx.globalAlpha = brightness;
+            ctx.lineWidth = strand.width;
+
+            ctx.beginPath();
+            ctx.moveTo(strand.x, strand.startY);
+
+            // Simplified curve with one control point for better performance
+            const midY = strand.startY + strand.length * 0.5;
+            const midX = strand.x + swayX * 0.5;
+
+            ctx.quadraticCurveTo(midX, midY, endX, endY);
+            ctx.stroke();
+
+            // Bright glowing tip - simplified to 2 draws instead of 3
+            const tipPulse = this.fastSin(strand.pulsePhase * 1.5) * 0.3 + 0.7;
+            const tipBright = strand.tipBrightness * tipPulse * brightness;
+            
+            if (tipBright < 0.1) continue;
+
+            const sprite = spriteCache[strand.color];
+
+            if (sprite) {
+                // Combined glow (skip outer, keep inner)
+                ctx.globalAlpha = tipBright * 0.6;
+                const innerDiameter = strand.tipSize * 4.14; // 1.8 * 2.3
+                const innerOffset = innerDiameter * 0.5;
+                ctx.drawImage(sprite, endX - innerOffset, endY - innerOffset, innerDiameter, innerDiameter);
             }
 
-            const totalGlow = cluster.baseGlow * pulse * cluster.glowIntensity * (1 + this.pulseIntensity * 0.4);
-
-            this.ctx.save();
-
-            // Add crystal shake effect
-            let shakeX = 0;
-            let shakeY = 0;
-            if (this.crystalShakeIntensity > 0) {
-                shakeX = (Math.random() - 0.5) * this.crystalShakeIntensity * 6;
-                shakeY = (Math.random() - 0.5) * this.crystalShakeIntensity * 6;
+            if (whiteSprite) {
+                // Bright core
+                ctx.globalAlpha = tipBright * 0.9;
+                const coreDiameter = strand.tipSize * 2.3;
+                const coreOffset = coreDiameter * 0.5;
+                ctx.drawImage(whiteSprite, endX - coreOffset, endY - coreOffset, coreDiameter, coreDiameter);
             }
-
-            this.ctx.translate(cluster.x + shakeX, cluster.y + shakeY);
-
-            // Apply slow rotation to entire cluster
-            const clusterRotation = Math.sin(cluster.rotationPhase) * cluster.rotationAmount;
-            this.ctx.rotate(clusterRotation);
-
-            // Draw each crystal in the cluster
-            cluster.crystals.forEach((crystal) => {
-                this.ctx.save();
-                this.ctx.translate(crystal.offsetX, crystal.offsetY);
-                this.ctx.rotate(crystal.angle);
-
-                // Draw crystal body
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, -crystal.height);
-                this.ctx.lineTo(crystal.width / 2, 0);
-                this.ctx.lineTo(-crystal.width / 2, 0);
-                this.ctx.closePath();
-
-                // Gradient for 3D effect
-                const gradient = this.ctx.createLinearGradient(-crystal.width / 2, 0, crystal.width / 2, 0);
-                gradient.addColorStop(0, `hsla(${crystal.hue}, ${crystal.saturation}%, 30%, 0.7)`);
-                gradient.addColorStop(0.5, `hsla(${crystal.hue}, ${crystal.saturation}%, 50%, 0.9)`);
-                gradient.addColorStop(1, `hsla(${crystal.hue}, ${crystal.saturation}%, 35%, 0.7)`);
-
-                this.ctx.fillStyle = gradient;
-                this.ctx.fill();
-
-                // Inner highlight
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, -crystal.height);
-                this.ctx.lineTo(crystal.width * 0.15, -crystal.height * 0.3);
-                this.ctx.lineTo(0, -crystal.height * 0.5);
-                this.ctx.closePath();
-                this.ctx.fillStyle = `hsla(${crystal.hue}, ${crystal.saturation}%, 80%, ${0.4 * totalGlow})`;
-                this.ctx.fill();
-
-                // Outer glow
-                const glowSize = Math.max(crystal.width, crystal.height) * 1.5;
-                const glowGradient = this.ctx.createRadialGradient(0, -crystal.height / 2, 0, 0, -crystal.height / 2, glowSize);
-                glowGradient.addColorStop(0, `hsla(${crystal.hue}, ${crystal.saturation}%, 60%, ${0.3 * totalGlow})`);
-                glowGradient.addColorStop(0.5, `hsla(${crystal.hue}, ${crystal.saturation}%, 50%, ${0.15 * totalGlow})`);
-                glowGradient.addColorStop(1, 'transparent');
-
-                this.ctx.fillStyle = glowGradient;
-                this.ctx.fillRect(-glowSize / 2, -crystal.height - glowSize / 2, glowSize, glowSize);
-
-                this.ctx.restore();
-            });
-
-            this.ctx.restore();
-        });
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineCap = 'butt';
     }
 
-    drawDustParticles() {
-        this.dustParticles.forEach((particle) => {
+    drawAmbientParticles() {
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const ctx = this.ctx;
+        const particles = this.ambientParticles;
+        const particleCount = particles.length;
+        const spriteCache = this.spriteCache;
+        const comboFactor = 1 + this.comboMultiplier * 0.25;
+        const ambientPulse = this.ambientPulse;
+
+        for (let i = 0; i < particleCount; i++) {
+            const p = particles[i];
+            
             // Update position
-            particle.x += particle.vx;
-            particle.y += particle.vy;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.twinklePhase += p.twinkleSpeed;
 
-            // Wrap around edges
-            if (particle.x < -10) particle.x = this.canvas.width + 10;
-            if (particle.x > this.canvas.width + 10) particle.x = -10;
-            if (particle.y < -10) particle.y = this.canvas.height + 10;
-            if (particle.y > this.canvas.height + 10) particle.y = -10;
+            // Wrap around
+            if (p.y < -10) {
+                p.y = h + 10;
+                p.x = Math.random() * w;
+            }
+            if (p.x < -10) p.x = w + 10;
+            else if (p.x > w + 10) p.x = -10;
 
-            // Pulse effect
-            particle.pulsePhase += particle.pulseSpeed;
-            const pulse = Math.sin(particle.pulsePhase) * 0.3 + 0.7;
-            const opacity = particle.opacity * pulse * (1 + this.comboMultiplier * 0.2);
+            const twinkle = this.fastSin(p.twinklePhase) * 0.35 + 0.65;
+            const brightness = p.opacity * twinkle * comboFactor * ambientPulse;
+            
+            // Performance: Skip dim particles
+            if (brightness < 0.08) continue;
 
-            // Draw particle
-            this.ctx.fillStyle = `hsla(${particle.hue}, 60%, 70%, ${opacity})`;
-            this.ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
-        });
-    }
-
-    drawLightRays() {
-        this.lightRays.forEach((ray) => {
-            ray.pulsePhase += ray.pulseSpeed;
-            ray.angle += ray.rotationSpeed;
-
-            const pulse = Math.sin(ray.pulsePhase) * 0.4 + 0.6;
-            // Enhanced light ray intensity during combos
-            const comboBoost = 1 + this.pulseIntensity * 0.5 + this.comboMultiplier * 0.3;
-            const opacity = ray.opacity * pulse * comboBoost;
-
-            this.ctx.save();
-            this.ctx.translate(ray.x, ray.y);
-            this.ctx.rotate(ray.angle);
-
-            // Draw ray as gradient line
-            const gradient = this.ctx.createLinearGradient(0, 0, 0, ray.length);
-            gradient.addColorStop(0, `hsla(${ray.hue}, 70%, 60%, 0)`);
-            gradient.addColorStop(0.3, `hsla(${ray.hue}, 70%, 60%, ${opacity})`);
-            gradient.addColorStop(0.7, `hsla(${ray.hue}, 70%, 60%, ${opacity})`);
-            gradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(-ray.width / 2, 0, ray.width, ray.length);
-
-            this.ctx.restore();
-        });
-    }
-
-    drawAmbientGlows() {
-        this.ambientGlows.forEach((glow) => {
-            glow.pulsePhase += glow.pulseSpeed;
-            const pulse = Math.sin(glow.pulsePhase) * 0.3 + 0.7;
-            const opacity = glow.opacity * pulse * (1 + this.comboMultiplier * 0.15);
-
-            const gradient = this.ctx.createRadialGradient(glow.x, glow.y, 0, glow.x, glow.y, glow.radius);
-            gradient.addColorStop(0, `hsla(${glow.hue}, 60%, 50%, ${opacity})`);
-            gradient.addColorStop(0.5, `hsla(${glow.hue}, 60%, 50%, ${opacity * 0.5})`);
-            gradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(glow.x - glow.radius, glow.y - glow.radius, glow.radius * 2, glow.radius * 2);
-        });
+            // Single draw with combined glow (skip outer for performance)
+            const sprite = spriteCache[p.color];
+            if (sprite) {
+                ctx.globalAlpha = brightness;
+                const coreDiameter = p.size * 2.3;
+                const coreOffset = coreDiameter * 0.5;
+                ctx.drawImage(sprite, p.x - coreOffset, p.y - coreOffset, coreDiameter, coreDiameter);
+            }
+        }
+        ctx.globalAlpha = 1;
     }
 
     drawEnergyPulses() {
-        for (let i = this.energyPulses.length - 1; i >= 0; i--) {
-            const pulse = this.energyPulses[i];
+        const ctx = this.ctx;
+        const pulses = this.energyPulses;
+        const PI2 = Math.PI * 2;
+        
+        for (let i = pulses.length - 1; i >= 0; i--) {
+            const pulse = pulses[i];
 
             pulse.radius += pulse.growthRate;
-            pulse.opacity *= 0.96;
+            pulse.opacity *= 0.94;
 
-            if (pulse.radius >= pulse.maxRadius || pulse.opacity < 0.05) {
-                this.energyPulses.splice(i, 1);
+            if (pulse.radius >= pulse.maxRadius || pulse.opacity < 0.03) {
+                pulses.splice(i, 1);
                 continue;
             }
 
-            // Draw expanding ring
-            this.ctx.strokeStyle = `hsla(${pulse.hue}, 70%, 60%, ${pulse.opacity})`;
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
-            this.ctx.stroke();
+            const safeRadius = pulse.radius > 1 ? pulse.radius : 1;
 
-            // Draw glow
-            const gradient = this.ctx.createRadialGradient(pulse.x, pulse.y, pulse.radius - 10, pulse.x, pulse.y, pulse.radius + 10);
-            gradient.addColorStop(0, 'transparent');
-            gradient.addColorStop(0.5, `hsla(${pulse.hue}, 70%, 60%, ${pulse.opacity * 0.4})`);
-            gradient.addColorStop(1, 'transparent');
+            // Outer ring
+            ctx.strokeStyle = pulse.color;
+            ctx.globalAlpha = pulse.opacity;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(pulse.x, pulse.y, safeRadius, 0, PI2);
+            ctx.stroke();
 
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(
-                pulse.x - pulse.radius - 10,
-                pulse.y - pulse.radius - 10,
-                (pulse.radius + 10) * 2,
-                (pulse.radius + 10) * 2,
-            );
+            // Inner ring - only draw if opacity is visible
+            if (pulse.opacity > 0.1) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.globalAlpha = pulse.opacity * 0.5;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(pulse.x, pulse.y, safeRadius * 0.6, 0, PI2);
+                ctx.stroke();
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    drawSparkles() {
+        const ctx = this.ctx;
+        const sparkles = this.sparkles;
+        const preset = this.activePreset;
+        const maxSparkles = preset.maxSparkles * 1.5;
+        const spriteCache = this.spriteCache;
+        const whiteSprite = spriteCache['#ffffff'];
+        const animTime = this.animationTime * 18;
+        const enableCore = preset.enableSparkleCore;
+        
+        // Performance: Skip expensive 'screen' blend on low quality
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'screen';
+        }
+
+        for (let i = sparkles.length - 1; i >= 0; i--) {
+            const s = sparkles[i];
+
+            // Update
+            s.x += s.vx;
+            s.y += s.vy;
+            s.vy += 0.03; // Light gravity
+            s.vx *= 0.98;
+            s.vy *= 0.98;
+            s.life -= s.decay;
+
+            if (s.life <= 0 || sparkles.length > maxSparkles) {
+                sparkles.splice(i, 1);
+                continue;
+            }
+
+            const sparkleSize = s.size * s.life;
+            if (sparkleSize < 0.3) continue; // Performance: skip tiny sparkles
+            
+            const twinkle = this.fastSin(animTime + i) * 0.3 + 0.7;
+            const lifeAlpha = s.life * twinkle;
+            
+            // Performance: Skip very dim sparkles
+            if (lifeAlpha < 0.1) continue;
+
+            // Simplified: single main sparkle draw instead of 3
+            const sprite = spriteCache[s.color];
+            if (sprite) {
+                ctx.globalAlpha = lifeAlpha;
+                const mainDiameter = sparkleSize * 2.3;
+                const mainOffset = mainDiameter * 0.5;
+                ctx.drawImage(sprite, s.x - mainOffset, s.y - mainOffset, mainDiameter, mainDiameter);
+            }
+
+            // Bright core only for larger sparkles (uses preset setting)
+            if (enableCore && sparkleSize > 1 && whiteSprite) {
+                ctx.globalAlpha = lifeAlpha * 0.9;
+                const coreDiameter = sparkleSize * 0.92; // 0.4 * 2.3
+                const coreOffset = coreDiameter * 0.5;
+                ctx.drawImage(whiteSprite, s.x - coreOffset, s.y - coreOffset, coreDiameter, coreDiameter);
+            }
+        }
+
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    drawShootingStars() {
+        const ctx = this.ctx;
+        const shootingStars = this.shootingStars;
+        const preset = this.activePreset;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const spriteCache = this.spriteCache;
+        const whiteSprite = spriteCache['#ffffff'];
+        const trailBatchCount = preset.trailBatchCount;
+        
+        // Performance: Skip expensive 'screen' blend on low quality
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'screen';
+        }
+        ctx.lineCap = 'round';
+
+        for (let i = shootingStars.length - 1; i >= 0; i--) {
+            const star = shootingStars[i];
+
+            // Store current position in trail
+            star.trail.unshift({ x: star.x, y: star.y });
+            if (star.trail.length > star.maxTrailLength) {
+                star.trail.pop();
+            }
+
+            // Update position
+            star.x += star.vx;
+            star.y += star.vy;
+            star.life -= star.decay;
+
+            // Slight deceleration
+            star.vx *= 0.98;
+            star.vy *= 0.98;
+
+            // Remove if dead or off-screen
+            if (star.life <= 0 ||
+                star.x < -50 || star.x > w + 50 ||
+                star.y < -50 || star.y > h + 50) {
+                shootingStars.splice(i, 1);
+                continue;
+            }
+
+            // Performance: Draw trail as batched path instead of many segments
+            const trail = star.trail;
+            const trailLen = trail.length;
+            if (trailLen > 1) {
+                // Draw in batches based on preset (uses trailBatchCount)
+                const batchCount = Math.min(trailBatchCount, trailLen - 1);
+                const segPerBatch = Math.ceil((trailLen - 1) / batchCount);
+                
+                ctx.strokeStyle = star.color;
+                
+                for (let b = 0; b < batchCount; b++) {
+                    const startIdx = b * segPerBatch;
+                    const endIdx = Math.min(startIdx + segPerBatch, trailLen - 1);
+                    if (startIdx >= trailLen - 1) break;
+                    
+                    const avgT = (startIdx + endIdx) * 0.5 / trailLen;
+                    const trailAlpha = (1 - avgT) * star.life * 0.8;
+                    const trailWidth = star.size * (1 - avgT * 0.7);
+                    
+                    ctx.globalAlpha = trailAlpha;
+                    ctx.lineWidth = trailWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(trail[startIdx].x, trail[startIdx].y);
+                    
+                    for (let t = startIdx + 1; t <= endIdx; t++) {
+                        ctx.lineTo(trail[t].x, trail[t].y);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // Draw head glow - combined into single sprite draw
+            const sprite = spriteCache[star.color];
+            if (sprite) {
+                ctx.globalAlpha = star.life * 0.8;
+                const headDiameter = star.size * 3.45; // 1.5 * 2.3
+                const headOffset = headDiameter * 0.5;
+                ctx.drawImage(sprite, star.x - headOffset, star.y - headOffset, headDiameter, headDiameter);
+            }
+
+            // White core
+            if (whiteSprite) {
+                ctx.globalAlpha = star.life * 0.95;
+                const coreDiameter = star.size * 1.61; // 0.7 * 2.3
+                const coreOffset = coreDiameter * 0.5;
+                ctx.drawImage(whiteSprite, star.x - coreOffset, star.y - coreOffset, coreDiameter, coreDiameter);
+            }
+        }
+
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineCap = 'butt';
+    }
+
+    drawNovaFlashes() {
+        const ctx = this.ctx;
+        const novas = this.novaFlashes;
+        const enableRays = this.activePreset.enableNovaRays;
+        
+        // Performance: Skip expensive 'screen' blend on low quality
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'screen';
+        }
+
+        for (let i = novas.length - 1; i >= 0; i--) {
+            const nova = novas[i];
+
+            // Expand radius quickly at first, then slow
+            nova.radius += (nova.maxRadius - nova.radius) * 0.15;
+            nova.brightness -= nova.decay;
+
+            if (nova.brightness <= 0) {
+                novas.splice(i, 1);
+                continue;
+            }
+
+            // Performance: Use sprite-based glow instead of gradient when possible
+            const sprite = this.spriteCache[nova.color];
+            const whiteSprite = this.spriteCache['#ffffff'];
+            
+            if (sprite) {
+                // Outer glow using sprite
+                ctx.globalAlpha = nova.brightness * 0.5;
+                const glowDiameter = nova.radius * 2;
+                const glowOffset = glowDiameter * 0.5;
+                ctx.drawImage(sprite, nova.x - glowOffset, nova.y - glowOffset, glowDiameter, glowDiameter);
+            }
+
+            if (whiteSprite) {
+                // Bright center using white sprite
+                ctx.globalAlpha = nova.brightness * 0.8;
+                const coreDiameter = nova.radius * 0.6;
+                const coreOffset = coreDiameter * 0.5;
+                ctx.drawImage(whiteSprite, nova.x - coreOffset, nova.y - coreOffset, coreDiameter, coreDiameter);
+            }
+
+            // Star-like rays - only for bright flashes (uses preset toggle)
+            if (enableRays && nova.brightness > 0.4) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.globalAlpha = nova.brightness * 0.6;
+                ctx.lineWidth = 2;
+
+                const rayLength = nova.radius * 0.8;
+                // Pre-calculated angles for 4 rays at 45° intervals
+                const cos45 = 0.7071;
+                
+                ctx.beginPath();
+                // Draw all 4 rays in a single path
+                ctx.moveTo(nova.x, nova.y);
+                ctx.lineTo(nova.x + cos45 * rayLength, nova.y + cos45 * rayLength);
+                ctx.moveTo(nova.x, nova.y);
+                ctx.lineTo(nova.x - cos45 * rayLength, nova.y + cos45 * rayLength);
+                ctx.moveTo(nova.x, nova.y);
+                ctx.lineTo(nova.x - cos45 * rayLength, nova.y - cos45 * rayLength);
+                ctx.moveTo(nova.x, nova.y);
+                ctx.lineTo(nova.x + cos45 * rayLength, nova.y - cos45 * rayLength);
+                ctx.stroke();
+            }
+        }
+
+        if (!this.useSimpleComposite) {
+            ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    updateStarRipples() {
+        const ctx = this.ctx;
+        const ripples = this.starRipples;
+        const maxDim = Math.max(this.canvas.width, this.canvas.height);
+        
+        // Process ripples and boost star brightness
+        for (let i = ripples.length - 1; i >= 0; i--) {
+            const ripple = ripples[i];
+
+            ripple.radius += ripple.speed;
+            ripple.life -= ripple.decay;
+
+            if (ripple.life <= 0 || ripple.radius > maxDim) {
+                ripples.splice(i, 1);
+                continue;
+            }
+
+            // Boost brightness of stars within the ripple ring
+            const halfWidth = ripple.width * 0.5;
+            const innerRadius = ripple.radius - halfWidth;
+            const outerRadius = ripple.radius + halfWidth;
+            const outerRadiusSq = outerRadius * outerRadius;
+            const innerRadiusSq = innerRadius * innerRadius;
+            const ringCenter = ripple.radius;
+            const lifeFactor = ripple.life * 1.5;
+            const invHalfWidth = 1 / halfWidth;
+
+            // Performance: Use spatial grid to only check nearby stars
+            const nearbyStars = this.getStarsInRadius(ripple.x, ripple.y, outerRadius);
+            const nearbyCount = nearbyStars.length;
+            
+            for (let j = 0; j < nearbyCount; j++) {
+                const star = nearbyStars[j];
+                const dx = star.x - ripple.x;
+                const dy = star.y - ripple.y;
+                const distSq = dx * dx + dy * dy;
+
+                // Quick squared distance check (avoids sqrt for most stars)
+                if (distSq < innerRadiusSq || distSq > outerRadiusSq) continue;
+                
+                const dist = Math.sqrt(distSq);
+
+                // Calculate how centered the star is in the ring
+                const distFromCenter = dist - ringCenter;
+                const absDistFromCenter = distFromCenter < 0 ? -distFromCenter : distFromCenter;
+                const intensity = 1 - (absDistFromCenter * invHalfWidth);
+                const boost = intensity * lifeFactor;
+
+                // Temporarily boost the star's brightness
+                if (boost > star.rippleBoost) {
+                    star.rippleBoost = boost;
+                }
+            }
+
+            // Draw the ripple ring itself (subtle)
+            ctx.strokeStyle = `rgba(255, 200, 150, ${ripple.life * 0.15})`;
+            ctx.lineWidth = ripple.width * 0.3;
+            ctx.beginPath();
+            ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Performance: Decay ripple boost on stars using for loop
+        const stars = this.stars;
+        const starCount = stars.length;
+        for (let i = 0; i < starCount; i++) {
+            const star = stars[i];
+            if (star.rippleBoost > 0) {
+                star.rippleBoost *= 0.92;
+                if (star.rippleBoost < 0.01) star.rippleBoost = 0;
+            }
         }
     }
 
-    drawCrystalResonance() {
-        for (let i = this.crystalResonance.length - 1; i >= 0; i--) {
-            const resonance = this.crystalResonance[i];
-
-            resonance.life -= resonance.decay;
-
-            if (resonance.life <= 0) {
-                this.crystalResonance.splice(i, 1);
-                continue;
-            }
-
-            resonance.opacity = resonance.life * 0.6;
-
-            // Draw energy beam between crystals
-            const gradient = this.ctx.createLinearGradient(resonance.x1, resonance.y1, resonance.x2, resonance.y2);
-            gradient.addColorStop(0, `hsla(${resonance.hue}, 80%, 70%, ${resonance.opacity})`);
-            gradient.addColorStop(0.5, `hsla(${resonance.hue}, 80%, 70%, ${resonance.opacity * 0.5})`);
-            gradient.addColorStop(1, `hsla(${resonance.hue}, 80%, 70%, ${resonance.opacity})`);
-
-            this.ctx.strokeStyle = gradient;
-            this.ctx.lineWidth = (resonance.width || 2) + Math.sin(this.animationTime * 5 + i) * 1;
-            this.ctx.beginPath();
-            this.ctx.moveTo(resonance.x1, resonance.y1);
-
-            // Add curve for more organic feel
-            const midX = (resonance.x1 + resonance.x2) / 2 + Math.sin(this.animationTime * 3 + i) * 30;
-            const midY = (resonance.y1 + resonance.y2) / 2 + Math.cos(this.animationTime * 3 + i) * 30;
-            this.ctx.quadraticCurveTo(midX, midY, resonance.x2, resonance.y2);
-            this.ctx.stroke();
-        }
-    }
-
-    drawFloorRipples() {
-        // Limit to max 5 ripples for performance
-        while (this.floorRipples.length > 5) {
-            this.floorRipples.shift();
-        }
-
-        for (let i = this.floorRipples.length - 1; i >= 0; i--) {
-            const ripple = this.floorRipples[i];
-
-            ripple.radius += ripple.growthRate;
-            ripple.opacity *= 0.96;
-
-            if (ripple.radius >= ripple.maxRadius || ripple.opacity < 0.05) {
-                this.floorRipples.splice(i, 1);
-                continue;
-            }
-
-            // Draw simplified expanding ripple ring on the floor
-            this.ctx.strokeStyle = `hsla(${ripple.hue}, 70%, 55%, ${ripple.opacity})`;
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.ellipse(ripple.x, ripple.y, ripple.radius, ripple.radius * 0.3, 0, 0, Math.PI * 2);
-            this.ctx.stroke();
+    drawVignette() {
+        // Uses preset toggle for vignette effect
+        if (this.activePreset.enableVignette && this.cachedGradients.vignette) {
+            this.ctx.fillStyle = this.cachedGradients.vignette;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
     }
 
     drawChromaticAberration() {
         if (this.chromaticAberration <= 0) return;
 
-        // Ultra-efficient chromatic aberration using composite operations
-        // This draws colored overlays instead of processing pixels
         const offset = this.chromaticAberration * 0.8;
-        const intensity = Math.min(this.chromaticAberration / 8, 0.15);
+        const intensity = Math.min(this.chromaticAberration / 10, 0.12);
 
-        // Save the current canvas state
         this.ctx.save();
-
-        // Red channel overlay (shifted left)
         this.ctx.globalCompositeOperation = 'screen';
-        this.ctx.fillStyle = `rgba(255, 0, 0, ${intensity})`;
+        this.ctx.fillStyle = `rgba(255, 80, 50, ${intensity})`;
         this.ctx.fillRect(-offset, 0, this.canvas.width, this.canvas.height);
-
-        // Blue channel overlay (shifted right)
-        this.ctx.fillStyle = `rgba(0, 100, 255, ${intensity})`;
+        this.ctx.fillStyle = `rgba(80, 50, 255, ${intensity})`;
         this.ctx.fillRect(offset, 0, this.canvas.width, this.canvas.height);
 
-        // Add a subtle white flash overlay for impact
-        if (this.chromaticAberration > 5) {
+        if (this.chromaticAberration > 4) {
             this.ctx.globalCompositeOperation = 'lighten';
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${(this.chromaticAberration - 5) * 0.03})`;
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${(this.chromaticAberration - 4) * 0.025})`;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
         this.ctx.restore();
     }
 
-    drawCaveFloor() {
-        // Draw natural cave floor
-        this.ctx.save();
-        this.ctx.beginPath();
-
-        // Create continuous floor shape
-        this.ctx.moveTo(0, this.caveFloor[0].y);
-
-        for (let i = 0; i < this.caveFloor.length; i++) {
-            const segment = this.caveFloor[i];
-            const nextSegment = this.caveFloor[i + 1] || this.caveFloor[i];
-
-            // Add roughness with sine wave
-            const roughnessOffset = Math.sin(this.animationTime * 0.1 + i) * segment.roughness;
-
-            if (i < this.caveFloor.length - 1) {
-                this.ctx.quadraticCurveTo(
-                    segment.x,
-                    segment.y + roughnessOffset,
-                    (segment.x + nextSegment.x) / 2,
-                    (segment.y + nextSegment.y) / 2,
-                );
-            } else {
-                this.ctx.lineTo(segment.x + segment.width, segment.y + roughnessOffset);
-            }
-        }
-
-        // Complete the shape
-        this.ctx.lineTo(this.canvas.width, this.canvas.height);
-        this.ctx.lineTo(0, this.canvas.height);
-        this.ctx.closePath();
-
-        // Fill with gradient
-        const gradient = this.ctx.createLinearGradient(0, this.canvas.height * 0.8, 0, this.canvas.height);
-        gradient.addColorStop(0, 'hsla(265, 25%, 12%, 0.6)');
-        gradient.addColorStop(1, 'hsla(270, 20%, 8%, 0.8)');
-
-        this.ctx.fillStyle = gradient;
-        this.ctx.fill();
-
-        this.ctx.restore();
-    }
-
-    drawRockFormations() {
-        this.rockFormations.forEach((rock) => {
-            this.ctx.save();
-
-            // Draw organic rock shape
-            this.ctx.beginPath();
-
-            const points = 8;
-            for (let i = 0; i <= points; i++) {
-                const angle = (i / points) * Math.PI * 2;
-                const radiusVariation = Math.sin(angle * 3 + rock.roughness) * 0.2 + 0.9;
-                const x = rock.x + Math.cos(angle) * (rock.width / 2) * radiusVariation;
-                const y = rock.y + Math.sin(angle) * (rock.height / 2) * radiusVariation;
-
-                if (i === 0) {
-                    this.ctx.moveTo(x, y);
-                } else {
-                    this.ctx.lineTo(x, y);
-                }
-            }
-
-            this.ctx.closePath();
-
-            // Fill with dark, subtle color
-            const gradient = this.ctx.createRadialGradient(
-                rock.x - rock.width * 0.2,
-                rock.y - rock.height * 0.2,
-                0,
-                rock.x,
-                rock.y,
-                Math.max(rock.width, rock.height) / 2,
-            );
-            gradient.addColorStop(0, `hsla(${rock.hue}, 20%, 18%, 0.5)`);
-            gradient.addColorStop(0.6, `hsla(${rock.hue}, 15%, 12%, 0.7)`);
-            gradient.addColorStop(1, `hsla(${rock.hue}, 10%, 8%, 0.8)`);
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.fill();
-
-            this.ctx.restore();
-        });
-    }
-
-    drawStalagmites() {
-        this.stalagmites.forEach((stalagmite) => {
-            this.ctx.save();
-
-            const pulse = Math.sin(this.animationTime * 2 + stalagmite.x) * 0.2 + 0.8;
-            const glow = stalagmite.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
-
-            // Draw stalagmite shape (inverted stalactite)
-            this.ctx.beginPath();
-            this.ctx.moveTo(stalagmite.x, stalagmite.y);
-            this.ctx.quadraticCurveTo(
-                stalagmite.x - stalagmite.width / 2,
-                stalagmite.y - stalagmite.height * 0.3,
-                stalagmite.x - stalagmite.width * 0.3,
-                stalagmite.y - stalagmite.height * 0.6,
-            );
-            this.ctx.lineTo(stalagmite.x, stalagmite.y - stalagmite.height);
-            this.ctx.lineTo(stalagmite.x + stalagmite.width * 0.3, stalagmite.y - stalagmite.height * 0.6);
-            this.ctx.quadraticCurveTo(
-                stalagmite.x + stalagmite.width / 2,
-                stalagmite.y - stalagmite.height * 0.3,
-                stalagmite.x,
-                stalagmite.y,
-            );
-
-            // Gradient fill
-            const gradient = this.ctx.createLinearGradient(
-                stalagmite.x,
-                stalagmite.y,
-                stalagmite.x,
-                stalagmite.y - stalagmite.height,
-            );
-            gradient.addColorStop(0, `hsla(${stalagmite.hue}, 50%, 30%, 0.4)`);
-            gradient.addColorStop(0.7, `hsla(${stalagmite.hue}, 60%, 40%, 0.6)`);
-            gradient.addColorStop(1, `hsla(${stalagmite.hue}, 70%, 50%, ${0.3 + glow * 0.3})`);
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.fill();
-
-            // Glow at tip
-            const glowGradient = this.ctx.createRadialGradient(
-                stalagmite.x,
-                stalagmite.y - stalagmite.height,
-                0,
-                stalagmite.x,
-                stalagmite.y - stalagmite.height,
-                stalagmite.width * 2,
-            );
-            glowGradient.addColorStop(0, `hsla(${stalagmite.hue}, 80%, 60%, ${0.4 * glow})`);
-            glowGradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.fillRect(
-                stalagmite.x - stalagmite.width * 2,
-                stalagmite.y - stalagmite.height - stalagmite.width * 2,
-                stalagmite.width * 4,
-                stalagmite.width * 4,
-            );
-
-            this.ctx.restore();
-        });
-    }
-
-    drawMist() {
-        this.mist.forEach((m) => {
-            this.ctx.save();
-
-            const pulse = Math.sin(this.animationTime * 0.5 + m.x * 0.01) * 0.2 + 0.8;
-            // Boost mist brightness during combos
-            const comboBoost = 1 + this.comboMultiplier * 0.4 + this.pulseIntensity * 0.3;
-            const opacity = m.opacity * pulse * Math.min(comboBoost, 2.5);
-
-            // Draw elliptical mist patch
-            const gradient = this.ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.width / 2);
-            gradient.addColorStop(0, `hsla(${m.hue}, 40%, 50%, ${opacity})`);
-            gradient.addColorStop(0.5, `hsla(${m.hue}, 35%, 45%, ${opacity * 0.5})`);
-            gradient.addColorStop(1, 'transparent');
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.save();
-            this.ctx.translate(m.x, m.y);
-            this.ctx.scale(1, m.height / m.width);
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, m.width / 2, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.restore();
-
-            this.ctx.restore();
-        });
-    }
-
     stop() {
-        // Unsubscribe from events
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
@@ -1353,18 +1679,29 @@ export default class GeodeTheme extends BaseTheme {
         this.animationTime = 0;
         this.pulseIntensity = 0;
         this.comboMultiplier = 1.0;
-        this.energyPulses = [];
-        this.crystalResonance = [];
-        this.floorRipples = [];
+        this.clearAllElements();
         this.screenShake = { x: 0, y: 0, intensity: 0 };
         this.chromaticAberration = 0;
-        this.crystalShakeIntensity = 0;
+        
+        // Clean up WebGL resources
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+        this.webglCanvas = null;
+        
+        // Clear offscreen canvas
+        if (this.starCtx && this.starCanvas) {
+            this.starCtx.clearRect(0, 0, this.starCanvas.width, this.starCanvas.height);
+        }
+        this.starLayerDirty = true;
+
+        // Reset any ripple boost on stars
+        this.stars.forEach((star) => {
+            star.rippleBoost = 0;
+        });
     }
 
-    /**
-     * Provide Geode themed tetromino styling (jewel-toned glow palette)
-     * @returns {Object} Geode tetromino configuration
-     */
     getTetrominoConfig() {
         return GEODE_TETROMINOS;
     }

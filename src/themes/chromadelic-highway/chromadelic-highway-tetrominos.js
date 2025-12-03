@@ -14,16 +14,16 @@
 export const CHROMADELIC_HIGHWAY_TETROMINOS = {
     version: 1,
 
-    // Vibrant rainbow spectrum palette
+    // Ultra-vibrant neon rainbow spectrum palette
     colors: {
-        I: '#ff0099', // Hot Pink/Magenta (vibrant start of spectrum)
-        O: '#ff6600', // Bright Orange (warm energy)
-        T: '#ffff00', // Electric Yellow (brightest point)
-        S: '#00ff66', // Neon Green (cyber aesthetic)
-        Z: '#00ffff', // Cyan (cool vibrant)
-        J: '#0099ff', // Electric Blue (deep vibrant)
-        L: '#9933ff', // Purple (completing the spectrum)
-        GARBAGE: '#333355', // Dark purple-grey (minimal presence)
+        I: '#ff1493', // Deep Hot Pink (electric magenta)
+        O: '#ff8c00', // Vivid Orange (blazing)
+        T: '#ffea00', // Electric Lemon Yellow
+        S: '#00ff80', // Bright Neon Green
+        Z: '#00f5ff', // Brilliant Cyan
+        J: '#4d90fe', // Vibrant Electric Blue
+        L: '#bf40ff', // Rich Neon Purple
+        GARBAGE: '#2a2a45', // Deep cosmic purple
     },
 
     // Neon glow render mode (signature chromadelic effect)

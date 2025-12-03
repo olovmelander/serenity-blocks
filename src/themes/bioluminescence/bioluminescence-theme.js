@@ -1,12 +1,17 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
+import WebGLBioRenderer from './webgl-bio-renderer.js';
+import { BLOCK_SIZE, COLS, ROWS } from '../../core/constants.js';
 
 export default class BioluminescenceTheme extends BaseTheme {
     constructor() {
         super('bioluminescence');
         this.canvas = null;
         this.ctx = null;
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.useWebGL = false;
         this.resizeHandler = null;
         this.time = 0;
 
@@ -20,6 +25,8 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.spores = [];
         this.ambientGlows = []; // Floating ambient light spots
         this.luminousVines = []; // Hanging glowing vines
+        this.globalRipples = []; // Screen-wide shockwaves
+        this.alienFlora = []; // Strange bottom-layer plants
 
         // Performance limits
         this.MAX_PARTICLES = 200;
@@ -51,13 +58,13 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.qualityPresets = {
             Minimal: {
                 groundGlow: 5,
-                biolumRocks: 6,
-                groundMushrooms: 5,
+                biolumRocks: 4,
+                groundMushrooms: 3,
                 mushroomSpots: { min: 1, max: 1 },
-                glowingPlants: 8,
+                glowingPlants: 5,
                 plantFronds: { min: 2, max: 2 },
-                crystalFormations: 4,
-                luminousVines: 3,
+                crystalFormations: 3,
+                luminousVines: 2,
                 vineSegments: { min: 2, max: 3 },
                 fireflies: 15,
                 fireflyTrailLength: 2,
@@ -73,13 +80,13 @@ export default class BioluminescenceTheme extends BaseTheme {
             },
             Low: {
                 groundGlow: 8,
-                biolumRocks: 10,
-                groundMushrooms: 8,
+                biolumRocks: 7,
+                groundMushrooms: 6,
                 mushroomSpots: { min: 1, max: 2 },
-                glowingPlants: 12,
+                glowingPlants: 8,
                 plantFronds: { min: 2, max: 3 },
-                crystalFormations: 6,
-                luminousVines: 5,
+                crystalFormations: 4,
+                luminousVines: 3,
                 vineSegments: { min: 3, max: 4 },
                 fireflies: 25,
                 fireflyTrailLength: 3,
@@ -95,13 +102,13 @@ export default class BioluminescenceTheme extends BaseTheme {
             },
             Medium: {
                 groundGlow: 12,
-                biolumRocks: 14,
-                groundMushrooms: 12,
+                biolumRocks: 10,
+                groundMushrooms: 9,
                 mushroomSpots: { min: 2, max: 3 },
-                glowingPlants: 18,
+                glowingPlants: 12,
                 plantFronds: { min: 3, max: 4 },
-                crystalFormations: 9,
-                luminousVines: 8,
+                crystalFormations: 6,
+                luminousVines: 5,
                 vineSegments: { min: 4, max: 5 },
                 fireflies: 40,
                 fireflyTrailLength: 4,
@@ -117,13 +124,13 @@ export default class BioluminescenceTheme extends BaseTheme {
             },
             High: {
                 groundGlow: 15,
-                biolumRocks: 18,
-                groundMushrooms: 15,
+                biolumRocks: 14,
+                groundMushrooms: 11,
                 mushroomSpots: { min: 2, max: 4 },
-                glowingPlants: 22,
+                glowingPlants: 16,
                 plantFronds: { min: 3, max: 4 },
-                crystalFormations: 12,
-                luminousVines: 10,
+                crystalFormations: 8,
+                luminousVines: 7,
                 vineSegments: { min: 5, max: 6 },
                 fireflies: 50,
                 fireflyTrailLength: 5,
@@ -139,13 +146,13 @@ export default class BioluminescenceTheme extends BaseTheme {
             },
             Ultra: {
                 groundGlow: 20,
-                biolumRocks: 25,
-                groundMushrooms: 20,
+                biolumRocks: 18,
+                groundMushrooms: 15,
                 mushroomSpots: { min: 3, max: 6 },
-                glowingPlants: 30,
+                glowingPlants: 22,
                 plantFronds: { min: 4, max: 5 },
-                crystalFormations: 15,
-                luminousVines: 12,
+                crystalFormations: 10,
+                luminousVines: 9,
                 vineSegments: { min: 6, max: 8 },
                 fireflies: 80,
                 fireflyTrailLength: 8,
@@ -198,7 +205,22 @@ export default class BioluminescenceTheme extends BaseTheme {
         }
 
         this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
+        this.activePreset = { ...this.qualityPresets[quality] };
+
+        if (this.useWebGL) {
+            // Boost particle counts for WebGL
+            this.activePreset.fireflies *= 20;
+            this.activePreset.spores *= 10;
+            this.activePreset.ambientGlows *= 2;
+
+            console.log(`🍄 Bioluminescence: WebGL active, boosting particles (Fireflies: ${this.activePreset.fireflies}, Spores: ${this.activePreset.spores})`);
+
+            // Allocate WebGL buffers
+            const totalParticles = this.activePreset.fireflies + this.activePreset.spores + this.activePreset.ambientGlows;
+            if (this.webglRenderer) {
+                this.webglRenderer.allocateParticles(totalParticles * 2); // Buffer for extra particles
+            }
+        }
 
         console.log(`🍄 Bioluminescence: Applying ${quality} quality preset`);
 
@@ -256,14 +278,36 @@ export default class BioluminescenceTheme extends BaseTheme {
             willReadFrequently: false,
         });
 
+        // Create WebGL canvas
+        this.webglCanvas = document.createElement('canvas');
+        this.webglCanvas.id = 'bio-webgl-canvas';
+        this.webglCanvas.style.position = 'absolute';
+        this.webglCanvas.style.top = '0';
+        this.webglCanvas.style.left = '0';
+        this.webglCanvas.style.width = '100%';
+        this.webglCanvas.style.height = '100%';
+        this.webglCanvas.style.pointerEvents = 'none';
+        this.webglCanvas.style.zIndex = '0'; // Behind main canvas
+        themeContainer.appendChild(this.webglCanvas);
+
         // Set initial canvas size BEFORE creating elements
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         this.staticCanvas.width = window.innerWidth;
         this.staticCanvas.height = window.innerHeight;
+        this.webglCanvas.width = window.innerWidth;
+        this.webglCanvas.height = window.innerHeight;
 
-        this.resizeHandler = () => this.resizeCanvas();
-        window.addEventListener('resize', this.resizeHandler, false);
+        // Initialize WebGL renderer
+        this.webglRenderer = new WebGLBioRenderer(this.webglCanvas);
+        if (this.webglRenderer.init()) {
+            this.useWebGL = true;
+            this.webglRenderer.initTextureShaders(); // Initialize texture support
+            console.log('🍄 Bioluminescence: WebGL renderer active');
+        } else {
+            console.warn('🍄 Bioluminescence: WebGL initialization failed, falling back to Canvas2D');
+            this.useWebGL = false;
+        }
 
         // Cache gradients after setting size
         this.cacheGradients();
@@ -283,6 +327,11 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.createFireflies();
         this.createSpores();
         this.createAmbientGlows();
+
+        // Generate texture atlas for WebGL
+        if (this.useWebGL) {
+            this.generateTextureAtlas();
+        }
 
         // Setup gameplay event listeners
         this.setupEventListeners();
@@ -310,11 +359,13 @@ export default class BioluminescenceTheme extends BaseTheme {
                 this.biolumRocks = [];
                 this.groundMushrooms = [];
                 this.glowingPlants = [];
+                this.groundFoliage = []; // Clear foliage
                 this.crystalFormations = [];
                 this.luminousVines = [];
                 this.fireflies = [];
                 this.spores = [];
                 this.ambientGlows = [];
+                this.alienFlora = []; // Clear alien flora
 
                 // Apply new quality preset
                 this.applyQualityPreset(newQuality);
@@ -324,11 +375,13 @@ export default class BioluminescenceTheme extends BaseTheme {
                 this.createBiolumRocks();
                 this.createGroundMushrooms();
                 this.createGlowingPlants();
+                this.createGroundFoliage(); // Recreate foliage
                 this.createCrystalFormations();
                 this.createLuminousVines();
                 this.createFireflies();
                 this.createSpores();
                 this.createAmbientGlows();
+                this.createAlienFlora(); // Recreate alien flora
 
                 // Force static redraw
                 this.needsStaticRedraw = true;
@@ -338,6 +391,64 @@ export default class BioluminescenceTheme extends BaseTheme {
         window.addEventListener('settingsChanged', this.qualityChangeHandler);
     }
 
+    generateTextureAtlas() {
+        if (!this.useWebGL) return;
+
+        const ATLAS_SIZE = 4096; // Increased from 2048 for better quality
+        const canvas = document.createElement('canvas');
+        canvas.width = ATLAS_SIZE;
+        canvas.height = ATLAS_SIZE;
+        const ctx = canvas.getContext('2d');
+
+        let currentX = 0;
+        let currentY = 0;
+        let rowHeight = 0;
+
+        // Helper to add item to atlas
+        const addToAtlas = (item) => {
+            if (!item.cache) return;
+
+            const w = item.cache.width;
+            const h = item.cache.height;
+
+            if (currentX + w > ATLAS_SIZE) {
+                currentX = 0;
+                currentY += rowHeight + 2; // Add padding
+                rowHeight = 0;
+            }
+
+            if (currentY + h > ATLAS_SIZE) {
+                console.warn('Texture atlas full!');
+                return;
+            }
+
+            ctx.drawImage(item.cache, currentX, currentY);
+
+            // Store UVs (normalized 0..1)
+            item.uv = {
+                x: currentX / ATLAS_SIZE,
+                y: currentY / ATLAS_SIZE,
+                w: w / ATLAS_SIZE,
+                h: h / ATLAS_SIZE
+            };
+
+            currentX += w + 2; // Padding
+            rowHeight = Math.max(rowHeight, h);
+        };
+
+        // Process all static elements
+        this.biolumRocks.forEach(addToAtlas);
+        this.groundMushrooms.forEach(addToAtlas);
+        this.crystalFormations.forEach(addToAtlas);
+        this.glowingPlants.forEach(addToAtlas);
+        if (this.groundFoliage) this.groundFoliage.forEach(addToAtlas); // Add foliage to atlas
+        if (this.alienFlora) this.alienFlora.forEach(addToAtlas); // Add alien flora
+
+        // Upload to WebGL
+        this.webglRenderer.uploadTexture(canvas);
+        console.log('🍄 Bioluminescence: Texture atlas generated');
+    }
+
     resizeCanvas() {
         if (!this.canvas || !this.ctx) return;
         this.canvas.width = window.innerWidth;
@@ -345,6 +456,13 @@ export default class BioluminescenceTheme extends BaseTheme {
         if (this.staticCanvas) {
             this.staticCanvas.width = window.innerWidth;
             this.staticCanvas.height = window.innerHeight;
+        }
+        if (this.webglCanvas) {
+            this.webglCanvas.width = window.innerWidth;
+            this.webglCanvas.height = window.innerHeight;
+            if (this.webglRenderer) {
+                this.webglRenderer.gl.viewport(0, 0, window.innerWidth, window.innerHeight);
+            }
         }
         this.cacheGradients();
         this.needsStaticRedraw = true;
@@ -416,7 +534,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         const rockCount = this.activePreset.biolumRocks;
         for (let i = 0; i < rockCount; i++) {
             const size = Math.random() * 30 + 20;
-            this.biolumRocks.push({
+            const rock = {
                 x: Math.random() * this.canvas.width,
                 y: this.canvas.height - Math.random() * 60,
                 width: size,
@@ -427,18 +545,160 @@ export default class BioluminescenceTheme extends BaseTheme {
                 hue: Math.random() * 40 + 170,
                 shape: Math.random() > 0.5 ? 'rounded' : 'angular',
                 layer: Math.random(),
-            });
+            };
+
+            // Cache the rock rendering
+            rock.cache = document.createElement('canvas');
+            const cacheSize = size * 4; // Enough space for glow
+            rock.cache.width = cacheSize;
+            rock.cache.height = cacheSize;
+            const ctx = rock.cache.getContext('2d');
+            const cx = cacheSize / 2;
+            const cy = cacheSize / 2;
+
+            // Draw glow
+            const glowGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, rock.width * 2);
+            glowGradient.addColorStop(0, `hsla(${rock.hue}, 100%, 65%, 0.4)`);
+            glowGradient.addColorStop(0.5, `hsla(${rock.hue}, 90%, 55%, 0.2)`);
+            glowGradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rock.width * 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw rock body
+            if (rock.shape === 'rounded') {
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, rock.width / 2, rock.height / 2, 0, 0, Math.PI * 2);
+
+                const rockGradient = ctx.createRadialGradient(cx - rock.width * 0.2, cy - rock.height * 0.2, rock.width * 0.1, cx, cy, rock.width / 2);
+                rockGradient.addColorStop(0, `hsla(${rock.hue}, 90%, 60%, 0.8)`);
+                rockGradient.addColorStop(0.5, `hsla(${rock.hue}, 80%, 50%, 0.7)`);
+                rockGradient.addColorStop(1, `hsla(${rock.hue}, 70%, 40%, 0.6)`);
+
+                ctx.fillStyle = rockGradient;
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(cx - rock.width / 2, cy + rock.height / 2);
+                ctx.lineTo(cx - rock.width * 0.3, cy - rock.height * 0.3);
+                ctx.lineTo(cx, cy - rock.height / 2);
+                ctx.lineTo(cx + rock.width * 0.3, cy - rock.height * 0.2);
+                ctx.lineTo(cx + rock.width / 2, cy + rock.height * 0.3);
+                ctx.lineTo(cx + rock.width * 0.3, cy + rock.height / 2);
+                ctx.closePath();
+
+                const rockGradient = ctx.createLinearGradient(cx, cy - rock.height / 2, cx, cy + rock.height / 2);
+                rockGradient.addColorStop(0, `hsla(${rock.hue}, 75%, 45%, 0.7)`);
+                rockGradient.addColorStop(0.5, `hsla(${rock.hue}, 85%, 55%, 0.75)`);
+                rockGradient.addColorStop(1, `hsla(${rock.hue}, 95%, 65%, 0.85)`);
+
+                ctx.fillStyle = rockGradient;
+                ctx.fill();
+
+                ctx.strokeStyle = `hsla(${rock.hue}, 100%, 75%, 0.5)`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            this.biolumRocks.push(rock);
         }
         this.biolumRocks.sort((a, b) => a.layer - b.layer);
     }
 
+    createGroundFoliage() {
+        // Create grassy/fern-like elements for the bottom layer
+        const foliageCount = this.activePreset.glowingPlants * 2; // More dense than plants
+
+        for (let i = 0; i < foliageCount; i++) {
+            const size = Math.random() * 40 + 20;
+            const foliage = {
+                x: Math.random() * this.canvas.width,
+                y: this.canvas.height,
+                width: size,
+                height: size * (Math.random() * 1.5 + 1),
+                hue: Math.random() * 40 + 120, // Green/Cyan
+                swaySpeed: Math.random() * 0.02 + 0.01,
+                swayPhase: Math.random() * Math.PI * 2,
+                type: Math.random() > 0.5 ? 'fern' : 'grass',
+                layer: Math.random() * 0.3, // Mostly background
+            };
+
+            // Cache foliage
+            foliage.cache = document.createElement('canvas');
+            foliage.cache.width = foliage.width * 2;
+            foliage.cache.height = foliage.height * 1.5;
+            const ctx = foliage.cache.getContext('2d');
+
+            const cx = foliage.width;
+            const cy = foliage.height * 1.2;
+
+            ctx.translate(cx, cy);
+
+            // Draw foliage
+            if (foliage.type === 'fern') {
+                // Fern frond
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(foliage.width * 0.2, -foliage.height * 0.5, 0, -foliage.height);
+                ctx.quadraticCurveTo(-foliage.width * 0.2, -foliage.height * 0.5, 0, 0);
+
+                const grad = ctx.createLinearGradient(0, 0, 0, -foliage.height);
+                grad.addColorStop(0, `hsla(${foliage.hue}, 60%, 20%, 0.8)`);
+                grad.addColorStop(1, `hsla(${foliage.hue}, 70%, 40%, 0.6)`);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // Leaves
+                for (let j = 0; j < 8; j++) {
+                    const y = -foliage.height * (j / 8);
+                    const w = foliage.width * 0.4 * (1 - j / 8);
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.quadraticCurveTo(w, y - 5, w * 1.5, y - 2);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.quadraticCurveTo(-w, y - 5, -w * 1.5, y - 2);
+                    ctx.stroke();
+                }
+            } else {
+                // Grass clump
+                const bladeCount = 5;
+                for (let j = 0; j < bladeCount; j++) {
+                    const angle = (j - bladeCount / 2) * 0.2;
+                    const h = foliage.height * (0.8 + Math.random() * 0.4);
+
+                    ctx.save();
+                    ctx.rotate(angle);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.quadraticCurveTo(5, -h / 2, 0, -h);
+                    ctx.quadraticCurveTo(-5, -h / 2, 0, 0);
+
+                    ctx.fillStyle = `hsla(${foliage.hue + Math.random() * 20}, 60%, 30%, 0.7)`;
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // Add to plants array (reusing glowingPlants array or new one?)
+            // Let's add to a new array but render with plants
+            if (!this.groundFoliage) this.groundFoliage = [];
+            this.groundFoliage.push(foliage);
+        }
+    }
+
     createGroundMushrooms() {
-        // Create traditional mushroom shapes with better silhouettes
+        // Create enhanced mushroom shapes with detailed textures and lighting
         const mushroomCount = this.activePreset.groundMushrooms;
         for (let i = 0; i < mushroomCount; i++) {
             const size = Math.random() * 60 + 40;
             const spotRange = this.activePreset.mushroomSpots;
-            this.groundMushrooms.push({
+            const mushroom = {
                 x: Math.random() * this.canvas.width,
                 y: this.canvas.height,
                 capWidth: size * (1 + Math.random() * 0.5),
@@ -450,25 +710,361 @@ export default class BioluminescenceTheme extends BaseTheme {
                 pulsePhase: Math.random() * Math.PI * 2,
                 tiltAngle: (Math.random() - 0.5) * 0.2,
                 hue: Math.random() * 50 + 160,
-                capShape: Math.random() > 0.5 ? 'dome' : 'flat', // Different cap styles
-                hasGills: Math.random() > 0.5,
+                capShape: Math.random() > 0.5 ? 'dome' : 'flat',
+                hasGills: true, // Always have gills for detail
                 spotCount: Math.floor(Math.random() * (spotRange.max - spotRange.min + 1)) + spotRange.min,
                 spots: [],
                 layer: Math.random(),
-            });
+            };
 
             // Create spots on cap
-            const mushroom = this.groundMushrooms[this.groundMushrooms.length - 1];
             for (let j = 0; j < mushroom.spotCount; j++) {
                 mushroom.spots.push({
-                    offsetX: (Math.random() - 0.5) * mushroom.capWidth * 0.6,
-                    offsetY: (Math.random() - 0.5) * mushroom.capHeight * 0.4,
-                    size: Math.random() * 6 + 3,
+                    offsetX: (Math.random() - 0.5) * mushroom.capWidth * 0.7,
+                    offsetY: (Math.random() - 0.5) * mushroom.capHeight * 0.5,
+                    size: Math.random() * 8 + 4,
                     intensity: Math.random() * 0.6 + 0.4,
+                    blur: Math.random() * 2 + 1,
                 });
             }
+
+            // Cache mushroom rendering
+            mushroom.cache = document.createElement('canvas');
+            const cacheWidth = mushroom.capWidth * 3; // More padding for glow
+            const cacheHeight = (mushroom.stemHeight + mushroom.capHeight) * 3;
+            mushroom.cache.width = cacheWidth;
+            mushroom.cache.height = cacheHeight;
+            const ctx = mushroom.cache.getContext('2d');
+            const cx = cacheWidth / 2;
+            const cy = cacheHeight * 0.8; // Base of stem near bottom
+
+            ctx.translate(cx, cy);
+            ctx.rotate(mushroom.tiltAngle);
+
+            // 1. Draw main glow aura (Volumetric)
+            const auraGradient = ctx.createRadialGradient(0, -mushroom.stemHeight - mushroom.capHeight / 2, 0, 0, -mushroom.stemHeight - mushroom.capHeight / 2, mushroom.capWidth * 1.5);
+            auraGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 70%, 0.4)`);
+            auraGradient.addColorStop(0.4, `hsla(${mushroom.hue}, 90%, 60%, 0.2)`);
+            auraGradient.addColorStop(1, 'rgba(100, 220, 200, 0)');
+
+            ctx.fillStyle = auraGradient;
+            ctx.beginPath();
+            ctx.arc(0, -mushroom.stemHeight - mushroom.capHeight / 2, mushroom.capWidth * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 2. Draw Stem (Textured)
+            const stemGradient = ctx.createLinearGradient(-mushroom.stemWidth / 2, 0, mushroom.stemWidth / 2, 0);
+            stemGradient.addColorStop(0, `hsla(${mushroom.hue}, 40%, 20%, 0.9)`);
+            stemGradient.addColorStop(0.3, `hsla(${mushroom.hue}, 50%, 30%, 0.95)`);
+            stemGradient.addColorStop(0.7, `hsla(${mushroom.hue}, 50%, 30%, 0.95)`);
+            stemGradient.addColorStop(1, `hsla(${mushroom.hue}, 40%, 20%, 0.9)`);
+
+            ctx.fillStyle = stemGradient;
+            ctx.beginPath();
+            // Curved stem
+            ctx.moveTo(-mushroom.stemWidth / 2, 0);
+            ctx.quadraticCurveTo(-mushroom.stemWidth * 0.4, -mushroom.stemHeight * 0.5, -mushroom.stemWidth * 0.4, -mushroom.stemHeight);
+            ctx.lineTo(mushroom.stemWidth * 0.4, -mushroom.stemHeight);
+            ctx.quadraticCurveTo(mushroom.stemWidth * 0.4, -mushroom.stemHeight * 0.5, mushroom.stemWidth / 2, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Stem texture (striations)
+            ctx.strokeStyle = `hsla(${mushroom.hue}, 60%, 40%, 0.3)`;
+            ctx.lineWidth = 1;
+            for (let k = 0; k < 5; k++) {
+                const xOff = (Math.random() - 0.5) * mushroom.stemWidth * 0.6;
+                ctx.beginPath();
+                ctx.moveTo(xOff, 0);
+                ctx.quadraticCurveTo(xOff * 0.8, -mushroom.stemHeight * 0.5, xOff * 0.8, -mushroom.stemHeight);
+                ctx.stroke();
+            }
+
+            // 3. Draw Gills (Under cap)
+            const capY = -mushroom.stemHeight;
+            ctx.save();
+            ctx.translate(0, capY);
+
+            // Gill shape clipping
+            ctx.beginPath();
+            ctx.ellipse(0, 0, mushroom.capWidth / 2, mushroom.capHeight / 3, 0, 0, Math.PI * 2);
+            ctx.clip();
+
+            // Gill background
+            ctx.fillStyle = `hsla(${mushroom.hue}, 60%, 15%, 1)`;
+            ctx.fill();
+
+            // Glowing gills
+            ctx.strokeStyle = `hsla(${mushroom.hue}, 80%, 50%, 0.6)`;
+            ctx.lineWidth = 1.5;
+            const gillCount = 40;
+            for (let k = 0; k < gillCount; k++) {
+                const angle = (k / gillCount) * Math.PI * 2;
+                const r = mushroom.capWidth / 2;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r * 0.6); // Flattened Y
+                ctx.stroke();
+            }
+            ctx.restore();
+
+
+            // 4. Draw Cap (Detailed)
+            ctx.beginPath();
+            if (mushroom.capShape === 'dome') {
+                ctx.ellipse(0, capY - mushroom.capHeight / 3, mushroom.capWidth / 2, mushroom.capHeight, 0, Math.PI, 0); // Top half
+                // Bottom curve
+                ctx.bezierCurveTo(
+                    mushroom.capWidth / 2, capY + mushroom.capHeight * 0.2,
+                    -mushroom.capWidth / 2, capY + mushroom.capHeight * 0.2,
+                    -mushroom.capWidth / 2, capY - mushroom.capHeight / 3
+                );
+            } else {
+                // Flat/Wavy cap
+                ctx.moveTo(-mushroom.capWidth / 2, capY);
+                ctx.bezierCurveTo(
+                    -mushroom.capWidth * 0.2, capY - mushroom.capHeight * 1.5,
+                    mushroom.capWidth * 0.2, capY - mushroom.capHeight * 1.5,
+                    mushroom.capWidth / 2, capY
+                );
+                ctx.bezierCurveTo(
+                    mushroom.capWidth * 0.4, capY + mushroom.capHeight * 0.3,
+                    -mushroom.capWidth * 0.4, capY + mushroom.capHeight * 0.3,
+                    -mushroom.capWidth / 2, capY
+                );
+            }
+            ctx.closePath();
+
+            // Cap Gradient (Subsurface scattering feel)
+            const capGradient = ctx.createRadialGradient(
+                0, capY - mushroom.capHeight, 0,
+                0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2
+            );
+            capGradient.addColorStop(0, `hsla(${mushroom.hue}, 90%, 75%, 1.0)`); // Bright top center
+            capGradient.addColorStop(0.4, `hsla(${mushroom.hue}, 80%, 50%, 0.95)`); // Mid body
+            capGradient.addColorStop(0.8, `hsla(${mushroom.hue}, 70%, 30%, 0.9)`); // Darker edges
+            capGradient.addColorStop(1, `hsla(${mushroom.hue}, 60%, 20%, 0.9)`); // Rim
+
+            ctx.fillStyle = capGradient;
+            ctx.fill();
+
+            // 5. Cap Texture (Veins/Noise)
+            ctx.save();
+            ctx.clip(); // Clip to cap shape
+            ctx.strokeStyle = `hsla(${mushroom.hue}, 90%, 80%, 0.15)`;
+            ctx.lineWidth = 2;
+            for (let k = 0; k < 8; k++) {
+                const angle = Math.random() * Math.PI;
+                const r = Math.random() * mushroom.capWidth * 0.4;
+                ctx.beginPath();
+                ctx.arc(0, capY - mushroom.capHeight, r + k * 5, angle, angle + Math.PI);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // 6. Glowing Spots
+            for (const spot of mushroom.spots) {
+                const spotX = spot.offsetX;
+                const spotY = capY - mushroom.capHeight * 0.6 + spot.offsetY;
+
+                // Spot Glow
+                const spotGlow = ctx.createRadialGradient(spotX, spotY, 0, spotX, spotY, spot.size * 2);
+                spotGlow.addColorStop(0, `hsla(${mushroom.hue + 30}, 100%, 90%, ${0.8 * spot.intensity})`);
+                spotGlow.addColorStop(0.4, `hsla(${mushroom.hue + 20}, 100%, 70%, ${0.4 * spot.intensity})`);
+                spotGlow.addColorStop(1, 'rgba(0,0,0,0)');
+
+                ctx.fillStyle = spotGlow;
+                ctx.beginPath();
+                ctx.arc(spotX, spotY, spot.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Spot Core
+                ctx.fillStyle = `hsla(${mushroom.hue + 40}, 100%, 95%, ${0.9 * spot.intensity})`;
+                ctx.beginPath();
+                ctx.ellipse(spotX, spotY, spot.size, spot.size * 0.7, Math.random(), 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 7. Rim Light (Backlighting effect)
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.strokeStyle = `hsla(${mushroom.hue}, 100%, 80%, 0.4)`;
+            ctx.lineWidth = 2;
+            ctx.stroke(); // Stroke the cap path defined earlier
+            ctx.restore();
+
+            // Fix positioning: Move up so the stem base (at 80% of cache height) sits on the bottom
+            // Center is at 50%. Base is at 80%. Difference is 30% of height.
+            // We want Base to be at canvas.height.
+            // So Center (y) must be at canvas.height - 0.3 * cacheHeight.
+            mushroom.y = this.canvas.height - cacheHeight * 0.3 + Math.random() * 20; // Slight variation
+
+            this.groundMushrooms.push(mushroom);
         }
         this.groundMushrooms.sort((a, b) => a.layer - b.layer);
+    }
+
+    createAlienFlora() {
+        // Create strange, bioluminescent organic shapes for the bottom layer
+        const count = Math.floor(this.canvas.width / 40); // Increased density (was 60)
+
+        for (let i = 0; i < count; i++) {
+            const rand = Math.random();
+            const type = rand > 0.7 ? 'tentacle' : (rand > 0.4 ? 'bulb' : 'spiral');
+            const size = Math.random() * 60 + 40;
+            const hue = Math.random() * 60 + 260; // Purple/Pink/Blue range
+
+            const flora = {
+                x: Math.random() * this.canvas.width,
+                y: this.canvas.height, // Will adjust
+                width: size,
+                height: size * (Math.random() * 2 + 1.5),
+                hue: hue,
+                type: type,
+                swaySpeed: Math.random() * 0.03 + 0.02,
+                swayPhase: Math.random() * Math.PI * 2,
+                layer: Math.random() * 0.4,
+                glowIntensity: Math.random() * 0.5 + 0.5,
+            };
+
+            // Cache
+            flora.cache = document.createElement('canvas');
+            const cacheW = size * 3;
+            const cacheH = flora.height * 1.5;
+            flora.cache.width = cacheW;
+            flora.cache.height = cacheH;
+            const ctx = flora.cache.getContext('2d');
+
+            const cx = cacheW / 2;
+            const cy = cacheH * 0.9; // Base near bottom
+
+            ctx.translate(cx, cy);
+
+            if (type === 'tentacle') {
+                // Wavy tentacle
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                // Control points for S-shape
+                ctx.bezierCurveTo(
+                    size * 0.5, -flora.height * 0.3,
+                    -size * 0.5, -flora.height * 0.6,
+                    0, -flora.height
+                );
+
+                // Thick base, thin tip
+                ctx.lineCap = 'round';
+                for (let k = 0; k < 10; k++) {
+                    ctx.lineWidth = (1 - k / 10) * size * 0.3 + 2;
+                    ctx.strokeStyle = `hsla(${hue}, 80%, ${30 + k * 5}%, ${0.1 + k / 20})`;
+                    ctx.stroke();
+                }
+
+                // Glowing tip
+                const tipGlow = ctx.createRadialGradient(0, -flora.height, 0, 0, -flora.height, size * 0.8);
+                tipGlow.addColorStop(0, `hsla(${hue}, 100%, 80%, 1)`);
+                tipGlow.addColorStop(0.4, `hsla(${hue}, 100%, 60%, 0.5)`);
+                tipGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = tipGlow;
+                ctx.beginPath();
+                ctx.arc(0, -flora.height, size * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Bioluminescent spots along stalk
+                for (let k = 1; k < 5; k++) {
+                    const y = -flora.height * (k / 5);
+                    ctx.fillStyle = `hsla(${hue + 20}, 100%, 70%, 0.6)`;
+                    ctx.beginPath();
+                    ctx.arc(Math.sin(k) * 5, y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+            } else if (type === 'bulb') {
+                // Bulb on stalk
+                // Stalk
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(size * 0.2, -flora.height * 0.5, 0, -flora.height);
+                ctx.lineWidth = size * 0.15;
+                ctx.strokeStyle = `hsla(${hue}, 60%, 20%, 0.8)`;
+                ctx.stroke();
+
+                // Bulb
+                const bulbY = -flora.height;
+                const bulbSize = size * 0.4;
+
+                // Bulb Glow
+                const bulbGlow = ctx.createRadialGradient(0, bulbY, 0, 0, bulbY, bulbSize * 3);
+                bulbGlow.addColorStop(0, `hsla(${hue}, 100%, 60%, 0.6)`);
+                bulbGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = bulbGlow;
+                ctx.beginPath();
+                ctx.arc(0, bulbY, bulbSize * 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Bulb Body
+                const bulbGrad = ctx.createRadialGradient(0, bulbY - bulbSize * 0.3, 0, 0, bulbY, bulbSize);
+                bulbGrad.addColorStop(0, `hsla(${hue}, 100%, 80%, 0.9)`);
+                bulbGrad.addColorStop(0.5, `hsla(${hue}, 90%, 50%, 0.8)`);
+                bulbGrad.addColorStop(1, `hsla(${hue}, 80%, 30%, 0.8)`);
+                ctx.fillStyle = bulbGrad;
+                ctx.beginPath();
+                ctx.arc(0, bulbY, bulbSize, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Internal filaments
+                ctx.strokeStyle = `hsla(${hue + 30}, 100%, 90%, 0.5)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(0, bulbY, bulbSize * 0.6, 0, Math.PI * 2);
+                ctx.stroke();
+            } else {
+                // Spiral/Fiddlehead
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+
+                // Spiral shape
+                const spiralTurns = 2;
+                const points = 20;
+                for (let k = 0; k <= points; k++) {
+                    const t = k / points;
+                    const angle = t * Math.PI * 2 * spiralTurns;
+                    const r = (1 - t) * size * 0.5; // Tapering radius
+                    const x = Math.cos(angle) * r;
+                    const y = -flora.height * t + Math.sin(angle) * r * 0.5;
+                    if (k === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+
+                ctx.lineCap = 'round';
+                ctx.lineWidth = size * 0.1;
+                ctx.strokeStyle = `hsla(${hue}, 70%, 40%, 0.8)`;
+                ctx.stroke();
+
+                // Glowing dots along spiral
+                for (let k = 0; k <= points; k += 2) {
+                    const t = k / points;
+                    const angle = t * Math.PI * 2 * spiralTurns;
+                    const r = (1 - t) * size * 0.5;
+                    const x = Math.cos(angle) * r;
+                    const y = -flora.height * t + Math.sin(angle) * r * 0.5;
+
+                    ctx.fillStyle = `hsla(${hue + 40}, 100%, 80%, 0.8)`;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Fix Y position
+            // Base is at 90% of cache height. Center is 50%.
+            // Shift up by (0.9 - 0.5) * cacheH = 0.4 * cacheH
+            flora.y = this.canvas.height - cacheH * 0.4 + Math.random() * 30;
+
+            if (!this.alienFlora) this.alienFlora = [];
+            this.alienFlora.push(flora);
+        }
+
+        if (this.alienFlora) this.alienFlora.sort((a, b) => a.layer - b.layer);
     }
 
     createGlowingPlants() {
@@ -526,17 +1122,26 @@ export default class BioluminescenceTheme extends BaseTheme {
             const baseX = Math.random() * this.canvas.width;
             const baseY = this.canvas.height - Math.random() * 80;
 
+            // Calculate bounds for cache canvas
+            let minX = 0, maxX = 0, minY = 0, maxY = 0;
+
             for (let j = 0; j < crystalCount; j++) {
-                crystals.push({
+                const crystal = {
                     offsetX: (Math.random() - 0.5) * 40,
                     height: Math.random() * 50 + 30,
                     width: Math.random() * 15 + 10,
                     angle: (Math.random() - 0.5) * 0.3,
                     glowIntensity: Math.random() * 0.5 + 0.5,
-                });
+                };
+                crystals.push(crystal);
+
+                // Approximate bounds
+                minX = Math.min(minX, crystal.offsetX - crystal.width);
+                maxX = Math.max(maxX, crystal.offsetX + crystal.width);
+                minY = Math.min(minY, -crystal.height); // Crystals grow up
             }
 
-            this.crystalFormations.push({
+            const formation = {
                 x: baseX,
                 y: baseY,
                 crystals,
@@ -544,7 +1149,62 @@ export default class BioluminescenceTheme extends BaseTheme {
                 pulsePhase: Math.random() * Math.PI * 2,
                 hue: Math.random() * 30 + 170, // Cyan-ish crystals
                 layer: Math.random() * 0.5, // Front layer mostly
-            });
+            };
+
+            // Cache formation
+            formation.cache = document.createElement('canvas');
+            const width = (maxX - minX) + 60; // Padding for glow
+            const height = (maxY - minY) + 60; // Padding
+            formation.cache.width = width;
+            formation.cache.height = height;
+            const ctx = formation.cache.getContext('2d');
+
+            // Center of formation in cache
+            const cx = width / 2;
+            const cy = height - 30; // Bottom with padding
+
+            ctx.translate(cx, cy);
+
+            for (const crystal of crystals) {
+                ctx.save();
+                ctx.translate(crystal.offsetX, 0);
+                ctx.rotate(crystal.angle);
+
+                // Draw crystal glow
+                const glowGradient = ctx.createRadialGradient(0, -crystal.height / 2, 0, 0, -crystal.height / 2, crystal.width * 3);
+                glowGradient.addColorStop(0, `hsla(${formation.hue}, 100%, 70%, 0.3)`);
+                glowGradient.addColorStop(0.5, `hsla(${formation.hue}, 90%, 60%, 0.1)`);
+                glowGradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+
+                ctx.fillStyle = glowGradient;
+                ctx.beginPath();
+                ctx.arc(0, -crystal.height / 2, crystal.width * 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw crystal body
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(-crystal.width / 2, -crystal.height);
+                ctx.lineTo(crystal.width / 2, -crystal.height);
+                ctx.closePath();
+
+                const crystalGradient = ctx.createLinearGradient(0, 0, 0, -crystal.height);
+                crystalGradient.addColorStop(0, `hsla(${formation.hue}, 80%, 45%, 0.8)`);
+                crystalGradient.addColorStop(0.5, `hsla(${formation.hue}, 90%, 60%, 0.7)`);
+                crystalGradient.addColorStop(1, `hsla(${formation.hue}, 100%, 70%, 0.9)`);
+
+                ctx.fillStyle = crystalGradient;
+                ctx.fill();
+
+                // Add highlight
+                ctx.strokeStyle = `hsla(${formation.hue}, 100%, 85%, 0.6)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            this.crystalFormations.push(formation);
         }
 
         this.crystalFormations.sort((a, b) => a.layer - b.layer);
@@ -656,7 +1316,13 @@ export default class BioluminescenceTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            if (this.isActive) {
+                this.handlePieceLock(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     handleLineClear(eventPayload) {
@@ -678,6 +1344,112 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         if (comboCount > 0) {
             this.pendingComboCount = comboCount;
+        }
+    }
+
+    handlePieceLock(data) {
+        const piece = data.piece || data.detail?.piece;
+        if (!piece) return;
+
+        // Calculate screen coordinates (assuming centered board)
+        const boardWidth = COLS * BLOCK_SIZE;
+        const boardHeight = ROWS * BLOCK_SIZE;
+        const startX = (this.canvas.width - boardWidth) / 2;
+        const startY = (this.canvas.height - boardHeight) / 2;
+
+        // Use piece center
+        const x = startX + (piece.x + 1.5) * BLOCK_SIZE;
+        const y = startY + (piece.y + 1.5) * BLOCK_SIZE;
+
+        // 1. Create Global Ripple (affects all flora)
+        this.createGlobalRipple(x, y);
+
+        // 2. Create Visual Shockwave (Ring)
+        this.createBioShockwave(x, y, piece.color);
+
+        // 3. Create Enhanced Burst (Particles + Streaks)
+        this.createBioBurst(x, y, piece.color);
+
+        // 4. Flash background strongly
+        this.pulseIntensity = Math.min(this.pulseIntensity + 0.8, 1.5); // Can go above 1.0 for super bright
+    }
+
+    createGlobalRipple(x, y) {
+        this.globalRipples.push({
+            x,
+            y,
+            radius: 0,
+            maxRadius: Math.max(this.canvas.width, this.canvas.height) * 1.5,
+            speed: 8,
+            strength: 4.0, // MUCH Stronger effect
+            life: 1.0,
+            decay: 0.008
+        });
+    }
+
+    createBioShockwave(x, y, color) {
+        // A refractive ring effect
+        this.energyWaves.push({
+            x,
+            y,
+            radius: 10,
+            maxRadius: 400, // Larger
+            opacity: 1.0, // Fully opaque start
+            life: 1.0,
+            speed: 15, // Faster
+            delay: 0,
+            started: true,
+            color: color || '#00ffcc',
+            type: 'shockwave'
+        });
+    }
+
+    createBioBurst(x, y, color) {
+        const particleCount = this.useWebGL ? 300 : 50; // Massive burst
+
+        // 1. Standard Particles
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 10 + 5; // Faster
+
+            const particle = {
+                x,
+                y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: Math.random() * 6 + 3,
+                opacity: 1.0,
+                life: 1.0,
+                color: color || (Math.random() > 0.5 ? 'cyan' : 'green'),
+                pulsePhase: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.2,
+                isBurst: true
+            };
+            this.lightBursts.push(particle);
+        }
+
+        // 2. Energy Streaks (Spiraling outwards)
+        const streakCount = 24; // More streaks
+        for (let i = 0; i < streakCount; i++) {
+            const angle = (i / streakCount) * Math.PI * 2;
+            const speed = 15 + Math.random() * 8;
+
+            const particle = {
+                x,
+                y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 5 + Math.random() * 5,
+                opacity: 1.0,
+                life: 1.5,
+                color: '#ffffff', // Bright core
+                pulsePhase: 0,
+                rotationSpeed: 0,
+                isBurst: true,
+                isStreak: true,
+                drag: 0.95
+            };
+            this.lightBursts.push(particle);
         }
     }
 
@@ -928,59 +1700,22 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             const glowMult = rock.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
 
-            this.ctx.save();
-            this.ctx.translate(rock.x, rock.y);
+            if (rock.cache) {
+                this.ctx.save();
+                this.ctx.translate(rock.x, rock.y);
 
-            // Draw glow around rock
-            const glowGradient = this.ctx.createRadialGradient(0, -rock.height / 2, 0, 0, -rock.height / 2, rock.width * 2);
-            glowGradient.addColorStop(0, `hsla(${rock.hue}, 100%, 65%, ${0.4 * glowMult})`);
-            glowGradient.addColorStop(0.5, `hsla(${rock.hue}, 90%, 55%, ${0.2 * glowMult})`);
-            glowGradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+                // Scale for pulse effect
+                const scale = 1.0 + (pulse - 0.7) * 0.1;
+                this.ctx.scale(scale, scale);
 
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(0, -rock.height / 2, rock.width * 2, 0, Math.PI * 2);
-            this.ctx.fill();
+                // Adjust opacity for glow
+                this.ctx.globalAlpha = Math.min(1.0, 0.7 + glowMult * 0.3);
 
-            // Draw rock body
-            if (rock.shape === 'rounded') {
-                // Smooth rounded rock
-                this.ctx.beginPath();
-                this.ctx.ellipse(0, -rock.height / 2, rock.width / 2, rock.height / 2, 0, 0, Math.PI * 2);
+                // Draw cached rock centered
+                this.ctx.drawImage(rock.cache, -rock.cache.width / 2, -rock.cache.height / 2);
 
-                const rockGradient = this.ctx.createRadialGradient(-rock.width * 0.2, -rock.height * 0.7, rock.width * 0.1, 0, -rock.height / 2, rock.width / 2);
-                rockGradient.addColorStop(0, `hsla(${rock.hue}, 90%, 60%, ${0.8 + glowMult * 0.15})`);
-                rockGradient.addColorStop(0.5, `hsla(${rock.hue}, 80%, 50%, 0.7)`);
-                rockGradient.addColorStop(1, `hsla(${rock.hue}, 70%, 40%, 0.6)`);
-
-                this.ctx.fillStyle = rockGradient;
-                this.ctx.fill();
-            } else {
-                // Angular crystal-like rock
-                this.ctx.beginPath();
-                this.ctx.moveTo(-rock.width / 2, 0);
-                this.ctx.lineTo(-rock.width * 0.3, -rock.height * 0.8);
-                this.ctx.lineTo(0, -rock.height);
-                this.ctx.lineTo(rock.width * 0.3, -rock.height * 0.7);
-                this.ctx.lineTo(rock.width / 2, -rock.height * 0.2);
-                this.ctx.lineTo(rock.width * 0.3, 0);
-                this.ctx.closePath();
-
-                const rockGradient = this.ctx.createLinearGradient(0, 0, 0, -rock.height);
-                rockGradient.addColorStop(0, `hsla(${rock.hue}, 75%, 45%, 0.7)`);
-                rockGradient.addColorStop(0.5, `hsla(${rock.hue}, 85%, 55%, ${0.75 + glowMult * 0.15})`);
-                rockGradient.addColorStop(1, `hsla(${rock.hue}, 95%, 65%, ${0.85 + glowMult * 0.1})`);
-
-                this.ctx.fillStyle = rockGradient;
-                this.ctx.fill();
-
-                // Add edges highlight
-                this.ctx.strokeStyle = `hsla(${rock.hue}, 100%, 75%, ${0.5 * glowMult})`;
-                this.ctx.lineWidth = 1.5;
-                this.ctx.stroke();
+                this.ctx.restore();
             }
-
-            this.ctx.restore();
         }
     }
 
@@ -996,133 +1731,24 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             const glowMult = mushroom.glowIntensity * pulse * (1 + this.pulseIntensity * 0.35);
 
-            this.ctx.save();
-            this.ctx.translate(mushroom.x, mushroom.y);
-            this.ctx.rotate(mushroom.tiltAngle);
+            if (mushroom.cache) {
+                this.ctx.save();
+                this.ctx.translate(mushroom.x, mushroom.y);
 
-            // Draw main glow aura
-            const auraGradient = this.ctx.createRadialGradient(0, -mushroom.stemHeight - mushroom.capHeight / 2, 0, 0, -mushroom.stemHeight - mushroom.capHeight / 2, mushroom.capWidth * 1.2);
-            auraGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 70%, ${0.5 * glowMult})`);
-            auraGradient.addColorStop(0.5, `hsla(${mushroom.hue}, 90%, 60%, ${0.25 * glowMult})`);
-            auraGradient.addColorStop(1, 'rgba(100, 220, 200, 0)');
+                // Scale for pulse effect
+                const scale = 1.0 + (pulse - 0.7) * 0.05;
+                this.ctx.scale(scale, scale);
 
-            this.ctx.fillStyle = auraGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(0, -mushroom.stemHeight - mushroom.capHeight / 2, mushroom.capWidth * 1.2, 0, Math.PI * 2);
-            this.ctx.fill();
+                // Adjust opacity for glow
+                this.ctx.globalAlpha = Math.min(1.0, 0.8 + glowMult * 0.2);
 
-            // Draw stem
-            const stemGradient = this.ctx.createLinearGradient(-mushroom.stemWidth / 2, 0, mushroom.stemWidth / 2, 0);
-            stemGradient.addColorStop(0, `hsla(${mushroom.hue}, 60%, 35%, 0.7)`);
-            stemGradient.addColorStop(0.5, `hsla(${mushroom.hue}, 65%, 40%, 0.8)`);
-            stemGradient.addColorStop(1, `hsla(${mushroom.hue}, 60%, 35%, 0.7)`);
+                // Draw cached mushroom centered on stem base
+                // The cache was drawn with stem base at (cx, cy)
+                // So we draw image at (-cx, -cy)
+                this.ctx.drawImage(mushroom.cache, -mushroom.cache.width / 2, -mushroom.cache.height * 0.8);
 
-            this.ctx.fillStyle = stemGradient;
-            this.ctx.beginPath();
-            this.ctx.moveTo(-mushroom.stemWidth / 2, 0);
-            this.ctx.lineTo(-mushroom.stemWidth / 2 * 0.8, -mushroom.stemHeight);
-            this.ctx.lineTo(mushroom.stemWidth / 2 * 0.8, -mushroom.stemHeight);
-            this.ctx.lineTo(mushroom.stemWidth / 2, 0);
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            // Stem glow
-            const stemGlow = this.ctx.createRadialGradient(0, -mushroom.stemHeight / 2, 0, 0, -mushroom.stemHeight / 2, mushroom.stemWidth * 1.5);
-            stemGlow.addColorStop(0, `hsla(${mushroom.hue}, 90%, 60%, ${0.15 * glowMult})`);
-            stemGlow.addColorStop(1, 'rgba(100, 200, 180, 0)');
-
-            this.ctx.fillStyle = stemGlow;
-            this.ctx.fillRect(-mushroom.stemWidth, -mushroom.stemHeight, mushroom.stemWidth * 2, mushroom.stemHeight);
-
-            // Draw mushroom cap
-            const capY = -mushroom.stemHeight;
-
-            this.ctx.beginPath();
-            if (mushroom.capShape === 'dome') {
-                // Rounded dome cap
-                this.ctx.ellipse(0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2, mushroom.capHeight, 0, 0, Math.PI, true);
-                this.ctx.lineTo(-mushroom.capWidth / 2 * 0.9, capY);
-                this.ctx.quadraticCurveTo(-mushroom.capWidth / 2 * 0.7, capY + 5, -mushroom.capWidth / 2 * 0.4, capY + 3);
-                this.ctx.lineTo(mushroom.capWidth / 2 * 0.4, capY + 3);
-                this.ctx.quadraticCurveTo(mushroom.capWidth / 2 * 0.7, capY + 5, mushroom.capWidth / 2 * 0.9, capY);
-                this.ctx.closePath();
-            } else {
-                // Flatter, wider cap
-                this.ctx.moveTo(-mushroom.capWidth / 2, capY);
-                this.ctx.quadraticCurveTo(-mushroom.capWidth / 2, capY - mushroom.capHeight * 1.2, 0, capY - mushroom.capHeight);
-                this.ctx.quadraticCurveTo(mushroom.capWidth / 2, capY - mushroom.capHeight * 1.2, mushroom.capWidth / 2, capY);
-                this.ctx.lineTo(mushroom.capWidth / 2 * 0.8, capY + 2);
-                this.ctx.quadraticCurveTo(mushroom.capWidth / 2 * 0.6, capY + 4, mushroom.capWidth / 2 * 0.3, capY + 2);
-                this.ctx.lineTo(-mushroom.capWidth / 2 * 0.3, capY + 2);
-                this.ctx.quadraticCurveTo(-mushroom.capWidth / 2 * 0.6, capY + 4, -mushroom.capWidth / 2 * 0.8, capY + 2);
-                this.ctx.closePath();
+                this.ctx.restore();
             }
-
-            // Cap gradient
-            const capGradient = this.ctx.createRadialGradient(
-                -mushroom.capWidth * 0.2,
-                capY - mushroom.capHeight * 0.7,
-                mushroom.capWidth * 0.1,
-                0,
-                capY - mushroom.capHeight / 2,
-                mushroom.capWidth / 2,
-            );
-            capGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 70%, ${0.9 + glowMult * 0.1})`);
-            capGradient.addColorStop(0.4, `hsla(${mushroom.hue}, 90%, 60%, ${0.85 + glowMult * 0.1})`);
-            capGradient.addColorStop(0.7, `hsla(${mushroom.hue}, 80%, 50%, 0.75)`);
-            capGradient.addColorStop(1, `hsla(${mushroom.hue}, 70%, 40%, 0.65)`);
-
-            this.ctx.fillStyle = capGradient;
-            this.ctx.fill();
-
-            // Draw gills underneath if applicable
-            if (mushroom.hasGills) {
-                this.ctx.strokeStyle = `hsla(${mushroom.hue}, 70%, 35%, 0.4)`;
-                this.ctx.lineWidth = 1;
-                const spacing = this.activePreset.mushroomGillSpacing;
-                for (let i = -mushroom.capWidth / 2 * 0.7; i < mushroom.capWidth / 2 * 0.7; i += spacing) {
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(i, capY);
-                    this.ctx.lineTo(i * 0.8, capY + 3);
-                    this.ctx.stroke();
-                }
-            }
-
-            // Draw glowing spots on cap
-            for (const spot of mushroom.spots) {
-                const spotX = spot.offsetX;
-                const spotY = capY - mushroom.capHeight * 0.5 + spot.offsetY;
-
-                const spotGradient = this.ctx.createRadialGradient(spotX, spotY, 0, spotX, spotY, spot.size);
-                spotGradient.addColorStop(0, `hsla(${mushroom.hue + 20}, 100%, 80%, ${0.9 * spot.intensity * glowMult})`);
-                spotGradient.addColorStop(0.5, `hsla(${mushroom.hue + 15}, 100%, 75%, ${0.6 * spot.intensity * glowMult})`);
-                spotGradient.addColorStop(1, 'rgba(200, 255, 240, 0)');
-
-                this.ctx.fillStyle = spotGradient;
-                this.ctx.beginPath();
-                this.ctx.arc(spotX, spotY, spot.size, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
-
-            // Rim highlight for 3D depth
-            const rimGradient = this.ctx.createRadialGradient(
-                -mushroom.capWidth * 0.25,
-                capY - mushroom.capHeight * 0.7,
-                0,
-                0,
-                capY - mushroom.capHeight / 2,
-                mushroom.capWidth / 2,
-            );
-            rimGradient.addColorStop(0, `hsla(${mushroom.hue}, 100%, 85%, ${0.4 * glowMult})`);
-            rimGradient.addColorStop(0.3, `hsla(${mushroom.hue}, 100%, 75%, ${0.2 * glowMult})`);
-            rimGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-            this.ctx.fillStyle = rimGradient;
-            this.ctx.beginPath();
-            this.ctx.ellipse(0, capY - mushroom.capHeight / 2, mushroom.capWidth / 2, mushroom.capHeight, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.restore();
         }
     }
 
@@ -1177,51 +1803,32 @@ export default class BioluminescenceTheme extends BaseTheme {
             formation.pulsePhase += formation.pulseSpeed;
             const pulse = Math.sin(formation.pulsePhase) * 0.3 + 0.7;
 
+            // Update crystal glow (for logic, though not used in cached render)
             for (const crystal of formation.crystals) {
-                const x = formation.x + crystal.offsetX;
-                const { y } = formation;
-
-                this.ctx.save();
-                this.ctx.translate(x, y);
-                this.ctx.rotate(crystal.angle);
-
-                // Decay intense glow
                 if (crystal.glowIntensity > 0.5) {
                     crystal.glowIntensity *= 0.985;
                 }
+            }
 
-                const glowMult = crystal.glowIntensity * pulse * (1 + this.pulseIntensity * 0.4);
+            // Use average glow intensity for pulse boost
+            const avgGlow = formation.crystals.reduce((sum, c) => sum + c.glowIntensity, 0) / formation.crystals.length;
+            const glowMult = avgGlow * pulse * (1 + this.pulseIntensity * 0.4);
 
-                // Draw crystal glow
-                const glowGradient = this.ctx.createRadialGradient(0, -crystal.height / 2, 0, 0, -crystal.height / 2, crystal.width * 3);
-                glowGradient.addColorStop(0, `hsla(${formation.hue}, 100%, 70%, ${0.5 * glowMult})`);
-                glowGradient.addColorStop(0.5, `hsla(${formation.hue}, 90%, 60%, ${0.3 * glowMult})`);
-                glowGradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+            if (formation.cache) {
+                this.ctx.save();
+                this.ctx.translate(formation.x, formation.y);
 
-                this.ctx.fillStyle = glowGradient;
-                this.ctx.beginPath();
-                this.ctx.arc(0, -crystal.height / 2, crystal.width * 3, 0, Math.PI * 2);
-                this.ctx.fill();
+                // Scale for pulse effect
+                const scale = 1.0 + (pulse - 0.7) * 0.05;
+                this.ctx.scale(scale, scale);
 
-                // Draw crystal body
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, 0);
-                this.ctx.lineTo(-crystal.width / 2, -crystal.height);
-                this.ctx.lineTo(crystal.width / 2, -crystal.height);
-                this.ctx.closePath();
+                // Adjust opacity
+                this.ctx.globalAlpha = Math.min(1.0, 0.8 + glowMult * 0.2);
 
-                const crystalGradient = this.ctx.createLinearGradient(0, 0, 0, -crystal.height);
-                crystalGradient.addColorStop(0, `hsla(${formation.hue}, 80%, 45%, 0.8)`);
-                crystalGradient.addColorStop(0.5, `hsla(${formation.hue}, 90%, 60%, ${0.6 + glowMult * 0.2})`);
-                crystalGradient.addColorStop(1, `hsla(${formation.hue}, 100%, 70%, ${0.9 + glowMult * 0.1})`);
-
-                this.ctx.fillStyle = crystalGradient;
-                this.ctx.fill();
-
-                // Add highlight
-                this.ctx.strokeStyle = `hsla(${formation.hue}, 100%, 85%, ${0.6 * glowMult})`;
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
+                // Draw cached formation
+                // Center X is width/2, Center Y is height-30 (from creation)
+                // So we draw at -width/2, -(height-30)
+                this.ctx.drawImage(formation.cache, -formation.cache.width / 2, -(formation.cache.height - 30));
 
                 this.ctx.restore();
             }
@@ -1517,15 +2124,17 @@ export default class BioluminescenceTheme extends BaseTheme {
             if (spore.y < -10) spore.y = this.canvas.height + 10;
 
             // Draw spore with glow
-            const gradient = this.ctx.createRadialGradient(spore.x, spore.y, 0, spore.x, spore.y, spore.size * 3);
-            gradient.addColorStop(0, `rgba(150, 255, 220, ${spore.opacity})`);
-            gradient.addColorStop(0.5, `rgba(100, 220, 180, ${spore.opacity * 0.5})`);
-            gradient.addColorStop(1, 'rgba(50, 180, 150, 0)');
+            if (!this.useWebGL) {
+                const gradient = this.ctx.createRadialGradient(spore.x, spore.y, 0, spore.x, spore.y, spore.size * 3);
+                gradient.addColorStop(0, `rgba(150, 255, 220, ${spore.opacity})`);
+                gradient.addColorStop(0.5, `rgba(100, 220, 180, ${spore.opacity * 0.5})`);
+                gradient.addColorStop(1, 'rgba(50, 180, 150, 0)');
 
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(spore.x, spore.y, spore.size * 3, 0, Math.PI * 2);
-            this.ctx.fill();
+                this.ctx.fillStyle = gradient;
+                this.ctx.beginPath();
+                this.ctx.arc(spore.x, spore.y, spore.size * 3, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
         }
     }
 
@@ -1555,64 +2164,66 @@ export default class BioluminescenceTheme extends BaseTheme {
             const pulse = Math.sin(firefly.pulsePhase) * 0.4 + 0.6;
             const alpha = firefly.brightness * pulse;
 
-            // Draw trail
-            firefly.trail.push({ x: firefly.x, y: firefly.y });
-            if (firefly.trail.length > this.activePreset.fireflyTrailLength) firefly.trail.shift();
+            if (!this.useWebGL) {
+                // Draw trail
+                firefly.trail.push({ x: firefly.x, y: firefly.y });
+                if (firefly.trail.length > this.activePreset.fireflyTrailLength) firefly.trail.shift();
 
-            for (let i = 0; i < firefly.trail.length; i++) {
-                const trailPoint = firefly.trail[i];
-                const trailAlpha = (i / firefly.trail.length) * alpha * 0.3;
-                const trailSize = (i / firefly.trail.length) * firefly.size;
+                for (let i = 0; i < firefly.trail.length; i++) {
+                    const trailPoint = firefly.trail[i];
+                    const trailAlpha = (i / firefly.trail.length) * alpha * 0.3;
+                    const trailSize = (i / firefly.trail.length) * firefly.size;
 
-                const trailGradient = this.ctx.createRadialGradient(
-                    trailPoint.x,
-                    trailPoint.y,
+                    const trailGradient = this.ctx.createRadialGradient(
+                        trailPoint.x,
+                        trailPoint.y,
+                        0,
+                        trailPoint.x,
+                        trailPoint.y,
+                        trailSize * 2,
+                    );
+
+                    if (firefly.color === 'cyan') {
+                        trailGradient.addColorStop(0, `rgba(100, 255, 255, ${trailAlpha})`);
+                        trailGradient.addColorStop(1, 'rgba(50, 200, 200, 0)');
+                    } else {
+                        trailGradient.addColorStop(0, `rgba(150, 255, 100, ${trailAlpha})`);
+                        trailGradient.addColorStop(1, 'rgba(100, 200, 50, 0)');
+                    }
+
+                    this.ctx.fillStyle = trailGradient;
+                    this.ctx.beginPath();
+                    this.ctx.arc(trailPoint.x, trailPoint.y, trailSize * 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+
+                // Draw main firefly glow
+                const gradient = this.ctx.createRadialGradient(
+                    firefly.x,
+                    firefly.y,
                     0,
-                    trailPoint.x,
-                    trailPoint.y,
-                    trailSize * 2,
+                    firefly.x,
+                    firefly.y,
+                    firefly.size * 3,
                 );
 
                 if (firefly.color === 'cyan') {
-                    trailGradient.addColorStop(0, `rgba(100, 255, 255, ${trailAlpha})`);
-                    trailGradient.addColorStop(1, 'rgba(50, 200, 200, 0)');
+                    gradient.addColorStop(0, `rgba(200, 255, 255, ${alpha})`);
+                    gradient.addColorStop(0.3, `rgba(100, 255, 255, ${alpha * 0.7})`);
+                    gradient.addColorStop(0.6, `rgba(50, 200, 200, ${alpha * 0.3})`);
+                    gradient.addColorStop(1, 'rgba(20, 150, 150, 0)');
                 } else {
-                    trailGradient.addColorStop(0, `rgba(150, 255, 100, ${trailAlpha})`);
-                    trailGradient.addColorStop(1, 'rgba(100, 200, 50, 0)');
+                    gradient.addColorStop(0, `rgba(220, 255, 150, ${alpha})`);
+                    gradient.addColorStop(0.3, `rgba(150, 255, 100, ${alpha * 0.7})`);
+                    gradient.addColorStop(0.6, `rgba(100, 200, 50, ${alpha * 0.3})`);
+                    gradient.addColorStop(1, 'rgba(50, 150, 20, 0)');
                 }
 
-                this.ctx.fillStyle = trailGradient;
+                this.ctx.fillStyle = gradient;
                 this.ctx.beginPath();
-                this.ctx.arc(trailPoint.x, trailPoint.y, trailSize * 2, 0, Math.PI * 2);
+                this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
                 this.ctx.fill();
             }
-
-            // Draw main firefly glow
-            const gradient = this.ctx.createRadialGradient(
-                firefly.x,
-                firefly.y,
-                0,
-                firefly.x,
-                firefly.y,
-                firefly.size * 3,
-            );
-
-            if (firefly.color === 'cyan') {
-                gradient.addColorStop(0, `rgba(200, 255, 255, ${alpha})`);
-                gradient.addColorStop(0.3, `rgba(100, 255, 255, ${alpha * 0.7})`);
-                gradient.addColorStop(0.6, `rgba(50, 200, 200, ${alpha * 0.3})`);
-                gradient.addColorStop(1, 'rgba(20, 150, 150, 0)');
-            } else {
-                gradient.addColorStop(0, `rgba(220, 255, 150, ${alpha})`);
-                gradient.addColorStop(0.3, `rgba(150, 255, 100, ${alpha * 0.7})`);
-                gradient.addColorStop(0.6, `rgba(100, 200, 50, ${alpha * 0.3})`);
-                gradient.addColorStop(1, 'rgba(50, 150, 20, 0)');
-            }
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(firefly.x, firefly.y, firefly.size * 3, 0, Math.PI * 2);
-            this.ctx.fill();
         }
     }
 
@@ -1629,11 +2240,15 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Draw static/slow-changing elements
         this.drawAmbientGlows();
         this.drawGroundGlow();
-        this.drawBiolumRocks();
-        this.drawGroundMushrooms();
+
+        if (!this.useWebGL) {
+            this.drawBiolumRocks();
+            this.drawGroundMushrooms();
+            this.drawCrystalFormations();
+            this.drawGlowingPlants();
+        }
+
         this.drawLuminousVines();
-        this.drawCrystalFormations();
-        this.drawGlowingPlants();
 
         // Restore original context
         this.ctx = originalCtx;
@@ -1654,7 +2269,7 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Decay pulse intensity
         if (this.pulseIntensity > 0) {
-            this.pulseIntensity *= 0.95;
+            this.pulseIntensity *= 0.92; // Faster decay from high value
         }
 
         // Redraw static elements based on quality preset (or when flagged)
@@ -1715,7 +2330,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             p.y += p.vy;
             p.vx *= 0.98;
             p.vy *= 0.98;
-            p.life -= 0.012;
+            p.life -= p.isBurst ? 0.03 : 0.012; // Faster decay for bursts
             p.opacity = p.life * 0.9;
             p.pulsePhase += 0.15;
 
@@ -1724,24 +2339,26 @@ export default class BioluminescenceTheme extends BaseTheme {
                 continue;
             }
 
-            const pulse = Math.sin(p.pulsePhase) * 0.3 + 0.7;
+            if (!this.useWebGL) {
+                const pulse = Math.sin(p.pulsePhase) * 0.3 + 0.7;
 
-            const gradient = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
+                const gradient = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
 
-            if (p.color === 'cyan') {
-                gradient.addColorStop(0, `rgba(200, 255, 255, ${p.opacity * pulse})`);
-                gradient.addColorStop(0.5, `rgba(100, 255, 255, ${p.opacity * pulse * 0.6})`);
-                gradient.addColorStop(1, 'rgba(50, 200, 200, 0)');
-            } else {
-                gradient.addColorStop(0, `rgba(220, 255, 150, ${p.opacity * pulse})`);
-                gradient.addColorStop(0.5, `rgba(150, 255, 100, ${p.opacity * pulse * 0.6})`);
-                gradient.addColorStop(1, 'rgba(100, 200, 50, 0)');
+                if (p.color === 'cyan') {
+                    gradient.addColorStop(0, `rgba(200, 255, 255, ${p.opacity * pulse})`);
+                    gradient.addColorStop(0.5, `rgba(100, 255, 255, ${p.opacity * pulse * 0.6})`);
+                    gradient.addColorStop(1, 'rgba(50, 200, 200, 0)');
+                } else {
+                    gradient.addColorStop(0, `rgba(220, 255, 150, ${p.opacity * pulse})`);
+                    gradient.addColorStop(0.5, `rgba(150, 255, 100, ${p.opacity * pulse * 0.6})`);
+                    gradient.addColorStop(1, 'rgba(100, 200, 50, 0)');
+                }
+
+                this.ctx.fillStyle = gradient;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+                this.ctx.fill();
             }
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
-            this.ctx.fill();
         }
 
         // Draw combo orbs
@@ -1831,6 +2448,226 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         this.drawFireflies();
 
+        // WebGL Rendering
+        if (this.useWebGL && this.webglRenderer) {
+            // Collect particles
+            const particles = [];
+
+            // Helper to apply ripple effect to particles
+            const applyParticleRipple = (p) => {
+                let boost = 0;
+                for (const ripple of this.globalRipples) {
+                    const dx = p.x - ripple.x;
+                    const dy = p.y - ripple.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const diff = Math.abs(dist - ripple.radius);
+                    const width = 200; // Wider band (was 100)
+                    if (diff < width) {
+                        // Smooth falloff
+                        const t = 1 - diff / width;
+                        boost += t * t * ripple.life * ripple.strength;
+                    }
+                }
+                return boost;
+            };
+
+            // Update and Add fireflies
+            for (const f of this.fireflies) {
+                // Update logic
+                f.vx += (Math.random() - 0.5) * 0.2;
+                f.vy += (Math.random() - 0.5) * 0.2;
+                const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy);
+                if (speed > 2) {
+                    f.vx = (f.vx / speed) * 2;
+                    f.vy = (f.vy / speed) * 2;
+                }
+                f.x += f.vx;
+                f.y += f.vy;
+                f.pulsePhase += f.pulseSpeed;
+                if (f.x < 0) f.x = this.canvas.width;
+                if (f.x > this.canvas.width) f.x = 0;
+                if (f.y < 0) f.y = this.canvas.height;
+                if (f.y > this.canvas.height) f.y = 0;
+
+                // Apply ripple boost
+                const boost = applyParticleRipple(f);
+
+                // Flash white if boosted
+                let color = f.color;
+                if (boost > 0.5) color = '#ffffff';
+                else if (boost > 0.2) color = '#ccffff';
+
+                const p = {
+                    x: f.x,
+                    y: f.y,
+                    size: f.size * (1 + boost), // Double size at peak
+                    opacity: Math.min(1.0, f.brightness * (Math.sin(f.pulsePhase) * 0.4 + 0.6) + boost),
+                    color: color
+                };
+                particles.push(p);
+            }
+
+            // Add spores
+            for (const s of this.spores) {
+                const boost = applyParticleRipple(s);
+
+                let color = '#aaffdd';
+                if (boost > 0.5) color = '#ffffff';
+
+                const p = {
+                    x: s.x,
+                    y: s.y,
+                    size: s.size * (1 + boost),
+                    opacity: Math.min(1.0, s.opacity + boost * 0.8),
+                    color: color
+                };
+                particles.push(p);
+            }
+
+            // Add light bursts
+            for (const p of this.lightBursts) {
+                particles.push(p);
+            }
+
+            this.webglRenderer.uploadParticles(particles);
+            this.webglRenderer.render(this.time * 0.001, this.pulseIntensity);
+
+            // Helper to apply ripple effect to sprites
+            const applyRipple = (sprite) => {
+                let boost = 0;
+                let swayBoost = 0;
+
+                for (const ripple of this.globalRipples) {
+                    const dx = sprite.x - ripple.x;
+                    const dy = sprite.y - ripple.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    const diff = Math.abs(dist - ripple.radius);
+                    const width = 250; // Even wider for flora
+                    if (diff < width) {
+                        const t = 1 - diff / width;
+                        const intensity = t * t * ripple.life * ripple.strength;
+                        boost += intensity;
+                        swayBoost += intensity * 3.0; // More sway
+                    }
+                }
+                return { boost, swayBoost };
+            };
+
+            // Render textured sprites (static elements)
+            const sprites = [];
+
+            // Rocks
+            for (const rock of this.biolumRocks) {
+                rock.pulsePhase += rock.pulseSpeed;
+                const { boost } = applyRipple(rock);
+
+                const pulse = Math.sin(rock.pulsePhase) * 0.3 + 0.7 + boost;
+                if (rock.glowIntensity > 0.6) rock.glowIntensity *= 0.988;
+                const glowMult = rock.glowIntensity * pulse * (1 + this.pulseIntensity * 0.3);
+
+                // Update opacity for WebGL
+                rock.opacity = Math.min(1.0, 0.7 + glowMult * 0.3);
+                // Size is already set in width/height, but we can modulate it if needed
+                // rock.size = rock.width * (1.0 + (pulse - 0.7) * 0.1); 
+                // Actually, the cache size is fixed. We render the cache.
+                // The cache width is rock.width * 4 (for rocks).
+                // We need to pass the cache width as the size to the shader.
+                rock.size = rock.cache ? rock.cache.width * (1.0 + (pulse - 0.7) * 0.1) : rock.width;
+
+                sprites.push(rock);
+            }
+
+            // Mushrooms
+            for (const m of this.groundMushrooms) {
+                m.pulsePhase += m.pulseSpeed;
+                const { boost, swayBoost } = applyRipple(m);
+
+                const pulse = Math.sin(m.pulsePhase) * 0.3 + 0.7 + boost;
+                if (m.glowIntensity > 0.7) m.glowIntensity *= 0.985;
+                const glowMult = m.glowIntensity * pulse * (1 + this.pulseIntensity * 0.35);
+
+                m.opacity = Math.min(1.0, 0.8 + glowMult * 0.2);
+                m.size = m.cache ? m.cache.width * (1.0 + (pulse - 0.7) * 0.05) : m.capWidth;
+                m.sway = 1.0 + swayBoost; // Enable sway
+
+                sprites.push(m);
+            }
+
+            // Crystals
+            for (const f of this.crystalFormations) {
+                f.pulsePhase += f.pulseSpeed;
+                const { boost } = applyRipple(f);
+
+                const pulse = Math.sin(f.pulsePhase) * 0.3 + 0.7 + boost;
+
+                // Update internal crystals glow (logic only)
+                for (const c of f.crystals) {
+                    if (c.glowIntensity > 0.5) c.glowIntensity *= 0.985;
+                }
+                const avgGlow = f.crystals.reduce((sum, c) => sum + c.glowIntensity, 0) / f.crystals.length;
+                const glowMult = avgGlow * pulse * (1 + this.pulseIntensity * 0.4);
+
+                f.opacity = Math.min(1.0, 0.8 + glowMult * 0.2);
+                f.size = f.cache ? f.cache.width * (1.0 + (pulse - 0.7) * 0.05) : 100;
+                f.sway = 0.0; // Crystals don't sway
+
+                sprites.push(f);
+            }
+            // Plants
+            for (const p of this.glowingPlants) {
+                p.swayPhase += p.swaySpeed;
+                p.pulsePhase += p.pulseSpeed;
+                const { boost, swayBoost } = applyRipple(p);
+
+                const pulse = Math.sin(p.pulsePhase) * 0.3 + 0.7 + boost;
+                const glowMult = pulse * (1 + this.pulseIntensity * 0.3);
+
+                p.opacity = Math.min(1.0, 0.8 + glowMult * 0.2);
+                p.size = p.cache ? p.cache.width : p.height;
+                p.sway = 1.5 + swayBoost; // Stronger sway for plants
+
+                sprites.push(p);
+            }
+
+            // Ground Foliage (New!)
+            if (this.groundFoliage) {
+                for (const f of this.groundFoliage) {
+                    f.swayPhase += f.swaySpeed;
+                    const { boost, swayBoost } = applyRipple(f);
+                    // Foliage sways more
+                    f.opacity = 0.8 + boost * 0.2;
+                    f.size = f.cache ? f.cache.width : f.width;
+                    f.sway = 2.0 + swayBoost; // Maximum sway
+
+                    sprites.push(f);
+                }
+            }
+
+            // Alien Flora (New!)
+            if (this.alienFlora) {
+                for (const f of this.alienFlora) {
+                    f.swayPhase += f.swaySpeed;
+                    const { boost, swayBoost } = applyRipple(f);
+
+                    const pulse = Math.sin(this.time * 0.002 + f.swayPhase) * 0.5 + 0.5 + boost;
+
+                    f.opacity = Math.min(1.0, 0.7 + pulse * 0.3);
+                    f.size = f.cache ? f.cache.width : f.width;
+                    f.sway = 1.5 + swayBoost;
+
+                    sprites.push(f);
+                }
+            }
+
+            // Sort by layer/y for depth? WebGL handles draw order by array order.
+            // They are already sorted by layer in creation, but we are mixing them here.
+            // We should sort sprites by layer or Y.
+            sprites.sort((a, b) => (a.layer || 0) - (b.layer || 0));
+
+            this.webglRenderer.renderTexturedParticles(sprites, this.time * 0.001);
+        }
+
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
     }
@@ -1864,6 +2701,16 @@ export default class BioluminescenceTheme extends BaseTheme {
         if (this.staticCanvas) {
             this.staticCanvas = null;
             this.staticCtx = null;
+        }
+
+        // Clean up WebGL
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+        if (this.webglCanvas && this.webglCanvas.parentNode) {
+            this.webglCanvas.parentNode.removeChild(this.webglCanvas);
+            this.webglCanvas = null;
         }
 
         super.stop();

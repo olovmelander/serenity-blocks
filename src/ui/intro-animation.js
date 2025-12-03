@@ -4,17 +4,24 @@
  */
 
 import Phaser from 'phaser';
+import WebGLIntroRenderer from './webgl-intro-renderer.js';
 
 export class IntroAnimation {
     constructor() {
         this.container = null;
         this.isActive = false;
+        this.isAnimating = false;
         this.hasCompleted = false;
         this.boundHandlers = {};
         this.phaserGame = null;
         this.particleEmitters = [];
         this.soundManager = null;
         this.introMusicTrack = 'CosmicChimes';
+
+        // WebGL Renderer
+        this.webglCanvas = null;
+        this.webglRenderer = null;
+        this.animationFrameId = null;
     }
 
     /**
@@ -33,14 +40,33 @@ export class IntroAnimation {
         this.ensureIntroMusic();
 
         this.isActive = true;
+        this.isAnimating = true;
         this.createIntroHTML();
         this.setupEventListeners();
+
+        // Start WebGL animation loop
+        this.animate(performance.now());
+
         this.startAnimations();
 
         // Return a promise that resolves when the intro is dismissed
         return new Promise((resolve) => {
             this.onComplete = resolve;
         });
+    }
+
+    /**
+     * Animation loop for WebGL renderer
+     */
+    animate(time) {
+        if (!this.isAnimating) return;
+
+        if (this.webglRenderer) {
+            // Convert to seconds
+            this.webglRenderer.render(time * 0.001);
+        }
+
+        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
     }
 
     /**
@@ -89,6 +115,26 @@ export class IntroAnimation {
         // Create container
         this.container = document.createElement('div');
         this.container.id = 'intro-animation';
+
+        // Create WebGL canvas for stars (deepest layer)
+        this.webglCanvas = document.createElement('canvas');
+        this.webglCanvas.id = 'intro-webgl-canvas';
+        this.webglCanvas.style.position = 'absolute';
+        this.webglCanvas.style.top = '0';
+        this.webglCanvas.style.left = '0';
+        this.webglCanvas.style.width = '100%';
+        this.webglCanvas.style.height = '100%';
+        this.webglCanvas.style.zIndex = '0'; // Behind everything
+        this.webglCanvas.width = window.innerWidth;
+        this.webglCanvas.height = window.innerHeight;
+        this.container.appendChild(this.webglCanvas);
+
+        // Initialize WebGL renderer
+        this.webglRenderer = new WebGLIntroRenderer(this.webglCanvas);
+        if (this.webglRenderer.init()) {
+            this.initWebGLStars();
+            console.log('[IntroAnimation] WebGL star renderer initialized');
+        }
 
         // Create Phaser canvas container
         const phaserCanvas = document.createElement('div');
@@ -377,27 +423,15 @@ export class IntroAnimation {
         ];
 
         // Create background stars (static)
-        console.log('[IntroAnimation] Creating 200 background stars...');
-        for (let i = 0; i < 200; i++) {
-            const star = scene.add.circle(
-                Math.random() * width,
-                Math.random() * height,
-                Math.random() * 1.5 + 0.5,
-                0xffffff,
-                Math.random() * 0.8 + 0.2,
-            );
+        // REPLACED BY WEBGL RENDERER
+        console.log('[IntroAnimation] Using WebGL for background stars (8000+ stars)');
 
-            // Twinkling animation
-            scene.tweens.add({
-                targets: star,
-                alpha: Math.random() * 0.3,
-                duration: Math.random() * 2000 + 1000,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Sine.easeInOut',
-            });
+        /* 
+        // Old Phaser stars removed
+        for (let i = 0; i < 200; i++) {
+            // ...
         }
-        console.log('[IntroAnimation] Stars created');
+        */
 
         // Particle emitters from center removed for cleaner look
         console.log('[IntroAnimation] Skipping center particle emitters for cleaner cosmic look');
@@ -463,9 +497,9 @@ export class IntroAnimation {
         };
 
         const shapeNames = Object.keys(tetrominoShapes);
-        const blockSize = 6;
+        const blockSize = 8;
         const cellSize = blockSize;
-        const maxTetrominos = 15; // Max tetrominos on screen at once
+        const maxTetrominos = 20; // Max tetrominos on screen at once
         let activeTetrominos = 0;
 
         // Array to store all active tetromino containers for collision detection
@@ -508,36 +542,36 @@ export class IntroAnimation {
             let velocityY;
 
             switch (edge) {
-            case 0: // Top
-                startX = Math.random() * width;
-                startY = -100;
-                velocityX = (Math.random() - 0.5) * 40;
-                velocityY = Math.random() * 30 + 20;
-                break;
-            case 1: // Right
-                startX = width + 100;
-                startY = Math.random() * height;
-                velocityX = -(Math.random() * 30 + 20);
-                velocityY = (Math.random() - 0.5) * 40;
-                break;
-            case 2: // Bottom
-                startX = Math.random() * width;
-                startY = height + 100;
-                velocityX = (Math.random() - 0.5) * 40;
-                velocityY = -(Math.random() * 30 + 20);
-                break;
-            case 3: // Left
-                startX = -100;
-                startY = Math.random() * height;
-                velocityX = Math.random() * 30 + 20;
-                velocityY = (Math.random() - 0.5) * 40;
-                break;
-            default:
-                startX = Math.random() * width;
-                startY = Math.random() * height;
-                velocityX = (Math.random() - 0.5) * 40;
-                velocityY = (Math.random() - 0.5) * 40;
-                break;
+                case 0: // Top
+                    startX = Math.random() * width;
+                    startY = -100;
+                    velocityX = (Math.random() - 0.5) * 40;
+                    velocityY = Math.random() * 30 + 20;
+                    break;
+                case 1: // Right
+                    startX = width + 100;
+                    startY = Math.random() * height;
+                    velocityX = -(Math.random() * 30 + 20);
+                    velocityY = (Math.random() - 0.5) * 40;
+                    break;
+                case 2: // Bottom
+                    startX = Math.random() * width;
+                    startY = height + 100;
+                    velocityX = (Math.random() - 0.5) * 40;
+                    velocityY = -(Math.random() * 30 + 20);
+                    break;
+                case 3: // Left
+                    startX = -100;
+                    startY = Math.random() * height;
+                    velocityX = Math.random() * 30 + 20;
+                    velocityY = (Math.random() - 0.5) * 40;
+                    break;
+                default:
+                    startX = Math.random() * width;
+                    startY = Math.random() * height;
+                    velocityX = (Math.random() - 0.5) * 40;
+                    velocityY = (Math.random() - 0.5) * 40;
+                    break;
             }
 
             // Create container for the tetromino
@@ -1046,6 +1080,7 @@ export class IntroAnimation {
         if (!this.container) return;
 
         this.isActive = false;
+        this.isAnimating = false;
         this.hasCompleted = true;
 
         // Remove event listeners if still attached
@@ -1071,6 +1106,17 @@ export class IntroAnimation {
                 this.phaserGame.destroy(true);
                 this.phaserGame = null;
             }
+
+            // Cleanup WebGL
+            if (this.animationFrameId) {
+                cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+            }
+            if (this.webglRenderer) {
+                this.webglRenderer.destroy();
+                this.webglRenderer = null;
+            }
+
             this.particleEmitters = [];
             this.cosmicScene = null;
 
@@ -1099,10 +1145,22 @@ export class IntroAnimation {
             this.phaserGame.destroy(true);
             this.phaserGame = null;
         }
+
+        // Cleanup WebGL
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+
         this.particleEmitters = [];
         this.cosmicScene = null;
 
         this.hasCompleted = true;
+        this.isAnimating = false;
         if (this.onComplete) {
             this.onComplete();
         }
@@ -1114,12 +1172,24 @@ export class IntroAnimation {
     reset() {
         this.hasCompleted = false;
         this.isActive = false;
+        this.isAnimating = false;
 
         // Cleanup Phaser
         if (this.phaserGame) {
             this.phaserGame.destroy(true);
             this.phaserGame = null;
         }
+
+        // Cleanup WebGL
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        if (this.webglRenderer) {
+            this.webglRenderer.destroy();
+            this.webglRenderer = null;
+        }
+
         this.particleEmitters = [];
         this.cosmicScene = null;
 
@@ -1145,6 +1215,7 @@ export class IntroAnimation {
 
         this.ensureIntroMusic();
         this.isActive = false; // Not active for interaction
+        this.isAnimating = true; // Keep animating
         this.hasCompleted = true; // Mark as completed so show() won't work
 
         // Create container
@@ -1153,6 +1224,28 @@ export class IntroAnimation {
         this.container.classList.add('background-only'); // Add class for background-only mode
         this.container.style.zIndex = '100';
         this.container.style.pointerEvents = 'none';
+
+        // Create WebGL canvas for stars (deepest layer)
+        this.webglCanvas = document.createElement('canvas');
+        this.webglCanvas.id = 'intro-webgl-canvas';
+        this.webglCanvas.style.position = 'absolute';
+        this.webglCanvas.style.top = '0';
+        this.webglCanvas.style.left = '0';
+        this.webglCanvas.style.width = '100%';
+        this.webglCanvas.style.height = '100%';
+        this.webglCanvas.style.zIndex = '0'; // Behind everything
+        this.webglCanvas.width = window.innerWidth;
+        this.webglCanvas.height = window.innerHeight;
+        this.container.appendChild(this.webglCanvas);
+
+        // Initialize WebGL renderer
+        this.webglRenderer = new WebGLIntroRenderer(this.webglCanvas);
+        if (this.webglRenderer.init()) {
+            this.initWebGLStars();
+        }
+
+        // Start animation loop
+        this.animate(performance.now());
 
         // Create Phaser canvas container
         const phaserCanvas = document.createElement('div');
@@ -1192,6 +1285,52 @@ export class IntroAnimation {
         requestAnimationFrame(() => {
             this.container.classList.add('active');
         });
+    }
+
+
+    /**
+     * Initialize WebGL stars with galaxy colors
+     */
+    initWebGLStars() {
+        if (!this.webglRenderer) return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const starCount = 15000; // High density starfield
+
+        const galaxyColors = [
+            '#9333ea', // Purple
+            '#3b82f6', // Blue
+            '#06b6d4', // Cyan
+            '#10b981', // Emerald
+            '#ec4899', // Pink
+            '#8b5cf6', // Violet
+            '#14b8a6', // Teal
+        ];
+
+        this.webglRenderer.setColorPalette(galaxyColors);
+        this.webglRenderer.allocateStars(starCount);
+
+        const stars = [];
+        for (let i = 0; i < starCount; i++) {
+            // Parse hex color to RGB
+            const hex = galaxyColors[Math.floor(Math.random() * galaxyColors.length)];
+            const r = parseInt(hex.slice(1, 3), 16) / 255;
+            const g = parseInt(hex.slice(3, 5), 16) / 255;
+            const b = parseInt(hex.slice(5, 7), 16) / 255;
+
+            stars.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: Math.random() * 2.5 + 0.7,
+                colorRGB: [r, g, b],
+                twinklePhase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.005 + Math.random() * 0.02,
+                brightness: 0.5 + Math.random() * 0.5,
+            });
+        }
+
+        this.webglRenderer.uploadStars(stars);
     }
 }
 
