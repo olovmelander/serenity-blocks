@@ -2303,3 +2303,201 @@
     height: 42px;
   }
 }
+
+/* ===========================
+   Sessions Tab Styles
+   =========================== */
+.sessions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--hub-spacing-lg);
+  padding: var(--hub-spacing-sm);
+}
+
+.session-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius-lg);
+  padding: var(--hub-spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--hub-spacing-md);
+  transition: all var(--hub-transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.session-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.session-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--hub-spacing-xs);
+}
+
+.base-icon {
+  background: rgba(100, 200, 255, 0.2);
+  color: #64c8ff;
+}
+
+.elixir-icon {
+  background: rgba(255, 100, 100, 0.2);
+  color: #ff6464;
+}
+
+.session-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.session-info h3 {
+  margin: 0 0 var(--hub-spacing-xs) 0;
+  font-size: 18px;
+  color: var(--hub-primary);
+}
+
+.session-meta {
+  display: flex;
+  gap: var(--hub-spacing-sm);
+  margin-bottom: var(--hub-spacing-sm);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.session-meta .duration {
+  color: var(--hub-secondary);
+}
+
+.session-meta .intensity.moderate {
+  color: #64c8ff;
+}
+
+.session-meta .intensity.high {
+  color: #ff6464;
+}
+
+.session-info p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--hub-secondary);
+}
+
+.start-session-btn {
+  margin-top: auto;
+  padding: var(--hub-spacing-sm) var(--hub-spacing-lg);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius-md);
+  color: var(--hub-primary);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--hub-transition-fast);
+}
+
+.start-session-btn:hover {
+  background: var(--hub-primary);
+  color: #000;
+}
+
+/* Active Session Overlay */
+.active-session-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: var(--hub-radius-lg);
+}
+
+.active-session-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hub-spacing-md);
+}
+
+.active-session-title {
+  font-size: 24px;
+  color: var(--hub-primary);
+  margin: 0;
+}
+
+.active-session-status {
+  font-size: 16px;
+  color: var(--hub-secondary);
+}
+
+.stop-session-btn {
+  padding: var(--hub-spacing-sm) var(--hub-spacing-lg);
+  background: rgba(255, 50, 50, 0.2);
+  border: 1px solid rgba(255, 50, 50, 0.5);
+  border-radius: var(--hub-radius-md);
+  color: #ff6464;
+  cursor: pointer;
+  transition: all var(--hub-transition-fast);
+}
+
+.stop-session-btn:hover {
+  background: rgba(255, 50, 50, 0.4);
+}
+
+/* ===========================
+   Breathing Guidance Text (Fixed Position)
+   =========================== */
+.breathing-floating-text {
+  position: fixed !important;
+  /* Force fixed positioning */
+  bottom: 10vh !important;
+  /* Moved down from 15vh */
+  /* Use viewport units and force */
+  left: 50%;
+  top: auto !important;
+  /* Override any top positioning */
+  transform: translateX(-50%);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+  transition: opacity 0.5s ease;
+  z-index: 9999;
+  /* Ensure above everything */
+  width: 100%;
+  max-width: 800px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.4) 0%, transparent 70%);
+  padding: 20px 0;
+  animation: weightless-float 6s ease-in-out infinite;
+}
+
+@keyframes weightless-float {
+
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: translateX(-50%) translateY(-15px);
+    opacity: 1;
+    text-shadow: 0 0 25px rgba(255, 255, 255, 0.8);
+  }
+}
