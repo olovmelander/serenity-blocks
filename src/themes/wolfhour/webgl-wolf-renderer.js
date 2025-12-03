@@ -104,6 +104,9 @@ export default class WebGLWolfRenderer {
             uniform float uPulseIntensity;
             uniform float uAmbientPulse;
             
+            uniform vec4 uRipples[5];     // x, y, radius, intensity
+            uniform int uRippleCount;
+            
             varying vec3 vColor;
             varying float vBrightness;
             varying float vSize;
@@ -122,7 +125,22 @@ export default class WebGLWolfRenderer {
                 // Calculate final brightness
                 float pulseBoost = 1.0 + uPulseIntensity * 0.4;
                 float baseBrightness = aBrightness.x * twinkle * pulseBoost * uAmbientPulse;
+                
+                // Calculate ripple boost on GPU
                 float rippleBoost = aBrightness.y;
+                
+                for (int i = 0; i < 5; i++) {
+                    if (i >= uRippleCount) break;
+                    vec4 r = uRipples[i]; // x, y, radius, intensity
+                    float dist = distance(aPosition, r.xy);
+                    float width = 60.0 + r.w * 10.0; // Approximate width based on intensity or fixed
+                    
+                    if (dist >= r.z && dist <= r.z + width) {
+                        float relPos = (dist - r.z) / width;
+                        float intensity = sin(relPos * 3.14159) * r.w;
+                        rippleBoost += intensity * 2.0;
+                    }
+                }
                 
                 vBrightness = min(baseBrightness + rippleBoost, 1.2);
                 vColor = aColor;
@@ -220,6 +238,8 @@ export default class WebGLWolfRenderer {
             ambientPulse: gl.getUniformLocation(this.program, 'uAmbientPulse'),
             brightnessThreshold: gl.getUniformLocation(this.program, 'uBrightnessThreshold'),
             enableGlow: gl.getUniformLocation(this.program, 'uEnableGlow'),
+            ripples: gl.getUniformLocation(this.program, 'uRipples'),
+            rippleCount: gl.getUniformLocation(this.program, 'uRippleCount'),
         };
 
         return true;
@@ -446,8 +466,14 @@ export default class WebGLWolfRenderer {
 
     /**
      * Render all stars in a single draw call!
+     * @param {number} time - Current animation time
+     * @param {number} pulseIntensity - Global pulse intensity
+     * @param {number} ambientPulse - Ambient pulse factor
+     * @param {number} brightnessThreshold - Minimum brightness to render
+     * @param {boolean} enableGlow - Whether to render glow
+     * @param {Array} ripples - Array of active ripples {x, y, radius, width, life}
      */
-    render(time, pulseIntensity, ambientPulse, brightnessThreshold, enableGlow) {
+    render(time, pulseIntensity, ambientPulse, brightnessThreshold, enableGlow, ripples = []) {
         const gl = this.gl;
         if (!gl || this.starCount === 0) return;
 
@@ -460,6 +486,28 @@ export default class WebGLWolfRenderer {
         gl.uniform1f(this.uniforms.ambientPulse, ambientPulse);
         gl.uniform1f(this.uniforms.brightnessThreshold, brightnessThreshold);
         gl.uniform1f(this.uniforms.enableGlow, enableGlow ? 1.0 : 0.0);
+
+        // Upload ripples
+        const rippleData = new Float32Array(20); // 5 ripples * 4 floats (x, y, radius, intensity)
+        const count = Math.min(ripples.length, 5);
+
+        for (let i = 0; i < count; i++) {
+            const r = ripples[i];
+            const idx = i * 4;
+            rippleData[idx] = r.x;
+            rippleData[idx + 1] = r.y;
+            rippleData[idx + 2] = r.radius;
+            // Calculate intensity based on life (and width packed if needed, but let's assume fixed width or pack it)
+            // Let's pack width into intensity? No, let's just use life as intensity and hardcode width or pass it.
+            // Actually, let's pass width in a separate uniform or assume it's roughly constant.
+            // The theme uses `width: 60 + random`. 
+            // Let's just use a fixed width in shader for optimization, or pass it.
+            // We have 4 slots. x, y, radius, intensity.
+            rippleData[idx + 3] = r.life;
+        }
+
+        gl.uniform4fv(this.uniforms.ripples, rippleData);
+        gl.uniform1i(this.uniforms.rippleCount, count);
 
         // Bind position buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.position);
