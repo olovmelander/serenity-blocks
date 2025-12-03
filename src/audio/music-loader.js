@@ -88,13 +88,13 @@ export function getSongForTheme(themeName, songsData) {
         const themeKey = themeName.replace(/-/g, '').toLowerCase();
         song = songsData.find((s) => {
             const songKey = nameToKey(s.name).toLowerCase();
-            // Only match if the song name contains the theme AND they're close in length
-            // OR if the theme contains the song name
+            // Only match if the song name contains the theme OR if the theme contains the song name
+            // AND they're close in length (increased tolerance to 5 to support "Ocean" -> "Ocean Deep")
             const songContainsTheme = songKey.includes(themeKey);
             const themeContainsSong = themeKey.includes(songKey);
-            const lengthSimilar = Math.abs(songKey.length - themeKey.length) <= 3;
+            const lengthSimilar = Math.abs(songKey.length - themeKey.length) <= 5;
 
-            return (songContainsTheme && lengthSimilar) || themeContainsSong;
+            return (songContainsTheme || themeContainsSong) && lengthSimilar;
         });
     }
 
@@ -131,12 +131,13 @@ export function getThemeForSong(trackName, themes) {
         const trackKey = trackName.toLowerCase();
         theme = themes.find((t) => {
             const themeKey = t.replace(/-/g, '').toLowerCase();
-            // Only match if similar length OR one fully contains the other
+            // Only match if similar length AND one fully contains the other
+            // Increased tolerance to 5 to support "Ocean Deep" -> "Ocean"
             const themeContainsTrack = themeKey.includes(trackKey);
             const trackContainsTheme = trackKey.includes(themeKey);
-            const lengthSimilar = Math.abs(themeKey.length - trackKey.length) <= 3;
+            const lengthSimilar = Math.abs(themeKey.length - trackKey.length) <= 5;
 
-            return (themeContainsTrack && lengthSimilar) || trackContainsTheme;
+            return (themeContainsTrack || trackContainsTheme) && lengthSimilar;
         });
     }
 
