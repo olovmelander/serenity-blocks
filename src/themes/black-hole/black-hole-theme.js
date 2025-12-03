@@ -3,129 +3,130 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { BLACK_HOLE_TETROMINOS } from './black-hole-tetrominos.js';
+import WebGLBlackHoleRenderer from './webgl-black-hole-renderer.js';
 
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 450,
-        initialParticles: 360,
-        maxParticles: 1000,
-        minParticles: 600,
-        adaptiveStep: 50,
+        starCount: 2000, // Increased for WebGL
+        initialParticles: 1800,
+        maxParticles: 3000,
+        minParticles: 1000,
+        adaptiveStep: 100,
         targetFps: 60,
         renderScale: 1.0,
         effectIntensity: 1.3,
         pulseCoverage: 1.0,
-        comboBurstLimit: 85,
-        eruptionLimit: 110,
+        comboBurstLimit: 200,
+        eruptionLimit: 300,
         allowEruptions: true,
-        lineEffectCooldown: 70,
-        comboEffectCooldown: 110,
-        smallBurstLimit: 14,
-        starBurstLimit: 6,
+        lineEffectCooldown: 50,
+        comboEffectCooldown: 80,
+        smallBurstLimit: 30,
+        starBurstLimit: 10,
         trailDetail: 1.0,
         useCanvasStars: false,
         skipPhysicsDistance: 1.6,
     },
     Ultra: {
-        starCount: 320, // Reduced from 320
-        initialParticles: 260, // Reduced from 260
-        maxParticles: 720, // Reduced from 720
-        minParticles: 420, // Reduced from 420
-        adaptiveStep: 40,
+        starCount: 1500,
+        initialParticles: 1500,
+        maxParticles: 2500,
+        minParticles: 800,
+        adaptiveStep: 80,
         targetFps: 60,
-        renderScale: 1.0, // Reduced from 1.0
-        effectIntensity: 1.0, // Reduced from 1.0
-        pulseCoverage: 0.9, // Reduced from 0.9
-        comboBurstLimit: 60, // Reduced from 60
-        eruptionLimit: 80, // Reduced from 80
+        renderScale: 1.0,
+        effectIntensity: 1.0,
+        pulseCoverage: 0.9,
+        comboBurstLimit: 150,
+        eruptionLimit: 200,
         allowEruptions: true,
-        lineEffectCooldown: 90, // Increased from 80
-        comboEffectCooldown: 140, // Increased from 140
-        smallBurstLimit: 10, // Reduced from 10
-        starBurstLimit: 4, // Reduced from 4
-        trailDetail: 0.8, // Reduced from 1.0
-        useCanvasStars: false, // DOM stars for best quality
-        skipPhysicsDistance: 1.8, // Skip physics beyond 1.8x pull radius
+        lineEffectCooldown: 70,
+        comboEffectCooldown: 100,
+        smallBurstLimit: 20,
+        starBurstLimit: 8,
+        trailDetail: 0.8,
+        useCanvasStars: false,
+        skipPhysicsDistance: 1.8,
     },
     High: {
-        starCount: 150, // Reduced from 260
-        initialParticles: 140, // Reduced from 220
-        maxParticles: 320, // Reduced from 560
-        minParticles: 160, // Reduced from 280
-        adaptiveStep: 35,
+        starCount: 1000,
+        initialParticles: 1000,
+        maxParticles: 2000,
+        minParticles: 500,
+        adaptiveStep: 50,
         targetFps: 60,
-        renderScale: 0.75, // Reduced from 0.85
-        effectIntensity: 0.7, // Reduced from 0.85
-        pulseCoverage: 0.5, // Reduced from 0.7
-        comboBurstLimit: 30, // Reduced from 45
-        eruptionLimit: 35, // Reduced from 50
+        renderScale: 1.0, // WebGL can handle 1.0
+        effectIntensity: 0.8,
+        pulseCoverage: 0.7,
+        comboBurstLimit: 100,
+        eruptionLimit: 150,
         allowEruptions: true,
-        lineEffectCooldown: 150, // Increased from 120
-        comboEffectCooldown: 240, // Increased from 200
-        smallBurstLimit: 6, // Reduced from 8
-        starBurstLimit: 3, // Reduced from 4
-        trailDetail: 0.6, // Reduced from 0.85
-        useCanvasStars: true, // Canvas stars for better performance
-        skipPhysicsDistance: 2.0, // Skip physics beyond 2x pull radius
+        lineEffectCooldown: 100,
+        comboEffectCooldown: 150,
+        smallBurstLimit: 15,
+        starBurstLimit: 5,
+        trailDetail: 0.6,
+        useCanvasStars: true,
+        skipPhysicsDistance: 2.0,
     },
     Medium: {
-        starCount: 100, // Reduced from 180
-        initialParticles: 100, // Reduced from 170
-        maxParticles: 200, // Reduced from 360
-        minParticles: 100, // Reduced from 180
+        starCount: 500,
+        initialParticles: 500,
+        maxParticles: 1000,
+        minParticles: 300,
         adaptiveStep: 30,
-        targetFps: 48,
-        renderScale: 0.65, // Reduced from 0.7
-        effectIntensity: 0.5, // Reduced from 0.6
-        pulseCoverage: 0.3, // Reduced from 0.45
-        comboBurstLimit: 18, // Reduced from 28
-        eruptionLimit: 20, // Reduced from 30
-        allowEruptions: false, // Disabled for performance
-        lineEffectCooldown: 220, // Increased from 180
-        comboEffectCooldown: 320, // Increased from 260
-        smallBurstLimit: 4, // Reduced from 6
-        starBurstLimit: 2, // Reduced from 3
-        trailDetail: 0.4, // Reduced from 0.6
+        targetFps: 60,
+        renderScale: 0.8,
+        effectIntensity: 0.6,
+        pulseCoverage: 0.5,
+        comboBurstLimit: 50,
+        eruptionLimit: 80,
+        allowEruptions: true,
+        lineEffectCooldown: 150,
+        comboEffectCooldown: 200,
+        smallBurstLimit: 10,
+        starBurstLimit: 3,
+        trailDetail: 0.4,
         useCanvasStars: true,
-        skipPhysicsDistance: 2.2, // Skip more distant particles
+        skipPhysicsDistance: 2.2,
     },
     Low: {
-        starCount: 60, // Reduced from 120
-        initialParticles: 70, // Reduced from 120
-        maxParticles: 120, // Reduced from 220
-        minParticles: 70, // Reduced from 120
-        adaptiveStep: 25,
+        starCount: 200,
+        initialParticles: 200,
+        maxParticles: 500,
+        minParticles: 150,
+        adaptiveStep: 20,
         targetFps: 40,
-        renderScale: 0.5, // Reduced from 0.55
-        effectIntensity: 0.3, // Reduced from 0.4
-        pulseCoverage: 0.2, // Reduced from 0.3
-        comboBurstLimit: 10, // Reduced from 16
-        eruptionLimit: 12, // Reduced from 18
+        renderScale: 0.6,
+        effectIntensity: 0.4,
+        pulseCoverage: 0.3,
+        comboBurstLimit: 30,
+        eruptionLimit: 40,
         allowEruptions: false,
-        lineEffectCooldown: 300, // Increased from 260
-        comboEffectCooldown: 400, // Increased from 350
-        smallBurstLimit: 3, // Reduced from 4
-        starBurstLimit: 1, // Reduced from 2
-        trailDetail: 0.2, // Reduced from 0.45
+        lineEffectCooldown: 200,
+        comboEffectCooldown: 300,
+        smallBurstLimit: 5,
+        starBurstLimit: 2,
+        trailDetail: 0.2,
         useCanvasStars: true,
-        skipPhysicsDistance: 2.5, // Skip even more distant particles
+        skipPhysicsDistance: 2.5,
     },
     Minimal: {
-        starCount: 35,
-        initialParticles: 45,
-        maxParticles: 80,
-        minParticles: 45,
-        adaptiveStep: 20,
+        starCount: 100,
+        initialParticles: 100,
+        maxParticles: 200,
+        minParticles: 50,
+        adaptiveStep: 10,
         targetFps: 30,
-        renderScale: 0.4,
+        renderScale: 0.5,
         effectIntensity: 0.2,
-        pulseCoverage: 0.15,
-        comboBurstLimit: 6,
-        eruptionLimit: 8,
+        pulseCoverage: 0.2,
+        comboBurstLimit: 15,
+        eruptionLimit: 20,
         allowEruptions: false,
-        lineEffectCooldown: 380,
-        comboEffectCooldown: 500,
-        smallBurstLimit: 2,
+        lineEffectCooldown: 300,
+        comboEffectCooldown: 400,
+        smallBurstLimit: 3,
         starBurstLimit: 1,
         trailDetail: 0.1,
         useCanvasStars: true,
@@ -141,6 +142,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.animationFrame = null;
         this.canvas = null;
         this.ctx = null;
+        this.webglRenderer = null;
+        this.useWebGL = false;
         this.particles = [];
         this.particleSpriteCache = new Map();
         this.boundAnimateStardust = this.animateStardust.bind(this);
@@ -153,6 +156,10 @@ export default class BlackHoleTheme extends BaseTheme {
         this.baseBlackHolePullStrength = 0.5;
         this.blackHoleX = 0;
         this.blackHoleY = 0;
+        this.diskIntensity = 1.0;
+        this.diskScale = 1.0;
+        this.diskTargetIntensity = 1.0;
+        this.diskTargetScale = 1.0;
 
         // Black hole drift animation
         this.blackHoleDriftVelocityX = 0;
@@ -215,6 +222,11 @@ export default class BlackHoleTheme extends BaseTheme {
         this.lowPowerMode = false;
         this.frameInterval = 1000 / profile.targetFps;
         this.frameTimeEMA = this.frameInterval;
+
+        if (this.useWebGL && this.webglRenderer) {
+            this.webglRenderer.allocateParticles(this.maxParticles);
+        }
+
         if (this.particles.length > this.maxParticles) {
             this.cullParticlesToBudget(this.maxParticles);
         }
@@ -361,6 +373,12 @@ export default class BlackHoleTheme extends BaseTheme {
      */
     createStarField() {
         const { starCount } = this.qualityProfile;
+
+        if (this.useWebGL && this.webglRenderer) {
+            this.createWebGLStarField(starCount);
+            return;
+        }
+
         const useCanvas = this.qualityProfile.useCanvasStars;
 
         if (useCanvas) {
@@ -370,6 +388,34 @@ export default class BlackHoleTheme extends BaseTheme {
             // Higher quality DOM-based star field (slower)
             this.createDOMStarField(starCount);
         }
+    }
+
+    createWebGLStarField(starCount) {
+        const starColors = [
+            'rgba(255, 255, 255, 1)', // White
+            'rgba(180, 220, 255, 1)', // Cyan-white
+            'rgba(255, 240, 180, 1)', // Yellow-white
+            'rgba(255, 200, 140, 1)', // Orange
+            'rgba(150, 200, 255, 1)', // Blue
+            'rgba(255, 180, 220, 1)', // Pink
+            'rgba(200, 180, 255, 1)', // Purple
+        ];
+
+        const stars = [];
+        const { width, height } = this.canvas;
+
+        for (let i = 0; i < starCount; i++) {
+            stars.push({
+                x: this.random(0, width),
+                y: this.random(0, height),
+                size: this.random(1.0, 3.0),
+                color: starColors[Math.floor(Math.random() * starColors.length)],
+                twinkleSpeed: this.random(0.005, 0.015),
+                twinklePhase: this.random(0, Math.PI * 2),
+            });
+        }
+
+        this.webglRenderer.setStars(stars);
     }
 
     /**
@@ -552,7 +598,18 @@ export default class BlackHoleTheme extends BaseTheme {
             return;
         }
 
-        this.ctx = this.canvas.getContext('2d', { alpha: true, desynchronized: true });
+        // Try to initialize WebGL renderer first
+        this.webglRenderer = new WebGLBlackHoleRenderer(this.canvas);
+        if (this.webglRenderer.init()) {
+            this.useWebGL = true;
+            this.webglRenderer.allocateParticles(this.maxParticles);
+            console.log('[BlackHole] WebGL renderer initialized');
+        } else {
+            this.useWebGL = false;
+            this.ctx = this.canvas.getContext('2d', { alpha: true, desynchronized: true });
+            console.log('[BlackHole] Falling back to Canvas2D');
+        }
+
         this.particles = [];
         this.handleResize();
         if (!this.resizeAttached) {
@@ -561,8 +618,10 @@ export default class BlackHoleTheme extends BaseTheme {
         }
         this.updateGravityDefaults();
 
-        // Pre-compute particle sprites for better performance
-        this.precomputeParticleSprites();
+        // Pre-compute particle sprites for better performance (only needed for Canvas2D)
+        if (!this.useWebGL) {
+            this.precomputeParticleSprites();
+        }
 
         // Create stardust particles being pulled into black hole
         const particleCount = Math.min(this.qualityProfile.initialParticles, this.dynamicParticleBudget);
@@ -570,7 +629,7 @@ export default class BlackHoleTheme extends BaseTheme {
             this.addParticle({
                 x: this.random(0, this.canvas.width),
                 y: this.random(0, this.canvas.height),
-                size: this.random(0.5, 2.5),
+                size: this.random(1.5, 3.5),
                 speedX: this.random(-0.5, 0.5),
                 speedY: this.random(-0.5, 0.5),
                 opacity: this.random(0.4, 0.9),
@@ -700,6 +759,15 @@ export default class BlackHoleTheme extends BaseTheme {
         // Apply smooth CSS transform
         blackHole.style.left = `${percentX}%`;
         blackHole.style.top = `${percentY}%`;
+
+        // Hide DOM black hole if using WebGL
+        if (this.useWebGL) {
+            blackHole.style.opacity = '0';
+            const disk = document.querySelector('.black-hole-accretion-disk');
+            if (disk) disk.style.opacity = '0';
+        } else {
+            blackHole.style.opacity = '1';
+        }
     }
 
     /**
@@ -710,9 +778,9 @@ export default class BlackHoleTheme extends BaseTheme {
         if (profiling) performanceMonitor.startSection('theme:black-hole:stardust');
 
         try {
-            if (!this.isActive || !this.ctx) return;
+            if (!this.isActive) return;
+            if (!this.useWebGL && !this.ctx) return;
 
-            const { ctx } = this;
             const { width } = this.canvas;
             const { height } = this.canvas;
             const now = performance.now();
@@ -720,6 +788,10 @@ export default class BlackHoleTheme extends BaseTheme {
             this.lastFrameTime = now;
             this.accumulatedFrameTime += delta;
             this.adjustPerformanceTargets(delta);
+
+            // Smoothly update disk parameters
+            this.diskIntensity += (this.diskTargetIntensity - this.diskIntensity) * 0.1;
+            this.diskScale += (this.diskTargetScale - this.diskScale) * 0.1;
 
             // Update black hole drifting position
             this.updateBlackHoleDrift(delta);
@@ -743,7 +815,10 @@ export default class BlackHoleTheme extends BaseTheme {
             this.accumulatedFrameTime -= this.frameInterval;
 
             this.processScheduledSpawns(now);
-            ctx.clearRect(0, 0, width, height);
+
+            if (!this.useWebGL && this.ctx) {
+                this.ctx.clearRect(0, 0, width, height);
+            }
 
             const { particles } = this;
             let writeIndex = 0;
@@ -756,6 +831,17 @@ export default class BlackHoleTheme extends BaseTheme {
             const bhPullStrength = this.blackHolePullStrength;
             const invBhPullRadius = 1 / bhPullRadius;
             const physicsSkipDistSq = this.physicsSkipDistanceSquared;
+
+            // WebGL Optimization: Access TypedArrays directly
+            const useWebGL = this.useWebGL && this.webglRenderer;
+            let gpuPos, gpuSize, gpuColor, gpuAlpha, gpuBright;
+            if (useWebGL) {
+                gpuPos = this.webglRenderer.positionData;
+                gpuSize = this.webglRenderer.sizeData;
+                gpuColor = this.webglRenderer.colorData;
+                gpuAlpha = this.webglRenderer.alphaData;
+                gpuBright = this.webglRenderer.brightnessData;
+            }
 
             for (let i = 0; i < particles.length; i++) {
                 const particle = particles[i];
@@ -829,24 +915,13 @@ export default class BlackHoleTheme extends BaseTheme {
                         continue;
                     }
 
-                    const edge = Math.floor(Math.random() * 4);
-                    if (edge === 0) {
-                        particle.x = this.random(0, width);
-                        particle.y = 0;
-                    } else if (edge === 1) {
-                        particle.x = width;
-                        particle.y = this.random(0, height);
-                    } else if (edge === 2) {
-                        particle.x = this.random(0, width);
-                        particle.y = height;
-                    } else {
-                        particle.x = 0;
-                        particle.y = this.random(0, height);
-                    }
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = this.random(Math.max(width, height) * 0.6, Math.max(width, height) * 0.8);
+                    particle.x = bhX + Math.cos(angle) * dist;
+                    particle.y = bhY + Math.sin(angle) * dist;
                     particle.speedX = this.random(-0.5, 0.5);
                     particle.speedY = this.random(-0.5, 0.5);
                     particle.opacity = this.random(0.4, 0.9);
-                    particle.color = this.getNebulaColor();
                 }
 
                 if (particle.x < -50) particle.x = width + 50;
@@ -860,11 +935,69 @@ export default class BlackHoleTheme extends BaseTheme {
                 }
                 particle.pulse += particle.pulseSpeed;
 
-                this.drawParticle(ctx, particle);
+                // Update WebGL arrays directly
+                if (useWebGL && gpuPos) {
+                    const i2 = writeIndex * 2;
+                    const i3 = writeIndex * 3;
+                    gpuPos[i2] = particle.x;
+                    gpuPos[i2 + 1] = particle.y;
+                    gpuSize[writeIndex] = particle.size;
+
+                    if (particle.color) {
+                        gpuColor[i3] = particle.color.r / 255;
+                        gpuColor[i3 + 1] = particle.color.g / 255;
+                        gpuColor[i3 + 2] = particle.color.b / 255;
+                    } else {
+                        gpuColor[i3] = 1; gpuColor[i3 + 1] = 1; gpuColor[i3 + 2] = 1;
+                    }
+
+                    gpuAlpha[writeIndex] = particle.opacity;
+                    gpuBright[writeIndex] = particle.brightness || 0;
+                }
+
+                // Render (only if not WebGL)
+                if (!useWebGL && this.ctx) {
+                    const sprite = this.getParticleSprite(particle.color);
+                    if (sprite) {
+                        this.ctx.globalAlpha = particle.opacity;
+                        // Round coordinates to avoid sub-pixel rendering overhead
+                        this.ctx.drawImage(
+                            sprite,
+                            (particle.x - particle.size * 10) | 0,
+                            (particle.y - particle.size * 10) | 0,
+                            (particle.size * 20) | 0,
+                            (particle.size * 20) | 0,
+                        );
+                    }
+                }
+
                 particles[writeIndex++] = particle;
             }
 
             particles.length = writeIndex;
+
+            // WebGL Rendering
+            if (useWebGL) {
+                this.webglRenderer.setBlackHoleParams(
+                    this.blackHoleX,
+                    this.blackHoleY,
+                    60,
+                    this.diskIntensity,
+                    this.diskScale
+                );
+
+                // Pass the filled arrays to the renderer
+                // We pass the full arrays but the renderer will only draw 'writeIndex' points
+                this.webglRenderer.updateParticles(
+                    writeIndex,
+                    gpuPos,
+                    gpuSize,
+                    gpuColor,
+                    gpuAlpha,
+                    gpuBright
+                );
+                this.webglRenderer.render(now * 0.001);
+            }
 
             this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
         } finally {
@@ -941,7 +1074,7 @@ export default class BlackHoleTheme extends BaseTheme {
             this.createGravitationalWave(scaledCombo);
         }
 
-        if (allowFullEffects && scaledCombo >= 5 && this.qualityProfile.allowEruptions) {
+        if (allowFullEffects && (scaledCombo >= 5 || (this.useWebGL && scaledCombo >= 2)) && this.qualityProfile.allowEruptions) {
             this.createParticleEruption(scaledCombo);
         }
 
@@ -1180,9 +1313,18 @@ export default class BlackHoleTheme extends BaseTheme {
         blackHole.style.transform = `scale(${1 + intensity * 0.05})`;
         blackHole.style.filter = `brightness(${1 + intensity * 0.1})`;
 
+        if (this.useWebGL) {
+            this.diskTargetScale = 1.0 + intensity * 0.1;
+            this.diskTargetIntensity = 1.0 + intensity * 0.2;
+        }
+
         setTimeout(() => {
             blackHole.style.transform = '';
             blackHole.style.filter = '';
+            if (this.useWebGL) {
+                this.diskTargetScale = 1.0;
+                this.diskTargetIntensity = 1.0;
+            }
         }, 400);
     }
 
@@ -1212,6 +1354,16 @@ export default class BlackHoleTheme extends BaseTheme {
             setTimeout(() => {
                 accretionGlow.style.opacity = '';
                 accretionGlow.style.transform = '';
+            }, 600 + comboCount * 100);
+        }
+
+        if (this.useWebGL) {
+            this.diskTargetIntensity = 1.0 + comboCount * 0.3;
+            this.diskTargetScale = 1.0 + comboCount * 0.1;
+
+            setTimeout(() => {
+                this.diskTargetIntensity = 1.0;
+                this.diskTargetScale = 1.0;
             }, 600 + comboCount * 100);
         }
     }
@@ -1299,7 +1451,7 @@ export default class BlackHoleTheme extends BaseTheme {
             this.addParticle({
                 x: this.blackHoleX,
                 y: this.blackHoleY,
-                size: this.random(1, 3),
+                size: this.random(2.5, 5.0),
                 speedX: Math.cos(angle) * speed,
                 speedY: Math.sin(angle) * speed,
                 opacity: this.random(0.6, 1),
@@ -1309,6 +1461,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 orbitAngle: angle,
                 orbitSpeed: this.random(0.01, 0.03),
                 lifetime: 60, // Will fade out
+                brightness: 1.5,
             });
         }
     }
@@ -1396,44 +1549,82 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     /**
-     * Create massive particle eruption
+     * Create massive particle eruption (Relativistic Jets)
      */
     createParticleEruption(comboCount) {
         if (!this.qualityProfile.allowEruptions) {
             return;
         }
+
+        // Much higher count for WebGL
+        const baseLimit = this.useWebGL ? this.qualityProfile.eruptionLimit * 3 : this.qualityProfile.eruptionLimit;
+
         const eruptionCount = this.getScaledCount(
-            Math.min(comboCount * 12, this.qualityProfile.eruptionLimit),
-            this.qualityProfile.eruptionLimit,
+            Math.min(comboCount * (this.useWebGL ? 50 : 12), baseLimit),
+            baseLimit,
         );
+
         if (eruptionCount <= 0) {
             return;
         }
+
         const startTime = performance.now();
-        const spacing = Math.max(8, 18 - this.effectIntensityMultiplier * 8);
+        // Faster emission
+        const spacing = Math.max(2, 10 - this.effectIntensityMultiplier * 5);
+
+        // Jet direction (random angle)
+        const jetAngle = Math.random() * Math.PI * 2;
+        const jetSpread = 0.4; // Narrow cone
 
         for (let i = 0; i < eruptionCount; i++) {
             const spawnTime = startTime + i * spacing;
-            this.scheduleParticleSpawn(spawnTime, () => {
-                const angle = this.random(0, Math.PI * 2);
-                const speed = this.random(3, 8) * (0.8 + this.effectIntensityMultiplier * 0.4);
-                const distance = this.random(50, 150);
+
+            this.scheduleParticleSpawn(spawnTime, (index, total) => {
+                // Two opposing jets
+                const isOpposite = Math.random() > 0.5;
+                const baseAngle = isOpposite ? jetAngle + Math.PI : jetAngle;
+                const angle = baseAngle + (Math.random() - 0.5) * jetSpread;
+
+                const speed = this.random(5, 15) * (1 + comboCount * 0.1); // High speed
+                const distance = 10; // Start near center
 
                 return {
                     x: this.blackHoleX + Math.cos(angle) * distance,
                     y: this.blackHoleY + Math.sin(angle) * distance,
-                    size: this.random(1.5, 4),
+                    size: this.random(4.0, 7.0),
                     speedX: Math.cos(angle) * speed,
                     speedY: Math.sin(angle) * speed,
-                    opacity: this.random(0.7, 1),
-                    color: this.getNebulaColor(),
-                    pulse: this.random(0, Math.PI * 2),
-                    pulseSpeed: this.random(0.03, 0.06),
+                    opacity: 1.0,
+                    color: isOpposite ? { r: 100, g: 200, b: 255 } : { r: 255, g: 100, b: 100 }, // Blue and Red jets (Doppler effect)
+                    pulse: 0,
+                    pulseSpeed: 0.1,
                     orbitAngle: angle,
-                    orbitSpeed: this.random(0.015, 0.025),
-                    lifetime: 120,
+                    orbitSpeed: 0,
+                    lifetime: 100,
+                    brightness: 2.0, // Glow boost
                 };
             });
+        }
+
+        // Shockwave ring
+        if (comboCount >= 2) {
+            const ringCount = Math.min(comboCount * 20, 200);
+            for (let i = 0; i < ringCount; i++) {
+                const angle = (Math.PI * 2 * i) / ringCount;
+                const speed = 3 + comboCount * 0.5;
+
+                this.scheduleParticleSpawn(startTime, () => ({
+                    x: this.blackHoleX,
+                    y: this.blackHoleY,
+                    size: this.random(2.0, 4.5),
+                    speedX: Math.cos(angle) * speed,
+                    speedY: Math.sin(angle) * speed,
+                    opacity: 0.8,
+                    color: { r: 200, g: 100, b: 255 },
+                    lifetime: 80,
+                    brightness: 0.5,
+                }));
+            }
         }
     }
 
@@ -1671,6 +1862,9 @@ export default class BlackHoleTheme extends BaseTheme {
             this.canvas.height = scaledHeight;
             if (this.ctx) {
                 this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+            if (this.useWebGL && this.webglRenderer) {
+                this.webglRenderer.resize(scaledWidth, scaledHeight);
             }
         }
         this.canvas.style.width = `${displayWidth}px`;

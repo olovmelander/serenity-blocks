@@ -43,7 +43,7 @@ export default class WebGLMeadowCreatures {
             in float aInstanceScale;
             in float aInstancePhase;
             in vec3 aInstanceColor;
-            in float aInstanceType; // 0: Butterfly, 1: Bee, 2: Firefly
+            in float aInstanceType; // 0: Butterfly, 1: Bee, 2: Firefly, 3: Ladybug
 
             uniform float uTime;
             uniform vec2 uResolution;
@@ -57,12 +57,22 @@ export default class WebGLMeadowCreatures {
                 vec2 pos = aPosition * aInstanceScale;
                 
                 // Wing flap animation
-                float flapSpeed = (aInstanceType == 1.0) ? 30.0 : 8.0; // Bees flap faster
+                float flapSpeed = 8.0;
+                if (aInstanceType == 1.0) flapSpeed = 40.0; // Bee
+                if (aInstanceType == 3.0) flapSpeed = 50.0; // Ladybug (when flying)
+
                 float flap = sin(uTime * flapSpeed + aInstancePhase);
                 
                 // Scale X to simulate flapping
-                if (aInstanceType < 1.5) { // Butterfly or Bee
-                    pos.x *= abs(flap); // Flap from 0 to 1
+                if (aInstanceType < 0.5) { // Butterfly
+                    pos.x *= abs(flap); 
+                } else if (aInstanceType < 1.5) { // Bee
+                    // Bee wings are separate in fragment, but we can bob the body
+                    pos.y += sin(uTime * 20.0 + aInstancePhase) * 2.0;
+                } else if (aInstanceType > 2.5) { // Ladybug
+                    // Ladybug wings open when flying (simulated by scale or just texture)
+                    // We'll just bob it slightly
+                    pos.y += sin(uTime * 10.0 + aInstancePhase) * 1.0;
                 }
                 
                 vec2 worldPos = pos + aInstancePosition.xy;
@@ -94,11 +104,18 @@ export default class WebGLMeadowCreatures {
             void main() {
                 vec2 pos = aPosition * aInstanceScale;
                 
-                float flapSpeed = (aInstanceType == 1.0) ? 30.0 : 8.0;
+                float flapSpeed = 8.0;
+                if (aInstanceType == 1.0) flapSpeed = 40.0;
+                if (aInstanceType == 3.0) flapSpeed = 50.0;
+
                 float flap = sin(uTime * flapSpeed + aInstancePhase);
                 
-                if (aInstanceType < 1.5) {
+                if (aInstanceType < 0.5) {
                     pos.x *= abs(flap);
+                } else if (aInstanceType < 1.5) {
+                    pos.y += sin(uTime * 20.0 + aInstancePhase) * 2.0;
+                } else if (aInstanceType > 2.5) {
+                    pos.y += sin(uTime * 10.0 + aInstancePhase) * 1.0;
                 }
                 
                 vec2 worldPos = pos + aInstancePosition.xy;
@@ -159,22 +176,29 @@ export default class WebGLMeadowCreatures {
                     
                     alpha = max(wingShape, body);
                 } else if (vType < 1.5) {
-                    // Bee (Type 1)
-                    // Body
-                    float bodyShape = smoothstep(0.6, 0.5, length(uv * vec2(1.0, 1.5)));
+                    // Bee (Type 1) - Improved
+                    // Body (Oval)
+                    float bodyShape = smoothstep(0.6, 0.55, length(uv * vec2(1.0, 1.4)));
                     
-                    // Stripes
-                    float stripes = sin(uv.x * 25.0 + uv.y * 5.0);
-                    vec3 bodyColor = mix(vec3(1.0, 0.8, 0.0), vec3(0.1), step(0.5, stripes));
+                    // Fuzzy Stripes
+                    float stripes = sin(uv.y * 15.0 + uv.x * 5.0); // Angled stripes
+                    float stripeMask = smoothstep(0.2, 0.3, stripes); // Soft edge
                     
-                    // Wings
+                    vec3 yellow = vec3(1.0, 0.8, 0.0);
+                    vec3 black = vec3(0.1, 0.1, 0.1);
+                    vec3 bodyColor = mix(black, yellow, stripeMask);
+                    
+                    // Fuzzy body edge
+                    float fuzz = (sin(uv.x * 100.0) + sin(uv.y * 100.0)) * 0.02;
+                    bodyShape = smoothstep(0.6 + fuzz, 0.55, length(uv * vec2(1.0, 1.4)));
+
+                    // Wings (Fast blur)
                     vec2 wuv = uv;
                     wuv.x = abs(wuv.x);
-                    // Flap wings in shader for blur effect
-                    float wingFlap = sin(uTime * 50.0 + vPhase);
-                    vec2 wingPos = wuv - vec2(0.2, 0.3);
-                    wingPos.y *= 1.5; // Elongate
-                    float wingShape = smoothstep(0.4, 0.3, length(wingPos));
+                    float wingFlap = sin(uTime * 40.0 + vPhase);
+                    vec2 wingPos = wuv - vec2(0.3, 0.2);
+                    wingPos.y *= 1.5;
+                    float wingShape = smoothstep(0.5, 0.4, length(wingPos));
                     
                     // Combine
                     if (bodyShape > 0.1) {
@@ -182,16 +206,59 @@ export default class WebGLMeadowCreatures {
                         alpha = bodyShape;
                     } else {
                         color = vec3(0.9, 0.95, 1.0); // Whiteish wings
-                        alpha = wingShape * 0.6; // Semi-transparent
+                        alpha = wingShape * 0.5; // Semi-transparent
                     }
-                } else {
+                } else if (vType < 2.5) {
                     // Firefly (Type 2)
-                    // Glow
                     float glow = exp(-dist * 3.0);
-                    // Pulse
                     float pulse = sin(uTime * 3.0 + vPhase) * 0.5 + 0.5;
                     alpha = glow * pulse;
-                    color = vec3(0.8, 1.0, 0.2); // Green-Yellow
+                    color = vec3(0.8, 1.0, 0.2);
+                } else {
+                    // Ladybug (Type 3)
+                    // Body (Round)
+                    float bodyShape = smoothstep(0.7, 0.65, dist);
+                    
+                    // Head (Black semicircle at top)
+                    float head = smoothstep(0.3, 0.25, length(uv - vec2(0.0, 0.5)));
+                    
+                    // Elytra split (Line down middle)
+                    float split = smoothstep(0.02, 0.03, abs(uv.x));
+                    
+                    // Spots
+                    vec2 suv = abs(uv); // Mirror spots
+                    float spots = smoothstep(0.15, 0.12, length(suv - vec2(0.3, 0.1)));
+                    spots += smoothstep(0.12, 0.09, length(suv - vec2(0.2, -0.3)));
+                    spots += smoothstep(0.1, 0.07, length(uv - vec2(0.0, -0.2))); // Center spot
+                    
+                    vec3 red = vec3(0.9, 0.1, 0.1);
+                    vec3 black = vec3(0.05, 0.05, 0.05);
+                    
+                    vec3 shellColor = mix(black, red, split); // Black line
+                    shellColor = mix(shellColor, black, spots); // Black spots
+                    
+                    // Specular highlight
+                    float shine = smoothstep(0.2, 0.1, length(uv - vec2(-0.2, 0.2)));
+                    shellColor += vec3(0.3) * shine;
+
+                    if (head > 0.1) {
+                        color = black;
+                        alpha = head;
+                    } else {
+                        color = shellColor;
+                        alpha = bodyShape;
+                    }
+                    
+                    // Wings (only if flying/moving fast - simulated by phase or just hidden)
+                    // Let's add small transparent wings sticking out slightly
+                    if (alpha < 0.1) {
+                         vec2 wuv = abs(uv);
+                         float wing = smoothstep(0.6, 0.5, length(wuv - vec2(0.4, -0.2)));
+                         if (wing > 0.1) {
+                             color = vec3(1.0, 1.0, 1.0);
+                             alpha = wing * 0.3;
+                         }
+                    }
                 }
 
                 if (alpha < 0.05) discard;
@@ -234,28 +301,70 @@ export default class WebGLMeadowCreatures {
                     
                     alpha = max(wingShape, body);
                 } else if (vType < 1.5) {
-                    float bodyShape = smoothstep(0.6, 0.5, length(uv * vec2(1.0, 1.5)));
-                    float stripes = sin(uv.x * 25.0 + uv.y * 5.0);
-                    vec3 bodyColor = mix(vec3(1.0, 0.8, 0.0), vec3(0.1), step(0.5, stripes));
+                    float bodyShape = smoothstep(0.6, 0.55, length(uv * vec2(1.0, 1.4)));
+                    float stripes = sin(uv.y * 15.0 + uv.x * 5.0);
+                    float stripeMask = smoothstep(0.2, 0.3, stripes);
                     
+                    vec3 yellow = vec3(1.0, 0.8, 0.0);
+                    vec3 black = vec3(0.1, 0.1, 0.1);
+                    vec3 bodyColor = mix(black, yellow, stripeMask);
+                    
+                    float fuzz = (sin(uv.x * 100.0) + sin(uv.y * 100.0)) * 0.02;
+                    bodyShape = smoothstep(0.6 + fuzz, 0.55, length(uv * vec2(1.0, 1.4)));
+
                     vec2 wuv = uv;
                     wuv.x = abs(wuv.x);
-                    vec2 wingPos = wuv - vec2(0.2, 0.3);
+                    vec2 wingPos = wuv - vec2(0.3, 0.2);
                     wingPos.y *= 1.5;
-                    float wingShape = smoothstep(0.4, 0.3, length(wingPos));
+                    float wingShape = smoothstep(0.5, 0.4, length(wingPos));
                     
                     if (bodyShape > 0.1) {
                         color = bodyColor;
                         alpha = bodyShape;
                     } else {
                         color = vec3(0.9, 0.95, 1.0);
-                        alpha = wingShape * 0.6;
+                        alpha = wingShape * 0.5;
                     }
-                } else {
+                } else if (vType < 2.5) {
                     float glow = exp(-dist * 3.0);
                     float pulse = sin(uTime * 3.0 + vPhase) * 0.5 + 0.5;
                     alpha = glow * pulse;
                     color = vec3(0.8, 1.0, 0.2);
+                } else {
+                    float bodyShape = smoothstep(0.7, 0.65, dist);
+                    float head = smoothstep(0.3, 0.25, length(uv - vec2(0.0, 0.5)));
+                    float split = smoothstep(0.02, 0.03, abs(uv.x));
+                    
+                    vec2 suv = abs(uv);
+                    float spots = smoothstep(0.15, 0.12, length(suv - vec2(0.3, 0.1)));
+                    spots += smoothstep(0.12, 0.09, length(suv - vec2(0.2, -0.3)));
+                    spots += smoothstep(0.1, 0.07, length(uv - vec2(0.0, -0.2)));
+                    
+                    vec3 red = vec3(0.9, 0.1, 0.1);
+                    vec3 black = vec3(0.05, 0.05, 0.05);
+                    
+                    vec3 shellColor = mix(black, red, split);
+                    shellColor = mix(shellColor, black, spots);
+                    
+                    float shine = smoothstep(0.2, 0.1, length(uv - vec2(-0.2, 0.2)));
+                    shellColor += vec3(0.3) * shine;
+
+                    if (head > 0.1) {
+                        color = black;
+                        alpha = head;
+                    } else {
+                        color = shellColor;
+                        alpha = bodyShape;
+                    }
+                    
+                    if (alpha < 0.1) {
+                         vec2 wuv = abs(uv);
+                         float wing = smoothstep(0.6, 0.5, length(wuv - vec2(0.4, -0.2)));
+                         if (wing > 0.1) {
+                             color = vec3(1.0, 1.0, 1.0);
+                             alpha = wing * 0.3;
+                         }
+                    }
                 }
 
                 if (alpha < 0.05) discard;
@@ -330,7 +439,7 @@ export default class WebGLMeadowCreatures {
         this.width = width;
         this.height = height;
 
-        const { butterflyCount, beeCount, fireflyCount } = counts;
+        const { butterflyCount, beeCount, fireflyCount, ladybugCount = 0 } = counts;
 
         // Butterflies
         for (let i = 0; i < butterflyCount; i++) {
@@ -374,29 +483,86 @@ export default class WebGLMeadowCreatures {
             });
         }
 
+        // Ladybugs
+        for (let i = 0; i < ladybugCount; i++) {
+            this.creatures.push({
+                x: Math.random() * width,
+                y: Math.random() * (height * 0.3), // Start near bottom (0 is bottom)
+                vx: 0,
+                vy: 0,
+                targetX: Math.random() * width,
+                targetY: Math.random() * (height * 0.35), // Target bottom area
+                state: 'flying', // 'flying', 'landing', 'landed'
+                timer: 0,
+                scale: 0.6 + Math.random() * 0.2,
+                phase: Math.random() * Math.PI * 2,
+                color: [1.0, 0.0, 0.0],
+                type: 3
+            });
+        }
+
         this.creatureCount = this.creatures.length;
     }
 
     update(dt) {
         for (const c of this.creatures) {
-            c.x += c.vx;
-            c.y += c.vy;
+            if (c.type === 3) {
+                // Ladybug Logic
+                if (c.state === 'flying') {
+                    // Move towards target
+                    const dx = c.targetX - c.x;
+                    const dy = c.targetY - c.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Bounce off walls
-            if (c.x < 0 || c.x > this.width) c.vx *= -1;
-            if (c.y < 0 || c.y > this.height) c.vy *= -1;
+                    if (dist < 5) {
+                        // Arrived
+                        c.state = 'landed';
+                        c.timer = 2.0 + Math.random() * 3.0; // Stay for 2-5 seconds
+                        c.vx = 0;
+                        c.vy = 0;
+                    } else {
+                        // Fly
+                        const speed = 1.5;
+                        c.vx = (dx / dist) * speed;
+                        c.vy = (dy / dist) * speed;
 
-            // Random direction change
-            if (Math.random() < 0.02) {
-                c.vx += (Math.random() - 0.5) * 0.2;
-                c.vy += (Math.random() - 0.5) * 0.2;
+                        // Add some noise
+                        c.vx += (Math.random() - 0.5) * 0.5;
+                        c.vy += (Math.random() - 0.5) * 0.5;
 
-                // Limit speed
-                const speed = Math.sqrt(c.vx * c.vx + c.vy * c.vy);
-                const maxSpeed = (c.type === 1) ? 2.0 : 1.0;
-                if (speed > maxSpeed) {
-                    c.vx = (c.vx / speed) * maxSpeed;
-                    c.vy = (c.vy / speed) * maxSpeed;
+                        c.x += c.vx;
+                        c.y += c.vy;
+                    }
+                } else if (c.state === 'landed') {
+                    c.timer -= dt;
+                    if (c.timer <= 0) {
+                        // Take off
+                        c.state = 'flying';
+                        c.targetX = Math.random() * this.width;
+                        c.targetY = Math.random() * (this.height * 0.35); // Stay in lower area
+                    }
+                }
+            } else {
+                // Standard Logic (Bounce)
+                c.x += c.vx;
+                c.y += c.vy;
+
+                // Bounce off walls
+                if (c.x < 0 || c.x > this.width) c.vx *= -1;
+                if (c.y < 0 || c.y > this.height) c.vy *= -1;
+
+                // Random direction change
+                if (Math.random() < 0.02) {
+                    c.vx += (Math.random() - 0.5) * 0.2;
+                    c.vy += (Math.random() - 0.5) * 0.2;
+
+                    // Limit speed
+                    const speed = Math.sqrt(c.vx * c.vx + c.vy * c.vy);
+                    const maxSpeed = (c.type === 1) ? 2.0 : 1.0;
+                    if (speed > maxSpeed) {
+                        c.vx = (c.vx / speed) * maxSpeed;
+                        c.vy = (c.vy / speed) * maxSpeed;
+                    }
                 }
             }
         }
