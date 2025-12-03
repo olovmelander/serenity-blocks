@@ -479,49 +479,68 @@ export class EnhancedBreathingIndicator {
     }
 
     /**
+     * Calculate intensity based on phase for seamless transitions
+     * @param {number} progress - Current phase progress (0 to 1)
+     * @param {number} restingIntensity - Intensity during empty hold (default: 0.3)
+     * @returns {number} - Calculated intensity
+     * @private
+     */
+    _calculateIntensity(progress, restingIntensity = 0.3) {
+        if (this.currentPhase === 'inhale') {
+            return restingIntensity + (1 - restingIntensity) * this._easeInOutQuart(progress);
+        } else if (this.currentPhase === 'hold1') {
+            return 1;
+        } else if (this.currentPhase === 'exhale') {
+            return 1 - (1 - restingIntensity) * this._easeInOutQuart(progress);
+        } else { // hold2
+            return restingIntensity;
+        }
+    }
+
+    /**
      * Route to technique-specific animation
      * @private
      */
     _animateTechniqueSpecific(progress) {
         switch (this.currentTechnique) {
-        case 'deep-relaxation':
-            this._animateAuroraDreams(progress);
-            break;
-        case 'box-breathing':
-            this._animateSacredGeometry(progress);
-            break;
-        case 'calm-sleep':
-            this._animateMoonlitWaters(progress);
-            break;
-        case 'energizing':
-            this._animateSolarFlare(progress);
-            break;
-        case 'coherence':
-            this._animateHeartGlow(progress);
-            break;
-        case 'triangle':
-            this._animateCrystalPrism(progress);
-            break;
-        case 'wim-hof':
-            this._animateVolcanicFire(progress);
-            break;
-        case 'ocean-breath':
-            this._animateOceanTide(progress);
-            break;
-        case 'zen-garden':
-            this._animateZenGarden(progress);
-            break;
-        case 'cosmic-breath':
-            this._animateCosmicNebula(progress);
-            break;
+            case 'deep-relaxation':
+                this._animateAuroraDreams(progress);
+                break;
+            case 'box-breathing':
+                this._animateSacredGeometry(progress);
+                break;
+            case 'calm-sleep':
+                this._animateMoonlitWaters(progress);
+                break;
+            case 'energizing':
+                this._animateSolarFlare(progress);
+                break;
+            case 'coherence':
+                this._animateHeartGlow(progress);
+                break;
+            case 'triangle':
+                this._animateCrystalPrism(progress);
+                break;
+            case 'wim-hof':
+                this._animateVolcanicFire(progress);
+                break;
+            case 'ocean-breath':
+                this._animateOceanTide(progress);
+                break;
+            case 'zen-garden':
+                this._animateZenGarden(progress);
+                break;
+            case 'cosmic-breath':
+                this._animateCosmicNebula(progress);
+                break;
             case 'forest-breath':
                 this._animateAncientForest(progress);
                 break;
             case 'electric-storm':
                 this._animateElectricStorm(progress);
                 break;
-        default:
-            this._animateAuroraDreams(progress);
+            default:
+                this._animateAuroraDreams(progress);
         }
     }
 
@@ -539,34 +558,27 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Calculate breath intensity
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.3;
-        }
+        const intensity = this._calculateIntensity(progress, 0.3);
 
         // Draw flowing aurora curtains
         for (let layer = 0; layer < 5; layer++) {
             const layerOffset = layer * 0.3;
             const colors = [color, secondaryColor, tertiaryColor];
             const c = colors[layer % 3];
-            
+
             ctx.beginPath();
             for (let x = 0; x < this.particleCanvas.width; x += 3) {
                 const wave1 = Math.sin((x / 80) + time * 0.5 + layerOffset) * 60;
                 const wave2 = Math.sin((x / 40) + time * 0.8 + layerOffset * 2) * 30;
                 const wave3 = Math.sin((x / 120) + time * 0.3) * 40;
                 const breathWave = Math.sin((x / 100) + time * 0.2) * 50 * intensity;
-                
+
                 const y = centerY - 100 + layer * 50 + wave1 + wave2 + wave3 + breathWave;
-                
+
                 if (x === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
-            
+
             // Create gradient stroke
             const gradient = ctx.createLinearGradient(0, centerY - 200, 0, centerY + 200);
             gradient.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
@@ -574,7 +586,7 @@ export class EnhancedBreathingIndicator {
             gradient.addColorStop(0.5, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.6 * intensity})`);
             gradient.addColorStop(0.7, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.4 * intensity})`);
             gradient.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
-            
+
             ctx.strokeStyle = gradient;
             ctx.lineWidth = 8 + layer * 2;
             ctx.lineCap = 'round';
@@ -588,7 +600,7 @@ export class EnhancedBreathingIndicator {
             const starX = (Math.sin(i * 7.3 + time * 0.1) * 0.5 + 0.5) * this.particleCanvas.width;
             const starY = (Math.cos(i * 5.7 + time * 0.15) * 0.5 + 0.5) * this.particleCanvas.height;
             const twinkle = Math.sin(time * 3 + i) * 0.5 + 0.5;
-            
+
             const starGradient = ctx.createRadialGradient(starX, starY, 0, starX, starY, 4);
             starGradient.addColorStop(0, `rgba(255, 255, 255, ${twinkle * intensity * 0.8})`);
             starGradient.addColorStop(1, 'transparent');
@@ -624,14 +636,7 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Calculate breath phase
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.3;
-        }
+        const intensity = this._calculateIntensity(progress, 0.3);
 
         const baseSize = 80 + intensity * 120;
         const rotation = time * 0.2;
@@ -644,12 +649,12 @@ export class EnhancedBreathingIndicator {
         for (let ring = 0; ring < 3; ring++) {
             const ringRadius = baseSize * (ring + 1) * 0.4;
             const ringAlpha = (0.6 - ring * 0.15) * intensity;
-            
+
             for (let i = 0; i < petalCount; i++) {
                 const angle = (i / petalCount) * Math.PI * 2 + rotation + ring * 0.2;
                 const cx = Math.cos(angle) * ringRadius;
                 const cy = Math.sin(angle) * ringRadius;
-                
+
                 // Draw petal circle
                 ctx.beginPath();
                 ctx.arc(cx, cy, baseSize * 0.5, 0, Math.PI * 2);
@@ -676,7 +681,7 @@ export class EnhancedBreathingIndicator {
             const circleY = Math.sin(circleAngle - Math.PI / 2 + rotation) * r;
             const x = hexX * (1 - morphProgress) + circleX * morphProgress;
             const y = hexY * (1 - morphProgress) + circleY * morphProgress;
-            
+
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
@@ -711,7 +716,7 @@ export class EnhancedBreathingIndicator {
             const spiralR = Math.sqrt(i) * 15 * intensity;
             const px = Math.cos(goldenAngle + time) * spiralR;
             const py = Math.sin(goldenAngle + time) * spiralR;
-            
+
             const gradient = ctx.createRadialGradient(px, py, 0, px, py, 8);
             gradient.addColorStop(0, `rgba(255, 255, 255, ${0.8 * intensity})`);
             gradient.addColorStop(0.5, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.5 * intensity})`);
@@ -747,19 +752,12 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Calculate breath intensity
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.3;
-        }
+        const intensity = this._calculateIntensity(progress, 0.3);
 
         // Draw moon
         const moonY = centerY - 120 + Math.sin(time * 0.2) * 10;
         const moonRadius = 60 + intensity * 20;
-        
+
         // Moon glow
         const moonGlow = ctx.createRadialGradient(centerX, moonY, moonRadius * 0.5, centerX, moonY, moonRadius * 3);
         moonGlow.addColorStop(0, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.4 * intensity})`);
@@ -801,7 +799,7 @@ export class EnhancedBreathingIndicator {
             waveGradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`);
             waveGradient.addColorStop(0.5, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${alpha * 0.8})`);
             waveGradient.addColorStop(1, `rgba(${tertiaryColor.r}, ${tertiaryColor.g}, ${tertiaryColor.b}, ${alpha * 0.5})`);
-            
+
             ctx.strokeStyle = waveGradient;
             ctx.lineWidth = 4;
             ctx.shadowBlur = 20;
@@ -825,7 +823,7 @@ export class EnhancedBreathingIndicator {
             const starX = (Math.sin(i * 4.7 + time * 0.05) * 0.5 + 0.5) * this.particleCanvas.width;
             const starY = (Math.cos(i * 3.2) * 0.3 + 0.2) * this.particleCanvas.height;
             const twinkle = Math.sin(time * 2 + i * 1.5) * 0.5 + 0.5;
-            
+
             ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * intensity * 0.6})`;
             ctx.beginPath();
             ctx.arc(starX, starY, 1.5, 0, Math.PI * 2);
@@ -856,21 +854,14 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Calculate burst intensity
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.3;
-        }
+        const intensity = this._calculateIntensity(progress, 0.3);
 
         // Draw solar corona (outer glow)
         const coronaRadius = 180 * intensity;
         for (let ring = 0; ring < 4; ring++) {
             const ringRadius = coronaRadius * (1 + ring * 0.3);
             const ringAlpha = (0.3 - ring * 0.06) * intensity;
-            
+
             const coronaGradient = ctx.createRadialGradient(centerX, centerY, ringRadius * 0.5, centerX, centerY, ringRadius);
             coronaGradient.addColorStop(0, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${ringAlpha})`);
             coronaGradient.addColorStop(0.7, `rgba(${color.r}, ${color.g}, ${color.b}, ${ringAlpha * 0.5})`);
@@ -893,19 +884,19 @@ export class EnhancedBreathingIndicator {
             // Create curved flare path
             ctx.beginPath();
             ctx.moveTo(centerX, centerY);
-            
+
             const cp1x = centerX + Math.cos(angle + 0.2) * flareLength * 0.5;
             const cp1y = centerY + Math.sin(angle + 0.2) * flareLength * 0.5;
             const endX = centerX + Math.cos(angle) * flareLength;
             const endY = centerY + Math.sin(angle) * flareLength;
-            
+
             ctx.quadraticCurveTo(cp1x, cp1y, endX, endY);
-            
+
             const flareGradient = ctx.createLinearGradient(centerX, centerY, endX, endY);
             flareGradient.addColorStop(0, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.9 * intensity})`);
             flareGradient.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, ${0.6 * intensity})`);
             flareGradient.addColorStop(1, `rgba(${tertiaryColor.r}, ${tertiaryColor.g}, ${tertiaryColor.b}, 0)`);
-            
+
             ctx.strokeStyle = flareGradient;
             ctx.lineWidth = flareWidth;
             ctx.lineCap = 'round';
@@ -935,7 +926,7 @@ export class EnhancedBreathingIndicator {
             const px = centerX + Math.cos(particleAngle) * particleDistance;
             const py = centerY + Math.sin(particleAngle) * particleDistance;
             const particleSize = 3 + Math.sin(time * 5 + i * 2) * 2;
-            
+
             ctx.fillStyle = `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.8 * intensity})`;
             ctx.beginPath();
             ctx.arc(px, py, particleSize, 0, Math.PI * 2);
@@ -966,14 +957,7 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Calculate heartbeat pulse
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.4;
-        }
+        const intensity = this._calculateIntensity(progress, 0.4);
 
         // Add extra heartbeat pulse effect
         const heartbeat = Math.sin(time * 4) * 0.1 + 1;
@@ -1004,7 +988,7 @@ export class EnhancedBreathingIndicator {
         heartGradient.addColorStop(0.3, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.8 * intensity})`);
         heartGradient.addColorStop(0.6, `rgba(${color.r}, ${color.g}, ${color.b}, ${0.7 * intensity})`);
         heartGradient.addColorStop(1, `rgba(${tertiaryColor.r}, ${tertiaryColor.g}, ${tertiaryColor.b}, ${0.4 * intensity})`);
-        
+
         ctx.fillStyle = heartGradient;
         ctx.shadowBlur = 40;
         ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.8 * intensity})`;
@@ -1086,14 +1070,7 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Calculate intensity
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.4;
-        }
+        const intensity = this._calculateIntensity(progress, 0.4);
 
         const prismSize = 120 * (0.6 + intensity * 0.4);
         const rotation = time * 0.3;
@@ -1169,16 +1146,16 @@ export class EnhancedBreathingIndicator {
             const startY = centerY;
             const endX = startX + Math.cos(beamAngle) * beamLength;
             const endY = startY + Math.sin(beamAngle) * beamLength;
-            
+
             ctx.beginPath();
             ctx.moveTo(startX, startY);
             ctx.lineTo(endX, endY);
-            
+
             const rc = rainbowColors[i];
             const rainbowGradient = ctx.createLinearGradient(startX, startY, endX, endY);
             rainbowGradient.addColorStop(0, `rgba(${rc.r}, ${rc.g}, ${rc.b}, ${0.8 * intensity})`);
             rainbowGradient.addColorStop(1, `rgba(${rc.r}, ${rc.g}, ${rc.b}, 0)`);
-            
+
             ctx.strokeStyle = rainbowGradient;
             ctx.lineWidth = 6;
             ctx.shadowBlur = 15;
@@ -1192,7 +1169,7 @@ export class EnhancedBreathingIndicator {
             const sparkleY = centerY + (Math.cos(i * 3.7 + time * 0.8) * 0.5) * 150;
             const twinkle = Math.sin(time * 4 + i * 2) * 0.5 + 0.5;
             const sparkleColor = rainbowColors[i % rainbowColors.length];
-            
+
             const sparkleGradient = ctx.createRadialGradient(sparkleX, sparkleY, 0, sparkleX, sparkleY, 6);
             sparkleGradient.addColorStop(0, `rgba(255, 255, 255, ${twinkle * intensity})`);
             sparkleGradient.addColorStop(0.5, `rgba(${sparkleColor.r}, ${sparkleColor.g}, ${sparkleColor.b}, ${twinkle * intensity * 0.6})`);
@@ -1226,12 +1203,7 @@ export class EnhancedBreathingIndicator {
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
         // Fast, intense breathing - more dramatic
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else {
-            intensity = 1 - this._easeInOutQuart(progress) * 0.7; // Keep some intensity during exhale
-        }
+        const intensity = this._calculateIntensity(progress, 0.3);
 
         // Draw volcanic glow from below
         const lavaGlow = ctx.createRadialGradient(centerX, centerY + 100, 0, centerX, centerY + 100, 300);
@@ -1245,17 +1217,17 @@ export class EnhancedBreathingIndicator {
         for (let col = 0; col < 5; col++) {
             const colX = centerX + (col - 2) * 60;
             const colHeight = 150 + Math.sin(time * 4 + col) * 50;
-            
+
             for (let y = 0; y < colHeight * intensity; y += 10) {
                 const flicker = Math.sin(time * 8 + y * 0.1 + col) * 15;
                 const fx = colX + flicker;
                 const fy = centerY + 50 - y;
                 const flameSize = 20 * (1 - y / (colHeight * intensity)) * intensity;
-                
+
                 if (flameSize > 0) {
                     const flameGradient = ctx.createRadialGradient(fx, fy, 0, fx, fy, flameSize);
                     const yRatio = y / (colHeight * intensity);
-                    
+
                     if (yRatio < 0.3) {
                         // Base - white hot
                         flameGradient.addColorStop(0, `rgba(255, 255, 255, ${0.9 * intensity})`);
@@ -1270,7 +1242,7 @@ export class EnhancedBreathingIndicator {
                         flameGradient.addColorStop(0.5, `rgba(${tertiaryColor.r}, ${tertiaryColor.g}, ${tertiaryColor.b}, ${0.4 * intensity})`);
                     }
                     flameGradient.addColorStop(1, 'transparent');
-                    
+
                     ctx.fillStyle = flameGradient;
                     ctx.beginPath();
                     ctx.arc(fx, fy, flameSize, 0, Math.PI * 2);
@@ -1289,7 +1261,7 @@ export class EnhancedBreathingIndicator {
             const emberY = centerY + 100 - emberProgress * 350;
             const emberAlpha = (1 - emberProgress) * intensity;
             const emberSize = 4 + Math.sin(time * 5 + i) * 2;
-            
+
             if (emberAlpha > 0) {
                 const emberGradient = ctx.createRadialGradient(emberX, emberY, 0, emberX, emberY, emberSize);
                 emberGradient.addColorStop(0, `rgba(255, 255, 200, ${emberAlpha})`);
@@ -1340,14 +1312,7 @@ export class EnhancedBreathingIndicator {
 
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = 0.5;
-        }
+        const intensity = this._calculateIntensity(progress, 0.5);
 
         // Draw ocean depth gradient as a large ellipse (no square edges)
         const depthGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 400);
@@ -1423,14 +1388,7 @@ export class EnhancedBreathingIndicator {
 
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.3;
-        }
+        const intensity = this._calculateIntensity(progress, 0.3);
 
         // Draw sand texture background as circular gradient (no square)
         const sandGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 350);
@@ -1530,14 +1488,7 @@ export class EnhancedBreathingIndicator {
 
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.4;
-        }
+        const intensity = this._calculateIntensity(progress, 0.4);
 
         // Spinning rotation - this is the key rotation value
         const spinAngle = time * 0.4; // Full rotation every ~15 seconds
@@ -1578,7 +1529,7 @@ export class EnhancedBreathingIndicator {
                 if (t === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
-            
+
             const armColors = [secondaryColor, color, tertiaryColor];
             const ac = armColors[arm];
             ctx.strokeStyle = `rgba(${ac.r}, ${ac.g}, ${ac.b}, ${0.6 * intensity})`;
@@ -1618,7 +1569,7 @@ export class EnhancedBreathingIndicator {
             const starX = centerX + Math.cos(orbitAngle) * orbitDist * intensity;
             const starY = centerY + Math.sin(orbitAngle) * orbitDist * intensity;
             const brightness = Math.sin(time * 3 + i * 2) * 0.3 + 0.7;
-            
+
             ctx.fillStyle = `rgba(255, 255, 255, ${brightness * intensity * 0.8})`;
             ctx.shadowBlur = 15;
             ctx.shadowColor = `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${brightness * intensity})`;
@@ -1667,14 +1618,7 @@ export class EnhancedBreathingIndicator {
 
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.4;
-        }
+        const intensity = this._calculateIntensity(progress, 0.4);
 
         // Draw mystical forest glow background
         const forestGlow = ctx.createRadialGradient(centerX, centerY + 50, 0, centerX, centerY, 350);
@@ -1710,14 +1654,14 @@ export class EnhancedBreathingIndicator {
         const treeScale = 0.8 + intensity * 0.2;
         const trunkHeight = 180 * treeScale;
         const trunkWidth = 25 * treeScale;
-        
+
         // Tree trunk with texture
         const trunkGradient = ctx.createLinearGradient(centerX - trunkWidth, 0, centerX + trunkWidth, 0);
         trunkGradient.addColorStop(0, `rgba(${secondaryColor.r - 20}, ${secondaryColor.g - 20}, ${secondaryColor.b - 20}, ${0.8 * intensity})`);
         trunkGradient.addColorStop(0.3, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.9 * intensity})`);
         trunkGradient.addColorStop(0.7, `rgba(${secondaryColor.r}, ${secondaryColor.g}, ${secondaryColor.b}, ${0.9 * intensity})`);
         trunkGradient.addColorStop(1, `rgba(${secondaryColor.r - 20}, ${secondaryColor.g - 20}, ${secondaryColor.b - 20}, ${0.8 * intensity})`);
-        
+
         ctx.fillStyle = trunkGradient;
         ctx.beginPath();
         ctx.moveTo(centerX - trunkWidth, centerY + 150);
@@ -1853,14 +1797,7 @@ export class EnhancedBreathingIndicator {
 
         ctx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
 
-        let intensity;
-        if (this.currentPhase === 'inhale') {
-            intensity = this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'exhale') {
-            intensity = 1 - this._easeInOutQuart(progress);
-        } else {
-            intensity = this.currentPhase === 'hold1' ? 1 : 0.5;
-        }
+        const intensity = this._calculateIntensity(progress, 0.5);
 
         // Storm cloud background
         const stormGradient = ctx.createRadialGradient(centerX, centerY - 50, 0, centerX, centerY, 400);
@@ -1934,12 +1871,12 @@ export class EnhancedBreathingIndicator {
         };
 
         // Generate lightning bolts based on phase
-        const lightningChance = this.currentPhase === 'inhale' ? 0.15 : 
-                               this.currentPhase === 'hold1' ? 0.25 : 0.08;
+        const lightningChance = this.currentPhase === 'inhale' ? 0.15 :
+            this.currentPhase === 'hold1' ? 0.25 : 0.08;
 
         // Persistent lightning bolts (stored per frame for consistency)
         if (!this._stormLightning) this._stormLightning = [];
-        
+
         // Add new lightning
         if (Math.random() < lightningChance) {
             const angle = Math.random() * Math.PI * 2;
@@ -1987,7 +1924,7 @@ export class EnhancedBreathingIndicator {
             const midX = (arcX + nextArcX) / 2 + (Math.random() - 0.5) * 20;
             const midY = (arcY + nextArcY) / 2 + (Math.random() - 0.5) * 20;
             ctx.quadraticCurveTo(midX, midY, nextArcX, nextArcY);
-            
+
             const arcAlpha = (Math.sin(time * 8 + arc * 2) * 0.5 + 0.5) * intensity;
             ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${arcAlpha * 0.8})`;
             ctx.lineWidth = 2;
