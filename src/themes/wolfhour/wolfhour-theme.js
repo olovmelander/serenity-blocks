@@ -191,7 +191,7 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStarMultiplier: 1, // lineCount * 1 (current)
                 useShadows: true,
                 useComplexGradients: true,
-                waveRingCount: 3,
+                waveRingCount: 2,
                 effectUpdateInterval: 1, // Update every frame
             },
             Extreme: {
@@ -215,7 +215,7 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStarMultiplier: 1.5, // lineCount * 1.5
                 useShadows: true,
                 useComplexGradients: true,
-                waveRingCount: 4,
+                waveRingCount: 3,
                 effectUpdateInterval: 1, // Update every frame
             },
         };
@@ -749,10 +749,10 @@ export default class WolfhourTheme extends BaseTheme {
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.wolfhourPower = Math.min(this.wolfhourPower + comboCount * 0.15, 2.0);
 
-        // Quality-based wave count (only trigger at combo 2+)
-        if (comboCount >= 2) {
+        // Quality-based wave count (only trigger at combo 3+)
+        if (comboCount >= 3) {
             const maxWaves = this.activeQuality.maxCosmicWaves - this.cosmicWaves.length;
-            const baseWaveCount = Math.min(Math.floor(comboCount / 2), 3, maxWaves);
+            const baseWaveCount = Math.min(Math.floor(comboCount / 3), 2, maxWaves);
             const waveCount = throttleEffects ? Math.min(1, baseWaveCount) : baseWaveCount;
             for (let i = 0; i < waveCount; i++) {
                 this.createCosmicWave();
