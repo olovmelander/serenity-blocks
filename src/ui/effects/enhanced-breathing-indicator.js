@@ -184,6 +184,12 @@ export class EnhancedBreathingIndicator {
         this.textPrompt.className = 'breathing-text-enhanced';
         this.textPrompt.textContent = 'Breathe';
 
+        // Floating text for session guidance
+        this.floatingText = document.createElement('div');
+        this.floatingText.className = 'breathing-floating-text';
+        this.floatingText.style.opacity = '0';
+        this.floatingText.textContent = '';
+
         // Assemble visual elements
         visualContainer.appendChild(this.particleCanvas);
         visualContainer.appendChild(this.outerRing);
@@ -191,6 +197,7 @@ export class EnhancedBreathingIndicator {
         visualContainer.appendChild(this.innerRing);
         visualContainer.appendChild(this.coreCircle);
         visualContainer.appendChild(this.textPrompt);
+        // visualContainer.appendChild(this.floatingText); // Moved to main indicator for better positioning
 
         // Technique name display (top)
         this.techniqueName = document.createElement('div');
@@ -224,6 +231,7 @@ export class EnhancedBreathingIndicator {
         // Assemble main indicator
         this.indicator.appendChild(this.hoverArea);
         this.indicator.appendChild(contentWrapper);
+        this.indicator.appendChild(this.floatingText); // Append directly to indicator for screen-relative positioning
 
         // Add to DOM
         this.container.appendChild(this.backdrop);
@@ -420,6 +428,58 @@ export class EnhancedBreathingIndicator {
     }
 
     /**
+     * Enable or disable external control
+     * @param {boolean} enabled
+     */
+    setExternalControl(enabled) {
+        this.isExternallyControlled = enabled;
+        if (enabled) {
+            // Hide technique selector when externally controlled
+            this.techniqueSelector.style.display = 'none';
+            this.techniqueName.style.display = 'none';
+            this.techniqueDesc.style.display = 'none';
+        } else {
+            this.techniqueSelector.style.display = 'flex';
+            this.techniqueName.style.display = 'block';
+            this.techniqueDesc.style.display = 'block';
+            // Restore current technique pattern
+            this.pattern = this.technique.pattern;
+        }
+    }
+
+    /**
+     * Override breathing pattern dynamically
+     * @param {number[]} newPattern - [inhale, hold1, exhale, hold2]
+     */
+    overridePattern(newPattern) {
+        this.pattern = newPattern;
+        // Restart phase to sync with new pattern
+        this.phaseStartTime = performance.now();
+        this.currentPhase = 'inhale';
+    }
+
+    /**
+     * Set custom text prompt
+     * @param {string} text
+     */
+    /**
+     * Set custom text prompt (Floating text)
+     * @param {string} text
+     */
+    setPrompt(text) {
+        this.customPrompt = text;
+        this.floatingText.textContent = text;
+
+        // Animate in/out if text changes
+        if (text) {
+            this.floatingText.style.opacity = '1';
+            this.floatingText.style.transform = 'translate(-50%, 0)'; // Reset transform
+        } else {
+            this.floatingText.style.opacity = '0';
+        }
+    }
+
+    /**
      * Main animation loop
      * @private
      */
@@ -470,8 +530,16 @@ export class EnhancedBreathingIndicator {
         this._updateColors(progress);
 
         // Update text if enabled
+        // Update text if enabled
         if (this.showText) {
+            // Center text ALWAYS shows phase text (Breathe In/Out/Hold)
             this.textPrompt.textContent = phaseText;
+
+            // Floating text shows custom prompt (handled in setPrompt)
+            // No drift animation needed for fixed position
+            if (this.customPrompt) {
+                // Optional: Add subtle pulse or glow if desired
+            }
         }
 
         // Continue animation
