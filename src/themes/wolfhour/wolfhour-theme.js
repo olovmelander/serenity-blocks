@@ -145,7 +145,7 @@ export default class WolfhourTheme extends BaseTheme {
                 nebulaMidBlobs: 20,
                 maxStarBursts: 10,
                 maxCosmicWaves: 6,
-                maxCelestialBeams: 3,
+                maxCelestialBeams: 2,
                 maxMoonPulses: 4,
                 maxConstellationLines: 4,
                 enableConstellationLines: true,
@@ -156,7 +156,7 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStarMultiplier: 0.75, // lineCount * 0.75
                 useShadows: false,
                 useComplexGradients: false,
-                waveRingCount: 2,
+                waveRingCount: 1,
                 effectUpdateInterval: 1, // Update every frame
             },
             High: {
@@ -170,7 +170,7 @@ export default class WolfhourTheme extends BaseTheme {
                 nebulaMidBlobs: 30,
                 maxStarBursts: 15,
                 maxCosmicWaves: 10,
-                maxCelestialBeams: 5,
+                maxCelestialBeams: 4,
                 maxMoonPulses: 6,
                 maxConstellationLines: 6,
                 enableConstellationLines: true,
@@ -181,7 +181,7 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStarMultiplier: 1, // lineCount * 1
                 useShadows: true,
                 useComplexGradients: true,
-                waveRingCount: 2,
+                waveRingCount: 1,
                 effectUpdateInterval: 1, // Update every frame
             },
             Ultra: {
@@ -195,7 +195,7 @@ export default class WolfhourTheme extends BaseTheme {
                 nebulaMidBlobs: 40,
                 maxStarBursts: 20,
                 maxCosmicWaves: 12,
-                maxCelestialBeams: 8,
+                maxCelestialBeams: 7,
                 maxMoonPulses: 8,
                 maxConstellationLines: 8,
                 enableConstellationLines: true,
@@ -206,7 +206,7 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStarMultiplier: 1, // lineCount * 1 (current)
                 useShadows: true,
                 useComplexGradients: true,
-                waveRingCount: 2,
+                waveRingCount: 1,
                 effectUpdateInterval: 1, // Update every frame
             },
             Extreme: {
@@ -220,7 +220,7 @@ export default class WolfhourTheme extends BaseTheme {
                 nebulaMidBlobs: 50,
                 maxStarBursts: 25,
                 maxCosmicWaves: 15,
-                maxCelestialBeams: 10,
+                maxCelestialBeams: 9,
                 maxMoonPulses: 10,
                 maxConstellationLines: 10,
                 enableConstellationLines: true,
@@ -231,7 +231,7 @@ export default class WolfhourTheme extends BaseTheme {
                 shootingStarMultiplier: 1.5, // lineCount * 1.5
                 useShadows: true,
                 useComplexGradients: true,
-                waveRingCount: 3,
+                waveRingCount: 2,
                 effectUpdateInterval: 1, // Update every frame
             },
         };
@@ -653,8 +653,12 @@ export default class WolfhourTheme extends BaseTheme {
             }
         }
 
+        // Ensure correct z-indexing for "in-between" effects
+        if (mountainsDistant) mountainsDistant.style.zIndex = '4';
+
         const mountainsFore = this.getContainer('wolfhour-mountains-fore');
         if (mountainsFore) {
+            mountainsFore.style.zIndex = '6';
             const cacheKey = 'wolfhour-mountains-fore-4000x600-v3';
 
             if (wolfhourBackgroundCache.has(cacheKey)) {
@@ -919,19 +923,23 @@ export default class WolfhourTheme extends BaseTheme {
         this.wolfhourPower = Math.min(this.wolfhourPower + comboCount * 0.15, 2.0);
 
         // Quality-based wave count (only trigger at combo 3+)
+        // Cosmic waves (rings) removed for performance
+        /*
         if (comboCount >= 3) {
             const maxWaves = this.activeQuality.maxCosmicWaves - this.cosmicWaves.length;
-            const baseWaveCount = Math.min(Math.floor(comboCount / 3), 2, maxWaves);
+            const baseWaveCount = Math.min(Math.floor(comboCount / 4), 2, maxWaves);
             const waveCount = throttleEffects ? Math.min(1, baseWaveCount) : baseWaveCount;
             for (let i = 0; i < waveCount; i++) {
                 this.createCosmicWave();
             }
         }
+        */
 
         // Create celestial beams from the heavens (quality-based)
-        if (allowHeavyEffects && this.activeQuality.enableCelestialBeams && comboCount >= 4) {
+        // Create celestial beams from the heavens (quality-based)
+        if (allowHeavyEffects && this.activeQuality.enableCelestialBeams && comboCount >= 2) {
             const maxBeams = this.activeQuality.maxCelestialBeams - this.celestialBeams.length;
-            const beamCount = Math.min(Math.floor(comboCount / 2) - 1, 2, maxBeams);
+            const beamCount = Math.min(Math.floor(comboCount / 2), 2, maxBeams);
             for (let i = 0; i < beamCount; i++) {
                 this.createCelestialBeam();
             }
@@ -1018,9 +1026,9 @@ export default class WolfhourTheme extends BaseTheme {
             width,
             length: 0,
             maxLength: this.effectCanvas.height + 100,
-            opacity: 0.7,
-            hue: Math.random() * 20 + 200, // Cool silver hue (200-220)
-            growthRate: 15,
+            opacity: 0.8, // Slightly more opaque
+            hue: 0, // Pure White (Saturation 0%)
+            growthRate: 20, // Slower "shoot" down (was 40)
             life: 1.0,
             decay: 0.008,
         });
@@ -1282,17 +1290,9 @@ export default class WolfhourTheme extends BaseTheme {
                 this.lastEffectCleanup = now;
             }
 
-            // Update WebGL Star Ripples
-            if (this.useWebGL && this.webglRenderer && this.stars.length > 0) {
-                // Reset ripple boost for all stars first (optimization: only if we had ripples)
-                // For now, simple reset
-                if (this.starRipples.length > 0) {
-                    for (let i = 0; i < this.stars.length; i++) {
-                        this.stars[i].rippleBoost = 0;
-                    }
-                }
-
-                // Process ripples
+            // Update WebGL Star Ripples (GPU handles the heavy lifting now)
+            if (this.useWebGL && this.webglRenderer) {
+                // Just update ripple physics
                 for (let i = this.starRipples.length - 1; i >= 0; i--) {
                     const ripple = this.starRipples[i];
                     ripple.radius += ripple.speed;
@@ -1300,55 +1300,12 @@ export default class WolfhourTheme extends BaseTheme {
 
                     if (ripple.life <= 0) {
                         this.starRipples.splice(i, 1);
-                        continue;
                     }
-
-                    // Apply to stars
-                    // Optimization: Spatial grid would be better, but for now brute force is okay for GPU upload
-                    // actually, we calculate on CPU then upload. 
-                    // To keep 60fps with 40k stars, we need to be careful.
-                    // Let's only check stars if we have ripples.
-
-                    const rSq = ripple.radius * ripple.radius;
-                    const rOuterSq = (ripple.radius + ripple.width) * (ripple.radius + ripple.width);
-
-                    // Optimization: Only iterate stars if we really need to. 
-                    // But we need to reset rippleBoost anyway.
-                    // Let's do a single pass over stars if there are ripples.
                 }
 
-                if (this.starRipples.length > 0) {
-                    const ripples = this.starRipples;
-                    for (let i = 0; i < this.stars.length; i++) {
-                        const star = this.stars[i];
-                        let totalBoost = 0;
-
-                        for (let j = 0; j < ripples.length; j++) {
-                            const r = ripples[j];
-                            const dx = star.x - r.x;
-                            const dy = star.y - r.y;
-                            const distSq = dx * dx + dy * dy;
-
-                            const dist = Math.sqrt(distSq);
-                            if (dist >= r.radius && dist <= r.radius + r.width) {
-                                // Inside ripple ring
-                                const relPos = (dist - r.radius) / r.width; // 0 to 1
-                                const intensity = Math.sin(relPos * Math.PI) * r.life;
-                                totalBoost += intensity * 2.0; // Boost factor
-                            }
-                        }
-
-                        star.rippleBoost = totalBoost;
-                    }
-                    this.webglRenderer.updateBrightness(this.stars);
-                }
-            }
-
-            // Render WebGL stars
-            if (this.useWebGL && this.webglRenderer) {
-                // Pulse intensity from wolfhourPower or cosmicEnergy
+                // Render WebGL stars with ripples passed as uniforms
                 const pulse = this.wolfhourPower * 0.5;
-                this.webglRenderer.render(this.animationTime, pulse, 1.0, 0.05, true);
+                this.webglRenderer.render(this.animationTime, pulse, 1.0, 0.05, true, this.starRipples);
             }
 
             // Clear canvases - only if there are effects to draw (performance optimization)
@@ -1365,11 +1322,14 @@ export default class WolfhourTheme extends BaseTheme {
             }
 
             // Draw effects - skip if performance is poor and no active effects
-            if (hasEffects || hasBeams) {
+            // Also respect update interval for canvas effects
+            const shouldDrawEffects = (this.frameCount % this.activeQuality.effectUpdateInterval === 0);
+
+            if ((hasEffects || hasBeams) && shouldDrawEffects) {
                 this.drawNovaFlashes();
                 this.drawCelestialBeams(); // Draw beams behind bursts
                 this.drawStarBursts();
-                this.drawCosmicWaves();
+                // this.drawCosmicWaves(); // Removed for performance
                 this.drawMoonPulses();
                 this.drawConstellationLines();
                 this.drawSparkles();
@@ -1600,13 +1560,18 @@ export default class WolfhourTheme extends BaseTheme {
                 const innerRadius = Math.max(0, currentRadius - 6);
                 const outerRadius = currentRadius + 6;
 
-                const gradient = ctx.createRadialGradient(wave.x, wave.y, innerRadius, wave.x, wave.y, outerRadius);
-                gradient.addColorStop(0, `hsla(${wave.hue}, 0%, 85%, 0)`);
-                gradient.addColorStop(0.4, `hsla(${wave.hue}, 5%, 90%, ${ringOpacity * 0.6})`);
-                gradient.addColorStop(0.6, `hsla(${wave.hue}, 10%, 92%, ${ringOpacity})`);
-                gradient.addColorStop(1, `hsla(${wave.hue}, 0%, 85%, 0)`);
+                if (this.activeQuality.useComplexGradients) {
+                    const gradient = ctx.createRadialGradient(wave.x, wave.y, innerRadius, wave.x, wave.y, outerRadius);
+                    gradient.addColorStop(0, `hsla(${wave.hue}, 0%, 85%, 0)`);
+                    gradient.addColorStop(0.4, `hsla(${wave.hue}, 5%, 90%, ${ringOpacity * 0.6})`);
+                    gradient.addColorStop(0.6, `hsla(${wave.hue}, 10%, 92%, ${ringOpacity})`);
+                    gradient.addColorStop(1, `hsla(${wave.hue}, 0%, 85%, 0)`);
+                    ctx.strokeStyle = gradient;
+                } else {
+                    // Fast path: simple solid color with fade
+                    ctx.strokeStyle = `hsla(${wave.hue}, 10%, 92%, ${ringOpacity})`;
+                }
 
-                ctx.strokeStyle = gradient;
                 ctx.lineWidth = wave.thickness;
                 ctx.beginPath();
                 ctx.arc(wave.x, wave.y, currentRadius, 0, Math.PI * 2);
@@ -1653,29 +1618,29 @@ export default class WolfhourTheme extends BaseTheme {
                 this.beamsCtx.fillRect(beam.x - beam.width, beam.y, beam.width * 2, beam.length);
             }
 
-            // Draw main beam with gradient - silver appearance
+            // Draw main beam with gradient - Pure White Pillar
             const gradient = this.beamsCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length);
-            gradient.addColorStop(0, `hsla(${beam.hue}, 15%, 95%, ${opacity})`);
-            gradient.addColorStop(0.15, `hsla(${beam.hue}, 12%, 90%, ${opacity * 0.9})`);
-            gradient.addColorStop(0.5, `hsla(${beam.hue}, 10%, 85%, ${opacity * 0.6})`);
-            gradient.addColorStop(1, `hsla(${beam.hue}, 5%, 75%, 0)`);
+            gradient.addColorStop(0, `hsla(0, 0%, 100%, ${opacity})`);
+            gradient.addColorStop(0.15, `hsla(0, 0%, 95%, ${opacity * 0.9})`);
+            gradient.addColorStop(0.5, `hsla(0, 0%, 90%, ${opacity * 0.6})`);
+            gradient.addColorStop(1, `hsla(0, 0%, 80%, 0)`);
 
             this.beamsCtx.fillStyle = gradient;
             this.beamsCtx.fillRect(beam.x - beam.width / 2, beam.y, beam.width, beam.length);
 
-            // Add bright core - pure white/silver
+            // Add bright core - intense white
             if (useComplexGradients) {
                 const coreGradient = this.beamsCtx.createLinearGradient(beam.x, beam.y, beam.x, beam.y + beam.length * 0.3);
-                coreGradient.addColorStop(0, `hsla(${beam.hue}, 10%, 98%, ${opacity * 0.9})`);
-                coreGradient.addColorStop(1, `hsla(${beam.hue}, 8%, 92%, 0)`);
+                coreGradient.addColorStop(0, `hsla(0, 0%, 100%, ${opacity})`);
+                coreGradient.addColorStop(1, `hsla(0, 0%, 100%, 0)`);
                 this.beamsCtx.fillStyle = coreGradient;
                 this.beamsCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.3);
             }
 
-            // Add subtle shadow blur (quality-based) - silver glow
+            // Add subtle shadow blur (quality-based) - white glow
             if (useShadows) {
                 this.beamsCtx.shadowBlur = 25;
-                this.beamsCtx.shadowColor = `hsla(${beam.hue}, 15%, 90%, ${opacity * 0.3})`;
+                this.beamsCtx.shadowColor = `hsla(0, 0%, 100%, ${opacity * 0.5})`;
                 this.beamsCtx.fillRect(beam.x - beam.width / 4, beam.y, beam.width / 2, beam.length * 0.1);
                 this.beamsCtx.shadowBlur = 0;
             }

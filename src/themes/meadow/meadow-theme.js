@@ -32,55 +32,61 @@ export default class MeadowTheme extends BaseTheme {
         this.creatureCanvas = null;
         this.effectsCanvas = null;
 
-        // Graphics quality presets - Drastically reduced counts for a calmer look
+        // Graphics quality presets - Increased counts for a lush look
         this.currentQuality = 'High';
         this.qualityPresets = {
             Minimal: {
-                grassCount: 500,
+                grassCount: 2000,
                 flowerCount: 15,
                 butterflyCount: 1,
                 beeCount: 0,
                 fireflyCount: 0,
+                ladybugCount: 0,
                 pollenCount: 5,
             },
             Low: {
-                grassCount: 1000,
+                grassCount: 5000,
                 flowerCount: 30,
                 butterflyCount: 2,
                 beeCount: 1,
                 fireflyCount: 2,
+                ladybugCount: 1,
                 pollenCount: 10,
             },
             Medium: {
-                grassCount: 2000,
+                grassCount: 10000,
                 flowerCount: 50,
                 butterflyCount: 4,
                 beeCount: 2,
                 fireflyCount: 5,
+                ladybugCount: 2,
                 pollenCount: 20,
             },
             High: {
-                grassCount: 3500,
+                grassCount: 20000,
                 flowerCount: 80,
                 butterflyCount: 6,
                 beeCount: 3,
                 fireflyCount: 10,
+                ladybugCount: 3,
                 pollenCount: 30,
             },
             Ultra: {
-                grassCount: 5000,
+                grassCount: 35000,
                 flowerCount: 120,
                 butterflyCount: 10,
                 beeCount: 5,
                 fireflyCount: 20,
+                ladybugCount: 5,
                 pollenCount: 50,
             },
             Extreme: {
-                grassCount: 8000,
+                grassCount: 50000,
                 flowerCount: 200,
                 butterflyCount: 15,
                 beeCount: 8,
                 fireflyCount: 30,
+                ladybugCount: 8,
                 pollenCount: 80,
             },
         };

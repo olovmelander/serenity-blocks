@@ -51,15 +51,26 @@ export default class WebGLMeadowFlowers {
             out vec3 vColor;
             out vec2 vUv;
             out float vType;
+            out float vStem;
 
             void main() {
                 vec2 pos = aPosition * aInstanceScale;
                 
-                // Wind animation (swaying) - Slower
-                float t = uTime * 1.0 + aInstancePhase + aInstanceOffset.x * 0.01;
-                float wind = sin(t) * (0.05 + uWindStrength * 0.5) * (pos.y + 20.0); 
+                // Wind animation (swaying) - Anchored at bottom
+                // Map y from -size..size to 0..1 for bending factor
+                float normalizedHeight = (aPosition.y / 80.0) + 0.5; // Assuming height is 80
+                normalizedHeight = clamp(normalizedHeight, 0.0, 1.0);
+
+                float t = uTime * 1.5 + aInstancePhase + aInstanceOffset.x * 0.01;
+                float wind = sin(t) * (0.1 + uWindStrength) * normalizedHeight * 30.0;
                 
+                // Add some turbulence
+                wind += sin(t * 2.5) * 5.0 * normalizedHeight;
+
                 pos.x += wind;
+                
+                // Slight vertical compression when bending
+                pos.y -= abs(wind) * 0.1;
                 
                 vec2 worldPos = pos + aInstanceOffset.xy;
                 vec2 clipPos = (worldPos / uResolution) * 2.0 - 1.0;
@@ -67,8 +78,9 @@ export default class WebGLMeadowFlowers {
                 gl_Position = vec4(clipPos, 0.0, 1.0);
                 
                 vColor = aInstanceColor;
-                vUv = aPosition * 0.02 + 0.5; // Map -25..25 to 0..1
+                vUv = aPosition * vec2(1.0/30.0, 1.0/80.0) + vec2(0.5, 0.0); // Map to 0..1
                 vType = aInstanceType;
+                vStem = normalizedHeight;
             }
         ` : `
             attribute vec2 aPosition;
@@ -85,14 +97,20 @@ export default class WebGLMeadowFlowers {
             varying vec3 vColor;
             varying vec2 vUv;
             varying float vType;
+            varying float vStem;
 
             void main() {
                 vec2 pos = aPosition * aInstanceScale;
                 
-                float t = uTime * 1.0 + aInstancePhase + aInstanceOffset.x * 0.01;
-                float wind = sin(t) * (0.05 + uWindStrength * 0.5) * (pos.y + 20.0);
-                
+                float normalizedHeight = (aPosition.y / 80.0) + 0.5;
+                normalizedHeight = clamp(normalizedHeight, 0.0, 1.0);
+
+                float t = uTime * 1.5 + aInstancePhase + aInstanceOffset.x * 0.01;
+                float wind = sin(t) * (0.1 + uWindStrength) * normalizedHeight * 30.0;
+                wind += sin(t * 2.5) * 5.0 * normalizedHeight;
+
                 pos.x += wind;
+                pos.y -= abs(wind) * 0.1;
                 
                 vec2 worldPos = pos + aInstanceOffset.xy;
                 vec2 clipPos = (worldPos / uResolution) * 2.0 - 1.0;
@@ -100,8 +118,9 @@ export default class WebGLMeadowFlowers {
                 gl_Position = vec4(clipPos, 0.0, 1.0);
                 
                 vColor = aInstanceColor;
-                vUv = aPosition * 0.02 + 0.5;
+                vUv = aPosition * vec2(1.0/30.0, 1.0/80.0) + vec2(0.5, 0.0);
                 vType = aInstanceType;
+                vStem = normalizedHeight;
             }
         `;
 
@@ -111,128 +130,227 @@ export default class WebGLMeadowFlowers {
             in vec3 vColor;
             in vec2 vUv;
             in float vType;
+            in float vStem;
             out vec4 outColor;
 
             void main() {
-                vec2 uv = vUv * 2.0 - 1.0; // -1 to 1
-                float dist = length(uv);
-                float angle = atan(uv.y, uv.x);
+                // UVs: x[0..1], y[0..1]
+                // Flower head is mostly in top 40% (y > 0.6)
+                // Stem is in bottom 60%
                 
-                float alpha = 0.0;
-                vec3 color = vColor;
+                vec2 headUv = (vUv - vec2(0.5, 0.75)) * vec2(2.0, 2.0); // Center head at 0.5, 0.75
+                float dist = length(headUv);
+                float angle = atan(headUv.y, headUv.x);
                 
-                if (vType < 0.5) { 
-                    // Daisy (Type 0)
-                    float petals = cos(angle * 10.0) * 0.3 + 0.7;
-                    float shape = smoothstep(0.8, 0.75, dist / petals);
-                    float center = smoothstep(0.25, 0.2, dist);
-                    
-                    alpha = shape;
-                    color = mix(vec3(1.0, 1.0, 1.0), vec3(1.0, 0.8, 0.1), center); // White petals, yellow center
-                } else if (vType < 1.5) {
-                    // Poppy (Type 1)
-                    float petals = cos(angle * 5.0) * 0.2 + 0.8;
-                    float shape = smoothstep(0.8, 0.75, dist / petals);
-                    float center = smoothstep(0.2, 0.15, dist);
-                    
-                    alpha = shape;
-                    color = mix(vColor, vec3(0.2, 0.1, 0.1), center); // Dark center
-                } else if (vType < 2.5) {
-                    // Lavender (Type 2) - Vertical cluster
-                    vec2 luv = uv;
-                    luv.x *= 1.5;
-                    float shape = smoothstep(0.6, 0.5, length(luv));
-                    float dots = sin(uv.y * 20.0) * 0.5 + 0.5;
-                    color = mix(vColor * 0.8, vColor, dots);
-                    alpha = shape;
-                } else if (vType < 3.5) {
-                    // Bluebell (Type 3) - Bell shape
-                    // Narrower top, wider bottom
-                    float width = 0.3 + 0.4 * (1.0 - (uv.y * 0.5 + 0.5)); 
-                    float shape = smoothstep(width, width - 0.05, abs(uv.x));
-                    // Cut off top and bottom
-                    shape *= smoothstep(0.8, 0.7, abs(uv.y));
-                    // Scalloped bottom
-                    if (uv.y < -0.5) {
-                        shape *= smoothstep(0.0, 0.1, cos(uv.x * 10.0) * 0.1 + 0.1 + (uv.y + 0.7));
-                    }
-                    alpha = shape;
-                    color = mix(vColor, vColor * 0.7, uv.y * 0.5 + 0.5); // Gradient
-                } else if (vType < 4.5) {
-                    // Tulip (Type 4) - Cup shape
-                    float cup = smoothstep(0.6, 0.55, length(uv * vec2(1.0, 0.8) + vec2(0.0, 0.2)));
-                    // Petal separation
-                    float separation = smoothstep(0.05, 0.0, abs(uv.x) - 0.02 * (uv.y + 1.0));
-                    alpha = cup;
-                    color = mix(vColor, vColor * 0.8, separation * 0.3);
-                } else {
-                    // Dandelion (Type 5) - Spiky
-                    float spikes = sin(angle * 30.0) * 0.1 + 0.7;
-                    float shape = smoothstep(spikes, spikes - 0.05, dist);
-                    alpha = shape;
-                    color = vColor;
+                vec4 finalColor = vec4(0.0);
+                
+                // --- STEM ---
+                // Simple curve based on x
+                float stemCurve = sin(vUv.y * 5.0) * 0.05;
+                float stemWidth = 0.03 + (1.0 - vUv.y) * 0.02; // Thicker at bottom
+                float stemShape = smoothstep(stemWidth, stemWidth - 0.01, abs(vUv.x - 0.5 + stemCurve));
+                
+                // Cut off stem above flower base
+                stemShape *= smoothstep(0.75, 0.70, vUv.y);
+                
+                vec3 stemColor = vec3(0.1, 0.4, 0.1); // Dark green
+                // Add some shading to stem
+                stemColor *= 0.8 + 0.4 * smoothstep(-0.5, 0.5, (vUv.x - 0.5) / stemWidth);
+                
+                // Leaves (simple)
+                if (vUv.y < 0.5 && vUv.y > 0.1) {
+                    float leafY = (vUv.y - 0.3) * 4.0;
+                    float leafX = (vUv.x - 0.5) * 4.0;
+                    float leafDist = length(vec2(leafX, leafY));
+                    // Two leaves sticking out
+                    float leafShape = smoothstep(0.2, 0.15, abs(leafX) - leafY*leafY);
+                    leafShape *= smoothstep(0.5, 0.0, abs(leafY));
+                    stemShape = max(stemShape, leafShape);
                 }
 
-                if (alpha < 0.1) discard;
-                
-                outColor = vec4(color, alpha);
+                finalColor = vec4(stemColor, stemShape);
+
+                // --- FLOWER HEAD ---
+                // Only draw head if we are near the top
+                if (vUv.y > 0.4) {
+                    float alpha = 0.0;
+                    vec3 color = vColor;
+                    
+                    if (vType < 0.5) { 
+                        // Daisy (Type 0)
+                        float petals = cos(angle * 12.0) * 0.2 + 0.8;
+                        float shape = smoothstep(0.5, 0.45, dist / petals);
+                        
+                        // Center
+                        float center = smoothstep(0.15, 0.12, dist);
+                        float centerDetail = sin(headUv.x * 50.0) * sin(headUv.y * 50.0) * 0.1;
+                        
+                        alpha = shape;
+                        vec3 petalColor = mix(vec3(0.9, 0.9, 1.0), vec3(1.0, 1.0, 1.0), dist * 2.0);
+                        vec3 centerColor = vec3(1.0, 0.8, 0.1) + centerDetail;
+                        
+                        color = mix(petalColor, centerColor, center);
+                    } else if (vType < 1.5) {
+                        // Poppy (Type 1)
+                        float petals = cos(angle * 4.0 + sin(dist*10.0)) * 0.1 + 0.9;
+                        float shape = smoothstep(0.5, 0.45, dist / petals);
+                        float center = smoothstep(0.15, 0.1, dist);
+                        
+                        alpha = shape;
+                        vec3 petalColor = vColor * (0.8 + 0.4 * dist); // Gradient
+                        color = mix(petalColor, vec3(0.1, 0.05, 0.05), center);
+                    } else if (vType < 2.5) {
+                        // Lavender (Type 2) - Vertical cluster
+                        // Remap UV for tall flower
+                        vec2 luv = (vUv - vec2(0.5, 0.7)) * vec2(3.0, 1.0);
+                        float shape = smoothstep(0.3, 0.2, length(luv));
+                        
+                        // Individual florets
+                        float dots = smoothstep(0.4, 0.6, sin(luv.y * 30.0) * sin(luv.x * 20.0));
+                        
+                        alpha = shape;
+                        color = mix(vColor * 0.7, vColor * 1.2, dots);
+                    } else if (vType < 3.5) {
+                        // Bluebell (Type 3) - Drooping bell
+                        // Shift center
+                        vec2 buv = headUv + vec2(0.0, 0.1);
+                        float width = 0.3 + 0.3 * buv.y; 
+                        float shape = smoothstep(width, width - 0.05, abs(buv.x));
+                        shape *= smoothstep(0.5, 0.4, abs(buv.y));
+                        
+                        if (buv.y < -0.2) {
+                             // Scallops
+                             shape *= smoothstep(0.0, 0.1, cos(buv.x * 15.0) * 0.1 + 0.1 + (buv.y + 0.4));
+                        }
+                        
+                        alpha = shape;
+                        color = mix(vColor * 0.5, vColor, buv.y + 0.5);
+                    } else if (vType < 4.5) {
+                        // Tulip (Type 4)
+                        vec2 tuv = headUv + vec2(0.0, 0.1);
+                        float cup = smoothstep(0.4, 0.35, length(tuv * vec2(1.0, 0.8) + vec2(0.0, 0.1)));
+                        // Petal definition
+                        float petalLine = smoothstep(0.02, 0.0, abs(tuv.x * 0.5) - 0.01 * (tuv.y + 1.0));
+                        
+                        alpha = cup;
+                        color = mix(vColor, vColor * 0.8, petalLine * 0.3);
+                        // Vertical shading
+                        color *= 0.8 + 0.4 * smoothstep(-0.4, 0.4, tuv.x);
+                    } else {
+                        // Dandelion (Type 5)
+                        float spikes = sin(angle * 40.0) * 0.1 + 0.7;
+                        // Fuzzy edge
+                        float shape = smoothstep(spikes, spikes - 0.2, dist);
+                        // Center glow
+                        float core = smoothstep(0.1, 0.0, dist);
+                        
+                        alpha = shape;
+                        color = mix(vColor, vec3(1.0, 1.0, 0.8), core);
+                    }
+                    
+                    // Composite head over stem
+                    if (alpha > 0.1) {
+                        finalColor = vec4(color, alpha);
+                    }
+                }
+
+                if (finalColor.a < 0.1) discard;
+                outColor = finalColor;
             }
         ` : `
             precision highp float;
             varying vec3 vColor;
             varying vec2 vUv;
             varying float vType;
+            varying float vStem;
 
             void main() {
-                vec2 uv = vUv * 2.0 - 1.0;
-                float dist = length(uv);
-                float angle = atan(uv.y, uv.x);
+                vec2 headUv = (vUv - vec2(0.5, 0.75)) * vec2(2.0, 2.0);
+                float dist = length(headUv);
+                float angle = atan(headUv.y, headUv.x);
                 
-                float alpha = 0.0;
-                vec3 color = vColor;
+                vec4 finalColor = vec4(0.0);
                 
-                if (vType < 0.5) { 
-                    float petals = cos(angle * 10.0) * 0.3 + 0.7;
-                    float shape = smoothstep(0.8, 0.75, dist / petals);
-                    float center = smoothstep(0.25, 0.2, dist);
-                    alpha = shape;
-                    color = mix(vec3(1.0, 1.0, 1.0), vec3(1.0, 0.8, 0.1), center);
-                } else if (vType < 1.5) {
-                    float petals = cos(angle * 5.0) * 0.2 + 0.8;
-                    float shape = smoothstep(0.8, 0.75, dist / petals);
-                    float center = smoothstep(0.2, 0.15, dist);
-                    alpha = shape;
-                    color = mix(vColor, vec3(0.2, 0.1, 0.1), center);
-                } else if (vType < 2.5) {
-                    vec2 luv = uv;
-                    luv.x *= 1.5;
-                    float shape = smoothstep(0.6, 0.5, length(luv));
-                    float dots = sin(uv.y * 20.0) * 0.5 + 0.5;
-                    color = mix(vColor * 0.8, vColor, dots);
-                    alpha = shape;
-                } else if (vType < 3.5) {
-                    float width = 0.3 + 0.4 * (1.0 - (uv.y * 0.5 + 0.5)); 
-                    float shape = smoothstep(width, width - 0.05, abs(uv.x));
-                    shape *= smoothstep(0.8, 0.7, abs(uv.y));
-                    if (uv.y < -0.5) {
-                        shape *= smoothstep(0.0, 0.1, cos(uv.x * 10.0) * 0.1 + 0.1 + (uv.y + 0.7));
-                    }
-                    alpha = shape;
-                    color = mix(vColor, vColor * 0.7, uv.y * 0.5 + 0.5);
-                } else if (vType < 4.5) {
-                    float cup = smoothstep(0.6, 0.55, length(uv * vec2(1.0, 0.8) + vec2(0.0, 0.2)));
-                    float separation = smoothstep(0.05, 0.0, abs(uv.x) - 0.02 * (uv.y + 1.0));
-                    alpha = cup;
-                    color = mix(vColor, vColor * 0.8, separation * 0.3);
-                } else {
-                    float spikes = sin(angle * 30.0) * 0.1 + 0.7;
-                    float shape = smoothstep(spikes, spikes - 0.05, dist);
-                    alpha = shape;
-                    color = vColor;
+                // --- STEM ---
+                float stemCurve = sin(vUv.y * 5.0) * 0.05;
+                float stemWidth = 0.03 + (1.0 - vUv.y) * 0.02;
+                float stemShape = smoothstep(stemWidth, stemWidth - 0.01, abs(vUv.x - 0.5 + stemCurve));
+                
+                stemShape *= smoothstep(0.75, 0.70, vUv.y);
+                
+                vec3 stemColor = vec3(0.1, 0.4, 0.1);
+                stemColor *= 0.8 + 0.4 * smoothstep(-0.5, 0.5, (vUv.x - 0.5) / stemWidth);
+                
+                if (vUv.y < 0.5 && vUv.y > 0.1) {
+                    float leafY = (vUv.y - 0.3) * 4.0;
+                    float leafX = (vUv.x - 0.5) * 4.0;
+                    float leafDist = length(vec2(leafX, leafY));
+                    float leafShape = smoothstep(0.2, 0.15, abs(leafX) - leafY*leafY);
+                    leafShape *= smoothstep(0.5, 0.0, abs(leafY));
+                    stemShape = max(stemShape, leafShape);
                 }
 
-                if (alpha < 0.1) discard;
-                gl_FragColor = vec4(color, alpha);
+                finalColor = vec4(stemColor, stemShape);
+
+                // --- FLOWER HEAD ---
+                if (vUv.y > 0.4) {
+                    float alpha = 0.0;
+                    vec3 color = vColor;
+                    
+                    if (vType < 0.5) { 
+                        float petals = cos(angle * 12.0) * 0.2 + 0.8;
+                        float shape = smoothstep(0.5, 0.45, dist / petals);
+                        float center = smoothstep(0.15, 0.12, dist);
+                        float centerDetail = sin(headUv.x * 50.0) * sin(headUv.y * 50.0) * 0.1;
+                        alpha = shape;
+                        vec3 petalColor = mix(vec3(0.9, 0.9, 1.0), vec3(1.0, 1.0, 1.0), dist * 2.0);
+                        vec3 centerColor = vec3(1.0, 0.8, 0.1) + centerDetail;
+                        color = mix(petalColor, centerColor, center);
+                    } else if (vType < 1.5) {
+                        float petals = cos(angle * 4.0 + sin(dist*10.0)) * 0.1 + 0.9;
+                        float shape = smoothstep(0.5, 0.45, dist / petals);
+                        float center = smoothstep(0.15, 0.1, dist);
+                        alpha = shape;
+                        vec3 petalColor = vColor * (0.8 + 0.4 * dist);
+                        color = mix(petalColor, vec3(0.1, 0.05, 0.05), center);
+                    } else if (vType < 2.5) {
+                        vec2 luv = (vUv - vec2(0.5, 0.7)) * vec2(3.0, 1.0);
+                        float shape = smoothstep(0.3, 0.2, length(luv));
+                        float dots = smoothstep(0.4, 0.6, sin(luv.y * 30.0) * sin(luv.x * 20.0));
+                        alpha = shape;
+                        color = mix(vColor * 0.7, vColor * 1.2, dots);
+                    } else if (vType < 3.5) {
+                        vec2 buv = headUv + vec2(0.0, 0.1);
+                        float width = 0.3 + 0.3 * buv.y; 
+                        float shape = smoothstep(width, width - 0.05, abs(buv.x));
+                        shape *= smoothstep(0.5, 0.4, abs(buv.y));
+                        if (buv.y < -0.2) {
+                             shape *= smoothstep(0.0, 0.1, cos(buv.x * 15.0) * 0.1 + 0.1 + (buv.y + 0.4));
+                        }
+                        alpha = shape;
+                        color = mix(vColor * 0.5, vColor, buv.y + 0.5);
+                    } else if (vType < 4.5) {
+                        vec2 tuv = headUv + vec2(0.0, 0.1);
+                        float cup = smoothstep(0.4, 0.35, length(tuv * vec2(1.0, 0.8) + vec2(0.0, 0.1)));
+                        float petalLine = smoothstep(0.02, 0.0, abs(tuv.x * 0.5) - 0.01 * (tuv.y + 1.0));
+                        alpha = cup;
+                        color = mix(vColor, vColor * 0.8, petalLine * 0.3);
+                        color *= 0.8 + 0.4 * smoothstep(-0.4, 0.4, tuv.x);
+                    } else {
+                        float spikes = sin(angle * 40.0) * 0.1 + 0.7;
+                        float shape = smoothstep(spikes, spikes - 0.2, dist);
+                        float core = smoothstep(0.1, 0.0, dist);
+                        alpha = shape;
+                        color = mix(vColor, vec3(1.0, 1.0, 0.8), core);
+                    }
+                    
+                    if (alpha > 0.1) {
+                        finalColor = vec4(color, alpha);
+                    }
+                }
+
+                if (finalColor.a < 0.1) discard;
+                gl_FragColor = finalColor;
             }
         `;
 
@@ -257,13 +375,17 @@ export default class WebGLMeadowFlowers {
             windStrength: gl.getUniformLocation(program, 'uWindStrength'),
         };
 
-        // Geometry (Quad for flower)
-        const size = 25;
+        // Geometry (Tall Quad for flower + stem)
+        // Width: 30, Height: 80
+        const w = 15; // Half width
+        const h = 80; // Total height
+        // Anchor at bottom center (0,0) to (0, h)
+        // But we want to center it horizontally
         const vertices = new Float32Array([
-            -size, -size,
-            size, -size,
-            -size, size,
-            size, size
+            -w, 0.0,
+            w, 0.0,
+            -w, h,
+            w, h
         ]);
 
         this.buffers = {};
