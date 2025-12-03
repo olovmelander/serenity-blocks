@@ -1,15 +1,16 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { NEON_DUSK_TETROMINOS } from './neon-dusk-tetrominos.js';
+import WebGLNeonEnvironment from './webgl-neon-environment.js';
+import WebGLNeonEffects from './webgl-neon-effects.js';
+import WebGLNeonSun from './webgl-neon-sun.js';
+import WebGLNeonMountains from './webgl-neon-mountains.js';
+import WebGLNeonGrid from './webgl-neon-grid.js';
+import WebGLNeonOverlay from './webgl-neon-overlay.js';
 
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
         super('neon-dusk');
-        this.meteorPool = [];
-        this.meteorsContainer = null;
-        this.meteorAnimationFrame = null;
-        this.lastMeteorFrameTime = 0;
-
         // Performance limits
         this.MAX_PARTICLES = 180;
         this.MAX_ARCS = 6;
@@ -29,23 +30,33 @@ export default class NeonDuskTheme extends BaseTheme {
         this.hologramRings = [];
         this.cyberVortexes = [];
         this.glitchPulses = [];
+        this.gridWaves = []; // Wave effects for grid
         this.comboMultiplier = 1.0;
         this.effectsAnimationFrame = null;
         this.lastEffectsFrameTime = 0;
         this.eventUnsubscribers = [];
 
+        // WebGL Renderers
+        this.webglEnvironment = null; // Unified Background
+        this.webglBackEffects = null; // Background Effects (Rings behind sun)
+        this.webglEffects = null;     // Particles
+        this.webglSun = null;         // Sun Renderer
+        this.webglMountains = null;   // Mountains Renderer
+        this.webglGrid = null;        // Grid Renderer (Foreground)
+        this.bgCanvas = null;
+        this.backEffectsCanvas = null;
+        this.sunCanvas = null;
+        this.mountainsCanvas = null;
+        this.gridCanvas = null;
+        this.effectsCanvas = null;
+
         // DOM references for rebuilds
-        this.starsContainer = null;
-        this.cloudsContainer = null;
         this.particlesContainer = null;
 
         // Graphics quality state
         this.qualityChangeHandler = null;
         this.qualityPresets = {
             Minimal: {
-                starCount: 50,
-                cloudCount: 3,
-                meteorCount: 2,
                 floatingParticles: 12,
                 maxParticles: 60,
                 maxArcs: 2,
@@ -55,9 +66,6 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxGlitches: 4,
             },
             Low: {
-                starCount: 80,
-                cloudCount: 4,
-                meteorCount: 3,
                 floatingParticles: 18,
                 maxParticles: 100,
                 maxArcs: 3,
@@ -67,9 +75,6 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxGlitches: 6,
             },
             Medium: {
-                starCount: 120,
-                cloudCount: 6,
-                meteorCount: 5,
                 floatingParticles: 28,
                 maxParticles: 140,
                 maxArcs: 5,
@@ -79,9 +84,6 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxGlitches: 10,
             },
             High: {
-                starCount: 150,
-                cloudCount: 8,
-                meteorCount: 6,
                 floatingParticles: 40,
                 maxParticles: 180,
                 maxArcs: 6,
@@ -91,9 +93,6 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxGlitches: 15,
             },
             Ultra: {
-                starCount: 220,
-                cloudCount: 10,
-                meteorCount: 8,
                 floatingParticles: 60,
                 maxParticles: 240,
                 maxArcs: 10,
@@ -103,9 +102,6 @@ export default class NeonDuskTheme extends BaseTheme {
                 maxGlitches: 22,
             },
             Extreme: {
-                starCount: 300,
-                cloudCount: 14,
-                meteorCount: 12,
                 floatingParticles: 85,
                 maxParticles: 350,
                 maxArcs: 15,
@@ -118,6 +114,12 @@ export default class NeonDuskTheme extends BaseTheme {
 
         this.currentQuality = 'High';
         this.activePreset = this.qualityPresets.High;
+
+        // Random starting time offset so sun starts at different position each time
+        this.timeOffset = Math.random() * 10000;
+
+        this.currentSunPos = { x: 0, y: 0.25 };
+        this.mountainGlowIntensity = 0.0;
     }
 
     // Initialize color cache to avoid repeated hex conversions
@@ -203,221 +205,350 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     refreshQualityDependentElements() {
-        this.createStars(true);
-        this.createClouds(true);
-        this.createFloatingParticles(true);
-        this.rebuildMeteorPool();
+        // WebGL Environment handles quality updates internally via uniforms if needed
+        // For now, we just trim effects
         this.trimEffectCollections();
     }
 
-    createStars(force = false) {
-        if (!this.starsContainer) {
-            this.starsContainer = this.getContainer('neon-dusk-stars');
-        }
-
-        const container = this.starsContainer;
-        if (!container) return;
-        if (!force && container.children.length > 0) return;
-
-        container.textContent = '';
-        const starCount = this.activePreset?.starCount ?? 150;
-        const fragment = document.createDocumentFragment();
-
-        for (let i = 0; i < starCount; i++) {
-            const star = document.createElement('div');
-            star.className = 'neon-dusk-star';
-            const size = Math.random() * 2.5 + 1;
-            star.style.width = `${size}px`;
-            star.style.height = `${size}px`;
-            star.style.left = `${Math.random() * 100}%`;
-            star.style.top = `${Math.random() * 60}%`;
-            star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
-            star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
-            fragment.appendChild(star);
-        }
-
-        container.appendChild(fragment);
-    }
-
-    createClouds(force = false) {
-        if (!this.cloudsContainer) {
-            this.cloudsContainer = this.getContainer('neon-dusk-clouds');
-        }
-
-        const container = this.cloudsContainer;
-        if (!container) return;
-        if (!force && container.children.length > 0) return;
-
-        container.textContent = '';
-        const cloudCount = this.activePreset?.cloudCount ?? 8;
-        const fragment = document.createDocumentFragment();
-
-        for (let i = 0; i < cloudCount; i++) {
-            const cloud = document.createElement('div');
-            cloud.className = 'neon-dusk-cloud';
-            cloud.style.top = `${10 + Math.random() * 50}%`;
-            const duration = Math.random() * 40 + 60;
-            cloud.style.setProperty('--cloud-duration', `${duration}s`);
-            cloud.style.setProperty('--cloud-delay', `-${Math.random() * duration}s`);
-            fragment.appendChild(cloud);
-        }
-
-        container.appendChild(fragment);
-    }
-
-    createFloatingParticles(force = false) {
-        if (!this.particlesContainer) {
-            this.particlesContainer = this.getContainer('neon-dusk-particles');
-        }
-
-        const container = this.particlesContainer;
-        if (!container) return;
-        if (!force && container.children.length > 0) return;
-
-        container.textContent = '';
-        const particleCount = this.activePreset?.floatingParticles ?? 40;
-        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
-        const fragment = document.createDocumentFragment();
-
-        for (let i = 0; i < particleCount; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'neon-dusk-particle';
-            particle.style.left = `${Math.random() * 100}%`;
-            particle.style.bottom = `${Math.random() * 100}%`;
-            const particleColor = colors[Math.floor(Math.random() * colors.length)];
-            particle.style.setProperty('--particle-color', particleColor);
-            particle.style.setProperty('--particle-duration', `${Math.random() * 10 + 15}s`);
-            particle.style.setProperty('--particle-delay', `${Math.random() * 10}s`);
-            particle.style.setProperty('--drift-x', `${Math.random() * 200 - 100}px`);
-            fragment.appendChild(particle);
-        }
-
-        container.appendChild(fragment);
-    }
-
-    rebuildMeteorPool() {
-        if (!this.meteorsContainer) {
-            this.meteorsContainer = this.getContainer('neon-dusk-meteors');
-        }
-
-        const container = this.meteorsContainer;
-        if (!container) return;
-
-        container.textContent = '';
-        this.stopMeteorLoop();
-        this.meteorPool = [];
-        this.initializeMeteors(container, this.activePreset?.meteorCount ?? 6);
-    }
+    // Legacy DOM methods removed to prevent 'two suns' and clutter
+    // All background elements are now rendered in WebGLNeonEnvironment
 
     async createScene() {
+        // Force background to black to hide any previous theme artifacts
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (themeContainer) {
+            themeContainer.style.background = '#050010'; // Deep dark purple/black
+            // Force clear any background image
+            themeContainer.style.backgroundImage = 'none';
+        }
+
+        // Aggressive cleanup of potential leftover elements from other themes
+        // Specifically target Synthwave Sunset and other theme elements that might persist
+        const potentialLeftovers = document.querySelectorAll(
+            '.sun, .mountain, .grid, .starfield, ' +
+            '#synthwave-sunset-sun, .synthwave-sun-canvas, ' +
+            '#synthwave-sunset-grid, .synthwave-grid-canvas, ' +
+            '.synthwave-effects-canvas, [class*="synthwave"]'
+        );
+        potentialLeftovers.forEach(el => {
+            el.remove();
+        });
+
+        // Also remove any canvases in our container that aren't ours
+        if (themeContainer) {
+            const allCanvases = themeContainer.querySelectorAll('canvas');
+            allCanvases.forEach(canvas => {
+                if (!canvas.id.startsWith('neon-dusk-')) {
+                    canvas.remove();
+                }
+            });
+        }
+
         // Apply graphics quality preset before building the scene
         const quality = this.getGraphicsQuality();
         this.applyQualityPreset(quality);
 
-        // Stars, clouds, meteors, and particles respond to quality levels
-        this.createStars(true);
-        this.createClouds(true);
-        this.rebuildMeteorPool();
+        // Setup WebGL Background (Environment: Sky, Grid)
+        this.setupWebGLBackground();
 
-        // Mountain Silhouettes - Back Layer
-        const mountainsBack = document.getElementById('neon-dusk-mountains-back');
-        if (mountainsBack && mountainsBack.children.length === 0) {
-            const mountain = document.createElement('div');
-            mountain.className = 'neon-dusk-mountain-back';
-            mountain.style.width = '100%';
-            mountain.style.height = '100%';
-            mountain.style.setProperty('--h0', '70%');
-            mountain.style.setProperty('--p1', '8%');
-            mountain.style.setProperty('--h1', '65%');
-            mountain.style.setProperty('--p2', '18%');
-            mountain.style.setProperty('--h2', '45%');
-            mountain.style.setProperty('--p3', '28%');
-            mountain.style.setProperty('--h3', '55%');
-            mountain.style.setProperty('--p4', '38%');
-            mountain.style.setProperty('--h4', '35%');
-            mountain.style.setProperty('--p5', '48%');
-            mountain.style.setProperty('--h5', '50%');
-            mountain.style.setProperty('--p6', '58%');
-            mountain.style.setProperty('--h6', '40%');
-            mountain.style.setProperty('--p7', '68%');
-            mountain.style.setProperty('--h7', '55%');
-            mountain.style.setProperty('--p8', '78%');
-            mountain.style.setProperty('--h8', '45%');
-            mountain.style.setProperty('--p9', '88%');
-            mountain.style.setProperty('--h9', '60%');
-            mountain.style.setProperty('--h10', '65%');
-            mountainsBack.appendChild(mountain);
-            this.registerContainer(mountainsBack);
-        }
+        // Setup WebGL Background Effects (Rings behind sun)
+        this.setupBackEffects();
 
-        // Mountain Silhouettes - Mid Layer
-        const mountainsMid = document.getElementById('neon-dusk-mountains-mid');
-        if (mountainsMid && mountainsMid.children.length === 0) {
-            const mountain = document.createElement('div');
-            mountain.className = 'neon-dusk-mountain-mid';
-            mountain.style.width = '100%';
-            mountain.style.height = '100%';
-            mountain.style.setProperty('--h0', '65%');
-            mountain.style.setProperty('--p1', '12%');
-            mountain.style.setProperty('--h1', '60%');
-            mountain.style.setProperty('--p2', '22%');
-            mountain.style.setProperty('--h2', '40%');
-            mountain.style.setProperty('--p3', '32%');
-            mountain.style.setProperty('--h3', '50%');
-            mountain.style.setProperty('--p4', '42%');
-            mountain.style.setProperty('--h4', '30%');
-            mountain.style.setProperty('--p5', '52%');
-            mountain.style.setProperty('--h5', '45%');
-            mountain.style.setProperty('--p6', '62%');
-            mountain.style.setProperty('--h6', '35%');
-            mountain.style.setProperty('--p7', '72%');
-            mountain.style.setProperty('--h7', '50%');
-            mountain.style.setProperty('--p8', '82%');
-            mountain.style.setProperty('--h8', '40%');
-            mountain.style.setProperty('--h9', '60%');
-            mountainsMid.appendChild(mountain);
-            this.registerContainer(mountainsMid);
-        }
+        // Setup WebGL Sun (Separate layer for better control)
+        this.setupWebGLSun();
 
-        // Mountain Silhouettes - Front Layer
-        const mountainsFront = document.getElementById('neon-dusk-mountains-front');
-        if (mountainsFront && mountainsFront.children.length === 0) {
-            const mountain = document.createElement('div');
-            mountain.className = 'neon-dusk-mountain-front';
-            mountain.style.width = '100%';
-            mountain.style.height = '100%';
-            mountain.style.setProperty('--h0', '60%');
-            mountain.style.setProperty('--p1', '10%');
-            mountain.style.setProperty('--h1', '55%');
-            mountain.style.setProperty('--p2', '20%');
-            mountain.style.setProperty('--h2', '35%');
-            mountain.style.setProperty('--p3', '30%');
-            mountain.style.setProperty('--h3', '45%');
-            mountain.style.setProperty('--p4', '40%');
-            mountain.style.setProperty('--h4', '25%');
-            mountain.style.setProperty('--p5', '50%');
-            mountain.style.setProperty('--h5', '40%');
-            mountain.style.setProperty('--p6', '60%');
-            mountain.style.setProperty('--h6', '30%');
-            mountain.style.setProperty('--p7', '70%');
-            mountain.style.setProperty('--h7', '45%');
-            mountain.style.setProperty('--p8', '80%');
-            mountain.style.setProperty('--h8', '35%');
-            mountain.style.setProperty('--p9', '90%');
-            mountain.style.setProperty('--h9', '50%');
-            mountain.style.setProperty('--h10', '55%');
-            mountainsFront.appendChild(mountain);
-            this.registerContainer(mountainsFront);
-        }
+        // Setup WebGL Mountains (In front of sun)
+        this.setupWebGLMountains();
 
-        // Floating neon particles / polygons respond to quality level
-        this.createFloatingParticles(true);
+        // Setup WebGL Grid (In front of mountains)
+        this.setupWebGLGrid();
 
-        // Setup gameplay effects
+        // Setup WebGL Overlay (Topmost layer for VHS effects)
+        this.setupWebGLOverlay(); // Add Overlay
+
+        // Setup WebGL Effects (Particles: Ambient & Gameplay)
         this.setupGameplayEffects();
+
+        // Initialize ambient particles (now WebGL-based)
+        this.initAmbientParticles();
 
         // Listen for runtime changes to graphics quality
         this.setupQualityListener();
+    }
+
+    setupWebGLBackground() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing canvases to prevent duplicates
+        const existingBg = document.getElementById('neon-dusk-background-canvas');
+        if (existingBg) existingBg.remove();
+
+        // Remove any old DOM containers if they exist
+        const containers = [
+            'neon-dusk-stars', 'neon-dusk-clouds', 'neon-dusk-meteors',
+            'neon-dusk-particles', 'neon-dusk-mountains-back',
+            'neon-dusk-mountains-mid', 'neon-dusk-mountains-front'
+        ];
+        containers.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
+
+        // Create new background canvas
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-background-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '0'; // Behind everything
+        themeContainer.insertBefore(canvas, themeContainer.firstChild);
+
+        this.bgCanvas = canvas;
+
+        // Initialize Environment Renderer
+        this.webglEnvironment = new WebGLNeonEnvironment(canvas);
+        if (!this.webglEnvironment.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Environment');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.bgCanvas && this.webglEnvironment) {
+                this.webglEnvironment.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupBackEffects() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear existing
+        const existing = document.getElementById('neon-dusk-back-effects-canvas');
+        if (existing) existing.remove();
+
+        // Create canvas (layer behind sun)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-back-effects-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '0.5'; // Above bg (0), below sun (1)
+        canvas.style.pointerEvents = 'none';
+        themeContainer.appendChild(canvas);
+
+        this.backEffectsCanvas = canvas;
+
+        // Initialize Effects Renderer for background
+        this.webglBackEffects = new WebGLNeonEffects(canvas);
+        if (!this.webglBackEffects.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Back Effects');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.backEffectsCanvas && this.webglBackEffects) {
+                this.webglBackEffects.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupWebGLSun() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing sun canvas
+        const existingSun = document.getElementById('neon-dusk-sun-canvas');
+        if (existingSun) existingSun.remove();
+
+        // Create sun canvas (layer between background and effects)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-sun-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '1'; // Above background (0), below effects (100)
+        canvas.style.pointerEvents = 'none';
+        themeContainer.appendChild(canvas);
+
+        this.sunCanvas = canvas;
+
+        // Initialize Sun Renderer
+        this.webglSun = new WebGLNeonSun(canvas);
+        if (!this.webglSun.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Sun');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.sunCanvas && this.webglSun) {
+                this.webglSun.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupWebGLMountains() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing mountains canvas
+        const existingMountains = document.getElementById('neon-dusk-mountains-canvas');
+        if (existingMountains) existingMountains.remove();
+
+        // Create mountains canvas (layer in front of sun)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-mountains-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '2'; // Above sun (1), below effects (100)
+        canvas.style.pointerEvents = 'none';
+        themeContainer.appendChild(canvas);
+
+        this.mountainsCanvas = canvas;
+
+        // Initialize Mountains Renderer
+        this.webglMountains = new WebGLNeonMountains(canvas);
+        if (!this.webglMountains.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Mountains');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.mountainsCanvas && this.webglMountains) {
+                this.webglMountains.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupWebGLGrid() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing grid canvas
+        const existingGrid = document.getElementById('neon-dusk-grid-canvas');
+        if (existingGrid) existingGrid.remove();
+
+        // Create grid canvas (layer in front of mountains)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-grid-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '3'; // Above mountains (2), below effects (100)
+        canvas.style.pointerEvents = 'none';
+        themeContainer.appendChild(canvas);
+
+        this.gridCanvas = canvas;
+
+        // Initialize Grid Renderer
+        this.webglGrid = new WebGLNeonGrid(canvas);
+        if (!this.webglGrid.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Grid');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.gridCanvas && this.webglGrid) {
+                this.webglGrid.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    setupWebGLOverlay() {
+        const themeContainer = document.getElementById('neon-dusk-theme');
+        if (!themeContainer) return;
+
+        // Clear any existing overlay canvas
+        const existingOverlay = document.getElementById('neon-dusk-overlay-canvas');
+        if (existingOverlay) existingOverlay.remove();
+
+        // Create overlay canvas (Topmost layer)
+        let canvas = document.createElement('canvas');
+        canvas.id = 'neon-dusk-overlay-canvas';
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = '2000'; // Topmost layer, above everything
+        canvas.style.pointerEvents = 'none';
+        // Use mix-blend-mode if needed, but WebGL blending handles it
+        themeContainer.appendChild(canvas);
+
+        this.overlayCanvas = canvas;
+
+        // Initialize Overlay Renderer
+        this.webglOverlay = new WebGLNeonOverlay(canvas);
+        if (!this.webglOverlay.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Overlay');
+        }
+
+        // Handle resize
+        const resize = () => {
+            const rect = themeContainer.getBoundingClientRect();
+            if (this.overlayCanvas && this.webglOverlay) {
+                this.webglOverlay.resize(rect.width, rect.height);
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
+    initAmbientParticles() {
+        // Clear existing
+        this.ambientParticles = [];
+
+        const count = this.activePreset?.floatingParticles ?? 40;
+        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
+
+        for (let i = 0; i < count; i++) {
+            this.ambientParticles.push({
+                x: Math.random() * window.innerWidth,
+                y: Math.random() * window.innerHeight,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5,
+                size: Math.random() * 2 + 1, // Smaller size (was 3+1)
+                baseSize: 0, // Will be set below
+                color: colors[Math.floor(Math.random() * colors.length)],
+                life: 1.0, // Always alive
+                maxLife: 1.0,
+                type: 0, // Circle/Particle
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 2.0 // Radians per second
+            });
+            // Initialize baseSize
+            this.ambientParticles[i].baseSize = this.ambientParticles[i].size;
+
+        }
     }
 
     setupGameplayEffects() {
@@ -440,14 +571,20 @@ export default class NeonDuskTheme extends BaseTheme {
         }
 
         this.effectsCanvas = canvas;
-        this.effectsCtx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+
+        // Initialize WebGL Effects
+        this.webglEffects = new WebGLNeonEffects(canvas);
+        if (!this.webglEffects.init()) {
+            console.warn('Neon Dusk: Failed to init WebGL Effects');
+            // Fallback?
+        }
 
         // Size canvas
         const resizeCanvas = () => {
             if (!this.effectsCanvas) return;
             const rect = themeContainer.getBoundingClientRect();
-            this.effectsCanvas.width = rect.width;
-            this.effectsCanvas.height = rect.height;
+            // WebGL needs explicit width/height
+            this.webglEffects.resize(rect.width, rect.height);
         };
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
@@ -474,12 +611,19 @@ export default class NeonDuskTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
     handleLineClear(data) {
         const { lineCount } = data;
-        this.createNeonBurst(lineCount);
+        // Removed createNeonBurst to stop center sparkles
 
         if (lineCount >= 2) {
             this.createDigitalScanLines(lineCount);
@@ -494,55 +638,58 @@ export default class NeonDuskTheme extends BaseTheme {
         const { comboCount } = data;
         this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.5);
 
-        if (comboCount >= 2) {
-            this.createGlitchPulse(comboCount);
-        }
-
-        if (comboCount >= 4) {
-            this.createElectricArcs(comboCount);
-        }
-
-        if (comboCount >= 7) {
-            this.createCyberVortex(comboCount);
-        }
+        // Boost mountain glow
+        this.mountainGlowIntensity = Math.min(this.mountainGlowIntensity + 0.3, 1.0);
+        this.createElectricArcs(comboCount);
     }
 
-    createNeonBurst(lineCount) {
-        if (!this.effectsCanvas) return;
+    // Removed createCyberVortex to stop center sparkles
 
-        // Enforce particle limit more strictly
-        if (this.neonBurstParticles.length >= this.MAX_PARTICLES) {
-            // Remove oldest particles (40% instead of 30%)
-            this.neonBurstParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.4));
+    handlePieceLock(data) {
+        // 1. Pulse existing ambient particles
+        for (const p of this.ambientParticles) {
+            // Randomly trigger pulse on some particles
+            // Only trigger if not already pulsing to avoid compounding growth
+            if (!p.pulsing && Math.random() > 0.3) {
+                p.pulsing = true;
+                p.pulseTime = 0;
+                // p.baseSize is already set during initialization
+            }
         }
 
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
-        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00', '#ff0088'];
-        // Reduced particle count: was lineCount * 20, now lineCount * 12
-        const burstCount = Math.min(
-            lineCount * 12 + this.comboMultiplier * 8,
-            this.MAX_PARTICLES - this.neonBurstParticles.length,
-        );
+        // 2. Spawn a burst of rising squared particles
+        // Random position across full screen width
+        const spawnX = Math.random() * window.innerWidth;
+        this.createRisingSquares(spawnX);
+    }
 
-        for (let i = 0; i < burstCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = (Math.random() * 3 + 2) * this.comboMultiplier;
+    createRisingSquares(x) {
+        if (!this.effectsCanvas) return;
+
+        const count = 8;
+        const colors = ['#00ffff', '#ff00ff', '#ffff00'];
+
+        for (let i = 0; i < count; i++) {
             const color = colors[Math.floor(Math.random() * colors.length)];
+            const size = Math.random() * 3 + 1; // Smaller size (was 5+3)
 
             this.neonBurstParticles.push({
-                x: centerX,
-                y: centerY,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
+                x: x + (Math.random() - 0.5) * 100,
+                y: window.innerHeight, // Start from bottom
+                vx: (Math.random() - 0.5) * 2,
+                vy: -(Math.random() * 5 + 5), // Fast upward
                 life: 1.0,
-                maxLife: Math.random() * 0.8 + 0.6,
-                size: Math.random() * 4 + 2,
-                color,
-                glow: Math.random() * 15 + 10,
+                maxLife: 1.5,
+                size: size,
+                color: color,
+                type: 2, // Squared particle
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 4.0 // Faster rotation for rising squares
             });
         }
     }
+
+
 
     createElectricArcs(comboCount) {
         if (!this.effectsCanvas) return;
@@ -622,10 +769,22 @@ export default class NeonDuskTheme extends BaseTheme {
         // Limit rings
         if (this.hologramRings.length >= this.MAX_RINGS) return;
 
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
+        // Rings now pulse from the sun position
+        let centerX = this.effectsCanvas.width / 2;
+        let centerY = this.effectsCanvas.height / 2;
+
+        if (this.currentSunPos) {
+            // Convert sun UV coordinates to pixel coordinates
+            // uv.x = (pixelX - width/2) / height  => pixelX = uv.x * height + width/2
+            // uv.y = (pixelY - height/2) / height => pixelY = uv.y * height + height/2 (but Y is inverted in canvas)
+            // Actually sunY is 0.25 (up), so pixelY should be (0.5 - sunY) * height
+            centerX = this.currentSunPos.x * this.effectsCanvas.height + this.effectsCanvas.width / 2;
+            centerY = (0.5 - this.currentSunPos.y) * this.effectsCanvas.height;
+        }
+
         const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00'];
         const ringCount = Math.min(lineCount, this.MAX_RINGS - this.hologramRings.length);
+        const maxDim = Math.max(this.effectsCanvas.width, this.effectsCanvas.height);
 
         for (let i = 0; i < ringCount; i++) {
             const color = colors[Math.floor(Math.random() * colors.length)];
@@ -633,7 +792,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 x: centerX,
                 y: centerY,
                 radius: 10,
-                maxRadius: Math.random() * 300 + 250,
+                maxRadius: maxDim * 1.2, // Expand to cover screen
                 life: 1.0,
                 maxLife: 1.2 + Math.random() * 0.5,
                 color,
@@ -668,44 +827,7 @@ export default class NeonDuskTheme extends BaseTheme {
         }
     }
 
-    createCyberVortex(comboCount) {
-        if (!this.effectsCanvas) return;
 
-        // Limit vortexes
-        if (this.cyberVortexes.length >= this.MAX_VORTEXES) return;
-
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
-        const colors = ['#00ffff', '#ff00ff', '#00ff88'];
-        const vortexCount = Math.min(Math.floor(comboCount / 4), this.MAX_VORTEXES - this.cyberVortexes.length);
-
-        for (let i = 0; i < vortexCount; i++) {
-            const color = colors[i % colors.length];
-            const particles = [];
-            // Reduced from 60 to 40 for better performance
-            const particleCount = 40;
-
-            for (let j = 0; j < particleCount; j++) {
-                const angle = (j / particleCount) * Math.PI * 2;
-                const radius = 60 + Math.random() * 40;
-                particles.push({
-                    angle,
-                    radius,
-                    angularSpeed: Math.random() * 0.1 + 0.15,
-                    radiusSpeed: Math.random() * 2 + 1,
-                });
-            }
-
-            this.cyberVortexes.push({
-                x: centerX + (Math.random() - 0.5) * 200,
-                y: centerY + (Math.random() - 0.5) * 200,
-                life: 1.0,
-                maxLife: 2.0 + Math.random() * 0.5,
-                color,
-                particles,
-            });
-        }
-    }
 
     startEffectsLoop() {
         if (this.effectsAnimationFrame) return;
@@ -723,7 +845,7 @@ export default class NeonDuskTheme extends BaseTheme {
             this.lastEffectsFrameTime = timestamp;
 
             this.updateEffects(delta);
-            this.renderEffects();
+            this.renderEffects(timestamp / 1000);
 
             this.effectsAnimationFrame = requestAnimationFrame(tick);
         };
@@ -741,13 +863,26 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     updateEffects(delta) {
-        // Update neon burst particles - batch removal for better performance
+        // Update neon burst particles (and rising squares)
         let writeIndex = 0;
         for (let i = 0; i < this.neonBurstParticles.length; i++) {
             const p = this.neonBurstParticles[i];
             p.x += p.vx;
             p.y += p.vy;
-            p.vy += 0.15; // Gravity
+            // Gravity/Physics
+            if (p.type === 2) {
+                // Rising squares: No gravity, just friction on X
+                p.vx *= 0.95;
+            } else {
+                // Standard burst: Gravity
+                p.vy += 0.15;
+            }
+
+            // Update rotation
+            if (p.rotationSpeed) {
+                p.rotation += p.rotationSpeed * delta;
+            }
+
             p.life -= delta / p.maxLife;
 
             if (p.life > 0) {
@@ -755,6 +890,12 @@ export default class NeonDuskTheme extends BaseTheme {
             }
         }
         this.neonBurstParticles.length = writeIndex;
+
+        // Decay mountain glow
+        if (this.mountainGlowIntensity > 0) {
+            this.mountainGlowIntensity -= delta * 0.5; // Slow decay
+            if (this.mountainGlowIntensity < 0) this.mountainGlowIntensity = 0;
+        }
 
         // Update electric arcs - reduced flicker frequency for performance
         writeIndex = 0;
@@ -821,135 +962,134 @@ export default class NeonDuskTheme extends BaseTheme {
         }
         this.glitchPulses.length = writeIndex;
 
-        // Update cyber vortexes
-        writeIndex = 0;
-        for (let i = 0; i < this.cyberVortexes.length; i++) {
-            const vortex = this.cyberVortexes[i];
-            vortex.life -= delta / vortex.maxLife;
+        // Removed cyber vortex update logic
+        this.cyberVortexes = []; // Ensure empty
 
-            // Optimize particle updates
-            const { particles } = vortex;
-            for (let j = 0; j < particles.length; j++) {
-                const p = particles[j];
-                p.angle += p.angularSpeed * delta;
-                p.radius += p.radiusSpeed * delta;
+
+
+        // Update ambient particles
+        for (let i = 0; i < this.ambientParticles.length; i++) {
+            const p = this.ambientParticles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+
+            // Update rotation
+            if (p.rotationSpeed) {
+                p.rotation += p.rotationSpeed * delta;
             }
 
-            if (vortex.life > 0) {
-                this.cyberVortexes[writeIndex++] = vortex;
+            // Handle pulsing
+            if (p.pulsing) {
+                p.pulseTime += delta * 5.0; // Speed of pulse
+
+                // Sine wave pulse: starts at 0, goes to 1, back to 0
+                // We want it to go from 1.0 to 1.5 back to 1.0
+                // sin(0) = 0, sin(PI/2) = 1, sin(PI) = 0
+
+                if (p.pulseTime <= Math.PI) {
+                    const scale = 1.0 + Math.sin(p.pulseTime) * 0.5; // Scale 1.0 -> 1.5 -> 1.0
+                    p.size = p.baseSize * scale;
+                } else {
+                    // End pulse
+                    p.pulsing = false;
+                    p.size = p.baseSize; // Reset to original size
+                }
             }
+
+            // Wrap around screen
+            if (p.x < 0) p.x = window.innerWidth;
+            if (p.x > window.innerWidth) p.x = 0;
+            if (p.y < 0) p.y = window.innerHeight;
+            if (p.y > window.innerHeight) p.y = 0;
         }
-        this.cyberVortexes.length = writeIndex;
     }
 
-    renderEffects() {
-        if (!this.effectsCanvas || !this.effectsCtx) return;
+    calculateSunPosition(time) {
+        // Smooth left-to-right horizontal drift centered around screen center
+        // The sun drifts continuously from left to right in a straight line
 
-        const ctx = this.effectsCtx;
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
+        // Movement range (percentage of viewport from center)
+        // Movement range (percentage of viewport from center)
+        const horizontalRange = 0.6; // Reduced from 1.8 to keep sun on screen longer (screen half-width is 0.5 * aspect)
 
-        // Clear canvas
-        ctx.clearRect(0, 0, width, height);
+        // Apply time offset so sun starts at different position each time
+        const t = time + this.timeOffset;
 
-        // Batch render by effect type to reduce state changes
-        // Render digital scan lines
-        for (let i = 0; i < this.digitalScanLines.length; i++) {
-            const line = this.digitalScanLines[i];
-            const alpha = line.life * line.opacity;
-            ctx.strokeStyle = this.getColorWithAlpha(line.color, alpha);
-            ctx.lineWidth = line.height;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = line.color;
-            ctx.beginPath();
-            ctx.moveTo(0, line.y);
-            ctx.lineTo(width, line.y);
-            ctx.stroke();
+        // Continuous left-to-right drift using modulo to loop smoothly
+        const driftSpeed = 0.0007; // Very slow speed
+        const driftProgress = (t * driftSpeed) % 1; // 0 to 1 progress
+
+        // Map progress to position: -horizontalRange (left) to +horizontalRange (right)
+        const aspect = window.innerWidth / window.innerHeight;
+        const sunX = (driftProgress * 2 - 1) * horizontalRange * aspect;
+
+        // Fixed vertical position
+        const sunY = 0.25;
+
+        return { x: sunX, y: sunY };
+    }
+
+    renderEffects(time) {
+        // Render Environment (Sky only now)
+        if (this.webglEnvironment) {
+            this.webglEnvironment.render(time);
         }
 
-        // Render hologram rings
-        for (let i = 0; i < this.hologramRings.length; i++) {
-            const ring = this.hologramRings[i];
-            ctx.strokeStyle = this.getColorWithAlpha(ring.color, ring.life);
-            ctx.lineWidth = ring.width;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = ring.color;
-            ctx.beginPath();
-            ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
-            ctx.stroke();
+        // Calculate dynamic sun position
+        const sunPos = this.calculateSunPosition(time);
+        this.currentSunPos = sunPos;
+
+        // Render Sun (Separate layer for vibrant effects)
+        if (this.webglSun) {
+            this.webglSun.render(time, {
+                x: sunPos.x,
+                y: sunPos.y,
+                radius: 0.25,        // Size
+                colorTop: [1.0, 0.0, 1.0],    // Magenta top
+                colorBottom: [0.0, 1.0, 1.0]  // Cyan bottom
+            });
         }
 
-        // Render neon burst particles - group by color to reduce state changes
-        const particlesByColor = {};
-        for (let i = 0; i < this.neonBurstParticles.length; i++) {
-            const p = this.neonBurstParticles[i];
-            if (!particlesByColor[p.color]) {
-                particlesByColor[p.color] = [];
-            }
-            particlesByColor[p.color].push(p);
+        // Render Background Effects (Rings behind sun)
+        if (this.webglBackEffects) {
+            this.webglBackEffects.render(
+                null, // bursts
+                null, // arcs
+                null, // scanlines
+                this.hologramRings, // RINGS HERE
+                null, // vortexes
+                null, // glitches
+                null  // ambient
+            );
         }
 
-        for (const color in particlesByColor) {
-            const particles = particlesByColor[color];
-            ctx.shadowColor = color;
-
-            for (let i = 0; i < particles.length; i++) {
-                const p = particles[i];
-                ctx.fillStyle = this.getColorWithAlpha(p.color, p.life);
-                ctx.shadowBlur = p.glow;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
+        // Render Mountains (In front of sun)
+        if (this.webglMountains) {
+            this.webglMountains.render(this.mountainGlowIntensity);
         }
 
-        // Render electric arcs
-        for (let i = 0; i < this.electricArcs.length; i++) {
-            const arc = this.electricArcs[i];
-            ctx.strokeStyle = this.getColorWithAlpha(arc.color, arc.life);
-            ctx.lineWidth = arc.width;
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = arc.color;
-            ctx.beginPath();
-            ctx.moveTo(arc.segments[0].x, arc.segments[0].y);
-            for (let j = 1; j < arc.segments.length; j++) {
-                ctx.lineTo(arc.segments[j].x, arc.segments[j].y);
-            }
-            ctx.stroke();
+        // Render Grid (In front of mountains)
+        if (this.webglGrid) {
+            this.webglGrid.render(time, []);
         }
 
-        // Render glitch pulses
-        for (let i = 0; i < this.glitchPulses.length; i++) {
-            const pulse = this.glitchPulses[i];
-            const alpha = pulse.life * 0.7;
-            ctx.fillStyle = this.getColorWithAlpha(pulse.color, alpha);
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = pulse.color;
-            ctx.fillRect(pulse.x + pulse.offsetX, pulse.y, pulse.width, pulse.height);
+        // Render Effects
+        if (this.webglEffects) {
+            this.webglEffects.render(
+                this.neonBurstParticles,
+                this.electricArcs,
+                this.digitalScanLines,
+                null, // Rings moved to background
+                this.cyberVortexes,
+                this.glitchPulses,
+                this.ambientParticles // Pass ambient particles
+            );
         }
 
-        // Render cyber vortexes - optimized to reduce arc() calls
-        for (let i = 0; i < this.cyberVortexes.length; i++) {
-            const vortex = this.cyberVortexes[i];
-            const alpha = vortex.life * 0.78; // 200/255 ≈ 0.78
-            ctx.fillStyle = this.getColorWithAlpha(vortex.color, alpha);
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = vortex.color;
-
-            // Use Path2D for better performance with many particles
-            const { particles } = vortex;
-            for (let j = 0; j < particles.length; j++) {
-                const p = particles[j];
-                const x = vortex.x + Math.cos(p.angle) * p.radius;
-                const y = vortex.y + Math.sin(p.angle) * p.radius;
-                ctx.beginPath();
-                ctx.arc(x, y, 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
+        // Render Overlay (VHS Effects)
+        if (this.webglOverlay) {
+            this.webglOverlay.render(time);
         }
-
-        // Reset shadow
-        ctx.shadowBlur = 0;
     }
 
     stop() {
@@ -958,13 +1098,11 @@ export default class NeonDuskTheme extends BaseTheme {
             this.qualityChangeHandler = null;
         }
 
-        this.pauseMeteorPool();
         this.stopEffectsLoop();
         super.stop();
     }
 
     cleanup() {
-        this.teardownMeteorPool();
         this.cleanupEffects();
         super.cleanup();
     }
@@ -989,181 +1127,18 @@ export default class NeonDuskTheme extends BaseTheme {
         if (this.effectsCanvas) {
             this.effectsCanvas.remove();
             this.effectsCanvas = null;
-            this.effectsCtx = null;
+        }
+        if (this.backEffectsCanvas) {
+            this.backEffectsCanvas.remove();
+            this.backEffectsCanvas = null;
+        }
+        if (this.overlayCanvas) {
+            this.overlayCanvas.remove();
+            this.overlayCanvas = null;
         }
     }
 
-    initializeMeteors(container, meteorCount = 6) {
-        this.meteorsContainer = container;
-        const fragment = document.createDocumentFragment();
-
-        for (let i = 0; i < meteorCount; i++) {
-            const meteor = document.createElement('div');
-            meteor.className = 'neon-dusk-meteor';
-            meteor.style.animation = 'none';
-            meteor.style.left = '0';
-            meteor.style.top = '0';
-            meteor.style.opacity = '0';
-            meteor.style.transform = 'translate3d(-9999px, -9999px, 0) rotate(-45deg)';
-
-            this.meteorPool.push({
-                element: meteor,
-                active: false,
-                elapsed: 0,
-                duration: this.random(2.2, 3.5),
-                delayRemaining: this.random(0.2, 4),
-                startX: 0,
-                startY: 0,
-                distanceX: 0,
-                distanceY: 0,
-            });
-
-            fragment.appendChild(meteor);
-        }
-
-        container.appendChild(fragment);
-        this.startMeteorLoop();
-    }
-
-    resumeMeteorPool() {
-        this.meteorPool.forEach((meteor) => {
-            meteor.active = false;
-            meteor.elapsed = 0;
-            meteor.delayRemaining = this.random(0.3, 3.5);
-            meteor.element.style.opacity = '0';
-            meteor.element.style.transform = 'translate3d(-9999px, -9999px, 0) rotate(-45deg)';
-        });
-        this.startMeteorLoop();
-    }
-
-    pauseMeteorPool() {
-        this.stopMeteorLoop();
-        this.meteorPool.forEach((meteor) => {
-            meteor.active = false;
-            meteor.elapsed = 0;
-            meteor.delayRemaining = this.random(1, 4);
-            meteor.element.style.opacity = '0';
-        });
-    }
-
-    teardownMeteorPool() {
-        this.stopMeteorLoop();
-        if (!this.meteorPool.length) {
-            return;
-        }
-
-        if (this.meteorsContainer) {
-            this.meteorsContainer.textContent = '';
-        }
-
-        this.meteorPool = [];
-        this.meteorsContainer = null;
-    }
-
-    startMeteorLoop() {
-        if (this.meteorAnimationFrame || !this.meteorsContainer) {
-            return;
-        }
-
-        const tick = (timestamp) => {
-            if (!this.meteorAnimationFrame) {
-                return;
-            }
-
-            if (!this.lastMeteorFrameTime) {
-                this.lastMeteorFrameTime = timestamp;
-            }
-
-            const delta = Math.min((timestamp - this.lastMeteorFrameTime) / 1000, 0.1);
-            this.lastMeteorFrameTime = timestamp;
-
-            if (!this.isActive) {
-                this.stopMeteorLoop();
-                return;
-            }
-
-            this.updateMeteors(delta);
-            this.meteorAnimationFrame = requestAnimationFrame(tick);
-        };
-
-        this.lastMeteorFrameTime = 0;
-        this.meteorAnimationFrame = requestAnimationFrame(tick);
-    }
-
-    stopMeteorLoop() {
-        if (this.meteorAnimationFrame) {
-            cancelAnimationFrame(this.meteorAnimationFrame);
-            this.meteorAnimationFrame = null;
-        }
-        this.lastMeteorFrameTime = 0;
-    }
-
-    updateMeteors(delta) {
-        this.meteorPool.forEach((meteor) => {
-            if (!meteor.active) {
-                meteor.delayRemaining -= delta;
-                if (meteor.delayRemaining <= 0) {
-                    this.activateMeteor(meteor);
-                }
-                return;
-            }
-
-            meteor.elapsed += delta;
-            const progress = meteor.elapsed / meteor.duration;
-
-            if (progress >= 1) {
-                this.resetMeteor(meteor);
-                return;
-            }
-
-            const translateX = meteor.startX + meteor.distanceX * progress;
-            const translateY = meteor.startY + meteor.distanceY * progress;
-            meteor.element.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) rotate(-45deg)`;
-            meteor.element.style.opacity = `${this.computeMeteorOpacity(progress)}`;
-        });
-    }
-
-    activateMeteor(meteor) {
-        if (!this.meteorsContainer) {
-            return;
-        }
-
-        const width = this.meteorsContainer.offsetWidth || window.innerWidth;
-        const height = this.meteorsContainer.offsetHeight || window.innerHeight;
-        const startX = this.random(-0.15 * width, width * 0.4);
-        const startY = this.random(0, height * 0.6);
-        const travelDistance = Math.max(width, height) * this.random(0.9, 1.4);
-
-        meteor.active = true;
-        meteor.elapsed = 0;
-        meteor.duration = this.random(2.2, 3.6);
-        meteor.startX = startX;
-        meteor.startY = startY;
-        meteor.distanceX = travelDistance;
-        meteor.distanceY = travelDistance;
-        meteor.element.style.opacity = '0';
-        meteor.element.style.transform = `translate3d(${startX}px, ${startY}px, 0) rotate(-45deg)`;
-    }
-
-    resetMeteor(meteor) {
-        meteor.active = false;
-        meteor.elapsed = 0;
-        meteor.delayRemaining = this.random(1.2, 4.2);
-        meteor.element.style.opacity = '0';
-    }
-
-    computeMeteorOpacity(progress) {
-        if (progress <= 0.1) {
-            return progress / 0.1; // Fade in to 1 by 10%
-        }
-
-        if (progress >= 0.9) {
-            return ((1 - progress) / 0.1) * 0.5; // 90% -> 0.5, 100% -> 0
-        }
-
-        const normalized = (progress - 0.1) / 0.8; // 0 at 10%, 1 at 90%
-        return 1 - normalized * 0.5;
-    }
+    // Meteor methods removed as they are no longer used
 
     /**
      * Provide neon-themed tetromino styling so blocks match the skyline palette

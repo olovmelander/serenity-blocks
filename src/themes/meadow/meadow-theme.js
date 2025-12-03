@@ -1,124 +1,345 @@
+
 import { BaseTheme } from '../base-theme.js';
 import { MEADOW_TETROMINOS } from './meadow-tetrominos.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+import WebGLMeadowEnvironment from './webgl-meadow-environment.js';
+import WebGLMeadowGrass from './webgl-meadow-grass.js';
+import WebGLMeadowFlowers from './webgl-meadow-flowers.js';
+import WebGLMeadowCreatures from './webgl-meadow-creatures.js';
+import WebGLMeadowEffects from './webgl-meadow-effects.js';
 
+/**
+ * Meadow Theme - An idyllic sun-dappled meadow experience (WebGL Enhanced)
+ */
 export default class MeadowTheme extends BaseTheme {
     constructor() {
         super('meadow');
+        this.eventUnsubscribers = [];
+        this.animationFrameId = null;
+        this.lastTime = 0;
+
+        // WebGL Renderers
+        this.webglEnvironment = null;
+        this.webglGrass = null;
+        this.webglFlowers = null;
+        this.webglCreatures = null;
+        this.webglEffects = null;
+
+        // Canvases
+        this.bgCanvas = null;
+        this.grassCanvas = null;
+        this.flowerCanvas = null;
+        this.creatureCanvas = null;
+        this.effectsCanvas = null;
+
+        // Graphics quality presets - Drastically reduced counts for a calmer look
+        this.currentQuality = 'High';
+        this.qualityPresets = {
+            Minimal: {
+                grassCount: 500,
+                flowerCount: 15,
+                butterflyCount: 1,
+                beeCount: 0,
+                fireflyCount: 0,
+                pollenCount: 5,
+            },
+            Low: {
+                grassCount: 1000,
+                flowerCount: 30,
+                butterflyCount: 2,
+                beeCount: 1,
+                fireflyCount: 2,
+                pollenCount: 10,
+            },
+            Medium: {
+                grassCount: 2000,
+                flowerCount: 50,
+                butterflyCount: 4,
+                beeCount: 2,
+                fireflyCount: 5,
+                pollenCount: 20,
+            },
+            High: {
+                grassCount: 3500,
+                flowerCount: 80,
+                butterflyCount: 6,
+                beeCount: 3,
+                fireflyCount: 10,
+                pollenCount: 30,
+            },
+            Ultra: {
+                grassCount: 5000,
+                flowerCount: 120,
+                butterflyCount: 10,
+                beeCount: 5,
+                fireflyCount: 20,
+                pollenCount: 50,
+            },
+            Extreme: {
+                grassCount: 8000,
+                flowerCount: 200,
+                butterflyCount: 15,
+                beeCount: 8,
+                fireflyCount: 30,
+                pollenCount: 80,
+            },
+        };
+
+        this.activePreset = this.qualityPresets.High;
+        this.qualityChangeHandler = null;
+    }
+
+    getGraphicsQuality() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) {
+            console.warn(`[MeadowTheme] Unknown quality preset "${quality}", defaulting to High`);
+            quality = 'High';
+        }
+
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+
+        if (this.isActive) {
+            this.refreshQualityDependentElements();
+        }
+
+        console.log(`🌸 [MeadowTheme] Applied ${quality} quality preset`);
+    }
+
+    refreshQualityDependentElements() {
+        if (this.webglGrass) {
+            this.webglGrass.generateGrass(this.activePreset.grassCount, window.innerWidth, window.innerHeight);
+        }
+        if (this.webglFlowers) {
+            this.webglFlowers.generateFlowers(this.activePreset.flowerCount, window.innerWidth, window.innerHeight);
+        }
+        if (this.webglCreatures) {
+            this.webglCreatures.spawnCreatures(this.activePreset, window.innerWidth, window.innerHeight);
+        }
+        if (this.webglEffects) {
+            this.webglEffects.particles = []; // Clear existing
+            this.webglEffects.createPollen(this.activePreset.pollenCount, window.innerWidth, window.innerHeight);
+        }
+    }
+
+    setupQualityListener() {
+        this.teardownQualityListener();
+
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (!newQuality || newQuality === this.currentQuality) return;
+
+            this.applyQualityPreset(newQuality);
+        };
+
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
     }
 
     async createScene() {
-        // 1. Swaying Grass
-        const grassContainer = document.querySelector('.meadow-grass');
-        if (grassContainer && grassContainer.children.length === 0) {
-            for (let i = 0; i < 150; i++) {
-                const blade = document.createElement('div');
-                blade.className = 'grass-blade';
-                blade.style.left = `${Math.random() * 100}%`;
-                blade.style.height = `${Math.random() * 60 + 40}px`;
-                const swayDuration = Math.random() * 4 + 4;
-                blade.style.animationDuration = `${swayDuration}s`;
-                blade.style.animationDelay = `-${Math.random() * swayDuration}s`;
-                blade.style.background = `linear-gradient(to top, #4a7c3b, hsl(90, 39%, ${Math.random() * 15 + 45}%))`;
-                grassContainer.appendChild(blade);
-            }
-            this.registerContainer(grassContainer);
-        }
+        const themeContainer = document.getElementById('meadow-theme');
+        if (!themeContainer) return;
 
-        // 2. Colorful Flowers
-        const flowerContainer = document.getElementById('meadow-flowers');
-        if (flowerContainer && flowerContainer.children.length === 0) {
-            const flowerData = [
-                {
-                    color: '#e53935',
-                    svg: '<path d="M10 25 L5 15 A5 5 0 1 1 15 15 L10 25 Z" fill="{color}"/>',
-                },
-                {
-                    color: '#fdd835',
-                    svg: '<circle cx="10" cy="10" r="5" fill="{color}"/><circle cx="10" cy="10" r="2" fill="#8d6e63"/>',
-                },
-                {
-                    color: '#8e24aa',
-                    svg: '<path d="M10 25 L5 20 L0 10 L5 0 L15 0 L20 10 L15 20 Z" fill="{color}"/>',
-                },
-            ];
-            for (let i = 0; i < 25; i++) {
-                const flower = document.createElement('div');
-                flower.className = 'meadow-flower';
-                const data = flowerData[Math.floor(Math.random() * flowerData.length)];
-                const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 25">${data.svg.replace('{color}', data.color)}</svg>`;
-                flower.style.backgroundImage = `url('data:image/svg+xml;utf8,${encodeURIComponent(svg)}')`;
-                flower.style.left = `${Math.random() * 98}%`;
-                flower.style.bottom = `${Math.random() * 60}%`;
-                flower.style.animationDelay = `-${Math.random() * 10}s`;
-                flowerContainer.appendChild(flower);
-            }
-            this.registerContainer(flowerContainer);
-        }
+        // Clear existing content
+        themeContainer.innerHTML = '';
+        themeContainer.style.background = '#000'; // Fallback
 
-        // 3. Enhanced Butterflies
-        const butterflyContainer = document.getElementById('meadow-butterflies');
-        if (butterflyContainer && butterflyContainer.children.length === 0) {
-            const wingColors = [
-                { stroke: 'gold', fill: 'rgba(255,215,0,0.7)' },
-                { stroke: '#a29bfe', fill: 'rgba(162,155,254,0.7)' },
-                { stroke: '#ff7675', fill: 'rgba(255,118,117,0.7)' },
-            ];
-            for (let i = 0; i < 10; i++) {
-                const butterfly = document.createElement('div');
-                butterfly.className = 'butterfly';
-                const wingLeft = document.createElement('div');
-                wingLeft.className = 'butterfly-wing left';
-                const wingRight = document.createElement('div');
-                wingRight.className = 'butterfly-wing right';
+        // Apply quality preset
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
 
-                const colors = wingColors[Math.floor(Math.random() * wingColors.length)];
-                const wingSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 30"><path d="M 15 15 C 0 0, 0 30, 15 15" stroke="${colors.stroke}" fill="${colors.fill}" stroke-width="2"/></svg>`;
-                wingLeft.style.backgroundImage = `url('data:image/svg+xml;utf8,${encodeURIComponent(wingSvg)}')`;
-                wingRight.style.backgroundImage = `url('data:image/svg+xml;utf8,${encodeURIComponent(wingSvg)}')`;
+        // Setup WebGL Layers (Order matters for Z-index)
 
-                butterfly.appendChild(wingLeft);
-                butterfly.appendChild(wingRight);
+        // 1. Environment (Sky, Sun, Clouds) - Background
+        this.setupWebGLEnvironment(themeContainer);
 
-                for (let j = 1; j <= 8; j++) {
-                    butterfly.style.setProperty(`--x${j}`, `${Math.random() * 90}vw`);
-                    butterfly.style.setProperty(`--y${j}`, `${Math.random() * 70}vh`);
-                }
-                const duration = Math.random() * 10 + 15;
-                butterfly.style.animationDuration = `${duration}s`;
-                butterfly.style.animationDelay = `-${Math.random() * duration}s`;
-                const flapSpeed = Math.random() * 0.3 + 0.3;
-                wingLeft.style.animationDuration = `${flapSpeed}s`;
-                wingRight.style.animationDuration = `${flapSpeed}s`;
+        // 2. Grass - Behind grid/board
+        this.setupWebGLGrass(themeContainer);
 
-                butterflyContainer.appendChild(butterfly);
-            }
-            this.registerContainer(butterflyContainer);
-        }
+        // 3. Flowers - Intermixed with grass
+        this.setupWebGLFlowers(themeContainer);
 
-        // 4. Improved Pollen
-        const pollenContainer = document.getElementById('meadow-pollen');
-        if (pollenContainer && pollenContainer.children.length === 0) {
-            for (let i = 0; i < 100; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'pollen-particle';
-                particle.style.setProperty('--x-start', `${Math.random() * 100}vw`);
-                particle.style.setProperty('--y-start', `${100 + Math.random() * 30}vh`);
-                particle.style.setProperty('--x-end', `${Math.random() * 100}vw`);
-                for (let j = 1; j <= 3; j++) {
-                    particle.style.setProperty(`--x-gust${j}`, `${Math.random() * 60 - 30}vw`);
-                }
-                particle.style.animationDelay = `-${Math.random() * 10}s`;
-                pollenContainer.appendChild(particle);
-            }
-            this.registerContainer(pollenContainer);
+        // 4. Creatures - Flying around
+        this.setupWebGLCreatures(themeContainer);
+
+        // 5. Effects - Top layer (Pollen, Bursts)
+        this.setupWebGLEffects(themeContainer);
+
+        // Setup Event Listeners
+        this.setupEventListeners();
+
+        // Force initial resize to ensure canvases are not default 300x150
+        this.handleResize();
+
+        // Start Animation Loop
+        this.startAnimation();
+    }
+
+    setupWebGLEnvironment(container) {
+        const canvas = this.createCanvas('meadow-environment-canvas', 0);
+        container.appendChild(canvas);
+        this.bgCanvas = canvas;
+
+        this.webglEnvironment = new WebGLMeadowEnvironment(canvas);
+        if (!this.webglEnvironment.init()) {
+            console.warn('Meadow: Failed to init WebGL Environment');
         }
     }
 
-    /**
-     * Provide Meadow themed tetromino styling (blooming meadow palette)
-     * @returns {Object} Meadow tetromino configuration
-     */
-    getTetrominoConfig() {
-        return MEADOW_TETROMINOS;
+    setupWebGLGrass(container) {
+        const canvas = this.createCanvas('meadow-grass-canvas', 1);
+        container.appendChild(canvas);
+        this.grassCanvas = canvas;
+
+        this.webglGrass = new WebGLMeadowGrass(canvas);
+        if (this.webglGrass.init()) {
+            this.webglGrass.generateGrass(this.activePreset.grassCount, window.innerWidth, window.innerHeight);
+        } else {
+            console.warn('Meadow: Failed to init WebGL Grass');
+        }
+    }
+
+    setupWebGLFlowers(container) {
+        const canvas = this.createCanvas('meadow-flowers-canvas', 2);
+        container.appendChild(canvas);
+        this.flowerCanvas = canvas;
+
+        this.webglFlowers = new WebGLMeadowFlowers(canvas);
+        if (this.webglFlowers.init()) {
+            this.webglFlowers.generateFlowers(this.activePreset.flowerCount, window.innerWidth, window.innerHeight);
+        } else {
+            console.warn('Meadow: Failed to init WebGL Flowers');
+        }
+    }
+
+    setupWebGLCreatures(container) {
+        const canvas = this.createCanvas('meadow-creatures-canvas', 3);
+        container.appendChild(canvas);
+        this.creatureCanvas = canvas;
+
+        this.webglCreatures = new WebGLMeadowCreatures(canvas);
+        if (this.webglCreatures.init()) {
+            this.webglCreatures.spawnCreatures(this.activePreset, window.innerWidth, window.innerHeight);
+        } else {
+            console.warn('Meadow: Failed to init WebGL Creatures');
+        }
+    }
+
+    setupWebGLEffects(container) {
+        const canvas = this.createCanvas('meadow-effects-canvas', 100); // Top layer
+        container.appendChild(canvas);
+        this.effectsCanvas = canvas;
+
+        this.webglEffects = new WebGLMeadowEffects(canvas);
+        if (this.webglEffects.init()) {
+            this.webglEffects.createPollen(this.activePreset.pollenCount, window.innerWidth, window.innerHeight);
+        } else {
+            console.warn('Meadow: Failed to init WebGL Effects');
+        }
+    }
+
+    createCanvas(id, zIndex) {
+        const canvas = document.createElement('canvas');
+        canvas.id = id;
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.zIndex = zIndex;
+        canvas.style.pointerEvents = 'none';
+        return canvas;
+    }
+
+    setupEventListeners() {
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (this.isActive && this.webglEffects) {
+                // Burst of petals/light
+                // Center of screen or random
+                const x = window.innerWidth / 2 + (Math.random() - 0.5) * 400;
+                const y = window.innerHeight / 2 + (Math.random() - 0.5) * 400;
+                this.webglEffects.createBurst(x, y, 20 + data.lineCount * 10, [1.0, 0.8, 0.2, 1.0]);
+            }
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (this.isActive && this.webglEffects && data.comboCount > 1) {
+                // More bursts
+                const x = Math.random() * window.innerWidth;
+                const y = Math.random() * window.innerHeight;
+                this.webglEffects.createBurst(x, y, 15, [0.5, 1.0, 0.5, 1.0]);
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+
+        // Resize listener
+        const resizeHandler = () => this.handleResize();
+        window.addEventListener('resize', resizeHandler);
+        this.eventUnsubscribers.push(() => window.removeEventListener('resize', resizeHandler));
+    }
+
+    handleResize() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+
+        if (this.webglEnvironment) this.webglEnvironment.resize(w, h);
+        if (this.webglGrass) {
+            this.webglGrass.resize(w, h);
+            // Optionally regenerate grass if density looks wrong, but scaling is usually fine
+        }
+        if (this.webglFlowers) this.webglFlowers.resize(w, h);
+        if (this.webglCreatures) this.webglCreatures.resize(w, h);
+        if (this.webglEffects) this.webglEffects.resize(w, h);
+    }
+
+    startAnimation() {
+        if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+
+        const loop = (timestamp) => {
+            if (!this.isActive) return;
+
+            // Convert to seconds for shaders to avoid hyperspeed
+            const timeInSeconds = timestamp * 0.001;
+
+            const dt = (timestamp - this.lastTime) / 1000;
+            this.lastTime = timestamp;
+
+            // Render all layers
+            if (this.webglEnvironment) this.webglEnvironment.render(timeInSeconds);
+            if (this.webglGrass) this.webglGrass.render(timeInSeconds, 0.0); // Wind strength 0 for now
+            if (this.webglFlowers) this.webglFlowers.render(timeInSeconds, 0.0);
+            if (this.webglCreatures) this.webglCreatures.render(timeInSeconds, dt);
+            if (this.webglEffects) this.webglEffects.render(timeInSeconds, dt);
+
+            this.animationFrameId = requestAnimationFrame(loop);
+        };
+
+        this.animationFrameId = requestAnimationFrame(loop);
+    }
+
+    cleanup() {
+        super.cleanup();
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        this.teardownQualityListener();
+
+        // Clean up WebGL contexts if needed (usually handled by GC when canvas is removed)
+        const container = document.getElementById('meadow-theme');
+        if (container) {
+            container.innerHTML = '';
+        }
     }
 }

@@ -1,6 +1,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { BLOOD_MOON_TETROMINOS } from './blood-moon-tetrominos.js';
+import WebGLBloodRenderer from './webgl-blood-renderer.js';
 
 export default class BloodMoonTheme extends BaseTheme {
     constructor() {
@@ -29,6 +30,11 @@ export default class BloodMoonTheme extends BaseTheme {
         this.moonGlowIntensity = 1.0;
         this.glowPulse = 0;
 
+        // WebGL Renderer
+        this.bloodCanvas = null;
+        this.bloodRenderer = null;
+        this.useWebGL = true; // Try to use WebGL by default
+
         // Performance limits
         this.MAX_PARTICLES = 150;
         this.MAX_LIGHTNING = 3;
@@ -47,10 +53,15 @@ export default class BloodMoonTheme extends BaseTheme {
         this.soulOrbs = [];
         this.bloodVortexes = [];
 
+        // Piece lock effects
+        this.crimsonMeteors = [];
+        this.bloodRipples = [];
+        this.shadowBursts = [];
+
         // Graphics quality presets
         this.qualityPresets = {
             Minimal: {
-                stars: 100,
+                stars: 2000,
                 nebulaClouds: 5,
                 craterData: 10,
                 moonTexture: 150,
@@ -65,7 +76,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 vortexSpawnRate: 0.2,
             },
             Low: {
-                stars: 150,
+                stars: 5000,
                 nebulaClouds: 8,
                 craterData: 15,
                 moonTexture: 250,
@@ -80,7 +91,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 vortexSpawnRate: 0.25,
             },
             Medium: {
-                stars: 200,
+                stars: 10000,
                 nebulaClouds: 12,
                 craterData: 20,
                 moonTexture: 400,
@@ -95,7 +106,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 vortexSpawnRate: 0.35,
             },
             High: {
-                stars: 300,
+                stars: 20000,
                 nebulaClouds: 15,
                 craterData: 25,
                 moonTexture: 600,
@@ -110,7 +121,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 vortexSpawnRate: 0.4,
             },
             Ultra: {
-                stars: 500,
+                stars: 40000,
                 nebulaClouds: 20,
                 craterData: 35,
                 moonTexture: 900,
@@ -125,7 +136,7 @@ export default class BloodMoonTheme extends BaseTheme {
                 vortexSpawnRate: 0.5,
             },
             Extreme: {
-                stars: 700,
+                stars: 60000,
                 nebulaClouds: 28,
                 craterData: 50,
                 moonTexture: 1200,
@@ -177,6 +188,51 @@ export default class BloodMoonTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
+    /**
+     * Initialize WebGL renderer
+     */
+    initWebGLRenderer() {
+        if (!this.canvas) return;
+
+        try {
+            this.bloodCanvas = document.createElement('canvas');
+            this.bloodCanvas.width = this.canvas.width;
+            this.bloodCanvas.height = this.canvas.height;
+
+            this.bloodRenderer = new WebGLBloodRenderer(this.bloodCanvas);
+
+            if (this.bloodRenderer.init()) {
+                this.bloodRenderer.allocateParticles(this.activePreset.stars);
+                this.useWebGL = true;
+                console.log('🌙 Blood Moon: WebGL renderer active');
+            } else {
+                this.useWebGL = false;
+                this.bloodRenderer = null;
+                this.bloodCanvas = null;
+                console.log('🌙 Blood Moon: Falling back to Canvas2D');
+            }
+        } catch (e) {
+            console.warn('🌙 Blood Moon: WebGL init failed:', e);
+            this.useWebGL = false;
+            this.bloodRenderer = null;
+            this.bloodCanvas = null;
+        }
+    }
+
+    uploadStarsToWebGL() {
+        if (!this.useWebGL || !this.bloodRenderer) return;
+
+        // Convert relative coordinates to pixel coordinates for WebGL
+        const pixelStars = this.stars.map(star => ({
+            ...star,
+            x: star.x * this.canvas.width,
+            y: star.y * this.canvas.height,
+            pulseBoost: 0, // Initialize pulse boost
+        }));
+
+        this.bloodRenderer.uploadParticles(pixelStars);
+    }
+
     async createScene() {
         this.canvas = document.getElementById('blood-moon-canvas');
         if (!this.canvas) return;
@@ -197,6 +253,10 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Initialize stars
         this.createStars();
+
+        // Initialize WebGL renderer
+        this.initWebGLRenderer();
+        this.uploadStarsToWebGL();
 
         // Initialize nebula clouds
         this.createNebulaClouds();
@@ -257,6 +317,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Pre-create gradients that don't change
         this.cacheGradients();
+
+        // Resize WebGL canvas
+        if (this.useWebGL && this.bloodRenderer) {
+            this.bloodRenderer.resize(this.canvas.width, this.canvas.height);
+            this.uploadStarsToWebGL(); // Re-upload with new pixel coordinates
+        }
     }
 
     cacheGradients() {
@@ -281,7 +347,7 @@ export default class BloodMoonTheme extends BaseTheme {
             this.stars.push({
                 x: Math.random(),
                 y: Math.random(),
-                size: Math.random() * 1.5 + 0.3,
+                size: Math.random() * 2.5 + 0.8, // Increased size for better visibility
                 brightness: Math.random() * 0.6 + 0.4,
                 twinkleSpeed: Math.random() * 0.02 + 0.005,
                 twinklePhase: Math.random() * Math.PI * 2,
@@ -341,12 +407,31 @@ export default class BloodMoonTheme extends BaseTheme {
         atmosphereGradient.addColorStop(0, 'rgba(120, 10, 25, 0.12)'); // More intense
         atmosphereGradient.addColorStop(0.4, 'rgba(100, 5, 20, 0.08)');
         atmosphereGradient.addColorStop(0.7, 'rgba(80, 0, 15, 0.04)');
-        atmosphereGradient.addColorStop(1, 'rgba(40, 0, 10, 0)');
+        atmosphereGradient.addColorStop(1, 'rgba(40, 5, 10, 0)');
         this.ctx.fillStyle = atmosphereGradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
     drawStars(moonX, moonY) {
+        // Use WebGL if available
+        if (this.useWebGL && this.bloodRenderer) {
+            // Update positions if they drift (currently they don't drift in this theme, but good for future)
+            // If stars were moving, we'd call updatePositions here.
+
+            // Render
+            this.bloodRenderer.render(
+                this.time * 0.01, // Time
+                this.glowPulse - 1.0, // Global pulse (centered around 0)
+                { x: moonX, y: moonY }, // Moon pos
+                this.moonRadius // Moon radius
+            );
+
+            // Composite
+            this.ctx.drawImage(this.bloodCanvas, 0, 0);
+            return;
+        }
+
+        // Fallback to Canvas2D
         for (const star of this.stars) {
             const x = star.x * this.canvas.width;
             const y = star.y * this.canvas.height;
@@ -456,7 +541,91 @@ export default class BloodMoonTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    handlePieceLock() {
+        this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.1, 0.4);
+
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        // === CRIMSON METEORS ===
+        // Fast, streaking red particles
+        const meteorCount = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < meteorCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 10 + Math.random() * 15;
+
+            // Start from random positions, often top/sides
+            let startX, startY;
+            if (Math.random() > 0.5) {
+                startX = Math.random() * w;
+                startY = Math.random() * h * 0.3;
+            } else {
+                startX = Math.random() * w;
+                startY = Math.random() * h * 0.5;
+            }
+
+            this.crimsonMeteors.push({
+                x: startX,
+                y: startY,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 2 + Math.random() * 3,
+                life: 1.0,
+                decay: 0.03 + Math.random() * 0.02,
+                trail: [],
+                maxTrailLength: 10 + Math.floor(Math.random() * 5),
+            });
+        }
+
+        // === BLOOD RIPPLE ===
+        // A dark red distortion wave
+        if (Math.random() > 0.4) {
+            this.bloodRipples.push({
+                x: w * 0.2 + Math.random() * w * 0.6,
+                y: h * 0.2 + Math.random() * h * 0.6,
+                radius: 0,
+                maxRadius: 100 + Math.random() * 100,
+                width: 20 + Math.random() * 20,
+                speed: 5 + Math.random() * 5,
+                life: 1.0,
+                decay: 0.02,
+                opacity: 0.6,
+            });
+        }
+
+        // === SHADOW BURST ===
+        // Dark particles exploding outward
+        if (Math.random() > 0.6) {
+            const burstX = w * 0.2 + Math.random() * w * 0.6;
+            const burstY = h * 0.2 + Math.random() * h * 0.6;
+            const particleCount = 10 + Math.floor(Math.random() * 10);
+
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 4;
+
+                this.shadowBursts.push({
+                    x: burstX,
+                    y: burstY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 2 + Math.random() * 4,
+                    life: 1.0,
+                    decay: 0.02 + Math.random() * 0.02,
+                    color: Math.random() > 0.5 ? '#000000' : '#300000',
+                });
+            }
+        }
     }
 
     handleLineClear(eventPayload) {
@@ -1085,6 +1254,87 @@ export default class BloodMoonTheme extends BaseTheme {
             }
         }
 
+        // Draw crimson meteors
+        for (let i = this.crimsonMeteors.length - 1; i >= 0; i--) {
+            const meteor = this.crimsonMeteors[i];
+
+            // Update
+            meteor.x += meteor.vx;
+            meteor.y += meteor.vy;
+            meteor.life -= meteor.decay;
+
+            // Trail
+            meteor.trail.unshift({ x: meteor.x, y: meteor.y });
+            if (meteor.trail.length > meteor.maxTrailLength) {
+                meteor.trail.pop();
+            }
+
+            if (meteor.life <= 0) {
+                this.crimsonMeteors.splice(i, 1);
+                continue;
+            }
+
+            // Draw trail
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = `rgba(200, 20, 40, ${meteor.life * 0.6})`;
+            this.ctx.lineWidth = meteor.size;
+            this.ctx.lineCap = 'round';
+
+            if (meteor.trail.length > 1) {
+                this.ctx.moveTo(meteor.trail[0].x, meteor.trail[0].y);
+                for (let j = 1; j < meteor.trail.length; j++) {
+                    this.ctx.lineTo(meteor.trail[j].x, meteor.trail[j].y);
+                }
+                this.ctx.stroke();
+            }
+
+            // Draw head
+            this.ctx.fillStyle = `rgba(255, 50, 70, ${meteor.life})`;
+            this.ctx.beginPath();
+            this.ctx.arc(meteor.x, meteor.y, meteor.size * 1.5, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+
+        // Draw blood ripples
+        for (let i = this.bloodRipples.length - 1; i >= 0; i--) {
+            const ripple = this.bloodRipples[i];
+
+            ripple.radius += ripple.speed;
+            ripple.life -= ripple.decay;
+
+            if (ripple.life <= 0) {
+                this.bloodRipples.splice(i, 1);
+                continue;
+            }
+
+            this.ctx.beginPath();
+            this.ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
+            this.ctx.strokeStyle = `rgba(150, 10, 30, ${ripple.life * ripple.opacity})`;
+            this.ctx.lineWidth = ripple.width * ripple.life;
+            this.ctx.stroke();
+        }
+
+        // Draw shadow bursts
+        for (let i = this.shadowBursts.length - 1; i >= 0; i--) {
+            const p = this.shadowBursts[i];
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= p.decay;
+
+            if (p.life <= 0) {
+                this.shadowBursts.splice(i, 1);
+                continue;
+            }
+
+            this.ctx.fillStyle = p.color;
+            this.ctx.globalAlpha = p.life * 0.8;
+            this.ctx.beginPath();
+            this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.globalAlpha = 1.0;
+        }
+
         this.drawMoon(moonPos);
 
         const animId = requestAnimationFrame(() => this.animate());
@@ -1113,6 +1363,9 @@ export default class BloodMoonTheme extends BaseTheme {
         this.bloodWaves = [];
         this.soulOrbs = [];
         this.bloodVortexes = [];
+        this.crimsonMeteors = [];
+        this.bloodRipples = [];
+        this.shadowBursts = [];
         this.moonPulseIntensity = 0;
         this.comboMultiplier = 1.0;
         this.pendingComboCount = 0;
