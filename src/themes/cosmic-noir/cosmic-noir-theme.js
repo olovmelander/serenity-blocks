@@ -1,6 +1,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
+import WebGLCosmicRenderer from './webgl-cosmic-renderer.js';
 
 export default class CosmicNoirTheme extends BaseTheme {
     constructor() {
@@ -13,9 +14,25 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.canvas = null;
         this.ctx = null;
 
-        // Galaxy center position (the "planet")
+        // Galaxy center position (the "planet" / "black hole")
         this.galaxyCenterX = 0;
         this.galaxyCenterY = 0;
+
+        // Drifting Black Moon properties
+        this.moonBaseX = 0;
+        this.moonBaseY = 0;
+        this.moonOffsetX = 0;
+        this.moonOffsetY = 0;
+        this.moonRadius = 90; // Default from CSS (180px / 2)
+
+        // Lissajous phase for drift
+        this.moonPhaseX = Math.random() * Math.PI * 2;
+        this.moonPhaseY = Math.random() * Math.PI * 2;
+        this.moonPhaseX2 = Math.random() * Math.PI * 2;
+        this.moonPhaseY2 = Math.random() * Math.PI * 2;
+
+        // DOM Element for the planet
+        this.planetElement = null;
 
         // Combo effect timeout tracker
         this.intensifyTimeout = null;
@@ -24,6 +41,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.lastFrameTime = 0;
         this.targetFrameTime = 1000 / 60; // 60 FPS
         this.colorCache = new Map();
+        this.time = 0;
+
+        // WebGL Renderer
+        this.cosmicCanvas = null;
+        this.cosmicRenderer = null;
+        this.useWebGL = true;
 
         // Quality preset state
         this.starsContainer = null;
@@ -31,38 +54,38 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.qualityChangeHandler = null;
         this.qualityPresets = {
             Minimal: {
-                starCount: 50,
-                galaxyParticles: 80,
+                starCount: 1000,
+                galaxyParticles: 200,
                 dustParticles: 40,
                 maxWaveBursts: 1,
             },
             Low: {
-                starCount: 80,
-                galaxyParticles: 120,
+                starCount: 2000,
+                galaxyParticles: 400,
                 dustParticles: 60,
                 maxWaveBursts: 1,
             },
             Medium: {
-                starCount: 110,
-                galaxyParticles: 160,
+                starCount: 4000,
+                galaxyParticles: 800,
                 dustParticles: 80,
                 maxWaveBursts: 2,
             },
             High: {
-                starCount: 140,
-                galaxyParticles: 200,
+                starCount: 8000,
+                galaxyParticles: 1500,
                 dustParticles: 110,
                 maxWaveBursts: 3,
             },
             Ultra: {
-                starCount: 180,
-                galaxyParticles: 260,
+                starCount: 15000,
+                galaxyParticles: 2500,
                 dustParticles: 150,
                 maxWaveBursts: 4,
             },
             Extreme: {
-                starCount: 250,
-                galaxyParticles: 350,
+                starCount: 25000,
+                galaxyParticles: 4000,
                 dustParticles: 200,
                 maxWaveBursts: 6,
             },
@@ -113,10 +136,93 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     refreshQualityDependentElements() {
         this.createStars(true);
+        this.generateGalaxyParticles();
+
+        if (this.useWebGL && this.cosmicRenderer) {
+            // Re-allocate for both stars and galaxy particles
+            const totalParticles = this.activePreset.starCount + this.activePreset.galaxyParticles;
+            this.cosmicRenderer.allocateParticles(totalParticles);
+            this.uploadParticlesToWebGL();
+        }
+
         if (this.canvas && this.ctx) {
-            this.generateGalaxyParticles();
             this.generateDustParticles();
         }
+    }
+
+    /**
+     * Initialize WebGL renderer
+     */
+    initWebGLRenderer() {
+        if (!this.canvas) return;
+
+        try {
+            this.cosmicCanvas = document.createElement('canvas');
+            this.cosmicCanvas.width = this.canvas.width;
+            this.cosmicCanvas.height = this.canvas.height;
+            // Insert before the main canvas to act as background
+            this.canvas.parentNode.insertBefore(this.cosmicCanvas, this.canvas);
+            this.cosmicCanvas.style.position = 'absolute';
+            this.cosmicCanvas.style.top = '0';
+            this.cosmicCanvas.style.left = '0';
+            this.cosmicCanvas.style.width = '100%';
+            this.cosmicCanvas.style.height = '100%';
+            this.cosmicCanvas.style.zIndex = '-1'; // Behind the main canvas
+
+            this.cosmicRenderer = new WebGLCosmicRenderer(this.cosmicCanvas);
+
+            if (this.cosmicRenderer.init()) {
+                const totalParticles = this.activePreset.starCount + this.activePreset.galaxyParticles;
+                this.cosmicRenderer.allocateParticles(totalParticles);
+                this.useWebGL = true;
+                console.log('🌌 Cosmic Noir: WebGL renderer active');
+            } else {
+                this.useWebGL = false;
+                this.cosmicRenderer = null;
+                if (this.cosmicCanvas.parentNode) {
+                    this.cosmicCanvas.parentNode.removeChild(this.cosmicCanvas);
+                }
+                this.cosmicCanvas = null;
+                console.log('🌌 Cosmic Noir: Falling back to Canvas2D');
+            }
+        } catch (e) {
+            console.warn('🌌 Cosmic Noir: WebGL init failed:', e);
+            this.useWebGL = false;
+        }
+    }
+
+    uploadParticlesToWebGL() {
+        if (!this.useWebGL || !this.cosmicRenderer) return;
+
+        const allParticles = [];
+
+        // 1. Stars (Background)
+        // Convert relative coordinates to pixel coordinates for WebGL
+        const pixelStars = this.stars.map(star => ({
+            ...star,
+            x: star.x * this.canvas.width,
+            y: star.y * this.canvas.height,
+            pulseBoost: 0,
+            type: 0 // Star
+        }));
+        allParticles.push(...pixelStars);
+
+        // 2. Galaxy Particles (Orbiting)
+        // These are already generated with radius/angle in generateGalaxyParticles
+        // We pass them as is, the shader handles the orbit
+        // We need to ensure x = radius, y = angle for the shader
+        const galaxyParticles = this.galaxyParticles.map(p => ({
+            x: p.distance, // Radius
+            y: p.angle,    // Angle offset
+            size: p.size,
+            color: `rgba(${p.brightness}, ${p.brightness}, ${p.brightness}, ${p.opacity})`,
+            brightness: 1.0,
+            pulseBoost: 0,
+            type: 1 // Galaxy Particle
+        }));
+        allParticles.push(...galaxyParticles);
+
+        this.cosmicRenderer.uploadParticles(allParticles);
     }
 
     async createScene() {
@@ -126,17 +232,35 @@ export default class CosmicNoirTheme extends BaseTheme {
             const quality = this.getGraphicsQuality();
             this.applyQualityPreset(quality, { skipRefresh: true });
 
-            // Create background stars
-            this.createStars(true);
+            // Get DOM elements
+            this.planetElement = document.querySelector('.cosmic-noir-planet');
+            if (this.planetElement) {
+                // Stop CSS animation so we can control it via JS
+                this.planetElement.style.animation = 'none';
+            } else {
+                console.warn('[Cosmic Noir] Planet element not found!');
+            }
 
-            // Create drifting galaxy particles
+            // Create galaxy canvas (foreground elements - now just dust)
             this.createGalaxyCanvas();
+
+            // Initialize WebGL (background stars + galaxy particles)
+            this.initWebGLRenderer();
+
+            // Create particles
+            this.createStars(true);
+            this.generateGalaxyParticles();
+            this.uploadParticlesToWebGL();
 
             // Setup listener for runtime graphics changes
             this.setupQualityListener();
 
             // Setup event listeners for reactive effects
             this.setupEventListeners();
+
+            // Initial resize to set moon position
+            this.resizeCanvas();
+            window.addEventListener('resize', () => this.resizeCanvas());
 
             console.log('[Cosmic Noir] Scene created successfully!');
         } catch (error) {
@@ -145,26 +269,43 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
     }
 
-    /**
-     * Create background stars with varying brightness
-     */
-    createStars(force = false) {
-        if (!this.starsContainer) {
-            this.starsContainer = document.getElementById('cosmic-noir-stars');
-            if (this.starsContainer) {
-                this.registerContainer(this.starsContainer);
+    resizeCanvas() {
+        if (!this.canvas) return;
+
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+
+        if (this.cosmicCanvas) {
+            this.cosmicCanvas.width = window.innerWidth;
+            this.cosmicCanvas.height = window.innerHeight;
+            if (this.cosmicRenderer) {
+                this.cosmicRenderer.resize(window.innerWidth, window.innerHeight);
+                this.uploadParticlesToWebGL();
             }
         }
 
-        const { starsContainer } = this;
-        if (!starsContainer) return;
-        if (!force && starsContainer.children.length > 0) return;
+        // Calculate base position of the planet (right: 15%, top: 25%)
+        this.moonBaseX = this.canvas.width * 0.85;
+        this.moonBaseY = this.canvas.height * 0.25;
 
-        starsContainer.textContent = '';
+        // Update galaxy center
+        this.updateGalaxyCenter();
+    }
+
+    updateGalaxyCenter() {
+        const centerX = (this.canvas.width * 0.85) - 90;
+        const centerY = (this.canvas.height * 0.25) + 90;
+
+        this.galaxyCenterX = centerX + this.moonOffsetX;
+        this.galaxyCenterY = centerY + this.moonOffsetY;
+    }
+
+    /**
+     * Create background stars
+     */
+    createStars(force = false) {
         this.stars = [];
-
-        const fragment = document.createDocumentFragment();
-        const starCount = this.activePreset?.starCount ?? 120;
+        const starCount = this.activePreset?.starCount ?? 2000;
 
         // Grayscale palette - pure monochrome
         const starColors = [
@@ -176,29 +317,26 @@ export default class CosmicNoirTheme extends BaseTheme {
         ];
 
         for (let i = 0; i < starCount; i++) {
-            const star = document.createElement('div');
-            star.className = 'cosmic-noir-star';
             const size = this.random(0.5, 2.5);
-            const isBright = Math.random() < 0.2; // 20% chance of bright star
+            const isBright = Math.random() < 0.2;
 
-            star.style.width = `${size}px`;
-            star.style.height = `${size}px`;
-            star.style.left = `${this.random(0, 100)}%`;
-            star.style.top = `${this.random(0, 100)}%`;
-            star.style.backgroundColor = starColors[Math.floor(Math.random() * starColors.length)];
-            star.style.opacity = `${this.random(0.3, 0.95).toFixed(2)}`;
-            star.style.animationDelay = `${this.random(0, 5)}s`;
-
-            if (isBright) {
-                star.classList.add('cosmic-noir-star-bright');
-                star.style.boxShadow = `0 0 ${size * 4}px rgba(255, 255, 255, 0.8)`;
-            }
-
-            fragment.appendChild(star);
-            this.stars.push(star);
+            this.stars.push({
+                x: Math.random(), // Relative 0-1
+                y: Math.random(), // Relative 0-1
+                size: size,
+                color: starColors[Math.floor(Math.random() * starColors.length)],
+                brightness: this.random(0.3, 0.95),
+                twinklePhase: Math.random() * Math.PI * 2,
+                twinkleSpeed: Math.random() * 0.02 + 0.005,
+                isBright: isBright
+            });
         }
 
-        starsContainer.appendChild(fragment);
+        // Clear old DOM stars
+        const oldStarsContainer = document.getElementById('cosmic-noir-stars');
+        if (oldStarsContainer) {
+            oldStarsContainer.innerHTML = '';
+        }
     }
 
     /**
@@ -219,39 +357,35 @@ export default class CosmicNoirTheme extends BaseTheme {
             desynchronized: true,
         });
 
-        // Store galaxy center (the "planet") for use in combo effects
-        this.galaxyCenterX = this.canvas.width / 2;
-        this.galaxyCenterY = this.canvas.height / 2;
-
-        const centerX = this.galaxyCenterX;
-        const centerY = this.galaxyCenterY;
-
-        this.generateGalaxyParticles();
         this.generateDustParticles();
 
         // Start animation
-        this.animateGalaxy(centerX, centerY);
+        this.animateGalaxy();
     }
 
     generateGalaxyParticles() {
         this.galaxyParticles = [];
         const count = this.activePreset?.galaxyParticles ?? 200;
+
         for (let i = 0; i < count; i++) {
             const angle = this.random(0, Math.PI * 2);
-            const distance = this.random(100, 600);
+            // Distribute particles around the black hole
+            // Closer particles are denser
+            const distance = this.random(100, 500);
             const brightness = Math.floor(this.random(120, 255));
 
             this.galaxyParticles.push({
                 angle,
                 distance,
-                driftSpeed: this.random(0.0005, 0.002),
-                orbitSpeed: this.random(-0.0003, 0.0003),
-                size: this.random(1, 3),
+                // Slightly smaller particles as requested
+                size: this.random(0.5, 2.0),
                 opacity: this.random(0.2, 0.7),
-                baseOpacity: this.random(0.2, 0.7),
                 brightness,
-                pulse: this.random(0, Math.PI * 2),
-                pulseSpeed: this.random(0.01, 0.03),
+                // These properties are now handled by shader or unused
+                driftSpeed: 0,
+                orbitSpeed: 0,
+                pulse: 0,
+                pulseSpeed: 0,
             });
         }
     }
@@ -275,63 +409,58 @@ export default class CosmicNoirTheme extends BaseTheme {
     /**
      * Animate galaxy drift and dust particles - OPTIMIZED
      */
-    animateGalaxy(centerX, centerY) {
+    animateGalaxy() {
         if (!this.isActive) return;
 
         const now = performance.now();
         const deltaTime = now - this.lastFrameTime;
 
         if (deltaTime < this.targetFrameTime) {
-            this.animationFrame = requestAnimationFrame(() => this.animateGalaxy(centerX, centerY));
+            this.animationFrame = requestAnimationFrame(() => this.animateGalaxy());
             return;
         }
 
         this.lastFrameTime = now - (deltaTime % this.targetFrameTime);
+        this.time += 0.016; // Approx 60fps increment
+
+        // Update Moon/Planet Drift - SLOWER
+        const time = Date.now() * 0.000005; // Even slower drift
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        // Lissajous figure for organic drift
+        // Amplitude: 15% of screen width/height
+        const driftAmpX = w * 0.15;
+        const driftAmpY = h * 0.15;
+
+        const targetOffsetX = Math.sin(time * 2 + this.moonPhaseX) * Math.cos(time * 1.5 + this.moonPhaseX2) * driftAmpX;
+        const targetOffsetY = Math.cos(time * 2.5 + this.moonPhaseY) * Math.sin(time * 1.2 + this.moonPhaseY2) * driftAmpY;
+
+        // Smooth interpolation
+        this.moonOffsetX += (targetOffsetX - this.moonOffsetX) * 0.02;
+        this.moonOffsetY += (targetOffsetY - this.moonOffsetY) * 0.02;
+
+        // Update DOM element position
+        if (this.planetElement) {
+            this.planetElement.style.transform = `translate(${this.moonOffsetX}px, ${this.moonOffsetY}px)`;
+        }
+
+        // Update Galaxy Center (Absolute position for Canvas/WebGL)
+        this.updateGalaxyCenter();
+
+        // Render WebGL Stars & Galaxy Particles
+        if (this.useWebGL && this.cosmicRenderer) {
+            this.cosmicRenderer.render(
+                this.time,
+                0, // Global pulse
+                { x: this.galaxyCenterX, y: this.galaxyCenterY },
+                this.moonRadius // Use ~90px radius for event horizon
+            );
+        }
 
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Draw galaxy particles
-        for (let i = 0; i < this.galaxyParticles.length; i++) {
-            const particle = this.galaxyParticles[i];
-
-            // Drift outward slowly
-            particle.distance += particle.driftSpeed;
-
-            // Orbital motion for galaxy swirl effect
-            particle.angle += particle.orbitSpeed;
-
-            // Pulse animation
-            particle.pulse += particle.pulseSpeed;
-
-            // Reset if too far
-            if (particle.distance > 700) {
-                particle.distance = this.random(100, 200);
-                particle.angle = this.random(0, Math.PI * 2);
-            }
-
-            // Calculate position
-            const x = centerX + Math.cos(particle.angle) * particle.distance;
-            const y = centerY + Math.sin(particle.angle) * particle.distance;
-
-            // Calculate pulsing opacity
-            const pulseOpacity = Math.max(0, particle.baseOpacity + Math.sin(particle.pulse) * 0.15);
-
-            // Skip very dim particles
-            if (pulseOpacity < 0.05) continue;
-
-            // Draw particle with gradient
-            const gradient = this.ctx.createRadialGradient(x, y, 0, x, y, particle.size * 2);
-            gradient.addColorStop(0, `rgba(${particle.brightness}, ${particle.brightness}, ${particle.brightness}, ${pulseOpacity})`);
-            gradient.addColorStop(0.5, `rgba(${particle.brightness}, ${particle.brightness}, ${particle.brightness}, ${pulseOpacity * 0.5})`);
-            gradient.addColorStop(1, `rgba(${particle.brightness}, ${particle.brightness}, ${particle.brightness}, 0)`);
-
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, particle.size * 2, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-
-        // Draw dust/grain particles
+        // Draw dust/grain particles (Foreground)
         for (let i = 0; i < this.dustParticles.length; i++) {
             const dust = this.dustParticles[i];
 
@@ -350,7 +479,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.ctx.fillRect(dust.x, dust.y, dust.size, dust.size);
         }
 
-        this.animationFrame = requestAnimationFrame(() => this.animateGalaxy(centerX, centerY));
+        // Note: Galaxy particles are now rendered via WebGL
+
+        this.animationFrame = requestAnimationFrame(() => this.animateGalaxy());
     }
 
     /**
@@ -416,22 +547,7 @@ export default class CosmicNoirTheme extends BaseTheme {
      * Brighten stars on line clear
      */
     brightenStars(intensity) {
-        const starsToBrighten = Math.min(Math.floor(intensity * 12), this.stars.length);
-
-        for (let i = 0; i < starsToBrighten; i++) {
-            const star = this.stars[Math.floor(Math.random() * this.stars.length)];
-            if (star) {
-                const originalOpacity = star.style.opacity;
-                star.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
-                star.style.opacity = '1';
-                star.style.transform = 'scale(1.5)';
-
-                setTimeout(() => {
-                    star.style.opacity = originalOpacity;
-                    star.style.transform = '';
-                }, 300 + Math.random() * 200);
-            }
-        }
+        // Placeholder for WebGL uniform update if needed
     }
 
     /**
@@ -444,6 +560,10 @@ export default class CosmicNoirTheme extends BaseTheme {
         const pulse = document.createElement('div');
         pulse.className = 'cosmic-noir-pulse';
         pulse.style.setProperty('--pulse-intensity', intensity);
+
+        // Position pulse at the current galaxy center
+        pulse.style.left = `${this.galaxyCenterX}px`;
+        pulse.style.top = `${this.galaxyCenterY}px`;
 
         pulseContainer.appendChild(pulse);
 
@@ -458,13 +578,7 @@ export default class CosmicNoirTheme extends BaseTheme {
      * Intensify particle drift
      */
     intensifyDrift(intensity) {
-        this.galaxyParticles.forEach((particle) => {
-            particle.driftSpeed *= (1 + intensity * 0.2);
-
-            setTimeout(() => {
-                particle.driftSpeed /= (1 + intensity * 0.2);
-            }, 800);
-        });
+        // Now handled by shader if we want, or just visual effects
     }
 
     /**
@@ -473,35 +587,24 @@ export default class CosmicNoirTheme extends BaseTheme {
     intensifyGalaxy(comboCount) {
         const theme = document.getElementById('cosmic-noir-theme');
         if (!theme) {
-            console.warn('[Cosmic Noir] Theme element not found for intensify effect');
             return;
         }
 
-        // Clear any existing timeout so rapid combos don't clear the effect early
         if (this.intensifyTimeout) {
             clearTimeout(this.intensifyTimeout);
         }
 
-        // Remove transition for instant application
         theme.style.transition = 'none';
 
-        // Increased intensity: more noticeable brightness and contrast
         const brightness = 100 + Math.min(comboCount * 15, 80);
         const contrast = 100 + Math.min(comboCount * 12, 70);
         theme.style.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
 
-        console.log(`[Cosmic Noir] Intensify applied: brightness(${brightness}%) contrast(${contrast}%)`);
-
-        // Contrast effect duration scales with combo count (2s base + 200ms per combo)
         const duration = 2000 + (comboCount * 200);
         this.intensifyTimeout = setTimeout(() => {
-            // Add smooth transition for fade-out
             theme.style.transition = 'filter 0.8s ease-out';
             theme.style.filter = 'brightness(100%) contrast(100%)';
 
-            console.log('[Cosmic Noir] Intensify fading out');
-
-            // Clear transition after fade completes
             setTimeout(() => {
                 theme.style.transition = '';
                 theme.style.filter = '';
@@ -512,7 +615,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     /**
-     * Create galaxy wave effect - originates from the cosmic-noir-planet element!
+     * Create galaxy wave effect
      */
     createGalaxyWave(comboCount) {
         if (!this.waveContainer) {
@@ -521,16 +624,10 @@ export default class CosmicNoirTheme extends BaseTheme {
         const { waveContainer } = this;
         if (!waveContainer) return;
 
-        // Get planet element position
-        const planet = document.querySelector('.cosmic-noir-planet');
-        if (!planet) return;
+        // Use current galaxy center
+        const planetCenterX = this.galaxyCenterX;
+        const planetCenterY = this.galaxyCenterY;
 
-        const planetRect = planet.getBoundingClientRect();
-        const planetCenterX = planetRect.left + planetRect.width / 2;
-        const planetCenterY = planetRect.top + planetRect.height / 2;
-
-        // Calculate offset from container's center position (container is at 50%, 50%)
-        // The container is positioned at screen center, so waves are positioned relative to it
         const containerCenterX = window.innerWidth / 2;
         const containerCenterY = window.innerHeight / 2;
 
@@ -544,7 +641,6 @@ export default class CosmicNoirTheme extends BaseTheme {
                 const wave = document.createElement('div');
                 wave.className = 'cosmic-noir-wave';
 
-                // Position wave relative to container, offset to planet center
                 wave.style.left = `${offsetX}px`;
                 wave.style.top = `${offsetY}px`;
 
@@ -563,19 +659,19 @@ export default class CosmicNoirTheme extends BaseTheme {
      * Subtle galaxy pulse on piece lock
      */
     subtleGalaxyPulse() {
-        this.galaxyParticles.forEach((particle) => {
-            particle.baseOpacity = Math.min(particle.baseOpacity * 1.2, 1);
-
-            setTimeout(() => {
-                particle.baseOpacity /= 1.2;
-            }, 200);
-        });
+        // Handled by shader global pulse if connected
     }
 
     stop() {
         if (this.qualityChangeHandler && typeof window !== 'undefined') {
             window.removeEventListener('settingsChanged', this.qualityChangeHandler);
             this.qualityChangeHandler = null;
+        }
+
+        // Reset planet animation
+        if (this.planetElement) {
+            this.planetElement.style.animation = '';
+            this.planetElement.style.transform = '';
         }
 
         // Cancel animation frame
@@ -602,6 +698,16 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Clear canvas references
         this.canvas = null;
         this.ctx = null;
+
+        // Clean up WebGL
+        if (this.cosmicRenderer) {
+            this.cosmicRenderer.destroy();
+            this.cosmicRenderer = null;
+        }
+        if (this.cosmicCanvas && this.cosmicCanvas.parentNode) {
+            this.cosmicCanvas.parentNode.removeChild(this.cosmicCanvas);
+        }
+        this.cosmicCanvas = null;
 
         // Clear color cache
         this.colorCache.clear();

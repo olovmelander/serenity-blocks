@@ -50,22 +50,34 @@ export default class WebGLMeadowGrass {
 
             out vec3 vColor;
             out float vHeight;
+            out float vLighting;
 
             void main() {
                 // Base position
                 vec2 pos = aPosition * aInstanceScale;
                 
-                // Wind animation - Slower and smoother
-                // Only move top vertices (y > 0)
+                // Wind animation - More complex and natural
                 float wind = 0.0;
+                float bend = 0.0;
+                
                 if (aPosition.y > 0.0) {
-                    float t = uTime * 1.0 + aInstancePhase + aInstanceOffset.x * 0.005;
-                    wind = sin(t) * (0.05 + uWindStrength) * pos.y;
-                    // Add some turbulence
-                    wind += sin(t * 2.0) * 0.02 * pos.y;
+                    // Multi-layered wind noise approximation
+                    float t = uTime * 0.8 + aInstancePhase + aInstanceOffset.x * 0.002;
+                    float t2 = uTime * 1.5 + aInstancePhase * 2.0 + aInstanceOffset.x * 0.01;
+                    
+                    // Main sway
+                    float sway = sin(t) * (0.1 + uWindStrength * 2.0);
+                    // Turbulence
+                    float turbulence = sin(t2) * (0.05 + uWindStrength);
+                    
+                    wind = (sway + turbulence) * pow(aPosition.y / 60.0, 2.0) * 20.0;
+                    
+                    // Vertical compression when bending (fake 3D length preservation)
+                    bend = abs(wind) * 0.2;
                 }
                 
                 pos.x += wind;
+                pos.y -= bend;
                 
                 // World position
                 vec2 worldPos = pos + aInstanceOffset.xy;
@@ -77,6 +89,9 @@ export default class WebGLMeadowGrass {
                 
                 vColor = aInstanceColor;
                 vHeight = aPosition.y / 60.0; // Normalize height for gradient
+                
+                // Simple fake lighting based on wind direction
+                vLighting = 1.0 + wind * 0.02; 
             }
         ` : `
             attribute vec2 aPosition;
@@ -91,18 +106,28 @@ export default class WebGLMeadowGrass {
 
             varying vec3 vColor;
             varying float vHeight;
+            varying float vLighting;
 
             void main() {
                 vec2 pos = aPosition * aInstanceScale;
                 
                 float wind = 0.0;
+                float bend = 0.0;
+                
                 if (aPosition.y > 0.0) {
-                    float t = uTime * 1.0 + aInstancePhase + aInstanceOffset.x * 0.005;
-                    wind = sin(t) * (0.05 + uWindStrength) * pos.y;
-                    wind += sin(t * 2.0) * 0.02 * pos.y;
+                    float t = uTime * 0.8 + aInstancePhase + aInstanceOffset.x * 0.002;
+                    float t2 = uTime * 1.5 + aInstancePhase * 2.0 + aInstanceOffset.x * 0.01;
+                    
+                    float sway = sin(t) * (0.1 + uWindStrength * 2.0);
+                    float turbulence = sin(t2) * (0.05 + uWindStrength);
+                    
+                    wind = (sway + turbulence) * pow(aPosition.y / 60.0, 2.0) * 20.0;
+                    bend = abs(wind) * 0.2;
                 }
                 
                 pos.x += wind;
+                pos.y -= bend;
+                
                 vec2 worldPos = pos + aInstanceOffset.xy;
                 vec2 clipPos = (worldPos / uResolution) * 2.0 - 1.0;
                 
@@ -110,6 +135,7 @@ export default class WebGLMeadowGrass {
                 
                 vColor = aInstanceColor;
                 vHeight = aPosition.y / 60.0;
+                vLighting = 1.0 + wind * 0.02;
             }
         `;
 
@@ -118,24 +144,44 @@ export default class WebGLMeadowGrass {
             precision highp float;
             in vec3 vColor;
             in float vHeight;
+            in float vLighting;
             out vec4 outColor;
 
             void main() {
                 // Gradient on blade: Darker at bottom, lighter at top
-                vec3 bottomColor = vColor * 0.6;
-                vec3 topColor = vColor * 1.2;
-                vec3 col = mix(bottomColor, topColor, vHeight);
+                // Add a bit of yellow/brown to the tip for realism
+                vec3 bottomColor = vColor * 0.4; // Darker base (ambient occlusion)
+                vec3 midColor = vColor * 1.1;
+                vec3 topColor = vColor * 1.3 + vec3(0.1, 0.1, 0.0); // Sun-kissed tip
+                
+                vec3 col = mix(bottomColor, midColor, vHeight * 1.5);
+                if (vHeight > 0.66) {
+                    col = mix(midColor, topColor, (vHeight - 0.66) * 3.0);
+                }
+                
+                // Apply lighting
+                col *= vLighting;
+                
                 outColor = vec4(col, 1.0);
             }
         ` : `
             precision highp float;
             varying vec3 vColor;
             varying float vHeight;
+            varying float vLighting;
 
             void main() {
-                vec3 bottomColor = vColor * 0.6;
-                vec3 topColor = vColor * 1.2;
-                vec3 col = mix(bottomColor, topColor, vHeight);
+                vec3 bottomColor = vColor * 0.4;
+                vec3 midColor = vColor * 1.1;
+                vec3 topColor = vColor * 1.3 + vec3(0.1, 0.1, 0.0);
+                
+                vec3 col = mix(bottomColor, midColor, vHeight * 1.5);
+                if (vHeight > 0.66) {
+                    col = mix(midColor, topColor, (vHeight - 0.66) * 3.0);
+                }
+                
+                col *= vLighting;
+                
                 gl_FragColor = vec4(col, 1.0);
             }
         `;
@@ -160,15 +206,22 @@ export default class WebGLMeadowGrass {
             windStrength: gl.getUniformLocation(program, 'uWindStrength'),
         };
 
-        // Geometry (Simple Triangle for grass blade)
-        // Bottom-Left, Bottom-Right, Top-Center
-        // Thinner blades
-        const bladeWidth = 6;
-        const bladeHeight = 60;
+        // Geometry (Curved blade using 5 vertices for smoother bend)
+        // 0: Bottom Left
+        // 1: Bottom Right
+        // 2: Mid Left
+        // 3: Mid Right
+        // 4: Top Center
+        const w = 7.0; // Slightly wider base
+        const h = 60.0;
+
+        // Triangle Strip
         const vertices = new Float32Array([
-            -bladeWidth / 2, 0.0,
-            bladeWidth / 2, 0.0,
-            0.0, bladeHeight
+            -w / 2, 0.0,      // 0
+            w / 2, 0.0,       // 1
+            -w / 3, h * 0.5,    // 2
+            w / 3, h * 0.5,     // 3
+            0.0, h          // 4
         ]);
 
         this.buffers = {};
@@ -301,9 +354,9 @@ export default class WebGLMeadowGrass {
 
         // Draw
         if (this.isWebGL2) {
-            gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, this.bladeCount);
+            gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 5, this.bladeCount);
         } else {
-            this.ext.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 3, this.bladeCount);
+            this.ext.drawArraysInstancedANGLE(gl.TRIANGLE_STRIP, 0, 5, this.bladeCount);
         }
 
         // Reset divisors
