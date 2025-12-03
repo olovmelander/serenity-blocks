@@ -10,6 +10,8 @@
 import { BreathingTab } from './BreathingTab.js';
 import { MusicTab } from './MusicTab.js';
 import { ThemesTab } from './ThemesTab.js';
+import { SessionsTab } from './SessionsTab.js';
+import { BreathworkSessionManager } from '../effects/breathwork-session-manager.js';
 import { throttle } from '../../utils/performance-utils.js';
 import { SpatialNavigation } from '../spatial-navigation.js';
 
@@ -34,7 +36,10 @@ export class SerenityHub {
         // Tab instances
         this.breathingTab = null;
         this.musicTab = null;
+        this.musicTab = null;
         this.themesTab = null;
+        this.sessionsTab = null;
+        this.sessionManager = null;
 
         // Gamepad support (uses global gamepadController from main app)
         this.gamepadCallbacks = null;
@@ -246,6 +251,17 @@ export class SerenityHub {
           </svg>
           <span>Breathing</span>
         </button>
+        <button class="hub-tab"
+                data-tab="sessions"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-sessions">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
+            <path d="M12 6v6l4 2"></path>
+          </svg>
+          <span>Sessions</span>
+        </button>
       </nav>
 
       <div class="hub-tab-content">
@@ -257,6 +273,9 @@ export class SerenityHub {
         </div>
         <div id="tab-breathing" class="tab-panel" role="tabpanel" aria-labelledby="tab-breathing">
           <div class="tab-loading">Loading breathing techniques...</div>
+        </div>
+        <div id="tab-sessions" class="tab-panel" role="tabpanel" aria-labelledby="tab-sessions">
+          <div class="tab-loading">Loading sessions...</div>
         </div>
       </div>
     `;
@@ -484,6 +503,19 @@ export class SerenityHub {
             }
         }
 
+        // Load sessions tab
+        if (tabName === 'sessions' && !this.sessionsTab) {
+            if (window.breathingIndicator) {
+                if (!this.sessionManager) {
+                    this.sessionManager = new BreathworkSessionManager(window.breathingIndicator);
+                }
+                this.sessionsTab = new SessionsTab(this, this.sessionManager);
+                console.log('[SerenityHub] Sessions tab loaded');
+            } else {
+                console.warn('[SerenityHub] Breathing indicator not available for sessions');
+            }
+        }
+
         // Refresh theme tab if it's already loaded (in case theme changed externally)
         if (tabName === 'themes' && this.themesTab) {
             this.themesTab.refreshCurrentTheme();
@@ -602,13 +634,13 @@ export class SerenityHub {
 
             // Tab navigation
             switchTabLeft: () => {
-                const tabs = ['themes', 'music', 'breathing'];
+                const tabs = ['themes', 'music', 'breathing', 'sessions'];
                 const currentIndex = tabs.indexOf(this.currentTab);
                 const newIndex = (currentIndex - 1 + tabs.length) % tabs.length;
                 this.switchTab(tabs[newIndex]);
             },
             switchTabRight: () => {
-                const tabs = ['themes', 'music', 'breathing'];
+                const tabs = ['themes', 'music', 'breathing', 'sessions'];
                 const currentIndex = tabs.indexOf(this.currentTab);
                 const newIndex = (currentIndex + 1) % tabs.length;
                 this.switchTab(tabs[newIndex]);
