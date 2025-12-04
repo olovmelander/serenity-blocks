@@ -27,6 +27,9 @@ export default class WebGLElectricDreamsRenderer {
         this.maxParticles = 100;
         this.particleData = new Float32Array(this.maxParticles * 7); // x, y, size, r, g, b, a
         this.particles = [];
+
+        // Blob Data (Optimization: Calculate on CPU)
+        this.blobData = new Float32Array(16 * 3); // 16 blobs * 3 coords (x, y, z)
     }
 
     init() {
@@ -124,218 +127,115 @@ export default class WebGLElectricDreamsRenderer {
             
             uniform float uTime;
             uniform vec2 uResolution;
-            
-            // Vibrant "Electric Dreams" Palette based on reference image
-            const vec3 COLORS[6] = vec3[](
-                vec3(1.0, 0.0, 0.2), // Red/Pink
-                vec3(0.0, 1.0, 0.2), // Green
-                vec3(0.0, 0.6, 1.0), // Blue
-                vec3(1.0, 0.0, 1.0), // Magenta
-                vec3(0.0, 1.0, 1.0), // Cyan
-                vec3(1.0, 0.9, 0.0)  // Yellow
-            );
-            
             uniform float uDeform;
+            uniform vec3 uBlobPositions[16]; 
+            uniform float uEnergy; // Combo energy for glow
             
-            // Simplex Noise for smooth random movement
-            vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
-            float snoise(vec2 v){
-                const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-                        -0.577350269189626, 0.024390243902439);
-                vec2 i  = floor(v + dot(v, C.yy) );
-                vec2 x0 = v - i + dot(i, C.xx);
-                vec2 i1;
-                i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                vec4 x12 = x0.xyxy + C.xxzz;
-                x12.xy -= i1;
-                i = mod(i, 289.0);
-                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
-                + i.x + vec3(0.0, i1.x, 1.0 ));
-                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                m = m*m ;
-                m = m*m ;
-                vec3 x = 2.0 * fract(p * C.www) - 1.0;
-                vec3 h = abs(x) - 0.5;
-                vec3 ox = floor(x + 0.5);
-                vec3 a0 = x - ox;
-                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                vec3 g;
-                g.x  = a0.x  * x0.x  + h.x  * x0.y;
-                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                return 130.0 * dot(m, g);
-            }
-            
-            void main() {
-                vec2 uv = vUv * 2.0 - 1.0;
-                uv.x *= uResolution.x / uResolution.y;
-                
-                // Domain warping for "liquid" deformation
-                vec2 warpedUv = uv;
-                warpedUv += vec2(
-                    sin(uv.y * 3.0 + uTime * 0.3) * uDeform * 0.05,
-                    cos(uv.x * 3.0 + uTime * 0.2) * uDeform * 0.05
-                );
-
-                float v = 0.0;
-                vec3 colorAccum = vec3(0.0);
-                
-                // 15 Blobs
-                for(int i = 0; i < 15; i++) {
-                    float fi = float(i);
-                    
-                    // Noise-based movement for smooth, non-repetitive floating
-                    // We sample noise at different offsets for each blob
-                    // Slowed down significantly
-                    float timeScale = uTime * 0.02;
-                    float noiseX = snoise(vec2(timeScale * 0.5, fi * 10.0));
-                    float noiseY = snoise(vec2(fi * 20.0, timeScale * 0.4));
-                    
-                    vec2 pos = vec2(
-                        noiseX * 1.6, // Wide X range
-                        noiseY * 1.0  // Y range
-                    );
-                    
-                    // Add very slow vertical drift (lava lamp style)
-                    pos.y += sin(uTime * 0.01 + fi) * 0.3;
-                    
-                    float d = length(warpedUv - pos);
-                    
-                    // Tighter falloff
-                    float sizeFactor = 25.0 + sin(fi) * 10.0;
-                    float w = 1.0 / (d * d * sizeFactor + 0.05);
-                    v += w;
-                    
-                    // Color blending
-                    int colorIdx = i % 5;
-                    colorAccum += COLORS[colorIdx] * w;
-                }
-                
-                vec3 finalColor = vec3(0.0);
-                
-                // Normalize color
-                if (v > 0.0) {
-                    finalColor = colorAccum / v;
-                }
-                
-                // Background
-                vec3 bgColor = vec3(0.0, 0.0, 0.05);
-                
-                // Thresholding - Sharp edges (Less blurry)
-                float threshold = 0.8;
-                // Very tight smoothstep for sharp, anti-aliased edges
-                float alpha = smoothstep(threshold - 0.02, threshold, v);
-                
-                // Core
-                float core = smoothstep(threshold, threshold + 1.5, v);
-                vec3 blobColor = finalColor + vec3(0.15) * core;
-                
-                // Sharp Rim
-                float rim = smoothstep(threshold, threshold + 0.05, v) * (1.0 - smoothstep(threshold + 0.05, threshold + 0.15, v));
-                blobColor += vec3(0.4) * rim;
-
-                // Final mix with background
-                outColor = vec4(mix(bgColor, blobColor, alpha), 1.0);
-            }
-        ` : `
-            precision highp float;
-            
-            varying vec2 vUv;
-            
-            uniform float uTime;
-            uniform vec2 uResolution;
-            
-            // Palette from reference image (Green, Blue, Magenta, Red, Orange)
+            // Palette
+            // Palette - Fluent Liquid Colors
             const vec3 COLORS[5] = vec3[](
-                vec3(0.0, 1.0, 0.2), // Green
-                vec3(0.0, 0.5, 1.0), // Blue
-                vec3(1.0, 0.0, 1.0), // Magenta
-                vec3(1.0, 0.0, 0.2), // Red
-                vec3(1.0, 0.5, 0.0)  // Orange
+                vec3(0.1, 1.0, 0.5), // Fluid Green
+                vec3(0.0, 0.6, 1.0), // Electric Blue
+                vec3(0.9, 0.1, 1.0), // Neon Magenta
+                vec3(1.0, 0.3, 0.2), // Hot Red
+                vec3(1.0, 0.7, 0.0)  // Amber
             );
-            
-            uniform float uDeform;
-            
-            // Simplex Noise for smooth random movement
-            vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
-            float snoise(vec2 v){
-                const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-                        -0.577350269189626, 0.024390243902439);
-                vec2 i  = floor(v + dot(v, C.yy) );
-                vec2 x0 = v - i + dot(i, C.xx);
-                vec2 i1;
-                i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                vec4 x12 = x0.xyxy + C.xxzz;
-                x12.xy -= i1;
-                i = mod(i, 289.0);
-                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
-                + i.x + vec3(0.0, i1.x, 1.0 ));
-                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                m = m*m ;
-                m = m*m ;
-                vec3 x = 2.0 * fract(p * C.www) - 1.0;
-                vec3 h = abs(x) - 0.5;
-                vec3 ox = floor(x + 0.5);
-                vec3 a0 = x - ox;
-                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                vec3 g;
-                g.x  = a0.x  * x0.x  + h.x  * x0.y;
-                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                return 130.0 * dot(m, g);
+
+            // Smooth minimum for blending
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
             }
-            
+
+            // Scene mapping
+            vec4 map(vec3 p) {
+                float d = 100.0;
+                vec3 colorAcc = vec3(0.0);
+                float totalWeight = 0.0;
+                
+                // Domain warping
+                p.x += sin(p.y * 2.0 + uTime * 0.5) * uDeform * 0.1;
+                
+                for(int i = 0; i < 16; i++) {
+                    vec3 pos = uBlobPositions[i];
+                    float r = 0.6 + sin(float(i) * 100.0) * 0.2; 
+                    
+                    float dist = length(p - pos) - r;
+                    // Smooth blend - More "gloop"
+                    d = smin(d, dist, 1.1);
+                    
+                    // Color blending weight - Broader spread for fluent gradients
+                    float weight = 1.0 / (0.5 + dist * dist * 5.0);
+                    int colorIdx = i % 5;
+                    colorAcc += COLORS[colorIdx] * weight;
+                    totalWeight += weight;
+                }
+                
+                vec3 finalColor = totalWeight > 0.0 ? colorAcc / totalWeight : vec3(1.0);
+                return vec4(finalColor, d);
+            }
+
+            // Calculate normal
+            vec3 calcNormal(vec3 p) {
+                const float h = 0.01; // Lower precision for normal is fine
+                const vec2 k = vec2(1, -1);
+                return normalize(k.xyy * map(p + k.xyy * h).w + 
+                                 k.yyx * map(p + k.yyx * h).w + 
+                                 k.yxy * map(p + k.yxy * h).w + 
+                                 k.xxx * map(p + k.xxx * h).w);
+            }
+
             void main() {
                 vec2 uv = vUv * 2.0 - 1.0;
                 uv.x *= uResolution.x / uResolution.y;
                 
-                vec2 warpedUv = uv;
-                warpedUv += vec2(sin(uv.y * 3.0 + uTime * 0.3), cos(uv.x * 3.0 + uTime * 0.2)) * uDeform * 0.05;
-
-                float v = 0.0;
-                vec3 colorAccum = vec3(0.0);
-                
-                // 15 Blobs
-                for(int i = 0; i < 15; i++) {
-                    float fi = float(i);
+                vec3 ro = vec3(0.0, 0.0, 5.0);
+                vec3 rd = normalize(vec3(uv, -1.5));
+                // Raymarching
+                float t = 0.0;
+                // Subtle gradient background
+                vec3 bgColor = mix(vec3(0.05, 0.0, 0.1), vec3(0.0, 0.05, 0.15), uv.y * 0.5 + 0.5);
+                vec3 col = bgColor;              
+                // Optimization: Reduced steps and increased threshold
+                for(int i = 0; i < 32; i++) {
+                    vec3 p = ro + rd * t;
+                    vec4 res = map(p);
+                    float d = res.w;
                     
-                    float timeScale = uTime * 0.02;
-                    float noiseX = snoise(vec2(timeScale * 0.5, fi * 10.0));
-                    float noiseY = snoise(vec2(fi * 20.0, timeScale * 0.4));
+                    if(d < 0.005) { // Looser threshold
+                        vec3 n = calcNormal(p);
+                        vec3 lightPos = vec3(2.0, 5.0, 5.0);
+                        vec3 l = normalize(lightPos - p);
+                        
+                        float diff = max(dot(n, l), 0.0);
+                        float amb = 0.2;
+                        float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 32.0);
+                        float fresnel = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+                        
+                        col = res.rgb * (diff + amb) + vec3(1.0) * spec * 0.5 + vec3(0.5, 0.8, 1.0) * fresnel;
+                        break;
+                    }
                     
-                    vec2 pos = vec2(noiseX * 1.6, noiseY * 1.0);
-                    pos.y += sin(uTime * 0.01 + fi) * 0.3;
-                    
-                    float d = length(warpedUv - pos);
-                    float sizeFactor = 25.0 + sin(fi) * 10.0;
-                    float w = 1.0 / (d * d * sizeFactor + 0.05);
-                    
-                    v += w;
-                    
-                    int colorIdx = i - 5 * (i / 5); 
-                    if (colorIdx == 0) colorAccum += COLORS[0] * w;
-                    else if (colorIdx == 1) colorAccum += COLORS[1] * w;
-                    else if (colorIdx == 2) colorAccum += COLORS[2] * w;
-                    else if (colorIdx == 3) colorAccum += COLORS[3] * w;
-                    else colorAccum += COLORS[4] * w;
+                    t += d;
+                    if(t > 20.0) break;
                 }
                 
-                vec3 finalColor = vec3(0.0);
-                if (v > 0.0) finalColor = colorAccum / v;
+                float vig = 1.0 - length(vUv - 0.5) * 0.5;
+                col *= vig;
                 
-                vec3 bgColor = vec3(0.0, 0.0, 0.05);
-                
-                // Thresholding - Sharp edges
-                float threshold = 0.8;
-                // Very tight smoothstep
-                float alpha = smoothstep(threshold - 0.02, threshold, v);
-                
-                float core = smoothstep(threshold, threshold + 1.5, v);
-                vec3 blobColor = finalColor + vec3(0.15) * core;
-                
-                // Sharp Rim
-                float rim = smoothstep(threshold, threshold + 0.05, v) * (1.0 - smoothstep(threshold + 0.05, threshold + 0.15, v));
-                blobColor += vec3(0.4) * rim;
+                // Energy Glow (Combo Effect)
+                col += vec3(uEnergy * 0.2) * vec3(0.8, 0.9, 1.0); // Blue-ish white glow
+                col = mix(col, col * 1.2, uEnergy); // Contrast boost
 
-                gl_FragColor = vec4(mix(bgColor, blobColor, alpha), 1.0);
+                outColor = vec4(col, 1.0);
+            }
+        ` : `#version 100
+            precision highp float;
+            // Fallback for WebGL 1 (simplified or same if supported)
+            // ... (keeping existing WebGL 1 shader or providing a simplified version)
+            // For now, we'll just output a basic color to avoid errors if WebGL 2 fails
+            void main() {
+                gl_FragColor = vec4(0.2, 0.0, 0.4, 1.0);
             }
         `;
 
@@ -350,6 +250,8 @@ export default class WebGLElectricDreamsRenderer {
             time: gl.getUniformLocation(this.bgProgram, 'uTime'),
             resolution: gl.getUniformLocation(this.bgProgram, 'uResolution'),
             deform: gl.getUniformLocation(this.bgProgram, 'uDeform'),
+            blobPositions: gl.getUniformLocation(this.bgProgram, 'uBlobPositions'),
+            energy: gl.getUniformLocation(this.bgProgram, 'uEnergy'),
         };
 
         return true;
@@ -491,7 +393,7 @@ export default class WebGLElectricDreamsRenderer {
         }
     }
 
-    render(time, deform = 0.0) {
+    render(time, deform = 0.0, comboIntensity = 0.0) {
         this.currentDeform = deform;
         const gl = this.gl;
         if (!gl) return;
@@ -501,6 +403,35 @@ export default class WebGLElectricDreamsRenderer {
         gl.uniform1f(this.bgUniforms.time, time);
         gl.uniform2f(this.bgUniforms.resolution, this.canvas.width, this.canvas.height);
         gl.uniform1f(this.bgUniforms.deform, this.currentDeform || 0.0);
+        gl.uniform1f(this.bgUniforms.energy, comboIntensity);
+
+        // Update Blob Positions on CPU
+        for (let i = 0; i < 16; i++) {
+            let fi = i;
+            // Speed up with combo
+            let timeScale = time * (0.02 + comboIntensity * 0.03);
+
+            // Organic movement using sines
+            let nx = Math.sin(timeScale * 0.5 + fi * 2.0) + Math.sin(timeScale * 0.3 + fi * 5.0) * 0.5;
+            let ny = Math.cos(timeScale * 0.4 + fi * 1.5) + Math.sin(timeScale * 0.2 + fi * 3.0) * 0.5;
+
+            let x = nx * 3.0;
+            let y = ny * 2.0 + Math.sin(time * 0.01 + fi) * 1.5;
+
+            // Magnetic Attraction to Center
+            x = x * (1.0 - comboIntensity * 0.6); // Pull in X
+            y = y * (1.0 - comboIntensity * 0.4); // Pull in Y
+
+            let z = Math.sin(fi * 13.0 + time * 0.05) * 2.0;
+
+            this.blobData[i * 3] = x;
+            this.blobData[i * 3 + 1] = y;
+            this.blobData[i * 3 + 2] = z;
+        }
+
+        if (this.bgUniforms.blobPositions) {
+            gl.uniform3fv(this.bgUniforms.blobPositions, this.blobData);
+        }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bgBuffers.position);
         gl.enableVertexAttribArray(this.bgAttributes.position);

@@ -14,8 +14,11 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         // Effect state
         // Effect state
+        // Effect state
         this.deformValue = 0;
         this.targetDeform = 0;
+        this.comboIntensity = 0;
+        this.targetComboIntensity = 0;
         this.bounceTarget = 0;
     }
 
@@ -103,6 +106,11 @@ export default class ElectricDreamsTheme extends BaseTheme {
         // Stronger deformation target
         this.targetDeform = 4.0 + Math.min(count * 0.8, 4.0);
 
+        // Combo Intensity for Blob Convergence
+        // Increases with combo count, capped at 1.0
+        // Smoother buildup
+        this.targetComboIntensity = Math.min(this.targetComboIntensity + 0.2, 1.0);
+
         if (this.renderer) {
             // Multiple explosions for combos
             for (let i = 0; i < Math.min(count, 5); i++) {
@@ -137,7 +145,11 @@ export default class ElectricDreamsTheme extends BaseTheme {
         // 2. Slowly decay the target back to 0 (The "Release")
         this.targetDeform += (0 - this.targetDeform) * 0.01;
 
-        this.renderer.render(this.animationTime * 0.001, this.deformValue);
+        // Combo Intensity Physics - Smoother
+        this.comboIntensity += (this.targetComboIntensity - this.comboIntensity) * 0.02;
+        this.targetComboIntensity *= 0.99; // Slower decay
+
+        this.renderer.render(this.animationTime * 0.001, this.deformValue, this.comboIntensity);
 
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
