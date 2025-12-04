@@ -1,6 +1,7 @@
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { CHROMADELIC_HIGHWAY_TETROMINOS } from './chromadelic-highway-tetrominos.js';
+import WebGLChromadelicRenderer from './webgl-chromadelic-renderer.js';
 
 /**
  * Chromadelic Highway Theme - Enhanced Neon Dream
@@ -44,10 +45,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.lockSparkles = [];
 
         // Canvas references
-        this.waveCanvas = null;
-        this.waveCtx = null;
-        this.sparkleCanvas = null;
-        this.sparkleCtx = null;
+        this.canvas = null;
+        this.renderer = null;
 
         // Performance cache
         this.cachedWaveGradient = null;
@@ -237,10 +236,30 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.applyQualityPreset(quality);
 
         const container = this.getContainer('chromadelic-highway-theme');
-        const background = this.getContainer('chromadelic-highway-background');
 
-        this.createRainbowWaves();
-        this.createSparkles();
+        // Create single WebGL canvas
+        if (container) {
+            this.canvas = document.createElement('canvas');
+            this.canvas.className = 'chromadelic-webgl-canvas';
+            this.canvas.style.position = 'absolute';
+            this.canvas.style.top = '0';
+            this.canvas.style.left = '0';
+            this.canvas.style.width = '100%';
+            this.canvas.style.height = '100%';
+            this.canvas.style.zIndex = '1'; // Behind UI but visible
+            container.appendChild(this.canvas);
+
+            this.renderer = new WebGLChromadelicRenderer(this.canvas);
+            if (!this.renderer.init()) {
+                console.error('Failed to init WebGL renderer for Chromadelic Highway');
+                this.renderer = null;
+                return; // Abort if renderer fails
+            }
+
+            this.resize();
+            window.addEventListener('resize', () => this.resize());
+        }
+
         this.setupEventListeners();
         this.setupQualityListener();
         this.initSparkles();
@@ -249,157 +268,26 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.animate();
     }
 
-    createRainbowWaves() {
-        const waveContainer = this.getContainer('chromadelic-highway-waves');
-
-        if (waveContainer && waveContainer.children.length === 0) {
-            this.waveCanvas = document.createElement('canvas');
-            this.waveCanvas.className = 'chromadelic-wave-canvas';
-            this.waveCtx = this.waveCanvas.getContext('2d', { alpha: true });
-
-            waveContainer.appendChild(this.waveCanvas);
-
-            this.resizeWaves();
-            window.addEventListener('resize', () => this.resizeWaves());
-        } else if (waveContainer && waveContainer.children.length > 0) {
-            this.waveCanvas = waveContainer.querySelector('.chromadelic-wave-canvas');
-            if (this.waveCanvas) {
-                this.waveCtx = this.waveCanvas.getContext('2d', { alpha: true });
-                this.resizeWaves();
-            }
-        }
-    }
-
-    resizeWaves() {
-        if (!this.waveCanvas) return;
+    resize() {
+        if (!this.renderer || !this.canvas) return;
 
         const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-        const rect = this.waveCanvas.getBoundingClientRect();
+        const rect = this.canvas.getBoundingClientRect();
 
-        this.waveCanvas.width = rect.width * dpr;
-        this.waveCanvas.height = rect.height * dpr;
-
-        this.waveCtx.scale(dpr, dpr);
+        this.renderer.resize(rect.width * dpr, rect.height * dpr);
 
         this.waveWidth = rect.width;
         this.waveHeight = rect.height;
     }
 
-    drawRainbowWaves() {
-        if (!this.waveCtx || !this.waveCanvas) return;
 
-        if (this.frameCounter % (this.activePreset.skipFrames + 1) !== 0) {
-            return;
-        }
 
-        const ctx = this.waveCtx;
-        const width = this.waveWidth;
-        const height = this.waveHeight;
 
-        ctx.clearRect(0, 0, width, height);
-
-        // Enhanced rainbow color stops
-        const rainbowStops = [
-            { pos: 0.0, color: [255, 50, 120] },
-            { pos: 0.12, color: [255, 100, 0] },
-            { pos: 0.25, color: [255, 200, 0] },
-            { pos: 0.38, color: [120, 255, 80] },
-            { pos: 0.5, color: [0, 255, 180] },
-            { pos: 0.62, color: [0, 180, 255] },
-            { pos: 0.75, color: [120, 80, 255] },
-            { pos: 0.88, color: [255, 50, 200] },
-            { pos: 1.0, color: [255, 50, 120] },
-        ];
-
-        const effectiveSpeed = 0.0007 * (1 + this.colorSpeedBoost * 0.6);
-        const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
-
-        const numLayers = this.activePreset.waveLayers;
-
-        // Draw waves from back to front
-        for (let layer = 0; layer < numLayers; layer++) {
-            const layerDepth = layer / numLayers;
-
-            const layerSpeed = 0.35 + layerDepth * 0.8;
-            const layerHeight = height * (0.12 + layerDepth * 0.35);
-            const layerY = height * 0.28 + layerDepth * height * 0.38;
-            const layerAlpha = 0.2 + layerDepth * 0.4;
-
-            const baseAmplitude = 45 + layerDepth * 80;
-            const amplitude = baseAmplitude * (1 + this.waveAmplitudeBoost * 0.9);
-            const frequency = 0.0025 - layerDepth * 0.0007;
-            const phaseOffset = time * layerSpeed + layer * 0.9;
-
-            const breathe = Math.sin(time * 2.2 + layer * 0.6) * 0.25 + 1;
-            const pulseEffect = 1 + this.wavePulseIntensity * 0.5;
-
-            // Create gradient
-            const gradient = ctx.createLinearGradient(0, 0, width, 0);
-            const colorOffset = (time * 1.4 + layer * 0.35) % 1;
-
-            for (let i = 0; i < rainbowStops.length; i++) {
-                const stop = rainbowStops[i];
-                const pos = (stop.pos + colorOffset) % 1;
-                const [r, g, b] = stop.color;
-                const alpha = layerAlpha * breathe * pulseEffect;
-                gradient.addColorStop(pos, `rgba(${r}, ${g}, ${b}, ${alpha})`);
-            }
-
-            ctx.fillStyle = gradient;
-
-            if (this.activePreset.shadowBlur > 0) {
-                const baseGlowIntensity = 35 + layerDepth * 55;
-                const glowIntensity = baseGlowIntensity * this.activePreset.waveGlowIntensity;
-                ctx.shadowBlur = glowIntensity * this.activePreset.shadowBlur;
-                const glowHue = (time * 70 + layer * 55) % 360;
-                ctx.shadowColor = `hsla(${glowHue}, 100%, 70%, ${layerAlpha * 1.3})`;
-            }
-
-            // Draw wave shape
-            ctx.beginPath();
-            ctx.moveTo(0, height);
-            ctx.lineTo(0, layerY + layerHeight);
-
-            for (let x = 0; x <= width; x += this.activePreset.waveStep) {
-                const waveOffset = Math.sin(x * frequency + phaseOffset) * amplitude * breathe * pulseEffect;
-                const secondaryWave = Math.sin(x * frequency * 2.5 + phaseOffset * 1.3) * amplitude * 0.15;
-                const waveY = layerY + waveOffset + secondaryWave;
-                ctx.lineTo(x, waveY);
-            }
-
-            ctx.lineTo(width, layerY + layerHeight);
-            ctx.lineTo(width, height);
-            ctx.closePath();
-            ctx.fill();
-
-            if (this.activePreset.shadowBlur > 0) {
-                ctx.shadowBlur = 0;
-            }
-        }
-
-        // Smooth easing
-        const lerpFactor = 0.08;
-        this.wavePulseIntensity += (this.wavePulseTarget - this.wavePulseIntensity) * lerpFactor;
-        this.waveAmplitudeBoost += (this.amplitudeBoostTarget - this.waveAmplitudeBoost) * lerpFactor;
-        this.colorSpeedBoost += (this.colorSpeedTarget - this.colorSpeedBoost) * lerpFactor;
-
-        this.wavePulseTarget *= 0.96;
-        this.amplitudeBoostTarget *= 0.96;
-        this.colorSpeedTarget *= 0.96;
-
-        // Clamp values
-        if (Math.abs(this.wavePulseIntensity) < 0.001) this.wavePulseIntensity = 0;
-        if (Math.abs(this.waveAmplitudeBoost) < 0.001) this.waveAmplitudeBoost = 0;
-        if (Math.abs(this.colorSpeedBoost) < 0.001) this.colorSpeedBoost = 0;
-        if (Math.abs(this.wavePulseTarget) < 0.001) this.wavePulseTarget = 0;
-        if (Math.abs(this.amplitudeBoostTarget) < 0.001) this.amplitudeBoostTarget = 0;
-        if (Math.abs(this.colorSpeedTarget) < 0.001) this.colorSpeedTarget = 0;
-    }
 
     getWaveSurfacePoint(xPercent, layerIndex = 2) {
         if (!this.waveWidth || !this.waveHeight) return { x: 0.5, y: 0.6 };
 
-        const effectiveSpeed = 0.0007 * (1 + this.colorSpeedBoost * 0.6);
+        const effectiveSpeed = 0.00002 * (1 + this.colorSpeedBoost * 0.6);
         const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
 
         const numLayers = this.activePreset.waveLayers;
@@ -425,41 +313,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         };
     }
 
-    createSparkles() {
-        const sparkleContainer = this.getContainer('chromadelic-highway-sparkles');
 
-        if (sparkleContainer && sparkleContainer.children.length === 0) {
-            this.sparkleCanvas = document.createElement('canvas');
-            this.sparkleCanvas.className = 'chromadelic-sparkle-canvas';
-            this.sparkleCtx = this.sparkleCanvas.getContext('2d');
-
-            sparkleContainer.appendChild(this.sparkleCanvas);
-
-            this.resizeSparkles();
-            window.addEventListener('resize', () => this.resizeSparkles());
-        } else if (sparkleContainer && sparkleContainer.children.length > 0) {
-            this.sparkleCanvas = sparkleContainer.querySelector('.chromadelic-sparkle-canvas');
-            if (this.sparkleCanvas) {
-                this.sparkleCtx = this.sparkleCanvas.getContext('2d');
-                this.resizeSparkles();
-            }
-        }
-    }
-
-    resizeSparkles() {
-        if (!this.sparkleCanvas) return;
-
-        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-        const rect = this.sparkleCanvas.getBoundingClientRect();
-
-        this.sparkleCanvas.width = rect.width * dpr;
-        this.sparkleCanvas.height = rect.height * dpr;
-
-        this.sparkleCtx.scale(dpr, dpr);
-
-        this.sparkleWidth = rect.width;
-        this.sparkleHeight = rect.height;
-    }
 
     initSparkles() {
         this.sparkles = [];
@@ -528,24 +382,35 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
     }
 
-    drawSparkles() {
-        if (!this.sparkleCtx || !this.sparkleCanvas) return;
+    hslToRgb(h, s, l) {
+        s /= 100;
+        l /= 100;
+        const k = n => (n + h / 30) % 12;
+        const a = s * Math.min(l, 1 - l);
+        const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+        return [f(0), f(8), f(4)];
+    }
 
-        const ctx = this.sparkleCtx;
-        const width = this.sparkleWidth;
-        const height = this.sparkleHeight;
+    animate() {
+        if (!this.isActive || !this.renderer) return;
 
-        ctx.clearRect(0, 0, width, height);
+        this.animationTime += 16;
+        this.frameCounter++;
+
+        // Smooth easing
+        const lerpFactor = 0.08;
+        this.wavePulseIntensity += (this.wavePulseTarget - this.wavePulseIntensity) * lerpFactor;
+        this.waveAmplitudeBoost += (this.amplitudeBoostTarget - this.waveAmplitudeBoost) * lerpFactor;
+        this.colorSpeedBoost += (this.colorSpeedTarget - this.colorSpeedBoost) * lerpFactor;
+
+        this.wavePulseTarget *= 0.96;
+        this.amplitudeBoostTarget *= 0.96;
+        this.colorSpeedTarget *= 0.96;
 
         const time = this.animationTime + this.timeOffset;
+        const particles = [];
 
-        // Draw light beams
-        this.drawLightBeams(ctx, width, height, time);
-
-        // Draw aurora streaks
-        this.drawAuroraStreaks(ctx, width, height, time);
-
-        // Draw sparkles
+        // Update and collect Sparkles
         this.sparkles.forEach((sparkle) => {
             sparkle.y += sparkle.speedY;
             sparkle.x += sparkle.speedX;
@@ -557,247 +422,47 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             if (sparkle.x < 0) sparkle.x = 1;
             if (sparkle.x > 1) sparkle.x = 0;
 
-            const x = sparkle.x * width;
-            const y = sparkle.y * height;
-
             const timeFactor = time * 0.0007;
             const colorCycle = (timeFactor * sparkle.colorCycleSpeed * 70) % 360;
             const hue = (sparkle.baseHue + sparkle.hueOffset + colorCycle) % 360;
 
             const twinkle = (Math.sin(time * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2;
             const alpha = sparkle.baseAlpha * (0.35 + twinkle * 0.65);
-            const size = sparkle.size * (0.85 + twinkle * 0.15);
+            const size = sparkle.size * (0.85 + twinkle * 0.15) * 2.0; // Scale up for WebGL
 
             const saturation = 95 + twinkle * 5;
             const lightness = 65 + twinkle * 20;
 
-            if (this.activePreset.glowLayers && sparkle.size > 2.2) {
-                const outerHue = (hue + 25) % 360;
-
-                ctx.globalAlpha = alpha * 0.12;
-                ctx.fillStyle = `hsla(${outerHue}, 100%, 70%, 1)`;
-                ctx.beginPath();
-                ctx.arc(x, y, size * 3, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.globalAlpha = alpha * 0.25;
-                ctx.fillStyle = `hsla(${outerHue}, 100%, 72%, 1)`;
-                ctx.beginPath();
-                ctx.arc(x, y, size * 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 1)`;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.globalAlpha = 1;
+            particles.push({
+                x: sparkle.x,
+                y: sparkle.y,
+                size: size,
+                color: this.hslToRgb(hue, saturation, lightness),
+                alpha: alpha
+            });
         });
 
-        // Draw stars
+        // Update and collect Stars
         this.stars.forEach((star) => {
-            const x = star.x * width;
-            const y = star.y * height;
-
             const twinkle = (Math.sin(time * star.twinkleSpeed + star.phase) + 1) / 2;
             const alpha = star.brightness * (0.5 + twinkle * 0.5);
-            const size = star.size * (0.9 + twinkle * 0.1);
+            const size = star.size * (0.9 + twinkle * 0.1) * 1.5;
 
-            ctx.globalAlpha = alpha * 0.25;
-            const starColor = star.isColored 
-                ? `hsla(${(star.hue + time * 0.01) % 360}, 80%, 80%, 1)` 
-                : '#ffffff';
-            ctx.fillStyle = starColor;
-            ctx.beginPath();
-            ctx.arc(x, y, size * 2.5, 0, Math.PI * 2);
-            ctx.fill();
+            const hue = star.isColored ? (star.hue + time * 0.01) % 360 : 0;
+            const saturation = star.isColored ? 80 : 0;
+            const lightness = star.isColored ? 80 : 100;
 
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = starColor;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.globalAlpha = 1;
+            particles.push({
+                x: star.x,
+                y: star.y,
+                size: size,
+                color: this.hslToRgb(hue, saturation, lightness),
+                alpha: alpha
+            });
         });
 
-        // Draw lock ripples
-        this.drawLockRipples(ctx, width, height);
-
-        // Draw lock sparkles
-        this.drawLockSparkles(ctx, width, height);
-
-        // Draw shockwaves
-        this.drawShockwaves(ctx, width, height);
-
-        // Draw combo particles
-        this.drawComboParticles(ctx, width, height, time);
-    }
-
-    drawLightBeams(ctx, width, height, time) {
-        this.lightBeams = this.lightBeams.filter((beam) => {
-            beam.life -= 0.006;
-            beam.y += beam.speed;
-
-            if (beam.life <= 0) return false;
-
-            const x = beam.x * width;
-            const beamWidth = beam.width * width;
-            const lifeFactor = beam.life / beam.maxLife;
-
-            const gradient = ctx.createLinearGradient(x - beamWidth / 2, 0, x + beamWidth / 2, 0);
-            const hue = (beam.hue + (1 - lifeFactor) * 40) % 360;
-            
-            gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 0)`);
-            gradient.addColorStop(0.3, `hsla(${hue}, 100%, 75%, ${lifeFactor * 0.15})`);
-            gradient.addColorStop(0.5, `hsla(${hue}, 100%, 85%, ${lifeFactor * 0.25})`);
-            gradient.addColorStop(0.7, `hsla(${hue}, 100%, 75%, ${lifeFactor * 0.15})`);
-            gradient.addColorStop(1, `hsla(${hue}, 100%, 70%, 0)`);
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(x - beamWidth / 2, 0, beamWidth, height * 0.7);
-
-            return true;
-        });
-    }
-
-    drawAuroraStreaks(ctx, width, height, time) {
-        this.auroraStreaks = this.auroraStreaks.filter((streak) => {
-            streak.life -= 0.005;
-            streak.phase += 0.03;
-
-            if (streak.life <= 0) return false;
-
-            const lifeFactor = streak.life / streak.maxLife;
-            const y = streak.y * height;
-            const streakHeight = streak.height * height;
-
-            ctx.beginPath();
-            
-            for (let x = 0; x <= width; x += 20) {
-                const waveY = y + Math.sin(x * 0.01 + streak.phase) * streakHeight * 0.5;
-                if (x === 0) {
-                    ctx.moveTo(x, waveY);
-                } else {
-                    ctx.lineTo(x, waveY);
-                }
-            }
-
-            const hue = (streak.hue + (1 - lifeFactor) * 60) % 360;
-            ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${lifeFactor * 0.3})`;
-            ctx.lineWidth = streakHeight * lifeFactor;
-            ctx.stroke();
-
-            return true;
-        });
-    }
-
-    drawLockRipples(ctx, width, height) {
-        this.lockRipples = this.lockRipples.filter((ripple) => {
-            ripple.radius += ripple.speed;
-            ripple.life -= 0.025;
-
-            if (ripple.life <= 0) return false;
-
-            const x = ripple.x * width;
-            const y = ripple.y * height;
-            const lifeFactor = ripple.life;
-
-            // Draw multiple rings
-            for (let i = 0; i < 3; i++) {
-                const ringRadius = Math.max(1, ripple.radius + i * 12);
-                const ringAlpha = lifeFactor * 0.4 * (1 - i * 0.3);
-                const hue = (ripple.hue + i * 30) % 360;
-
-                ctx.globalAlpha = ringAlpha;
-                ctx.strokeStyle = `hsla(${hue}, 100%, 75%, 1)`;
-                ctx.lineWidth = Math.max(0.5, 3 - i * 0.8);
-
-                ctx.beginPath();
-                ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            ctx.globalAlpha = 1;
-            return true;
-        });
-    }
-
-    drawLockSparkles(ctx, width, height) {
-        this.lockSparkles = this.lockSparkles.filter((sparkle) => {
-            sparkle.x += sparkle.vx;
-            sparkle.y += sparkle.vy;
-            sparkle.vy += 0.0002; // Gravity
-            sparkle.life -= 0.02;
-            sparkle.hue = (sparkle.hue + 2) % 360;
-
-            if (sparkle.life <= 0) return false;
-
-            const x = sparkle.x * width;
-            const y = sparkle.y * height;
-            const lifeFactor = sparkle.life;
-            const size = Math.max(0.5, sparkle.size * lifeFactor);
-
-            // Glow
-            ctx.globalAlpha = lifeFactor * 0.3;
-            ctx.fillStyle = `hsla(${sparkle.hue}, 100%, 70%, 1)`;
-            ctx.beginPath();
-            ctx.arc(x, y, Math.max(1, size * 2.5), 0, Math.PI * 2);
-            ctx.fill();
-
-            // Core
-            ctx.globalAlpha = lifeFactor * 0.9;
-            ctx.fillStyle = `hsla(${sparkle.hue}, 100%, 85%, 1)`;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.globalAlpha = 1;
-            return true;
-        });
-    }
-
-    drawShockwaves(ctx, width, height) {
-        this.shockwaves = this.shockwaves.filter((wave) => {
-            wave.radius += wave.speed;
-            wave.life -= 0.007;
-
-            if (wave.life <= 0) return false;
-
-            const centerX = wave.x * width;
-            const centerY = wave.y * height;
-            const lifeFactor = wave.life / wave.maxLife;
-
-            const hueOffset = wave.startHue + (1 - lifeFactor) * 70;
-
-            const numRings = 4;
-            for (let i = 0; i < numRings; i++) {
-                const ringFactor = i / numRings;
-                const ringRadius = Math.max(1, wave.radius + (i - numRings / 2) * 18);
-                const ringAlpha = lifeFactor * 0.55 * (1 - ringFactor * 0.4);
-                const ringHue = (hueOffset + i * 35) % 360;
-
-                ctx.globalAlpha = ringAlpha;
-                ctx.strokeStyle = `hsla(${ringHue}, 100%, 72%, 1)`;
-                ctx.lineWidth = 22 * lifeFactor;
-
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            ctx.globalAlpha = 1;
-            return true;
-        });
-    }
-
-    drawComboParticles(ctx, width, height, time) {
+        // Update and collect Combo Particles
         this.comboParticles = this.comboParticles.filter((particle) => {
-            const prevX = particle.x;
-            const prevY = particle.y;
-
             particle.x += particle.vx;
             particle.y += particle.vy;
 
@@ -810,61 +475,56 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             if (particle.life <= 0) return false;
 
-            const x = particle.x * width;
-            const y = particle.y * height;
-            const prevScreenX = prevX * width;
-            const prevScreenY = prevY * height;
-
             const lifeFactor = Math.min(1, particle.life / 2.0);
             const alpha = lifeFactor ** 0.55 * particle.baseAlpha;
-            const size = particle.size * (0.55 + lifeFactor * 0.45);
+            const size = particle.size * (0.55 + lifeFactor * 0.45) * 2.0;
 
-            // Trail
-            if (particle.life < 2.0 && this.activePreset.trailSegments > 0) {
-                const trailLength = this.activePreset.trailSegments;
-                for (let t = 0; t < trailLength; t++) {
-                    const trailFactor = t / trailLength;
-                    const trailX = prevScreenX + (x - prevScreenX) * trailFactor;
-                    const trailY = prevScreenY + (y - prevScreenY) * trailFactor;
-                    const trailAlpha = alpha * (1 - trailFactor) * 0.35;
-                    const trailSize = Math.max(0.5, size * (0.75 - trailFactor * 0.3));
-                    const trailHue = (particle.hue - trailFactor * 35 + 360) % 360;
+            particles.push({
+                x: particle.x,
+                y: particle.y,
+                size: size,
+                color: this.hslToRgb(particle.hue, 100, 78 + lifeFactor * 12),
+                alpha: alpha
+            });
 
-                    ctx.globalAlpha = trailAlpha;
-                    ctx.fillStyle = `hsla(${trailHue}, 100%, 72%, 1)`;
-                    ctx.beginPath();
-                    ctx.arc(trailX, trailY, trailSize, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-
-            // Glow
-            if (this.activePreset.glowLayers) {
-                const outerHue = (particle.hue + 180) % 360;
-
-                ctx.globalAlpha = alpha * 0.18;
-                ctx.fillStyle = `hsla(${outerHue}, 100%, 72%, 1)`;
-                ctx.beginPath();
-                ctx.arc(x, y, Math.max(1, size * 2.5), 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.globalAlpha = alpha * 0.32;
-                ctx.fillStyle = `hsla(${outerHue}, 100%, 78%, 1)`;
-                ctx.beginPath();
-                ctx.arc(x, y, Math.max(0.5, size * 1.7), 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            // Main particle
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = `hsla(${particle.hue}, 100%, ${78 + lifeFactor * 12}%, 1)`;
-            ctx.beginPath();
-            ctx.arc(x, y, Math.max(0.5, size), 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.globalAlpha = 1;
             return true;
         });
+
+        // Update and collect Lock Sparkles
+        this.lockSparkles = this.lockSparkles.filter((sparkle) => {
+            sparkle.x += sparkle.vx;
+            sparkle.y += sparkle.vy;
+            sparkle.vy += 0.0002; // Gravity
+            sparkle.life -= 0.02;
+            sparkle.hue = (sparkle.hue + 2) % 360;
+
+            if (sparkle.life <= 0) return false;
+
+            const lifeFactor = sparkle.life;
+            const size = Math.max(0.5, sparkle.size * lifeFactor) * 2.5;
+
+            particles.push({
+                x: sparkle.x,
+                y: sparkle.y,
+                size: size,
+                color: this.hslToRgb(sparkle.hue, 100, 85),
+                alpha: lifeFactor
+            });
+
+            return true;
+        });
+
+        // Render
+        this.renderer.render(time * 0.001, {
+            amplitude: 50.0 + this.waveAmplitudeBoost * 50.0,
+            frequency: 0.002,
+            speed: 0.005 + this.colorSpeedBoost,
+            pulseIntensity: this.wavePulseIntensity,
+            particles: particles
+        });
+
+        const animId = requestAnimationFrame(() => this.animate());
+        this.registerAnimation(animId);
     }
 
     setupEventListeners() {
@@ -900,7 +560,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     handleLineClear(data) {
         const lineCount = data.lineCount || 1;
-        
+
         // Pulse the waves
         this.wavePulseTarget = Math.min(0.7, this.wavePulseTarget + 0.2);
 
@@ -1040,11 +700,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const rippleCount = this.activePreset.lockRippleCount;
         for (let i = 0; i < rippleCount; i++) {
             if (this.lockRipples.length >= this.activePreset.lockRippleCount * 2) break;
-            
+
             // Spawn ripples at random positions near waves
             const xPos = 0.2 + Math.random() * 0.6;
             const wavePoint = this.getWaveSurfacePoint(xPos, 2);
-            
+
             this.lockRipples.push({
                 x: wavePoint.x,
                 y: wavePoint.y,
@@ -1059,13 +719,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const sparkleCount = this.activePreset.lockSparkleCount;
         for (let i = 0; i < sparkleCount; i++) {
             if (this.lockSparkles.length >= this.activePreset.lockSparkleCount * 3) break;
-            
+
             const xPos = 0.15 + Math.random() * 0.7;
             const wavePoint = this.getWaveSurfacePoint(xPos, 1 + Math.floor(Math.random() * 3));
-            
+
             const angle = this.random(-Math.PI * 0.8, -Math.PI * 0.2);
             const speed = this.random(0.002, 0.005);
-            
+
             this.lockSparkles.push({
                 x: wavePoint.x,
                 y: wavePoint.y,
@@ -1079,13 +739,217 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     animate() {
-        if (!this.isActive) return;
+        if (!this.isActive || !this.renderer) return;
 
         this.animationTime += 16;
         this.frameCounter++;
 
-        this.drawRainbowWaves();
-        this.drawSparkles();
+        // Smooth easing
+        const lerpFactor = 0.08;
+        this.wavePulseIntensity += (this.wavePulseTarget - this.wavePulseIntensity) * lerpFactor;
+        this.waveAmplitudeBoost += (this.amplitudeBoostTarget - this.waveAmplitudeBoost) * lerpFactor;
+        this.colorSpeedBoost += (this.colorSpeedTarget - this.colorSpeedBoost) * lerpFactor;
+
+        this.wavePulseTarget *= 0.96;
+        this.amplitudeBoostTarget *= 0.96;
+        this.colorSpeedTarget *= 0.96;
+
+        const time = this.animationTime + this.timeOffset;
+        const particles = [];
+
+        // Update and collect Sparkles
+        this.sparkles.forEach((sparkle) => {
+            sparkle.y += sparkle.speedY;
+            sparkle.x += sparkle.speedX;
+
+            if (sparkle.y > 1) {
+                sparkle.y = Math.random() < 0.7 ? this.random(0.4, 1) : 0;
+                sparkle.x = Math.random();
+            }
+            if (sparkle.x < 0) sparkle.x = 1;
+            if (sparkle.x > 1) sparkle.x = 0;
+
+            const timeFactor = time * 0.0007;
+            const colorCycle = (timeFactor * sparkle.colorCycleSpeed * 70) % 360;
+            const hue = (sparkle.baseHue + sparkle.hueOffset + colorCycle) % 360;
+
+            const twinkle = (Math.sin(time * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2;
+            const alpha = sparkle.baseAlpha * (0.35 + twinkle * 0.65);
+            const size = sparkle.size * (0.85 + twinkle * 0.15) * 2.0;
+
+            const saturation = 95 + twinkle * 5;
+            const lightness = 65 + twinkle * 20;
+
+            particles.push({
+                x: sparkle.x,
+                y: 1.0 - sparkle.y,
+                size: size,
+                color: this.hslToRgb(hue, saturation, lightness),
+                alpha: alpha,
+                type: 0
+            });
+        });
+
+        // Update and collect Stars
+        this.stars.forEach((star) => {
+            const twinkle = (Math.sin(time * star.twinkleSpeed + star.phase) + 1) / 2;
+            const alpha = star.brightness * (0.5 + twinkle * 0.5);
+            const size = star.size * (0.9 + twinkle * 0.1) * 1.5;
+
+            const hue = star.isColored ? (star.hue + time * 0.01) % 360 : 0;
+            const saturation = star.isColored ? 80 : 0;
+            const lightness = star.isColored ? 80 : 100;
+
+            particles.push({
+                x: star.x,
+                y: 1.0 - star.y,
+                size: size,
+                color: this.hslToRgb(hue, saturation, lightness),
+                alpha: alpha,
+                type: 0
+            });
+        });
+
+        // Update and collect Combo Particles
+        this.comboParticles = this.comboParticles.filter((particle) => {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+
+            const waveInfluence = Math.sin(this.animationTime * 0.003 + particle.x * 10) * 0.0004;
+            particle.x += waveInfluence;
+
+            particle.vy += 0.00012;
+            particle.life -= 0.009;
+            particle.hue = (particle.hue + particle.hueCycleSpeed * 0.018) % 360;
+
+            if (particle.life <= 0) return false;
+
+            const lifeFactor = Math.min(1, particle.life / 2.0);
+            const alpha = lifeFactor ** 0.55 * particle.baseAlpha;
+            const size = particle.size * (0.55 + lifeFactor * 0.45) * 2.0;
+
+            particles.push({
+                x: particle.x,
+                y: 1.0 - particle.y,
+                size: size,
+                color: this.hslToRgb(particle.hue, 100, 78 + lifeFactor * 12),
+                alpha: alpha,
+                type: 0
+            });
+
+            return true;
+        });
+
+        // Update and collect Lock Sparkles
+        this.lockSparkles = this.lockSparkles.filter((sparkle) => {
+            sparkle.x += sparkle.vx;
+            sparkle.y += sparkle.vy;
+            sparkle.vy += 0.0002;
+            sparkle.life -= 0.02;
+            sparkle.hue = (sparkle.hue + 2) % 360;
+
+            if (sparkle.life <= 0) return false;
+
+            const lifeFactor = sparkle.life;
+            const size = Math.max(0.5, sparkle.size * lifeFactor) * 2.5;
+
+            particles.push({
+                x: sparkle.x,
+                y: 1.0 - sparkle.y,
+                size: size,
+                color: this.hslToRgb(sparkle.hue, 100, 85),
+                alpha: lifeFactor,
+                type: 0
+            });
+
+            return true;
+        });
+
+        // Update and collect Shockwaves
+        this.shockwaves = this.shockwaves.filter((wave) => {
+            wave.radius += wave.speed;
+            wave.life -= 0.007;
+
+            if (wave.life <= 0) return false;
+
+            const lifeFactor = wave.life / wave.maxLife;
+            const hueOffset = wave.startHue + (1 - lifeFactor) * 70;
+
+            for (let i = 0; i < 3; i++) {
+                const ringRadius = Math.max(1, wave.radius + (i - 1.5) * 18);
+                const ringAlpha = lifeFactor * 0.55;
+                const ringHue = (hueOffset + i * 35) % 360;
+
+                particles.push({
+                    x: wave.x,
+                    y: 1.0 - wave.y,
+                    size: ringRadius * 2.5,
+                    color: this.hslToRgb(ringHue, 100, 72),
+                    alpha: ringAlpha,
+                    type: 1 // Ring
+                });
+            }
+
+            return true;
+        });
+
+        // Update and collect Light Beams
+        this.lightBeams = this.lightBeams.filter((beam) => {
+            beam.life -= 0.006;
+            beam.y += beam.speed;
+
+            if (beam.life <= 0) return false;
+
+            const lifeFactor = beam.life / beam.maxLife;
+            const hue = (beam.hue + (1 - lifeFactor) * 40) % 360;
+
+            particles.push({
+                x: beam.x,
+                y: 0.5,
+                size: beam.width * 100,
+                color: this.hslToRgb(hue, 100, 75),
+                alpha: lifeFactor * 0.25,
+                type: 2 // Beam
+            });
+
+            return true;
+        });
+
+        // Update and collect Lock Ripples
+        this.lockRipples = this.lockRipples.filter((ripple) => {
+            ripple.radius += ripple.speed;
+            ripple.life -= 0.025;
+
+            if (ripple.life <= 0) return false;
+
+            const lifeFactor = ripple.life;
+
+            for (let i = 0; i < 2; i++) {
+                const ringRadius = Math.max(1, ripple.radius + i * 12);
+                const ringAlpha = lifeFactor * 0.4;
+                const hue = (ripple.hue + i * 30) % 360;
+
+                particles.push({
+                    x: ripple.x,
+                    y: 1.0 - ripple.y,
+                    size: ringRadius * 2.0,
+                    color: this.hslToRgb(hue, 100, 75),
+                    alpha: ringAlpha,
+                    type: 1 // Ring
+                });
+            }
+
+            return true;
+        });
+
+        // Render
+        this.renderer.render(time * 0.001, {
+            amplitude: 50.0 + this.waveAmplitudeBoost * 50.0,
+            frequency: 0.002,
+            speed: 1.0 + this.colorSpeedBoost,
+            pulseIntensity: this.wavePulseIntensity,
+            particles: particles
+        });
 
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
@@ -1096,8 +960,19 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     resize(width, height) {
-        this.resizeWaves();
-        this.resizeSparkles();
+        if (!this.renderer || !this.canvas) return;
+
+        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+        const rect = this.canvas.getBoundingClientRect();
+
+        // Fallback if rect is 0 (e.g. hidden)
+        const w = rect.width || window.innerWidth;
+        const h = rect.height || window.innerHeight;
+
+        this.renderer.resize(w * dpr, h * dpr);
+
+        this.waveWidth = w;
+        this.waveHeight = h;
     }
 
     stop() {
@@ -1109,10 +984,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.qualityChangeHandler = null;
         }
 
-        this.waveCanvas = null;
-        this.waveCtx = null;
-        this.sparkleCanvas = null;
-        this.sparkleCtx = null;
+        if (this.renderer) {
+            this.renderer.dispose();
+            this.renderer = null;
+        }
+
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+
         this.sparkles = [];
         this.stars = [];
         this.comboParticles = [];

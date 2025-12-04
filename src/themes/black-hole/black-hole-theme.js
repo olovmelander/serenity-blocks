@@ -160,6 +160,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.diskScale = 1.0;
         this.diskTargetIntensity = 1.0;
         this.diskTargetScale = 1.0;
+        this.blackHoleScale = 1.0;
+        this.baseRadius = 60;
 
         // Black hole drift animation
         this.blackHoleDriftVelocityX = 0;
@@ -198,7 +200,9 @@ export default class BlackHoleTheme extends BaseTheme {
         }
         // Frame skip counter for adaptive rendering
         this.frameSkipCounter = 0;
+        this.frameSkipCounter = 0;
         this.trailRenderThrottle = 0;
+        this.starFlashIntensity = 0;
     }
 
     getCurrentQualityLevel() {
@@ -349,17 +353,21 @@ export default class BlackHoleTheme extends BaseTheme {
         try {
             this.applyQualityProfile(this.getCurrentQualityLevel());
 
-            // Create star field
-            this.createStarField();
+            // Initialize WebGL Renderer first (via stardust canvas setup)
+            // This sets this.useWebGL which is needed for star field creation
+            this.initRenderer();
 
-            // Create animated stardust particles
-            this.createStardustCanvas();
+            // Create star field (will use WebGL if initialized)
+            this.createStarField();
 
             // Setup event listeners
             this.setupEventListeners();
 
             // Attach settings listener to react to quality changes
             this.attachSettingsListener();
+
+            // Start animation loop
+            this.startAnimation();
 
             console.log('[BlackHole] Scene created successfully!');
         } catch (error) {
@@ -589,9 +597,9 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     /**
-     * Create animated stardust particles with black hole gravity
+     * Initialize the renderer (WebGL or Canvas)
      */
-    createStardustCanvas() {
+    initRenderer() {
         this.canvas = document.getElementById('stellar-stardust-canvas');
         if (!this.canvas) {
             console.warn('[BlackHole] Stardust canvas not found!');
@@ -640,8 +648,15 @@ export default class BlackHoleTheme extends BaseTheme {
                 orbitSpeed: this.random(0.005, 0.02), // Orbital velocity
             }, { persistent: true });
         }
+    }
 
-        // Start animation
+    /**
+     * Start the animation loop
+     */
+    startAnimation() {
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+        }
         this.lastFrameTime = performance.now();
         this.animationFrame = requestAnimationFrame(this.boundAnimateStardust);
     }
@@ -716,6 +731,9 @@ export default class BlackHoleTheme extends BaseTheme {
             this.blackHoleTargetY = minY + Math.random() * (maxY - minY);
         }
 
+        // Update base radius based on screen size (responsive)
+        this.baseRadius = Math.min(width, height) * 0.08;
+
         // Smoothly drift toward target position with interpolation
         const dx = this.blackHoleTargetX - this.blackHoleX;
         const dy = this.blackHoleTargetY - this.blackHoleY;
@@ -742,6 +760,17 @@ export default class BlackHoleTheme extends BaseTheme {
         const blackHole = document.getElementById('stellar-black-hole');
         if (!blackHole) return;
 
+        // Hide DOM black hole if using WebGL
+        if (this.useWebGL) {
+            // Only set this once if possible, but setting it repeatedly is cheap if value doesn't change
+            if (blackHole.style.opacity !== '0') {
+                blackHole.style.opacity = '0';
+                const disk = document.querySelector('.black-hole-accretion-disk');
+                if (disk) disk.style.opacity = '0';
+            }
+            return; // Skip position updates for invisible element
+        }
+
         // Add smooth transition on first setup
         if (!blackHole.dataset.driftInitialized) {
             // Use very slow, linear transition for seamless drift
@@ -759,15 +788,7 @@ export default class BlackHoleTheme extends BaseTheme {
         // Apply smooth CSS transform
         blackHole.style.left = `${percentX}%`;
         blackHole.style.top = `${percentY}%`;
-
-        // Hide DOM black hole if using WebGL
-        if (this.useWebGL) {
-            blackHole.style.opacity = '0';
-            const disk = document.querySelector('.black-hole-accretion-disk');
-            if (disk) disk.style.opacity = '0';
-        } else {
-            blackHole.style.opacity = '1';
-        }
+        blackHole.style.opacity = '1';
     }
 
     /**
@@ -978,10 +999,18 @@ export default class BlackHoleTheme extends BaseTheme {
 
             // WebGL Rendering
             if (useWebGL) {
+                // Update star flash
+                if (this.starFlashIntensity > 0.01) {
+                    this.starFlashIntensity *= 0.95; // Decay
+                } else {
+                    this.starFlashIntensity = 0;
+                }
+                this.webglRenderer.setStarFlash(this.starFlashIntensity);
+
                 this.webglRenderer.setBlackHoleParams(
                     this.blackHoleX,
                     this.blackHoleY,
-                    60,
+                    this.baseRadius * this.blackHoleScale,
                     this.diskIntensity,
                     this.diskScale
                 );
@@ -1087,9 +1116,87 @@ export default class BlackHoleTheme extends BaseTheme {
      * React to piece locks
      */
     onPieceLock(piece) {
-        // Subtle particle burst
-        if (Math.random() < 0.3) {
-            this.createSmallParticleBurst();
+        this.triggerLockEffect();
+    }
+
+    /**
+     * Trigger the visual effect for a piece lock
+     */
+    triggerLockEffect() {
+        // 1. Visual Ripple
+        this.createLockRipple();
+
+        // 2. Black Hole Pulse (Sharper than line clear)
+        if (this.useWebGL) {
+            // Set IMMEDIATE values for instant flash/impact
+            this.diskIntensity = 2.5;
+            this.diskScale = 1.15;
+
+            // Ensure targets are reset so it decays back to normal
+            this.diskTargetIntensity = 1.0;
+            this.diskTargetScale = 1.0;
+        } else {
+            this.pulseBlackHole(0.8); // Stronger pulse for fallback
+        }
+
+        // 3. Particle Burst (Hawking Radiation)
+        this.createLockParticles();
+    }
+
+    /**
+     * Create a violet ripple effect
+     */
+    createLockRipple() {
+        const container = document.getElementById('stellar-bursts');
+        if (!container) return;
+
+        const ripple = document.createElement('div');
+        ripple.className = 'black-hole-lock-ripple';
+
+        // Position at black hole
+        const width = this.canvas?.width || window.innerWidth;
+        const height = this.canvas?.height || window.innerHeight;
+        const percentX = (this.blackHoleX / width) * 100;
+        const percentY = (this.blackHoleY / height) * 100;
+
+        ripple.style.left = `${percentX}%`;
+        ripple.style.top = `${percentY}%`;
+
+        container.appendChild(ripple);
+
+        setTimeout(() => {
+            if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+        }, 1000);
+    }
+
+    /**
+     * Create a burst of fast particles
+     */
+    createLockParticles() {
+        // Burst of fast, violet/white particles
+        const count = this.getScaledCount(20, 40);
+        const speedBase = 5;
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = this.random(speedBase, speedBase * 2.5);
+            const size = this.random(2, 4.5);
+
+            this.addParticle({
+                x: this.blackHoleX,
+                y: this.blackHoleY,
+                size: size,
+                speedX: Math.cos(angle) * speed,
+                speedY: Math.sin(angle) * speed,
+                opacity: 1,
+                // Mix of Violet, Cyan, and White
+                color: Math.random() > 0.6 ? { r: 180, g: 100, b: 255 } :
+                    (Math.random() > 0.5 ? { r: 100, g: 200, b: 255 } : { r: 255, g: 255, b: 255 }),
+                pulse: 0,
+                pulseSpeed: 0.1,
+                lifetime: 45,
+                brightness: 2.5 // Very bright
+            });
         }
     }
 
@@ -1154,6 +1261,11 @@ export default class BlackHoleTheme extends BaseTheme {
      * Brighten stars
      */
     brightenStars(intensity) {
+        if (this.useWebGL) {
+            this.starFlashIntensity = Math.min(2.0, this.starFlashIntensity + intensity * 0.5);
+            return;
+        }
+
         const starsToBrighten = Math.min(
             Math.max(1, Math.floor(intensity * 15 * this.effectIntensityMultiplier)),
             this.stars.length,
@@ -1316,6 +1428,7 @@ export default class BlackHoleTheme extends BaseTheme {
         if (this.useWebGL) {
             this.diskTargetScale = 1.0 + intensity * 0.1;
             this.diskTargetIntensity = 1.0 + intensity * 0.2;
+            this.blackHoleScale = 1.0 + intensity * 0.05;
         }
 
         setTimeout(() => {
@@ -1324,6 +1437,7 @@ export default class BlackHoleTheme extends BaseTheme {
             if (this.useWebGL) {
                 this.diskTargetScale = 1.0;
                 this.diskTargetIntensity = 1.0;
+                this.blackHoleScale = 1.0;
             }
         }, 400);
     }
