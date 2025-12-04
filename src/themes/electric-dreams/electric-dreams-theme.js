@@ -1,89 +1,191 @@
 import { BaseTheme } from '../base-theme.js';
 import { ELECTRIC_DREAMS_TETROMINOS } from './electric-dreams-tetrominos.js';
+import WebGLElectricDreamsRenderer from './webgl-electric-dreams-renderer.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 export default class ElectricDreamsTheme extends BaseTheme {
     constructor() {
         super('electric-dreams');
+        this.renderer = null;
+        this.canvas = null;
+        this.animationTime = 0;
+        this.resizeHandler = null;
+        this.eventUnsubscribers = [];
+
+        // Effect state
+        // Effect state
+        // Effect state
+        this.deformValue = 0;
+        this.targetDeform = 0;
+        this.comboIntensity = 0;
+        this.targetComboIntensity = 0;
+        this.bounceTarget = 0;
     }
 
     async createScene() {
-        // 1. Create morphing, glowing blobs (lava lamp effect)
-        const veinContainer = document.getElementById('electric-veins');
-        if (veinContainer && veinContainer.children.length === 0) {
-            // LAVA LAMP: More blobs with overlapping paths for constant merging
-            const numVeins = 10;
-            for (let i = 0; i < numVeins; i++) {
-                const vein = document.createElement('div');
-                vein.className = 'electric-vein';
-                // LAVA LAMP: Varied sizes (180-320px) for organic feel
-                const size = Math.random() * 140 + 180;
-                vein.style.width = `${size}px`;
-                vein.style.height = `${size}px`;
+        const container = this.getContainer('electric-dreams-theme');
 
-                // LAVA LAMP: Free-flowing movement across nearly entire screen
-                const xStart = Math.random() * 90 + 5; // 5-95% of screen width
-                const yStart = Math.random() * 90 + 5; // 5-95% of screen height
-                const xEnd = Math.random() * 90 + 5;
-                const yEnd = Math.random() * 90 + 5;
-
-                vein.style.setProperty('--x-start', `${xStart}vw`);
-                vein.style.setProperty('--y-start', `${yStart}vh`);
-                vein.style.setProperty('--x-end', `${xEnd}vw`);
-                vein.style.setProperty('--y-end', `${yEnd}vh`);
-
-                // LAVA LAMP: Minimal scale variation for consistent merging
-                vein.style.setProperty('--scale-start', `${Math.random() * 0.2 + 0.95}`);
-                vein.style.setProperty('--scale-end', `${Math.random() * 0.2 + 0.95}`);
-                vein.style.setProperty('--hue-start', `${Math.random() * 360}deg`);
-                vein.style.setProperty('--hue-end', `${Math.random() * 360}deg`);
-
-                // LAVA LAMP: Super slow, hypnotic movement (35-60s)
-                const moveDuration = Math.random() * 25 + 35;
-                const pulseDuration = Math.random() * 3 + 6;
-                const morphDuration = Math.random() * 5 + 10;
-                vein.style.animationDuration = `${moveDuration}s, ${pulseDuration}s, 20s, ${morphDuration}s`;
-                vein.style.animationDelay = `-${Math.random() * moveDuration}s, -${Math.random() * pulseDuration}s, -${Math.random() * 20}s, -${Math.random() * morphDuration}s`;
-                vein.style.willChange = 'transform, filter';
-                vein.style.transform = 'translate3d(0,0,0)';
-
-                veinContainer.appendChild(vein);
-            }
-            this.registerContainer(veinContainer);
+        let themeContainer = document.getElementById('theme-background');
+        if (!themeContainer) {
+            themeContainer = document.body;
         }
 
-        // 2. Create glowing particles
-        const particleContainer = document.getElementById('electric-particles');
-        if (particleContainer && particleContainer.children.length === 0) {
-            // OPTIMIZATION: Reduced from 40 to 30 particles for better performance
-            const numParticles = 30;
-            for (let i = 0; i < numParticles; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'electric-particle';
-                const size = Math.random() * 3 + 1;
-                particle.style.width = `${size}px`;
-                particle.style.height = `${size}px`;
+        // Create Canvas
+        this.canvas = document.createElement('canvas');
+        this.canvas.className = 'electric-dreams-webgl-canvas';
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.zIndex = '-1'; // Background
 
-                particle.style.setProperty('--x-start', `${Math.random() * 100}vw`);
-                particle.style.setProperty('--y-start', `${Math.random() * 100}vh`);
-                particle.style.setProperty('--x-end', `${Math.random() * 100}vw`);
-                particle.style.setProperty('--y-end', `${Math.random() * 100}vh`);
+        // Remove old containers if they exist
+        const oldVeins = document.getElementById('electric-veins');
+        if (oldVeins) oldVeins.style.display = 'none';
+        const oldParticles = document.getElementById('electric-particles');
+        if (oldParticles) oldParticles.style.display = 'none';
 
-                const duration = Math.random() * 10 + 10;
-                particle.style.animationDuration = `${duration}s`;
-                particle.style.animationDelay = `-${Math.random() * duration}s`;
-                particle.style.willChange = 'transform, opacity';
-                particle.style.transform = 'translate3d(0,0,0)';
+        themeContainer.appendChild(this.canvas);
+        this.registerContainer(this.canvas);
 
-                particleContainer.appendChild(particle);
+        this.renderer = new WebGLElectricDreamsRenderer(this.canvas);
+        if (!this.renderer.init()) {
+            console.error('Failed to init WebGL renderer for Electric Dreams');
+            return;
+        }
+
+        this.resize();
+        this.resizeHandler = () => this.resize();
+        window.addEventListener('resize', this.resizeHandler);
+
+        this.setupEventListeners();
+        this.animate();
+    }
+
+    setupEventListeners() {
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            if (this.isActive) {
+                this.handlePieceLock(data);
             }
-            this.registerContainer(particleContainer);
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (this.isActive) {
+                this.handleCombo(data);
+            }
+        });
+
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (this.isActive) {
+                this.handleLineClear(data);
+            }
+        });
+
+        this.eventUnsubscribers.push(pieceLockUnsub, comboUnsub, lineClearUnsub);
+    }
+
+    handlePieceLock(data) {
+        // Smooth surge - Bigger effect but slow onset
+        // We set the TARGET, not the value directly, to avoid instant jumps
+        this.targetDeform = 4.0;
+
+        // Explosion at piece location if available, otherwise random
+        // data.x and data.y might be grid coordinates. We need screen coordinates or normalized 0-1.
+        // Assuming we don't have easy grid-to-screen conversion here without more context,
+        // we'll use a random position near the center-bottom or just random.
+        // But for a "lock" effect, random across the board is okay for this abstract theme.
+
+        if (this.renderer) {
+            this.renderer.spawnExplosion(Math.random() * 0.8 + 0.1, Math.random() * 0.8 + 0.1, 8);
         }
     }
 
-    /**
-     * Provide Electric Dreams themed tetromino styling (vaporwave neon palette)
-     * @returns {Object} Electric Dreams tetromino configuration
-     */
+    handleCombo(data) {
+        const count = data.comboCount || 1;
+        // Stronger deformation target
+        this.targetDeform = 4.0 + Math.min(count * 0.8, 4.0);
+
+        // Combo Intensity for Blob Convergence
+        // Increases with combo count, capped at 1.0
+        // Smoother buildup
+        this.targetComboIntensity = Math.min(this.targetComboIntensity + 0.2, 1.0);
+
+        if (this.renderer) {
+            // Multiple explosions for combos
+            for (let i = 0; i < Math.min(count, 5); i++) {
+                setTimeout(() => {
+                    this.renderer.spawnExplosion(Math.random(), Math.random(), 12);
+                }, i * 100);
+            }
+        }
+    }
+
+    handleLineClear(data) {
+        // Pulse deformation target
+        this.targetDeform = 5.0;
+    }
+
+    resize() {
+        if (!this.renderer || !this.canvas) return;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        this.renderer.resize(width, height);
+    }
+
+    animate() {
+        if (!this.isActive || !this.renderer) return;
+
+        this.animationTime += 16;
+
+        // Super slow, viscous physics
+        // 1. Smoothly move actual value towards the target (The "Swell")
+        this.deformValue += (this.targetDeform - this.deformValue) * 0.02;
+
+        // 2. Slowly decay the target back to 0 (The "Release")
+        this.targetDeform += (0 - this.targetDeform) * 0.01;
+
+        // Combo Intensity Physics - Smoother
+        this.comboIntensity += (this.targetComboIntensity - this.comboIntensity) * 0.02;
+        this.targetComboIntensity *= 0.99; // Slower decay
+
+        this.renderer.render(this.animationTime * 0.001, this.deformValue, this.comboIntensity);
+
+        const animId = requestAnimationFrame(() => this.animate());
+        this.registerAnimation(animId);
+    }
+
+    stop() {
+        // 1. Stop listening to resize events
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+
+        // 2. Unsubscribe from event bus
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // 3. Stop the animation loop immediately
+        this.isActive = false; // Ensure animate() stops immediately
+
+        // 4. Clean up renderer
+        if (this.renderer) {
+            // If the renderer has a dispose method, call it. 
+            // Assuming WebGLElectricDreamsRenderer might need one or we just let it go.
+            // For now, just nulling it should stop the render calls.
+            this.renderer = null;
+        }
+
+        // 5. Remove canvas
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+
+        super.stop();
+    }
+
     getTetrominoConfig() {
         return ELECTRIC_DREAMS_TETROMINOS;
     }

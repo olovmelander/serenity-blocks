@@ -91,8 +91,8 @@ export default class WebGLNeonGrid {
                         smoothstep(1.0-gwGlow, 1.0, fract(gp.y))
                      );
 
-                     // Fog/Fade - Grid lines fade out
-                     float gFog = 1.0 - smoothstep(0.0, 30.0, z);
+                     // Fog/Fade - Grid lines fade out sooner for denser fog feel
+                     float gFog = 1.0 - smoothstep(0.0, 20.0, z);
 
                      // Color gradient
                      float colorMix = smoothstep(0.0, 15.0, z);
@@ -127,8 +127,8 @@ export default class WebGLNeonGrid {
 
                      // Horizon Fog - Add a glowy haze near the horizon
                      float horizonDist = gridHorizon - uv.y;
-                     float fogFactor = exp(-horizonDist * 12.0); // Spread further (was 20.0)
-                     finalColor += cFog * fogFactor * 1.5; // More intense (was 0.8)
+                     float fogFactor = exp(-horizonDist * 8.0); // Spread further (was 12.0)
+                     finalColor += cFog * fogFactor * 2.0; // More intense (was 1.5)
 
                      // Output
                      // Increase alpha with fog so it's visible

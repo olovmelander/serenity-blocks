@@ -687,7 +687,14 @@ export function createBaseBoardScene(
 
                     // Get themed color if cell has a type
                     if (cell.type) {
-                        colorValue = this.getThemedColor(cell.type, colorValue);
+                        // Special handling for garbage: preserve player colors (non-gray)
+                        // If garbage has a specific color (not default gray), don't override with theme
+                        const isGarbage = cell.type === 'GARBAGE' || cell.type === 'CLEAN_GARBAGE';
+                        const isCustomColor = cell.color && cell.color !== '#808080';
+
+                        if (!isGarbage || !isCustomColor) {
+                            colorValue = this.getThemedColor(cell.type, colorValue);
+                        }
                     }
 
                     this.drawBlock(worldX, worldY, colorValue, 1.0);
@@ -771,7 +778,15 @@ export function createBaseBoardScene(
                 .filter((piece) => piece?.isAnimating && typeof piece.animationOffset === 'number' && piece.animationOffset !== 0)
                 .forEach((piece) => {
                     // Get themed color for this piece type
-                    const themedColor = this.getThemedColor(piece.type, piece.color);
+                    // Get themed color for this piece type
+                    let themedColor = piece.color;
+
+                    const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
+                    const isCustomColor = piece.color && piece.color !== '#808080';
+
+                    if (!isGarbage || !isCustomColor) {
+                        themedColor = this.getThemedColor(piece.type, piece.color);
+                    }
 
                     piece.shape.forEach((row, localY) => {
                         row.forEach((cell, localX) => {
