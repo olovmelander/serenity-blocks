@@ -47,6 +47,7 @@ export default class WebGLBlackHoleRenderer {
         this.eventHorizonRadius = 0;
         this.diskIntensity = 1.0;
         this.diskScale = 1.0;
+        this.starFlash = 0.0;
     }
 
     /**
@@ -257,55 +258,129 @@ export default class WebGLBlackHoleRenderer {
                 return 130.0 * dot(m, g);
             }
 
+            // Fractal Brownian Motion for more detail
+            float fbm(vec2 p) {
+                float total = 0.0;
+                float amplitude = 0.5;
+                float gain = 0.5;
+                float lacunarity = 2.0;
+                for (int i = 0; i < 4; i++) {
+                    total += snoise(p) * amplitude;
+                    p *= lacunarity;
+                    amplitude *= gain;
+                }
+                return total;
+            }
+
             void main() {
                 vec2 pixelPos = vUv * uResolution;
                 vec2 relPos = pixelPos - uBlackHolePos;
                 float dist = length(relPos);
-                
-                // Event Horizon (Black Void)
-                float horizon = smoothstep(uRadius - 2.0, uRadius, dist);
-                
-                // Accretion Disk
                 float angle = atan(relPos.y, relPos.x);
-                float spiral = angle * 2.0 + uTime * 0.5;
-                float radius = dist / uRadius;
-                
-                // Noise for accretion disk structure
-                float noiseVal = snoise(vec2(radius * 5.0 - uTime * 2.0, angle * 3.0));
-                float noiseVal2 = snoise(vec2(radius * 10.0 + uTime, angle * 5.0));
-                
+                float normalizedDist = dist / uRadius;
+
+                // 1. Accretion Disk (Swirling matter outside)
                 float disk = 0.0;
-                if (dist > uRadius * 1.05 && dist < uRadius * 4.0 * uDiskScale) {
-                    float ring = smoothstep(uRadius * 1.05, uRadius * 1.5, dist) * (1.0 - smoothstep(uRadius * 2.5 * uDiskScale, uRadius * 4.0 * uDiskScale, dist));
-                    disk = ring * (0.5 + 0.5 * noiseVal) * (0.8 + 0.2 * noiseVal2);
-                    disk *= 1.0 / (radius * radius * 0.5); // Falloff
+                vec3 diskColor = vec3(0.0);
+                
+                if (dist > uRadius * 0.8) {
+                    // Relativistic beaming (Doppler effect)
+                    float doppler = 1.0 + 0.4 * sin(angle + 2.0); 
+                    
+                    // Spiral coordinates with strong twist near center
+                    float spiralAngle = angle + 6.0 / (normalizedDist + 0.2); 
+                    float rotateSpeed = 3.0 / (normalizedDist * normalizedDist);
+                    
+                    // Multi-layered noise for volumetric look
+                    float n1 = fbm(vec2(normalizedDist * 2.0, spiralAngle * 1.5 - uTime * rotateSpeed * 0.2));
+                    float n2 = snoise(vec2(normalizedDist * 6.0, spiralAngle * 3.0 - uTime * rotateSpeed * 0.4));
+                    
+                    // Disk shape with falloff
+                    float diskShape = smoothstep(uRadius, uRadius * 1.2, dist) * 
+                                    (1.0 - smoothstep(uRadius * 2.5 * uDiskScale, uRadius * 5.0 * uDiskScale, dist));
+                    
+                    // Combine noise
+                    float matter = n1 * 0.6 + n2 * 0.4;
+                    matter = smoothstep(0.3, 0.9, matter); // Increase contrast
+                    
+                    disk = diskShape * matter * doppler;
+                    
+                    // Color Gradient: Hot Core -> Gold -> Red/Purple Edge
+                    vec3 hotColor = vec3(1.0, 0.95, 0.8);
+                    vec3 midColor = vec3(1.0, 0.6, 0.1);
+                    vec3 coldColor = vec3(0.4, 0.0, 0.3);
+                    
+                    float temp = smoothstep(uRadius * 1.0, uRadius * 3.5, dist);
+                    vec3 color = mix(hotColor, midColor, temp);
+                    color = mix(color, coldColor, smoothstep(0.0, 1.0, temp * 1.2));
+                    
+                    diskColor = color * disk * uDiskIntensity * 2.5;
                 }
+
+                // 2. Inner Mystical Glow (The "Purple that moves")
+                vec3 innerGlowColor = vec3(0.0);
+                float innerAlpha = 0.0;
                 
-                // Color mapping for disk
-                vec3 diskColor = vec3(1.0, 0.6, 0.2) * disk * uDiskIntensity * 2.0; // Orange/Gold
-                diskColor += vec3(0.5, 0.1, 0.8) * disk * 0.5; // Purple tint
-                
-                // Combine
-                vec3 finalColor = diskColor;
-                float alpha = disk;
-                
-                // Inner Mystical Glow (Inside Event Horizon)
                 if (dist < uRadius) {
-                    float innerDist = dist / uRadius;
-                    float innerNoise = snoise(vec2(innerDist * 3.0 + uTime * 0.2, angle * 2.0));
-                    float innerGlow = smoothstep(0.0, 1.0, innerDist);
+                    float r = dist / uRadius;
                     
-                    // Deep mystical purple/blue core
-                    vec3 innerColor = vec3(0.1, 0.0, 0.2) * (0.5 + 0.5 * innerNoise) * innerGlow * 2.0;
+                    // Swirling suction effect towards singularity
+                    float suctionTime = uTime * 0.8;
+                    float suctionAngle = angle + r * 8.0 - suctionTime;
                     
-                    // Dark center
-                    innerColor *= smoothstep(0.2, 0.8, innerDist);
+                    // Dynamic plasma noise
+                    float plasma = fbm(vec2(r * 3.0, suctionAngle));
+                    float plasma2 = snoise(vec2(r * 6.0 - uTime, angle * 4.0));
                     
-                    finalColor = innerColor;
-                    alpha = 1.0;
+                    // Dark void at absolute center
+                    float voidCore = smoothstep(0.0, 0.3, r);
+                    
+                    // Deep, rich purple palette
+                    vec3 deepPurple = vec3(0.15, 0.0, 0.3);
+                    vec3 brightViolet = vec3(0.6, 0.2, 1.0);
+                    vec3 electricBlue = vec3(0.4, 0.6, 1.0);
+                    
+                    // Mix colors based on noise
+                    vec3 energy = mix(deepPurple, brightViolet, plasma);
+                    energy += electricBlue * plasma2 * 0.3 * r; // Blue sparks near edge
+                    
+                    // Pulsing intensity
+                    float pulse = 0.9 + 0.1 * sin(uTime * 2.0);
+                    
+                    innerGlowColor = energy * voidCore * pulse;
+                    
+                    // Rim glow interaction with event horizon
+                    float rim = smoothstep(0.85, 1.0, r);
+                    innerGlowColor += vec3(0.8, 0.5, 1.0) * rim * 0.8;
+                    
+                    innerAlpha = 1.0; // Opaque to hide stars
                 }
+
+                // 3. Photon Ring (Bright thin ring at event horizon)
+                float photonRing = smoothstep(uRadius * 0.96, uRadius, dist) * 
+                                  (1.0 - smoothstep(uRadius, uRadius * 1.04, dist));
+                photonRing = pow(photonRing, 3.0); // Sharpen
+                vec3 ringColor = vec3(1.0, 0.9, 0.7) * photonRing * 3.0;
+
+                // Composition
+                vec3 finalColor = diskColor;
+                float finalAlpha = disk;
                 
-                gl_FragColor = vec4(finalColor, alpha);
+                // Add Photon Ring
+                finalColor += ringColor;
+                finalAlpha = max(finalAlpha, photonRing);
+                
+                // Blend Inner Glow (overwrites disk if inside)
+                if (dist < uRadius) {
+                    finalColor = innerGlowColor;
+                    finalAlpha = 1.0;
+                } else {
+                    // Soft blend at edge to avoid aliasing
+                    float edgeBlend = smoothstep(uRadius, uRadius + 1.0, dist);
+                    finalColor = mix(innerGlowColor, finalColor, edgeBlend);
+                }
+
+                gl_FragColor = vec4(finalColor, finalAlpha);
             }
         `;
 
@@ -352,6 +427,7 @@ export default class WebGLBlackHoleRenderer {
             
             uniform vec2 uResolution;
             uniform float uTime;
+            uniform float uFlash;
             
             varying vec3 vColor;
             varying float vAlpha;
@@ -363,9 +439,9 @@ export default class WebGLBlackHoleRenderer {
                 
                 float twinkle = 0.5 + 0.5 * sin(uTime * aTwinkleSpeed * 10.0 + aTwinklePhase);
                 vAlpha = 0.5 + 0.5 * twinkle;
-                vColor = aColor;
+                vColor = aColor * (1.0 + uFlash); // Apply flash
                 
-                gl_PointSize = aSize;
+                gl_PointSize = aSize * (1.0 + uFlash * 0.5); // Also increase size slightly
             }
         `;
 
@@ -409,6 +485,7 @@ export default class WebGLBlackHoleRenderer {
         this.starUniforms = {
             resolution: gl.getUniformLocation(this.starProgram, 'uResolution'),
             time: gl.getUniformLocation(this.starProgram, 'uTime'),
+            flash: gl.getUniformLocation(this.starProgram, 'uFlash'),
         };
 
         return true;
@@ -562,6 +639,7 @@ export default class WebGLBlackHoleRenderer {
             gl.useProgram(this.starProgram);
             gl.uniform2f(this.starUniforms.resolution, this.canvas.width, this.canvas.height);
             gl.uniform1f(this.starUniforms.time, time);
+            gl.uniform1f(this.starUniforms.flash, this.starFlash);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, this.starBuffers.position);
             gl.enableVertexAttribArray(this.starAttributes.position);
@@ -654,5 +732,9 @@ export default class WebGLBlackHoleRenderer {
         this.eventHorizonRadius = radius;
         this.diskIntensity = diskIntensity;
         this.diskScale = diskScale;
+    }
+
+    setStarFlash(value) {
+        this.starFlash = value;
     }
 }

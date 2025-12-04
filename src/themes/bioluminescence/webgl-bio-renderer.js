@@ -303,6 +303,16 @@ export default class WebGLBioRenderer {
     }
 
     /**
+     * Clear the canvas
+     */
+    clear() {
+        const gl = this.gl;
+        if (!gl) return;
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    /**
      * Render all particles
      */
     render(time, globalPulse = 0) {
@@ -339,10 +349,6 @@ export default class WebGLBioRenderer {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.opacity);
         gl.enableVertexAttribArray(this.attributes.opacity);
         gl.vertexAttribPointer(this.attributes.opacity, 2, gl.FLOAT, false, 0, 0);
-
-        // Clear with transparent
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
 
         // Draw
         gl.drawArrays(gl.POINTS, 0, this.particleCount);

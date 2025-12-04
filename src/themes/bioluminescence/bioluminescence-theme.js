@@ -2,6 +2,8 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
 import WebGLBioRenderer from './webgl-bio-renderer.js';
+import WebGLBioGrass from './webgl-bio-grass.js';
+import WebGLBioMushrooms from './webgl-bio-mushrooms.js';
 import { BLOCK_SIZE, COLS, ROWS } from '../../core/constants.js';
 
 export default class BioluminescenceTheme extends BaseTheme {
@@ -11,6 +13,13 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.ctx = null;
         this.webglCanvas = null;
         this.webglRenderer = null;
+
+        // New WebGL layers
+        this.grassCanvas = null;
+        this.webglGrass = null;
+        this.mushroomCanvas = null;
+        this.webglMushrooms = null;
+
         this.useWebGL = false;
         this.resizeHandler = null;
         this.time = 0;
@@ -123,19 +132,19 @@ export default class BioluminescenceTheme extends BaseTheme {
                 staticRedrawInterval: 3,
             },
             High: {
-                groundGlow: 15,
-                biolumRocks: 14,
+                groundGlow: 8,
+                biolumRocks: 6,
                 groundMushrooms: 11,
                 mushroomSpots: { min: 2, max: 4 },
                 glowingPlants: 16,
                 plantFronds: { min: 3, max: 4 },
-                crystalFormations: 8,
-                luminousVines: 7,
+                crystalFormations: 5,
+                luminousVines: 5,
                 vineSegments: { min: 5, max: 6 },
                 fireflies: 50,
                 fireflyTrailLength: 5,
                 spores: 100,
-                ambientGlows: 28,
+                ambientGlows: 20,
                 grassBlades: 4,
                 auroraWaves: { min: 2, max: 2 },
                 auroraResolution: 15,
@@ -145,14 +154,14 @@ export default class BioluminescenceTheme extends BaseTheme {
                 staticRedrawInterval: 3,
             },
             Ultra: {
-                groundGlow: 20,
-                biolumRocks: 18,
+                groundGlow: 12,
+                biolumRocks: 10,
                 groundMushrooms: 15,
                 mushroomSpots: { min: 3, max: 6 },
                 glowingPlants: 22,
                 plantFronds: { min: 4, max: 5 },
-                crystalFormations: 10,
-                luminousVines: 9,
+                crystalFormations: 8,
+                luminousVines: 7,
                 vineSegments: { min: 6, max: 8 },
                 fireflies: 80,
                 fireflyTrailLength: 8,
@@ -215,10 +224,33 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             console.log(`🍄 Bioluminescence: WebGL active, boosting particles (Fireflies: ${this.activePreset.fireflies}, Spores: ${this.activePreset.spores})`);
 
+            // Set WebGL specific counts
+            const qualityMultiplier = {
+                Minimal: 0.2,
+                Low: 0.5,
+                Medium: 1.0,
+                High: 1.5,
+                Ultra: 2.5,
+                Extreme: 4.0
+            }[quality] || 1.0;
+
+            this.activePreset.webglGrassCount = Math.floor(30 * qualityMultiplier); // Drastically reduced from 80
+            this.activePreset.webglMushroomCount = Math.floor(15 * qualityMultiplier); // Reduced from 40
+
+            console.log(`🍄 Bioluminescence: WebGL active, boosting particles (Fireflies: ${this.activePreset.fireflies}, Spores: ${this.activePreset.spores}, Grass: ${this.activePreset.webglGrassCount})`);
+
             // Allocate WebGL buffers
             const totalParticles = this.activePreset.fireflies + this.activePreset.spores + this.activePreset.ambientGlows;
             if (this.webglRenderer) {
                 this.webglRenderer.allocateParticles(totalParticles * 2); // Buffer for extra particles
+            }
+
+            // Regenerate grass/mushrooms if they exist
+            if (this.webglGrass) {
+                this.webglGrass.generateGrass(this.activePreset.webglGrassCount, window.innerWidth, window.innerHeight);
+            }
+            if (this.webglMushrooms) {
+                this.webglMushrooms.generateMushrooms(this.activePreset.webglMushroomCount, window.innerWidth, window.innerHeight);
             }
         }
 
@@ -287,7 +319,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.webglCanvas.style.width = '100%';
         this.webglCanvas.style.height = '100%';
         this.webglCanvas.style.pointerEvents = 'none';
-        this.webglCanvas.style.zIndex = '0'; // Behind main canvas
+        this.webglCanvas.style.zIndex = '20'; // Particles on top
         themeContainer.appendChild(this.webglCanvas);
 
         // Set initial canvas size BEFORE creating elements
@@ -298,12 +330,34 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.webglCanvas.width = window.innerWidth;
         this.webglCanvas.height = window.innerHeight;
 
+        // Set initial canvas size BEFORE creating elements
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+        this.staticCanvas.width = window.innerWidth;
+        this.staticCanvas.height = window.innerHeight;
+        this.webglCanvas.width = window.innerWidth;
+        this.webglCanvas.height = window.innerHeight;
+
+
         // Initialize WebGL renderer
         this.webglRenderer = new WebGLBioRenderer(this.webglCanvas);
         if (this.webglRenderer.init()) {
             this.useWebGL = true;
             this.webglRenderer.initTextureShaders(); // Initialize texture support
             console.log('🍄 Bioluminescence: WebGL renderer active');
+
+            // Initialize WebGL Grass & Mushrooms
+            this.webglGrass = new WebGLBioGrass(this.webglRenderer.gl);
+            if (!this.webglGrass.init()) {
+                console.warn('Failed to init WebGL Grass');
+                this.webglGrass = null;
+            }
+
+            this.webglMushrooms = new WebGLBioMushrooms(this.webglRenderer.gl);
+            if (!this.webglMushrooms.init()) {
+                console.warn('Failed to init WebGL Mushrooms');
+                this.webglMushrooms = null;
+            }
         } else {
             console.warn('🍄 Bioluminescence: WebGL initialization failed, falling back to Canvas2D');
             this.useWebGL = false;
@@ -320,13 +374,25 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Initialize scene elements (NOW canvas has proper dimensions)
         this.createGroundGlow();
         this.createBiolumRocks();
-        this.createGroundMushrooms();
+
+        // Only create Canvas2D mushrooms if WebGL is NOT active
+        if (!this.useWebGL || !this.webglGrass) {
+            this.createGroundMushrooms();
+            // this.createGroundFoliage(); // We'll skip foliage if WebGL is on, or maybe keep it?
+            // Actually, let's keep foliage for now or replace it.
+            // The user wanted "long grass", which is WebGLBioGrass.
+            // So we should skip createGroundFoliage if WebGL is active.
+        }
+        if (!this.useWebGL) {
+            this.createGroundFoliage();
+        }
         this.createGlowingPlants();
         this.createCrystalFormations();
         this.createLuminousVines();
         this.createFireflies();
         this.createSpores();
         this.createAmbientGlows();
+        // this.createAlienFlora(); // Removed to reduce clutter as per user request
 
         // Generate texture atlas for WebGL
         if (this.useWebGL) {
@@ -463,6 +529,16 @@ export default class BioluminescenceTheme extends BaseTheme {
             if (this.webglRenderer) {
                 this.webglRenderer.gl.viewport(0, 0, window.innerWidth, window.innerHeight);
             }
+        }
+        if (this.grassCanvas) {
+            this.grassCanvas.width = window.innerWidth;
+            this.grassCanvas.height = window.innerHeight;
+            if (this.webglGrass) this.webglGrass.resize(window.innerWidth, window.innerHeight);
+        }
+        if (this.mushroomCanvas) {
+            this.mushroomCanvas.width = window.innerWidth;
+            this.mushroomCanvas.height = window.innerHeight;
+            if (this.webglMushrooms) this.webglMushrooms.resize(window.innerWidth, window.innerHeight);
         }
         this.cacheGradients();
         this.needsStaticRedraw = true;
@@ -2450,6 +2526,18 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // WebGL Rendering
         if (this.useWebGL && this.webglRenderer) {
+            // Clear once per frame
+            this.webglRenderer.clear();
+
+            // Render Grass and Mushrooms first (background layers)
+            if (this.webglGrass) {
+                // Use pulse intensity to influence wind
+                this.webglGrass.render(this.time * 0.001, this.webglCanvas.width, this.webglCanvas.height, this.pulseIntensity * 0.2);
+            }
+            if (this.webglMushrooms) {
+                this.webglMushrooms.render(this.time * 0.001, this.webglCanvas.width, this.webglCanvas.height, this.pulseIntensity * 0.1);
+            }
+
             // Collect particles
             const particles = [];
 
@@ -2712,6 +2800,11 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.webglCanvas.parentNode.removeChild(this.webglCanvas);
             this.webglCanvas = null;
         }
+
+        // Clean up Grass/Mushrooms
+        // Clean up Grass/Mushrooms
+        this.webglGrass = null;
+        this.webglMushrooms = null;
 
         super.stop();
     }
