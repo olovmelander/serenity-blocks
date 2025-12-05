@@ -24002,13 +24002,19 @@ body.phaser-multiplayer-active #single-player-container {
 
 /* Main multiplayer container - centered layout */
 .multiplayer-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    min-height: 100vh;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100vw !important;
+    height: 100vh !important;
     padding: 20px;
-    position: relative;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    z-index: 100 !important;
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 /* Game area with CSS Grid */
@@ -24017,42 +24023,41 @@ body.phaser-multiplayer-active #single-player-container {
     --board-height: 600px;
     display: grid;
     gap: 80px;
-    max-width: 1400px;
     width: 100%;
     justify-content: center;
     justify-items: center;
+    align-content: center;
+    margin: 0 auto;
     position: relative;
+    transform: none !important;
 }
 
 /* 2 players - 1 row × 2 columns */
 .multiplayer-game-area.players-2 {
-    --board-width: max(260px, min(380px, calc((100vw - 160px) / 2), calc((100vh - 380px) / 2)));
-    --board-height: calc(var(--board-width) * 2);
-    grid-template-columns: repeat(2, calc(var(--board-width) + 40px));
+    /* --board-width is set by JS */
+    grid-template-columns: repeat(2, calc(var(--board-width) + 30px));
     grid-template-rows: 1fr;
-    gap: 60px;
+    gap: var(--board-gap, 60px);
     align-items: center;
     justify-content: center;
 }
 
 /* 3 players - 1 row × 3 columns */
 .multiplayer-game-area.players-3 {
-    --board-width: max(260px, min(300px, calc((100vw - 200px) / 3), calc((100vh - 380px) / 2)));
-    --board-height: calc(var(--board-width) * 2);
-    grid-template-columns: repeat(3, calc(var(--board-width) + 40px));
+    /* --board-width is set by JS */
+    grid-template-columns: repeat(3, calc(var(--board-width) + 30px));
     grid-template-rows: 1fr;
-    gap: 40px;
+    gap: var(--board-gap, 40px);
     align-items: center;
     justify-content: center;
 }
 
 /* 4 players - 1 row × 4 columns */
 .multiplayer-game-area.players-4 {
-    --board-width: max(260px, min(280px, calc((100vw - 220px) / 4), calc((100vh - 380px) / 2)));
-    --board-height: calc(var(--board-width) * 2);
-    grid-template-columns: repeat(4, calc(var(--board-width) + 40px));
+    /* --board-width is set by JS */
+    grid-template-columns: repeat(4, calc(var(--board-width) + 30px));
     grid-template-rows: 1fr;
-    gap: 30px;
+    gap: var(--board-gap, 30px);
     align-items: center;
     justify-content: center;
 }
@@ -24062,30 +24067,36 @@ body.phaser-multiplayer-active #single-player-container {
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.4);
-    --board-width: 300px;
-    --board-height: 600px;
+    --player-glow: rgba(139, 92, 246, 0.4);
+    /* Dynamic dimensions set by JS */
+    /* Variables inherited from parent or set by JS */
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
     padding: 12px;
-    width: 100%;
-    max-width: calc(var(--board-width) + 40px);
+    width: min-content;
+    /* Allow card to shrink/grow with board */
+    min-width: min-content;
+    max-width: none;
     /* Constrain width */
     box-sizing: border-box;
-    background: rgba(10, 10, 20, 0.6);
-    border-radius: 20px;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: linear-gradient(180deg, rgba(20, 20, 35, 0.85) 0%, rgba(10, 10, 20, 0.95) 100%);
+    border-radius: 24px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+        0 0 20px rgba(0, 0, 0, 0.2) inset;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .player-card.single-player-card {
     /* Responsive sizing matching .single-player-card */
-    --board-width: min(clamp(300px, 35vw, 400px), calc((100vh - 200px) / 2));
-    --board-height: calc(var(--board-width) * 2);
+    /* Responsive sizing matching .single-player-card */
+    /* Variables inherited from parent or set by JS */
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.35);
@@ -24143,8 +24154,9 @@ body.phaser-multiplayer-active #single-player-container {
     display: flex;
     flex-direction: row;
     justify-content: center;
-    gap: 8px;
-    padding: 8px;
+    align-items: center;
+    gap: var(--next-piece-gap, 8px);
+    padding: var(--next-piece-gap, 8px);
     width: var(--board-width);
     margin: 0;
     margin-top: 12px;
@@ -24156,8 +24168,8 @@ body.phaser-multiplayer-active #single-player-container {
 }
 
 .player-card .player-next-piece {
-    width: 60px;
-    height: 60px;
+    width: var(--next-piece-size, 60px);
+    height: var(--next-piece-size, 60px);
     border-radius: 10px;
     background: linear-gradient(145deg, rgba(12, 12, 22, 0.95), rgba(24, 24, 44, 0.92));
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -24165,15 +24177,16 @@ body.phaser-multiplayer-active #single-player-container {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, width 0.2s ease, height 0.2s ease;
 }
 
 .player-card .player-next-piece.highlight {
+    width: var(--next-piece-highlight-size, 70px);
+    height: var(--next-piece-highlight-size, 70px);
     border-color: var(--player-primary, #8b5cf6);
     box-shadow:
         0 0 18px var(--player-glow, rgba(139, 92, 246, 0.45)),
         inset 0 0 18px rgba(255, 255, 255, 0.05);
-    transform: translateY(-3px) scale(1.045);
 }
 
 .player-card .player-next-piece.empty {
@@ -24196,8 +24209,12 @@ body.phaser-multiplayer-active #single-player-container {
     position: relative;
     width: var(--board-width);
     height: var(--board-height);
-    border-radius: 12px;
-    overflow: visible;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    margin-top: 10px;
 }
 
 /* Add spacing for player label in multiplayer to prevent overlap with next pieces */
@@ -24347,91 +24364,25 @@ body.phaser-multiplayer-active #single-player-container {
 .phaser-board-container,
 .phaser-board-container canvas,
 .board-border-overlay {
-    width: var(--board-width) !important;
-    height: var(--board-height) !important;
+    width: 100% !important;
+    height: 100% !important;
 }
 
 /* ============================================
    RESPONSIVE BREAKPOINTS
    ============================================ */
 
-/* Large Desktop (1920px+) - Maximum screen utilization */
-@media (min-width: 1920px) {
-    .multiplayer-game-area.players-2 {
-        --board-width: max(300px, min(420px, calc((100vw - 200px) / 2), calc((100vh - 380px) / 2)));
-        gap: 80px;
-    }
+/* Media queries removed to allow JavaScript dynamic sizing to take full control */
+/* This ensures smooth, continuous resizing without "steps" or conflicts */
 
-    .multiplayer-game-area.players-3 {
-        --board-width: max(280px, min(360px, calc((100vw - 240px) / 3), calc((100vh - 380px) / 2)));
-        gap: 60px;
-    }
-
-    .multiplayer-game-area.players-4 {
-        --board-width: max(260px, min(320px, calc((100vw - 280px) / 4), calc((100vh - 380px) / 2)));
-        gap: 50px;
-    }
+.multiplayer-game-area.players-3 {
+    --board-width: max(260px, min(320px, calc((100vw - 220px) / 3), calc((100vh - 380px) / 2)));
+    gap: 50px;
 }
 
-/* Desktop (1440px - 1920px) - Optimal balanced layout */
-@media (min-width: 1440px) and (max-width: 1919px) {
-    .multiplayer-game-area.players-2 {
-        --board-width: max(280px, min(380px, calc((100vw - 180px) / 2), calc((100vh - 380px) / 2)));
-        gap: 70px;
-    }
-
-    .multiplayer-game-area.players-3 {
-        --board-width: max(260px, min(320px, calc((100vw - 220px) / 3), calc((100vh - 380px) / 2)));
-        gap: 50px;
-    }
-
-    .multiplayer-game-area.players-4 {
-        --board-width: max(240px, min(290px, calc((100vw - 240px) / 4), calc((100vh - 380px) / 2)));
-        gap: 40px;
-    }
-}
-
-/* Laptop (1024px - 1440px) - Compact but comfortable */
-@media (min-width: 1024px) and (max-width: 1439px) {
-    .multiplayer-game-area.players-2 {
-        --board-width: min(340px, calc((100vw - 140px) / 2), calc((100vh - 380px) / 2));
-        gap: 50px;
-    }
-
-    .multiplayer-game-area.players-3 {
-        --board-width: min(280px, calc((100vw - 180px) / 3), calc((100vh - 380px) / 2));
-        gap: 40px;
-    }
-
-    .multiplayer-game-area.players-4 {
-        --board-width: min(240px, calc((100vw - 200px) / 4), calc((100vh - 380px) / 2));
-        gap: 30px;
-    }
-}
-
-/* Tablet/Small Laptop (768px - 1024px) - Horizontal scrolling enabled */
-@media (min-width: 768px) and (max-width: 1023px) {
-    .multiplayer-game-area.players-2 {
-        --board-width: min(300px, calc((100vw - 120px) / 2), calc((100vh - 380px) / 2));
-        gap: 40px;
-    }
-
-    .multiplayer-game-area.players-3 {
-        --board-width: min(240px, calc((100vw - 160px) / 3), calc((100vh - 380px) / 2));
-        gap: 30px;
-    }
-
-    .multiplayer-game-area.players-4 {
-        --board-width: min(200px, calc((100vw - 180px) / 4), calc((100vh - 380px) / 2));
-        gap: 25px;
-    }
-
-    /* Allow horizontal scrolling for 3-4 players if needed */
-    .multiplayer-game-area.players-3,
-    .multiplayer-game-area.players-4 {
-        overflow-x: auto;
-        padding-bottom: 10px;
-    }
+.multiplayer-game-area.players-4 {
+    --board-width: max(240px, min(290px, calc((100vw - 240px) / 4), calc((100vh - 380px) / 2)));
+    gap: 40px;
 }
 
 /* Mobile (< 768px) - Stack all players vertically */
