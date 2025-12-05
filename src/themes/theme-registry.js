@@ -323,6 +323,12 @@ export const THEME_REGISTRY = [
         module: './stellar-velocity/stellar-velocity-theme.js',
         group: 'cosmic',
     },
+    {
+        id: 'stellar-drift',
+        displayName: 'Stellar Drift',
+        module: './stellar-drift/stellar-drift-theme.js',
+        group: 'cosmic',
+    },
 ];
 
 const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
