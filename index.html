@@ -385,6 +385,9 @@
         <div id="stellar-velocity-theme" class="theme-container">
             <!-- Canvas will be dynamically added by StellarVelocityTheme -->
         </div>
+        <div id="stellar-drift-theme" class="theme-container">
+            <!-- 3D canvas will be dynamically added by StellarDriftTheme -->
+        </div>
         <div id="moonlit-forest-theme" class="theme-container">
             <div class="moonlit-forest-bg"></div>
             <div class="moonlit-forest-moon"></div>
@@ -562,25 +565,47 @@
 
         </div>
         <div class="single-player-stats-bar" aria-live="polite" aria-atomic="true">
-            <div class="single-player-stat">
-                <div class="single-player-stat-label">Score</div>
-                <div class="single-player-stat-value" id="score">0</div>
+            <div class="single-player-stat stat-score">
+                <span class="stat-icon">🏆</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">Score</div>
+                    <div class="single-player-stat-value" id="score">0</div>
+                </div>
             </div>
-            <div class="single-player-stat">
-                <div class="single-player-stat-label">Lines</div>
-                <div class="single-player-stat-value" id="lines">0</div>
+            <div class="single-player-stat stat-lines">
+                <span class="stat-icon">📊</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">Lines</div>
+                    <div class="single-player-stat-value" id="lines">0</div>
+                </div>
             </div>
-            <div class="single-player-stat">
-                <div class="single-player-stat-label">Level</div>
-                <div class="single-player-stat-value" id="level">1</div>
+            <div class="single-player-stat stat-level">
+                <span class="stat-icon">⬆️</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">Level</div>
+                    <div class="single-player-stat-value" id="level">1</div>
+                </div>
             </div>
-            <div class="single-player-stat">
-                <div class="single-player-stat-label">Next Lv</div>
-                <div class="single-player-stat-value" id="next-level">10</div>
+            <div class="single-player-stat stat-next-level">
+                <span class="stat-icon">🎯</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">Next Lv</div>
+                    <div class="single-player-stat-value" id="next-level">10</div>
+                </div>
             </div>
-            <div class="single-player-stat">
-                <div class="single-player-stat-label">Speed</div>
-                <div class="single-player-stat-value" id="speed">1.0x</div>
+            <div class="single-player-stat stat-speed">
+                <span class="stat-icon">⚡</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">Speed</div>
+                    <div class="single-player-stat-value" id="speed">1.0x</div>
+                </div>
+            </div>
+            <div class="single-player-stat stat-bpm">
+                <span class="stat-icon">🎵</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">BPM</div>
+                    <div class="single-player-stat-value" id="bpm">0</div>
+                </div>
             </div>
         </div>
     </div>
@@ -616,191 +641,299 @@
 
             <!-- Player 1 Card -->
             <div class="player-card" id="player-1-card" data-player="1" aria-label="Player 1 Game Board" role="region">
-                <div class="player-board-label">P1</div>
-                <!-- Next Pieces -->
-                <div class="player-next-pieces">
-                    <div class="player-next-piece highlight">
-                        <canvas id="p1-next-0" width="88" height="88"></canvas>
+                <!-- Player Header -->
+                <div class="player-header">
+                    <div class="player-avatar">
+                        <span class="avatar-text">P1</span>
+                        <div class="avatar-glow"></div>
                     </div>
-                    <div class="player-next-piece">
-                        <canvas id="p1-next-1" width="76" height="76"></canvas>
-                    </div>
-                    <div class="player-next-piece">
-                        <canvas id="p1-next-2" width="76" height="76"></canvas>
+
+                </div>
+
+                <!-- Next Pieces Section -->
+                <div class="player-next-section">
+                    <div class="next-label">NEXT</div>
+                    <div class="player-next-pieces">
+                        <div class="player-next-piece primary">
+                            <canvas id="p1-next-0" width="88" height="88"></canvas>
+                        </div>
+                        <div class="player-next-piece secondary">
+                            <canvas id="p1-next-1" width="76" height="76"></canvas>
+                        </div>
+                        <div class="player-next-piece tertiary">
+                            <canvas id="p1-next-2" width="76" height="76"></canvas>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Board Section -->
-                <div class="player-board-section">
-                    <div id="p1-phaser-container" class="phaser-board-container"></div>
-                    <div class="board-border-overlay" id="p1-border"></div>
+                <!-- Board Section with Garbage Indicator -->
+                <div class="player-board-wrapper">
+                    <div class="garbage-indicator" id="p1-garbage-bar">
+                        <div class="garbage-fill"></div>
+                        <div class="garbage-glow"></div>
+                    </div>
+                    <div class="player-board-section">
+                        <div id="p1-phaser-container" class="phaser-board-container"></div>
+                        <div class="board-border-overlay" id="p1-border">
+                            <div class="corner-bracket top-left"></div>
+                            <div class="corner-bracket top-right"></div>
+                            <div class="corner-bracket bottom-left"></div>
+                            <div class="corner-bracket bottom-right"></div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Stats -->
-                <div class="player-stats-compact" aria-live="polite" aria-atomic="true">
-                    <span class="stat-item">
-                        <span class="stat-label">F</span>
+                <!-- Enhanced Stats Bar -->
+                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
+                    <div class="stat-item stat-frags">
+                        <span class="stat-icon">⚔️</span>
+                        <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p1-frags">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">S</span>
+                    </div>
+                    <div class="stat-item stat-score">
+                        <span class="stat-icon">🏆</span>
+                        <span class="stat-label">Score</span>
                         <span class="stat-value" id="p1-score">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">L</span>
+                    </div>
+                    <div class="stat-item stat-lines">
+                        <span class="stat-icon">📊</span>
+                        <span class="stat-label">Lines</span>
                         <span class="stat-value" id="p1-lines">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">LV</span>
+                    </div>
+                    <div class="stat-item stat-level">
+                        <span class="stat-icon">⬆️</span>
+                        <span class="stat-label">Level</span>
                         <span class="stat-value" id="p1-level">1</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">G</span>
+                    </div>
+                    <div class="stat-item stat-garbage">
+                        <span class="stat-icon">💥</span>
+                        <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p1-garbage">0</span>
-                    </span>
+                    </div>
                 </div>
             </div>
 
             <!-- Player 2 Card -->
             <div class="player-card" id="player-2-card" data-player="2" aria-label="Player 2 Game Board" role="region">
-                <div class="player-board-label">P2</div>
-                <!-- Next Pieces -->
-                <div class="player-next-pieces">
-                    <div class="player-next-piece highlight">
-                        <canvas id="p2-next-0" width="88" height="88"></canvas>
+                <!-- Player Header -->
+                <div class="player-header">
+                    <div class="player-avatar">
+                        <span class="avatar-text">P2</span>
+                        <div class="avatar-glow"></div>
                     </div>
-                    <div class="player-next-piece">
-                        <canvas id="p2-next-1" width="76" height="76"></canvas>
-                    </div>
-                    <div class="player-next-piece">
-                        <canvas id="p2-next-2" width="76" height="76"></canvas>
+
+                </div>
+
+                <!-- Next Pieces Section -->
+                <div class="player-next-section">
+                    <div class="next-label">NEXT</div>
+                    <div class="player-next-pieces">
+                        <div class="player-next-piece primary">
+                            <canvas id="p2-next-0" width="88" height="88"></canvas>
+                        </div>
+                        <div class="player-next-piece secondary">
+                            <canvas id="p2-next-1" width="76" height="76"></canvas>
+                        </div>
+                        <div class="player-next-piece tertiary">
+                            <canvas id="p2-next-2" width="76" height="76"></canvas>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Board Section -->
-                <div class="player-board-section">
-                    <div id="p2-phaser-container" class="phaser-board-container"></div>
-                    <div class="board-border-overlay" id="p2-border"></div>
+                <!-- Board Section with Garbage Indicator -->
+                <div class="player-board-wrapper">
+                    <div class="garbage-indicator" id="p2-garbage-bar">
+                        <div class="garbage-fill"></div>
+                        <div class="garbage-glow"></div>
+                    </div>
+                    <div class="player-board-section">
+                        <div id="p2-phaser-container" class="phaser-board-container"></div>
+                        <div class="board-border-overlay" id="p2-border">
+                            <div class="corner-bracket top-left"></div>
+                            <div class="corner-bracket top-right"></div>
+                            <div class="corner-bracket bottom-left"></div>
+                            <div class="corner-bracket bottom-right"></div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Stats -->
-                <div class="player-stats-compact" aria-live="polite" aria-atomic="true">
-                    <span class="stat-item">
-                        <span class="stat-label">F</span>
+                <!-- Enhanced Stats Bar -->
+                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
+                    <div class="stat-item stat-frags">
+                        <span class="stat-icon">⚔️</span>
+                        <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p2-frags">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">S</span>
+                    </div>
+                    <div class="stat-item stat-score">
+                        <span class="stat-icon">🏆</span>
+                        <span class="stat-label">Score</span>
                         <span class="stat-value" id="p2-score">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">L</span>
+                    </div>
+                    <div class="stat-item stat-lines">
+                        <span class="stat-icon">📊</span>
+                        <span class="stat-label">Lines</span>
                         <span class="stat-value" id="p2-lines">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">LV</span>
+                    </div>
+                    <div class="stat-item stat-level">
+                        <span class="stat-icon">⬆️</span>
+                        <span class="stat-label">Level</span>
                         <span class="stat-value" id="p2-level">1</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">G</span>
+                    </div>
+                    <div class="stat-item stat-garbage">
+                        <span class="stat-icon">💥</span>
+                        <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p2-garbage">0</span>
-                    </span>
+                    </div>
                 </div>
             </div>
 
             <!-- Player 3 Card (Hidden by default) -->
             <div class="player-card" id="player-3-card" data-player="3" style="display: none;"
                 aria-label="Player 3 Game Board" role="region">
-                <div class="player-board-label">P3</div>
-                <!-- Next Pieces -->
-                <div class="player-next-pieces">
-                    <div class="player-next-piece highlight">
-                        <canvas id="p3-next-0" width="88" height="88"></canvas>
+                <!-- Player Header -->
+                <div class="player-header">
+                    <div class="player-avatar">
+                        <span class="avatar-text">P3</span>
+                        <div class="avatar-glow"></div>
                     </div>
-                    <div class="player-next-piece">
-                        <canvas id="p3-next-1" width="76" height="76"></canvas>
-                    </div>
-                    <div class="player-next-piece">
-                        <canvas id="p3-next-2" width="76" height="76"></canvas>
+
+                </div>
+
+                <!-- Next Pieces Section -->
+                <div class="player-next-section">
+                    <div class="next-label">NEXT</div>
+                    <div class="player-next-pieces">
+                        <div class="player-next-piece primary">
+                            <canvas id="p3-next-0" width="88" height="88"></canvas>
+                        </div>
+                        <div class="player-next-piece secondary">
+                            <canvas id="p3-next-1" width="76" height="76"></canvas>
+                        </div>
+                        <div class="player-next-piece tertiary">
+                            <canvas id="p3-next-2" width="76" height="76"></canvas>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Board Section -->
-                <div class="player-board-section">
-                    <div id="p3-phaser-container" class="phaser-board-container"></div>
-                    <div class="board-border-overlay" id="p3-border"></div>
+                <!-- Board Section with Garbage Indicator -->
+                <div class="player-board-wrapper">
+                    <div class="garbage-indicator" id="p3-garbage-bar">
+                        <div class="garbage-fill"></div>
+                        <div class="garbage-glow"></div>
+                    </div>
+                    <div class="player-board-section">
+                        <div id="p3-phaser-container" class="phaser-board-container"></div>
+                        <div class="board-border-overlay" id="p3-border">
+                            <div class="corner-bracket top-left"></div>
+                            <div class="corner-bracket top-right"></div>
+                            <div class="corner-bracket bottom-left"></div>
+                            <div class="corner-bracket bottom-right"></div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Stats -->
-                <div class="player-stats-compact" aria-live="polite" aria-atomic="true">
-                    <span class="stat-item">
-                        <span class="stat-label">F</span>
+                <!-- Enhanced Stats Bar -->
+                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
+                    <div class="stat-item stat-frags">
+                        <span class="stat-icon">⚔️</span>
+                        <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p3-frags">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">S</span>
+                    </div>
+                    <div class="stat-item stat-score">
+                        <span class="stat-icon">🏆</span>
+                        <span class="stat-label">Score</span>
                         <span class="stat-value" id="p3-score">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">L</span>
+                    </div>
+                    <div class="stat-item stat-lines">
+                        <span class="stat-icon">📊</span>
+                        <span class="stat-label">Lines</span>
                         <span class="stat-value" id="p3-lines">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">LV</span>
+                    </div>
+                    <div class="stat-item stat-level">
+                        <span class="stat-icon">⬆️</span>
+                        <span class="stat-label">Level</span>
                         <span class="stat-value" id="p3-level">1</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">G</span>
+                    </div>
+                    <div class="stat-item stat-garbage">
+                        <span class="stat-icon">💥</span>
+                        <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p3-garbage">0</span>
-                    </span>
+                    </div>
                 </div>
             </div>
 
             <!-- Player 4 Card (Hidden by default) -->
             <div class="player-card" id="player-4-card" data-player="4" style="display: none;"
                 aria-label="Player 4 Game Board" role="region">
-                <div class="player-board-label">P4</div>
-                <!-- Next Pieces -->
-                <div class="player-next-pieces">
-                    <div class="player-next-piece highlight">
-                        <canvas id="p4-next-0" width="88" height="88"></canvas>
+                <!-- Player Header -->
+                <div class="player-header">
+                    <div class="player-avatar">
+                        <span class="avatar-text">P4</span>
+                        <div class="avatar-glow"></div>
                     </div>
-                    <div class="player-next-piece">
-                        <canvas id="p4-next-1" width="76" height="76"></canvas>
-                    </div>
-                    <div class="player-next-piece">
-                        <canvas id="p4-next-2" width="76" height="76"></canvas>
+
+                </div>
+
+                <!-- Next Pieces Section -->
+                <div class="player-next-section">
+                    <div class="next-label">NEXT</div>
+                    <div class="player-next-pieces">
+                        <div class="player-next-piece primary">
+                            <canvas id="p4-next-0" width="88" height="88"></canvas>
+                        </div>
+                        <div class="player-next-piece secondary">
+                            <canvas id="p4-next-1" width="76" height="76"></canvas>
+                        </div>
+                        <div class="player-next-piece tertiary">
+                            <canvas id="p4-next-2" width="76" height="76"></canvas>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Board Section -->
-                <div class="player-board-section">
-                    <div id="p4-phaser-container" class="phaser-board-container"></div>
-                    <div class="board-border-overlay" id="p4-border"></div>
+                <!-- Board Section with Garbage Indicator -->
+                <div class="player-board-wrapper">
+                    <div class="garbage-indicator" id="p4-garbage-bar">
+                        <div class="garbage-fill"></div>
+                        <div class="garbage-glow"></div>
+                    </div>
+                    <div class="player-board-section">
+                        <div id="p4-phaser-container" class="phaser-board-container"></div>
+                        <div class="board-border-overlay" id="p4-border">
+                            <div class="corner-bracket top-left"></div>
+                            <div class="corner-bracket top-right"></div>
+                            <div class="corner-bracket bottom-left"></div>
+                            <div class="corner-bracket bottom-right"></div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Stats -->
-                <div class="player-stats-compact" aria-live="polite" aria-atomic="true">
-                    <span class="stat-item">
-                        <span class="stat-label">F</span>
+                <!-- Enhanced Stats Bar -->
+                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
+                    <div class="stat-item stat-frags">
+                        <span class="stat-icon">⚔️</span>
+                        <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p4-frags">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">S</span>
+                    </div>
+                    <div class="stat-item stat-score">
+                        <span class="stat-icon">🏆</span>
+                        <span class="stat-label">Score</span>
                         <span class="stat-value" id="p4-score">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">L</span>
+                    </div>
+                    <div class="stat-item stat-lines">
+                        <span class="stat-icon">📊</span>
+                        <span class="stat-label">Lines</span>
                         <span class="stat-value" id="p4-lines">0</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">LV</span>
+                    </div>
+                    <div class="stat-item stat-level">
+                        <span class="stat-icon">⬆️</span>
+                        <span class="stat-label">Level</span>
                         <span class="stat-value" id="p4-level">1</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="stat-label">G</span>
+                    </div>
+                    <div class="stat-item stat-garbage">
+                        <span class="stat-icon">💥</span>
+                        <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p4-garbage">0</span>
-                    </span>
+                    </div>
                 </div>
             </div>
 
@@ -864,7 +997,8 @@
                     </svg>
                 </div>
                 <h2 class="mode-card-title">Serenity</h2>
-                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing guide
+                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing
+                    guide
                 </p>
                 <div class="mode-card-glow"></div>
             </div>
@@ -1071,7 +1205,8 @@
                     <div
                         style="margin-top: 20px; padding: 15px; background: rgba(100, 200, 255, 0.1); border-radius: 8px; border-left: 3px solid #64c8ff;">
                         <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
-                            <strong>💡 Tip:</strong> Changes will apply immediately. Some settings like display mode may
+                            <strong>💡 Tip:</strong> Changes will apply immediately. Some settings like display mode
+                            may
                             require a moment to take effect.
                         </p>
                     </div>
@@ -1296,7 +1431,8 @@
                                 </div>
                             </div>
                             <div class="controls-nav-footer">
-                                <button class="controls-nav-action" id="detect-controllers">Detect Controllers</button>
+                                <button class="controls-nav-action" id="detect-controllers">Detect
+                                    Controllers</button>
                                 <button class="controls-nav-action ghost" id="reset-all-bindings">Reset All
                                     Bindings</button>
                             </div>
@@ -1355,11 +1491,13 @@
                                 </div>
                                 <div class="controls-helper-card" id="controls-binding-helper">
                                     <h5>How rebinding works</h5>
-                                    <p>Focus any binding tile, then press a key or button to remap instantly. Conflicts
+                                    <p>Focus any binding tile, then press a key or button to remap instantly.
+                                        Conflicts
                                         will prompt you to confirm or choose a different input.</p>
                                 </div>
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Use Detect Controllers whenever you plug in a new pad or
+                                    <strong>💡 Tip:</strong> Use Detect Controllers whenever you plug in a new pad
+                                    or
                                     wake a wireless controller to refresh status indicators.
                                 </div>
                             </div>
@@ -1367,7 +1505,8 @@
                             <div class="controls-subtab-content" id="controls-serenity-gamepad">
                                 <div class="serenity-controls-header">
                                     <h3>🎮 Serenity Mode Gamepad Controls</h3>
-                                    <p class="controls-description">Relaxed navigation and playback tools tailored for a
+                                    <p class="controls-description">Relaxed navigation and playback tools tailored
+                                        for a
                                         controller.</p>
                                 </div>
 
@@ -1460,7 +1599,8 @@
                                 </div>
 
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see an
+                                    <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see
+                                    an
                                     overlay of all available controls!
                                 </div>
 
@@ -1542,7 +1682,8 @@
                                 </div>
 
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an overlay
+                                    <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an
+                                    overlay
                                     of all available keyboard controls!
                                 </div>
 
@@ -1630,12 +1771,14 @@
                                 <div class="settings-grid">
                                     <div class="setting">
                                         <label for="gamepad-moveLeft">Move Left:</label>
-                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">D-Left
+                                        <div id="gamepad-moveLeft" class="gamepad-input key-input" tabindex="0">
+                                            D-Left
                                         </div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-moveRight">Move Right:</label>
-                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">D-Right
+                                        <div id="gamepad-moveRight" class="gamepad-input key-input" tabindex="0">
+                                            D-Right
                                         </div>
                                     </div>
                                     <div class="setting">
@@ -1650,12 +1793,14 @@
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-flip">Flip (180°):</label>
-                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X (Square)
+                                        <div id="gamepad-flip" class="gamepad-input key-input" tabindex="0">X
+                                            (Square)
                                         </div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-softDrop">Soft Drop:</label>
-                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">D-Down
+                                        <div id="gamepad-softDrop" class="gamepad-input key-input" tabindex="0">
+                                            D-Down
                                         </div>
                                     </div>
                                     <div class="setting">
@@ -1714,7 +1859,8 @@
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-pause">Pause:</label>
-                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start
+                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">
+                                            Start
                                             (Options)</div>
                                     </div>
                                 </div>
@@ -1763,7 +1909,8 @@
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p3-pause">Pause:</label>
-                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Start
+                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">
+                                            Start
                                             (Options)</div>
                                     </div>
                                 </div>
@@ -1812,7 +1959,8 @@
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-pause">Pause:</label>
-                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Start
+                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">
+                                            Start
                                             (Options)</div>
                                     </div>
                                 </div>
@@ -1850,7 +1998,8 @@
                 <button id="import-demo-btn" class="action-btn" style="font-size: 0.9em; padding: 8px 16px;">Import
                     File</button>
                 <input type="file" id="import-demo-input" accept=".json" style="display: none;">
-                <button id="import-url-btn" class="action-btn" style="font-size: 0.9em; padding: 8px 16px;">Import from
+                <button id="import-url-btn" class="action-btn" style="font-size: 0.9em; padding: 8px 16px;">Import
+                    from
                     URL</button>
             </div>
 
