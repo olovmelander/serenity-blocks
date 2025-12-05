@@ -62,41 +62,74 @@ export class InfinityHUD {
      * @private
      */
     _initialize() {
-        // Create main container
+        // Create main container with modern glassmorphism design
         this.container = document.createElement('div');
         this.container.id = 'infinity-hud';
         this.container.className = 'infinity-hud';
         this.container.style.cssText = `
             position: relative;
-            width: 240px;
-            background: linear-gradient(180deg, rgba(10, 12, 28, 0.92), rgba(6, 8, 20, 0.92));
-            border: 2px solid rgba(100, 200, 255, 0.35);
-            border-radius: 16px;
-            padding: 20px;
+            width: clamp(200px, 18vw, 280px);
+            background: linear-gradient(
+                165deg,
+                rgba(15, 20, 40, 0.85) 0%,
+                rgba(8, 12, 28, 0.92) 50%,
+                rgba(5, 8, 20, 0.95) 100%
+            );
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(100, 200, 255, 0.25);
+            border-radius: 20px;
+            padding: clamp(16px, 2vw, 24px);
             margin: 0;
             box-shadow:
-                0 14px 40px rgba(12, 18, 44, 0.55),
-                inset 0 0 24px rgba(80, 150, 255, 0.25);
-            font-family: 'Orbitron', monospace;
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+                0 0 60px rgba(80, 150, 255, 0.08);
+            font-family: 'Orbitron', 'Segoe UI', sans-serif;
             color: #fff;
             display: none;
             box-sizing: border-box;
+            overflow: hidden;
         `;
 
-        // Create title
+        // Subtle animated gradient border effect (using pseudo-element simulation via additional div)
+        const glowOverlay = document.createElement('div');
+        glowOverlay.style.cssText = `
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            right: -1px;
+            bottom: -1px;
+            border-radius: 21px;
+            background: linear-gradient(
+                45deg,
+                transparent 40%,
+                rgba(100, 200, 255, 0.1) 50%,
+                transparent 60%
+            );
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            z-index: -1;
+        `;
+        this.container.appendChild(glowOverlay);
+
+        // Create title with refined styling
         const title = document.createElement('div');
         title.className = 'hud-title';
-        title.textContent = 'INFINITY';
+        title.textContent = '∞ INFINITY';
         title.style.cssText = `
-            font-size: 14px;
-            font-weight: 700;
+            font-size: clamp(11px, 1.2vw, 14px);
+            font-weight: 600;
             text-align: center;
-            margin-bottom: 16px;
-            color: rgba(100, 200, 255, 1.0);
-            letter-spacing: 2px;
-            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+            margin-bottom: clamp(12px, 1.5vw, 20px);
+            color: rgba(140, 210, 255, 0.95);
+            letter-spacing: 3px;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.4);
+            text-transform: uppercase;
         `;
         this.container.appendChild(title);
+
 
         // Create height section
         this._createHeightSection();
@@ -124,55 +157,75 @@ export class InfinityHUD {
         const section = document.createElement('div');
         section.className = 'hud-section height-section';
         section.style.cssText = `
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: clamp(12px, 1.5vw, 18px);
+            padding-bottom: clamp(10px, 1.2vw, 14px);
+            border-bottom: 1px solid rgba(100, 200, 255, 0.15);
         `;
 
-        // Build height (from bottom)
+        // Build height (primary stat)
         const heightLabel = document.createElement('div');
         heightLabel.textContent = 'BUILD HEIGHT';
         heightLabel.style.cssText = `
-            font-size: 9px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 4px;
-            letter-spacing: 1px;
+            font-size: clamp(8px, 0.8vw, 10px);
+            color: rgba(180, 200, 220, 0.7);
+            margin-bottom: 6px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
         `;
         section.appendChild(heightLabel);
 
         this.heightDisplay = document.createElement('div');
         this.heightDisplay.className = 'height-value';
-        this.heightDisplay.textContent = '0 ROWS';
+        this.heightDisplay.textContent = '0';
         this.heightDisplay.style.cssText = `
-            font-size: 24px;
+            font-size: clamp(28px, 3vw, 36px);
             font-weight: 700;
-            color: rgba(100, 200, 255, 1.0);
-            margin-bottom: 8px;
-            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+            color: #fff;
+            margin-bottom: 4px;
+            line-height: 1;
+            text-shadow: 0 0 30px rgba(100, 200, 255, 0.5);
         `;
         section.appendChild(this.heightDisplay);
 
-        // Top row position
-        const topRowLabel = document.createElement('div');
-        topRowLabel.textContent = 'FROM CEILING';
-        topRowLabel.style.cssText = `
-            font-size: 9px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 4px;
+        // Row unit label
+        const rowUnit = document.createElement('div');
+        rowUnit.textContent = 'rows';
+        rowUnit.style.cssText = `
+            font-size: clamp(9px, 0.9vw, 11px);
+            color: rgba(140, 200, 255, 0.6);
+            margin-bottom: 12px;
             letter-spacing: 1px;
         `;
-        section.appendChild(topRowLabel);
+        section.appendChild(rowUnit);
+
+        // Distance from ceiling (secondary stat)
+        const ceilingContainer = document.createElement('div');
+        ceilingContainer.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        `;
+
+        const topRowLabel = document.createElement('div');
+        topRowLabel.textContent = 'TO CEILING';
+        topRowLabel.style.cssText = `
+            font-size: clamp(7px, 0.7vw, 9px);
+            color: rgba(255, 200, 130, 0.6);
+            letter-spacing: 1px;
+        `;
+        ceilingContainer.appendChild(topRowLabel);
 
         this.topRowDisplay = document.createElement('div');
         this.topRowDisplay.className = 'top-row-value';
-        this.topRowDisplay.textContent = '— ROWS';
+        this.topRowDisplay.textContent = '—';
         this.topRowDisplay.style.cssText = `
-            font-size: 16px;
+            font-size: clamp(14px, 1.4vw, 18px);
             font-weight: 600;
-            color: rgba(255, 200, 100, 1.0);
+            color: rgba(255, 200, 130, 0.9);
         `;
-        section.appendChild(this.topRowDisplay);
+        ceilingContainer.appendChild(this.topRowDisplay);
 
+        section.appendChild(ceilingContainer);
         this.container.appendChild(section);
     }
 
@@ -184,30 +237,50 @@ export class InfinityHUD {
         const section = document.createElement('div');
         section.className = 'hud-section progress-section';
         section.style.cssText = `
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: clamp(12px, 1.5vw, 18px);
+            padding-bottom: clamp(10px, 1.2vw, 14px);
+            border-bottom: 1px solid rgba(100, 200, 255, 0.15);
+        `;
+
+        // Header row with label and percentage
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
         `;
 
         const label = document.createElement('div');
         label.textContent = 'PROGRESS';
         label.style.cssText = `
-            font-size: 9px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 6px;
-            letter-spacing: 1px;
+            font-size: clamp(8px, 0.8vw, 10px);
+            color: rgba(180, 200, 220, 0.7);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
         `;
-        section.appendChild(label);
+        headerRow.appendChild(label);
 
-        // Progress bar container
+        this.progressText = document.createElement('div');
+        this.progressText.textContent = '0%';
+        this.progressText.style.cssText = `
+            font-size: clamp(12px, 1.2vw, 15px);
+            font-weight: 600;
+            color: rgba(100, 255, 200, 0.9);
+        `;
+        headerRow.appendChild(this.progressText);
+        section.appendChild(headerRow);
+
+        // Progress bar container with modern styling
         const barContainer = document.createElement('div');
         barContainer.style.cssText = `
             width: 100%;
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
             overflow: hidden;
             position: relative;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
         `;
 
         this.progressBar = document.createElement('div');
@@ -216,27 +289,15 @@ export class InfinityHUD {
             height: 100%;
             width: 0%;
             background: linear-gradient(90deg,
-                rgba(100, 200, 255, 0.8) 0%,
-                rgba(100, 255, 200, 0.8) 100%);
-            border-radius: 4px;
-            transition: width 0.3s ease;
-            box-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+                rgba(80, 180, 255, 1) 0%,
+                rgba(100, 255, 200, 1) 100%);
+            border-radius: 5px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 12px rgba(100, 220, 255, 0.6);
         `;
         barContainer.appendChild(this.progressBar);
 
         section.appendChild(barContainer);
-
-        // Percentage text
-        this.progressText = document.createElement('div');
-        this.progressText.textContent = '0.0%';
-        this.progressText.style.cssText = `
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.8);
-            margin-top: 4px;
-            text-align: right;
-        `;
-        section.appendChild(this.progressText);
-
         this.container.appendChild(section);
     }
 
@@ -248,18 +309,19 @@ export class InfinityHUD {
         const section = document.createElement('div');
         section.className = 'hud-section milestones-section';
         section.style.cssText = `
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: clamp(12px, 1.5vw, 18px);
+            padding-bottom: clamp(10px, 1.2vw, 14px);
+            border-bottom: 1px solid rgba(100, 200, 255, 0.15);
         `;
 
         const label = document.createElement('div');
         label.textContent = 'MILESTONES';
         label.style.cssText = `
-            font-size: 9px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 8px;
-            letter-spacing: 1px;
+            font-size: clamp(8px, 0.8vw, 10px);
+            color: rgba(180, 200, 220, 0.7);
+            margin-bottom: 10px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
         `;
         section.appendChild(label);
 
@@ -271,20 +333,21 @@ export class InfinityHUD {
             gap: 6px;
         `;
 
-        // Create milestone badges
+        // Create milestone badges with minimal pill style
         this.milestones.forEach((milestone) => {
             const badge = document.createElement('div');
             badge.className = 'milestone-badge';
             badge.dataset.milestone = milestone;
             badge.textContent = milestone;
             badge.style.cssText = `
-                padding: 4px 8px;
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 4px;
-                font-size: 11px;
-                color: rgba(255, 255, 255, 0.4);
-                transition: all 0.3s ease;
+                padding: 4px 10px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 12px;
+                font-size: clamp(9px, 0.9vw, 11px);
+                color: rgba(255, 255, 255, 0.35);
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                font-weight: 500;
             `;
             this.milestonesDisplay.appendChild(badge);
         });
@@ -302,46 +365,45 @@ export class InfinityHUD {
         section.className = 'hud-section stats-section';
 
         const label = document.createElement('div');
-        label.textContent = 'STATISTICS';
+        label.textContent = 'SESSION STATS';
         label.style.cssText = `
-            font-size: 9px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 8px;
-            letter-spacing: 1px;
+            font-size: clamp(8px, 0.8vw, 10px);
+            color: rgba(180, 200, 220, 0.7);
+            margin-bottom: 10px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
         `;
         section.appendChild(label);
 
         this.statsDisplay = document.createElement('div');
         this.statsDisplay.className = 'stats-list';
         this.statsDisplay.style.cssText = `
-            font-size: 11px;
-            line-height: 1.6;
-            color: rgba(255, 255, 255, 0.8);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 12px;
+            font-size: clamp(10px, 1vw, 12px);
         `;
         this.statsDisplay.innerHTML = `
-            <div class="stat-row" style="display: flex; justify-content: space-between;">
-                <span>Blocks:</span>
-                <span id="stat-blocks">0</span>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.8em; color: rgba(180, 200, 220, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Blocks</span>
+                <span id="stat-blocks" style="font-size: 1.2em; font-weight: 600; color: #fff;">0</span>
             </div>
-            <div class="stat-row" style="display: flex; justify-content: space-between;">
-                <span>Lines:</span>
-                <span id="stat-lines">0</span>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.8em; color: rgba(180, 200, 220, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Lines</span>
+                <span id="stat-lines" style="font-size: 1.2em; font-weight: 600; color: #fff;">0</span>
             </div>
-            <div class="stat-row" style="display: flex; justify-content: space-between;">
-                <span>Score:</span>
-                <span id="stat-score">0</span>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px; grid-column: span 2;">
+                <span style="font-size: 0.8em; color: rgba(180, 200, 220, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Score</span>
+                <span id="stat-score" style="font-size: 1.4em; font-weight: 700; color: rgba(100, 220, 255, 1);">0</span>
             </div>
-            <div class="stat-row" style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                <span style="color: rgba(255, 200, 100, 0.9);">Max Combo:</span>
-                <span id="stat-combo" style="color: rgba(255, 200, 100, 1.0); font-weight: 600;">0</span>
+            <div style="grid-column: span 2; height: 1px; background: rgba(100, 200, 255, 0.15); margin: 4px 0;"></div>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Combo</span>
+                <span id="stat-combo" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
             </div>
-            <div class="stat-row" style="display: flex; justify-content: space-between;">
-                <span style="color: rgba(255, 200, 100, 0.9);">Complexity:</span>
-                <span id="stat-complexity" style="color: rgba(255, 200, 100, 1.0); font-weight: 600;">0</span>
-            </div>
-            <div class="stat-row" style="display: flex; justify-content: space-between;">
-                <span style="color: rgba(255, 200, 100, 0.9);">Cascades:</span>
-                <span id="stat-cascades" style="color: rgba(255, 200, 100, 1.0); font-weight: 600;">0</span>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Cascades</span>
+                <span id="stat-cascades" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
             </div>
         `;
 

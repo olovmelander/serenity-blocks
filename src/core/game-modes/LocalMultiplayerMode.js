@@ -651,6 +651,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const { numPlayers } = this.multiplayerState;
 
+        // Initialize previous values tracking if not exists
+        if (!this._prevStats) {
+            this._prevStats = {};
+        }
+
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
             const playerState = this.multiplayerState.players[i];
@@ -671,11 +676,52 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const levelEl = document.getElementById(`p${playerNum}-level`);
             const garbageEl = document.getElementById(`p${playerNum}-garbage`);
 
-            if (fragsEl) fragsEl.textContent = roundFrags;
-            if (scoreEl) scoreEl.textContent = totalScore;
-            if (linesEl) linesEl.textContent = totalLines;
-            if (levelEl) levelEl.textContent = totalLevel;
-            if (garbageEl) garbageEl.textContent = totalGarbage;
+            // Track previous values for pulse animation
+            const prevKey = `p${playerNum}`;
+            if (!this._prevStats[prevKey]) {
+                this._prevStats[prevKey] = { frags: 0, score: 0, lines: 0, level: 1, garbage: 0 };
+            }
+            const prev = this._prevStats[prevKey];
+
+            // Update values with pulse animation if changed
+            if (fragsEl) {
+                fragsEl.textContent = roundFrags;
+                if (roundFrags !== prev.frags) {
+                    this._pulseElement(fragsEl);
+                    prev.frags = roundFrags;
+                }
+            }
+            if (scoreEl) {
+                scoreEl.textContent = totalScore;
+                if (totalScore !== prev.score) {
+                    this._pulseElement(scoreEl);
+                    prev.score = totalScore;
+                }
+            }
+            if (linesEl) {
+                linesEl.textContent = totalLines;
+                if (totalLines !== prev.lines) {
+                    this._pulseElement(linesEl);
+                    prev.lines = totalLines;
+                }
+            }
+            if (levelEl) {
+                levelEl.textContent = totalLevel;
+                if (totalLevel !== prev.level) {
+                    this._pulseElement(levelEl);
+                    prev.level = totalLevel;
+                }
+            }
+            if (garbageEl) {
+                garbageEl.textContent = totalGarbage;
+                if (totalGarbage !== prev.garbage) {
+                    this._pulseElement(garbageEl);
+                    prev.garbage = totalGarbage;
+                }
+            }
+
+            // Update garbage indicator bar
+            this._updateGarbageIndicator(playerNum, totalGarbage);
         }
 
         // Update board-level frag displays for all players (used in 3-4 player mode)
@@ -685,6 +731,41 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const playerKey = `player${i}`;
                 boardFragDisplay.textContent = `${this.roundWins[playerKey] || 0} F`;
             }
+        }
+    }
+
+    /**
+     * Add pulse animation to an element
+     * @private
+     */
+    _pulseElement(element) {
+        if (!element) return;
+        element.classList.remove('pulse');
+        // Trigger reflow to restart animation
+        void element.offsetWidth;
+        element.classList.add('pulse');
+    }
+
+    /**
+     * Update garbage indicator bar for a player
+     * @private
+     */
+    _updateGarbageIndicator(playerNum, garbageAmount) {
+        const garbageBar = document.getElementById(`p${playerNum}-garbage-bar`);
+        if (!garbageBar) return;
+
+        const fill = garbageBar.querySelector('.garbage-fill');
+        const glow = garbageBar.querySelector('.garbage-glow');
+
+        // Calculate percentage (max 20 rows = 100%)
+        const maxGarbage = 20;
+        const percentage = Math.min((garbageAmount / maxGarbage) * 100, 100);
+
+        if (fill) {
+            fill.style.height = `${percentage}%`;
+        }
+        if (glow) {
+            glow.style.height = `${percentage}%`;
         }
     }
 

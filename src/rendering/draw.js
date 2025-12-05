@@ -855,31 +855,44 @@ export function updateStats(stats) {
         statElements.level = document.getElementById('level');
         statElements.nextLevel = document.getElementById('next-level');
         statElements.speed = document.getElementById('speed');
+        statElements.bpm = document.getElementById('bpm');
     }
+
+    // Helper to trigger pulse animation
+    const pulseElement = (el) => {
+        if (!el) return;
+        el.classList.remove('pulse');
+        void el.offsetWidth; // Trigger reflow
+        el.classList.add('pulse');
+    };
 
     // PERFORMANCE: Only update if values changed
     if (lastStatValues.score !== score && statElements.score) {
         lastStatValues.score = score;
         statElements.score.textContent = score;
+        pulseElement(statElements.score);
     }
 
     if (lastStatValues.lines !== lines && statElements.lines) {
         lastStatValues.lines = lines;
         statElements.lines.textContent = lines;
+        pulseElement(statElements.lines);
     }
 
     // PERFORMANCE: Only update level if changed
     if (lastStatValues.level !== level && statElements.level) {
         lastStatValues.level = level;
         statElements.level.textContent = level;
-        statElements.level.className = 'stat-value';
+        statElements.level.className = 'single-player-stat-value';
         if (level >= 10) statElements.level.classList.add('danger');
         else if (level >= 5) statElements.level.classList.add('warning');
+        pulseElement(statElements.level);
     }
 
     if (lastStatValues.linesUntilNextLevel !== linesUntilNextLevel && statElements.nextLevel) {
         lastStatValues.linesUntilNextLevel = linesUntilNextLevel;
         statElements.nextLevel.textContent = linesUntilNextLevel;
+        pulseElement(statElements.nextLevel);
     }
 
     // PERFORMANCE: Calculate speed using cached constant array
@@ -890,9 +903,28 @@ export function updateStats(stats) {
     if (lastStatValues.speedMultiplier !== speedMultiplier && statElements.speed) {
         lastStatValues.speedMultiplier = speedMultiplier;
         statElements.speed.textContent = `${speedMultiplier}x`;
-        statElements.speed.className = 'stat-value';
+        statElements.speed.className = 'single-player-stat-value';
         const speedValue = parseFloat(speedMultiplier);
         if (speedValue >= 20) statElements.speed.classList.add('danger');
         else if (speedValue >= 5) statElements.speed.classList.add('warning');
+        pulseElement(statElements.speed);
+    }
+
+    // Calculate BPM (Blocks Per Minute)
+    if (statElements.bpm) {
+        // startTime is set via Date.now() in GameState
+        const elapsedMs = startTime ? (Date.now() - startTime) : 0;
+        const elapsedMinutes = elapsedMs / 60000;
+        const pieces = piecesPlaced || 0;
+        const bpm = elapsedMinutes > 0.05 ? Math.round(pieces / elapsedMinutes) : 0; // Wait 3s before calculating
+
+        if (lastStatValues.bpm !== bpm) {
+            lastStatValues.bpm = bpm;
+            statElements.bpm.textContent = bpm;
+            // Only pulse on meaningful changes (avoid constant pulsing)
+            if (bpm > 0 && pieces % 5 === 0) {
+                pulseElement(statElements.bpm);
+            }
+        }
     }
 }
