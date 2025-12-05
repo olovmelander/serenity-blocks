@@ -225,7 +225,7 @@
   width: 680px;
   max-width: 90vw;
   max-height: 85vh;
-  min-height: 600px;
+  min-height: 700px;
   background: var(--hub-background);
   backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(180%);
