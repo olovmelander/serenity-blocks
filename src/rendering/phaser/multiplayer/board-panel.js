@@ -58,9 +58,9 @@ export function createMultiplayerBoardScene(
     const BaseBoardScene = createBaseBoardScene(phaserLib);
 
     return class MultiplayerBoardScene extends BaseBoardScene {
-        constructor(key) {
-            super(key || 'MultiplayerBoardScene');
-            console.log(`[MultiplayerBoardScene] Constructor called with key: ${key}`);
+        constructor(key, boardConfig = {}) {
+            super(key || 'MultiplayerBoardScene', boardConfig);
+            console.log(`[MultiplayerBoardScene] Constructor called with key: ${key}, blockSize: ${boardConfig.blockSize}`);
 
             // SharedEffects instance (will be initialized in create())
             this.effects = null;
@@ -119,7 +119,7 @@ export function createMultiplayerBoardScene(
          */
         create() {
             try {
-                console.log(`[MultiplayerBoardScene] create() called for ${this.scene?.key || 'unknown'}`);
+                console.log(`[MultiplayerBoardScene] create() called for ${this.scene?.key || 'unknown'}, viewport:`, this.viewport);
                 super.create();
                 this.attachGraphicsLayerAliases();
 
@@ -187,26 +187,19 @@ export function createMultiplayerBoardScene(
                 const camera = this.cameras.main;
                 console.log(`[MultiplayerBoardScene] applyViewport for ${this.scene?.key || 'unknown'}`, this.viewport);
 
-                if (!this.viewport) {
-                    console.error(`[MultiplayerBoardScene] No viewport data for ${this.scene?.key || 'unknown'}!`);
-                    return;
-                }
-
-                console.log(
-                    '[MultiplayerBoardScene] Setting viewport:',
-                    this.viewport.x,
-                    this.viewport.y,
-                    this.viewport.width,
-                    this.viewport.height,
-                );
-
                 // Set the viewport (where on the canvas this camera renders)
-                camera.setViewport(
-                    this.viewport.x,
-                    this.viewport.y,
-                    this.viewport.width,
-                    this.viewport.height,
-                );
+                if (this.viewport) {
+                    camera.setViewport(
+                        this.viewport.x,
+                        this.viewport.y,
+                        this.viewport.width,
+                        this.viewport.height,
+                    );
+                } else {
+                    console.log('[MultiplayerBoardScene] No viewport provided, using full canvas (default)');
+                    // Reset viewport to full canvas if previously set
+                    camera.setViewport(0, 0, this.scale.width, this.scale.height);
+                }
 
                 // Each scene has its own independent world space starting at (0, 0)
                 // The viewport determines WHERE on the canvas the scene renders
