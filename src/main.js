@@ -1313,7 +1313,10 @@ class SerenityBlocks {
      */
     setupEventListeners() {
         // Window resize
-        const resizeHandler = () => this.handleResize();
+        const resizeHandler = () => {
+            console.log('[Main] Window resized, notifying GameModeManager');
+            this.handleResize();
+        };
         window.addEventListener('resize', resizeHandler);
 
         // Theme change events (from event bus)
@@ -2294,6 +2297,11 @@ class SerenityBlocks {
 
         if (this.themeManager) {
             this.themeManager.resize(window.innerWidth, window.innerHeight);
+        }
+
+        // Forward resize to GameModeManager so multiplayer boards scale correctly
+        if (this.gameModeManager) {
+            this.gameModeManager.handleResize();
         }
 
         // Redraw using legacy canvas fallback if available
