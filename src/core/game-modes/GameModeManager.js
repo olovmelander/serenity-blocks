@@ -293,7 +293,10 @@ export class GameModeManager {
      */
     handleResize() {
         if (this.currentMode && this.currentMode.isActive) {
+            console.log(`[GameModeManager] Propagating resize to mode: ${this.currentModeId}`);
             this.currentMode.onResize();
+        } else {
+            console.log('[GameModeManager] No active mode to resize');
         }
     }
 

@@ -35,13 +35,7 @@
                 <feGaussianBlur in="goo" stdDeviation="1.5" result="smoothGoo" />
                 <feComposite in="SourceGraphic" in2="smoothGoo" operator="atop" />
             </filter>
-            <!-- Clip path for multiplayer boards with rounded corners -->
-            <clipPath id="multiplayer-clip-path" clipPathUnits="userSpaceOnUse">
-                <!-- Player 1 board: full 300x600 area with 12px rounded corners -->
-                <rect x="0" y="0" width="300" height="600" rx="12" ry="12" />
-                <!-- Player 2 board: full 300x600 area at x=390 with 12px rounded corners -->
-                <rect x="390" y="0" width="300" height="600" rx="12" ry="12" />
-            </clipPath>
+            <!-- Clip path removed to allow dynamic sizing -->
         </defs>
     </svg>
     <div class="background-container">

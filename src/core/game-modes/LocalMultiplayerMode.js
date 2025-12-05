@@ -29,6 +29,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.animationFrameId = null;
         this.boardScenes = [];
         this.cleanupHandlers = [];
+        this.boardGap = 80; // Space between player boards
 
         // Separate Phaser game instances for each player
         this.p1PhaserGame = null;
@@ -195,6 +196,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Update layout for player count
         this._updatePlayerLayout(numPlayers);
+
+        // Ensure UI is sized correctly before creating games
+        this.onResize();
 
         // Create separate Phaser game instances for each player
         await this._createSeparatePhaserGames();
@@ -447,10 +451,39 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Handle window resize
      */
     onResize() {
-        const singleBoardWidth = COLS * BLOCK_SIZE;
-        const multiBoardWidth = singleBoardWidth * 2 + this.boardGap;
-        const multiBoardHeight = ROWS * BLOCK_SIZE;
-        this._resizePhaserGame(multiBoardWidth, multiBoardHeight, true);
+        // Recalculate block size based on new window dimensions
+        const newBlockSize = this._calculateDynamicBlockSize();
+
+        // Always update to ensure smooth resizing
+        // if (this.currentBlockSize === newBlockSize) {
+        //     return;
+        // }
+
+        console.log(`[LocalMultiplayer] onResize called. Current: ${this.currentBlockSize}, New: ${newBlockSize}`);
+        this.currentBlockSize = newBlockSize;
+
+        // Update CSS variables for UI - this controls the visual size of the container
+        this._updateBoardCSSVariables(newBlockSize);
+
+        // Force a DOM reflow so the browser recalculates element sizes
+        // before Phaser checks the parent container dimensions
+        const gameArea = document.querySelector('.multiplayer-game-area');
+        if (gameArea) {
+            // Reading offsetHeight forces a synchronous reflow
+            void gameArea.offsetHeight;
+        }
+
+        // Phaser Scale.FIT will automatically handle the canvas scaling because the parent container size changed
+        // Use requestAnimationFrame to ensure the DOM has fully updated before refreshing Phaser
+        if (this.phaserGames && this.phaserGames.length > 0) {
+            requestAnimationFrame(() => {
+                this.phaserGames.forEach((game) => {
+                    if (game && game.scale) {
+                        game.scale.refresh();
+                    }
+                });
+            });
+        }
     }
 
     /**
@@ -835,10 +868,106 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
+     * Calculate dynamic block size based on window height
+     * @private
+     */
+    _calculateDynamicBlockSize() {
+        const windowHeight = window.innerHeight;
+        const windowWidth = window.innerWidth;
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+
+        // Height constraint
+        // Fixed elements: top/bottom screen padding (40px each), player label (~30px),
+        // stats section (~50px), card padding (~30px), bottom gap (~30px)
+        const fixedVerticalSpace = 220;
+        const availableHeight = windowHeight - fixedVerticalSpace;
+
+        // The next pieces also scale with blockSize (~2.5 blocks tall including padding)
+        // So effective height = ROWS * blockSize + 2.5 * blockSize = (ROWS + 2.5) * blockSize
+        const effectiveRows = ROWS + 2.5;
+        let sizeByHeight = availableHeight / effectiveRows;
+
+        // Width constraint
+        const cardPadding = 40;
+        const gapSize = 60;
+        const outerPadding = 80;
+
+        const totalFixedHorizontalSpace = (numPlayers * cardPadding) + ((numPlayers - 1) * gapSize) + outerPadding;
+        const availableWidth = windowWidth - totalFixedHorizontalSpace;
+        const totalCols = numPlayers * COLS;
+        let sizeByWidth = availableWidth / totalCols;
+
+        // Take the smaller of the two to ensure it fits both dimensions
+        let size = Math.min(sizeByHeight, sizeByWidth);
+
+        console.log(`[LocalMultiplayer] Sizing Debug:
+            Window: ${windowWidth}x${windowHeight}
+            Available Height: ${availableHeight} (Fixed: ${fixedVerticalSpace}, EffectiveRows: ${effectiveRows}) -> Size: ${sizeByHeight}
+            Available Width: ${availableWidth} (Fixed: ${totalFixedHorizontalSpace}) -> Size: ${sizeByWidth}
+            Raw Size: ${size}
+        `);
+
+        // Clamp size between reasonable min and max
+        // Min 10px allows for very small screens
+        // Max 80px allows for large screens (4K)
+        size = Math.max(10, Math.min(80, size));
+
+        console.log(`[LocalMultiplayer] Calculated block size: ${size}px (Window: ${windowWidth}x${windowHeight}, Players: ${numPlayers})`);
+        return size;
+    }
+
+    /**
+     * Update CSS variables for board dimensions
+     * @private
+     */
+    _updateBoardCSSVariables(blockSize) {
+        const boardWidth = COLS * blockSize;
+        const boardHeight = ROWS * blockSize;
+
+        // Dynamic gap: 1.5 blocks, clamped between 20px and 80px
+        const dynamicGap = Math.max(20, Math.min(80, blockSize * 1.5));
+
+        // Next piece sizes: scale proportionally with block size
+        // Highlight piece: ~2.2 blocks, clamped between 44px and 100px
+        const nextPieceHighlightSize = Math.max(44, Math.min(100, blockSize * 2.2));
+        // Regular pieces: ~1.9 blocks, clamped between 38px and 86px
+        const nextPieceSize = Math.max(38, Math.min(86, blockSize * 1.9));
+        // Gap between next pieces: ~0.25 blocks, clamped between 4px and 12px
+        const nextPieceGap = Math.max(4, Math.min(12, blockSize * 0.25));
+
+        console.log(`[LocalMultiplayer] Updating CSS variables: width=${boardWidth}px, height=${boardHeight}px, gap=${dynamicGap}px, nextPiece=${nextPieceSize}px`);
+
+        // Set globally on root to ensure all elements pick it up
+        document.documentElement.style.setProperty('--board-width', `${boardWidth}px`);
+        document.documentElement.style.setProperty('--board-height', `${boardHeight}px`);
+        document.documentElement.style.setProperty('--board-gap', `${dynamicGap}px`);
+        document.documentElement.style.setProperty('--next-piece-size', `${nextPieceSize}px`);
+        document.documentElement.style.setProperty('--next-piece-highlight-size', `${nextPieceHighlightSize}px`);
+        document.documentElement.style.setProperty('--next-piece-gap', `${nextPieceGap}px`);
+
+        // Also set on specific containers as fallback
+        const gameArea = document.querySelector('.multiplayer-game-area');
+        if (gameArea) {
+            gameArea.style.setProperty('--board-width', `${boardWidth}px`);
+            gameArea.style.setProperty('--board-height', `${boardHeight}px`);
+            gameArea.style.setProperty('--board-gap', `${dynamicGap}px`);
+        }
+
+        const playerCards = document.querySelectorAll('.player-card');
+        playerCards.forEach(card => {
+            card.style.setProperty('--board-width', `${boardWidth}px`);
+            card.style.setProperty('--board-height', `${boardHeight}px`);
+            card.style.setProperty('--next-piece-size', `${nextPieceSize}px`);
+            card.style.setProperty('--next-piece-highlight-size', `${nextPieceHighlightSize}px`);
+            card.style.setProperty('--next-piece-gap', `${nextPieceGap}px`);
+        });
+    }
+
+    /**
      * Ensure multiplayer board scenes exist
      * @private
      */
-    async _ensureMultiplayerBoardScenes() {
+    async _ensureMultiplayerBoardScenes(forceRestart = false) {
         const { phaserGame } = this.deps;
         const MultiplayerBoardSceneClass = this.deps.phaserGame?.MultiplayerBoardSceneClass;
 
@@ -850,13 +979,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
         let scene1 = phaserGame.scene?.getScene('BoardPanel1');
         let scene2 = phaserGame.scene?.getScene('BoardPanel2');
 
-        // If scenes don't exist, create them
-        if (!scene1 || !scene2) {
+        // If scenes don't exist or we're forcing a restart, create/recreate them
+        if (!scene1 || !scene2 || forceRestart) {
             console.log('[LocalMultiplayer] Creating board panel scenes...');
 
             // Calculate viewport dimensions
-            const singleBoardWidth = COLS * BLOCK_SIZE;
-            const boardHeight = ROWS * BLOCK_SIZE;
+            // Calculate viewport dimensions
+            const blockSize = this._calculateDynamicBlockSize();
+            const singleBoardWidth = COLS * blockSize;
+            const boardHeight = ROWS * blockSize;
+
+            // Update CSS variables
+            this._updateBoardCSSVariables(blockSize);
 
             // Player 1 viewport (left side)
             const player1Viewport = {
@@ -876,8 +1010,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
             // Create scene instances with unique keys
             // We MUST pass instances because Phaser doesn't support unique keys when passing CLASS
-            const scene1Instance = new MultiplayerBoardSceneClass('BoardPanel1');
-            const scene2Instance = new MultiplayerBoardSceneClass('BoardPanel2');
+            const scene1Instance = new MultiplayerBoardSceneClass('BoardPanel1', { blockSize });
+            const scene2Instance = new MultiplayerBoardSceneClass('BoardPanel2', { blockSize });
 
             // Add scenes with their instances
             phaserGame.scene.add('BoardPanel1', scene1Instance, false);
@@ -909,8 +1043,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
             console.log('[LocalMultiplayer] Reusing existing board panel scenes...');
 
             // Calculate viewport dimensions
-            const singleBoardWidth = COLS * BLOCK_SIZE;
-            const boardHeight = ROWS * BLOCK_SIZE;
+            // Calculate viewport dimensions
+            const blockSize = this._calculateDynamicBlockSize();
+            const singleBoardWidth = COLS * blockSize;
+            const boardHeight = ROWS * blockSize;
+
+            // Update CSS variables
+            this._updateBoardCSSVariables(blockSize);
 
             // Player 1 viewport (left side)
             const player1Viewport = {
@@ -987,12 +1126,28 @@ export class LocalMultiplayerMode extends BaseGameMode {
             throw new Error('BoardScene or MultiplayerBoardScene class not available');
         }
 
+
         console.log('[LocalMultiplayer] Using scene class:', BoardScene.name || 'BoardScene');
 
         // Game configuration for each player
+        // Calculate dynamic block size
+        const blockSize = this._calculateDynamicBlockSize();
+        this.currentBlockSize = blockSize;
+        console.log(`[LocalMultiplayer] Using dynamic block size: ${blockSize} px`);
+
+        // Update CSS variables immediately
+        this._updateBoardCSSVariables(blockSize);
+
+        // Game configuration for each player
+        // Use a fixed internal resolution based on standard 40px blocks
+        // This ensures all drawing logic (tetrominos, effects) works as designed
+        const FIXED_BLOCK_SIZE = 40;
+        const internalWidth = COLS * FIXED_BLOCK_SIZE;
+        const internalHeight = ROWS * FIXED_BLOCK_SIZE;
+
         const createGameConfig = (parent) => ({
-            width: COLS * BLOCK_SIZE,
-            height: ROWS * BLOCK_SIZE,
+            width: internalWidth,
+            height: internalHeight,
             parent,
             type: Phaser.WEBGL,
             transparent: true,
@@ -1000,10 +1155,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
             banner: false,
             fps: { target: 60 },
             scale: {
-                mode: Phaser.Scale.FIT,
-                autoCenter: Phaser.Scale.NO_CENTER,
-                width: COLS * BLOCK_SIZE,
-                height: ROWS * BLOCK_SIZE,
+                mode: Phaser.Scale.FIT, // Scale the canvas to fit the parent container
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+                width: internalWidth,
+                height: internalHeight,
             },
         });
 
@@ -1021,9 +1176,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
             await new Promise((resolve) => setTimeout(resolve, 100));
 
             // Add and start BoardScene
-            const boardScene = new BoardScene(`P${i}Board`);
-            phaserGame.scene.add(`P${i}Board`, boardScene, true);
-            console.log(`[LocalMultiplayer] Player ${i} scene created:`, boardScene.scene?.key);
+            const sceneKey = `P${i}Board`; // Removed space
+            // Pass FIXED_BLOCK_SIZE so the scene draws at internal resolution
+            const boardScene = new BoardScene(sceneKey, { blockSize: FIXED_BLOCK_SIZE });
+            phaserGame.scene.add(sceneKey, boardScene, true);
+            console.log(`[LocalMultiplayer] Player ${i} scene created: `, boardScene.scene?.key);
 
             // Store references
             this.phaserGames.push(phaserGame);
@@ -1065,7 +1222,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         ['BoardPanel1', 'BoardPanel2'].forEach((key) => {
             const scene = phaserGame.scene.getScene(key);
             if (scene) {
-                console.log(`[LocalMultiplayer] Removing scene: ${key}`);
+                console.log(`[LocalMultiplayer] Removing scene: ${key} `);
 
                 // Clear the scene's camera viewport to prevent rendering
                 if (scene.cameras?.main) {
@@ -1115,62 +1272,86 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     _activatePhaserMultiplayerUI() {
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+        console.log(`[LocalMultiplayer] Activating Phaser UI for ${numPlayers} players`);
+
+        // Restore the body class for global CSS styling
         document.body.classList.add('phaser-multiplayer-active');
+
+        // Force container visibility via JS (nuclear option to ensure it appears)
+        const container = document.getElementById('multiplayer-container');
+        if (container) {
+            container.style.display = 'flex';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
+            container.style.zIndex = '1000';
+            container.style.position = 'fixed';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '100vw';
+            container.style.height = '100vh';
+            container.style.transform = 'none';
+            console.log('[LocalMultiplayer] Forced container visibility via JS');
+        }
 
         // Apply player colors to UI elements
         this._applyPlayerColors();
+
+        // Ensure the game area has the correct class for grid layout
+        const gameArea = document.querySelector('.multiplayer-game-area');
+        if (gameArea) {
+            gameArea.classList.remove('players-2', 'players-3', 'players-4');
+            gameArea.classList.add(`players-${numPlayers}`);
+            // Force game area centering
+            gameArea.style.transform = 'none';
+            gameArea.style.margin = '0 auto';
+        }
     }
 
     /**
      * Apply player-specific colors to UI elements
-     * Colors player labels, borders, and other visual indicators
      * @private
      */
     _applyPlayerColors() {
-        const numPlayers = this.multiplayerState?.numPlayers || 2;
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+        const colors = [
+            '#3b82f6', // P1 Blue
+            '#ef4444', // P2 Red
+            '#10b981', // P3 Green
+            '#f59e0b'  // P4 Orange
+        ];
 
-        for (let i = 0; i < numPlayers; i++) {
-            const playerNum = i + 1;
-            const playerColor = this.multiplayerState.getPlayerColor(i);
+        for (let i = 1; i <= numPlayers; i++) {
+            const color = colors[i - 1];
 
-            if (!playerColor) continue;
+            // Update player card border
+            const playerCard = document.getElementById(`player-${i}-card`);
+            if (playerCard) {
+                playerCard.style.borderColor = `${color}80`; // 50% opacity
+                playerCard.style.boxShadow = `0 0 20px ${color}20`; // Glow
+            }
 
-            // Apply color to player label
-            const label = document.querySelector(`#player-${playerNum}-card .player-board-label`);
+            // Update label color
+            const label = document.querySelector(`#player-${i}-card .player-board-label`);
             if (label) {
-                label.style.color = playerColor.primary;
-                label.style.textShadow = `0 0 10px ${playerColor.glow}, 0 0 20px ${playerColor.glow}`;
-                label.style.fontWeight = 'bold';
+                label.style.color = color;
+                label.style.borderColor = `${color}40`;
+                label.style.textShadow = `0 0 10px ${color}80`;
             }
 
-            // Apply color to player card border/glow
-            const card = document.getElementById(`player-${playerNum}-card`);
-            if (card) {
-                card.style.borderColor = playerColor.primary;
-                card.style.boxShadow = `0 0 20px ${playerColor.glow}`;
-                card.style.setProperty('--player-primary', playerColor.primary);
-                card.style.setProperty('--player-primary-light', playerColor.light || playerColor.primary);
-                card.style.setProperty('--player-glow', playerColor.glow || `${playerColor.primary}55`);
-            }
-
-            // Apply color to board border
-            const border = document.getElementById(`p${playerNum}-border`);
+            // Update border overlay
+            const border = document.getElementById(`p${i}-border`);
             if (border) {
-                border.style.borderColor = playerColor.primary;
-                border.style.boxShadow = `
-                    0 0 30px ${playerColor.glow},
-                    inset 0 0 20px ${playerColor.glow}
-                `;
+                border.style.borderColor = color;
+                border.style.boxShadow = `0 0 15px ${color}60, inset 0 0 10px ${color}40`;
             }
 
-            // Apply color to phaser container border
-            const container = document.getElementById(`p${playerNum}-phaser-container`);
+            // Update phaser container border
+            const container = document.getElementById(`p${i}-phaser-container`);
             if (container) {
-                container.style.border = `2px solid ${playerColor.primary}`;
-                container.style.boxShadow = `0 0 20px ${playerColor.glow}`;
+                container.style.border = `2px solid ${color}`;
+                container.style.boxShadow = `0 0 20px ${color}40`;
             }
-
-            console.log(`[LocalMultiplayer] Applied ${playerColor.name} color to Player ${playerNum}`);
         }
     }
 
@@ -1226,18 +1407,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const config = this.matchConfig;
         switch (config.endCondition) {
-        case 'frags':
-            return `First to ${config.endConditionValue} frags wins`;
-        case 'time':
-            return `${config.endConditionValue} minute time limit`;
-        case 'points':
-            return `First to ${config.endConditionValue * 1000} points wins`;
-        case 'lines':
-            return `First to ${config.endConditionValue} lines wins`;
-        case 'never':
-            return 'Play until manual end';
-        default:
-            return `First to ${config.endConditionValue} frags wins`;
+            case 'frags':
+                return `First to ${config.endConditionValue} frags wins`;
+            case 'time':
+                return `${config.endConditionValue} minute time limit`;
+            case 'points':
+                return `First to ${config.endConditionValue * 1000} points wins`;
+            case 'lines':
+                return `First to ${config.endConditionValue} lines wins`;
+            case 'never':
+                return 'Play until manual end';
+            default:
+                return `First to ${config.endConditionValue} frags wins`;
         }
     }
 
@@ -1246,7 +1427,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @param {string} winner - 'player1' or 'player2'
      */
     async handleRoundEnd(winner) {
-        console.log(`[LocalMultiplayer] Round ended! Winner: ${winner}`);
+        console.log(`[LocalMultiplayer] Round ended! Winner: ${winner} `);
 
         // Increment round wins (frags)
         this.roundWins[winner]++;
@@ -1259,13 +1440,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const wonMatch = this._checkMatchWinCondition(winner);
 
         if (wonMatch) {
-            console.log(`[LocalMultiplayer] ${winnerName} wins the match! (${p1Wins}-${p2Wins})`);
+            console.log(`[LocalMultiplayer] ${winnerName} wins the match!(${p1Wins} - ${p2Wins})`);
             await this._showMatchEnd(winner, p1Wins, p2Wins);
             return;
         }
 
         // Show round end and start next round
-        console.log(`[LocalMultiplayer] Starting next round... Score: ${p1Wins}-${p2Wins}`);
+        console.log(`[LocalMultiplayer] Starting next round...Score: ${p1Wins} -${p2Wins} `);
         await this._showRoundEnd(winner, p1Wins, p2Wins);
         await this._startNewRound();
     }
@@ -1282,37 +1463,37 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-        case 'frags':
-            // Frags are round wins
-            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+            case 'frags':
+                // Frags are round wins
+                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
 
-        case 'time': {
-            // Check if time limit has been reached
-            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-            return elapsedMinutes >= config.endConditionValue;
-        }
+            case 'time': {
+                // Check if time limit has been reached
+                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+                return elapsedMinutes >= config.endConditionValue;
+            }
 
-        case 'points': {
-            // Check if either player reached the score target
-            const targetScore = config.endConditionValue * 1000;
-            const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-            const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-            return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
-        }
+            case 'points': {
+                // Check if either player reached the score target
+                const targetScore = config.endConditionValue * 1000;
+                const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+                const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+                return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+            }
 
-        case 'lines': {
-            // Check if either player cleared enough lines
-            const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-            const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-            return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
-        }
+            case 'lines': {
+                // Check if either player cleared enough lines
+                const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+                const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+                return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+            }
 
-        case 'never':
-            // Never end automatically
-            return false;
+            case 'never':
+                // Never end automatically
+                return false;
 
-        default:
-            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+            default:
+                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
         }
     }
 
@@ -1327,22 +1508,22 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const overlay = document.createElement('div');
         overlay.id = 'round-end-overlay';
         overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            animation: fadeIn 0.3s ease;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100 %;
+        height: 100 %;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        flex - direction: column;
+        align - items: center;
+        justify - content: center;
+        z - index: 10000;
+        animation: fadeIn 0.3s ease;
         `;
 
         overlay.innerHTML = `
-            <div style="text-align: center; color: white;">
+            < div style = "text-align: center; color: white;" >
                 <div style="font-size: 48px; margin-bottom: 30px; color: #10b981; font-weight: bold;">
                     🏆 ${winnerName} Wins Round! 🏆
                 </div>
@@ -1355,8 +1536,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 <div style="font-size: 20px; color: #64748b; margin-top: 10px;">
                     Next round starting...
                 </div>
-            </div>
-        `;
+            </div >
+            `;
 
         document.body.appendChild(overlay);
 
@@ -1385,7 +1566,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const accumulatedLog = {};
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
-            const matchKey = `player${playerNum}`;
+            const matchKey = `player${playerNum} `;
             const playerState = this.multiplayerState.players[i];
             if (!playerState) continue;
 
@@ -1437,6 +1618,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const playerNum = i + 1;
             const nextCanvases = this.playerNextCanvases.get(playerNum);
 
+            console.log(`[LocalMultiplayer] Spawning initial piece for Player ${playerNum}...`);
             spawnPiece(
                 this.multiplayerState.players[i],
                 () => {
@@ -1456,6 +1638,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Start game loop
         this.multiplayerState.isPaused = false;
         this.multiplayerState.lastTime = performance.now();
+        console.log('[LocalMultiplayer] Starting game loop...');
         this._startGameLoop();
 
         console.log('[LocalMultiplayer] New round started!');
@@ -1487,20 +1670,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
         overlay.id = 'match-end-overlay';
         overlay.style.cssText = `
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
+        top: 0;
+        left: 0;
+        width: 100 %;
+        height: 100 %;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        flex - direction: column;
+        align - items: center;
+        justify - content: center;
+        z - index: 10000;
         `;
 
         overlay.innerHTML = `
-            <div style="text-align: center; color: white;">
+            < div style = "text-align: center; color: white;" >
                 <div style="font-size: 64px; margin-bottom: 30px; color: #10b981; font-weight: bold;">
                     👑 ${winnerName} WINS THE MATCH! 👑
                 </div>
@@ -1536,8 +1719,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 ">
                     Return to Menu
                 </button>
-            </div>
-        `;
+            </div >
+            `;
 
         document.body.appendChild(overlay);
 
@@ -1579,6 +1762,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // === PHASER EFFECTS ===
         this._createEliminationExplosion(boardScene, playerIndex);
 
+        // Get the Phaser container for this player
         // Get the Phaser container for this player
         const phaserContainer = document.getElementById(`p${playerNum}-phaser-container`);
         if (!phaserContainer) {
@@ -1623,12 +1807,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
             font-size: 28px;
             font-weight: bold;
             color: #ef4444;
-            text-shadow:
-                0 0 10px rgba(239, 68, 68, 0.8),
-                0 0 20px rgba(239, 68, 68, 0.6);
+            text-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
             opacity: 0;
             transform: translateY(20px);
-            transition: all 0.5s ease 0.2s;
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.1s;
         `;
         eliminatedText.textContent = 'ELIMINATED';
 
@@ -1723,7 +1905,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         try {
             // Get the entire player container (includes board, stats, next pieces, etc.)
             const playerContainer = document.getElementById(`player${playerNum}-container`)
-                || document.getElementById(`p${playerNum}-container`);
+                || document.getElementById(`p${playerNum}-container`)
+                || document.getElementById(`player-${playerNum}-card`); // Fallback to card ID
 
             if (!playerContainer) {
                 console.warn(`[LocalMultiplayer] Player ${playerNum} container not found`);
@@ -1866,10 +2049,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             y;
 
                         switch (edge) {
-                        case 0: x = Math.random() * width; y = 0; break; // Top
-                        case 1: x = width; y = Math.random() * height; break; // Right
-                        case 2: x = Math.random() * width; y = height; break; // Bottom
-                        case 3: x = 0; y = Math.random() * height; break; // Left
+                            case 0: x = Math.random() * width; y = 0; break; // Top
+                            case 1: x = width; y = Math.random() * height; break; // Right
+                            case 2: x = Math.random() * width; y = height; break; // Bottom
+                            case 3: x = 0; y = Math.random() * height; break; // Left
                         }
 
                         const sparkle = boardScene.add.particles(x, y, particleKey, {
