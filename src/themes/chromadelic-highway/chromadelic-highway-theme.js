@@ -149,6 +149,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         // Effect intensities
         this.pulseIntensity = 0;
         this.bloomBoost = 0;
+        this.particleGlow = 0; // Extra glow for particles on piece lock
+        this.ringGlow = 0; // Extra glow for rings on combo
 
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
@@ -614,6 +616,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
             if (this.isActive && window.settings?.backgroundComboEffects !== false) {
                 this.pulseIntensity = Math.max(this.pulseIntensity, 0.4);
+                // Additive glow build-up (Astral Weave style)
+                this.particleGlow = Math.min(this.particleGlow + 0.5, 1.5);
             }
         });
 
@@ -622,6 +626,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 const intensity = Math.min(data.comboCount * 0.2, 1.0);
                 this.pulseIntensity = Math.max(this.pulseIntensity, 0.6 + intensity * 0.4);
                 this.bloomBoost = intensity * 0.3;
+                this.ringGlow = 0.5 + intensity * 0.5; // Ring glow on combo
             }
         });
 
@@ -653,6 +658,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Decay effects
             this.pulseIntensity *= 0.92;
             this.bloomBoost *= 0.95;
+            this.particleGlow *= 0.985; // Much smoother/slower fade for glow build-up effect
+            this.ringGlow *= 0.98; // Very slow ring glow fade for much longer effect
 
             // Update road curve dynamically
             this.updateRoadCurve();
@@ -683,10 +690,14 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 ring.position.x = curve1 + curve2;
                 ring.position.y = 25 + Math.sin(t * 1.5 + this.time * 0.06) * 20 * curveStrength;
 
-                // Scale based on distance (bigger when close)
-                const scale = 0.5 + (1 - t) * 0.8;
+                // Scale based on distance (smooth glow, minimal bounce)
+                const scale = 0.5 + (1 - t) * 0.8 + this.ringGlow * 0.10;
                 ring.scale.set(scale, scale, 1);
-                ring.material.opacity = 0.25 + (1 - t) * 0.5 + this.pulseIntensity * 0.25;
+                ring.material.opacity = 0.25 + (1 - t) * 0.5 + this.pulseIntensity * 0.25 + this.ringGlow * 0.4;
+
+                // Boost ring brightness on combo
+                const lightness = 0.6 + this.ringGlow * 0.3;
+                ring.material.color.setHSL(ring.userData.hue, 0.9, lightness);
             });
 
             // Animate edge glow lines - subtle color cycling and pulse response
@@ -699,7 +710,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 });
             }
 
-            // Animate speed particles - follow road corridor
+            // Animate speed particles - follow road corridor with glow effect
             if (this.speedParticles) {
                 const positions = this.speedParticles.geometry.attributes.position.array;
                 for (let i = 0; i < positions.length; i += 3) {
@@ -713,6 +724,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     }
                 }
                 this.speedParticles.geometry.attributes.position.needsUpdate = true;
+
+                // Particle glow boost on piece lock
+                this.speedParticles.material.opacity = 0.3 + this.particleGlow * 0.5; // Lower base opacity for more contrast
+                this.speedParticles.material.size = 3 + this.particleGlow * 6; // Dramatic size increase
             }
 
             // Subtle camera sway (small movements, stays close to road)

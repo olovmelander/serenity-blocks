@@ -580,3 +580,146 @@ export function calculateGhostY(piece, lockedPieces, isValidPositionFn) {
 export function clearCanvas(ctx, width, height) {
     ctx.clearRect(0, 0, width, height);
 }
+
+/**
+ * Draw an entire tetromino piece with solid look (outer edges only)
+ * This renders the piece as a cohesive unit rather than separate blocks
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {Array<Array<number>>} shape - 2D array representing piece shape
+ * @param {number} offsetX - X offset in pixels
+ * @param {number} offsetY - Y offset in pixels
+ * @param {number} blockSize - Size of each block in pixels
+ * @param {Object} styleConfig - Style configuration { color, renderMode, effects, rendererOverrides }
+ */
+export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig) {
+    if (!shape || shape.length === 0) return;
+
+    const effects = {
+        ...styleConfig.effects,
+        ...(styleConfig.rendererOverrides?.canvas || {}),
+    };
+    const { color, renderMode } = styleConfig;
+
+    ctx.save();
+
+    // Match game board: disable smoothing for crisp pixel-perfect rendering
+    ctx.imageSmoothingEnabled = false;
+
+    // Ensure integer block size for pixel-perfect alignment
+    const size = Math.round(blockSize);
+
+    // Build a single path for the entire piece shape to avoid sub-pixel gaps
+    ctx.beginPath();
+    shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell) {
+                const px = Math.round(offsetX + x * size);
+                const py = Math.round(offsetY + y * size);
+                ctx.rect(px, py, size, size);
+            }
+        });
+    });
+
+    // Apply glow effect if renderMode is 'glow'
+    if (renderMode === 'glow' && effects.glowRadius > 0) {
+        let intensity = effects.glowIntensity || 1;
+        if (effects.pulse) {
+            const time = Date.now() / 1000;
+            const pulse = Math.sin(time * (effects.pulseSpeed || 2)) * (effects.pulseAmplitude || 0.3);
+            intensity = intensity * (1 + pulse);
+        }
+        const glowColor = effects.glowColor === 'auto' ? color : effects.glowColor;
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = effects.glowRadius;
+        ctx.globalAlpha = intensity;
+    }
+
+    // Apply gradient if renderMode is 'gradient'
+    if (renderMode === 'gradient' && effects.gradientStops) {
+        // Calculate bounding box for gradient
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (cell) {
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x + 1);
+                    maxY = Math.max(maxY, y + 1);
+                }
+            });
+        });
+        const gx1 = offsetX + minX * size;
+        const gy1 = offsetY + minY * size;
+        const gx2 = offsetX + maxX * size;
+        const gy2 = offsetY + maxY * size;
+
+        let gradient;
+        if (effects.gradientType === 'radial') {
+            const centerX = (gx1 + gx2) / 2;
+            const centerY = (gy1 + gy2) / 2;
+            const radius = Math.max(gx2 - gx1, gy2 - gy1) / 2;
+            gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        } else {
+            gradient = ctx.createLinearGradient(gx1, gy1, gx2, gy2);
+        }
+        effects.gradientStops.forEach((stop) => {
+            const stopColor = stop.color === 'base' ? color : stop.color;
+            gradient.addColorStop(stop.offset, stopColor);
+        });
+        ctx.fillStyle = gradient;
+    } else {
+        ctx.fillStyle = color;
+    }
+
+    // Fill the entire shape as one path (eliminates gaps)
+    ctx.fill();
+
+    // Reset shadow for outline drawing
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    // Second pass: Draw outline only on outer edges (matching game board exactly)
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell) {
+                const px = Math.round(offsetX + x * size);
+                const py = Math.round(offsetY + y * size);
+
+                // Check adjacent cells to determine which edges to draw
+                const hasTop = y > 0 && shape[y - 1] && shape[y - 1][x];
+                const hasBottom = y < shape.length - 1 && shape[y + 1] && shape[y + 1][x];
+                const hasLeft = x > 0 && row[x - 1];
+                const hasRight = x < row.length - 1 && row[x + 1];
+
+                // Draw only outer edges (matching game board offset pattern)
+                if (!hasTop) {
+                    ctx.moveTo(px, py + 0.5);
+                    ctx.lineTo(px + size, py + 0.5);
+                }
+                if (!hasBottom) {
+                    ctx.moveTo(px, py + size - 0.5);
+                    ctx.lineTo(px + size, py + size - 0.5);
+                }
+                if (!hasLeft) {
+                    ctx.moveTo(px + 0.5, py);
+                    ctx.lineTo(px + 0.5, py + size);
+                }
+                if (!hasRight) {
+                    ctx.moveTo(px + size - 0.5, py);
+                    ctx.lineTo(px + size - 0.5, py + size);
+                }
+            }
+        });
+    });
+    ctx.stroke();
+
+    // Re-enable image smoothing
+    ctx.imageSmoothingEnabled = true;
+
+    ctx.restore();
+}
+

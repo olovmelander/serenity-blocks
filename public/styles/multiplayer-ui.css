@@ -469,7 +469,7 @@
   z-index: 1000;
 }
 
-.ffa-hud > * {
+.ffa-hud>* {
   pointer-events: auto;
 }
 
@@ -521,9 +521,12 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.6;
   }
@@ -682,9 +685,12 @@
 }
 
 @keyframes winnerPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.05);
   }
@@ -984,20 +990,21 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: transparent; /* Allow background theme to show through */
+  background: transparent;
+  /* Allow background theme to show through */
   z-index: 100;
   overflow: hidden;
 }
 
 /* Hide old Phaser multiplayer container when new layout is active */
-.multi-player-layout:not(.hidden) ~ #phaser-multiplayer-container,
-.multi-player-layout:not(.hidden) ~ * #phaser-multiplayer-container {
+.multi-player-layout:not(.hidden)~#phaser-multiplayer-container,
+.multi-player-layout:not(.hidden)~* #phaser-multiplayer-container {
   display: none !important;
 }
 
 /* Hide local multiplayer container (2-player mode) when online multiplayer is active */
-.multi-player-layout:not(.hidden) ~ .multiplayer-container,
-.multi-player-layout:not(.hidden) ~ * .multiplayer-container,
+.multi-player-layout:not(.hidden)~.multiplayer-container,
+.multi-player-layout:not(.hidden)~* .multiplayer-container,
 body:has(.multi-player-layout:not(.hidden)) #multiplayer-container,
 body:has(.multi-player-layout:not(.hidden)) .multiplayer-container {
   display: none !important;
@@ -1022,14 +1029,16 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 /* LEFT: Opponents Sidebar */
 .opponents-sidebar {
   grid-area: opponents;
-  background: rgba(18, 23, 31, 0.85); /* Semi-transparent to show theme */
+  background: rgba(18, 23, 31, 0.85);
+  /* Semi-transparent to show theme */
   backdrop-filter: blur(10px);
   border-right: 2px solid rgba(102, 126, 234, 0.3);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   height: 100%;
-  min-height: 0; /* Important for flex children */
+  min-height: 0;
+  /* Important for flex children */
 }
 
 .opponents-header {
@@ -1060,10 +1069,13 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   overflow-x: hidden;
   padding: 8px;
   display: grid;
-  grid-template-columns: repeat(2, 1fr); /* 2x2 grid */
-  grid-template-rows: repeat(2, minmax(160px, 1fr)); /* Reduced min height for narrower sidebar */
+  grid-template-columns: repeat(2, 1fr);
+  /* 2x2 grid */
+  grid-template-rows: repeat(2, minmax(160px, 1fr));
+  /* Reduced min height for narrower sidebar */
   gap: 8px;
-  min-height: 0; /* Important for flex child with overflow */
+  min-height: 0;
+  /* Important for flex child with overflow */
   position: relative;
   z-index: 1;
 }
@@ -1076,7 +1088,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   border: 1px solid rgba(102, 126, 234, 0.3);
   overflow: hidden;
   transition: all 0.2s ease;
-  min-height: 160px; /* Reduced minimum height */
+  min-height: 160px;
+  /* Reduced minimum height */
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -1096,9 +1109,11 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 .opponent-canvas {
   display: block;
   width: 100%;
-  max-width: 160px; /* Reduced for narrower sidebar */
+  max-width: 160px;
+  /* Reduced for narrower sidebar */
   height: auto;
-  max-height: 320px; /* Reduced proportionally */
+  max-height: 320px;
+  /* Reduced proportionally */
   object-fit: contain;
   image-rendering: pixelated;
   flex-shrink: 0;
@@ -1140,14 +1155,18 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 /* MIDDLE: Main Game Area */
 .main-game-area {
   grid-area: main;
-  background: transparent; /* Allow theme to show through */
+  background: transparent;
+  /* Allow theme to show through */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 12px; /* Reduced padding for more game space */
-  min-height: 0; /* Important for flex children */
-  overflow: hidden; /* Prevent unnecessary scrollbars */
+  padding: 12px;
+  /* Reduced padding for more game space */
+  min-height: 0;
+  /* Important for flex children */
+  overflow: hidden;
+  /* Prevent unnecessary scrollbars */
 }
 
 .main-player-header {
@@ -1238,7 +1257,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   width: fit-content;
   max-width: 95%;
   height: fit-content;
-  max-height: 85vh; /* Allow more vertical space */
+  max-height: 85vh;
+  /* Allow more vertical space */
 }
 
 #main-game-canvas {
@@ -1443,8 +1463,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   flex-shrink: 0;
 }
 
-.activity-feed-section .section-header > div:first-child,
-.activity-feed-section .section-header > span:first-child {
+.activity-feed-section .section-header>div:first-child,
+.activity-feed-section .section-header>span:first-child {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1553,7 +1573,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 }
 
 .kill-notification.local-kill {
-  border-left: 3px solid #4ade80; /* Green */
+  border-left: 3px solid #4ade80;
+  /* Green */
   background: rgba(74, 222, 128, 0.15);
 }
 
@@ -1563,7 +1584,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 }
 
 .kill-notification.local-death {
-  border-left: 3px solid #f87171; /* Red */
+  border-left: 3px solid #f87171;
+  /* Red */
   background: rgba(248, 113, 113, 0.15);
 }
 
@@ -1573,7 +1595,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 }
 
 .kill-notification.other-kill {
-  border-left: 3px solid #fbbf24; /* Yellow */
+  border-left: 3px solid #fbbf24;
+  /* Yellow */
   background: rgba(251, 191, 36, 0.15);
 }
 
@@ -1652,6 +1675,7 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     opacity: 0;
     transform: translateX(20px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -1665,29 +1689,29 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   .lobby-browser-modal {
     width: 95%;
   }
-  
+
   .lobby-item {
     grid-template-columns: 1fr;
     gap: 8px;
   }
-  
+
   .lobby-list-header {
     display: none;
   }
-  
+
   .scoreboard {
     min-width: 90vw;
   }
-  
+
   .quick-stats {
     flex-direction: column;
     gap: 8px;
   }
-  
+
   .waiting-room-content {
     grid-template-columns: 1fr;
   }
-  
+
   .match-info-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1704,7 +1728,8 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   left: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  display: none; /* Hidden by default */
+  display: none;
+  /* Hidden by default */
   align-items: center !important;
   justify-content: center !important;
   background: rgba(0, 0, 0, 0.8);
@@ -1714,7 +1739,7 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   font-weight: 900;
   text-align: center;
   color: #ffffff;
-  text-shadow: 
+  text-shadow:
     0 0 20px rgba(255, 255, 255, 0.8),
     0 0 40px rgba(102, 126, 234, 0.6),
     0 0 60px rgba(102, 126, 234, 0.4);
@@ -1737,6 +1762,7 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     transform: scale(0.8) translateY(-20px);
     opacity: 1;
   }
+
   100% {
     transform: scale(1) translateY(0);
     opacity: 1;
@@ -1748,10 +1774,12 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     transform: scale(0.7);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.1);
     opacity: 1;
   }
+
   100% {
     transform: scale(1);
     opacity: 1;
@@ -1763,10 +1791,12 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     transform: scale(0.8);
     opacity: 1;
   }
+
   40% {
     transform: scale(1.25);
     opacity: 1;
   }
+
   100% {
     transform: scale(1.15);
     opacity: 1;
@@ -1778,6 +1808,7 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     transform: scale(1);
     opacity: 1;
   }
+
   100% {
     transform: scale(0.9);
     opacity: 0.7;
@@ -1789,9 +1820,11 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   0% {
     transform: scale(0.8);
   }
+
   50% {
     transform: scale(1.1);
   }
+
   100% {
     transform: scale(1);
   }
@@ -1973,9 +2006,12 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.05);
   }
@@ -2026,9 +2062,11 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     opacity: 1;
     transform: translateY(0);
   }
+
   70% {
     opacity: 1;
   }
+
   100% {
     opacity: 0;
     transform: translateY(-20px);
@@ -2071,8 +2109,86 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
     right: 10px;
   }
 
+
   .match-timer {
     top: 10px;
     font-size: 14px;
   }
+}
+
+/* Main Player Card Styles - Overrides for new layout */
+.player-card {
+  position: relative;
+  /* Ensure existing styles are compatible */
+  display: flex;
+  flex-direction: column;
+  /* Remove padding that was for the old header */
+  padding-top: 24px;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  background: rgba(18, 23, 31, 0.85);
+  backdrop-filter: blur(10px);
+  /* Ensure card content doesn't overlap the avatar */
+  margin-top: 15px;
+}
+
+/* New Avatar Header Layout */
+.player-header {
+  display: flex !important;
+  /* Force display back on */
+  position: absolute;
+  top: -18px;
+  /* Center circle on the border (36px height / 2) */
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  z-index: 5;
+  border: none;
+  /* Remove old header borders/bgs */
+}
+
+/* Avatar Circle Styles */
+.player-avatar {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #0c0a1a;
+  /* Match page background to mask the card border */
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  /* Re-add border around circle */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  /* Shadow to lift it */
+}
+
+.avatar-text {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  z-index: 2;
+}
+
+/* Optional glow effect inside avatar */
+.avatar-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+  pointer-events: none;
+}
+
+/* Hide the old text label if we missed removing it anywhere */
+.player-card-label {
+  display: none !important;
 }

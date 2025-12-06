@@ -16,7 +16,7 @@ import {
     updateCanvasStyle,
     getLastRenderedLevel,
 } from './canvas-utils.js';
-import { drawBlockStyled } from './canvas/canvas-drawing-utils.js';
+import { drawPieceSolid } from './canvas/canvas-drawing-utils.js';
 import { TetrominoStyleManager } from './tetromino-style-manager.js';
 
 // Piece trail system for motion fluidity
@@ -366,15 +366,8 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
         const offsetX = Math.round((displayWidth - pieceWidth) / 2);
         const offsetY = Math.round((displayHeight - pieceHeight) / 2);
 
-        // Draw each block with theme styling for accurate previews
-        shape.forEach((row, y) => {
-            row.forEach((cell, x) => {
-                if (!cell) return;
-                const px = offsetX + x * blockSize;
-                const py = offsetY + y * blockSize;
-                drawBlockStyled(ctx, px, py, blockSize, styleConfig, false);
-            });
-        });
+        // Draw the entire piece as a solid unit (outer edges only)
+        drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig);
 
         ctx.imageSmoothingEnabled = true;
         ctx.restore();
