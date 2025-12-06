@@ -30,6 +30,18 @@ export class SessionsTab {
                 { id: 'release', icon: '🔥', label: 'Release & Let Go', desc: 'Clear emotional blocks' },
                 { id: 'transform', icon: '🦋', label: 'Transform', desc: 'Catalyze inner change' },
                 { id: 'power', icon: '💪', label: 'Build Power', desc: 'Strengthen willpower' }
+            ],
+            REST: [
+                { id: 'sleep', icon: '🌙', label: 'Prepare for Sleep', desc: 'Transition to deep rest' },
+                { id: 'unwind', icon: '🍃', label: 'Unwind', desc: 'Release the day\'s tension' },
+                { id: 'restore', icon: '🌸', label: 'Restore', desc: 'Replenish your energy' },
+                { id: 'peace', icon: '☁️', label: 'Find Peace', desc: 'Embrace stillness' }
+            ],
+            FLOW: [
+                { id: 'balance', icon: '☯️', label: 'Find Balance', desc: 'Harmonize mind and body' },
+                { id: 'clarity', icon: '💎', label: 'Gain Clarity', desc: 'See with fresh perspective' },
+                { id: 'presence', icon: '🌟', label: 'Be Present', desc: 'Anchor in the now' },
+                { id: 'rhythm', icon: '🎵', label: 'Find Rhythm', desc: 'Sync with your flow' }
             ]
         };
 
@@ -52,6 +64,24 @@ export class SessionsTab {
                 breathingDesc: 'Active mouth breathing (fast, connected)',
                 holdsDesc: 'Extended breath holds up to 2 min',
                 maxHold: '2 min'
+            },
+            REST: {
+                name: 'Hale Rest',
+                duration: '15 min',
+                intensity: 'Gentle',
+                about: 'A soothing practice designed to activate deep relaxation. Extended exhales stimulate the vagus nerve, slowing your heart rate and calming the nervous system. Perfect for winding down or preparing for sleep.',
+                breathingDesc: 'Extended exhale breathing (4 sec in, 8 sec out)',
+                holdsDesc: 'Gentle pauses between breaths',
+                maxHold: '30 sec'
+            },
+            FLOW: {
+                name: 'Hale Flow',
+                duration: '18 min',
+                intensity: 'Moderate',
+                about: 'A balanced box breathing practice that creates equilibrium in your nervous system. Equal inhales, holds, exhales, and pauses build focus, reduce anxiety, and cultivate a meditative state of rhythmic awareness.',
+                breathingDesc: 'Box breathing (4 sec each phase)',
+                holdsDesc: 'Holds after inhale and exhale',
+                maxHold: '1 min'
             }
         };
 
@@ -99,6 +129,42 @@ export class SessionsTab {
                         <p>Active mouth breathing to alkalize the blood and clear the mind. Powerful release.</p>
                     </div>
                     <button class="start-session-btn" data-session="ELIXIR">Start Session</button>
+                </div>
+
+                <!-- Rest Session Card -->
+                <div class="session-card" data-session="REST">
+                    <div class="session-icon rest-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </div>
+                    <div class="session-info">
+                        <h3>Hale Rest</h3>
+                        <div class="session-meta">
+                            <span class="duration">15 min</span>
+                            <span class="intensity gentle">Gentle</span>
+                        </div>
+                        <p>Extended exhale breathing for deep relaxation. Perfect for winding down or sleep preparation.</p>
+                    </div>
+                    <button class="start-session-btn" data-session="REST">Start Session</button>
+                </div>
+
+                <!-- Flow Session Card -->
+                <div class="session-card" data-session="FLOW">
+                    <div class="session-icon flow-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                        </svg>
+                    </div>
+                    <div class="session-info">
+                        <h3>Hale Flow</h3>
+                        <div class="session-meta">
+                            <span class="duration">18 min</span>
+                            <span class="intensity moderate">Moderate</span>
+                        </div>
+                        <p>Box breathing for balance and focus. Equal phases create rhythm and cultivate presence.</p>
+                    </div>
+                    <button class="start-session-btn" data-session="FLOW">Start Session</button>
                 </div>
             </div>
 
@@ -297,7 +363,7 @@ export class SessionsTab {
 
         // Get session info
         const info = this.SESSION_INFO[sessionId];
-        const isBase = sessionId === 'BASE';
+        const sessionType = sessionId.toLowerCase();
 
         // Update session header
         const sessionName = prep.querySelector('.prep-session-name');
@@ -307,12 +373,14 @@ export class SessionsTab {
 
         if (sessionName) sessionName.textContent = info.name;
         if (sessionIcon) {
-            sessionIcon.className = `prep-session-icon ${isBase ? 'base' : 'elixir'}`;
+            sessionIcon.className = `prep-session-icon ${sessionType}`;
         }
         if (duration) duration.textContent = info.duration;
         if (intensity) {
             intensity.textContent = info.intensity;
-            intensity.className = `prep-intensity ${isBase ? 'moderate' : 'high'}`;
+            const intensityClass = sessionId === 'ELIXIR' ? 'high' :
+                sessionId === 'REST' ? 'gentle' : 'moderate';
+            intensity.className = `prep-intensity ${intensityClass}`;
         }
 
         // Update session description
@@ -328,7 +396,10 @@ export class SessionsTab {
         // Update preview stats
         const breathingType = prep.querySelector('.breathing-type');
         const maxHold = prep.querySelector('.max-hold');
-        if (breathingType) breathingType.textContent = isBase ? 'Nose' : 'Mouth';
+        if (breathingType) {
+            const breathTypes = { BASE: 'Nose', ELIXIR: 'Mouth', REST: 'Nose', FLOW: 'Box' };
+            breathingType.textContent = breathTypes[sessionId] || 'Nose';
+        }
         if (maxHold) maxHold.textContent = info.maxHold;
 
         // Populate intentions
@@ -418,8 +489,8 @@ export class SessionsTab {
         if (!countdownOverlay || !countdownNumber) return;
 
         // Apply session theme
-        const isBase = this.pendingSessionId === 'BASE';
-        countdownOverlay.className = `session-countdown-overlay ${isBase ? 'base' : 'elixir'}`;
+        const sessionType = this.pendingSessionId.toLowerCase();
+        countdownOverlay.className = `session-countdown-overlay ${sessionType}`;
 
         // Set intention text
         if (countdownIntention && this.selectedIntention) {

@@ -1,1012 +1,796 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  ✧ CHROMADELIC HIGHWAY ✧
+ *  A Psychedelic Rainbow Road Theme - Dynamic Infinite Road
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Rebuilt with a dynamic approach:
+ * - Camera travels forward along an ever-changing path
+ * - Road curve dynamically shifts and undulates
+ * - Rings centered and synchronized with road direction
+ * - Cohesive visual experience with depth layering
+ */
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { CHROMADELIC_HIGHWAY_TETROMINOS } from './chromadelic-highway-tetrominos.js';
-import WebGLChromadelicRenderer from './webgl-chromadelic-renderer.js';
 
-/**
- * Chromadelic Highway Theme - Enhanced Neon Dream
- * 
- * A stunning visualization of flowing rainbow waves and psychedelic effects.
- * Features:
- * - Multi-layered rainbow wave system with dynamic glow
- * - Ambient sparkles and twinkling stars
- * - Rainbow shockwave rings on combos
- * - Particle bursts from wave surfaces
- * - Piece lock effects (wave pulses, rainbow ripples, sparkle bursts)
- * - Light beams and aurora streaks
- * - Neon grid lines for retro aesthetic
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+const QUALITY_PRESETS = {
+    Extreme: {
+        starCount: 2000,
+        ringCount: 8,
+        speedParticleCount: 300,
+        roadSegments: 120,
+        bloomStrength: 0.5,
+        bloomRadius: 0.3,
+        bloomThreshold: 0.65,
+        enableBloom: true,
+    },
+    Ultra: {
+        starCount: 1500,
+        ringCount: 7,
+        speedParticleCount: 250,
+        roadSegments: 100,
+        bloomStrength: 0.45,
+        bloomRadius: 0.25,
+        bloomThreshold: 0.7,
+        enableBloom: true,
+    },
+    High: {
+        starCount: 1200,
+        ringCount: 6,
+        speedParticleCount: 200,
+        roadSegments: 80,
+        bloomStrength: 0.4,
+        bloomRadius: 0.2,
+        bloomThreshold: 0.75,
+        enableBloom: true,
+    },
+    Medium: {
+        starCount: 800,
+        ringCount: 5,
+        speedParticleCount: 150,
+        roadSegments: 60,
+        bloomStrength: 0.35,
+        bloomRadius: 0.2,
+        bloomThreshold: 0.8,
+        enableBloom: true,
+    },
+    Low: {
+        starCount: 400,
+        ringCount: 4,
+        speedParticleCount: 80,
+        roadSegments: 40,
+        bloomStrength: 0.3,
+        bloomRadius: 0.15,
+        bloomThreshold: 0.85,
+        enableBloom: false,
+    },
+    Minimal: {
+        starCount: 200,
+        ringCount: 3,
+        speedParticleCount: 40,
+        roadSegments: 30,
+        bloomStrength: 0.2,
+        bloomRadius: 0.1,
+        bloomThreshold: 0.9,
+        enableBloom: false,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vignette Shader
+// ─────────────────────────────────────────────────────────────────────────────
+const VignetteShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        darkness: { value: 0.5 },
+        offset: { value: 1.0 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float darkness;
+        uniform float offset;
+        varying vec2 vUv;
+        
+        void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            vec2 uv = (vUv - 0.5) * 2.0;
+            float dist = length(uv);
+            float vig = smoothstep(offset, offset - 0.5, dist);
+            texel.rgb = mix(texel.rgb * (1.0 - darkness), texel.rgb, vig);
+            gl_FragColor = texel;
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
 export default class ChromadelicHighwayTheme extends BaseTheme {
     constructor() {
         super('chromadelic-highway');
-        this.animationTime = 0;
-        this.eventUnsubscribers = [];
 
-        // Smooth easing for combo effects - current values
-        this.wavePulseIntensity = 0;
-        this.waveAmplitudeBoost = 0;
-        this.colorSpeedBoost = 0;
-
-        // Smooth easing - target values
-        this.wavePulseTarget = 0;
-        this.amplitudeBoostTarget = 0;
-        this.colorSpeedTarget = 0;
-
-        // Visual elements
-        this.sparkles = [];
-        this.maxSparkles = 60;
-        this.stars = [];
-        this.maxStars = 40;
-        this.comboParticles = [];
-        this.shockwaves = [];
-        this.lightBeams = [];
-        this.auroraStreaks = [];
-        this.lockRipples = [];
-        this.lockSparkles = [];
-
-        // Canvas references
-        this.canvas = null;
         this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+        this.clock = new THREE.Clock();
+        this.time = 0;
 
-        // Performance cache
-        this.cachedWaveGradient = null;
-        this.cachedGradientWidth = 0;
+        // Dynamic road state
+        this.roadProgress = 0; // How far we've traveled
+        this.curvePhase = 0; // For smooth curve animation
+        this.roadMesh = null;
+        this.roadGeometry = null;
 
-        // Random time offset
-        this.timeOffset = Math.random() * 10000;
+        // Scene elements
+        this.tunnelRings = [];
+        this.starfield = null;
+        this.speedParticles = null;
 
-        // Enhanced rainbow color palette
-        this.rainbowPalette = [
-            { hue: 0, color: [255, 50, 100] },     // Hot Pink
-            { hue: 30, color: [255, 120, 0] },     // Orange
-            { hue: 60, color: [255, 220, 0] },     // Yellow
-            { hue: 120, color: [0, 255, 120] },    // Green
-            { hue: 180, color: [0, 220, 255] },    // Cyan
-            { hue: 240, color: [80, 120, 255] },   // Blue
-            { hue: 280, color: [160, 80, 255] },   // Purple
-            { hue: 320, color: [255, 50, 180] },   // Magenta
-        ];
+        // Effect intensities
+        this.pulseIntensity = 0;
+        this.bloomBoost = 0;
 
-        // Quality presets - Enhanced with new effects
-        this.qualityPresets = {
-            Minimal: {
-                maxSparkles: 15,
-                maxStars: 10,
-                waveLayers: 2,
-                waveStep: 18,
-                maxShockwaves: 1,
-                maxComboParticles: 8,
-                particlesPerWave: 2,
-                trailSegments: 0,
-                shadowBlur: 0,
-                glowLayers: false,
-                waveGlowIntensity: 0.3,
-                skipFrames: 2,
-                useSimpleGlow: true,
-                maxLightBeams: 0,
-                maxAuroraStreaks: 0,
-                enableLockEffects: false,
-                lockRippleCount: 0,
-                lockSparkleCount: 0,
-            },
-            Low: {
-                maxSparkles: 25,
-                maxStars: 15,
-                waveLayers: 3,
-                waveStep: 15,
-                maxShockwaves: 1,
-                maxComboParticles: 12,
-                particlesPerWave: 3,
-                trailSegments: 0,
-                shadowBlur: 0,
-                glowLayers: false,
-                waveGlowIntensity: 0.4,
-                skipFrames: 1,
-                useSimpleGlow: true,
-                maxLightBeams: 1,
-                maxAuroraStreaks: 1,
-                enableLockEffects: true,
-                lockRippleCount: 1,
-                lockSparkleCount: 2,
-            },
-            Medium: {
-                maxSparkles: 40,
-                maxStars: 25,
-                waveLayers: 4,
-                waveStep: 12,
-                maxShockwaves: 2,
-                maxComboParticles: 20,
-                particlesPerWave: 5,
-                trailSegments: 1,
-                shadowBlur: 0,
-                glowLayers: true,
-                waveGlowIntensity: 0.6,
-                skipFrames: 1,
-                useSimpleGlow: true,
-                maxLightBeams: 2,
-                maxAuroraStreaks: 2,
-                enableLockEffects: true,
-                lockRippleCount: 2,
-                lockSparkleCount: 4,
-            },
-            High: {
-                maxSparkles: 55,
-                maxStars: 35,
-                waveLayers: 5,
-                waveStep: 10,
-                maxShockwaves: 3,
-                maxComboParticles: 30,
-                particlesPerWave: 7,
-                trailSegments: 2,
-                shadowBlur: 0,
-                glowLayers: true,
-                waveGlowIntensity: 0.8,
-                skipFrames: 0,
-                useSimpleGlow: true,
-                maxLightBeams: 3,
-                maxAuroraStreaks: 3,
-                enableLockEffects: true,
-                lockRippleCount: 3,
-                lockSparkleCount: 6,
-            },
-            Ultra: {
-                maxSparkles: 75,
-                maxStars: 45,
-                waveLayers: 6,
-                waveStep: 8,
-                maxShockwaves: 4,
-                maxComboParticles: 45,
-                particlesPerWave: 10,
-                trailSegments: 3,
-                shadowBlur: 0.2,
-                glowLayers: true,
-                waveGlowIntensity: 1.0,
-                skipFrames: 0,
-                useSimpleGlow: false,
-                maxLightBeams: 5,
-                maxAuroraStreaks: 4,
-                enableLockEffects: true,
-                lockRippleCount: 4,
-                lockSparkleCount: 8,
-            },
-            Extreme: {
-                maxSparkles: 100,
-                maxStars: 60,
-                waveLayers: 8,
-                waveStep: 6,
-                maxShockwaves: 6,
-                maxComboParticles: 60,
-                particlesPerWave: 14,
-                trailSegments: 5,
-                shadowBlur: 0.4,
-                glowLayers: true,
-                waveGlowIntensity: 1.3,
-                skipFrames: 0,
-                useSimpleGlow: false,
-                maxLightBeams: 7,
-                maxAuroraStreaks: 6,
-                enableLockEffects: true,
-                lockRippleCount: 5,
-                lockSparkleCount: 12,
-            },
-        };
+        this.eventUnsubscribers = [];
+        this.qualityPreset = QUALITY_PRESETS.High;
 
-        this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets.High;
-        this.frameCounter = 0;
+        console.log('[ChromadelicHighway] Dynamic road theme constructed');
+    }
+
+    getTetrominoConfig() {
+        return CHROMADELIC_HIGHWAY_TETROMINOS;
+    }
+
+    getCurrentQualityLevel() {
+        if (typeof window !== 'undefined' && window.settings?.effectQuality) {
+            return normalizeQuality(window.settings.effectQuality);
+        }
+        return 'High';
     }
 
     applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Unknown quality preset: ${quality}, using High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-        this.maxSparkles = this.activePreset.maxSparkles;
-        this.maxStars = this.activePreset.maxStars;
-
-        console.log(`🌈 Chromadelic Highway: Applied ${quality} quality preset`);
-    }
-
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
-    }
-
-    setupQualityListener() {
-        const qualityChangeHandler = () => {
-            if (!this.isActive) return;
-
-            const newQuality = this.getGraphicsQuality();
-            if (newQuality !== this.currentQuality) {
-                this.applyQualityPreset(newQuality);
-                this.initSparkles();
-                this.initStars();
-            }
-        };
-
-        window.addEventListener('settingsChanged', qualityChangeHandler);
-        this.qualityChangeHandler = qualityChangeHandler;
+        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        console.log(`[ChromadelicHighway] Applied ${quality} quality preset`);
     }
 
     async createScene() {
-        const quality = this.getGraphicsQuality();
+        console.log('[ChromadelicHighway] Creating dynamic scene...');
+
+        const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
 
-        const container = this.getContainer('chromadelic-highway-theme');
-
-        // Create single WebGL canvas
-        if (container) {
-            this.canvas = document.createElement('canvas');
-            this.canvas.className = 'chromadelic-webgl-canvas';
-            this.canvas.style.position = 'absolute';
-            this.canvas.style.top = '0';
-            this.canvas.style.left = '0';
-            this.canvas.style.width = '100%';
-            this.canvas.style.height = '100%';
-            this.canvas.style.zIndex = '1'; // Behind UI but visible
-            container.appendChild(this.canvas);
-
-            this.renderer = new WebGLChromadelicRenderer(this.canvas);
-            if (!this.renderer.init()) {
-                console.error('Failed to init WebGL renderer for Chromadelic Highway');
-                this.renderer = null;
-                return; // Abort if renderer fails
-            }
-
-            this.resize();
-            window.addEventListener('resize', () => this.resize());
+        const container = document.getElementById('chromadelic-highway-theme');
+        if (!container) {
+            console.error('[ChromadelicHighway] Container not found');
+            return;
         }
 
+        this.initRenderer(container);
+        this.createDynamicRoad();
+        this.createTunnelRings();
+        this.createStarfield();
+        this.createSpeedParticles();
+        this.setupPostProcessing();
         this.setupEventListeners();
-        this.setupQualityListener();
-        this.initSparkles();
-        this.initStars();
+        this.startAnimation();
 
-        this.animate();
+        console.log('[ChromadelicHighway] Dynamic scene created');
     }
 
-    resize() {
-        if (!this.renderer || !this.canvas) return;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Renderer & Camera - Mario Kart style behind-car view
+    // ─────────────────────────────────────────────────────────────────────────
 
-        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-        const rect = this.canvas.getBoundingClientRect();
+    initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
 
-        this.renderer.resize(rect.width * dpr, rect.height * dpr);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer.setClearColor(0x020008, 1); // Very dark purple
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.setSize(width, height);
 
-        this.waveWidth = rect.width;
-        this.waveHeight = rect.height;
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
+
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x020008, 0.0005);
+
+        // Camera: Lower, closer to road - immersive racing view
+        this.camera = new THREE.PerspectiveCamera(80, width / height, 1, 4000);
+        this.camera.position.set(0, 55, 280); // Lower and closer to road
+        this.camera.lookAt(0, 20, -600); // Looking ahead at road level
+
+        console.log('[ChromadelicHighway] Renderer initialized - immersive view');
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Dynamic Road - Regenerated each frame
+    // ─────────────────────────────────────────────────────────────────────────
 
+    createDynamicRoad() {
+        const segments = this.qualityPreset.roadSegments;
+        const roadWidth = 200;
+        const roadLength = 2000;
 
+        // Create geometry with enough vertices for dynamic updates
+        this.roadGeometry = new THREE.PlaneGeometry(
+            roadWidth,
+            roadLength,
+            1,
+            segments
+        );
+        this.roadGeometry.rotateX(-Math.PI / 2);
 
+        // Custom shader for rainbow road surface
+        this.roadMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uProgress: { value: 0 },
+                uPulse: { value: 0 },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying float vDepth;
+                
+                void main() {
+                    vUv = uv;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vDepth = -mvPosition.z;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uProgress;
+                uniform float uPulse;
+                varying vec2 vUv;
+                varying float vDepth;
+                
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+                
+                void main() {
+                    // Rainbow bands flowing forward
+                    float hue = fract((1.0 - vUv.y) * 4.0 + uProgress * 0.5);
+                    vec3 rainbow = hsv2rgb(vec3(hue, 0.9, 0.7));
+                    
+                    // Lane stripes
+                    float lanes = abs(sin((1.0 - vUv.y) * 100.0 + uProgress * 20.0));
+                    lanes = smoothstep(0.7, 0.9, lanes);
+                    rainbow += lanes * 0.15;
+                    
+                    // Edge glow
+                    float edge = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
+                    rainbow *= edge * 0.8 + 0.2;
+                    rainbow += (1.0 - edge) * 0.1;
+                    
+                    // Depth fade
+                    float depthFade = smoothstep(2000.0, 200.0, vDepth);
+                    rainbow *= 0.3 + depthFade * 0.7;
+                    
+                    // Pulse effect
+                    rainbow *= 1.0 + uPulse * 0.3;
+                    
+                    gl_FragColor = vec4(rainbow, 1.0);
+                }
+            `,
+            side: THREE.DoubleSide,
+        });
 
-    getWaveSurfacePoint(xPercent, layerIndex = 2) {
-        if (!this.waveWidth || !this.waveHeight) return { x: 0.5, y: 0.6 };
+        this.roadMesh = new THREE.Mesh(this.roadGeometry, this.roadMaterial);
+        this.scene.add(this.roadMesh);
 
-        const effectiveSpeed = 0.00002 * (1 + this.colorSpeedBoost * 0.6);
-        const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
-
-        const numLayers = this.activePreset.waveLayers;
-        const layerDepth = layerIndex / numLayers;
-        const layerSpeed = 0.35 + layerDepth * 0.8;
-        const layerY = this.waveHeight * (0.28 + layerDepth * 0.38);
-
-        const baseAmplitude = 45 + layerDepth * 80;
-        const amplitude = baseAmplitude * (1 + this.waveAmplitudeBoost * 0.9);
-        const frequency = 0.0025 - layerDepth * 0.0007;
-        const phaseOffset = time * layerSpeed + layerIndex * 0.9;
-
-        const breathe = Math.sin(time * 2.2 + layerIndex * 0.6) * 0.25 + 1;
-        const pulseEffect = 1 + this.wavePulseIntensity * 0.5;
-
-        const x = xPercent * this.waveWidth;
-        const waveOffset = Math.sin(x * frequency + phaseOffset) * amplitude * breathe * pulseEffect;
-        const y = layerY + waveOffset;
-
-        return {
-            x: xPercent,
-            y: y / this.waveHeight,
-        };
+        console.log('[ChromadelicHighway] Dynamic road created');
     }
 
+    updateRoadCurve() {
+        if (!this.roadGeometry) return;
 
+        const positions = this.roadGeometry.attributes.position.array;
+        const segments = this.qualityPreset.roadSegments;
 
-    initSparkles() {
-        this.sparkles = [];
+        // Animate curve - slower time-based phase shift for meditative feel
+        const time = this.time * 0.12;
 
-        const rainbowHues = [0, 30, 60, 120, 180, 240, 280, 320];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments; // 0 to 1 along road (0 = near, 1 = far)
+            const z = 400 - t * 2700; // Start behind camera, extend far into distance
 
-        for (let i = 0; i < this.maxSparkles; i++) {
-            const type = Math.random();
-            let size, speedY, speedX, twinkleSpeed, glowSize;
+            // MARIO KART STYLE: Near road is straight, curve increases with distance
+            // Use t^2 to make curve only visible in distance
+            const curveStrength = t * t; // 0 near, 1 far
 
-            if (type < 0.5) {
-                size = this.random(0.6, 1.4);
-                speedY = this.random(0.00004, 0.0001);
-                speedX = this.random(-0.00003, 0.00003);
-                twinkleSpeed = this.random(0.002, 0.006);
-                glowSize = this.random(4, 7);
-            } else if (type < 0.8) {
-                size = this.random(1.4, 2.8);
-                speedY = this.random(0.0001, 0.0003);
-                speedX = this.random(-0.00006, 0.00006);
-                twinkleSpeed = this.random(0.004, 0.012);
-                glowSize = this.random(7, 12);
-            } else {
-                size = this.random(2.8, 4.5);
-                speedY = this.random(0.0002, 0.0005);
-                speedX = this.random(-0.00012, 0.00012);
-                twinkleSpeed = this.random(0.008, 0.02);
-                glowSize = this.random(12, 18);
-            }
+            // Dynamic curve - combination of waves
+            const curve1 = Math.sin(t * 2.5 + time) * 200 * curveStrength;
+            const curve2 = Math.sin(t * 1.2 + time * 0.6) * 120 * curveStrength;
+            const curve3 = Math.cos(t * 1.8 + time * 0.9) * 80 * curveStrength;
+            const xOffset = curve1 + curve2 + curve3;
 
-            const rainbowIndex = Math.floor(Math.random() * rainbowHues.length);
-            const baseHue = rainbowHues[rainbowIndex];
-            const yPosition = Math.random() < 0.7 ? this.random(0.4, 1) : Math.random();
+            // Gentle hills (also more pronounced in distance)
+            const yOffset = Math.sin(t * 1.5 + time * 0.4) * 25 * curveStrength;
 
-            this.sparkles.push({
-                x: Math.random(),
-                y: yPosition,
-                size,
-                speedY,
-                speedX,
-                phase: Math.random() * Math.PI * 2,
-                twinkleSpeed,
-                baseHue,
-                hueOffset: this.random(-20, 20),
-                colorCycleSpeed: this.random(0.4, 1.8),
-                glowSize,
-                baseAlpha: this.random(0.35, 0.85),
-            });
+            // Update both edge vertices for this segment
+            // Left edge
+            const leftIdx = (i * 2) * 3;
+            positions[leftIdx] = -100 + xOffset;
+            positions[leftIdx + 1] = yOffset;
+            positions[leftIdx + 2] = z;
+
+            // Right edge
+            const rightIdx = (i * 2 + 1) * 3;
+            positions[rightIdx] = 100 + xOffset;
+            positions[rightIdx + 1] = yOffset;
+            positions[rightIdx + 2] = z;
         }
+
+        this.roadGeometry.attributes.position.needsUpdate = true;
+        this.roadGeometry.computeVertexNormals();
     }
 
-    initStars() {
-        this.stars = [];
-        for (let i = 0; i < this.maxStars; i++) {
-            const isColoredStar = Math.random() < 0.3;
-            this.stars.push({
-                x: Math.random(),
-                y: Math.random() * 0.4,
-                size: this.random(0.6, 2),
-                phase: Math.random() * Math.PI * 2,
-                twinkleSpeed: this.random(0.001, 0.005),
-                brightness: this.random(0.45, 0.95),
-                isColored: isColoredStar,
-                hue: isColoredStar ? Math.floor(Math.random() * 360) : 0,
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tunnel Rings - Large rings visible on screen edges during gameplay
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createTunnelRings() {
+        const ringCount = this.qualityPreset.ringCount;
+
+        for (let i = 0; i < ringCount; i++) {
+            // Larger rings that will be visible around the game canvas
+            const geometry = new THREE.TorusGeometry(220, 4, 8, 64);
+
+            const hue = i / ringCount;
+            const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
+
+            const material = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.65,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
             });
+
+            const ring = new THREE.Mesh(geometry, material);
+
+            // Spread evenly into the distance, lower position
+            const z = 150 - (i / ringCount) * 2400;
+            ring.position.set(0, 25, z); // Lower, centered on road
+            ring.userData.baseZ = z;
+            ring.userData.hue = hue;
+            ring.userData.speed = 3 + Math.random() * 1.5; // Slower
+
+            this.tunnelRings.push(ring);
+            this.scene.add(ring);
         }
+
+        // Add edge glow strips - visible on left/right sides of screen
+        this.createEdgeGlowStrips();
+
+        console.log(`[ChromadelicHighway] ${ringCount} tunnel rings + edge glows created`);
     }
 
-    hslToRgb(h, s, l) {
-        s /= 100;
-        l /= 100;
-        const k = n => (n + h / 30) % 12;
-        const a = s * Math.min(l, 1 - l);
-        const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-        return [f(0), f(8), f(4)];
-    }
+    createEdgeGlowStrips() {
+        // Create glowing edge lines that follow the road - visible on left/right of game canvas
+        this.edgeStrips = [];
 
-    animate() {
-        if (!this.isActive || !this.renderer) return;
+        // Two edge line sets - left and right of road
+        [-1, 1].forEach((side, sideIdx) => {
+            const lineCount = 3; // Multiple parallel lines per side
 
-        this.animationTime += 16;
-        this.frameCounter++;
+            for (let i = 0; i < lineCount; i++) {
+                const geometry = new THREE.BufferGeometry();
+                const points = [];
 
-        // Smooth easing
-        const lerpFactor = 0.08;
-        this.wavePulseIntensity += (this.wavePulseTarget - this.wavePulseIntensity) * lerpFactor;
-        this.waveAmplitudeBoost += (this.amplitudeBoostTarget - this.waveAmplitudeBoost) * lerpFactor;
-        this.colorSpeedBoost += (this.colorSpeedTarget - this.colorSpeedBoost) * lerpFactor;
+                // Create points along the road edge
+                const segments = 60;
+                for (let j = 0; j <= segments; j++) {
+                    const t = j / segments;
+                    const z = 350 - t * 2600;
+                    const xBase = side * (110 + i * 25); // Offset from road edge
+                    points.push(new THREE.Vector3(xBase, 2 + i * 3, z));
+                }
 
-        this.wavePulseTarget *= 0.96;
-        this.amplitudeBoostTarget *= 0.96;
-        this.colorSpeedTarget *= 0.96;
+                geometry.setFromPoints(points);
 
-        const time = this.animationTime + this.timeOffset;
-        const particles = [];
+                const hue = sideIdx === 0 ? (0.0 + i * 0.1) : (0.7 - i * 0.1); // Red/orange left, purple/magenta right
+                const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
 
-        // Update and collect Sparkles
-        this.sparkles.forEach((sparkle) => {
-            sparkle.y += sparkle.speedY;
-            sparkle.x += sparkle.speedX;
+                const material = new THREE.LineBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.6 - i * 0.15,
+                    blending: THREE.AdditiveBlending,
+                });
 
-            if (sparkle.y > 1) {
-                sparkle.y = Math.random() < 0.7 ? this.random(0.4, 1) : 0;
-                sparkle.x = Math.random();
+                const line = new THREE.Line(geometry, material);
+                line.userData.side = side;
+                line.userData.offset = i;
+                line.userData.hue = hue;
+
+                this.edgeStrips.push(line);
+                this.scene.add(line);
             }
-            if (sparkle.x < 0) sparkle.x = 1;
-            if (sparkle.x > 1) sparkle.x = 0;
-
-            const timeFactor = time * 0.0007;
-            const colorCycle = (timeFactor * sparkle.colorCycleSpeed * 70) % 360;
-            const hue = (sparkle.baseHue + sparkle.hueOffset + colorCycle) % 360;
-
-            const twinkle = (Math.sin(time * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2;
-            const alpha = sparkle.baseAlpha * (0.35 + twinkle * 0.65);
-            const size = sparkle.size * (0.85 + twinkle * 0.15) * 2.0; // Scale up for WebGL
-
-            const saturation = 95 + twinkle * 5;
-            const lightness = 65 + twinkle * 20;
-
-            particles.push({
-                x: sparkle.x,
-                y: sparkle.y,
-                size: size,
-                color: this.hslToRgb(hue, saturation, lightness),
-                alpha: alpha
-            });
         });
-
-        // Update and collect Stars
-        this.stars.forEach((star) => {
-            const twinkle = (Math.sin(time * star.twinkleSpeed + star.phase) + 1) / 2;
-            const alpha = star.brightness * (0.5 + twinkle * 0.5);
-            const size = star.size * (0.9 + twinkle * 0.1) * 1.5;
-
-            const hue = star.isColored ? (star.hue + time * 0.01) % 360 : 0;
-            const saturation = star.isColored ? 80 : 0;
-            const lightness = star.isColored ? 80 : 100;
-
-            particles.push({
-                x: star.x,
-                y: star.y,
-                size: size,
-                color: this.hslToRgb(hue, saturation, lightness),
-                alpha: alpha
-            });
-        });
-
-        // Update and collect Combo Particles
-        this.comboParticles = this.comboParticles.filter((particle) => {
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-
-            const waveInfluence = Math.sin(this.animationTime * 0.003 + particle.x * 10) * 0.0004;
-            particle.x += waveInfluence;
-
-            particle.vy += 0.00012;
-            particle.life -= 0.009;
-            particle.hue = (particle.hue + particle.hueCycleSpeed * 0.018) % 360;
-
-            if (particle.life <= 0) return false;
-
-            const lifeFactor = Math.min(1, particle.life / 2.0);
-            const alpha = lifeFactor ** 0.55 * particle.baseAlpha;
-            const size = particle.size * (0.55 + lifeFactor * 0.45) * 2.0;
-
-            particles.push({
-                x: particle.x,
-                y: particle.y,
-                size: size,
-                color: this.hslToRgb(particle.hue, 100, 78 + lifeFactor * 12),
-                alpha: alpha
-            });
-
-            return true;
-        });
-
-        // Update and collect Lock Sparkles
-        this.lockSparkles = this.lockSparkles.filter((sparkle) => {
-            sparkle.x += sparkle.vx;
-            sparkle.y += sparkle.vy;
-            sparkle.vy += 0.0002; // Gravity
-            sparkle.life -= 0.02;
-            sparkle.hue = (sparkle.hue + 2) % 360;
-
-            if (sparkle.life <= 0) return false;
-
-            const lifeFactor = sparkle.life;
-            const size = Math.max(0.5, sparkle.size * lifeFactor) * 2.5;
-
-            particles.push({
-                x: sparkle.x,
-                y: sparkle.y,
-                size: size,
-                color: this.hslToRgb(sparkle.hue, 100, 85),
-                alpha: lifeFactor
-            });
-
-            return true;
-        });
-
-        // Render
-        this.renderer.render(time * 0.001, {
-            amplitude: 50.0 + this.waveAmplitudeBoost * 50.0,
-            frequency: 0.002,
-            speed: 0.005 + this.colorSpeedBoost,
-            pulseIntensity: this.wavePulseIntensity,
-            particles: particles
-        });
-
-        const animId = requestAnimationFrame(() => this.animate());
-        this.registerAnimation(animId);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Starfield - Background stars
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createStarfield() {
+        const starCount = this.qualityPreset.starCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(starCount * 3);
+        const colors = new Float32Array(starCount * 3);
+
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+
+            // Hemisphere in front of camera
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.6 + 0.2;
+            const radius = 800 + Math.random() * 1500;
+
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.cos(phi) + 100;
+            positions[i3 + 2] = -radius * Math.sin(phi) * Math.sin(theta) - 500;
+
+            // Subtle color variation
+            const brightness = 0.6 + Math.random() * 0.4;
+            colors[i3] = brightness;
+            colors[i3 + 1] = brightness;
+            colors[i3 + 2] = brightness * (0.9 + Math.random() * 0.1);
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 2,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            sizeAttenuation: true,
+        });
+
+        this.starfield = new THREE.Points(geometry, material);
+        this.scene.add(this.starfield);
+
+        // Add some subtle nebula glow planes in the background
+        this.createNebulaBackdrop();
+
+        console.log(`[ChromadelicHighway] Starfield created with ${starCount} stars`);
+    }
+
+    createNebulaBackdrop() {
+        // A few large, subtle gradient planes for atmosphere
+        const nebulaColors = [
+            { h: 0.8, s: 0.6, l: 0.3 }, // Purple
+            { h: 0.6, s: 0.5, l: 0.25 }, // Cyan/blue
+            { h: 0.0, s: 0.5, l: 0.3 }, // Red/pink
+        ];
+
+        nebulaColors.forEach((col, i) => {
+            const size = 1500 + Math.random() * 800;
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            const color = new THREE.Color().setHSL(col.h, col.s, col.l);
+            gradient.addColorStop(0, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.08)`);
+            gradient.addColorStop(0.5, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.03)`);
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 128, 128);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const geo = new THREE.PlaneGeometry(size, size);
+            const mat = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+
+            const plane = new THREE.Mesh(geo, mat);
+            plane.position.set(
+                (Math.random() - 0.5) * 2000,
+                200 + Math.random() * 400,
+                -1500 - i * 500
+            );
+            plane.lookAt(this.camera.position);
+            this.scene.add(plane);
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Speed Particles - Flow toward camera along road
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSpeedParticles() {
+        const particleCount = this.qualityPreset.speedParticleCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+
+            // Distribute around road edges for speed line effect
+            const side = Math.random() > 0.5 ? 1 : -1;
+            positions[i3] = side * (80 + Math.random() * 60);
+            positions[i3 + 1] = Math.random() * 60 + 5;
+            positions[i3 + 2] = -Math.random() * 2200;
+
+            // Rainbow colors with varied saturation
+            const hue = Math.random();
+            const color = new THREE.Color().setHSL(hue, 0.7 + Math.random() * 0.3, 0.5 + Math.random() * 0.2);
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 2 + Math.random() * 3;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.PointsMaterial({
+            size: 3,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true,
+        });
+
+        this.speedParticles = new THREE.Points(geometry, material);
+        this.scene.add(this.speedParticles);
+
+        console.log(`[ChromadelicHighway] ${particleCount} speed particles created`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Post-Processing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupPostProcessing() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        if (this.qualityPreset.enableBloom) {
+            this.bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(width, height),
+                this.qualityPreset.bloomStrength,
+                this.qualityPreset.bloomRadius,
+                this.qualityPreset.bloomThreshold
+            );
+            this.composer.addPass(this.bloomPass);
+        }
+
+        const vignettePass = new ShaderPass(VignetteShader);
+        this.composer.addPass(vignettePass);
+
+        console.log('[ChromadelicHighway] Post-processing ready');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Event Listeners
+    // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (this.isActive) {
-                const settings = typeof window !== 'undefined' ? window.settings : null;
-                if (settings?.backgroundComboEffects !== false) {
-                    this.handleLineClear(data);
-                }
+        const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            if (this.isActive && window.settings?.backgroundComboEffects !== false) {
+                this.pulseIntensity = Math.max(this.pulseIntensity, 0.4);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (this.isActive) {
-                const settings = typeof window !== 'undefined' ? window.settings : null;
-                if (settings?.backgroundComboEffects !== false) {
-                    this.handleCombo(data);
+            if (this.isActive && window.settings?.backgroundComboEffects !== false) {
+                const intensity = Math.min(data.comboCount * 0.2, 1.0);
+                this.pulseIntensity = Math.max(this.pulseIntensity, 0.6 + intensity * 0.4);
+                this.bloomBoost = intensity * 0.3;
+            }
+        });
+
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (this.isActive && window.settings?.backgroundComboEffects !== false) {
+                const intensity = Math.min(data.lineCount * 0.25, 1.0);
+                this.pulseIntensity = Math.max(this.pulseIntensity, 0.5 + intensity * 0.5);
+            }
+        });
+
+        this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
+        window.addEventListener('resize', this.resizeHandler);
+
+        this.eventUnsubscribers.push(lockUnsub, comboUnsub, lineClearUnsub);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation Loop
+    // ─────────────────────────────────────────────────────────────────────────
+
+    startAnimation() {
+        const animate = () => {
+            if (!this.isActive) return;
+
+            const delta = this.clock.getDelta();
+            this.time += delta;
+            this.roadProgress += delta * 0.3; // Even slower, more meditative speed
+
+            // Decay effects
+            this.pulseIntensity *= 0.92;
+            this.bloomBoost *= 0.95;
+
+            // Update road curve dynamically
+            this.updateRoadCurve();
+
+            // Update road shader
+            if (this.roadMaterial) {
+                this.roadMaterial.uniforms.uTime.value = this.time;
+                this.roadMaterial.uniforms.uProgress.value = this.roadProgress;
+                this.roadMaterial.uniforms.uPulse.value = this.pulseIntensity;
+            }
+
+            // Animate rings - fly toward camera, follow road curve
+            this.tunnelRings.forEach((ring) => {
+                ring.position.z += ring.userData.speed * 0.35; // Slower ring movement
+
+                // Wrap around when past camera
+                if (ring.position.z > 300) {
+                    ring.position.z = -2100;
+                    ring.userData.hue = (ring.userData.hue + 0.1) % 1.0;
+                    ring.material.color.setHSL(ring.userData.hue, 0.9, 0.6);
                 }
-            }
-        });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (this.isActive) {
-                const settings = typeof window !== 'undefined' ? window.settings : null;
-                if (settings?.backgroundComboEffects !== false) {
-                    this.handlePieceLock();
+                // Follow the same curve as the road (Mario Kart style - more curve in distance)
+                const t = Math.max(0, (200 - ring.position.z) / 2500); // 0 near, 1 far
+                const curveStrength = t * t;
+                const curve1 = Math.sin(t * 2.5 + this.time * 0.12) * 200 * curveStrength;
+                const curve2 = Math.sin(t * 1.2 + this.time * 0.08) * 120 * curveStrength;
+                ring.position.x = curve1 + curve2;
+                ring.position.y = 25 + Math.sin(t * 1.5 + this.time * 0.06) * 20 * curveStrength;
+
+                // Scale based on distance (bigger when close)
+                const scale = 0.5 + (1 - t) * 0.8;
+                ring.scale.set(scale, scale, 1);
+                ring.material.opacity = 0.25 + (1 - t) * 0.5 + this.pulseIntensity * 0.25;
+            });
+
+            // Animate edge glow lines - subtle color cycling and pulse response
+            if (this.edgeStrips) {
+                this.edgeStrips.forEach(line => {
+                    line.userData.hue = (line.userData.hue + 0.0002) % 1.0;
+                    line.material.color.setHSL(line.userData.hue, 0.9, 0.55);
+                    const baseOpacity = 0.5 - line.userData.offset * 0.12;
+                    line.material.opacity = baseOpacity + this.pulseIntensity * 0.25;
+                });
+            }
+
+            // Animate speed particles - follow road corridor
+            if (this.speedParticles) {
+                const positions = this.speedParticles.geometry.attributes.position.array;
+                for (let i = 0; i < positions.length; i += 3) {
+                    positions[i + 2] += 3 + this.pulseIntensity * 5; // Even slower particles
+
+                    if (positions[i + 2] > 300) {
+                        const side = Math.random() > 0.5 ? 1 : -1;
+                        positions[i] = side * (80 + Math.random() * 60);
+                        positions[i + 1] = Math.random() * 60 + 5;
+                        positions[i + 2] = -2200;
+                    }
                 }
-            }
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-    }
-
-    handleLineClear(data) {
-        const lineCount = data.lineCount || 1;
-
-        // Pulse the waves
-        this.wavePulseTarget = Math.min(0.7, this.wavePulseTarget + 0.2);
-
-        // Add light beams for multi-line clears
-        if (lineCount >= 2 && this.lightBeams.length < this.activePreset.maxLightBeams) {
-            for (let i = 0; i < Math.min(lineCount - 1, 2); i++) {
-                this.lightBeams.push({
-                    x: 0.2 + Math.random() * 0.6,
-                    y: 0,
-                    speed: 0.001,
-                    width: 0.03 + Math.random() * 0.02,
-                    hue: Math.random() * 360,
-                    life: 1,
-                    maxLife: 1,
-                });
-            }
-        }
-
-        // Add aurora streaks for Tetris
-        if (lineCount >= 4 && this.auroraStreaks.length < this.activePreset.maxAuroraStreaks) {
-            for (let i = 0; i < 2; i++) {
-                this.auroraStreaks.push({
-                    y: 0.15 + Math.random() * 0.2,
-                    height: 0.05 + Math.random() * 0.03,
-                    hue: Math.random() * 360,
-                    phase: Math.random() * Math.PI * 2,
-                    life: 1,
-                    maxLife: 1,
-                });
-            }
-        }
-    }
-
-    handleCombo(data) {
-        const comboCount = data.comboCount || 1;
-        const intensity = Math.min(1, comboCount / 10);
-
-        // Wave effects
-        this.wavePulseTarget = Math.min(0.7, 0.25 + intensity * 0.45);
-        this.amplitudeBoostTarget = Math.min(0.6, 0.18 + intensity * 0.42);
-        this.colorSpeedTarget = Math.min(0.6, 0.22 + intensity * 0.38);
-
-        // Shockwaves
-        const baseShockwaves = Math.min(this.activePreset.maxShockwaves, 1 + Math.floor(comboCount / 3));
-        for (let i = 0; i < baseShockwaves; i++) {
-            const xPos = 0.25 + (i / baseShockwaves) * 0.5;
-            const wavePoint = this.getWaveSurfacePoint(xPos, 2 + i);
-
-            this.shockwaves.push({
-                x: wavePoint.x,
-                y: wavePoint.y,
-                radius: 25,
-                speed: 3.5 + i * 0.6,
-                startHue: (i * 110) % 360,
-                life: 1,
-                maxLife: 1,
-            });
-        }
-
-        // Particles from waves
-        const particlesPerWave = Math.min(
-            this.activePreset.particlesPerWave,
-            this.activePreset.particlesPerWave * 0.6 + comboCount * 0.6,
-        );
-        const numWaveLayers = 3;
-
-        for (let layer = 0; layer < numWaveLayers; layer++) {
-            const waveLayer = 1 + layer;
-
-            for (let i = 0; i < particlesPerWave; i++) {
-                const xPos = 0.15 + Math.random() * 0.7;
-                const surfacePoint = this.getWaveSurfacePoint(xPos, waveLayer);
-
-                const angle = this.random(-Math.PI * 0.75, -Math.PI * 0.25);
-                const speed = this.random(0.003, 0.009) * (1 + intensity * 0.6);
-                const vx = Math.cos(angle) * speed;
-                const vy = Math.sin(angle) * speed;
-
-                const effectiveSpeed = 0.0007 * (1 + this.colorSpeedBoost * 0.6);
-                const time = (this.animationTime + this.timeOffset) * effectiveSpeed;
-                const colorPhase = (time * 70 + xPos * 130 + layer * 90) % 360;
-                const startHue = colorPhase;
-                const hueCycleSpeed = this.random(45, 110) * (1 + intensity);
-
-                this.comboParticles.push({
-                    x: surfacePoint.x,
-                    y: surfacePoint.y,
-                    vx,
-                    vy,
-                    size: this.random(2.8, 5.5) * (1 + intensity * 0.35),
-                    hue: startHue,
-                    hueCycleSpeed,
-                    life: 2.2,
-                    baseAlpha: 0.92,
-                });
-            }
-        }
-
-        // Light beams for high combos
-        if (comboCount >= 5 && this.lightBeams.length < this.activePreset.maxLightBeams) {
-            this.lightBeams.push({
-                x: 0.3 + Math.random() * 0.4,
-                y: 0,
-                speed: 0.001,
-                width: 0.04 + Math.random() * 0.03,
-                hue: Math.random() * 360,
-                life: 1,
-                maxLife: 1,
-            });
-        }
-
-        // Aurora for very high combos
-        if (comboCount >= 7 && this.auroraStreaks.length < this.activePreset.maxAuroraStreaks) {
-            this.auroraStreaks.push({
-                y: 0.1 + Math.random() * 0.25,
-                height: 0.04 + Math.random() * 0.04,
-                hue: Math.random() * 360,
-                phase: Math.random() * Math.PI * 2,
-                life: 1,
-                maxLife: 1,
-            });
-        }
-
-        // Limit particles
-        if (this.comboParticles.length > this.activePreset.maxComboParticles) {
-            this.comboParticles = this.comboParticles.slice(-this.activePreset.maxComboParticles);
-        }
-    }
-
-    handlePieceLock() {
-        if (!this.activePreset.enableLockEffects) return;
-
-        // Subtle wave pulse
-        this.wavePulseTarget = Math.min(this.wavePulseTarget + 0.08, 0.3);
-
-        // Create lock ripples
-        const rippleCount = this.activePreset.lockRippleCount;
-        for (let i = 0; i < rippleCount; i++) {
-            if (this.lockRipples.length >= this.activePreset.lockRippleCount * 2) break;
-
-            // Spawn ripples at random positions near waves
-            const xPos = 0.2 + Math.random() * 0.6;
-            const wavePoint = this.getWaveSurfacePoint(xPos, 2);
-
-            this.lockRipples.push({
-                x: wavePoint.x,
-                y: wavePoint.y,
-                radius: 8,
-                speed: 2 + Math.random(),
-                hue: Math.random() * 360,
-                life: 1,
-            });
-        }
-
-        // Create lock sparkles
-        const sparkleCount = this.activePreset.lockSparkleCount;
-        for (let i = 0; i < sparkleCount; i++) {
-            if (this.lockSparkles.length >= this.activePreset.lockSparkleCount * 3) break;
-
-            const xPos = 0.15 + Math.random() * 0.7;
-            const wavePoint = this.getWaveSurfacePoint(xPos, 1 + Math.floor(Math.random() * 3));
-
-            const angle = this.random(-Math.PI * 0.8, -Math.PI * 0.2);
-            const speed = this.random(0.002, 0.005);
-
-            this.lockSparkles.push({
-                x: wavePoint.x,
-                y: wavePoint.y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                size: this.random(2, 4),
-                hue: Math.random() * 360,
-                life: 1,
-            });
-        }
-    }
-
-    animate() {
-        if (!this.isActive || !this.renderer) return;
-
-        this.animationTime += 16;
-        this.frameCounter++;
-
-        // Smooth easing
-        const lerpFactor = 0.08;
-        this.wavePulseIntensity += (this.wavePulseTarget - this.wavePulseIntensity) * lerpFactor;
-        this.waveAmplitudeBoost += (this.amplitudeBoostTarget - this.waveAmplitudeBoost) * lerpFactor;
-        this.colorSpeedBoost += (this.colorSpeedTarget - this.colorSpeedBoost) * lerpFactor;
-
-        this.wavePulseTarget *= 0.96;
-        this.amplitudeBoostTarget *= 0.96;
-        this.colorSpeedTarget *= 0.96;
-
-        const time = this.animationTime + this.timeOffset;
-        const particles = [];
-
-        // Update and collect Sparkles
-        this.sparkles.forEach((sparkle) => {
-            sparkle.y += sparkle.speedY;
-            sparkle.x += sparkle.speedX;
-
-            if (sparkle.y > 1) {
-                sparkle.y = Math.random() < 0.7 ? this.random(0.4, 1) : 0;
-                sparkle.x = Math.random();
-            }
-            if (sparkle.x < 0) sparkle.x = 1;
-            if (sparkle.x > 1) sparkle.x = 0;
-
-            const timeFactor = time * 0.0007;
-            const colorCycle = (timeFactor * sparkle.colorCycleSpeed * 70) % 360;
-            const hue = (sparkle.baseHue + sparkle.hueOffset + colorCycle) % 360;
-
-            const twinkle = (Math.sin(time * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2;
-            const alpha = sparkle.baseAlpha * (0.35 + twinkle * 0.65);
-            const size = sparkle.size * (0.85 + twinkle * 0.15) * 2.0;
-
-            const saturation = 95 + twinkle * 5;
-            const lightness = 65 + twinkle * 20;
-
-            particles.push({
-                x: sparkle.x,
-                y: 1.0 - sparkle.y,
-                size: size,
-                color: this.hslToRgb(hue, saturation, lightness),
-                alpha: alpha,
-                type: 0
-            });
-        });
-
-        // Update and collect Stars
-        this.stars.forEach((star) => {
-            const twinkle = (Math.sin(time * star.twinkleSpeed + star.phase) + 1) / 2;
-            const alpha = star.brightness * (0.5 + twinkle * 0.5);
-            const size = star.size * (0.9 + twinkle * 0.1) * 1.5;
-
-            const hue = star.isColored ? (star.hue + time * 0.01) % 360 : 0;
-            const saturation = star.isColored ? 80 : 0;
-            const lightness = star.isColored ? 80 : 100;
-
-            particles.push({
-                x: star.x,
-                y: 1.0 - star.y,
-                size: size,
-                color: this.hslToRgb(hue, saturation, lightness),
-                alpha: alpha,
-                type: 0
-            });
-        });
-
-        // Update and collect Combo Particles
-        this.comboParticles = this.comboParticles.filter((particle) => {
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-
-            const waveInfluence = Math.sin(this.animationTime * 0.003 + particle.x * 10) * 0.0004;
-            particle.x += waveInfluence;
-
-            particle.vy += 0.00012;
-            particle.life -= 0.009;
-            particle.hue = (particle.hue + particle.hueCycleSpeed * 0.018) % 360;
-
-            if (particle.life <= 0) return false;
-
-            const lifeFactor = Math.min(1, particle.life / 2.0);
-            const alpha = lifeFactor ** 0.55 * particle.baseAlpha;
-            const size = particle.size * (0.55 + lifeFactor * 0.45) * 2.0;
-
-            particles.push({
-                x: particle.x,
-                y: 1.0 - particle.y,
-                size: size,
-                color: this.hslToRgb(particle.hue, 100, 78 + lifeFactor * 12),
-                alpha: alpha,
-                type: 0
-            });
-
-            return true;
-        });
-
-        // Update and collect Lock Sparkles
-        this.lockSparkles = this.lockSparkles.filter((sparkle) => {
-            sparkle.x += sparkle.vx;
-            sparkle.y += sparkle.vy;
-            sparkle.vy += 0.0002;
-            sparkle.life -= 0.02;
-            sparkle.hue = (sparkle.hue + 2) % 360;
-
-            if (sparkle.life <= 0) return false;
-
-            const lifeFactor = sparkle.life;
-            const size = Math.max(0.5, sparkle.size * lifeFactor) * 2.5;
-
-            particles.push({
-                x: sparkle.x,
-                y: 1.0 - sparkle.y,
-                size: size,
-                color: this.hslToRgb(sparkle.hue, 100, 85),
-                alpha: lifeFactor,
-                type: 0
-            });
-
-            return true;
-        });
-
-        // Update and collect Shockwaves
-        this.shockwaves = this.shockwaves.filter((wave) => {
-            wave.radius += wave.speed;
-            wave.life -= 0.007;
-
-            if (wave.life <= 0) return false;
-
-            const lifeFactor = wave.life / wave.maxLife;
-            const hueOffset = wave.startHue + (1 - lifeFactor) * 70;
-
-            for (let i = 0; i < 3; i++) {
-                const ringRadius = Math.max(1, wave.radius + (i - 1.5) * 18);
-                const ringAlpha = lifeFactor * 0.55;
-                const ringHue = (hueOffset + i * 35) % 360;
-
-                particles.push({
-                    x: wave.x,
-                    y: 1.0 - wave.y,
-                    size: ringRadius * 2.5,
-                    color: this.hslToRgb(ringHue, 100, 72),
-                    alpha: ringAlpha,
-                    type: 1 // Ring
-                });
+                this.speedParticles.geometry.attributes.position.needsUpdate = true;
             }
 
-            return true;
-        });
+            // Subtle camera sway (small movements, stays close to road)
+            this.camera.position.x = Math.sin(this.time * 0.25) * 4;
+            this.camera.position.y = 55 + Math.sin(this.time * 0.2) * 3;
 
-        // Update and collect Light Beams
-        this.lightBeams = this.lightBeams.filter((beam) => {
-            beam.life -= 0.006;
-            beam.y += beam.speed;
-
-            if (beam.life <= 0) return false;
-
-            const lifeFactor = beam.life / beam.maxLife;
-            const hue = (beam.hue + (1 - lifeFactor) * 40) % 360;
-
-            particles.push({
-                x: beam.x,
-                y: 0.5,
-                size: beam.width * 100,
-                color: this.hslToRgb(hue, 100, 75),
-                alpha: lifeFactor * 0.25,
-                type: 2 // Beam
-            });
-
-            return true;
-        });
-
-        // Update and collect Lock Ripples
-        this.lockRipples = this.lockRipples.filter((ripple) => {
-            ripple.radius += ripple.speed;
-            ripple.life -= 0.025;
-
-            if (ripple.life <= 0) return false;
-
-            const lifeFactor = ripple.life;
-
-            for (let i = 0; i < 2; i++) {
-                const ringRadius = Math.max(1, ripple.radius + i * 12);
-                const ringAlpha = lifeFactor * 0.4;
-                const hue = (ripple.hue + i * 30) % 360;
-
-                particles.push({
-                    x: ripple.x,
-                    y: 1.0 - ripple.y,
-                    size: ringRadius * 2.0,
-                    color: this.hslToRgb(hue, 100, 75),
-                    alpha: ringAlpha,
-                    type: 1 // Ring
-                });
+            // Update bloom
+            if (this.bloomPass) {
+                this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomBoost);
             }
 
-            return true;
-        });
+            // Render
+            if (this.composer) {
+                this.composer.render(delta);
+            } else {
+                this.renderer.render(this.scene, this.camera);
+            }
 
-        // Render
-        this.renderer.render(time * 0.001, {
-            amplitude: 50.0 + this.waveAmplitudeBoost * 50.0,
-            frequency: 0.002,
-            speed: 1.0 + this.colorSpeedBoost,
-            pulseIntensity: this.wavePulseIntensity,
-            particles: particles
-        });
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+        };
 
-        const animId = requestAnimationFrame(() => this.animate());
-        this.registerAnimation(animId);
-    }
-
-    random(min, max) {
-        return min + Math.random() * (max - min);
+        this.animationFrameId = requestAnimationFrame(animate);
+        this.registerAnimation(this.animationFrameId);
     }
 
     resize(width, height) {
-        if (!this.renderer || !this.canvas) return;
-
-        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-        const rect = this.canvas.getBoundingClientRect();
-
-        // Fallback if rect is 0 (e.g. hidden)
-        const w = rect.width || window.innerWidth;
-        const h = rect.height || window.innerHeight;
-
-        this.renderer.resize(w * dpr, h * dpr);
-
-        this.waveWidth = w;
-        this.waveHeight = h;
+        if (this.camera) {
+            this.camera.aspect = width / height;
+            this.camera.updateProjectionMatrix();
+        }
+        if (this.renderer) this.renderer.setSize(width, height);
+        if (this.composer) this.composer.setSize(width, height);
     }
 
     stop() {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
-
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
         }
-
-        if (this.renderer) {
-            this.renderer.dispose();
-            this.renderer = null;
-        }
-
-        if (this.canvas && this.canvas.parentNode) {
-            this.canvas.parentNode.removeChild(this.canvas);
-        }
-        this.canvas = null;
-
-        this.sparkles = [];
-        this.stars = [];
-        this.comboParticles = [];
-        this.shockwaves = [];
-        this.lightBeams = [];
-        this.auroraStreaks = [];
-        this.lockRipples = [];
-        this.lockSparkles = [];
-
         super.stop();
     }
 
-    getTetrominoConfig() {
-        return CHROMADELIC_HIGHWAY_TETROMINOS;
+    cleanup() {
+        this.stop();
+
+        if (this.scene) {
+            this.scene.traverse((obj) => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach((m) => m.dispose());
+                    } else {
+                        obj.material.dispose();
+                    }
+                }
+            });
+        }
+
+        if (this.composer) this.composer.dispose();
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (this.renderer.domElement?.parentNode) {
+                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+            }
+        }
+
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+        this.roadMesh = null;
+        this.roadGeometry = null;
+        this.tunnelRings = [];
+        this.starfield = null;
+        this.speedParticles = null;
+
+        super.cleanup();
     }
 }
