@@ -1,5 +1,5 @@
 import { SHAPES, COLORS } from '../core/constants.js';
-import { drawBlockStyled } from '../rendering/canvas/canvas-drawing-utils.js';
+import { drawPieceSolid } from '../rendering/canvas/canvas-drawing-utils.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 
@@ -155,20 +155,9 @@ export function drawPiece(canvas, pieceKey) {
     // Disable anti-aliasing for crisp pixel-perfect rendering
     ctx.imageSmoothingEnabled = false;
 
-    ctx.save();
-    ctx.beginPath();
+    // Draw the entire piece as a solid unit (outer edges only)
+    drawPieceSolid(ctx, shape, padding, padding, blockSize, styleConfig);
 
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            if (shape[row][col]) {
-                const x = padding + col * blockSize;
-                const y = padding + row * blockSize;
-                drawBlockStyled(ctx, x, y, blockSize, styleConfig, false);
-            }
-        }
-    }
-
-    ctx.restore();
     ctx.restore();
 }
 

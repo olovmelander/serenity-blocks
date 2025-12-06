@@ -1,1554 +1,1157 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  ❄️ WINTER WONDERLAND ❄️
+ *  A 3D Winter Theme for Serenity Blocks using Three.js
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Features:
+ * - Stunning Multi-Layer Aurora Borealis with FBM Noise
+ * - Glowing Moon with atmospheric halo
+ * - GPU-accelerated 3D snow particle system with depth parallax
+ * - "Storm" Logic: Wind streaks, Vortexes, and Hard turbulence
+ * - Detailed Mountains and Post-processing
+ */
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { WINTER_TETROMINOS } from './winter-tetrominos.js';
-import WebGLSnowRenderer from './webgl-snow-renderer.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function createSnowflakeTexture() {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(16, 16, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.translate(16, 16);
+    for (let i = 0; i < 6; i++) {
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(4, 9); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-4, 9); ctx.stroke();
+        ctx.rotate(Math.PI / 3);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+const QUALITY_PRESETS = {
+    Extreme: {
+        snowCount: 20000,
+        iceBurstCount: 400,
+        streakCount: 200,
+        vortexCount: 300,
+        mountainSegments: 128,
+        auroraLayers: 4,     // Multi-layer aurora
+        auroraSegments: 128,
+        enableAurora: true,
+        bloomStrength: 0.25,
+        bloomRadius: 0.5,
+        enablePostProcessing: true,
+        fogDensity: 0.0005,
+    },
+    Ultra: {
+        snowCount: 15000,
+        iceBurstCount: 300,
+        streakCount: 150,
+        vortexCount: 200,
+        mountainSegments: 96,
+        auroraLayers: 3,
+        auroraSegments: 96,
+        enableAurora: true,
+        bloomStrength: 0.2,
+        bloomRadius: 0.5,
+        enablePostProcessing: true,
+        fogDensity: 0.0006,
+    },
+    High: {
+        snowCount: 10000,
+        iceBurstCount: 200,
+        streakCount: 100,
+        vortexCount: 150,
+        mountainSegments: 64,
+        auroraLayers: 2,
+        auroraSegments: 64,
+        enableAurora: true,
+        bloomStrength: 0.18,
+        bloomRadius: 0.4,
+        enablePostProcessing: true,
+        fogDensity: 0.0008,
+    },
+    Medium: {
+        snowCount: 6000,
+        iceBurstCount: 100,
+        streakCount: 50,
+        vortexCount: 100,
+        mountainSegments: 48,
+        auroraLayers: 1,
+        auroraSegments: 48,
+        enableAurora: true,
+        bloomStrength: 0.15,
+        bloomRadius: 0.3,
+        enablePostProcessing: true,
+        fogDensity: 0.001,
+    },
+    Low: {
+        snowCount: 3000,
+        iceBurstCount: 50,
+        streakCount: 20,
+        vortexCount: 30,
+        mountainSegments: 32,
+        auroraLayers: 1,
+        auroraSegments: 32,
+        enableAurora: true, // Simplified
+        bloomStrength: 0.1,
+        bloomRadius: 0.2,
+        enablePostProcessing: false,
+        fogDensity: 0.0015,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHADERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// High-detail FBM Aurora Shader
+const VolumetricAuroraShader = {
+    uniforms: {
+        uTime: { value: 0 },
+        uIntensity: { value: 1.0 },
+        uColor1: { value: new THREE.Color(0x00ff99) }, // Emerald Green
+        uColor2: { value: new THREE.Color(0x3366ff) }, // Royal Blue
+        uColor3: { value: new THREE.Color(0x8800ff) }, // Purple
+        uOpacity: { value: 0.6 },
+        uSpeed: { value: 1.0 },
+        uOffset: { value: 0.0 }, // Each layer gets an offset
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vWorldPosition;
+        void main() {
+            vUv = uv;
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPos.xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        uniform float uIntensity;
+        uniform float uOpacity;
+        uniform float uSpeed;
+        uniform float uOffset;
+        uniform vec3 uColor1; uniform vec3 uColor2; uniform vec3 uColor3;
+        varying vec2 vUv;
+
+        // Simplex/FBM Noise (Optimized)
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+        float snoise(vec2 v) {
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy));
+            vec2 x0 = v - i + dot(i, C.xx);
+            vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod289(i);
+            vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m; m = m*m;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+            vec3 g;
+            g.x = a0.x * x0.x + h.x * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+        }
+
+        void main() {
+            vec2 uv = vUv;
+            
+            // Introduce "Curtain" distortion
+            // Use time and X to flow sideways, but noise Y acts as vertical flame
+            float t = uTime * 0.15 * uSpeed + uOffset;
+            
+            // FBM-like layering
+            float n1 = snoise(vec2(uv.x * 3.0 + t, uv.y * 1.5));
+            float n2 = snoise(vec2(uv.x * 6.0 - t * 0.5, uv.y * 5.0 + t * 0.2));
+            float n3 = snoise(vec2(uv.x * 12.0 + t * 0.8, uv.y * 8.0));
+            
+            // Combined noise shape
+            float noise = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
+            
+            // Vertical fade (bottom hard fade, top soft fade)
+            float vFade = smoothstep(0.0, 0.15, uv.y) * smoothstep(1.0, 0.4, uv.y);
+            
+            // Intensity mask (Curtains)
+            // A vertical sine wave creates the "folds" of the aurora curtain
+            float folds = sin(uv.x * 8.0 + noise * 3.0 + t) * 0.5 + 0.5;
+            folds = pow(folds, 2.0); // Sharpen folds
+
+            float intensity = folds * vFade * (0.6 + noise * 0.4);
+            
+            // Color gradient
+            // Bottom (0.0) -> Color1 (Green)
+            // Mid    (0.5) -> Color2 (Blue)
+            // Top    (1.0) -> Color3 (Purple)
+            float hue = uv.y + noise * 0.2;
+            vec3 color = mix(uColor1, uColor2, smoothstep(0.0, 0.5, hue));
+            color = mix(color, uColor3, smoothstep(0.5, 1.0, hue));
+
+            // Boost glow
+            color *= 1.5 * uIntensity;
+
+            gl_FragColor = vec4(color, intensity * uOpacity * uIntensity);
+        }
+    `,
+};
+
+// Physical Glowing Moon Shader
+const MoonShader = {
+    uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0xddeeff) }, // Cold white/blue
+    },
+    vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vPosition = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 uColor;
+        varying vec3 vNormal;
+        void main() {
+            // Simple rim lighting + internal glow
+            float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+            // Soft white center
+            vec3 col = uColor + vec3(0.2) * (1.0 - intensity);
+            // Halo glow
+            float halo = 0.5 + 0.5 * sin(vNormal.y * 10.0); // Fake detail
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `,
+};
+
+// Atmosphere/Vignette
+const VignetteShader = {
+    uniforms: { tDiffuse: { value: null }, darkness: { value: 0.6 }, offset: { value: 1.0 } },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+        uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; varying vec2 vUv;
+        void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            vec2 uv = (vUv - 0.5) * 2.0;
+            float dist = length(uv);
+            float vig = smoothstep(offset, offset - 0.7, dist);
+            
+            // Cold blue grading
+            vec3 col = texel.rgb;
+            col.b *= 1.1; // Cold boost
+            col.r *= 0.95; 
+            
+            col = mix(col * (1.0 - darkness), col, vig);
+            gl_FragColor = vec4(col, texel.a);
+        }
+    `,
+};
+
+const SnowShader = {
+    uniforms: {
+        uTime: { value: 0 }, uWindForce: { value: 0 }, uGustIntensity: { value: 0 },
+        uComboMultiplier: { value: 1.0 }, uFlashIntensity: { value: 0 },
+        uTexture: { value: null }, uUseTexture: { value: 0.0 },
+    },
+    vertexShader: `
+        attribute float size; attribute float depth; attribute float phase; attribute float wobbleSpeed; attribute float rotationSpeed;
+        uniform float uTime; uniform float uWindForce; uniform float uGustIntensity;
+        varying float vDepth; varying float vPhase; varying float vRotation;
+        void main() {
+            vDepth = depth; vPhase = phase;
+            vec3 pos = position;
+            float windX = uWindForce * (1.0 + depth); 
+            float turbulenceWave = sin(pos.y * 0.05 + uTime * 4.0);
+            float hardTurbulence = sign(turbulenceWave) * pow(abs(turbulenceWave), 0.5);
+            float turbulence = hardTurbulence * uGustIntensity * 25.0;
+            float spiral = sin(uTime * wobbleSpeed + phase) * (2.0 + uGustIntensity * 5.0);
+            pos.x += windX + turbulence + spiral;
+            pos.z += cos(uTime * wobbleSpeed * 0.5) * 2.0; 
+            pos.z -= uWindForce * 0.1;
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            float depthScale = 0.5 + depth * 0.5;
+            gl_PointSize = size * depthScale * (600.0 / -mvPosition.z);
+            vRotation = uTime * rotationSpeed + phase;
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime; uniform float uFlashIntensity; uniform sampler2D uTexture; uniform float uUseTexture;
+        varying float vDepth; varying float vPhase; varying float vRotation;
+        void main() {
+            vec2 coord = gl_PointCoord - 0.5;
+            float s = sin(vRotation); float c = cos(vRotation);
+            vec2 rotatedCoord = vec2(coord.x * c - coord.y * s, coord.x * s + coord.y * c) + 0.5;
+            vec4 texColor = vec4(1.0);
+            if (uUseTexture > 0.5) texColor = texture2D(uTexture, rotatedCoord);
+            else { float dist = length(coord); float alpha = 1.0 - smoothstep(0.3, 0.5, dist); texColor = vec4(1.0, 1.0, 1.0, alpha); }
+            float depthAlpha = (0.2 + vDepth * 0.6) * 0.8; 
+            float twinkle = 0.85 + 0.15 * sin(uTime * 3.0 + vPhase * 10.0);
+            float flash = 1.0 + clamp(uFlashIntensity, 0.0, 1.0);
+            gl_FragColor = vec4(texColor.rgb * flash, texColor.a * depthAlpha * twinkle);
+        }
+    `,
+};
+
+const StreakShader = {
+    uniforms: { uTime: { value: 0 }, uWindForce: { value: 0 }, uOpacity: { value: 0 } },
+    vertexShader: `
+        attribute float length; attribute float speed; attribute float offset;
+        uniform float uTime; uniform float uWindForce;
+        void main() {
+            vec3 pos = position;
+            float dist = (uTime * speed * (1.0 + abs(uWindForce) * 0.1));
+            pos.x += dist * sign(uWindForce); 
+            if (pos.x > 500.0) pos.x -= 1000.0; if (pos.x < -500.0) pos.x += 1000.0;
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            float stretch = 1.0 + abs(uWindForce) * 0.5;
+            gl_PointSize = length * stretch * (300.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform float uOpacity;
+        void main() {
+            vec2 coord = gl_PointCoord - 0.5;
+            if (abs(coord.y) > 0.1) discard;
+            float alpha = smoothstep(0.0, 1.0, 1.0 - abs(coord.x * 2.0));
+            gl_FragColor = vec4(0.8, 0.9, 1.0, alpha * uOpacity);
+        }
+    `,
+};
+
+const VortexShader = {
+    uniforms: { uTime: { value: 0 }, uCenter: { value: new THREE.Vector3(0, 0, 0) }, uIntensity: { value: 0.0 } },
+    vertexShader: `
+        attribute float angle; attribute float radius; attribute float speed; attribute float size;
+        uniform float uTime; uniform vec3 uCenter;
+        void main() {
+            float currentAngle = angle + uTime * speed;
+            vec3 pos = uCenter;
+            pos.x += cos(currentAngle) * radius;
+            pos.y += sin(currentAngle) * radius * 0.3; 
+            pos.z += (sin(currentAngle * 2.0) * 20.0);
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            gl_PointSize = size * (300.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform float uIntensity;
+        void main() {
+            vec2 coord = gl_PointCoord - 0.5; if (length(coord) > 0.5) discard;
+            gl_FragColor = vec4(1.0, 1.0, 1.0, (1.0 - length(coord) * 2.0) * uIntensity);
+        }
+    `,
+};
+
+const IceBurstShader = {
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+        attribute float size; attribute float life; attribute vec3 velocity;
+        varying float vLife; varying vec3 vColor;
+        void main() {
+            vLife = life;
+            float colorVar = sin(life * 10.0);
+            vColor = mix(vec3(0.5, 0.9, 1.0), vec3(0.9, 0.95, 1.0), colorVar * 0.5 + 0.5);
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = size * life * (300.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        varying float vLife; varying vec3 vColor;
+        void main() {
+            float dist = length(gl_PointCoord - 0.5);
+            if (dist > 0.5) discard;
+            float alpha = (1.0 - smoothstep(0.0, 0.5, dist)) * vLife;
+            gl_FragColor = vec4(vColor, alpha);
+        }
+    `,
+};
+
+const FrozenLightningShader = {
+    uniforms: { uTime: { value: 0 }, uIntensity: { value: 1.0 } },
+    vertexShader: `
+        attribute float alpha; varying float vAlpha;
+        void main() { vAlpha = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+    `,
+    fragmentShader: `
+        uniform float uTime; uniform float uIntensity; varying float vAlpha;
+        void main() {
+            float pulse = 0.8 + 0.2 * sin(uTime * 15.0);
+            vec3 color = mix(vec3(0.4, 0.7, 1.0), vec3(0.8, 0.95, 1.0), pulse);
+            gl_FragColor = vec4(color, vAlpha * uIntensity);
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
 export default class WinterTheme extends BaseTheme {
     constructor() {
         super('winter');
-        this.canvas = null;
-        this.ctx = null;
-        this.snowParticles = [];
-        this.windForce = 0;
-        this.targetWindForce = 0;
-        this.nextWindChange = 1800; // Start calm, first wind change after 10 seconds
-        this.gustIntensity = 0;
-        this.nextGust = 3600; // Start calm, first gust after 30 seconds
-        this.gustDuration = 0;
-        this.time = 0;
-        this.maxParticles = 800; // Reduced from 1200
-        this.resizeHandler = null;
-        this.vortexParticles = [];
-        this.groundSnow = [];
-        this.streakParticles = [];
-        this.spiralSystems = [];
-        this.cameraShake = { x: 0, y: 0, intensity: 0 };
-        this.distortionWaves = [];
-        this.flashIntensity = 0;
-        this.nextFlash = 3600; // Start calm, first flash after 60 seconds
+        this.renderer = null; this.scene = null; this.camera = null; this.composer = null;
 
-        // Gameplay integration
-        this.comboMultiplier = 1.0;
-        this.comboDecay = 0;
-        this.iceBurstParticles = [];
+        this.snowParticles = null;
+        this.auroraLayers = []; // Array of aurora meshes
+        this.mountains = [];
+        this.moon = null;
+        this.iceBurstParticles = null;
         this.frozenLightning = [];
-        this.comboVortexes = [];
+        this.windStreaks = null;
+        this.vortexSystems = [];
+
+        this.snowflakeTexture = null;
+
+        this.windForce = 0; this.targetWindForce = 0;
+        this.gustIntensity = 0; this.gustDuration = 0;
+        this.comboMultiplier = 1.0; this.comboDecay = 0;
+        this.flashIntensity = 0;
+        this.cameraShake = { x: 0, y: 0, intensity: 0 };
+
+        this.comboWindTimer = 0; this.pendingComboCount = 0;
+        this.clock = new THREE.Clock(); this.time = 0;
+
         this.eventUnsubscribers = [];
-        this.pendingComboCount = 0;
-        this.comboWindTimer = 0;
+        this.qualityPreset = QUALITY_PRESETS.High;
+        this.iceBurstData = { positions: null, velocities: null, lives: null, sizes: null, active: [], nextIndex: 0 };
 
-        // WebGL Renderer
-        this.webglCanvas = null;
-        this.webglRenderer = null;
-        this.useWebGL = true;
-
-        // Performance optimization: Cache gradients and reusable objects
-        this.gradientCache = {
-            background: null,
-            fog: null,
-            vignette: null,
-            lastWidth: 0,
-            lastHeight: 0,
-        };
-        this.particlePool = {
-            snow: [],
-            ice: [],
-            vortex: [],
-            streak: [],
-        };
-        this.activeParticles = {
-            snow: [],
-            ice: [],
-            vortex: [],
-            streak: [],
-        };
-        this.snowPuffParticles = []; // New particle system for piece locks
-        this.shockwaves = []; // Expanding rings
-        this.iceShards = []; // Sharp flying debris
-        this.offscreenMargin = 150; // Tighter culling boundary
-        this.frameSkip = 0;
-        this.particleBatchSize = 50; // Process particles in batches
-
-        // Graphics quality presets
-        this.qualityChangeHandler = null;
-        this.qualityPresets = {
-            Minimal: {
-                // Snow particles
-                maxParticles: 2000,
-                initialParticlePercent: 0.1,
-                groundSnowCount: 12,
-                // Combo effects
-                iceBurstCap: 40,
-                maxFrozenLightning: 0,
-                maxComboVortexes: 1,
-                // Gust effects
-                streakParticlesCount: 5,
-                vortexParticlesCount: 5,
-                spiralSystemsCount: 0,
-                // Rendering
-                enableTrails: false,
-                trailComplexity: 0,
-                enableFrozenLightning: false,
-                // Performance
-                particleSortInterval: 20,
-                windIndicatorInterval: 6,
-            },
-            Low: {
-                // Snow particles
-                maxParticles: 4000,
-                initialParticlePercent: 0.1,
-                groundSnowCount: 20,
-                // Combo effects
-                iceBurstCap: 75,
-                maxFrozenLightning: 2,
-                maxComboVortexes: 2,
-                // Gust effects
-                streakParticlesCount: 10,
-                vortexParticlesCount: 10,
-                spiralSystemsCount: 1,
-                // Rendering
-                enableTrails: false,
-                trailComplexity: 0,
-                enableFrozenLightning: false,
-                // Performance
-                particleSortInterval: 15,
-                windIndicatorInterval: 4,
-            },
-            Medium: {
-                // Snow particles
-                maxParticles: 8000,
-                initialParticlePercent: 0.1,
-                groundSnowCount: 35,
-                // Combo effects
-                iceBurstCap: 150,
-                maxFrozenLightning: 4,
-                maxComboVortexes: 4,
-                // Gust effects
-                streakParticlesCount: 20,
-                vortexParticlesCount: 20,
-                spiralSystemsCount: 2,
-                // Rendering
-                enableTrails: true,
-                trailComplexity: 1, // Simplified trails
-                enableFrozenLightning: true,
-                // Performance
-                particleSortInterval: 10,
-                windIndicatorInterval: 2,
-            },
-            High: {
-                // Snow particles
-                maxParticles: 12000,
-                initialParticlePercent: 0.1,
-                groundSnowCount: 50,
-                // Combo effects
-                iceBurstCap: 200,
-                maxFrozenLightning: 6,
-                maxComboVortexes: 6,
-                // Gust effects
-                streakParticlesCount: 30,
-                vortexParticlesCount: 30,
-                spiralSystemsCount: 3,
-                // Rendering
-                enableTrails: true,
-                trailComplexity: 2, // Full trails
-                enableFrozenLightning: true,
-                // Performance
-                particleSortInterval: 10,
-                windIndicatorInterval: 2,
-            },
-            Ultra: {
-                // Snow particles
-                maxParticles: 16000,
-                initialParticlePercent: 0.1,
-                groundSnowCount: 70,
-                // Combo effects
-                iceBurstCap: 250,
-                maxFrozenLightning: 8,
-                maxComboVortexes: 8,
-                // Gust effects
-                streakParticlesCount: 40,
-                vortexParticlesCount: 40,
-                spiralSystemsCount: 4,
-                // Rendering
-                enableTrails: true,
-                trailComplexity: 3, // Enhanced trails
-                enableFrozenLightning: true,
-                // Performance
-                particleSortInterval: 8,
-                windIndicatorInterval: 1,
-            },
-            Extreme: {
-                // Snow particles
-                maxParticles: 24000,
-                initialParticlePercent: 0.1,
-                groundSnowCount: 100,
-                // Combo effects
-                iceBurstCap: 350,
-                maxFrozenLightning: 12,
-                maxComboVortexes: 12,
-                // Gust effects
-                streakParticlesCount: 60,
-                vortexParticlesCount: 60,
-                spiralSystemsCount: 6,
-                // Rendering
-                enableTrails: true,
-                trailComplexity: 4, // Maximum trails
-                enableFrozenLightning: true,
-                // Performance
-                particleSortInterval: 6,
-                windIndicatorInterval: 1,
-            },
-        };
-        this.currentQuality = 'Medium';
-        this.activePreset = this.qualityPresets.Medium;
-
-        // Apply default preset values
-        this.maxFrozenLightning = this.activePreset.maxFrozenLightning;
-        this.maxComboVortexes = this.activePreset.maxComboVortexes;
-        this.iceBurstCap = this.activePreset.iceBurstCap;
-        this.enableFrozenLightning = this.activePreset.enableFrozenLightning;
+        console.log('[WinterTheme] Theme constructed');
     }
 
-    getTetrominoConfig() {
-        return WINTER_TETROMINOS;
+    getTetrominoConfig() { return WINTER_TETROMINOS; }
+
+    getCurrentQualityLevel() {
+        if (typeof window !== 'undefined' && window.settings?.effectQuality) {
+            return normalizeQuality(window.settings.effectQuality);
+        }
+        return 'High';
     }
 
-    /**
-     * Get current graphics quality setting from game settings
-     * @returns {string} Current quality level ('Low' | 'Medium' | 'High' | 'Ultra')
-     */
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'Medium';
-    }
-
-    /**
-     * Apply a graphics quality preset to the theme
-     * @param {string} quality - Quality level to apply
-     */
     applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`[WinterTheme] Unknown preset "${quality}", defaulting to Medium`);
-            quality = 'Medium';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-        const preset = this.activePreset;
-
-        // Update limits
-        this.maxParticles = preset.maxParticles;
-        this.iceBurstCap = preset.iceBurstCap;
-        this.maxFrozenLightning = preset.maxFrozenLightning;
-        this.maxComboVortexes = preset.maxComboVortexes;
-        this.enableFrozenLightning = preset.enableFrozenLightning;
-
-        // Trim existing particle collections to new limits
-        this.trimEffectCollections();
-
-        console.log(`[WinterTheme] Applying ${quality} graphics preset`);
-    }
-
-    /**
-     * Trim effect collections to match current quality preset limits
-     */
-    trimEffectCollections() {
-        const clamp = (collection, limit) => {
-            if (!collection || typeof limit !== 'number' || limit <= 0) return;
-            if (collection.length > limit) {
-                collection.splice(0, collection.length - limit);
-            }
-        };
-
-        // Trim particle arrays to current limits
-        clamp(this.snowParticles, this.maxParticles);
-        clamp(this.iceBurstParticles, this.iceBurstCap);
-        clamp(this.frozenLightning, this.maxFrozenLightning);
-        clamp(this.comboVortexes, this.maxComboVortexes);
-        clamp(this.snowPuffParticles, 100); // Limit puff particles
-        clamp(this.shockwaves, 10);
-        clamp(this.iceShards, 50);
-    }
-
-    /**
-     * Setup listener for graphics quality changes
-     */
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        this.teardownQualityListener();
-
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            // Apply new preset
-            this.applyQualityPreset(newQuality);
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
-    /**
-     * Remove graphics quality change listener
-     */
-    teardownQualityListener() {
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-    }
-
-    initWebGLRenderer() {
-        if (!this.canvas) return;
-
-        try {
-            this.webglCanvas = document.createElement('canvas');
-            this.webglCanvas.width = this.canvas.width;
-            this.webglCanvas.height = this.canvas.height;
-
-            this.webglRenderer = new WebGLSnowRenderer(this.webglCanvas);
-
-            if (this.webglRenderer.init()) {
-                this.webglRenderer.allocateParticles(this.activePreset.maxParticles * 1.5); // Allocate with buffer
-                this.useWebGL = true;
-                console.log('❄️ Winter: WebGL snow renderer active');
-            } else {
-                this.useWebGL = false;
-                this.webglRenderer = null;
-                this.webglCanvas = null;
-                console.log('❄️ Winter: Falling back to Canvas2D snow rendering');
-            }
-        } catch (e) {
-            console.warn('❄️ Winter: WebGL init failed, using Canvas2D:', e);
-            this.useWebGL = false;
-            this.webglRenderer = null;
-            this.webglCanvas = null;
-        }
+        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
     }
 
     async createScene() {
-        // Apply graphics quality preset at scene creation
-        this.applyQualityPreset(this.getGraphicsQuality());
-        this.setupQualityListener();
+        if (typeof document === 'undefined') return;
+        this.applyQualityPreset(this.getCurrentQualityLevel());
+        this.snowflakeTexture = createSnowflakeTexture();
 
-        const preset = this.activePreset;
+        const container = document.getElementById('winter-theme');
+        if (!container) return;
+        const oldCanvas = container.querySelector('#winter-canvas');
+        if (oldCanvas) oldCanvas.style.display = 'none';
 
-        this.canvas = document.getElementById('winter-canvas');
-        if (!this.canvas) return;
-
-        this.ctx = this.canvas.getContext('2d', { alpha: true });
-
-        this.resizeHandler = () => this.resizeCanvas();
-        window.addEventListener('resize', this.resizeHandler, false);
-        this.resizeCanvas();
-
-        // Initialize WebGL
-        this.initWebGLRenderer();
-
-        // Initialize snow particles progressively for better startup performance
-        this.snowParticles = [];
-        const initialParticles = Math.floor(this.maxParticles * preset.initialParticlePercent);
-        for (let i = 0; i < initialParticles; i++) {
-            this.snowParticles.push(this.createSnowParticle(true));
-        }
-
-        // Initialize ground snow accumulation - using quality preset count
-        this.groundSnow = [];
-        for (let i = 0; i < preset.groundSnowCount; i++) {
-            this.groundSnow.push({
-                x: Math.random() * this.canvas.width,
-                y: this.canvas.height - Math.random() * 100,
-                size: Math.random() * 4 + 2,
-                opacity: Math.random() * 0.3 + 0.1,
-                drift: Math.random() * 0.5 - 0.25,
-            });
-        }
-
+        this.initRenderer(container);
+        this.createSkyBackground();
+        this.createMoon(); // NEW
+        this.createMountains();
+        if (this.qualityPreset.enableAurora) this.createAuroraSystem(); // UPGRADED
+        this.createSnowParticles();
+        this.createIceBurstSystem();
+        this.createWindStreaks();
+        this.setupPostProcessing();
         this.setupEventListeners();
-
-        this.animate();
+        this.startAnimation();
     }
 
-    resizeCanvas() {
-        if (!this.canvas) return;
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+    initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer.setClearColor(0x020408, 1); // Darker base
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setSize(width, height);
+        this.renderer.sortObjects = true;
+        this.renderer.autoClear = true;
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
 
-        if (this.useWebGL && this.webglRenderer) {
-            this.webglRenderer.resize(this.canvas.width, this.canvas.height);
+        this.scene = new THREE.Scene();
+        // Rich Midnight Fog
+        const fogColor = new THREE.Color(0x050a14);
+        this.scene.fog = new THREE.FogExp2(fogColor, this.qualityPreset.fogDensity);
+        this.scene.background = fogColor;
+
+        this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 8000);
+        this.camera.position.set(0, 0, 100);
+        this.camera.lookAt(0, 0, -500);
+
+        this.scene.add(new THREE.AmbientLight(0x405070, 0.3));
+        const moonLight = new THREE.DirectionalLight(0xaaccff, 0.8);
+        moonLight.position.set(500, 1000, -800); // Aligned with Moon
+        this.scene.add(moonLight);
+    }
+
+    createSkyBackground() {
+        // Starfield is key for deep atmosphere
+        const starCount = 5000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
+        const phases = new Float32Array(starCount);
+
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+            const r = 4000 + Math.random() * 500;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = r * Math.cos(phi);
+
+            // Prefer upper hemisphere
+            if (positions[i3 + 1] < -500) positions[i3 + 1] *= -1;
+
+            sizes[i] = 2.0 + Math.random() * 2.5;
+            phases[i] = Math.random() * Math.PI * 2;
         }
 
-        // Invalidate gradient cache on resize
-        this.gradientCache.lastWidth = 0;
-        this.gradientCache.lastHeight = 0;
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                attribute float size; attribute float phase; varying float vPhase;
+                void main() { vPhase = phase; gl_PointSize = size; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+            `,
+            fragmentShader: `
+                uniform float uTime; varying float vPhase;
+                void main() {
+                    vec2 coord = gl_PointCoord - 0.5; if (length(coord) > 0.5) discard;
+                    float twinkle = 0.5 + 0.5 * sin(uTime * 1.5 + vPhase * 10.0);
+                    gl_FragColor = vec4(0.9, 0.95, 1.0, (1.0 - length(coord) * 2.0) * twinkle * 0.8);
+                }
+            `,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        });
+
+        this.starfield = new THREE.Points(geometry, material);
+        this.scene.add(this.starfield);
+
+        // Backdrop gradient mesh
+        const skyGeo = new THREE.SphereGeometry(4500, 32, 32);
+        const skyMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTop: { value: new THREE.Color(0x000000) },
+                uMid: { value: new THREE.Color(0x050a18) },
+                uBot: { value: new THREE.Color(0x0f1b2d) }
+            },
+            vertexShader: `varying vec3 vPos; void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+            fragmentShader: `
+                uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uBot; varying vec3 vPos;
+                void main() {
+                    float h = normalize(vPos).y;
+                    vec3 col = mix(uMid, uTop, smoothstep(0.0, 1.0, h));
+                    col = mix(uBot, col, smoothstep(-0.2, 0.2, h));
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `,
+            side: THREE.BackSide
+        });
+        this.scene.add(new THREE.Mesh(skyGeo, skyMat));
     }
 
-    // Performance: Create and cache gradients
-    getCachedBackgroundGradient(comboBoost, flashBoost, gustBoost) {
-        if (this.gradientCache.background
-            && this.gradientCache.lastWidth === this.canvas.width
-            && this.gradientCache.lastHeight === this.canvas.height
-            && this.gradientCache.lastComboBoost === comboBoost
-            && this.gradientCache.lastFlashBoost === flashBoost
-            && this.gradientCache.lastGustBoost === gustBoost) {
-            return this.gradientCache.background;
+    createMoon() {
+        const geometry = new THREE.SphereGeometry(150, 64, 64);
+        const material = new THREE.ShaderMaterial({
+            uniforms: MoonShader.uniforms,
+            vertexShader: MoonShader.vertexShader,
+            fragmentShader: MoonShader.fragmentShader,
+        });
+        this.moon = new THREE.Mesh(geometry, material);
+        this.moon.position.set(500, 1000, -800);
+        this.scene.add(this.moon);
+
+        // Moon Glow sprite
+        const spriteMat = new THREE.SpriteMaterial({
+            map: new THREE.CanvasTexture(this.createGlowCanvas()),
+            color: 0xaaddff,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending
+        });
+        const glow = new THREE.Sprite(spriteMat);
+        glow.scale.set(600, 600, 1);
+        this.moon.add(glow); // Attach to moon
+    }
+
+    createGlowCanvas() {
+        if (typeof document === 'undefined') return null;
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 64;
+        const ctx = c.getContext('2d');
+        const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        g.addColorStop(0, 'rgba(255,255,255,1)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+        return c;
+    }
+
+    createMountains() {
+        const ranges = [
+            { z: -1800, color: 0x060c15, height: 700, width: 5000, snowLine: 0.35 },
+            { z: -1100, color: 0x091220, height: 450, width: 4000, snowLine: 0.45 },
+        ];
+
+        ranges.forEach((range, index) => {
+            const geometry = new THREE.PlaneGeometry(range.width, range.height, this.qualityPreset.mountainSegments, this.qualityPreset.mountainSegments / 2);
+            const posAttr = geometry.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                const x = posAttr.getX(i);
+                const noise = Math.sin(x * 0.003 + index) * 150 + Math.sin(x * 0.01 + index * 2) * 80;
+                const y = posAttr.getY(i);
+                const v = (y / range.height) + 0.5;
+                if (v > 0.1) posAttr.setZ(i, noise * v);
+            }
+            geometry.computeVertexNormals();
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uBaseColor: { value: new THREE.Color(range.color) },
+                    uSnowColor: { value: new THREE.Color(0xddeeff) }, // Warmer white for snow
+                    uSnowLine: { value: range.snowLine },
+                    uFogColor: { value: new THREE.Color(0x050a14) },
+                    uFogDensity: { value: this.qualityPreset.fogDensity }
+                },
+                vertexShader: `
+                    varying vec3 vPos; varying vec3 vNormal; 
+                    void main() { 
+                        vPos = (modelMatrix * vec4(position, 1.0)).xyz; 
+                        vNormal = normalize(normalMatrix * normal); 
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); 
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uBaseColor; uniform vec3 uSnowColor; uniform float uSnowLine;
+                    uniform vec3 uFogColor; uniform float uFogDensity;
+                    varying vec3 vPos; varying vec3 vNormal;
+                    void main() {
+                        float slope = 1.0 - vNormal.y; // Steepness
+                        float h = vPos.y;
+                        
+                        // Snow logic: higher up, and flatter surfaces
+                        float snowThreshold = uSnowLine * 600.0 + sin(vPos.x * 0.01) * 50.0;
+                        float snowFactor = smoothstep(snowThreshold, snowThreshold + 100.0, h);
+                        snowFactor *= smoothstep(0.8, 0.3, slope); // Less snow on steep cliffs
+
+                        vec3 color = mix(uBaseColor, uSnowColor, snowFactor);
+                        
+                        // Manual fog blend for mountains to get deep atmosphere
+                        float depth = length(vPos - cameraPosition);
+                        float fogFactor = 1.0 - exp(-depth * depth * uFogDensity * uFogDensity);
+                        
+                        gl_FragColor = vec4(mix(color, uFogColor, fogFactor), 1.0);
+                    }
+                `,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(0, -200, range.z);
+            this.mountains.push(mesh);
+            this.scene.add(mesh);
+        });
+    }
+
+    createAuroraSystem() {
+        this.auroraLayers = [];
+        const layerCount = this.qualityPreset.auroraLayers || 1;
+        const segments = this.qualityPreset.auroraSegments || 64;
+
+        for (let i = 0; i < layerCount; i++) {
+            // Each layer is a giant curved ribbon
+            const geometry = new THREE.PlaneGeometry(3500, 1200, segments, segments);
+
+            // Curve the plane manually
+            const pos = geometry.attributes.position;
+            for (let j = 0; j < pos.count; j++) {
+                const x = pos.getX(j);
+                const z = pos.getZ(j);
+                // Bend Z based on X
+                pos.setZ(j, z + Math.pow(x * 0.0005, 2.0) * 200.0);
+            }
+            geometry.computeVertexNormals();
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    ...VolumetricAuroraShader.uniforms,
+                    uOffset: { value: i * 100.0 }, // Different noise seed offset
+                    uOpacity: { value: 0.4 / layerCount }, // Distribute opacity
+                    uSpeed: { value: 1.0 - i * 0.2 }, // Layers move at diff speeds for parallax
+                },
+                vertexShader: VolumetricAuroraShader.vertexShader,
+                fragmentShader: VolumetricAuroraShader.fragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(0, 400 - i * 50, -1200 - i * 200);
+            mesh.rotation.x = -0.3;
+
+            this.auroraLayers.push(mesh);
+            this.scene.add(mesh);
+        }
+    }
+
+    createSnowParticles() {
+        const count = this.qualityPreset.snowCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const depths = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const wobbleSpeeds = new Float32Array(count);
+        const rotationSpeeds = new Float32Array(count);
+        const velocities = new Float32Array(count * 3);
+        const bounds = { width: 900, height: 700, depth: 700 };
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            positions[i3] = (Math.random() - 0.5) * bounds.width;
+            positions[i3 + 1] = (Math.random() - 0.5) * bounds.height + 100;
+            positions[i3 + 2] = (Math.random() - 0.5) * bounds.depth - 200;
+            depths[i] = Math.random();
+            sizes[i] = 3.0 + Math.random() * 5.0;
+            phases[i] = Math.random() * Math.PI * 2;
+            wobbleSpeeds[i] = 1.0 + Math.random();
+            rotationSpeeds[i] = (Math.random() - 0.5) * 2.0;
+            velocities[i3 + 1] = -(15 + Math.random() * 25);
         }
 
-        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, `rgb(${5 + flashBoost + comboBoost}, ${8 + flashBoost + comboBoost}, ${15 + flashBoost + comboBoost})`);
-        gradient.addColorStop(0.4, `rgb(${8 + flashBoost + gustBoost + comboBoost}, ${12 + flashBoost + gustBoost + comboBoost}, ${20 + flashBoost + gustBoost + comboBoost})`);
-        gradient.addColorStop(0.7, `rgb(${12 + gustBoost}, ${16 + gustBoost}, ${24 + gustBoost})`);
-        gradient.addColorStop(1, `rgb(${18 + gustBoost}, ${22 + gustBoost}, ${30 + gustBoost})`);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('depth', new THREE.BufferAttribute(depths, 1));
+        geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('wobbleSpeed', new THREE.BufferAttribute(wobbleSpeeds, 1));
+        geometry.setAttribute('rotationSpeed', new THREE.BufferAttribute(rotationSpeeds, 1));
 
-        this.gradientCache.background = gradient;
-        this.gradientCache.lastWidth = this.canvas.width;
-        this.gradientCache.lastHeight = this.canvas.height;
-        this.gradientCache.lastComboBoost = comboBoost;
-        this.gradientCache.lastFlashBoost = flashBoost;
-        this.gradientCache.lastGustBoost = gustBoost;
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                ...SnowShader.uniforms,
+                uTexture: { value: this.snowflakeTexture },
+                uUseTexture: { value: this.snowflakeTexture ? 1.0 : 0.0 },
+            },
+            vertexShader: SnowShader.vertexShader,
+            fragmentShader: SnowShader.fragmentShader,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        });
 
-        return gradient;
+        this.snowParticles = new THREE.Points(geometry, material);
+        this.snowVelocities = velocities;
+        this.snowBounds = bounds;
+        this.scene.add(this.snowParticles);
     }
 
-    getCachedFogGradient(gustBoost, comboBoost) {
-        if (this.gradientCache.fog
-            && this.gradientCache.lastWidth === this.canvas.width
-            && this.gradientCache.lastFogGust === gustBoost
-            && this.gradientCache.lastFogCombo === comboBoost) {
-            return this.gradientCache.fog;
+    createIceBurstSystem() {
+        const maxCount = this.qualityPreset.iceBurstCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(maxCount * 3);
+        const sizes = new Float32Array(maxCount);
+        const lives = new Float32Array(maxCount);
+        const velocities = new Float32Array(maxCount * 3);
+        for (let i = 0; i < maxCount; i++) positions[i * 3 + 1] = -9999;
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('life', new THREE.BufferAttribute(lives, 1));
+        const material = new THREE.ShaderMaterial({
+            uniforms: IceBurstShader.uniforms, vertexShader: IceBurstShader.vertexShader, fragmentShader: IceBurstShader.fragmentShader,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        this.iceBurstParticles = new THREE.Points(geometry, material);
+        this.iceBurstData = { positions, velocities, lives, sizes, active: [], nextIndex: 0 };
+        this.scene.add(this.iceBurstParticles);
+    }
+
+    spawnIceBurst(x, y, z, count) {
+        // ... (Same logic as before, just kept concise)
+        if (!this.iceBurstParticles) return;
+        const d = this.iceBurstData;
+        const max = this.qualityPreset.iceBurstCount;
+        for (let i = 0; i < count; i++) {
+            const idx = d.nextIndex; d.nextIndex = (d.nextIndex + 1) % max;
+            const i3 = idx * 3;
+            d.positions[i3] = x; d.positions[i3 + 1] = y; d.positions[i3 + 2] = z;
+            const a = Math.random() * 6.28; const p = Math.random() * 3.14; const s = 15 + Math.random() * 35;
+            d.velocities[i3] = Math.sin(p) * Math.cos(a) * s; d.velocities[i3 + 1] = Math.cos(p) * s; d.velocities[i3 + 2] = Math.sin(p) * Math.sin(a) * s;
+            d.lives[idx] = 1.0; d.sizes[idx] = 4 + Math.random() * 6;
+            if (!d.active.includes(idx)) d.active.push(idx);
+        }
+        this.iceBurstParticles.geometry.attributes.position.needsUpdate = true;
+        this.iceBurstParticles.geometry.attributes.life.needsUpdate = true;
+        this.iceBurstParticles.geometry.attributes.size.needsUpdate = true;
+    }
+
+    createWindStreaks() {
+        const count = this.qualityPreset.streakCount;
+        // Same simple streak system
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(count * 3);
+        const len = new Float32Array(count);
+        const spd = new Float32Array(count);
+        const off = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+            pos[i * 3] = (Math.random() - 0.5) * 1200;
+            pos[i * 3 + 1] = (Math.random() - 0.5) * 700 + 100;
+            pos[i * 3 + 2] = (Math.random() - 0.5) * 500 - 100;
+            len[i] = 15 + Math.random() * 25; spd[i] = 120 + Math.random() * 150;
+        }
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('length', new THREE.BufferAttribute(len, 1));
+        geo.setAttribute('speed', new THREE.BufferAttribute(spd, 1));
+        geo.setAttribute('offset', new THREE.BufferAttribute(off, 1));
+
+        const mat = new THREE.ShaderMaterial({
+            uniforms: StreakShader.uniforms,
+            vertexShader: StreakShader.vertexShader,
+            fragmentShader: StreakShader.fragmentShader,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        this.windStreaks = new THREE.Points(geo, mat);
+        this.scene.add(this.windStreaks);
+    }
+
+    createFrozenLightningEffect(cx, cy, cz) {
+        // Recursive Fractal Lightning
+        const pos = []; const alp = [];
+        const gen = (sx, sy, sz, l, ax, ay, d) => {
+            if (d <= 0) return;
+            const ex = sx + Math.sin(ay) * Math.cos(ax) * l; const ey = sy + Math.cos(ay) * l; const ez = sz + Math.sin(ay) * Math.sin(ax) * l;
+            pos.push(sx, sy, sz, ex, ey, ez); alp.push(1, 1);
+            gen(ex, ey, ez, l * 0.7, ax + (Math.random() - 0.5) * 0.8, ay + (Math.random() - 0.5) * 0.8, d - 1);
+            if (Math.random() > 0.5) gen(ex, ey, ez, l * 0.6, ax + (Math.random() - 0.5) * 1.5, ay + (Math.random() - 0.5) * 1.5, d - 1);
+        };
+        gen(cx, cy, cz, 50, Math.random() * 6.28, 2.5, 3);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('alpha', new THREE.Float32BufferAttribute(alp, 1));
+        const mat = new THREE.ShaderMaterial({
+            uniforms: { ...FrozenLightningShader.uniforms }, vertexShader: FrozenLightningShader.vertexShader, fragmentShader: FrozenLightningShader.fragmentShader,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.LineSegments(geo, mat);
+        mesh.userData = { life: 1.0 };
+        this.frozenLightning.push(mesh);
+        this.scene.add(mesh);
+    }
+
+    createVortexSystem(x, y, z) {
+        // (Similar to previous step)
+        const count = this.qualityPreset.vortexCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const angles = new Float32Array(count);
+        const radii = new Float32Array(count);
+        const speeds = new Float32Array(count);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            angles[i] = Math.random() * Math.PI * 2;
+            radii[i] = 40 + Math.random() * 150;
+            speeds[i] = 1.5 + Math.random() * 3.0;
+            sizes[i] = 2.0 + Math.random() * 3.0;
         }
 
-        const fogGradient = this.ctx.createRadialGradient(
-            this.canvas.width / 2,
-            this.canvas.height * 0.6,
-            0,
-            this.canvas.width / 2,
-            this.canvas.height * 0.6,
-            this.canvas.width * 0.8,
-        );
-        fogGradient.addColorStop(0, `rgba(${20 + gustBoost * 2 + comboBoost}, ${25 + gustBoost * 2 + comboBoost}, ${35 + gustBoost * 2 + comboBoost}, 0.4)`);
-        fogGradient.addColorStop(0.5, `rgba(${15 + gustBoost}, ${20 + gustBoost}, ${30 + gustBoost}, 0.25)`);
-        fogGradient.addColorStop(1, 'rgba(10, 15, 25, 0)');
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('angle', new THREE.BufferAttribute(angles, 1));
+        geometry.setAttribute('radius', new THREE.BufferAttribute(radii, 1));
+        geometry.setAttribute('speed', new THREE.BufferAttribute(speeds, 1));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-        this.gradientCache.fog = fogGradient;
-        this.gradientCache.lastFogGust = gustBoost;
-        this.gradientCache.lastFogCombo = comboBoost;
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                ...VortexShader.uniforms,
+                uCenter: { value: new THREE.Vector3(x, y, z) },
+                uIntensity: { value: 1.0 },
+            },
+            vertexShader: VortexShader.vertexShader,
+            fragmentShader: VortexShader.fragmentShader,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        });
 
-        return fogGradient;
+        const vortex = new THREE.Points(geometry, material);
+        vortex.userData = { life: 1.0 };
+        this.vortexSystems.push(vortex);
+        this.scene.add(vortex);
     }
 
-    getCachedVignetteGradient() {
-        if (this.gradientCache.vignette
-            && this.gradientCache.lastWidth === this.canvas.width
-            && this.gradientCache.lastVignetteGust === this.gustIntensity) {
-            return this.gradientCache.vignette;
-        }
 
-        const vignetteGradient = this.ctx.createRadialGradient(
-            this.canvas.width / 2,
-            this.canvas.height / 2,
-            this.canvas.width * 0.2,
-            this.canvas.width / 2,
-            this.canvas.height / 2,
-            this.canvas.width * 0.8,
-        );
-        vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        vignetteGradient.addColorStop(1, `rgba(0, 0, 0, ${0.5 + this.gustIntensity * 0.2})`);
-
-        this.gradientCache.vignette = vignetteGradient;
-        this.gradientCache.lastVignetteGust = this.gustIntensity;
-
-        return vignetteGradient;
-    }
-
-    // Object pooling for particles
-    getPooledParticle(type) {
-        const pool = this.particlePool[type];
-        return pool.length > 0 ? pool.pop() : null;
-    }
-
-    releaseParticle(type, particle) {
-        const pool = this.particlePool[type];
-        if (pool.length < 500) { // Max pool size
-            pool.push(particle);
-        }
+    setupPostProcessing() {
+        if (!this.qualityPreset.enablePostProcessing) return;
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+        this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), this.qualityPreset.bloomStrength, this.qualityPreset.bloomRadius, 0.85);
+        this.composer.addPass(this.bloomPass);
+        this.composer.addPass(new ShaderPass(VignetteShader));
     }
 
     setupEventListeners() {
-        this.teardownEventListeners();
-
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!this.shouldProcessComboEffects()) return;
-            this.handleLineClear(data);
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (!this.shouldProcessComboEffects()) return;
-            this.handleCombo(data);
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (!this.shouldProcessComboEffects()) return;
-            this.handlePieceLock(data);
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        this.eventUnsubscribers.forEach(u => u()); this.eventUnsubscribers = [];
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.LINE_CLEAR, d => this.handleLineClear(d)),
+            eventBus.on(EVENTS.COMBO, d => this.handleCombo(d)),
+            eventBus.on(EVENTS.PIECE_LOCK, d => this.handlePieceLock())
+        );
+        this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
+        window.addEventListener('resize', this.resizeHandler);
     }
 
-    teardownEventListeners() {
-        if (!this.eventUnsubscribers.length) {
-            return;
-        }
+    handleLineClear(data) {
+        const d = data.detail || data;
+        const lines = d.lineCount || 1;
+        const combo = d.comboCount || this.pendingComboCount || 0;
+        this.pendingComboCount = 0;
 
-        this.eventUnsubscribers.forEach((unsubscribe) => {
-            try {
-                unsubscribe?.();
-            } catch (error) {
-                console.error('[WinterTheme] Failed to remove event listener', error);
-            }
-        });
-
-        this.eventUnsubscribers = [];
+        this.onLineClear(lines, combo);
     }
 
-    shouldProcessComboEffects() {
-        if (!this.isActive) return false;
-        if (typeof window === 'undefined') return true;
-        const { settings } = window;
-        return settings?.backgroundComboEffects === true;
+    handleCombo(data) {
+        const d = data.detail || data;
+        const combo = d.comboCount || 0;
+        if (combo > 0) this.pendingComboCount = combo;
+        this.comboMultiplier = Math.min(1 + combo * 0.5, 4.0);
+        this.comboDecay = 200;
     }
 
-    normalizeEventPayload(payload = {}) {
-        if (payload && typeof payload === 'object' && 'detail' in payload && payload.detail) {
-            return payload.detail;
-        }
-        return payload || {};
+    handlePieceLock() {
+        this.cameraShake.intensity += 0.5;
+        this.cameraShake.intensity = Math.min(this.cameraShake.intensity, 2.5);
     }
 
-    // Event handlers
-    handleLineClear(eventPayload) {
-        const detail = this.normalizeEventPayload(eventPayload);
-        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
+    onLineClear(lines, combo) {
+        const burst = Math.min(lines * 30 + combo * 20, 200);
+        this.spawnIceBurst(0, -50, -200, burst);
 
-        if (!comboCount && this.pendingComboCount > 0) {
-            comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
+        this.targetWindForce = (Math.random() > 0.5 ? 1 : -1) * (45 + combo * 15);
+        this.gustIntensity = 1.0;
+        this.gustDuration = 100 + combo * 50;
+
+        if (lines >= 4 || combo >= 3) {
+            this.createFrozenLightningEffect((Math.random() - 0.5) * 300, 100, -400);
         }
 
-        console.log(`[WinterTheme] Line clear event: ${lineCount} lines, combo: ${comboCount}`, detail);
-        this.onLineClear(lineCount, comboCount);
-    }
-
-    handleCombo(eventPayload) {
-        const detail = this.normalizeEventPayload(eventPayload);
-        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
-
-        if (comboCount > 0) {
-            this.pendingComboCount = comboCount;
+        if (combo >= 4) {
+            this.createVortexSystem(0, 0, -200);
         }
 
-        console.log(`[WinterTheme] Combo event: ${comboCount}`, detail);
-        // Combo is already handled in line clear
-    }
+        this.flashIntensity = 0.5 + Math.min(combo * 0.1, 1.0);
+        this.cameraShake.intensity = Math.min(3 + lines + combo * 1.5, 12);
 
-    handlePieceLock(eventPayload) {
-        const detail = this.normalizeEventPayload(eventPayload);
-        // Try to get coordinates, otherwise random at bottom
-        const x = detail.x !== undefined ? detail.x : Math.random() * this.canvas.width;
-        const y = detail.y !== undefined ? detail.y : this.canvas.height;
-
-        // 1. Snow Puff Effect (rising mist/snow from impact)
-        const puffCount = 15 + Math.random() * 10;
-        for (let i = 0; i < puffCount; i++) {
-            this.snowPuffParticles.push(this.createSnowPuff(x, y));
-        }
-
-        // 2. Subtle Ripple (if not too many active)
-        if (this.vortexParticles.length < 50 && Math.random() > 0.5) {
-            const rippleCount = 5;
-            for (let i = 0; i < rippleCount; i++) {
-                this.vortexParticles.push({
-                    x: x,
-                    y: y,
-                    angle: (Math.PI * 2 / rippleCount) * i,
-                    speed: 2 + Math.random() * 2,
-                    size: 1 + Math.random() * 2,
-                    opacity: 0.6,
-                    life: 0.8,
-                    rotation: Math.random() * Math.PI * 2,
-                    rotationSpeed: 0.1
-                });
-            }
-        }
-
-        // 3. Shockwave Ring
-        this.shockwaves.push(this.createShockwave(x, y));
-
-        // 4. Ice Shards (flying debris)
-        const shardCount = 8 + Math.floor(Math.random() * 6);
-        for (let i = 0; i < shardCount; i++) {
-            this.iceShards.push(this.createIceShard(x, y));
+        // AURORA REACTS TO COMBO
+        if (this.auroraLayers.length > 0) {
+            this.auroraLayers.forEach(l => {
+                if (l.material.uniforms.uIntensity) l.material.uniforms.uIntensity.value = 1.5 + Math.min(combo, 2.0);
+            });
         }
     }
 
-    createShockwave(x, y) {
-        return {
-            x,
-            y,
-            radius: 10,
-            maxRadius: 60 + Math.random() * 40,
-            width: 5 + Math.random() * 5,
-            opacity: 0.8,
-            life: 1.0,
-            decay: 0.04,
-            color: `rgba(200, 230, 255,`
-        };
-    }
+    startAnimation() {
+        const animate = () => {
+            if (!this.isActive) return;
+            const delta = this.clock.getDelta();
+            this.time += delta;
 
-    createIceShard(x, y) {
-        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.5; // Mostly upward
-        const speed = 4 + Math.random() * 6;
-        return {
-            x,
-            y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size: 2 + Math.random() * 3,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.4,
-            opacity: 1.0,
-            life: 1.0,
-            decay: 0.02 + Math.random() * 0.02,
-            gravity: 0.2
-        };
-    }
+            // Updates
+            this.updateEffectState(delta);
+            this.updateSnowParticles(delta);
+            this.updateIceBurst(delta);
+            this.updateFrozenLightning(delta);
+            this.updateVortexes(delta);
 
-    createSnowPuff(x, y) {
-        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.5; // Upward cone
-        const speed = Math.random() * 3 + 1;
-        return {
-            x: x + (Math.random() - 0.5) * 40, // Spread horizontally
-            y: y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size: Math.random() * 3 + 1,
-            opacity: Math.random() * 0.5 + 0.3,
-            life: 1.0,
-            decay: 0.01 + Math.random() * 0.02,
-            wobble: Math.random() * Math.PI * 2
-        };
-    }
-
-    // Called by game when lines are cleared
-    onLineClear(lineCount, comboCount) {
-        console.log(`[WinterTheme] Processing line clear: ${lineCount} lines, combo: ${comboCount}`);
-
-        // Increase combo multiplier
-        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
-        this.comboDecay = 180; // 3 seconds at 60fps
-
-        // Create ice burst from center of screen
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-
-        // More particles for more lines - using quality preset cap
-        const burstCount = Math.min(lineCount * 20 + comboCount * 15, this.iceBurstCap);
-        for (let i = 0; i < burstCount; i++) {
-            this.iceBurstParticles.push(this.createIceBurstParticle(centerX, centerY, lineCount));
-        }
-
-        // Trigger wind gust based on line count
-        if (comboCount > 0) {
-            const gustBonus = lineCount * 2 + comboCount;
-            this.comboWindTimer = Math.max(this.comboWindTimer, 240 + comboCount * 60); // Only keep wind alive during combos
-            this.targetWindForce = (Math.random() < 0.5 ? -1 : 1) * (8 + gustBonus);
-            this.gustIntensity = Math.min(0.5 + lineCount * 0.15, 1.0);
-            this.gustDuration = 40 + lineCount * 20;
-            this.nextWindChange = this.time + Math.random() * 240 + 240; // Rare follow-up shifts while combo wind is active
-            this.nextGust = this.time + Math.random() * 480 + 360; // Rare secondary gusts tied to combos
-        } else {
-            // Calm down when not in a combo streak
-            this.comboWindTimer = 0;
-            this.targetWindForce = 0;
-            this.gustIntensity = 0;
-            this.gustDuration = 0;
-            this.nextWindChange = Infinity;
-            this.nextGust = Infinity;
-        }
-
-        // Screen shake based on combo
-        if (comboCount >= 3) {
-            this.cameraShake.intensity = Math.min(comboCount * 2, 15);
-        }
-
-        // Create frozen lightning on big combos - quality check
-        if (comboCount >= 5 && this.enableFrozenLightning && this.frozenLightning.length < this.maxFrozenLightning) {
-            this.createFrozenLightning(centerX, centerY);
-        }
-
-        // Spawn combo vortexes for massive combos - quality limited
-        if (comboCount >= 8 && this.comboVortexes.length < this.maxComboVortexes) {
-            const vortexesToSpawn = Math.min(Math.floor(comboCount / 4), this.maxComboVortexes - this.comboVortexes.length);
-            for (let i = 0; i < vortexesToSpawn; i++) {
-                const vortex = this.createComboVortex(
-                    Math.random() * this.canvas.width,
-                    Math.random() * this.canvas.height * 0.5,
-                );
-                this.comboVortexes.push(vortex);
+            // Updated Uniforms
+            if (this.snowParticles) {
+                const u = this.snowParticles.material.uniforms;
+                u.uTime.value = this.time;
+                u.uWindForce.value = this.windForce;
+                u.uGustIntensity.value = this.gustIntensity;
+                u.uFlashIntensity.value = this.flashIntensity;
             }
-        }
-
-        // Flash effect (nearly invisible for comfort)
-        this.flashIntensity = Math.min(0.003 + lineCount * 0.001, 0.01);
-    }
-
-    createIceBurstParticle(x, y, lineCount) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 15 + 5 + lineCount * 2;
-        const size = Math.random() * 4 + 2;
-
-        return {
-            x,
-            y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size,
-            opacity: Math.random() * 0.8 + 0.4,
-            life: 1.0,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.3,
-            gravity: 0.3,
-            glowIntensity: Math.random() * 0.5 + 0.5,
-            sparkle: Math.random() * Math.PI * 2,
-        };
-    }
-
-    createFrozenLightning(x, y) {
-        const branches = [];
-        const numBranches = Math.floor(Math.random() * 3) + 4;
-
-        for (let i = 0; i < numBranches; i++) {
-            const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.5;
-            const segments = [];
-            let currentX = x;
-            let currentY = y;
-
-            for (let j = 0; j < 8; j++) {
-                const length = Math.random() * 80 + 40;
-                const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.8) * length;
-                const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.8) * length;
-
-                segments.push({
-                    x1: currentX,
-                    y1: currentY,
-                    x2: nextX,
-                    y2: nextY,
-                });
-
-                currentX = nextX;
-                currentY = nextY;
+            if (this.windStreaks) {
+                const u = this.windStreaks.material.uniforms;
+                u.uTime.value = this.time;
+                u.uWindForce.value = this.windForce;
+                const spd = Math.abs(this.windForce);
+                u.uOpacity.value = Math.min(Math.max((spd - 10.0) / 20.0, 0.0), 0.8) * this.gustIntensity;
             }
-
-            branches.push(segments);
-        }
-
-        this.frozenLightning.push({
-            branches,
-            opacity: 1.0,
-            life: 1.0,
-            pulsePhase: 0,
-        });
-    }
-
-    createComboVortex(x, y) {
-        return {
-            x,
-            y,
-            particles: [],
-            angle: 0,
-            radius: 0,
-            maxRadius: Math.random() * 200 + 150,
-            spinSpeed: 0.15,
-            expansionRate: 3,
-            life: 1.0,
-            direction: Math.random() < 0.5 ? 1 : -1,
-            intensity: 1.0,
-        };
-    }
-
-    createSnowParticle(isInitial) {
-        const depth = Math.random(); // 0 = far, 1 = near
-        const depthScale = 0.2 + depth * 0.8;
-
-        // Try to get from pool first
-        const particle = this.getPooledParticle('snow');
-
-        if (particle) {
-            // Reset particle properties
-            particle.x = isInitial ? Math.random() * this.canvas.width : Math.random() * this.canvas.width * 1.2 - this.canvas.width * 0.1;
-            particle.y = isInitial ? Math.random() * this.canvas.height : -Math.random() * 50;
-            particle.z = depth;
-            particle.size = (Math.random() * 5 + 2) * depthScale; // Larger snowflakes (2-7px base)
-            particle.vx = (Math.random() - 0.5) * 0.5;
-            particle.vy = (Math.random() * 2 + 0.5) * depthScale;
-            particle.opacity = (Math.random() * 0.7 + 0.3) * (0.4 + depth * 0.6);
-            particle.rotation = Math.random() * Math.PI * 2;
-            particle.rotationSpeed = (Math.random() - 0.5) * 0.08;
-            particle.wobble = Math.random() * Math.PI * 2;
-            particle.wobbleSpeed = Math.random() * 0.03 + 0.01;
-            particle.trail.length = 0; // Clear trail
-            particle.maxTrailLength = Math.floor(4 + depth * 8);
-            return particle;
-        }
-
-        // Create new if pool is empty
-        return {
-            x: isInitial ? Math.random() * this.canvas.width : Math.random() * this.canvas.width * 1.2 - this.canvas.width * 0.1,
-            y: isInitial ? Math.random() * this.canvas.height : -Math.random() * 50,
-            z: depth,
-            size: (Math.random() * 5 + 2) * depthScale, // Larger snowflakes (2-7px base)
-            vx: (Math.random() - 0.5) * 0.5,
-            vy: (Math.random() * 2 + 0.5) * depthScale,
-            opacity: (Math.random() * 0.7 + 0.3) * (0.4 + depth * 0.6),
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.08,
-            wobble: Math.random() * Math.PI * 2,
-            wobbleSpeed: Math.random() * 0.03 + 0.01,
-            trail: [],
-            maxTrailLength: Math.floor(4 + depth * 8),
-        };
-    }
-
-    createStreakParticle() {
-        const side = Math.random() < 0.5 ? -100 : this.canvas.width + 100;
-        const direction = side < 0 ? 1 : -1;
-
-        return {
-            x: side,
-            y: Math.random() * this.canvas.height,
-            vx: direction * (Math.random() * 30 + 20),
-            vy: (Math.random() - 0.5) * 5,
-            length: Math.random() * 150 + 100,
-            size: Math.random() * 3 + 1,
-            opacity: Math.random() * 0.8 + 0.4,
-            life: 1.0,
-        };
-    }
-
-    createVortexParticle(x, y) {
-        return {
-            x,
-            y,
-            angle: Math.random() * Math.PI * 2,
-            speed: Math.random() * 4 + 2,
-            size: Math.random() * 2.5 + 1,
-            opacity: Math.random() * 0.9 + 0.3,
-            life: 1.0,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.3,
-        };
-    }
-
-    createSpiralSystem(x, y) {
-        return {
-            x,
-            y,
-            particles: [],
-            angle: 0,
-            radius: 0,
-            maxRadius: Math.random() * 150 + 100,
-            spinSpeed: (Math.random() - 0.5) * 0.1,
-            expansionRate: Math.random() * 2 + 1,
-            life: 1.0,
-            direction: Math.random() < 0.5 ? 1 : -1,
-        };
-    }
-
-    createDistortionWave() {
-        return {
-            x: Math.random() * this.canvas.width,
-            y: 0,
-            width: Math.random() * 200 + 100,
-            height: this.canvas.height,
-            speed: Math.random() * 3 + 2,
-            opacity: Math.random() * 0.3 + 0.2,
-            life: 1.0,
-        };
-    }
-
-    animate() {
-        if (!this.isActive) {
-            return;
-        }
-
-        this.time += 1;
-
-        // Decay combo multiplier
-        if (this.comboDecay > 0) {
-            this.comboDecay -= 1;
-            if (this.comboDecay === 0) {
-                this.comboMultiplier = 1.0;
-            }
-        }
-
-        // Dynamic wind now driven only by combo activity
-        const comboWindActive = this.comboWindTimer > 0 || this.gustDuration > 0;
-
-        if (comboWindActive) {
-            if (this.comboWindTimer > 0) {
-                this.comboWindTimer -= 1;
-            }
-
-            if (this.time >= this.nextWindChange && this.comboWindTimer > 0) {
-                this.targetWindForce = (Math.random() - 0.5) * 6 * this.comboMultiplier; // Small, rare shifts
-                this.nextWindChange = this.time + Math.random() * 240 + 240; // ~4-8 seconds between shifts
-            }
-
-            if (this.time >= this.nextGust && this.gustDuration <= 0 && this.comboWindTimer > 0) {
-                const gustStrength = (Math.random() * 4 + 5) * this.comboMultiplier;
-                const gustDirection = Math.random() < 0.5 ? -1 : 1;
-                this.targetWindForce = gustDirection * gustStrength;
-                this.gustIntensity = 0.8;
-                this.gustDuration = Math.random() * 50 + 30;
-                this.nextGust = this.time + Math.random() * 480 + 360; // Far less frequent follow-up gusts
-
-                // SCREEN SHAKE during powerful gusts
-                if (gustStrength > 10) {
-                    this.cameraShake.intensity = Math.min(gustStrength * 0.8, 12);
-                }
-
-                // Spawn horizontal streak particles during strong gusts - using quality preset count
-                if (gustStrength > 8) {
-                    for (let i = 0; i < this.activePreset.streakParticlesCount; i++) {
-                        this.streakParticles.push(this.createStreakParticle());
-                    }
-                }
-
-                // Spawn vortex particles during strong gusts - using quality preset count
-                if (gustStrength > 7) {
-                    for (let i = 0; i < this.activePreset.vortexParticlesCount; i++) {
-                        const x = Math.random() * this.canvas.width;
-                        const y = Math.random() * this.canvas.height * 0.7;
-                        this.vortexParticles.push(this.createVortexParticle(x, y));
-                    }
-                }
-
-                // Create spiral systems during extreme gusts - using quality preset count
-                if (gustStrength > 11) {
-                    for (let i = 0; i < this.activePreset.spiralSystemsCount; i++) {
-                        const spiral = this.createSpiralSystem(
-                            Math.random() * this.canvas.width,
-                            Math.random() * this.canvas.height * 0.6,
-                        );
-                        this.spiralSystems.push(spiral);
-                    }
-
-                    // Distortion waves disabled - vertical pillar flashes removed for comfort
-                }
-            }
-        } else {
-            // No combo activity: quickly return to calm
-            this.targetWindForce *= 0.9;
-            this.windForce *= 0.9;
-            if (Math.abs(this.targetWindForce) < 0.05) {
-                this.targetWindForce = 0;
-            }
-            this.nextWindChange = Infinity;
-            this.nextGust = Infinity;
-        }
-
-        // Fade gust intensity
-        if (this.gustDuration > 0) {
-            this.gustDuration -= 1;
-            this.gustIntensity = Math.max(0, this.gustDuration / 80);
-        } else {
-            this.gustIntensity = 0;
-        }
-
-        // Camera shake decay
-        if (this.cameraShake.intensity > 0) {
-            this.cameraShake.intensity *= 0.92;
-            this.cameraShake.x = (Math.random() - 0.5) * this.cameraShake.intensity;
-            this.cameraShake.y = (Math.random() - 0.5) * this.cameraShake.intensity;
-        } else {
-            this.cameraShake.x = 0;
-            this.cameraShake.y = 0;
-        }
-
-        // Smooth wind transition
-        const windTransitionSpeed = this.gustIntensity > 0 ? 0.12 : 0.03;
-        this.windForce += (this.targetWindForce - this.windForce) * windTransitionSpeed;
-
-        // Random atmospheric flashes during extreme winds (barely visible for comfort)
-        if (this.time >= this.nextFlash && Math.abs(this.windForce) > 14) { // Only during very extreme winds (increased threshold)
-            this.flashIntensity = 0.001; // Barely visible flash (reduced from 0.003)
-            this.nextFlash = this.time + Math.random() * 600 + 300; // More frequent (every 5-15 seconds at 60fps)
-        }
-        if (this.flashIntensity > 0) {
-            this.flashIntensity *= 0.9; // Faster decay (was 0.85)
-        }
-
-        // Apply camera shake
-        this.ctx.save();
-        this.ctx.translate(this.cameraShake.x, this.cameraShake.y);
-
-        // Dark atmospheric background with dynamic lighting (combo affects brightness)
-        const comboBoost = Math.floor((this.comboMultiplier - 1) * 20);
-        const flashBoost = Math.floor(this.flashIntensity * 5); // Reduced from 15 to 5
-        const gustBoost = Math.floor(this.gustIntensity * 10); // Reduced from 15 to 10
-
-        // Use cached gradients
-        this.ctx.fillStyle = this.getCachedBackgroundGradient(comboBoost, flashBoost, gustBoost);
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Add atmospheric depth fog
-        this.ctx.fillStyle = this.getCachedFogGradient(gustBoost, comboBoost);
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Draw frozen lightning
-        for (let i = this.frozenLightning.length - 1; i >= 0; i--) {
-            const lightning = this.frozenLightning[i];
-            lightning.life -= 0.015;
-            lightning.opacity = lightning.life;
-            lightning.pulsePhase += 0.1;
-
-            if (lightning.life <= 0) {
-                this.frozenLightning.splice(i, 1);
-                continue;
-            }
-
-            const pulseOpacity = lightning.opacity * (0.3 + Math.sin(lightning.pulsePhase) * 0.15);
-
-            // Optimized: Draw all segments in batch with single stroke per layer
-            this.ctx.lineCap = 'round';
-
-            // Outer glow layer
-            this.ctx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.15})`;
-            this.ctx.lineWidth = 6;
-            this.ctx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.ctx.stroke();
-
-            // Middle glow layer
-            this.ctx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity * 0.3})`;
-            this.ctx.lineWidth = 3;
-            this.ctx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.ctx.stroke();
-
-            // Core layer
-            this.ctx.strokeStyle = `rgba(230, 245, 255, ${pulseOpacity * 0.5})`;
-            this.ctx.lineWidth = 1.5;
-            this.ctx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.ctx.stroke();
-        }
-
-        // Draw and update combo vortexes
-        for (let i = this.comboVortexes.length - 1; i >= 0; i--) {
-            const vortex = this.comboVortexes[i];
-
-            vortex.angle += vortex.spinSpeed * vortex.direction;
-            vortex.radius += vortex.expansionRate;
-            vortex.life -= 0.005;
-            vortex.intensity = vortex.life;
-
-            // Spawn particles along the vortex
-            if (Math.random() < 0.7 && vortex.radius < vortex.maxRadius) {
-                const particleAngle = vortex.angle + Math.random() * Math.PI * 0.3;
-                const particleRadius = vortex.radius + Math.random() * 40;
-                vortex.particles.push({
-                    x: vortex.x + Math.cos(particleAngle) * particleRadius,
-                    y: vortex.y + Math.sin(particleAngle) * particleRadius,
-                    size: Math.random() * 4 + 2,
-                    opacity: Math.random() * 0.9 + 0.3,
-                    vx: Math.cos(particleAngle) * 3,
-                    vy: Math.sin(particleAngle) * 3,
-                    life: 1.0,
-                    sparkle: Math.random() * Math.PI * 2,
-                });
-            }
-
-            // Update and draw vortex particles (optimized)
-            for (let j = vortex.particles.length - 1; j >= 0; j--) {
-                const p = vortex.particles[j];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= 0.015;
-                p.opacity = p.life * vortex.intensity;
-                p.sparkle += 0.2;
-
-                if (p.life <= 0) {
-                    vortex.particles.splice(j, 1);
-                    continue;
-                }
-
-                const sparkleEffect = Math.sin(p.sparkle) * 0.15 + 0.35;
-
-                // Optimized: No shadow blur for better performance
-                this.ctx.globalAlpha = p.opacity * sparkleEffect * 0.5;
-                this.ctx.fillStyle = 'rgba(240, 250, 255, 1)';
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.globalAlpha = 1;
-            }
-
-            if (vortex.life <= 0 || vortex.radius > vortex.maxRadius) {
-                this.comboVortexes.splice(i, 1);
-            }
-        }
-
-        // Draw and update ice burst particles (optimized rendering)
-        for (let i = this.iceBurstParticles.length - 1; i >= 0; i--) {
-            const particle = this.iceBurstParticles[i];
-
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            particle.vy += particle.gravity;
-            particle.vx *= 0.98;
-            particle.rotation += particle.rotationSpeed;
-            particle.life -= 0.02;
-            particle.opacity = particle.life * 0.9;
-            particle.sparkle += 0.15;
-
-            if (particle.life <= 0 || particle.y > this.canvas.height) {
-                this.releaseParticle('ice', particle);
-                this.iceBurstParticles.splice(i, 1);
-                continue;
-            }
-
-            const sparkleIntensity = Math.sin(particle.sparkle) * 0.2 + 0.3;
-
-            this.ctx.save();
-            this.ctx.translate(particle.x, particle.y);
-            this.ctx.rotate(particle.rotation);
-
-            // Optimized: No shadow blur for better performance
-            this.ctx.globalAlpha = particle.opacity * sparkleIntensity * 0.5;
-
-            // Ice shard shape
-            this.ctx.fillStyle = 'rgba(220, 240, 255, 1)';
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, -particle.size);
-            this.ctx.lineTo(particle.size * 0.5, particle.size * 0.5);
-            this.ctx.lineTo(-particle.size * 0.5, particle.size * 0.5);
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            // Highlight
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            this.ctx.beginPath();
-            this.ctx.arc(-particle.size * 0.2, -particle.size * 0.3, particle.size * 0.3, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.globalAlpha = 1;
-            this.ctx.restore();
-        }
-
-        // Update and draw snow puff particles (Piece Lock Effect)
-        for (let i = this.snowPuffParticles.length - 1; i >= 0; i--) {
-            const p = this.snowPuffParticles[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vx *= 0.95; // Drag
-            p.vy *= 0.95;
-            p.life -= p.decay;
-            p.opacity = p.life * 0.6;
-            p.size *= 0.99; // Shrink slightly
-
-            if (p.life <= 0) {
-                this.snowPuffParticles.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.globalAlpha = p.opacity;
-            this.ctx.fillStyle = 'rgba(230, 240, 255, 1)';
-            this.ctx.beginPath();
-            this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.globalAlpha = 1;
-        }
-
-        // Update and draw shockwaves
-        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-            const wave = this.shockwaves[i];
-            wave.radius += (wave.maxRadius - wave.radius) * 0.1;
-            wave.life -= wave.decay;
-            wave.opacity = wave.life * 0.6;
-            wave.width *= 0.95;
-
-            if (wave.life <= 0) {
-                this.shockwaves.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.beginPath();
-            this.ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
-            this.ctx.strokeStyle = `${wave.color} ${wave.opacity})`;
-            this.ctx.lineWidth = wave.width;
-            this.ctx.stroke();
-        }
-
-        // Update and draw ice shards
-        for (let i = this.iceShards.length - 1; i >= 0; i--) {
-            const shard = this.iceShards[i];
-            shard.x += shard.vx;
-            shard.y += shard.vy;
-            shard.vy += shard.gravity;
-            shard.rotation += shard.rotationSpeed;
-            shard.life -= shard.decay;
-            shard.opacity = shard.life;
-
-            if (shard.life <= 0 || shard.y > this.canvas.height) {
-                this.iceShards.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.save();
-            this.ctx.translate(shard.x, shard.y);
-            this.ctx.rotate(shard.rotation);
-            this.ctx.globalAlpha = shard.opacity;
-            this.ctx.fillStyle = 'rgba(220, 240, 255, 0.9)';
-
-            // Draw jagged shard
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, -shard.size);
-            this.ctx.lineTo(shard.size * 0.6, shard.size * 0.6);
-            this.ctx.lineTo(-shard.size * 0.6, shard.size * 0.6);
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            this.ctx.restore();
-        }
-
-        // Distortion waves (vertical pillars) disabled for comfort - removed rendering code
-
-        // Draw and update ground snow
-        for (let i = this.groundSnow.length - 1; i >= 0; i--) {
-            const snow = this.groundSnow[i];
-            snow.x += this.windForce * 0.08 + snow.drift;
-
-            // Wrap around
-            if (snow.x < -10) snow.x = this.canvas.width + 10;
-            if (snow.x > this.canvas.width + 10) snow.x = -10;
-
-            this.ctx.beginPath();
-            this.ctx.arc(snow.x, snow.y, snow.size, 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(200, 210, 225, ${snow.opacity})`;
-            this.ctx.fill();
-        }
-
-        // Update and draw spiral systems
-        for (let i = this.spiralSystems.length - 1; i >= 0; i--) {
-            const spiral = this.spiralSystems[i];
-
-            spiral.angle += spiral.spinSpeed * spiral.direction;
-            spiral.radius += spiral.expansionRate;
-            spiral.life -= 0.008;
-
-            // Spawn particles along the spiral
-            if (Math.random() < 0.5 && spiral.radius < spiral.maxRadius) {
-                const particleAngle = spiral.angle + Math.random() * Math.PI * 0.2;
-                const particleRadius = spiral.radius + Math.random() * 30;
-                spiral.particles.push({
-                    x: spiral.x + Math.cos(particleAngle) * particleRadius,
-                    y: spiral.y + Math.sin(particleAngle) * particleRadius,
-                    size: Math.random() * 3 + 1,
-                    opacity: Math.random() * 0.8 + 0.2,
-                    vx: Math.cos(particleAngle) * 2,
-                    vy: Math.sin(particleAngle) * 2,
-                    life: 1.0,
-                });
-            }
-
-            // Update and draw spiral particles
-            for (let j = spiral.particles.length - 1; j >= 0; j--) {
-                const p = spiral.particles[j];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= 0.02;
-                p.opacity = p.life * 0.9;
-
-                if (p.life <= 0) {
-                    spiral.particles.splice(j, 1);
-                    continue;
-                }
-
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgba(230, 240, 255, ${p.opacity})`;
-                this.ctx.fill();
-            }
-
-            if (spiral.life <= 0 || spiral.radius > spiral.maxRadius) {
-                this.spiralSystems.splice(i, 1);
-            }
-        }
-
-        // Update and draw horizontal streak particles
-        for (let i = this.streakParticles.length - 1; i >= 0; i--) {
-            const streak = this.streakParticles[i];
-
-            streak.x += streak.vx;
-            streak.y += streak.vy;
-            streak.life -= 0.015;
-            streak.opacity = streak.life * 0.9;
-
-            if (streak.life <= 0
-                || streak.x < -200
-                || streak.x > this.canvas.width + 200) {
-                this.streakParticles.splice(i, 1);
-                continue;
-            }
-
-            // Draw long horizontal streak
-            const streakGradient = this.ctx.createLinearGradient(
-                streak.x,
-                streak.y,
-                streak.x - Math.sign(streak.vx) * streak.length,
-                streak.y,
-            );
-            streakGradient.addColorStop(0, `rgba(240, 245, 255, ${streak.opacity})`);
-            streakGradient.addColorStop(0.3, `rgba(220, 230, 245, ${streak.opacity * 0.6})`);
-            streakGradient.addColorStop(1, 'rgba(200, 215, 235, 0)');
-
-            this.ctx.beginPath();
-            this.ctx.moveTo(streak.x, streak.y);
-            this.ctx.lineTo(streak.x - Math.sign(streak.vx) * streak.length, streak.y);
-            this.ctx.strokeStyle = streakGradient;
-            this.ctx.lineWidth = streak.size;
-            this.ctx.lineCap = 'round';
-            this.ctx.stroke();
-        }
-
-        // Update and draw vortex particles
-        for (let i = this.vortexParticles.length - 1; i >= 0; i--) {
-            const particle = this.vortexParticles[i];
-
-            particle.x += Math.cos(particle.angle) * particle.speed;
-            particle.y += Math.sin(particle.angle) * particle.speed * 0.5;
-            particle.angle += 0.15;
-            particle.rotation += particle.rotationSpeed;
-            particle.life -= 0.012;
-            particle.opacity = particle.life * 0.9;
-
-            if (particle.life <= 0 || particle.y > this.canvas.height) {
-                this.vortexParticles.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.save();
-            this.ctx.translate(particle.x, particle.y);
-            this.ctx.rotate(particle.rotation);
-            this.ctx.globalAlpha = particle.opacity;
-            this.ctx.fillStyle = 'rgb(225, 235, 250)';
-            this.ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
-            this.ctx.restore();
-        }
-
-        // Spawn new snow particles during gusts (more during combos)
-        // Spawn new snow particles during gusts (more during combos)
-        // Accelerated spawning if count is low
-        const spawnChance = (0.8 + this.gustIntensity * 0.4) * this.comboMultiplier;
-        const maxParticlesWithCombo = Math.floor(this.maxParticles * Math.min(this.comboMultiplier, 1.5)); // Cap combo boost
-
-        // If we are far below capacity, spawn multiple particles per frame to fill up faster
-        let spawnCount = 1;
-        if (this.snowParticles.length < maxParticlesWithCombo * 0.5) {
-            spawnCount = 10; // Spawn 10x faster if below 50% capacity
-        } else if (this.snowParticles.length < maxParticlesWithCombo * 0.8) {
-            spawnCount = 4; // Spawn 4x faster if below 80% capacity
-        }
-
-        for (let i = 0; i < spawnCount; i++) {
-            if (this.snowParticles.length < maxParticlesWithCombo && Math.random() < spawnChance) {
-                this.snowParticles.push(this.createSnowParticle(false));
-            }
-        }
-
-        // Sort only occasionally for performance - using quality preset interval
-        if (this.time % this.activePreset.particleSortInterval === 0) {
-            this.snowParticles.sort((a, b) => a.z - b.z);
-        }
-
-        // Optimize: Use reverse loop and swap-remove pattern
-        const canvasWidth = this.canvas.width;
-        const canvasHeight = this.canvas.height;
-        const margin = this.offscreenMargin;
-
-        for (let i = this.snowParticles.length - 1; i >= 0; i--) {
-            const particle = this.snowParticles[i];
-
-            // Wind influence increases with gust intensity and combo
-            const windInfluence = this.windForce * (0.4 + particle.z * 0.6) * (1 + this.gustIntensity * 0.8) * this.comboMultiplier;
-            const gustTurbulence = this.gustIntensity * (Math.random() - 0.5) * 3;
-
-            particle.vx += (windInfluence + gustTurbulence - particle.vx) * 0.08;
-            particle.wobble += particle.wobbleSpeed;
-
-            // Horizontal movement with wobble
-            particle.x += particle.vx + Math.sin(particle.wobble) * 0.8 * (1 + this.gustIntensity * 1.5);
-
-            // Vertical movement (faster during gusts and combos)
-            particle.y += particle.vy * (1 + this.gustIntensity * 0.7) * this.comboMultiplier;
-
-            particle.rotation += particle.rotationSpeed * (1 + this.gustIntensity);
-
-            // Trail system for motion blur (optimize trail management)
-            if (particle.trail.length < particle.maxTrailLength) {
-                particle.trail.unshift({ x: particle.x, y: particle.y, opacity: particle.opacity });
+            this.auroraLayers.forEach(layer => {
+                const u = layer.material.uniforms;
+                u.uTime.value = this.time;
+                // Decay intensity back to 1.0
+                if (u.uIntensity.value > 1.0) u.uIntensity.value -= delta * 0.5;
+            });
+            if (this.starfield) this.starfield.material.uniforms.uTime.value = this.time;
+
+            // Cam shake
+            this.camera.position.x = this.cameraShake.x;
+            this.camera.position.y = this.cameraShake.y;
+
+            if (this.composer && this.qualityPreset.enablePostProcessing) {
+                this.renderer.clear();
+                this.composer.render();
             } else {
-                // Reuse the last trail object
-                const last = particle.trail.pop();
-                last.x = particle.x;
-                last.y = particle.y;
-                last.opacity = particle.opacity;
-                particle.trail.unshift(last);
+                this.renderer.clear();
+                this.renderer.render(this.scene, this.camera);
             }
+            requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+    }
 
-            // Tighter culling for offscreen particles
-            if (particle.y > canvasHeight + margin
-                || particle.x < -margin
-                || particle.x > canvasWidth + margin) {
-                this.releaseParticle('snow', particle);
-                this.snowParticles.splice(i, 1);
-                continue;
-            }
+    updateEffectState(delta) {
+        if (this.comboDecay > 0) {
+            this.comboDecay -= delta * 60;
+            if (this.comboDecay <= 0) this.comboMultiplier = 1.0;
+        }
+        this.windForce += (this.targetWindForce - this.windForce) * 0.1;
+        this.targetWindForce *= 0.95;
+        if (this.gustDuration > 0) {
+            this.gustDuration -= delta * 60;
+            this.gustIntensity = Math.max(0, this.gustDuration / 120);
+        } else {
+            this.gustIntensity = 0;
+        }
+        this.flashIntensity *= 0.9;
+        this.cameraShake.intensity *= 0.9;
+        this.cameraShake.x = (Math.random() - 0.5) * this.cameraShake.intensity;
+        this.cameraShake.y = (Math.random() - 0.5) * this.cameraShake.intensity;
+    }
 
-            // Trail rendering (Canvas2D - kept for style)
-            if (this.activePreset.enableTrails && particle.trail.length > 2) {
-                const { trailComplexity } = this.activePreset;
-                const shouldRenderTrail = trailComplexity === 3
-                    || (trailComplexity === 2 && particle.z > 0.4)
-                    || (trailComplexity === 1 && particle.z > 0.5);
-
-                if (shouldRenderTrail) {
-                    this.ctx.globalAlpha = particle.opacity * 0.3;
-                    this.ctx.strokeStyle = 'rgba(180, 195, 220, 1)';
-                    this.ctx.lineWidth = particle.size * 0.5;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
-
-                    const skipPoints = trailComplexity === 3 ? 2 : 3;
-                    for (let j = skipPoints; j < particle.trail.length; j += skipPoints) {
-                        this.ctx.lineTo(particle.trail[j].x, particle.trail[j].y);
-                    }
-                    this.ctx.stroke();
-                    this.ctx.globalAlpha = 1;
-                }
-            }
-
-            // Draw main particle (Canvas2D fallback)
-            if (!this.useWebGL) {
-                this.ctx.save();
-                this.ctx.translate(particle.x, particle.y);
-                this.ctx.rotate(particle.rotation);
-
-                const streakLength = 1 + Math.abs(this.windForce) * 0.4 * particle.z;
-                this.ctx.globalAlpha = particle.opacity;
-                this.ctx.fillStyle = 'rgba(240, 245, 255, 1)';
-                this.ctx.beginPath();
-                this.ctx.ellipse(
-                    0,
-                    0,
-                    particle.size,
-                    particle.size * streakLength,
-                    Math.atan2(particle.vy, particle.vx),
-                    0,
-                    Math.PI * 2,
-                );
-                this.ctx.fill();
-
-                if (particle.z > 0.6) {
-                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                    this.ctx.beginPath();
-                    this.ctx.arc(-particle.size * 0.2, -particle.size * 0.2, particle.size * 0.5, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-
-                this.ctx.globalAlpha = 1;
-                this.ctx.restore();
+    updateSnowParticles(delta) {
+        if (!this.snowParticles) return;
+        const pos = this.snowParticles.geometry.attributes.position.array;
+        const vel = this.snowVelocities;
+        const b = this.snowBounds;
+        for (let i = 0; i < pos.length / 3; i++) {
+            const i3 = i * 3;
+            pos[i3] += vel[i3] * delta;
+            pos[i3 + 1] += vel[i3 + 1] * delta;
+            pos[i3 + 2] += vel[i3 + 2] * delta;
+            if (pos[i3 + 1] < -b.height / 2 || Math.abs(pos[i3]) > b.width || pos[i3 + 2] > 200) {
+                pos[i3] = (Math.random() - 0.5) * b.width;
+                pos[i3 + 1] = b.height / 2 + Math.random() * 50;
+                pos[i3 + 2] = (Math.random() - 0.5) * b.depth - 200;
+                vel[i3 + 1] = -(15 + Math.random() * 25);
             }
         }
+        this.snowParticles.geometry.attributes.position.needsUpdate = true;
+    }
 
-        // WebGL Rendering for snow particles
-        if (this.useWebGL && this.webglRenderer) {
-            this.webglRenderer.updateParticles(this.snowParticles);
-            this.webglRenderer.render();
-            this.ctx.drawImage(this.webglCanvas, 0, 0);
-        }
-
-        // Atmospheric overlay during intense gusts
-        if (this.gustIntensity > 0.4) {
-            const overlayOpacity = (this.gustIntensity - 0.4) * 0.4 * this.comboMultiplier;
-            const overlayGradient = this.ctx.createLinearGradient(0, 0, this.canvas.width * (this.windForce > 0 ? 1 : -1), this.canvas.height);
-            overlayGradient.addColorStop(0, `rgba(210, 220, 235, ${overlayOpacity})`);
-            overlayGradient.addColorStop(0.5, `rgba(190, 205, 225, ${overlayOpacity * 0.6})`);
-            overlayGradient.addColorStop(1, 'rgba(170, 185, 210, 0)');
-            this.ctx.fillStyle = overlayGradient;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-
-        // Add wind direction indicators - using quality preset interval
-        if (Math.abs(this.windForce) > 4 && this.time % this.activePreset.windIndicatorInterval === 0) {
-            const streakCount = Math.floor(Math.abs(this.windForce) * 1.5 * Math.min(this.comboMultiplier, 1.3)); // Reduced count
-            const angle = Math.atan2(1, this.windForce);
-
-            for (let i = 0; i < streakCount; i++) {
-                const x = Math.random() * canvasWidth;
-                const y = Math.random() * canvasHeight;
-                const length = Math.abs(this.windForce) * 25 * (0.5 + Math.random() * 0.5);
-
-                this.ctx.beginPath();
-                this.ctx.moveTo(x, y);
-                this.ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length * 0.3);
-                this.ctx.strokeStyle = `rgba(210, 225, 240, ${Math.random() * 0.25 + 0.1})`;
-                this.ctx.lineWidth = Math.random() * 2 + 0.5;
-                this.ctx.stroke();
+    updateIceBurst(delta) {
+        if (!this.iceBurstParticles) return;
+        const d = this.iceBurstData;
+        for (let j = d.active.length - 1; j >= 0; j--) {
+            const idx = d.active[j];
+            const i3 = idx * 3;
+            d.velocities[i3 + 1] -= 50 * delta; // grav
+            d.positions[i3] += d.velocities[i3] * delta;
+            d.positions[i3 + 1] += d.velocities[i3 + 1] * delta;
+            d.positions[i3 + 2] += d.velocities[i3 + 2] * delta;
+            d.lives[idx] -= delta * 1.5;
+            if (d.lives[idx] <= 0 || d.positions[i3 + 1] < -600) {
+                d.lives[idx] = 0; d.positions[i3 + 1] = -9999; d.active.splice(j, 1);
             }
         }
+        this.iceBurstParticles.geometry.attributes.position.needsUpdate = true;
+        this.iceBurstParticles.geometry.attributes.life.needsUpdate = true;
+    }
 
-        // Vignette effect for depth (cached)
-        this.ctx.fillStyle = this.getCachedVignetteGradient();
-        this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    updateFrozenLightning(delta) {
+        for (let i = this.frozenLightning.length - 1; i >= 0; i--) {
+            const l = this.frozenLightning[i];
+            l.userData.life -= delta * 2.5;
+            if (l.material.uniforms) {
+                l.material.uniforms.uIntensity.value = l.userData.life;
+                l.material.uniforms.uTime.value = this.time;
+            }
+            if (l.userData.life <= 0) {
+                this.scene.remove(l); l.geometry.dispose(); l.material.dispose(); this.frozenLightning.splice(i, 1);
+            }
+        }
+    }
 
-        this.ctx.restore(); // Restore from camera shake
+    updateVortexes(delta) {
+        for (let i = this.vortexSystems.length - 1; i >= 0; i--) {
+            const v = this.vortexSystems[i];
+            v.userData.life -= delta * 0.4;
+            if (v.material.uniforms) {
+                v.material.uniforms.uTime.value = this.time;
+                v.material.uniforms.uIntensity.value = v.userData.life;
+            }
+            if (v.userData.life <= 0) {
+                this.scene.remove(v); v.geometry.dispose(); v.material.dispose(); this.vortexSystems.splice(i, 1);
+            }
+        }
+    }
 
-        const animId = requestAnimationFrame(() => this.animate());
-        this.registerAnimation(animId);
+    resize(w, h) {
+        if (this.camera) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+        if (this.renderer) this.renderer.setSize(w, h);
+        if (this.composer) this.composer.setSize(w, h);
     }
 
     stop() {
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
-        }
-
-        this.teardownEventListeners();
-        this.pendingComboCount = 0;
-
-        // Remove graphics quality listener
-        this.teardownQualityListener();
-
+        if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
+        this.eventUnsubscribers.forEach(u => u());
         super.stop();
+    }
+
+    cleanup() {
+        this.stop();
+        if (this.snowflakeTexture) this.snowflakeTexture.dispose();
+        // ... (standard dispose)
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (this.renderer.domElement.parentNode) this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+        }
+        super.cleanup();
     }
 }
