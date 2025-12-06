@@ -719,6 +719,12 @@ export class InfinityMode extends BaseGameMode {
                 console.log('[Infinity] Emitting COMBO event, comboCount:', comboCount);
                 eventBus.emit(EVENTS.COMBO, { comboCount });
 
+                // Track max combo
+                if (this.gameState.infinityStats && comboCount > this.gameState.infinityStats.maxCombo) {
+                    this.gameState.infinityStats.maxCombo = comboCount;
+                    console.log(`[Infinity] New max combo: ${comboCount}`);
+                }
+
                 const settings = this.deps.settingsManager.get();
                 const boardScene = this._getBoardScene();
                 if (settings.comboPopupEffect && boardScene) {
@@ -1047,74 +1053,74 @@ export class InfinityMode extends BaseGameMode {
         let deltaRows = 0;
 
         switch (event.key) {
-        case 'ArrowUp':
-            deltaRows = -3; // Move camera up (show higher rows)
-            event.preventDefault();
-            event.stopPropagation(); // Prevent global controls from handling
-            break;
-        case 'ArrowDown':
-            deltaRows = 3; // Move camera down (show lower rows)
-            event.preventDefault();
-            event.stopPropagation(); // Prevent global controls from handling
-            break;
-        case 'ArrowLeft':
-        case 'ArrowRight':
-            // Block left/right arrows too during manual camera control
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        case 'PageUp':
-            deltaRows = -10; // Jump up faster
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'PageDown':
-            deltaRows = 10; // Jump down faster
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'p':
-        case 'P':
-            // Allow P key to propagate so it can toggle pause/resume
-            // Don't preventDefault or stopPropagation - let global handler manage pause state
-            return;
-        case 'Escape':
-            // Allow Escape to propagate so it can open settings menu
-            // Don't preventDefault or stopPropagation
-            return;
-        case ' ': // Space bar
-            // Block space bar (hard drop) during pause
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        case 'Home':
-            // Jump to top of build
-            if (this.gameState) {
-                const topRow = this.gameState.currentTopRow || 0;
-                this.boardScene.updateCameraPosition(topRow);
-                this._updateMinimapView();
+            case 'ArrowUp':
+                deltaRows = -3; // Move camera up (show higher rows)
                 event.preventDefault();
-                event.stopPropagation();
-            }
-            return;
-        case 'End':
-            // Jump to bottom (spawn area)
-            if (this.gameState) {
-                const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-                const bottomTopRow = Math.max(0, this.gameState.board.length - visibleRows);
-                this.boardScene.updateCameraPosition(bottomTopRow);
-                this._updateMinimapView();
+                event.stopPropagation(); // Prevent global controls from handling
+                break;
+            case 'ArrowDown':
+                deltaRows = 3; // Move camera down (show lower rows)
                 event.preventDefault();
-                event.stopPropagation();
-            }
-            return;
-        default:
-            // Block ALL other keys during manual camera control to prevent piece movement
-            if (event.key.length === 1 || event.key === 'Enter') {
+                event.stopPropagation(); // Prevent global controls from handling
+                break;
+            case 'ArrowLeft':
+            case 'ArrowRight':
+                // Block left/right arrows too during manual camera control
                 event.preventDefault();
                 event.stopPropagation();
                 return;
-            }
+            case 'PageUp':
+                deltaRows = -10; // Jump up faster
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            case 'PageDown':
+                deltaRows = 10; // Jump down faster
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            case 'p':
+            case 'P':
+                // Allow P key to propagate so it can toggle pause/resume
+                // Don't preventDefault or stopPropagation - let global handler manage pause state
+                return;
+            case 'Escape':
+                // Allow Escape to propagate so it can open settings menu
+                // Don't preventDefault or stopPropagation
+                return;
+            case ' ': // Space bar
+                // Block space bar (hard drop) during pause
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            case 'Home':
+                // Jump to top of build
+                if (this.gameState) {
+                    const topRow = this.gameState.currentTopRow || 0;
+                    this.boardScene.updateCameraPosition(topRow);
+                    this._updateMinimapView();
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                return;
+            case 'End':
+                // Jump to bottom (spawn area)
+                if (this.gameState) {
+                    const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
+                    const bottomTopRow = Math.max(0, this.gameState.board.length - visibleRows);
+                    this.boardScene.updateCameraPosition(bottomTopRow);
+                    this._updateMinimapView();
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                return;
+            default:
+                // Block ALL other keys during manual camera control to prevent piece movement
+                if (event.key.length === 1 || event.key === 'Enter') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
         }
 
         if (deltaRows !== 0) {

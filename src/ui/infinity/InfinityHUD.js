@@ -398,12 +398,12 @@ export class InfinityHUD {
             </div>
             <div style="grid-column: span 2; height: 1px; background: rgba(100, 200, 255, 0.15); margin: 4px 0;"></div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Combo</span>
-                <span id="stat-combo" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
+                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Max Combo</span>
+                <span id="stat-max-combo" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Cascades</span>
-                <span id="stat-cascades" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
+                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Max Cascade</span>
+                <span id="stat-max-cascade" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
             </div>
         `;
 
@@ -717,22 +717,16 @@ export class InfinityHUD {
             }
         }
 
-        // Update max combo depth (these change rarely, so no caching needed)
-        const comboElem = document.getElementById('stat-combo');
-        if (comboElem && this.gameState.infinityStats) {
-            comboElem.textContent = this.gameState.infinityStats.maxComboDepth.toString();
+        // Update max combo (standard combo counter)
+        const maxComboElem = document.getElementById('stat-max-combo');
+        if (maxComboElem && this.gameState.infinityStats) {
+            maxComboElem.textContent = this.gameState.infinityStats.maxCombo.toString();
         }
 
-        // Update max combo complexity
-        const complexityElem = document.getElementById('stat-complexity');
-        if (complexityElem && this.gameState.infinityStats) {
-            complexityElem.textContent = this.gameState.infinityStats.maxComboComplexity.toString();
-        }
-
-        // Update total cascades
-        const cascadesElem = document.getElementById('stat-cascades');
-        if (cascadesElem && this.gameState.infinityStats) {
-            cascadesElem.textContent = this.gameState.infinityStats.totalCascades.toString();
+        // Update max cascade (cascade complexity)
+        const maxCascadeElem = document.getElementById('stat-max-cascade');
+        if (maxCascadeElem && this.gameState.infinityStats) {
+            maxCascadeElem.textContent = this.gameState.infinityStats.maxComboComplexity.toString();
         }
     }
 

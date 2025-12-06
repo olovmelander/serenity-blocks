@@ -502,11 +502,14 @@ export default class FallTheme extends BaseTheme {
             const c = palette[Math.floor(Math.random() * palette.length)];
             instColor[i * 3] = c.r; instColor[i * 3 + 1] = c.g; instColor[i * 3 + 2] = c.b;
 
-            instOffset[i * 3] = (Math.random() - 0.5) * 1400; // Wide X
-            instOffset[i * 3 + 1] = (Math.random() - 0.5) * 900; // Y
             // FULL DEPTH: -2000 to +200
-            // Spans from behind the furthest tree (-1800) to in front of camera
-            instOffset[i * 3 + 2] = (Math.random() * 2200) - 2000;
+            const z = (Math.random() * 2200) - 2000;
+            const dist = 100.0 - z; // Camera at Z=100
+            const visibleH = dist * 0.577; // tan(30deg)
+
+            instOffset[i * 3] = (Math.random() - 0.5) * visibleH * 3.0; // Wide X coverage
+            instOffset[i * 3 + 1] = (Math.random() - 0.5) * visibleH * 2.2; // Cover full screen height initially
+            instOffset[i * 3 + 2] = z;
 
             vel[i * 3] = (Math.random() - 0.5) * 15;
             vel[i * 3 + 1] = -(25 + Math.random() * 35);
@@ -754,11 +757,25 @@ export default class FallTheme extends BaseTheme {
             arr[i3 + 1] += vel[i3 + 1] * delta;
             arr[i3 + 2] += vel[i3 + 2] * delta;
 
-            if (arr[i3 + 1] < -500 || Math.abs(arr[i3]) > 1400) {
-                arr[i3] = (Math.random() - 0.5) * 1200;
-                arr[i3 + 1] = 500 + Math.random() * 200;
-                // Respawn at random depth to maintain volume
-                arr[i3 + 2] = (Math.random() * 2200) - 2000;
+            // Calculate View Frustum Bounds for this specific leaf's depth
+            // Camera Z = 100, FOV = 60 (half-angle tan ~0.577)
+            const z = arr[i3 + 2];
+            const dist = 100.0 - z;
+            const visibleY = dist * 0.577;
+            const bottomY = -visibleY - 100; // Buffer to ensure it's off-screen
+
+            if (arr[i3 + 1] < bottomY || Math.abs(arr[i3]) > visibleY * 2.5) {
+                // Pick new random depth first
+                const newZ = (Math.random() * 2200) - 2000;
+                const newDist = 100.0 - newZ;
+                const newVisibleY = newDist * 0.577;
+
+                // Spawn JUST ABOVE the visible top edge (Tight buffer)
+                // Offset by 20-60 units to ensures leaves enter smoothly without long gaps
+                arr[i3 + 1] = newVisibleY + 20 + Math.random() * 40;
+
+                arr[i3] = (Math.random() - 0.5) * (newVisibleY * 3.0); // Random X
+                arr[i3 + 2] = newZ;
             }
         }
         attr.needsUpdate = true;
