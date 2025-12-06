@@ -203,6 +203,7 @@ export class GameState {
             this.infinityStats = {
                 maxComboDepth: 0,
                 maxComboComplexity: 0,
+                maxCombo: 0,
                 totalCascades: 0,
                 rowsReached: 0,
                 blocksPlaced: 0,
