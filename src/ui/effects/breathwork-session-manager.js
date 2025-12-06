@@ -229,6 +229,177 @@ export class BreathworkSessionManager {
                         subPrompt: 'Drift into restoration. Allow whatever arises. You are complete.'
                     }
                 ]
+            },
+            REST: {
+                id: 'hale-rest',
+                name: 'Hale Rest',
+                description: 'A soothing practice with extended exhales to activate deep relaxation and prepare for sleep.',
+                duration: '15 min',
+                intensity: 'Gentle',
+                totalRounds: 3,
+                color: { r: 150, g: 130, b: 200 }, // Soft Purple
+                phases: [
+                    // Grounding
+                    {
+                        type: 'grounding',
+                        duration: 120,
+                        round: 0,
+                        prompt: 'Settling In',
+                        subPrompt: 'Let your body sink into wherever you are. Release the weight of the day.'
+                    },
+                    // Round 1
+                    {
+                        type: 'active',
+                        breaths: 10,
+                        pattern: [4, 0, 8, 2],
+                        round: 1,
+                        prompt: 'Round 1 • Extended Exhale',
+                        subPrompt: 'Gentle inhale through the nose. Slow, long exhale. Let go with each breath.'
+                    },
+                    {
+                        type: 'retention',
+                        duration: 20,
+                        round: 1,
+                        prompt: 'Gentle Pause',
+                        subPrompt: 'Rest in the stillness. No effort required.'
+                    },
+                    // Round 2
+                    {
+                        type: 'active',
+                        breaths: 12,
+                        pattern: [4, 0, 8, 3],
+                        round: 2,
+                        prompt: 'Round 2 • Deeper Relaxation',
+                        subPrompt: 'Each exhale softens your muscles. Each pause deepens your calm.'
+                    },
+                    {
+                        type: 'retention',
+                        duration: 25,
+                        round: 2,
+                        prompt: 'Restful Pause',
+                        subPrompt: 'Float in the quiet space. You are safe here.'
+                    },
+                    // Round 3
+                    {
+                        type: 'active',
+                        breaths: 15,
+                        pattern: [4, 0, 8, 4],
+                        round: 3,
+                        prompt: 'Round 3 • Surrender',
+                        subPrompt: 'Breath becomes effortless. Body becomes light. Mind becomes still.'
+                    },
+                    {
+                        type: 'retention',
+                        duration: 30,
+                        round: 3,
+                        prompt: 'Deep Rest',
+                        subPrompt: 'Drift into stillness. There is nowhere to go, nothing to do.'
+                    },
+                    // Integration
+                    {
+                        type: 'integration',
+                        duration: 300,
+                        round: 0,
+                        prompt: 'Sleep Integration',
+                        subPrompt: 'Natural breath now. Allow yourself to drift. Sweet dreams await.'
+                    }
+                ]
+            },
+            FLOW: {
+                id: 'hale-flow',
+                name: 'Hale Flow',
+                description: 'A balanced box breathing practice that creates equilibrium and cultivates rhythmic awareness.',
+                duration: '18 min',
+                intensity: 'Moderate',
+                totalRounds: 3,
+                color: { r: 100, g: 220, b: 180 }, // Balanced Teal
+                phases: [
+                    // Grounding
+                    {
+                        type: 'grounding',
+                        duration: 120,
+                        round: 0,
+                        prompt: 'Finding Center',
+                        subPrompt: 'Notice your heartbeat. Let it guide you to presence.'
+                    },
+                    // Round 1
+                    {
+                        type: 'active',
+                        breaths: 12,
+                        pattern: [4, 4, 4, 4],
+                        round: 1,
+                        prompt: 'Round 1 • Box Breathing',
+                        subPrompt: 'Inhale 4. Hold 4. Exhale 4. Hold 4. Find your rhythm.'
+                    },
+                    {
+                        type: 'retention',
+                        duration: 30,
+                        round: 1,
+                        prompt: 'Flow State',
+                        subPrompt: 'Let the rhythm continue in your body. Natural, effortless.'
+                    },
+                    {
+                        type: 'recovery',
+                        duration: 15,
+                        round: 1,
+                        prompt: 'Reset',
+                        subPrompt: 'One deep breath. Feel the balance.'
+                    },
+                    // Round 2
+                    {
+                        type: 'active',
+                        breaths: 15,
+                        pattern: [5, 5, 5, 5],
+                        round: 2,
+                        prompt: 'Round 2 • Expand the Box',
+                        subPrompt: 'Longer counts now. Inhale 5. Hold 5. Exhale 5. Hold 5.'
+                    },
+                    {
+                        type: 'retention',
+                        duration: 40,
+                        round: 2,
+                        prompt: 'Deeper Flow',
+                        subPrompt: 'You are the breath. The breath is you. Unity.'
+                    },
+                    {
+                        type: 'recovery',
+                        duration: 15,
+                        round: 2,
+                        prompt: 'Recenter',
+                        subPrompt: 'One cleansing breath. Fully present.'
+                    },
+                    // Round 3
+                    {
+                        type: 'active',
+                        breaths: 18,
+                        pattern: [6, 6, 6, 6],
+                        round: 3,
+                        prompt: 'Round 3 • Master Box',
+                        subPrompt: 'Full expansion. Inhale 6. Hold 6. Exhale 6. Hold 6. Perfect balance.'
+                    },
+                    {
+                        type: 'retention',
+                        duration: 60,
+                        round: 3,
+                        prompt: 'Peak Flow',
+                        subPrompt: 'Complete equilibrium. Mind clear as still water.'
+                    },
+                    {
+                        type: 'recovery',
+                        duration: 15,
+                        round: 3,
+                        prompt: 'Final Balance',
+                        subPrompt: 'One conscious breath. Carry this balance with you.'
+                    },
+                    // Integration
+                    {
+                        type: 'integration',
+                        duration: 240,
+                        round: 0,
+                        prompt: 'Flow Integration',
+                        subPrompt: 'Return to natural rhythm. You are balanced. You are present.'
+                    }
+                ]
             }
         };
     }

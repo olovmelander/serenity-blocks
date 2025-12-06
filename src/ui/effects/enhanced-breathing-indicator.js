@@ -522,25 +522,33 @@ export class EnhancedBreathingIndicator {
     }
 
     /**
-     * Set session-specific color theme
-     * @param {string} sessionType - 'BASE' or 'ELIXIR'
-     */
+ * Set session-specific color theme
+ * @param {string} sessionType - 'BASE', 'ELIXIR', 'REST', or 'FLOW'
+ */
     setSessionTheme(sessionType) {
+        // Clear all session classes first
+        this.indicator.classList.remove('session-base', 'session-elixir', 'session-rest', 'session-flow');
+
         if (sessionType === 'BASE') {
             this.sessionColor = { r: 100, g: 200, b: 255 }; // Calm blue
             this.sessionGlow = 'rgba(100, 200, 255, 0.4)';
-            this.indicator.classList.remove('session-elixir');
             this.indicator.classList.add('session-base');
         } else if (sessionType === 'ELIXIR') {
             this.sessionColor = { r: 255, g: 100, b: 100 }; // Energetic red
             this.sessionGlow = 'rgba(255, 100, 100, 0.4)';
-            this.indicator.classList.remove('session-base');
             this.indicator.classList.add('session-elixir');
+        } else if (sessionType === 'REST') {
+            this.sessionColor = { r: 150, g: 130, b: 200 }; // Soft purple
+            this.sessionGlow = 'rgba(150, 130, 200, 0.4)';
+            this.indicator.classList.add('session-rest');
+        } else if (sessionType === 'FLOW') {
+            this.sessionColor = { r: 100, g: 220, b: 180 }; // Balanced teal
+            this.sessionGlow = 'rgba(100, 220, 180, 0.4)';
+            this.indicator.classList.add('session-flow');
         } else {
             // Clear session theme
             this.sessionColor = null;
             this.sessionGlow = null;
-            this.indicator.classList.remove('session-base', 'session-elixir');
         }
     }
 
