@@ -57,16 +57,21 @@ function createLeafTexture() {
         ctx.fill();
     }
 
-    // Veins
+    // Veins - adjusted to stay within the maple leaf boundary
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = 'rgba(80, 40, 0, 0.5)';
     ctx.lineWidth = 1.0;
     ctx.beginPath();
     ctx.moveTo(0, 30); ctx.lineTo(0, -26);
-    for (let i = 1; i <= 3; i++) {
-        const y = 20 - i * 10;
-        ctx.moveTo(0, y); ctx.lineTo(15 + i * 2, y - 15);
-        ctx.moveTo(0, y); ctx.lineTo(-(15 + i * 2), y - 15);
+    // Vein lengths decrease as we go higher to stay within leaf shape
+    const veinConfigs = [
+        { y: 10, xEnd: 16, yOffset: -10 },   // Bottom vein - longest
+        { y: 0, xEnd: 14, yOffset: -10 },    // Middle vein
+        { y: -10, xEnd: 10, yOffset: -6 },   // Top vein - shortest to stay in leaf
+    ];
+    for (const vein of veinConfigs) {
+        ctx.moveTo(0, vein.y); ctx.lineTo(vein.xEnd, vein.y + vein.yOffset);
+        ctx.moveTo(0, vein.y); ctx.lineTo(-vein.xEnd, vein.y + vein.yOffset);
     }
     ctx.stroke();
 
@@ -74,66 +79,343 @@ function createLeafTexture() {
     return tex;
 }
 
-function createBarkTexture() {
+function createBarkPBRTextures() {
     if (typeof document === 'undefined') return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 512;
-    const ctx = canvas.getContext('2d');
 
-    // Base Brown
-    ctx.fillStyle = '#3a2010';
-    ctx.fillRect(0, 0, 512, 512);
+    const SIZE = 512;
 
-    // Vertical Ridges (Displacement) - High Contrast
-    for (let i = 0; i < 80; i++) {
-        const x = Math.random() * 512;
-        const w = 10 + Math.random() * 40; // Wider ridges
-        // Darker deep cracks
-        ctx.fillStyle = `rgba(0,0,0, ${0.7 + Math.random() * 0.3})`;
-        ctx.fillRect(x, 0, w, 512);
+    // Create canvases for each PBR map
+    const colorCanvas = document.createElement('canvas');
+    const heightCanvas = document.createElement('canvas');
+    const normalCanvas = document.createElement('canvas');
+    const roughnessCanvas = document.createElement('canvas');
+    const aoCanvas = document.createElement('canvas');
 
-        // Brighter highlights for ridges (Side lighting simulation)
-        const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-        grad.addColorStop(0, 'rgba(255,255,255,0.0)');
-        grad.addColorStop(0.1, 'rgba(255,255,255,0.4)'); // Highlight edge
-        grad.addColorStop(1, 'rgba(0,0,0,0.5)'); // Shadow edge
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, 0, w, 512);
+    [colorCanvas, heightCanvas, normalCanvas, roughnessCanvas, aoCanvas].forEach(c => {
+        c.width = SIZE;
+        c.height = SIZE;
+    });
+
+    const colorCtx = colorCanvas.getContext('2d');
+    const heightCtx = heightCanvas.getContext('2d');
+    const roughnessCtx = roughnessCanvas.getContext('2d');
+    const aoCtx = aoCanvas.getContext('2d');
+    const normalCtx = normalCanvas.getContext('2d');
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. GENERATE HEIGHT MAP - Organic scaly bark pattern
+    // ─────────────────────────────────────────────────────────────────────────
+    // Start with dark base (the deep fissures)
+    heightCtx.fillStyle = '#202020';
+    heightCtx.fillRect(0, 0, SIZE, SIZE);
+
+    // Create organic bark scales/ridges using overlapping rounded shapes
+    // Similar to fish scales or tree bark plates
+    const scaleRows = 18;
+    const scalesPerRow = 12;
+    const baseScaleHeight = SIZE / scaleRows;
+    const baseScaleWidth = SIZE / scalesPerRow;
+
+    // Draw scales from bottom to top so upper ones overlap lower ones
+    for (let row = scaleRows + 1; row >= -1; row--) {
+        const rowOffset = (row % 2) * (baseScaleWidth * 0.5); // Stagger every other row
+
+        for (let col = -1; col <= scalesPerRow + 1; col++) {
+            const centerX = col * baseScaleWidth + rowOffset + (Math.random() - 0.5) * 15;
+            const centerY = row * baseScaleHeight + (Math.random() - 0.5) * 10;
+
+            // Varied scale dimensions
+            const scaleW = baseScaleWidth * (0.8 + Math.random() * 0.5);
+            const scaleH = baseScaleHeight * (0.9 + Math.random() * 0.4);
+            const brightness = 80 + Math.random() * 100;
+
+            // Draw the main scale body - rounded rectangle/ellipse hybrid
+            heightCtx.save();
+            heightCtx.translate(centerX, centerY);
+            heightCtx.rotate((Math.random() - 0.5) * 0.15); // Slight random rotation
+
+            // Scale gradient - bright at top, dark at bottom edge (creates depth)
+            const scaleGrad = heightCtx.createLinearGradient(0, -scaleH * 0.4, 0, scaleH * 0.5);
+            scaleGrad.addColorStop(0, `rgb(${brightness + 40}, ${brightness + 40}, ${brightness + 40})`);
+            scaleGrad.addColorStop(0.3, `rgb(${brightness + 20}, ${brightness + 20}, ${brightness + 20})`);
+            scaleGrad.addColorStop(0.7, `rgb(${brightness - 10}, ${brightness - 10}, ${brightness - 10})`);
+            scaleGrad.addColorStop(1, `rgb(${brightness - 40}, ${brightness - 40}, ${brightness - 40})`);
+
+            heightCtx.fillStyle = scaleGrad;
+
+            // Draw organic curved scale shape (like a rounded shield/scale)
+            heightCtx.beginPath();
+            heightCtx.moveTo(0, -scaleH * 0.45);
+            // Top curve
+            heightCtx.bezierCurveTo(
+                scaleW * 0.4, -scaleH * 0.4,
+                scaleW * 0.5, -scaleH * 0.1,
+                scaleW * 0.45, scaleH * 0.2
+            );
+            // Right side curve down
+            heightCtx.bezierCurveTo(
+                scaleW * 0.4, scaleH * 0.4,
+                scaleW * 0.15, scaleH * 0.5,
+                0, scaleH * 0.45
+            );
+            // Left side mirror
+            heightCtx.bezierCurveTo(
+                -scaleW * 0.15, scaleH * 0.5,
+                -scaleW * 0.4, scaleH * 0.4,
+                -scaleW * 0.45, scaleH * 0.2
+            );
+            heightCtx.bezierCurveTo(
+                -scaleW * 0.5, -scaleH * 0.1,
+                -scaleW * 0.4, -scaleH * 0.4,
+                0, -scaleH * 0.45
+            );
+            heightCtx.closePath();
+            heightCtx.fill();
+
+            // Add inner texture ridges on each scale
+            for (let ridge = 0; ridge < 3 + Math.random() * 3; ridge++) {
+                const rx = (Math.random() - 0.5) * scaleW * 0.6;
+                const ry = -scaleH * 0.2 + Math.random() * scaleH * 0.5;
+                const rw = 4 + Math.random() * 8;
+                const rh = 6 + Math.random() * 15;
+                const rb = brightness + 30 + Math.random() * 40;
+
+                const ridgeGrad = heightCtx.createRadialGradient(rx, ry, 0, rx, ry, Math.max(rw, rh));
+                ridgeGrad.addColorStop(0, `rgb(${rb}, ${rb}, ${rb})`);
+                ridgeGrad.addColorStop(0.5, `rgb(${brightness + 10}, ${brightness + 10}, ${brightness + 10})`);
+                ridgeGrad.addColorStop(1, `rgba(${brightness}, ${brightness}, ${brightness}, 0)`);
+
+                heightCtx.fillStyle = ridgeGrad;
+                heightCtx.beginPath();
+                heightCtx.ellipse(rx, ry, rw, rh, Math.random() * Math.PI, 0, Math.PI * 2);
+                heightCtx.fill();
+            }
+
+            heightCtx.restore();
+        }
     }
 
-    // Noise / Cracks
-    for (let i = 0; i < 2000; i++) {
-        const x = Math.random() * 512;
-        const y = Math.random() * 512;
-        ctx.fillStyle = 'rgba(0,0,0,0.9)';
-        ctx.fillRect(x, y, 3, 15 + Math.random() * 30);
+    // Add deep irregular fissures/cracks between bark sections
+    for (let i = 0; i < 25; i++) {
+        const startX = Math.random() * SIZE;
+        const startY = Math.random() * SIZE;
+
+        heightCtx.strokeStyle = `rgb(${15 + Math.random() * 15}, ${15 + Math.random() * 15}, ${15 + Math.random() * 15})`;
+        heightCtx.lineWidth = 3 + Math.random() * 5;
+        heightCtx.lineCap = 'round';
+
+        heightCtx.beginPath();
+        heightCtx.moveTo(startX, startY);
+
+        // Draw irregular crack path
+        let px = startX, py = startY;
+        const segments = 3 + Math.floor(Math.random() * 5);
+        const isVertical = Math.random() > 0.3; // More vertical cracks like real bark
+
+        for (let s = 0; s < segments; s++) {
+            if (isVertical) {
+                px += (Math.random() - 0.5) * 30;
+                py += 20 + Math.random() * 40;
+            } else {
+                px += 20 + Math.random() * 50;
+                py += (Math.random() - 0.5) * 20;
+            }
+            heightCtx.lineTo(px, py);
+        }
+        heightCtx.stroke();
     }
 
-    // KNOTS (New Feature for User Reference)
-    for (let i = 0; i < 30; i++) {
-        const x = Math.random() * 512;
-        const y = Math.random() * 512;
-        const r = 10 + Math.random() * 20;
+    // Add some raised bumpy texture throughout
+    for (let i = 0; i < 200; i++) {
+        const bx = Math.random() * SIZE;
+        const by = Math.random() * SIZE;
+        const br = 2 + Math.random() * 5;
+        const bb = 140 + Math.random() * 80;
 
-        // Knot dark center
-        ctx.fillStyle = 'rgba(20,10,5,0.9)';
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Knot Highlight rings
-        ctx.strokeStyle = 'rgba(100,60,30,0.5)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(x, y, r + 2, 0, Math.PI * 2);
-        ctx.stroke();
+        const bumpGrad = heightCtx.createRadialGradient(bx, by, 0, bx, by, br);
+        bumpGrad.addColorStop(0, `rgb(${bb}, ${bb}, ${bb})`);
+        bumpGrad.addColorStop(1, `rgba(${bb - 40}, ${bb - 40}, ${bb - 40}, 0)`);
+        heightCtx.fillStyle = bumpGrad;
+        heightCtx.beginPath();
+        heightCtx.arc(bx, by, br, 0, Math.PI * 2);
+        heightCtx.fill();
     }
 
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(3, 20); // Denser repeat to prevent stretching
-    return tex;
+    // Knots with organic concentric rings
+    for (let i = 0; i < 2; i++) {
+        const kx = 80 + Math.random() * (SIZE - 160);
+        const ky = 80 + Math.random() * (SIZE - 160);
+        const kr = 25 + Math.random() * 30;
+
+        // Outer raised ring
+        for (let ring = 0; ring < 4; ring++) {
+            const ringR = kr + 5 + ring * 6;
+            const ringB = 120 + ring * 20;
+            heightCtx.strokeStyle = `rgb(${ringB}, ${ringB}, ${ringB})`;
+            heightCtx.lineWidth = 5 - ring;
+            heightCtx.beginPath();
+            heightCtx.arc(kx, ky, ringR, 0, Math.PI * 2);
+            heightCtx.stroke();
+        }
+
+        // Dark recessed center
+        const knotGrad = heightCtx.createRadialGradient(kx, ky, 0, kx, ky, kr);
+        knotGrad.addColorStop(0, 'rgb(15, 15, 15)');
+        knotGrad.addColorStop(0.5, 'rgb(35, 35, 35)');
+        knotGrad.addColorStop(0.8, 'rgb(55, 55, 55)');
+        knotGrad.addColorStop(1, 'rgb(70, 70, 70)');
+        heightCtx.fillStyle = knotGrad;
+        heightCtx.beginPath();
+        heightCtx.arc(kx, ky, kr, 0, Math.PI * 2);
+        heightCtx.fill();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. GENERATE NORMAL MAP from height map using Sobel-like gradients
+    // ─────────────────────────────────────────────────────────────────────────
+    const heightData = heightCtx.getImageData(0, 0, SIZE, SIZE);
+    const normalData = normalCtx.createImageData(SIZE, SIZE);
+
+    const getHeight = (x, y) => {
+        x = ((x % SIZE) + SIZE) % SIZE;
+        y = ((y % SIZE) + SIZE) % SIZE;
+        return heightData.data[(y * SIZE + x) * 4] / 255;
+    };
+
+    const strength = 2.5; // Normal intensity - increased for more dramatic lighting
+
+    for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+            // Sobel operator for gradient
+            const tl = getHeight(x - 1, y - 1);
+            const t = getHeight(x, y - 1);
+            const tr = getHeight(x + 1, y - 1);
+            const l = getHeight(x - 1, y);
+            const r = getHeight(x + 1, y);
+            const bl = getHeight(x - 1, y + 1);
+            const b = getHeight(x, y + 1);
+            const br = getHeight(x + 1, y + 1);
+
+            const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
+            const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
+
+            // Compute normal
+            let nx = -dx * strength;
+            let ny = -dy * strength;
+            let nz = 1.0;
+
+            // Normalize
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+            nx /= len;
+            ny /= len;
+            nz /= len;
+
+            // Map to 0-255 (normal map format: RGB = XYZ mapped from -1,1 to 0,255)
+            const idx = (y * SIZE + x) * 4;
+            normalData.data[idx] = Math.floor((nx * 0.5 + 0.5) * 255);
+            normalData.data[idx + 1] = Math.floor((ny * 0.5 + 0.5) * 255);
+            normalData.data[idx + 2] = Math.floor((nz * 0.5 + 0.5) * 255);
+            normalData.data[idx + 3] = 255;
+        }
+    }
+    normalCtx.putImageData(normalData, 0, 0);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. GENERATE COLOR MAP (cool gray-brown like reference)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Cool gray-brown base
+    colorCtx.fillStyle = '#5a5045';
+    colorCtx.fillRect(0, 0, SIZE, SIZE);
+
+    // Use height data to modulate color (raised = lighter, cracks = darker)
+    const colorData = colorCtx.getImageData(0, 0, SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const h = heightData.data[i * 4] / 255;
+        const idx = i * 4;
+
+        // Base colors - cool grayish brown
+        const baseR = 75 + Math.random() * 15;
+        const baseG = 65 + Math.random() * 15;
+        const baseB = 55 + Math.random() * 15;
+
+        // Modulate based on height
+        const factor = 0.4 + h * 0.8;
+        colorData.data[idx] = Math.min(255, Math.floor(baseR * factor));
+        colorData.data[idx + 1] = Math.min(255, Math.floor(baseG * factor));
+        colorData.data[idx + 2] = Math.min(255, Math.floor(baseB * factor));
+        colorData.data[idx + 3] = 255;
+    }
+    colorCtx.putImageData(colorData, 0, 0);
+
+    // Add slight greenish patches (lichen/moss)
+    for (let i = 0; i < 8; i++) {
+        const x = Math.random() * SIZE;
+        const y = Math.random() * SIZE;
+        const r = 15 + Math.random() * 30;
+        const mossGrad = colorCtx.createRadialGradient(x, y, 0, x, y, r);
+        mossGrad.addColorStop(0, 'rgba(60, 70, 50, 0.25)');
+        mossGrad.addColorStop(1, 'rgba(60, 70, 50, 0)');
+        colorCtx.fillStyle = mossGrad;
+        colorCtx.beginPath();
+        colorCtx.arc(x, y, r, 0, Math.PI * 2);
+        colorCtx.fill();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 4. GENERATE ROUGHNESS MAP (cracks = rougher/white, raised = smoother/darker)
+    // ─────────────────────────────────────────────────────────────────────────
+    const roughnessData = roughnessCtx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const h = heightData.data[i * 4] / 255;
+        const idx = i * 4;
+
+        // Invert height: low areas (cracks) = high roughness (white)
+        // Add some noise for variation
+        const noise = (Math.random() - 0.5) * 25;
+        const roughness = Math.max(0, Math.min(255, (1 - h) * 180 + 70 + noise));
+
+        roughnessData.data[idx] = roughness;
+        roughnessData.data[idx + 1] = roughness;
+        roughnessData.data[idx + 2] = roughness;
+        roughnessData.data[idx + 3] = 255;
+    }
+    roughnessCtx.putImageData(roughnessData, 0, 0);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 5. GENERATE AO MAP (darker in cracks/crevices)
+    // ─────────────────────────────────────────────────────────────────────────
+    const aoData = aoCtx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const h = heightData.data[i * 4] / 255;
+        const idx = i * 4;
+
+        // Low = dark (occluded), high = light (exposed)
+        const ao = Math.floor(h * 180 + 75); // Range 75-255
+
+        aoData.data[idx] = ao;
+        aoData.data[idx + 1] = ao;
+        aoData.data[idx + 2] = ao;
+        aoData.data[idx + 3] = 255;
+    }
+    aoCtx.putImageData(aoData, 0, 0);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 6. CREATE THREE.JS TEXTURES
+    // ─────────────────────────────────────────────────────────────────────────
+    const wrapAndRepeat = (tex) => {
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(2, 8); // Less vertical repeat for horizontal plate pattern
+        return tex;
+    };
+
+    return {
+        colorMap: wrapAndRepeat(new THREE.CanvasTexture(colorCanvas)),
+        normalMap: wrapAndRepeat(new THREE.CanvasTexture(normalCanvas)),
+        roughnessMap: wrapAndRepeat(new THREE.CanvasTexture(roughnessCanvas)),
+        aoMap: wrapAndRepeat(new THREE.CanvasTexture(aoCanvas)),
+        heightMap: wrapAndRepeat(new THREE.CanvasTexture(heightCanvas)),
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,7 +622,7 @@ export default class FallTheme extends BaseTheme {
         if (typeof document === 'undefined') return;
         this.applyQualityPreset(this.getCurrentQualityLevel());
         this.texture = createLeafTexture();
-        this.barkTexture = createBarkTexture(); // Generate Bark
+        this.barkTextures = createBarkPBRTextures(); // Generate PBR Bark textures
 
         const container = document.getElementById('fall-theme');
         if (!container) return;
@@ -434,19 +716,26 @@ export default class FallTheme extends BaseTheme {
 
     createHeroTrees() {
         // 5 TREES WITH DEPTH & ROOTS - TALLER (5000 units) to go off-screen
-        // Cylinder that widens at bottom for roots
-        const geo = new THREE.CylinderGeometry(70, 160, 5000, 64, 100, true);
+        // Cylinder that widens at bottom for roots - higher segment count for displacement
+        const geo = new THREE.CylinderGeometry(70, 160, 5000, 64, 150, true);
 
-        // High displacement material
+        // Add UV2 for AO map (required by Three.js)
+        geo.setAttribute('uv2', geo.getAttribute('uv').clone());
+
+        // Enhanced PBR material with separate texture maps
+        const bark = this.barkTextures;
         const mat = new THREE.MeshStandardMaterial({
-            map: this.barkTexture,
-            displacementMap: this.barkTexture,
-            displacementScale: 40.0, // EXTRA POP
-            normalMap: this.barkTexture, // Use as normal map too for lighting
-            normalScale: new THREE.Vector2(2, 2),
-            roughness: 0.8,
-            metalness: 0.1,
-            color: 0x6a4030,
+            map: bark.colorMap,
+            normalMap: bark.normalMap,
+            normalScale: new THREE.Vector2(1.5, 1.5),
+            roughnessMap: bark.roughnessMap,
+            roughness: 0.9,
+            aoMap: bark.aoMap,
+            aoMapIntensity: 0.7,
+            displacementMap: bark.heightMap,
+            displacementScale: 25.0,
+            metalness: 0.0,
+            color: 0x8a5535,
             side: THREE.FrontSide
         });
 
