@@ -285,6 +285,12 @@ export const THEME_REGISTRY = [
         icon: './neon-dusk/neon-dusk-theme-icon.png',
     },
     {
+        id: 'neon-district',
+        displayName: 'Neon District',
+        module: './neon-district/neon-district-theme.js',
+        group: 'urban',
+    },
+    {
         id: 'synthwave-sunset',
         displayName: 'Synthwave Sunset',
         module: './synthwave-sunset/synthwave-sunset-theme.js',
