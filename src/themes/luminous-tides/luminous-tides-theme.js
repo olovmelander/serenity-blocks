@@ -1,192 +1,885 @@
 /**
- * Luminous Tides Theme - Enhanced Bioluminescent Deep Ocean
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  ✧ LUMINOUS TIDES - Premium 3D Bioluminescent Ocean ✧
+ *  A Three.js Theme for Serenity Blocks
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
  * Features:
- * - Advanced WebGL wave simulation with realistic physics
- * - Mesmerizing bioluminescent glow effects
- * - Atmospheric depth and lighting
- * - Subtle autonomous wave motion
- * - Dynamic game event reactions
- * - Deep ocean mystery and tranquility
+ * - Realistic 3D ocean with Gerstner wave vertex displacement
+ * - Bioluminescent glow effects using custom shaders
+ * - Dynamic underwater lighting and caustics
+ * - Floating bioluminescent particles (plankton)
+ * - Atmospheric fog and depth effects
+ * - Post-processing: Bloom, Vignette
+ * - Responsive game event reactions
+ *
+ * Inspired by:
+ * - Three.js Water techniques
+ * - Gerstner/Trochoidal wave algorithms
+ * - Deep ocean bioluminescence
  */
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import WaveSimulator, { WAVE_QUALITY_PRESETS } from '../../utils/webgl/wave-simulator.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { LUMINOUS_TIDES_TETROMINOS } from './luminous-tides-tetrominos.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+const QUALITY_PRESETS = {
+    Extreme: {
+        waterSegments: 256,
+        particleCount: 2000,
+        planktonCount: 800,
+        bloomStrength: 0.6,
+        bloomRadius: 0.8,
+        enablePostProcessing: true,
+        enableCaustics: true,
+    },
+    Ultra: {
+        waterSegments: 192,
+        particleCount: 1500,
+        planktonCount: 600,
+        bloomStrength: 0.55,
+        bloomRadius: 0.7,
+        enablePostProcessing: true,
+        enableCaustics: true,
+    },
+    High: {
+        waterSegments: 128,
+        particleCount: 1000,
+        planktonCount: 400,
+        bloomStrength: 0.5,
+        bloomRadius: 0.6,
+        enablePostProcessing: true,
+        enableCaustics: true,
+    },
+    Medium: {
+        waterSegments: 96,
+        particleCount: 600,
+        planktonCount: 250,
+        bloomStrength: 0.45,
+        bloomRadius: 0.5,
+        enablePostProcessing: true,
+        enableCaustics: false,
+    },
+    Low: {
+        waterSegments: 64,
+        particleCount: 300,
+        planktonCount: 100,
+        bloomStrength: 0.4,
+        bloomRadius: 0.4,
+        enablePostProcessing: false,
+        enableCaustics: false,
+    },
+    Minimal: {
+        waterSegments: 48,
+        particleCount: 150,
+        planktonCount: 50,
+        bloomStrength: 0.3,
+        bloomRadius: 0.3,
+        enablePostProcessing: false,
+        enableCaustics: false,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vignette Shader
+// ─────────────────────────────────────────────────────────────────────────────
+const VignetteShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        darkness: { value: 0.6 },
+        offset: { value: 1.2 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float darkness;
+        uniform float offset;
+        varying vec2 vUv;
+        
+        void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            vec2 uv = (vUv - 0.5) * 2.0;
+            float dist = length(uv);
+            float vig = smoothstep(offset, offset - 0.7, dist);
+            texel.rgb = mix(texel.rgb * (1.0 - darkness), texel.rgb, vig);
+            gl_FragColor = texel;
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gerstner Wave Water Shader
+// ─────────────────────────────────────────────────────────────────────────────
+const OceanShader = {
+    uniforms: {
+        uTime: { value: 0 },
+        uDepthColor: { value: new THREE.Color(0x000a14) },
+        uSurfaceColor: { value: new THREE.Color(0x0a3050) },
+        uGlowColor: { value: new THREE.Color(0x00ffff) },
+        uFoamColor: { value: new THREE.Color(0x40e0d0) },
+        uBigWavesElevation: { value: 0.15 },
+        uBigWavesFrequency: { value: new THREE.Vector2(3.0, 1.5) },
+        uBigWavesSpeed: { value: 0.75 },
+        uSmallWavesElevation: { value: 0.1 },
+        uSmallWavesFrequency: { value: 3.0 },
+        uSmallWavesSpeed: { value: 0.15 },
+        uSmallWavesIterations: { value: 3 },
+        uDepthOffset: { value: 0.08 },
+        uDepthMultiplier: { value: 4.0 },
+        uColorOffset: { value: 0.25 },
+        uColorMultiplier: { value: 3.0 },
+        uGlowIntensity: { value: 0.0 },
+        uGlowWave: { value: new THREE.Vector3(0.5, 0.5, 0.0) },
+        uCausticsIntensity: { value: 0.3 },
+        uAmbientLight: { value: 0.15 },
+        uFogNear: { value: 1.0 },
+        uFogFar: { value: 12.0 },
+        uFogColor: { value: new THREE.Color(0x000408) },
+    },
+    vertexShader: `
+        uniform float uTime;
+        uniform float uBigWavesElevation;
+        uniform vec2 uBigWavesFrequency;
+        uniform float uBigWavesSpeed;
+        uniform float uSmallWavesElevation;
+        uniform float uSmallWavesFrequency;
+        uniform float uSmallWavesSpeed;
+        uniform int uSmallWavesIterations;
+        
+        varying float vElevation;
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        varying vec2 vUv;
+        
+        // Classic Perlin 3D Noise
+        vec4 permute(vec4 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+        vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+        vec3 fade(vec3 t) { return t*t*t*(t*(t*6.0-15.0)+10.0); }
+        
+        float cnoise(vec3 P) {
+            vec3 Pi0 = floor(P);
+            vec3 Pi1 = Pi0 + vec3(1.0);
+            Pi0 = mod(Pi0, 289.0);
+            Pi1 = mod(Pi1, 289.0);
+            vec3 Pf0 = fract(P);
+            vec3 Pf1 = Pf0 - vec3(1.0);
+            vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+            vec4 iy = vec4(Pi0.yy, Pi1.yy);
+            vec4 iz0 = Pi0.zzzz;
+            vec4 iz1 = Pi1.zzzz;
+            vec4 ixy = permute(permute(ix) + iy);
+            vec4 ixy0 = permute(ixy + iz0);
+            vec4 ixy1 = permute(ixy + iz1);
+            vec4 gx0 = ixy0 / 7.0;
+            vec4 gy0 = fract(floor(gx0) / 7.0) - 0.5;
+            gx0 = fract(gx0);
+            vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+            vec4 sz0 = step(gz0, vec4(0.0));
+            gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+            gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+            vec4 gx1 = ixy1 / 7.0;
+            vec4 gy1 = fract(floor(gx1) / 7.0) - 0.5;
+            gx1 = fract(gx1);
+            vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+            vec4 sz1 = step(gz1, vec4(0.0));
+            gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+            gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+            vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+            vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+            vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+            vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+            vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+            vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+            vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+            vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+            vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
+            g000 *= norm0.x; g010 *= norm0.y; g100 *= norm0.z; g110 *= norm0.w;
+            vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
+            g001 *= norm1.x; g011 *= norm1.y; g101 *= norm1.z; g111 *= norm1.w;
+            float n000 = dot(g000, Pf0);
+            float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+            float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+            float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+            float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
+            float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+            float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
+            float n111 = dot(g111, Pf1);
+            vec3 fade_xyz = fade(Pf0);
+            vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+            vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+            float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x);
+            return 2.2 * n_xyz;
+        }
+        
+        // Gerstner Wave Function
+        vec3 gerstnerWave(vec2 direction, float steepness, float wavelength, vec3 p, inout vec3 tangent, inout vec3 binormal) {
+            float k = 2.0 * 3.14159265 / wavelength;
+            float c = sqrt(9.8 / k);
+            vec2 d = normalize(direction);
+            float f = k * (dot(d, p.xz) - c * uTime * uBigWavesSpeed);
+            float a = steepness / k;
+            
+            tangent += vec3(
+                -d.x * d.x * (steepness * sin(f)),
+                d.x * (steepness * cos(f)),
+                -d.x * d.y * (steepness * sin(f))
+            );
+            binormal += vec3(
+                -d.x * d.y * (steepness * sin(f)),
+                d.y * (steepness * cos(f)),
+                -d.y * d.y * (steepness * sin(f))
+            );
+            
+            return vec3(
+                d.x * (a * cos(f)),
+                a * sin(f),
+                d.y * (a * cos(f))
+            );
+        }
+        
+        void main() {
+            vUv = uv;
+            vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+            
+            vec3 tangent = vec3(1.0, 0.0, 0.0);
+            vec3 binormal = vec3(0.0, 0.0, 1.0);
+            vec3 p = modelPosition.xyz;
+            
+            // 8 layered Gerstner waves for ultra-realistic rolling ocean
+            vec3 waveOffset = vec3(0.0);
+            
+            // Primary swell - large rolling waves moving diagonally across screen
+            waveOffset += gerstnerWave(vec2(1.0, 0.6), 0.35, 25.0, p, tangent, binormal);
+            waveOffset += gerstnerWave(vec2(0.8, 1.0), 0.30, 18.0, p, tangent, binormal);
+            
+            // Secondary swells - crossing waves for complexity
+            waveOffset += gerstnerWave(vec2(-0.5, 0.9), 0.22, 12.0, p, tangent, binormal);
+            waveOffset += gerstnerWave(vec2(0.9, -0.3), 0.18, 9.0, p, tangent, binormal);
+            
+            // Medium waves - add texture and detail
+            waveOffset += gerstnerWave(vec2(0.6, 0.8), 0.14, 6.0, p, tangent, binormal);
+            waveOffset += gerstnerWave(vec2(-0.7, 0.5), 0.10, 4.5, p, tangent, binormal);
+            
+            // Small ripples - fine detail
+            waveOffset += gerstnerWave(vec2(0.4, -0.6), 0.06, 3.0, p, tangent, binormal);
+            waveOffset += gerstnerWave(vec2(-0.3, -0.8), 0.04, 2.0, p, tangent, binormal);
+            
+            modelPosition.xyz += waveOffset * uBigWavesElevation;
+            
+            // Small waves (detail noise) - reduced for cleaner look
+            float smallWaves = 0.0;
+            for(int i = 0; i < 3; i++) {
+                if(i >= uSmallWavesIterations) break;
+                float freq = uSmallWavesFrequency * pow(2.0, float(i));
+                float amp = 1.0 / pow(2.0, float(i) + 1.5);
+                smallWaves += cnoise(vec3(
+                    modelPosition.xz * freq * 0.3,
+                    uTime * uSmallWavesSpeed
+                )) * amp;
+            }
+            
+            modelPosition.y += smallWaves * uSmallWavesElevation * 0.5;
+            
+            // Calculate proper normal from tangent and binormal
+            vec3 normal = normalize(cross(binormal, tangent));
+            
+            vElevation = modelPosition.y;
+            vNormal = normalize(normalMatrix * normal);
+            vPosition = modelPosition.xyz;
+            
+            vec4 viewPosition = viewMatrix * modelPosition;
+            gl_Position = projectionMatrix * viewPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uDepthColor;
+        uniform vec3 uSurfaceColor;
+        uniform vec3 uGlowColor;
+        uniform vec3 uFoamColor;
+        uniform float uDepthOffset;
+        uniform float uDepthMultiplier;
+        uniform float uColorOffset;
+        uniform float uColorMultiplier;
+        uniform float uGlowIntensity;
+        uniform vec3 uGlowWave;
+        uniform float uCausticsIntensity;
+        uniform float uAmbientLight;
+        uniform float uFogNear;
+        uniform float uFogFar;
+        uniform vec3 uFogColor;
+        
+        varying float vElevation;
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        varying vec2 vUv;
+        
+        // Simplex noise for caustics
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+        
+        float snoise(vec2 v) {
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                               -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy));
+            vec2 x0 = v - i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod289(i);
+            vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
+                + i.x + vec3(0.0, i1.x, 1.0));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy),
+                dot(x12.zw,x12.zw)), 0.0);
+            m = m*m;
+            m = m*m;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+            vec3 g;
+            g.x = a0.x * x0.x + h.x * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+        }
+        
+        void main() {
+            // Base color from elevation
+            float mixStrength = (vElevation + uColorOffset) * uColorMultiplier;
+            mixStrength = clamp(mixStrength, 0.0, 1.0);
+            vec3 color = mix(uDepthColor, uSurfaceColor, mixStrength);
+            
+            // Lighting
+            vec3 lightDir = normalize(vec3(0.3, 1.0, 0.5));
+            float diffuse = max(dot(vNormal, lightDir), 0.0);
+            diffuse = pow(diffuse, 0.6) * 0.5 + uAmbientLight;
+            
+            // Specular highlights
+            vec3 viewDir = normalize(cameraPosition - vPosition);
+            vec3 halfDir = normalize(lightDir + viewDir);
+            float specular = pow(max(dot(vNormal, halfDir), 0.0), 64.0);
+            
+            // Fresnel effect (rim lighting)
+            float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 3.0);
+            
+            // Caustics pattern
+            float caustics = 0.0;
+            if(uCausticsIntensity > 0.0) {
+                vec2 causticsUV = vPosition.xz * 1.5;
+                float c1 = snoise(causticsUV + uTime * 0.3);
+                float c2 = snoise(causticsUV * 1.5 - uTime * 0.2);
+                float c3 = snoise(causticsUV * 2.0 + uTime * 0.4);
+                caustics = (c1 + c2 + c3) * 0.33;
+                caustics = pow(max(caustics, 0.0), 2.0) * uCausticsIntensity;
+            }
+            
+            // Bioluminescent glow wave
+            float glowDist = length(vPosition.xz - uGlowWave.xy);
+            float glowWave = smoothstep(uGlowWave.z + 2.0, uGlowWave.z, glowDist);
+            glowWave *= uGlowIntensity;
+            
+            // Additional ambient bioluminescence
+            float bioLum = snoise(vPosition.xz * 0.5 + uTime * 0.1) * 0.5 + 0.5;
+            bioLum = pow(bioLum, 3.0) * 0.3;
+            
+            // Combine lighting
+            color *= diffuse;
+            color += vec3(specular) * 0.6;
+            color += uGlowColor * (glowWave + bioLum * uGlowIntensity * 0.5);
+            color += uGlowColor * caustics;
+            color += uSurfaceColor * fresnel * 0.3;
+            
+            // Depth fog
+            float depth = gl_FragCoord.z / gl_FragCoord.w;
+            float fogFactor = smoothstep(uFogNear, uFogFar, depth);
+            color = mix(color, uFogColor, fogFactor * 0.5);
+            
+            gl_FragColor = vec4(color, 0.92);
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bioluminescent Plankton Shader
+// ─────────────────────────────────────────────────────────────────────────────
+const PlanktonShader = {
+    uniforms: {
+        uTime: { value: 0 },
+        uGlowColor: { value: new THREE.Color(0x00ffff) },
+        uIntensityBoost: { value: 0.0 },
+    },
+    vertexShader: `
+        attribute float aScale;
+        attribute float aPhase;
+        uniform float uTime;
+        varying float vPhase;
+        varying float vScale;
+        
+        void main() {
+            vPhase = aPhase;
+            vScale = aScale;
+            
+            vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+            
+            // Gentle floating motion
+            modelPosition.y += sin(uTime * 0.5 + aPhase) * 0.05;
+            modelPosition.x += sin(uTime * 0.3 + aPhase * 2.0) * 0.03;
+            modelPosition.z += cos(uTime * 0.4 + aPhase * 1.5) * 0.03;
+            
+            vec4 viewPosition = viewMatrix * modelPosition;
+            gl_Position = projectionMatrix * viewPosition;
+            
+            // Size attenuation
+            gl_PointSize = aScale * (300.0 / -viewPosition.z);
+            gl_PointSize = clamp(gl_PointSize, 1.0, 15.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uGlowColor;
+        uniform float uIntensityBoost;
+        varying float vPhase;
+        varying float vScale;
+        
+        void main() {
+            // Circular point with soft edges
+            float dist = length(gl_PointCoord - 0.5) * 2.0;
+            if(dist > 1.0) discard;
+            
+            float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
+            
+            // Pulsing glow
+            float pulse = sin(uTime * 2.0 + vPhase * 6.28) * 0.3 + 0.7;
+            pulse += uIntensityBoost * 0.5;
+            
+            vec3 color = uGlowColor * pulse;
+            
+            // Add white core
+            float core = 1.0 - smoothstep(0.0, 0.3, dist);
+            color += vec3(1.0) * core * 0.5;
+            
+            gl_FragColor = vec4(color, alpha * 0.8 * pulse);
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
 export default class LuminousTidesTheme extends BaseTheme {
     constructor() {
         super('luminous-tides');
 
-        this.simulator = null;
-        this.canvas = null;
-        this.lightingOverlay = null;
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+
+        // Scene elements
+        this.water = null;
+        this.waterMaterial = null;
+        this.plankton = null;
+        this.planktonMaterial = null;
+        this.ambientParticles = null;
+        this.underwaterLight = null;
+
+        // Animation
+        this.clock = new THREE.Clock();
+        this.time = 0;
+
+        // Game event state
+        this.glowIntensity = 0;
+        this.targetGlowIntensity = 0;
+        this.glowWavePosition = new THREE.Vector3(0, 0, 0);
+        this.glowWaveRadius = 0;
+        this.bloomBoost = 0;
+
+        // Wave boost for combos
+        this.waveElevationBoost = 0;
+        this.targetWaveElevationBoost = 0;
+        this.baseWaveElevation = 0.15; // Calm waves normally, combos boost them up
+        this.baseBigWavesSpeed = 0.75;
+
+        // Particle texture (cached)
+        this.particleTexture = null;
+
+        // State
         this.eventUnsubscribers = [];
-        this.animationFrameId = null;
-        this.lastTime = 0;
+        this.qualityPreset = QUALITY_PRESETS.High;
 
-        // Enhanced lighting state
-        this.lightBrightness = 0;
-        this.targetBrightness = 0;
-        this.lightPulsePhase = 0;
-
-        // Ambient wave system - tall narrow waves, very spread out
+        // Ambient wave system
         this.ambientWaveTimer = 0;
-        this.AMBIENT_WAVE_INTERVAL = 18.0; // Much less frequent
-        this.nextAmbientPattern = 0; // Track pattern variation
+        this.AMBIENT_WAVE_INTERVAL = 12.0;
 
-        // Energy tracking for visual feedback
-        this.waveEnergy = 0;
-        this.energyDecay = 0.75; // Very fast energy decay
-
-        console.log('[LuminousTides] Enhanced theme constructed');
-    }
-
-    async init() {
-        console.log('[LuminousTides] Initializing enhanced theme');
+        console.log('[LuminousTides] Three.js theme constructed');
     }
 
     getTetrominoConfig() {
         return LUMINOUS_TIDES_TETROMINOS;
     }
 
+    getCurrentQualityLevel() {
+        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
+            return normalizeQuality(window.settings.graphicsQuality);
+        }
+        return 'High';
+    }
+
+    applyQualityPreset(quality) {
+        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+    }
+
     async createScene() {
-        console.log('[LuminousTides] createScene() called');
+        console.log('[LuminousTides] Creating 3D ocean scene...');
 
-        try {
-            // Create canvas for wave simulation
-            this.canvas = document.createElement('canvas');
-            this.canvas.id = 'luminous-tides-canvas';
-            this.canvas.style.position = 'absolute';
-            this.canvas.style.top = '0';
-            this.canvas.style.left = '0';
-            this.canvas.style.width = '100%';
-            this.canvas.style.height = '100%';
-            this.canvas.style.backgroundColor = '#000204'; // Deep abyss
-            this.canvas.style.pointerEvents = 'none';
+        const quality = this.getCurrentQualityLevel();
+        this.applyQualityPreset(quality);
 
-            this.resize(window.innerWidth, window.innerHeight);
-
-            // Get container
-            const container = document.getElementById('luminous-tides-theme');
-            if (!container) {
-                console.error('[LuminousTides] Theme container not found!');
-                return;
-            }
-
-            // Clear existing content
-            while (container.firstChild) {
-                container.removeChild(container.firstChild);
-            }
-
-            // Create atmospheric lighting overlay
-            this.lightingOverlay = document.createElement('div');
-            this.lightingOverlay.id = 'luminous-tides-lighting';
-            this.lightingOverlay.style.position = 'absolute';
-            this.lightingOverlay.style.top = '0';
-            this.lightingOverlay.style.left = '0';
-            this.lightingOverlay.style.width = '100%';
-            this.lightingOverlay.style.height = '100%';
-            this.lightingOverlay.style.background = 'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
-            this.lightingOverlay.style.pointerEvents = 'none';
-            this.lightingOverlay.style.mixBlendMode = 'screen';
-            this.lightingOverlay.style.transition = 'none';
-
-            // Add canvas and overlay to container
-            container.appendChild(this.canvas);
-            container.appendChild(this.lightingOverlay);
-            this.registerContainer(container);
-
-            // Get quality setting and config
-            const quality = this.getQualitySetting();
-            const config = this.getConfig(quality);
-
-            // Create enhanced wave simulator
-            this.simulator = new WaveSimulator(this.canvas, config);
-
-            const success = await this.simulator.init();
-            if (!success) {
-                console.error('[LuminousTides] Failed to initialize wave simulator');
-                return;
-            }
-
-            console.log('[LuminousTides] Wave simulator initialized successfully');
-
-            // Setup game event listeners
-            this.setupEventListeners();
-
-            // Start animation loop
-            this.startAnimation();
-
-            // Add initial atmospheric waves
-            this.addInitialWaves();
-
-            console.log('[LuminousTides] createScene() completed successfully');
-        } catch (error) {
-            console.error('[LuminousTides] ERROR in createScene():', error);
-            throw error;
+        const container = document.getElementById('luminous-tides-theme');
+        if (!container) {
+            console.error('[LuminousTides] Container not found');
+            return;
         }
+
+        this.initRenderer(container);
+        this.createOceanSurface();
+        this.createUnderwaterEnvironment();
+        this.createPlankton();
+        this.createAmbientParticles();
+        this.setupLighting();
+        this.setupPostProcessing();
+        this.setupEventListeners();
+        this.startAnimation();
+
+        console.log('[LuminousTides] 3D scene created');
     }
 
-    /**
-     * Get enhanced wave simulator configuration
-     * Tall narrow surf waves that fade very quickly to calm
-     */
-    getConfig(quality) {
-        const baseConfig = WAVE_QUALITY_PRESETS[quality] || WAVE_QUALITY_PRESETS.medium;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Renderer & Camera
+    // ─────────────────────────────────────────────────────────────────────────
 
-        return {
-            ...baseConfig,
+    initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
 
-            // Surf wave physics - tall and narrow, very fast fade
-            WAVE_DAMPING: 0.86, // VERY fast fade-out to calm
-            SURFACE_TENSION: 0.03, // Keeps waves focused/narrow
-            DISPLACEMENT_SCALE: 3.5, // Tall surf waves
-            DIFFUSION: 0.004, // Low diffusion (narrow waves)
-            GRAVITY: 9.8,
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,
+            powerPreference: 'high-performance',
+        });
+        this.renderer.setClearColor(0x000408, 1);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setSize(width, height);
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
 
-            // Atmospheric deep ocean colors
-            WATER_COLOR: { r: 0.03, g: 0.12, b: 0.22 }, // Deep blue-green
-            DEEP_COLOR: { r: 0.01, g: 0.04, b: 0.10 }, // Abyssal depths
-            FOAM_COLOR: { r: 0.12, g: 0.25, b: 0.35 }, // Subtle foam
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
 
-            // Bioluminescent glow - bright but focused
-            GLOW_ENABLED: true,
-            GLOW_COLOR: { r: 0.08, g: 0.45, b: 0.62 }, // Bioluminescent cyan
-            GLOW_INTENSITY: 1.4, // Bright for tall waves
-            GLOW_SPREAD: 2.0, // Less spread (focused)
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x000810, 0.08);
 
-            // Enhanced atmospheric lighting
-            DEPTH_FADE: 2.0, // Strong depth for tall waves
-            AMBIENT_LIGHT: 0.12, // Subtle ambient
-            SPECULAR_INTENSITY: 0.50, // Stronger highlights on tall waves
-            SPECULAR_POWER: 20.0, // Sharp specular
+        // Camera positioned above water looking down at an angle
+        this.camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
+        this.camera.position.set(0, 3, 6);
+        this.camera.lookAt(0, -0.5, 0);
 
-            // Effects (foam disabled for cleaner look)
-            FOAM_ENABLED: false,
-            CAUSTICS_ENABLED: baseConfig.CAUSTICS_ENABLED,
-            CAUSTICS_INTENSITY: 0.4,
-            CAUSTICS_SCALE: 1.8,
-
-            TRANSPARENT: false,
-        };
+        console.log('[LuminousTides] Renderer initialized');
     }
 
-    /**
-     * Get quality setting from game settings
-     */
-    getQualitySetting() {
-        if (typeof window !== 'undefined' && window.settings) {
-            const quality = window.settings.effectQuality || 'Medium';
-            return quality.toLowerCase();
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ocean Surface with Gerstner Waves
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createOceanSurface() {
+        const segments = this.qualityPreset.waterSegments;
+        const geometry = new THREE.PlaneGeometry(100, 100, segments, segments);
+        geometry.rotateX(-Math.PI / 2);
+
+        this.waterMaterial = new THREE.ShaderMaterial({
+            uniforms: { ...OceanShader.uniforms },
+            vertexShader: OceanShader.vertexShader,
+            fragmentShader: OceanShader.fragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: true,
+        });
+
+        this.water = new THREE.Mesh(geometry, this.waterMaterial);
+        this.water.position.y = 0;
+        this.scene.add(this.water);
+
+        console.log('[LuminousTides] Ocean surface created with', segments, 'segments');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Underwater Environment
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createUnderwaterEnvironment() {
+        // Create a deep underwater plane for depth
+        const underwaterGeometry = new THREE.PlaneGeometry(200, 200);
+        underwaterGeometry.rotateX(-Math.PI / 2);
+
+        const underwaterMaterial = new THREE.MeshStandardMaterial({
+            color: 0x000408,
+            roughness: 1,
+            metalness: 0,
+            transparent: true,
+            opacity: 0.9,
+        });
+
+        const underwaterPlane = new THREE.Mesh(underwaterGeometry, underwaterMaterial);
+        underwaterPlane.position.y = -5;
+        this.scene.add(underwaterPlane);
+
+        // Add volumetric light rays (represented as subtle planes)
+        const rayCount = 5;
+        for (let i = 0; i < rayCount; i++) {
+            const rayGeometry = new THREE.PlaneGeometry(0.5, 8);
+            const rayMaterial = new THREE.MeshBasicMaterial({
+                color: 0x003344,
+                transparent: true,
+                opacity: 0.1,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const ray = new THREE.Mesh(rayGeometry, rayMaterial);
+            ray.position.set(
+                (Math.random() - 0.5) * 15,
+                -2,
+                (Math.random() - 0.5) * 15,
+            );
+            ray.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+            ray.rotation.z = Math.random() * Math.PI;
+            this.scene.add(ray);
         }
-        return 'medium';
+
+        console.log('[LuminousTides] Underwater environment created');
     }
 
-    /**
-     * Setup game event listeners
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // Bioluminescent Plankton
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createPlankton() {
+        const count = this.qualityPreset.planktonCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const scales = new Float32Array(count);
+        const phases = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+
+            // Spread around under the water surface
+            positions[i3] = (Math.random() - 0.5) * 18;
+            positions[i3 + 1] = -0.5 - Math.random() * 4;
+            positions[i3 + 2] = (Math.random() - 0.5) * 18;
+
+            scales[i] = 3 + Math.random() * 5;
+            phases[i] = Math.random() * Math.PI * 2;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+        this.planktonMaterial = new THREE.ShaderMaterial({
+            uniforms: { ...PlanktonShader.uniforms },
+            vertexShader: PlanktonShader.vertexShader,
+            fragmentShader: PlanktonShader.fragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.plankton = new THREE.Points(geometry, this.planktonMaterial);
+        this.scene.add(this.plankton);
+
+        console.log('[LuminousTides] Plankton created with', count, 'particles');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Create Circular Glow Texture for Particles
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createParticleTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+
+        // Create radial gradient for soft circular glow
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(200, 255, 255, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(100, 200, 255, 0.4)');
+        gradient.addColorStop(0.8, 'rgba(50, 150, 200, 0.1)');
+        gradient.addColorStop(1, 'rgba(0, 100, 150, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ambient Floating Particles (Circular Glowing Orbs)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createAmbientParticles() {
+        const count = this.qualityPreset.particleCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+
+        // Beautiful bioluminescent color palette
+        const colorPalette = [
+            new THREE.Color(0x00ffff), // Bright cyan
+            new THREE.Color(0x40ffcc), // Aqua mint
+            new THREE.Color(0x80ffff), // Light cyan
+            new THREE.Color(0x00ccff), // Ocean blue
+            new THREE.Color(0x66ffdd), // Seafoam
+            new THREE.Color(0x00ffaa), // Teal green
+            new THREE.Color(0x88ddff), // Sky blue
+        ];
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+
+            // Spread particles in 3D space around the ocean
+            positions[i3] = (Math.random() - 0.5) * 22;
+            positions[i3 + 1] = Math.random() * 3 - 2; // Mostly below water surface
+            positions[i3 + 2] = (Math.random() - 0.5) * 22;
+
+            // Random color from palette
+            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            // Varied sizes for depth and interest
+            sizes[i] = 0.08 + Math.random() * 0.15;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        // Create or reuse circular glow texture
+        if (!this.particleTexture) {
+            this.particleTexture = this.createParticleTexture();
+        }
+
+        const material = new THREE.PointsMaterial({
+            size: 0.2,
+            map: this.particleTexture,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true,
+            depthWrite: false,
+        });
+
+        this.ambientParticles = new THREE.Points(geometry, material);
+        this.scene.add(this.ambientParticles);
+
+        console.log('[LuminousTides] Glowing orb particles created');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lighting Setup
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupLighting() {
+        // Ambient light (dim deep sea)
+        const ambientLight = new THREE.AmbientLight(0x001020, 0.3);
+        this.scene.add(ambientLight);
+
+        // Directional light (moonlight from above)
+        const moonLight = new THREE.DirectionalLight(0x4488aa, 0.5);
+        moonLight.position.set(2, 10, 3);
+        this.scene.add(moonLight);
+
+        // Point light for underwater glow effects
+        this.underwaterLight = new THREE.PointLight(0x00ffff, 0, 8);
+        this.underwaterLight.position.set(0, -1, 0);
+        this.scene.add(this.underwaterLight);
+
+        // Hemisphere light for subtle ambient variation
+        const hemiLight = new THREE.HemisphereLight(0x0044aa, 0x000208, 0.4);
+        this.scene.add(hemiLight);
+
+        console.log('[LuminousTides] Lighting setup complete');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Post-Processing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupPostProcessing() {
+        if (!this.qualityPreset.enablePostProcessing) {
+            console.log('[LuminousTides] Post-processing disabled for quality level');
+            return;
+        }
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.composer = new EffectComposer(this.renderer);
+
+        // Render pass
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        // Bloom pass for bioluminescence
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(width, height),
+            this.qualityPreset.bloomStrength,
+            this.qualityPreset.bloomRadius,
+            0.3,
+        );
+        this.composer.addPass(this.bloomPass);
+
+        // Vignette pass
+        this.vignettePass = new ShaderPass(VignetteShader);
+        this.composer.addPass(this.vignettePass);
+
+        console.log('[LuminousTides] Post-processing setup complete');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Event Listeners
+    // ─────────────────────────────────────────────────────────────────────────
+
     setupEventListeners() {
         console.log('[LuminousTides] Setting up event listeners');
 
@@ -212,389 +905,213 @@ export default class LuminousTidesTheme extends BaseTheme {
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-        console.log('[LuminousTides] Event listeners set up successfully');
+        console.log('[LuminousTides] Event listeners set up');
     }
 
-    /**
-     * React to line clears with elegant bioluminescent waves
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // Game Event Reactions
+    // ─────────────────────────────────────────────────────────────────────────
+
     onLineClear(lineCount) {
-        if (!this.simulator) return;
-
         if (lineCount >= 4) {
-            // Tetris! Spectacular bioluminescent bloom
-            this.createTetrisBloom();
-            this.flashLight(0.4, 1.5);
-            this.waveEnergy = Math.min(this.waveEnergy + 0.8, 1.0);
+            // Tetris! Massive bioluminescent burst
+            this.triggerGlowWave(0, 0, 1.0, 6);
+            this.targetGlowIntensity = 1.0;
+            this.bloomBoost = 0.5;
         } else if (lineCount >= 2) {
-            // Multi-line: Flowing luminous waves
-            this.createMultiLineFlow(lineCount);
-            this.flashLight(0.25, 1.0);
-            this.waveEnergy = Math.min(this.waveEnergy + 0.5, 1.0);
+            // Multi-line: Large glow
+            this.triggerGlowWave(
+                (Math.random() - 0.5) * 4,
+                (Math.random() - 0.5) * 4,
+                0.6,
+                4,
+            );
+            this.targetGlowIntensity = 0.6;
+            this.bloomBoost = 0.3;
         } else {
-            // Single line: Gentle ripple
-            this.createGentleRipple();
-            this.flashLight(0.15, 0.6);
-            this.waveEnergy = Math.min(this.waveEnergy + 0.25, 1.0);
+            // Single line: Small pulse
+            this.triggerGlowWave(
+                (Math.random() - 0.5) * 6,
+                (Math.random() - 0.5) * 6,
+                0.3,
+                2,
+            );
+            this.targetGlowIntensity = 0.3;
+            this.bloomBoost = 0.15;
         }
     }
 
-    /**
-     * Trigger light flash effect
-     */
-    flashLight(intensity = 0.2, duration = 1.0) {
-        this.targetBrightness = intensity;
-        this.lightPulsePhase = duration;
-    }
-
-    /**
-     * Update lighting overlay
-     */
-    updateLighting(deltaTime) {
-        if (!this.lightingOverlay) return;
-
-        // Smooth interpolation towards target
-        const fadeSpeed = 6.0;
-        this.lightBrightness += (this.targetBrightness - this.lightBrightness) * fadeSpeed * deltaTime;
-
-        // Auto-decay based on pulse phase
-        if (this.lightPulsePhase > 0) {
-            this.lightPulsePhase -= deltaTime;
-            const decay = Math.exp(-2.0 * deltaTime);
-            this.targetBrightness *= decay;
-        } else {
-            this.targetBrightness *= 0.05 ** deltaTime;
-        }
-
-        // Apply to overlay
-        if (this.lightBrightness > 0.01) {
-            const brightness = this.lightBrightness;
-            this.lightingOverlay.style.background = `radial-gradient(ellipse at 50% 30%,
-                    rgba(20, 80, 120, ${(brightness * 0.3).toFixed(3)}) 0%,
-                    rgba(10, 50, 80, ${(brightness * 0.15).toFixed(3)}) 40%,
-                    rgba(0, 0, 0, 0) 80%)`;
-        } else {
-            this.lightingOverlay.style.background = 'radial-gradient(ellipse at 50% 30%, rgba(20, 60, 100, 0.15) 0%, rgba(0, 0, 0, 0) 70%)';
-        }
-    }
-
-    /**
-     * Create smooth, organic wave
-     */
-    createSmoothWave(x, y, radius, amplitude, buildup = 4, delay = 100) {
-        for (let i = 0; i < buildup; i++) {
-            setTimeout(() => {
-                const t = (i + 1) / buildup;
-                const eased = t * t * (3.0 - 2.0 * t); // Smooth step
-                const currentAmplitude = amplitude * eased;
-
-                this.simulator.createSwell(x, y, {
-                    radius,
-                    amplitude: currentAmplitude / buildup,
-                });
-            }, i * delay);
-        }
-    }
-
-    /**
-     * Gentle ripple for single line clear - tall narrow surf wave
-     */
-    createGentleRipple() {
-        // Single tall narrow wave
-        const x = 0.3 + Math.random() * 0.4;
-        const y = 0.3 + Math.random() * 0.4;
-
-        const radius = 0.08 + Math.random() * 0.05; // Small radius (narrow)
-        const amplitude = 1.8 + Math.random() * 0.8; // Tall amplitude
-
-        this.createSmoothWave(x, y, radius, amplitude, 7, 100);
-    }
-
-    /**
-     * Flowing waves for double/triple line clears - tall narrow waves, far apart
-     */
-    createMultiLineFlow(lineCount) {
-        const waveCount = Math.max(1, lineCount - 1); // Very few waves
-
-        for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => {
-                // Create tall narrow waves
-                const progress = i / Math.max(waveCount, 1);
-
-                // Alternate between flowing patterns
-                let x; let
-                    y;
-                if (i % 2 === 0) {
-                    // Flow from left
-                    x = 0.2 + progress * 0.3;
-                    y = 0.35 + Math.sin(progress * Math.PI) * 0.3;
-                } else {
-                    // Flow from right
-                    x = 0.8 - progress * 0.3;
-                    y = 0.4 + Math.cos(progress * Math.PI) * 0.25;
-                }
-
-                const radius = 0.10 + Math.random() * 0.06; // Small radius (narrow)
-                const amplitude = 1.6 + Math.random() * 1.0; // Tall amplitude
-
-                this.createSmoothWave(x, y, radius, amplitude, 7, 120);
-            }, i * 800); // Much more spacing
-        }
-    }
-
-    /**
-     * Spectacular bioluminescent bloom for Tetris - tall narrow surf waves
-     */
-    createTetrisBloom() {
-        const bloomCount = 3; // Very few waves
-
-        // Tall center wave
-        setTimeout(() => {
-            this.createSmoothWave(0.5, 0.5, 0.14, 3.0, 9, 140);
-        }, 0);
-
-        // Radiating tall narrow waves
-        for (let i = 0; i < bloomCount; i++) {
-            setTimeout(() => {
-                const angle = (i / bloomCount) * Math.PI * 2;
-                const distance = 0.28 + Math.random() * 0.10;
-
-                const x = 0.5 + Math.cos(angle) * distance;
-                const y = 0.5 + Math.sin(angle) * distance;
-
-                const radius = 0.11 + Math.random() * 0.06; // Small radius (narrow)
-                const amplitude = 2.2 + Math.random() * 1.2; // Very tall
-
-                this.createSmoothWave(x, y, radius, amplitude, 8, 130);
-            }, i * 600 + 400); // Much more spacing
-        }
-
-        // One additional wave
-        setTimeout(() => {
-            const x = 0.35 + Math.random() * 0.3;
-            const y = 0.35 + Math.random() * 0.3;
-            const radius = 0.12 + Math.random() * 0.06;
-            const amplitude = 2.0 + Math.random() * 0.8;
-
-            this.createSmoothWave(x, y, radius, amplitude, 7, 140);
-        }, 2000); // Much later
-    }
-
-    /**
-     * React to combos with escalating bioluminescence - tall narrow waves
-     */
     onCombo(comboCount) {
-        if (!this.simulator) return;
+        const intensity = Math.min(0.4 + comboCount * 0.15, 1.2);
+        this.triggerGlowWave(
+            (Math.random() - 0.5) * 5,
+            (Math.random() - 0.5) * 5,
+            intensity,
+            3 + comboCount * 0.5,
+        );
+        this.targetGlowIntensity = intensity;
+        this.bloomBoost = 0.2 + comboCount * 0.05;
 
-        const intensity = Math.min(1.0 + comboCount * 0.15, 2.5);
-        const waveCount = Math.min(comboCount, 4); // Very few waves
-
-        this.flashLight(0.2 + comboCount * 0.03, 1.2);
-        this.waveEnergy = Math.min(this.waveEnergy + 0.4 + comboCount * 0.05, 1.0);
-
-        // Create tall narrow waves in a spiral pattern
-        for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => {
-                const angle = (i / waveCount) * Math.PI * 2 + comboCount * 0.5;
-                const distance = 0.20 + (i / waveCount) * 0.18;
-
-                const x = 0.5 + Math.cos(angle) * distance;
-                const y = 0.5 + Math.sin(angle) * distance;
-
-                const radius = 0.09 + Math.random() * 0.05; // Small radius (narrow)
-                const amplitude = (1.4 + Math.random() * 0.8) * intensity; // Tall
-
-                this.createSmoothWave(x, y, radius, amplitude, 7, 110);
-            }, i * 500); // Much more spacing
-        }
+        // Boost wave height dramatically for combos - creates stormy seas!
+        // Higher boost and it ACCUMULATES with each combo hit
+        const comboBoost = 0.15 + comboCount * 0.12;
+        this.targetWaveElevationBoost = Math.min(
+            this.targetWaveElevationBoost + comboBoost,
+            1.2, // Much higher cap for truly stormy waves
+        );
     }
 
-    /**
-     * React to piece locks with subtle pulse
-     */
     onPieceLock() {
-        if (!this.simulator) return;
+        // Create visible luminous blue glow on every piece lock
+        const x = (Math.random() - 0.5) * 8;
+        const z = (Math.random() - 0.5) * 8;
 
-        // Subtle ripple - piece landing creates small disturbance
-        if (Math.random() < 0.3) { // Only 30% of the time for subtlety
-            const x = 0.3 + Math.random() * 0.4;
-            const y = 0.7 + Math.random() * 0.2;
+        // Strong bioluminescent glow effect
+        this.triggerGlowWave(x, z, 0.4, 3.0);
+        this.targetGlowIntensity = Math.max(this.targetGlowIntensity, 0.35);
 
-            this.createSmoothWave(x, y, 0.08, 0.4, 3, 60);
+        // Add bloom boost for extra luminosity
+        this.bloomBoost = Math.max(this.bloomBoost, 0.15);
+
+        // Tiny wave boost for constant subtle motion
+        this.targetWaveElevationBoost = Math.max(this.targetWaveElevationBoost, 0.03);
+    }
+
+    triggerGlowWave(x, z, intensity, radius) {
+        // Smoothly blend glow position toward new location (don't jump)
+        this.glowWavePosition.x += (x - this.glowWavePosition.x) * 0.3;
+        this.glowWavePosition.y += (z - this.glowWavePosition.y) * 0.3;
+
+        // Don't reset radius - let it keep expanding for continuous glow
+        // Radius naturally expands in animation loop
+
+        // ADD to target intensity for gentle accumulation effect
+        this.targetGlowIntensity += intensity * 0.2;
+        // Cap at moderate maximum so it doesn't get too bright
+        this.targetGlowIntensity = Math.min(this.targetGlowIntensity, 0.8);
+
+        // Update glow wave position in shader (smooth blend)
+        if (this.waterMaterial) {
+            this.waterMaterial.uniforms.uGlowWave.value.set(
+                this.glowWavePosition.x,
+                this.glowWavePosition.y,
+                this.glowWaveRadius,
+            );
+        }
+
+        // Boost light intensity - gentle accumulation
+        if (this.underwaterLight) {
+            // Smoothly move light toward new position
+            this.underwaterLight.position.x += (x - this.underwaterLight.position.x) * 0.3;
+            this.underwaterLight.position.z += (z - this.underwaterLight.position.z) * 0.3;
+            // Add to existing intensity (moderate amount)
+            this.underwaterLight.intensity += intensity * 0.5;
+            this.underwaterLight.intensity = Math.min(this.underwaterLight.intensity, 1.5);
         }
     }
 
-    /**
-     * Add initial atmospheric waves - tall narrow introduction
-     */
-    addInitialWaves() {
-        if (!this.simulator) return;
-
-        // Create gentle introduction with tall narrow waves
-        setTimeout(() => {
-            // Single initial wave to establish atmosphere
-            const x = 0.4 + Math.random() * 0.2;
-            const y = 0.4 + Math.random() * 0.2;
-            const radius = 0.10 + Math.random() * 0.05;
-            const amplitude = 1.2 + Math.random() * 0.6;
-
-            this.createSmoothWave(x, y, radius, amplitude, 8, 150);
-        }, 800);
-    }
-
-    /**
-     * Create ambient wave patterns - subtle organic motion
-     */
     createAmbientWave() {
-        if (!this.simulator) return;
-
-        // Cycle through different ambient patterns for variety
-        const pattern = this.nextAmbientPattern % 4;
-        this.nextAmbientPattern++;
-
-        switch (pattern) {
-        case 0: // Single gentle swell
-            this.createGentleSwell();
-            break;
-        case 1: // Crossing waves
-            this.createCrossingWaves();
-            break;
-        case 2: // Circular ripple
-            this.createCircularRipple();
-            break;
-        case 3: // Edge wave
-            this.createEdgeWave();
-            break;
-        }
-
-        // Subtle light pulse
-        this.flashLight(0.08, 0.5);
+        // Random subtle glow event
+        const x = (Math.random() - 0.5) * 12;
+        const z = (Math.random() - 0.5) * 12;
+        this.triggerGlowWave(x, z, 0.2, 2);
+        this.targetGlowIntensity = 0.2;
     }
 
-    /**
-     * Gentle swell from random position - tall narrow surf wave
-     */
-    createGentleSwell() {
-        const x = 0.3 + Math.random() * 0.4;
-        const y = 0.3 + Math.random() * 0.4;
-        const radius = 0.10 + Math.random() * 0.06; // Small radius (narrow)
-        const amplitude = 1.0 + Math.random() * 0.6; // Tall
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation Loop
+    // ─────────────────────────────────────────────────────────────────────────
 
-        this.createSmoothWave(x, y, radius, amplitude, 8, 140);
-    }
-
-    /**
-     * Two waves crossing paths - tall narrow waves far apart
-     */
-    createCrossingWaves() {
-        // First tall wave
-        const x1 = 0.25 + Math.random() * 0.25;
-        const y1 = 0.3 + Math.random() * 0.4;
-        this.createSmoothWave(x1, y1, 0.09, 1.2, 7, 120);
-
-        // Second tall wave (much more delayed)
-        setTimeout(() => {
-            const x2 = 0.5 + Math.random() * 0.25;
-            const y2 = 0.3 + Math.random() * 0.4;
-            this.createSmoothWave(x2, y2, 0.09, 1.2, 7, 120);
-        }, 1200); // Much more spacing
-    }
-
-    /**
-     * Circular expanding ripple - single tall narrow ring
-     */
-    createCircularRipple() {
-        const centerX = 0.4 + Math.random() * 0.2;
-        const centerY = 0.4 + Math.random() * 0.2;
-
-        // Just one tall ring
-        const radius = 0.08 + Math.random() * 0.04; // Small (narrow)
-        const amplitude = 1.4 + Math.random() * 0.6; // Tall
-        this.createSmoothWave(centerX, centerY, radius, amplitude, 7, 110);
-    }
-
-    /**
-     * Wave from edge - tall narrow wave
-     */
-    createEdgeWave() {
-        const side = Math.floor(Math.random() * 4);
-        let x; let
-            y;
-
-        switch (side) {
-        case 0: // Top
-            x = 0.3 + Math.random() * 0.4;
-            y = 0.15;
-            break;
-        case 1: // Right
-            x = 0.85;
-            y = 0.3 + Math.random() * 0.4;
-            break;
-        case 2: // Bottom
-            x = 0.3 + Math.random() * 0.4;
-            y = 0.85;
-            break;
-        case 3: // Left
-            x = 0.15;
-            y = 0.3 + Math.random() * 0.4;
-            break;
-        }
-
-        this.createSmoothWave(x, y, 0.11, 1.3, 7, 130); // Tall narrow
-    }
-
-    /**
-     * Start animation loop
-     */
     startAnimation() {
-        const animate = (currentTime) => {
+        const animate = () => {
             if (!this.isActive) return;
 
-            // Calculate delta time
-            if (this.lastTime === 0) {
-                this.lastTime = currentTime;
-            }
-
-            let deltaTime = (currentTime - this.lastTime) / 1000;
-            this.lastTime = currentTime;
-
-            // Cap extremely large time steps
-            if (deltaTime > 0.1) {
-                deltaTime = 0.016666;
-            }
+            const delta = this.clock.getDelta();
+            this.time += delta;
 
             // Ambient wave timer
-            this.ambientWaveTimer += deltaTime;
+            this.ambientWaveTimer += delta;
             if (this.ambientWaveTimer >= this.AMBIENT_WAVE_INTERVAL) {
                 this.ambientWaveTimer = 0;
                 this.createAmbientWave();
             }
 
-            // Decay wave energy
-            this.waveEnergy *= this.energyDecay ** (deltaTime * 60);
+            // Update water shader
+            if (this.waterMaterial) {
+                this.waterMaterial.uniforms.uTime.value = this.time;
 
-            // Update lighting
-            this.updateLighting(deltaTime);
+                // Ultra-smooth glow interpolation - natural breathing effect
+                this.glowIntensity += (this.targetGlowIntensity - this.glowIntensity) * delta * 0.25;
+                this.targetGlowIntensity *= 0.993; // Fade back to normal
 
-            // Run wave simulation
-            if (this.simulator) {
-                this.simulator.step(deltaTime);
-                this.simulator.render(null);
+                this.waterMaterial.uniforms.uGlowIntensity.value = this.glowIntensity;
+
+                // Expand glow wave radius very slowly
+                this.glowWaveRadius += delta * 0.3;
+                this.waterMaterial.uniforms.uGlowWave.value.z = this.glowWaveRadius;
+
+                // Handle wave elevation boost (for combos creating stormy waves)
+                // Slow interpolation - waves build gradually
+                this.waveElevationBoost += (this.targetWaveElevationBoost - this.waveElevationBoost) * delta * 0.05;
+
+                // Decay back to calm - storms fade over several seconds
+                this.targetWaveElevationBoost *= 0.997;
+
+                // Apply boosted wave elevation
+                const currentElevation = this.baseWaveElevation + this.waveElevationBoost;
+                this.waterMaterial.uniforms.uBigWavesElevation.value = currentElevation;
+
+                // Gradual speed change during storms
+                const speedBoost = 1.0 + this.waveElevationBoost * 2.0;
+                this.waterMaterial.uniforms.uBigWavesSpeed.value = this.baseBigWavesSpeed * speedBoost;
             }
 
-            // Continue animation
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
+            // Update plankton shader
+            if (this.planktonMaterial) {
+                this.planktonMaterial.uniforms.uTime.value = this.time;
+                this.planktonMaterial.uniforms.uIntensityBoost.value = this.glowIntensity;
+            }
+
+            // Animate underwater light - very slow decay for persistent glow
+            if (this.underwaterLight) {
+                this.underwaterLight.intensity *= 0.998;
+            }
+
+            // Animate ambient particles (gentle float)
+            if (this.ambientParticles) {
+                const positions = this.ambientParticles.geometry.attributes.position.array;
+                for (let i = 0; i < positions.length; i += 3) {
+                    positions[i + 1] += Math.sin(this.time * 0.5 + i) * 0.001;
+                }
+                this.ambientParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Update bloom boost - ultra smooth
+            if (this.bloomPass) {
+                const targetStrength = this.qualityPreset.bloomStrength + this.bloomBoost;
+                this.bloomPass.strength += (targetStrength - this.bloomPass.strength) * delta * 0.3;
+                this.bloomBoost *= 0.9985; // Very gradual bloom decay
+            }
+
+            // Render
+            if (this.composer) {
+                this.composer.render();
+            } else if (this.renderer) {
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            const animId = requestAnimationFrame(animate);
+            this.registerAnimation(animId);
         };
 
-        this.lastTime = 0;
-        this.animationFrameId = requestAnimationFrame(animate);
-        this.registerAnimation(this.animationFrameId);
+        const animId = requestAnimationFrame(animate);
+        this.registerAnimation(animId);
     }
 
-    /**
-     * Stop theme
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lifecycle Methods
+    // ─────────────────────────────────────────────────────────────────────────
+
     stop() {
         console.log('[LuminousTides] stop() called');
 
@@ -604,69 +1121,73 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
-        // Call parent stop
         super.stop();
-
-        console.log('[LuminousTides] Stopped successfully');
+        console.log('[LuminousTides] Stopped');
     }
 
-    /**
-     * Cleanup resources
-     */
     cleanup() {
         console.log('[LuminousTides] cleanup() called');
 
-        // Stop first
         this.stop();
 
-        // Cleanup simulator
-        if (this.simulator) {
-            this.simulator.cleanup();
-            this.simulator = null;
+        // Dispose of Three.js resources
+        if (this.water) {
+            this.water.geometry.dispose();
+            this.waterMaterial.dispose();
         }
 
-        // Remove canvas and overlay
-        if (this.canvas && this.canvas.parentNode) {
-            this.canvas.parentNode.removeChild(this.canvas);
+        if (this.plankton) {
+            this.plankton.geometry.dispose();
+            this.planktonMaterial.dispose();
         }
-        this.canvas = null;
 
-        if (this.lightingOverlay && this.lightingOverlay.parentNode) {
-            this.lightingOverlay.parentNode.removeChild(this.lightingOverlay);
+        if (this.ambientParticles) {
+            this.ambientParticles.geometry.dispose();
+            this.ambientParticles.material.dispose();
         }
-        this.lightingOverlay = null;
 
-        // Reset state
-        this.ambientWaveTimer = 0;
-        this.lightBrightness = 0;
-        this.targetBrightness = 0;
-        this.lightPulsePhase = 0;
-        this.waveEnergy = 0;
-        this.nextAmbientPattern = 0;
+        if (this.composer) {
+            this.composer.dispose();
+        }
 
-        // Call parent cleanup
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+            }
+        }
+
+        // Clear references
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.water = null;
+        this.waterMaterial = null;
+        this.plankton = null;
+        this.planktonMaterial = null;
+        this.ambientParticles = null;
+
         super.cleanup();
-
-        console.log('[LuminousTides] Cleaned up successfully');
+        console.log('[LuminousTides] Cleaned up');
     }
 
-    /**
-     * Handle window resize
-     */
     resize(width, height) {
-        if (this.canvas) {
-            this.canvas.width = width;
-            this.canvas.height = height;
+        if (this.camera) {
+            this.camera.aspect = width / height;
+            this.camera.updateProjectionMatrix();
         }
-        if (this.simulator) {
-            this.simulator.resize(width, height);
+
+        if (this.renderer) {
+            this.renderer.setSize(width, height);
+        }
+
+        if (this.composer) {
+            this.composer.setSize(width, height);
         }
     }
 
-    /**
-     * Update (called each frame if needed)
-     */
     update() {
-        // Simulation updates happen in animation loop
+        // Animation loop handles updates
     }
 }
