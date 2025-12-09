@@ -793,6 +793,112 @@ const SporeShader = {
     `
 };
 
+
+// Contact Ripple Shader - For objects standing in water
+const ContactRippleShader = {
+    uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x00ffcc) },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+
+        void main() {
+            // Radial distance from center (UV is 0..1, center 0.5)
+            vec2 center = vec2(0.5);
+            float dist = length(vUv - center) * 2.0;
+            
+            if (dist > 1.0) discard;
+            
+            // Concentric Ripples radiating outwards
+            float ripples = sin(dist * 25.0 - uTime * 3.0);
+            ripples = smoothstep(0.2, 1.0, ripples); // Sharpen
+            
+            // Meniscus at center (contact point)
+            float meniscus = smoothstep(0.25, 0.0, dist);
+            
+            // Fade out at edges
+            float alpha = (1.0 - dist) * (ripples * 0.4 + meniscus * 0.6);
+            
+            vec3 color = uColor + meniscus * 0.8;
+            
+            gl_FragColor = vec4(color, alpha * 0.7);
+        }
+    `
+};
+
+// Shore/Edge Shader - Animated foam and reaction at water edge
+const ShoreShader = {
+    uniforms: {
+        uTime: { value: 0 },
+        innerRadius: { value: 0 },
+        outerRadius: { value: 0 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        varying float vDist;
+        void main() {
+            vUv = uv;
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vDist = length(worldPos.xz);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        uniform float innerRadius;
+        uniform float outerRadius;
+        varying float vDist;
+        varying vec2 vUv;
+
+        // Simple hash function
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            // Distance factor: 0 at inner (water), 1 at outer (rock)
+            float d = (vDist - innerRadius) / (outerRadius - innerRadius);
+            
+            // Animated water lapping/foam
+            // Use polar coordinates for noise continuity
+            float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
+            
+            // Create a "coastline" wave
+            float wave = sin(angle * 10.0 + uTime) * sin(angle * 4.0 - uTime * 0.5);
+            float interaction = smoothstep(0.0, 0.4 + wave * 0.1, d); // Wet rock fade
+            
+            // Foam line
+            float foam = sin(d * 40.0 - uTime * 2.0 + wave * 5.0);
+            foam = smoothstep(0.7, 1.0, foam) * (1.0 - d);
+            
+            // Add sparkle/noise
+            float sparkle = hash(vec2(vDist * 0.1, uTime * 0.1)) * 0.5;
+            
+            vec3 foamColor = vec3(0.1, 0.6, 0.7); // Teal foam
+            vec3 deepColor = vec3(0.005, 0.015, 0.02);
+            
+            vec3 color = mix(foamColor, deepColor, interaction);
+            color += vec3(0.5, 0.9, 0.9) * foam * 0.5; // Bright foam highlights
+            color += vec3(1.0) * sparkle * foam * 0.3; // Sparkles
+            
+            // Alpha fade
+            float alpha = (1.0 - d) * 0.8;
+            
+            gl_FragColor = vec4(color, alpha);
+        }
+    `
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -818,6 +924,8 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.caveWalls = [];
         this.vines = [];
         this.lightCones = [];
+        this.contactRipples = [];
+        this.shoreRing = null;
 
         this.pulseIntensity = 0;
         this.eventUnsubscribers = [];
@@ -1191,44 +1299,51 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.water.position.set(0, -52, 0); // Slightly below terrain center
         this.scene.add(this.water);
 
-        // EDGE FADE RING - soft transition between water and rock
-        const edgeFadeGeo = new THREE.RingGeometry(waterRadius - 30, waterRadius + 20, 64);
+        // SHORE RING - Animated reaction at edges
+        const edgeFadeGeo = new THREE.RingGeometry(waterRadius - 10, waterRadius + 20, 128); // Higher segment count for detailed shader
         const edgeFadeMat = new THREE.ShaderMaterial({
             uniforms: {
-                innerRadius: { value: waterRadius - 30 },
+                uTime: { value: 0 },
+                innerRadius: { value: waterRadius - 10 },
                 outerRadius: { value: waterRadius + 20 },
             },
-            vertexShader: `
-                varying vec2 vUv;
-                varying float vDist;
-                void main() {
-                    vUv = uv;
-                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                    vDist = length(worldPos.xz);
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float innerRadius;
-                uniform float outerRadius;
-                varying float vDist;
-                
-                void main() {
-                    // Fade from transparent at inner edge to dark at outer edge
-                    float fade = smoothstep(innerRadius, outerRadius, vDist);
-                    vec3 darkColor = vec3(0.01, 0.03, 0.04);
-                    gl_FragColor = vec4(darkColor, fade * 0.7);
-                }
-            `,
+            vertexShader: ShoreShader.vertexShader,
+            fragmentShader: ShoreShader.fragmentShader,
             transparent: true,
             depthWrite: false,
             side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending, // Glow effect
         });
         const edgeFade = new THREE.Mesh(edgeFadeGeo, edgeFadeMat);
         edgeFade.rotation.x = -Math.PI / 2;
         edgeFade.position.set(0, -51.5, 0); // Slightly above water
         this.scene.add(edgeFade);
-        this.waterEdgeFade = edgeFade;
+        this.shoreRing = edgeFade;
+    }
+
+    createContactRipple(x, z, scale = 1.0) {
+        // Create a ripple effect at water level
+        const geo = new THREE.PlaneGeometry(16 * scale, 16 * scale);
+        const mat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: Math.random() * 10 }, // Random offset
+                uColor: { value: new THREE.Color(0x00ffcc) },
+            },
+            vertexShader: ContactRippleShader.vertexShader,
+            fragmentShader: ContactRippleShader.fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
+
+        const ripple = new THREE.Mesh(geo, mat);
+        ripple.rotation.x = -Math.PI / 2;
+        ripple.position.set(x, -51.8, z); // Just above water
+
+        this.scene.add(ripple);
+        this.contactRipples.push(ripple);
+        return ripple;
     }
 
     // Add smoothstep helper for JS
@@ -1325,6 +1440,11 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.scene.add(group);
         // No PointLight - rely on emissive materials for performance
         this.mushrooms.push({ group, cap, phase: Math.random() * Math.PI * 2 });
+
+        // Add water ripple if in water
+        if (y < -52 && y > -80) { // -52 is water level
+            this.createContactRipple(x, z, scale * 1.5);
+        }
     }
 
     createCrystalClusters() {
@@ -1392,6 +1512,11 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.scene.add(group);
         // No PointLight - rely on emissive crystal shader for performance
         this.crystalClusters.push({ group, phase: Math.random() * Math.PI * 2 });
+
+        // Add water ripple if in water
+        if (y < -52 && y > -80) {
+            this.createContactRipple(x, z, 2.0);
+        }
     }
 
     createSporeSystem() {
@@ -1704,6 +1829,16 @@ export default class BioluminescenceTheme extends BaseTheme {
                 }
             }
 
+            // Update shore ring
+            if (this.shoreRing && this.shoreRing.material.uniforms) {
+                this.shoreRing.material.uniforms.uTime.value = this.time;
+            }
+
+            // Update contact ripples
+            for (const ripple of this.contactRipples) {
+                ripple.material.uniforms.uTime.value = this.time;
+            }
+
             // Update water
             if (this.water) {
                 this.water.material.uniforms['time'].value += 1.0 / 60.0;
@@ -1799,6 +1934,21 @@ export default class BioluminescenceTheme extends BaseTheme {
             this.scene.remove(wall);
         }
         this.caveWalls = [];
+
+        // Dispose contact ripples
+        for (const ripple of this.contactRipples) {
+            ripple.geometry.dispose();
+            ripple.material.dispose();
+            this.scene.remove(ripple);
+        }
+        this.contactRipples = [];
+
+        // Dispose shore ring
+        if (this.shoreRing) {
+            this.shoreRing.geometry.dispose();
+            this.shoreRing.material.dispose();
+            this.scene.remove(this.shoreRing);
+        }
 
         // Dispose textures
         if (this.capTexture) this.capTexture.dispose();
