@@ -105,6 +105,11 @@
     "path": "./assets/music/Moonlit Greenhouse.mp3"
   },
   {
+    "name": "Neon District",
+    "file": "Neon District.mp3",
+    "path": "./assets/music/Neon District.mp3"
+  },
+  {
     "name": "Neon Dusk",
     "file": "Neon Dusk.mp3",
     "path": "./assets/music/Neon Dusk.mp3"
