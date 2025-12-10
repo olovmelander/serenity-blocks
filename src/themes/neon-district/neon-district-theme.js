@@ -40,7 +40,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.6,
         bloomThreshold: 0.75,
         enablePostProcessing: true,
-        flyingVehicles: 5,
+        flyingVehicles: 6,
     },
     Ultra: {
         buildingCount: 35,
@@ -49,7 +49,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.5,
         bloomThreshold: 0.75, // Only very bright things bloom
         enablePostProcessing: true,
-        flyingVehicles: 4,
+        flyingVehicles: 5,
     },
     High: {
         buildingCount: 30,
@@ -58,7 +58,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.5,
         bloomThreshold: 0.75,
         enablePostProcessing: true,
-        flyingVehicles: 3,
+        flyingVehicles: 4,
     },
     Medium: {
         buildingCount: 25,
@@ -67,7 +67,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.4,
         bloomThreshold: 0.8,
         enablePostProcessing: true,
-        flyingVehicles: 2,
+        flyingVehicles: 3,
     },
     Low: {
         buildingCount: 18,
@@ -76,7 +76,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.3,
         bloomThreshold: 0.85,
         enablePostProcessing: false,
-        flyingVehicles: 1,
+        flyingVehicles: 2,
     },
     Minimal: {
         buildingCount: 12,
@@ -85,7 +85,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.2,
         bloomThreshold: 0.8,
         enablePostProcessing: false,
-        flyingVehicles: 0,
+        flyingVehicles: 1,
     },
 };
 
@@ -191,8 +191,32 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
     }
 
+    /**
+     * Helper to defer work to the next animation frame.
+     * Use for visual updates that need to render immediately.
+     */
+    deferToNextFrame() {
+        return new Promise(resolve => requestAnimationFrame(resolve));
+    }
+
+    /**
+     * Helper to defer work to browser idle time.
+     * Uses requestIdleCallback to avoid competing with gameplay/animations.
+     * Falls back to setTimeout if requestIdleCallback is not available.
+     */
+    deferToIdleTime(timeout = 100) {
+        return new Promise(resolve => {
+            if (typeof requestIdleCallback !== 'undefined') {
+                requestIdleCallback(resolve, { timeout });
+            } else {
+                // Fallback for Safari and older browsers
+                setTimeout(resolve, 16);
+            }
+        });
+    }
+
     async createScene() {
-        console.log('[NeonDistrict] Creating cyberpunk cityscape...');
+        console.log('[NeonDistrict] Creating cyberpunk cityscape (smart loading)...');
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
@@ -203,23 +227,214 @@ export default class NeonDistrictTheme extends BaseTheme {
             return;
         }
 
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 1: INSTANT - Core rendering pipeline (< 30ms)
+        // ═══════════════════════════════════════════════════════════════════════
         this.initRenderer(container);
         this.createSkybox();
-        this.setupMaterials(); // Initialize shared materials before use
-        this.createBuildings();
-        this.createStreet();
-        this.createStreetLanterns();
-        this.createNeonSigns();
-        this.createOverheadWires();
-        this.createRain();
-        this.createFlyingVehicles();
+        this.setupMaterials();
         this.setupLighting();
         this.setupPostProcessing();
-        this.updateGroundReflections(); // Pass neon data to ground shader
         this.setupEventListeners();
-        this.startAnimation();
 
-        console.log('[NeonDistrict] Scene created');
+        // START ANIMATION IMMEDIATELY
+        this.startAnimation();
+        console.log('[NeonDistrict] Phase 1 complete - core rendering active');
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 2: ESSENTIAL - Minimal playable scene (< 100ms total)
+        // Only create ground and 6 closest buildings - enough for atmosphere
+        // ═══════════════════════════════════════════════════════════════════════
+        await this.deferToNextFrame();
+        if (!this.isActive) return;
+
+        this.createStreet();
+        this.createEssentialBuildings(); // Just 6 closest buildings
+        console.log('[NeonDistrict] Phase 2 complete - minimal scene ready');
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 3: BACKGROUND - Everything else loads in TRUE background
+        // Uses setTimeout with delays to NEVER interfere with gameplay
+        // ═══════════════════════════════════════════════════════════════════════
+        this.loadRemainingContentInBackground();
+    }
+
+    /**
+     * Creates only the 6 closest buildings for immediate atmosphere.
+     * These are positioned near the camera for maximum visual impact.
+     */
+    createEssentialBuildings() {
+        const streetWidth = 180;
+
+        // 3 buildings on each side, closest to camera
+        for (let i = 0; i < 3; i++) {
+            const zPos = -i * 120 - 100;
+
+            // Left side
+            const xLeft = -(streetWidth / 2 + 50 + Math.random() * 30);
+            this.createBuilding(xLeft, zPos, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
+
+            // Right side  
+            const xRight = streetWidth / 2 + 50 + Math.random() * 30;
+            this.createBuilding(xRight, zPos - 60, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
+        }
+
+        console.log('[NeonDistrict] Created 6 essential buildings');
+    }
+
+    /**
+     * Loads all remaining content in the true background.
+     * Uses setTimeout with significant delays to ensure ZERO gameplay interference.
+     */
+    loadRemainingContentInBackground() {
+        // Queue of work items to process
+        const workQueue = [];
+
+        // Calculate remaining buildings (total - 6 essential)
+        const remainingBuildingCount = Math.max(0, this.qualityPreset.buildingCount - 6);
+        const buildingsPerSide = Math.floor(remainingBuildingCount / 2);
+        const streetWidth = 180;
+        const buildingSpacing = 120;
+
+        // Add remaining left buildings (starting after the 3 essential ones)
+        for (let i = 3; i < 3 + buildingsPerSide; i++) {
+            const zPos = -i * buildingSpacing - 100;
+            const xPos = -(streetWidth / 2 + 50 + Math.random() * 30);
+            workQueue.push(() => {
+                if (!this.isActive) return;
+                this.createBuilding(xPos, zPos, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
+            });
+        }
+
+        // Add remaining right buildings
+        for (let i = 3; i < 3 + buildingsPerSide; i++) {
+            const zPos = -i * buildingSpacing - 100 - buildingSpacing / 2;
+            const xPos = streetWidth / 2 + 50 + Math.random() * 30;
+            workQueue.push(() => {
+                if (!this.isActive) return;
+                this.createBuilding(xPos, zPos, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
+            });
+        }
+
+        // Add background buildings
+        const alleyLength = (3 + buildingsPerSide) * buildingSpacing;
+        for (let i = 0; i < 6; i++) {
+            const zPos = -alleyLength - 200 - Math.random() * 500;
+            const xPos = (Math.random() - 0.5) * 800;
+            workQueue.push(() => {
+                if (!this.isActive) return;
+                this.createBuilding(xPos, zPos, 100 + Math.random() * 150, 800 + Math.random() * 1500, 100 + Math.random() * 150);
+            });
+        }
+
+        // Add neon signs (one work item per few buildings)
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createNeonSignsForBuildings(0, 5);
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createNeonSignsForBuildings(5, 10);
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createNeonSignsForBuildings(10, 20);
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createNeonSignsForBuildings(20, this.buildings.length);
+        });
+
+        // Add other elements
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createOverheadWires();
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createFloatingNeonElements();
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createHolographicBillboards();
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            // this.createStreetLanterns(); // Removed - orange lanterns
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createRain();
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createFlyingVehicles();
+        });
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.updateGroundReflections();
+            console.log('[NeonDistrict] Background loading complete!');
+        });
+
+        // Process queue with 50ms delays between items
+        // This ensures gameplay always has priority
+        this.processBackgroundQueue(workQueue, 0);
+    }
+
+    /**
+     * Process one work item, then schedule the next with a delay.
+     * 50ms delay ensures 20 items/second max - very gentle on the main thread.
+     */
+    processBackgroundQueue(queue, index) {
+        if (index >= queue.length || !this.isActive) return;
+
+        setTimeout(() => {
+            if (!this.isActive) return;
+
+            // Execute this work item
+            queue[index]();
+
+            // Schedule next item
+            this.processBackgroundQueue(queue, index + 1);
+        }, 50); // 50ms between items = ~20 items/second
+    }
+
+    /**
+     * Creates neon signs for a range of buildings.
+     */
+    createNeonSignsForBuildings(startIdx, endIdx) {
+        const buildings = this.buildings.slice(startIdx, Math.min(endIdx, this.buildings.length));
+        buildings.forEach((building) => {
+            if (Math.random() > 0.8) return;
+
+            const signCount = 1 + Math.floor(Math.random() * 3);
+            for (let j = 0; j < signCount; j++) {
+                const type = Math.random();
+                if (type < 0.4) {
+                    this.createNeonShape(building);
+                } else if (type < 0.7) {
+                    this.createNeonBanner(building);
+                } else {
+                    this.createNeonStrip(building);
+                }
+            }
+        });
+    }
+
+    /**
+     * Creates all holographic billboards.
+     */
+    createHolographicBillboards() {
+        this.createHolographicBillboard(-300, 400, -600);
+        this.createHolographicBillboard(350, 350, -400);
+        this.createHolographicBillboard(0, 500, -800);
+        this.createHolographicBillboard(-200, 300, -200);
+        this.createHolographicBillboard(250, 450, -150);
+        this.createHolographicBillboard(-350, 380, -350);
+        this.createHolographicBillboard(100, 550, -500);
+        this.createHolographicBillboard(-150, 420, -700);
+        this.createHolographicBillboard(400, 320, -250);
+        this.createHolographicBillboard(-400, 480, -450);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -433,52 +648,63 @@ export default class NeonDistrictTheme extends BaseTheme {
     // Procedural Cyberpunk Buildings
     // ─────────────────────────────────────────────────────────────────────────
 
-    createBuildings() {
+    async createBuildings() {
         const buildingCount = this.qualityPreset.buildingCount;
         const streetWidth = 180;  // Width of the alley corridor
         const buildingSpacing = 120;  // Space between buildings along the street
+        const CHUNK_SIZE = 2; // Small chunks to avoid ANY lag during gameplay
 
         // Calculate buildings per side
         const buildingsPerSide = Math.floor(buildingCount / 2);
         const alleyLength = buildingsPerSide * buildingSpacing;
 
-        // CREATE ORGANIZED ALLEY LAYOUT
+        // Prepare all building configs first (fast)
+        const buildingConfigs = [];
+
         // Left side buildings
         for (let i = 0; i < buildingsPerSide; i++) {
-            const zPos = -i * buildingSpacing - 100;  // Starts in front of camera
-            const xPos = -(streetWidth / 2 + 50 + Math.random() * 30);  // Left side with slight variation
-
+            const zPos = -i * buildingSpacing - 100;
+            const xPos = -(streetWidth / 2 + 50 + Math.random() * 30);
             const width = 70 + Math.random() * 80;
             const depth = 70 + Math.random() * 80;
-            const height = 500 + Math.random() * 1000;  // Very tall for alley effect
-
-            this.createBuilding(xPos, zPos, width, height, depth);
+            const height = 500 + Math.random() * 1000;
+            buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
         }
 
         // Right side buildings
         for (let i = 0; i < buildingsPerSide; i++) {
-            const zPos = -i * buildingSpacing - 100 - buildingSpacing / 2;  // Offset from left side
-            const xPos = streetWidth / 2 + 50 + Math.random() * 30;  // Right side with slight variation
-
+            const zPos = -i * buildingSpacing - 100 - buildingSpacing / 2;
+            const xPos = streetWidth / 2 + 50 + Math.random() * 30;
             const width = 70 + Math.random() * 80;
             const depth = 70 + Math.random() * 80;
             const height = 500 + Math.random() * 1000;
-
-            this.createBuilding(xPos, zPos, width, height, depth);
+            buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
         }
 
-        // Add some background buildings for depth
+        // Background buildings
         for (let i = 0; i < 6; i++) {
             const zPos = -alleyLength - 200 - Math.random() * 500;
             const xPos = (Math.random() - 0.5) * 800;
             const width = 100 + Math.random() * 150;
             const depth = 100 + Math.random() * 150;
             const height = 800 + Math.random() * 1500;
-
-            this.createBuilding(xPos, zPos, width, height, depth);
+            buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
         }
 
-        console.log(`[NeonDistrict] Created alley with ${buildingCount} buildings`);
+        // CREATE BUILDINGS IN SMALL CHUNKS (idle-time loading)
+        for (let i = 0; i < buildingConfigs.length; i += CHUNK_SIZE) {
+            if (!this.isActive) return; // Check if stopped
+
+            const chunk = buildingConfigs.slice(i, i + CHUNK_SIZE);
+            chunk.forEach(cfg => this.createBuilding(cfg.x, cfg.z, cfg.width, cfg.height, cfg.depth));
+
+            // Wait for idle time before next chunk - doesn't compete with gameplay
+            if (i + CHUNK_SIZE < buildingConfigs.length) {
+                await this.deferToIdleTime();
+            }
+        }
+
+        console.log(`[NeonDistrict] Created alley with ${buildingCount} buildings (idle-chunked)`);
     }
 
     createBuilding(x, z, width, height, depth) {
@@ -512,9 +738,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         const height = 24; // Standard ground floor height
         const geometry = new THREE.BoxGeometry(width + 2, height, depth + 2);
 
-        // Random shop color
-        const hue = Math.random();
-        const color = new THREE.Color().setHSL(hue, 1.0, 0.6);
+        // Purple/cyan shop color (avoid red)
+        const hue = 0.5 + Math.random() * 0.4; // Hue 0.5-0.9 = cyan to purple
+        const color = new THREE.Color().setHSL(hue, 1.0, 0.55);
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
@@ -859,191 +1085,278 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createStreet() {
-        // HIGH QUALITY WET ASPHALT - matching rain puddle reference
+        // ═══════════════════════════════════════════════════════════════════════
+        // HIGH QUALITY WET ASPHALT - Using real PBR textures like Faraz demo
+        // ═══════════════════════════════════════════════════════════════════════
         const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
 
-        const wetAsphaltMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                uCameraPos: { value: new THREE.Vector3() },
-                // Create filled arrays to prevent initializing with empty []
-                uLightPositions: { value: new Array(8).fill(0).map(() => new THREE.Vector3(0, 1000, 0)) },
-                uLightColors: { value: new Array(8).fill(0).map(() => new THREE.Color(0x000000)) }
-            },
-            vertexShader: `
-                varying vec2 vUv;
+        // Need UV2 for AO map
+        groundGeometry.setAttribute('uv2', groundGeometry.attributes.uv);
+
+        // Load PBR texture maps
+        const textureLoader = new THREE.TextureLoader();
+        const texturePath = '/textures/neon-district/';
+
+        const diffuseMap = textureLoader.load(texturePath + 'aerial_asphalt_01_diff_2k.jpg');
+        const normalMap = textureLoader.load(texturePath + 'aerial_asphalt_01_nor_gl_2k.jpg');
+        const roughnessMap = textureLoader.load(texturePath + 'aerial_asphalt_01_rough_2k.jpg');
+        const aoMap = textureLoader.load(texturePath + 'aerial_asphalt_01_ao_2k.jpg');
+
+        // Configure texture wrapping and tiling - smaller tiling = more visible detail
+        [diffuseMap, normalMap, roughnessMap, aoMap].forEach(tex => {
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(15, 15); // Reduced tiling for visible texture detail
+        });
+
+        // Create PHYSICAL material (better reflections than Standard)
+        const wetAsphaltMaterial = new THREE.MeshPhysicalMaterial({
+            map: diffuseMap,
+            normalMap: normalMap,
+            normalScale: new THREE.Vector2(1.0, 1.0),
+            roughnessMap: roughnessMap,
+            roughness: 0.6, // Base roughness - will be modified by shader
+            aoMap: aoMap,
+            aoMapIntensity: 1.0,
+            metalness: 0.0,
+            envMapIntensity: 1.0, // HDR reflections for wet look
+            clearcoat: 0.3, // Adds wet-look clearcoat layer
+            clearcoatRoughness: 0.1,
+        });
+
+        // Store uniforms for animation
+        this.groundUniforms = {
+            uTime: { value: 0 },
+            uCameraPos: { value: new THREE.Vector3() },
+            uLightPositions: { value: new Array(8).fill(0).map(() => new THREE.Vector3(0, 1000, 0)) },
+            uLightColors: { value: new Array(8).fill(0).map(() => new THREE.Color(0x000000)) }
+        };
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // SHADER INJECTION - Add puddle/ripple effects via onBeforeCompile
+        // ═══════════════════════════════════════════════════════════════════════
+        wetAsphaltMaterial.onBeforeCompile = (shader) => {
+            // Add our custom uniforms
+            shader.uniforms.uTime = this.groundUniforms.uTime;
+            shader.uniforms.uCameraPos = this.groundUniforms.uCameraPos;
+            shader.uniforms.uLightPositions = this.groundUniforms.uLightPositions;
+            shader.uniforms.uLightColors = this.groundUniforms.uLightColors;
+
+            // ─────────────────────────────────────────────────────────────────
+            // VERTEX SHADER - Add varyings for world position
+            // ─────────────────────────────────────────────────────────────────
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `#include <common>
                 varying vec3 vWorldPos;
-                varying vec3 vNormal; // We need world normal
+                varying vec2 vUvGround;`
+            );
+
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <worldpos_vertex>',
+                `#include <worldpos_vertex>
+                vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                vUvGround = uv;`
+            );
+
+            // ─────────────────────────────────────────────────────────────────
+            // FRAGMENT SHADER - Inject puddle/ripple logic
+            // ─────────────────────────────────────────────────────────────────
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `#include <common>
                 
-                void main() {
-                    vUv = uv * 30.0; // Tiling
-                    vNormal = normalize(vec3(modelMatrix * vec4(0.0, 1.0, 0.0, 0.0))); // Up
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPos = worldPosition.xyz;
-                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-                }
-            `,
-            fragmentShader: `
                 uniform float uTime;
                 uniform vec3 uCameraPos;
                 uniform vec3 uLightPositions[8];
                 uniform vec3 uLightColors[8];
                 
-                varying vec2 vUv;
                 varying vec3 vWorldPos;
-                varying vec3 vNormal;
+                varying vec2 vUvGround;
                 
-                float hash(vec2 p) {
+                // ═══════════════════════════════════════════════════════════════
+                // FARAZ-STYLE HASH FUNCTIONS
+                // ═══════════════════════════════════════════════════════════════
+                float hash12(vec2 p) {
+                    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+                    p3 += dot(p3, p3.yzx + 19.19);
+                    return fract((p3.x + p3.y) * p3.z);
+                }
+                
+                vec2 hash22(vec2 p) {
+                    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+                    p3 += dot(p3, p3.yzx + 19.19);
+                    return fract((p3.xx + p3.yz) * p3.zy);
+                }
+                
+                // ═══════════════════════════════════════════════════════════════
+                // FARAZ-STYLE RIPPLES - Grid-based with 3x3 neighbor sampling
+                // ═══════════════════════════════════════════════════════════════
+                #define MAX_RADIUS 1
+                
+                vec3 getRipples(vec2 uv, float time) {
+                    vec2 p0 = floor(uv);
+                    float t = time * 3.0;
+                    
+                    vec2 circles = vec2(0.0);
+                    
+                    for (int j = -MAX_RADIUS; j <= MAX_RADIUS; ++j) {
+                        for (int i = -MAX_RADIUS; i <= MAX_RADIUS; ++i) {
+                            vec2 pi = p0 + vec2(float(i), float(j));
+                            vec2 hsh = pi;
+                            vec2 p = pi + hash22(hsh);
+                            
+                            float cellTime = fract(0.3 * t + hash12(hsh));
+                            vec2 v = p - uv;
+                            float d = length(v) - (float(MAX_RADIUS) + 1.0) * cellTime;
+                            
+                            float h = 0.01;
+                            float d1 = d - h;
+                            float d2 = d + h;
+                            float p1 = sin(31.0 * d1) * smoothstep(-0.6, -0.3, d1) * smoothstep(0.0, -0.3, d1);
+                            float p2 = sin(31.0 * d2) * smoothstep(-0.6, -0.3, d2) * smoothstep(0.0, -0.3, d2);
+                            
+                            float vLen = length(v);
+                            if (vLen > 0.001) {
+                                circles += 0.5 * (v / vLen) * ((p2 - p1) / (2.0 * h) * (1.0 - cellTime) * (1.0 - cellTime));
+                            }
+                        }
+                    }
+                    
+                    circles /= float((MAX_RADIUS * 2 + 1) * (MAX_RADIUS * 2 + 1));
+                    float circlesDot = clamp(dot(circles, circles), 0.0, 1.0);
+                    return vec3(circles, sqrt(1.0 - circlesDot));
+                }
+                
+                // ═══════════════════════════════════════════════════════════════
+                // PUDDLE DETECTION using FBM
+                // ═══════════════════════════════════════════════════════════════
+                float simpleNoise(vec2 p) {
                     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
                 }
                 
-                float noise(vec2 p) {
-                    vec2 i = floor(p);
-                    vec2 f = fract(p);
-                    f = f * f * (3.0 - 2.0 * f);
-                    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
-                               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-                }
-                
-                // Multi-octave noise for detailed texture
-                float fbm(vec2 p) {
+                float fbmNoise(vec2 p) {
                     float f = 0.0;
-                    f += 0.5000 * noise(p); p *= 2.02;
-                    f += 0.2500 * noise(p); p *= 2.03;
-                    f += 0.1250 * noise(p); p *= 2.01;
-                    f += 0.0625 * noise(p);
+                    f += 0.5000 * simpleNoise(p); p *= 2.02;
+                    f += 0.2500 * simpleNoise(p); p *= 2.03;
+                    f += 0.1250 * simpleNoise(p); p *= 2.01;
+                    f += 0.0625 * simpleNoise(p);
                     return f / 0.9375;
                 }
                 
-                // Advanced Rain Ripples (Faraz Style)
-                vec3 rainRipple(vec2 uv, float time) {
-                    float t = time * 4.0;
-                    vec2 p = uv * 10.0; // Grid density
-                    vec2 h = floor(p);
-                    vec2 f = fract(p) - 0.5;
-                    
-                    vec2 o = vec2(hash(h), hash(h + vec2(17.0, 31.0))) * 0.5; // Offset within cell
-                    float rnd = hash(h + vec2(1.0)); // Random start time
-                    
-                    float d = length(f - o); // Distance to drop center
-                    
-                    // Ring animation
-                    float rippleTime = fract(t + rnd);
-                    float wave = sin(d * 40.0 - rippleTime * 20.0) * smoothstep(0.5, 0.0, d);
-                    
-                    // Fade in/out based on lifespan
-                    float fade = smoothstep(0.0, 0.2, rippleTime) * smoothstep(1.0, 0.8, rippleTime);
-                    
-                    // Normal perturbation derivative
-                    vec2 deriv = vec2(wave) * (f - o) * 5.0 * fade;
-                    return vec3(deriv.x, 1.0, deriv.y);
+                float getPuddle(vec2 uv) {
+                    float puddleNoise = fbmNoise((uv + vec2(3.0, 0.0)) * 0.3);
+                    puddleNoise = smoothstep(0.3, 0.7, puddleNoise);
+                    return puddleNoise;
                 }
                 
-                void main() {
-                    vec2 uv = vWorldPos.xz * 0.02;
-                    
-                    // ===== DETAILED ASPHALT TEXTURE =====
-                    // Coarse aggregate (large stones)
-                    float coarse = fbm(uv * 15.0) * 0.3;
-                    // Medium aggregate
-                    float medium = fbm(uv * 40.0) * 0.2;
-                    // Fine aggregate (sand)
-                    float fine = fbm(uv * 120.0) * 0.1;
-                    // Tar/bitumen patches
-                    float tar = smoothstep(0.55, 0.6, noise(uv * 5.0)) * 0.15;
-                    // Cracks
-                    float cracks = smoothstep(0.48, 0.52, noise(uv * 3.0)) * 0.1;
-                    
-                    // Base asphalt color - DARKER to allow emissive to pop
-                    vec3 dryAsphalt = vec3(0.02, 0.02, 0.03);
-                    dryAsphalt += coarse + medium + fine - tar - cracks;
-                    
-                    // Purple emissive ground glow
-                    vec3 emissiveColor = vec3(0.5, 0.0, 0.8); // Purple glow
-                    float emissiveIntensity = 0.25;
-                    
-                    // ===== WET SURFACE =====
-                    // Sharper wetness mask for distinct puddles
-                    float rawWet = noise(uv * 4.0 + uTime * 0.05);
-                    float wetness = smoothstep(0.45, 0.65, rawWet); // Sharper transition
-                    
-                    vec3 wetAsphalt = dryAsphalt * 0.2;  // Almost black when wet to reflect perfectly
-                    vec3 baseColor = mix(dryAsphalt, wetAsphalt, wetness);
-                    
-                    // ===== NORMAL CALCULATION =====
-                    vec3 normal = vec3(0.0, 1.0, 0.0);
-                    
-                    // Add Grain Normals for detail
-                    float grainNormalStrength = 0.5;
-                    normal.x += (fbm(uv * 80.0 + vec2(0.01, 0.0)) - fbm(uv * 80.0 - vec2(0.01, 0.0))) * grainNormalStrength;
-                    normal.z += (fbm(uv * 80.0 + vec2(0.0, 0.01)) - fbm(uv * 80.0 - vec2(0.0, 0.01))) * grainNormalStrength;
-                    
-                    // ===== RAIN RIPPLES (Normal Distortion) =====
-                    // Mix 2 layers of ripples for variety
-                    vec3 ripple1 = rainRipple(uv, uTime);
-                    vec3 ripple2 = rainRipple(uv * 0.7 + 5.0, uTime * 0.8);
-                    
-                    // Combine ripples
-                    vec3 totalRipple = ripple1 + ripple2;
-                    
-                    // Distort normal ONLY in wet areas
-                    // Increased distortion for "Fluid" look
-                    normal = normalize(normal + totalRipple * wetness * 1.5); 
-
-                    // ===== REFLECTIONS (Using Perturbed Normal) =====
-                    vec3 viewDir = normalize(uCameraPos - vWorldPos);
-                    vec3 reflectionColor = vec3(0.0);
-                    
-                    // Dynamic Analytic Lights (Neon Signs)
-                    for(int i = 0; i < 8; i++) {
-                        vec3 lightPos = uLightPositions[i];
-                        vec3 lightColor = uLightColors[i];
-                        
-                        // Distance check/Falloff
-                        float dist = distance(vWorldPos, lightPos);
-                        float atten = 1.0 / (1.0 + dist * 0.01 + dist * dist * 0.0001);
-                        
-                        // Reflection Vector
-                        vec3 lightDir = normalize(lightPos - vWorldPos);
-                        vec3 reflectDir = reflect(-lightDir, normal);
-                        
-                        // Specular (Phong)
-                        // Wet asphalt has broad, elongated highlights
-                        float specBase = max(dot(reflectDir, -viewDir), 0.0);
-                        float spec = pow(specBase, 32.0); // Sharpness
-                        
-                        // Anisotropic-ish stretch?
-                        // Simple trick: boost intensity if aligned
-                        
-                        reflectionColor += lightColor * spec * atten * 4.0; 
-                    }
-                    
-                    // Add subtle ambient "City Glow" (Purple gradient)
-                    float cityGlowMix = smoothstep(-100.0, 100.0, vWorldPos.x);
-                    vec3 cityGlow = mix(vec3(0.6, 0.0, 1.0), vec3(1.0, 0.0, 0.8), cityGlowMix);
-                    reflectionColor += cityGlow * 0.15;
-
-                    // Oil Slick (Rainbow) - Subtle
-                    float oilMix = noise(vUv * 0.5);
-                    vec3 rainbow = 0.5 + 0.5 * cos(uTime * 0.5 + vUv.xyx + vec3(0, 2, 4));
-                    reflectionColor += rainbow * oilMix * 0.2 * wetness;
-                    
-                    // Final mix
-                    // Wet areas are nearly perfect mirrors (Fresnel varies)
-                    float reflectivity = wetness * (0.2 + 0.8 * pow(1.0 - max(0.0, dot(normal, viewDir)), 5.0));
-                    vec3 finalColor = mix(baseColor, reflectionColor, reflectivity);
-                    
-                    // Add SYNTHCITY blue emissive glow
-                    finalColor += emissiveColor * emissiveIntensity * (1.0 - reflectivity * 0.5);
-                    
-                    // Tone mapping
-                    finalColor = finalColor / (finalColor + vec3(1.0));
-                    
-                    gl_FragColor = vec4(finalColor, 1.0);
+                // Perturb normal with ripple effect
+                vec3 perturbNormal(vec3 inputNormal, vec3 noiseNormal, float strength) {
+                    vec3 noiseNormalOrthogonal = noiseNormal - (dot(noiseNormal, inputNormal) * inputNormal);
+                    return normalize(inputNormal - noiseNormalOrthogonal * strength);
                 }
-            `,
-        });
+                `
+            );
+
+            // Inject puddle/roughness modifications BEFORE lighting calculation
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <roughnessmap_fragment>',
+                `#include <roughnessmap_fragment>
+                
+                // ═══════════════════════════════════════════════════════════════
+                // PUDDLE & WET SURFACE MODIFICATIONS
+                // ═══════════════════════════════════════════════════════════════
+                float puddle = getPuddle(vWorldPos.xz * 0.02);
+                float wetness = 0.6 + puddle * 0.4;
+                
+                // Wet surfaces have LOW roughness (shiny)
+                float wetRoughness = mix(roughnessFactor, 0.05, wetness);
+                roughnessFactor = wetRoughness;
+                `
+            );
+
+            // Inject normal perturbation for ripples
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <normal_fragment_maps>',
+                `#include <normal_fragment_maps>
+                
+                // ═══════════════════════════════════════════════════════════════
+                // RAIN RIPPLE NORMAL PERTURBATION
+                // ═══════════════════════════════════════════════════════════════
+                float puddle2 = getPuddle(vWorldPos.xz * 0.02);
+                
+                vec3 rippleNormal = getRipples(vWorldPos.xz * 0.4, uTime);
+                vec3 rippleNormal2 = getRipples(vWorldPos.xz * 0.25 + vec2(100.0), uTime * 0.85);
+                vec3 combinedRipple = normalize(rippleNormal + rippleNormal2 * 0.5);
+                
+                // Stronger ripples in puddle areas
+                float rippleStrength = 0.15 + puddle2 * 0.35;
+                normal = perturbNormal(normal, combinedRipple, rippleStrength);
+                `
+            );
+
+            // Add neon light reflections to final color
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <output_fragment>',
+                `
+                // ═══════════════════════════════════════════════════════════════
+                // NEON LIGHT REFLECTIONS - Vibrant colored light on wet pavement
+                // ═══════════════════════════════════════════════════════════════
+                vec3 neonReflection = vec3(0.0);
+                vec3 viewDirGround = normalize(uCameraPos - vWorldPos);
+                float puddle3 = getPuddle(vWorldPos.xz * 0.02);
+                
+                // High base wetness for always-visible reflections
+                float wetness3 = 0.7 + puddle3 * 0.3;
+                
+                for(int i = 0; i < 8; i++) {
+                    vec3 lightPos = uLightPositions[i];
+                    vec3 lightColor = uLightColors[i];
+                    
+                    // Skip invalid lights (placed far away)
+                    if (lightPos.y > 500.0) continue;
+                    
+                    float dist = distance(vWorldPos, lightPos);
+                    
+                    // Very gentle falloff for maximum reach
+                    float atten = 1.0 / (1.0 + dist * 0.001 + dist * dist * 0.000002);
+                    
+                    // Wide elongated streaks (like real wet road reflections)
+                    float zDist = abs(vWorldPos.z - lightPos.z);
+                    float xDist = abs(vWorldPos.x - lightPos.x);
+                    float streakFalloff = exp(-xDist * 0.008) * exp(-zDist * 0.001);
+                    
+                    // Specular reflection
+                    vec3 lightDir = normalize(lightPos - vWorldPos);
+                    vec3 reflectDir = reflect(-lightDir, normal);
+                    float spec = pow(max(dot(reflectDir, -viewDirGround), 0.0), 4.0);
+                    
+                    // Combine: mostly streak-based for elongated look
+                    float totalReflect = spec * 0.2 + streakFalloff * 0.8;
+                    
+                    // Saturate and brighten color for neon pop
+                    vec3 saturatedColor = lightColor * 3.0;
+                    
+                    // MASSIVE intensity boost
+                    neonReflection += saturatedColor * totalReflect * atten * 100.0 * wetness3;
+                }
+                
+                // Strong purple/cyan city ambient glow
+                float cityGlowMix = smoothstep(-150.0, 150.0, vWorldPos.x);
+                vec3 cityGlow = mix(vec3(0.1, 0.3, 0.8), vec3(0.7, 0.1, 0.9), cityGlowMix);
+                neonReflection += cityGlow * 1.2 * wetness3;
+                
+                outgoingLight += neonReflection;
+                
+                #include <output_fragment>
+                `
+            );
+
+            // Store shader reference for uniform updates
+            this.groundShader = shader;
+        };
+
+        // Need customProgramCacheKey to prevent shader caching issues
+        wetAsphaltMaterial.customProgramCacheKey = () => 'neon-district-wet-asphalt';
 
         const ground = new THREE.Mesh(groundGeometry, wetAsphaltMaterial);
         ground.rotation.x = -Math.PI / 2;
@@ -1059,14 +1372,13 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.scene.add(spotLight);
         this.scene.add(spotLight.target);
 
-        // Add floating street lanterns
-        this.createStreetLanterns();
+        // Note: Street lanterns are created separately in Phase 5 of progressive loading
 
         // Add road markings for detail
         this.createRoadMarkings();
 
         // Add city glow lights
-        this.createCityGlowLights();
+        // this.createCityGlowLights(); // Removed - visible light dots
     }
 
     createRoadMarkings() {
@@ -1105,61 +1417,77 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
     }
 
-    // Ground-level city glow lights - PURPLE DOMINANT
+    // Ground-level city glow lights - Coming from building sides
     createCityGlowLights() {
-        // Heavy purple/violet themed ground lights
+        // Lights positioned at building edges, shining down onto street
         const glowPositions = [
-            { x: -250, z: -200, color: 0xaa00ff },  // Bright purple
-            { x: 280, z: -350, color: 0x8800ff },  // Deep purple
-            { x: -180, z: -600, color: 0xff00ff },  // Magenta
-            { x: 200, z: -100, color: 0x6600ff },  // Violet
-            { x: -300, z: -450, color: 0xcc00ff },  // Light purple
-            { x: 320, z: -550, color: 0xff00aa },  // Pink-purple
-            { x: -100, z: 100, color: 0x9933ff },  // Medium purple
-            { x: 150, z: -700, color: 0x7700ff },  // Deep violet
-            { x: -200, z: -400, color: 0xbb00ff },  // Bright violet
-            { x: 250, z: -250, color: 0xff66ff },  // Light magenta
-            { x: -350, z: -150, color: 0xaa00cc },  // Purple-magenta
-            { x: 100, z: -500, color: 0x5500ff },  // Royal purple
+            // LEFT SIDE (buildings at x ~ -30 to -50)
+            { x: -35, y: 20, z: 20, color: 0xff00ff, intensity: 60 },     // Magenta
+            { x: -40, y: 15, z: -30, color: 0x00ffff, intensity: 55 },    // Cyan
+            { x: -38, y: 25, z: -80, color: 0xaa00ff, intensity: 50 },    // Purple
+            { x: -42, y: 18, z: -130, color: 0xff00aa, intensity: 45 },   // Pink
+            { x: -36, y: 22, z: -180, color: 0x8800ff, intensity: 40 },   // Deep purple
+            { x: -45, y: 20, z: -250, color: 0x00ff88, intensity: 35 },   // Cyan-green
+            { x: -38, y: 16, z: -320, color: 0xff66ff, intensity: 30 },   // Light magenta
+
+            // RIGHT SIDE (buildings at x ~ 30 to 50)
+            { x: 38, y: 18, z: 10, color: 0x00ffff, intensity: 60 },      // Cyan
+            { x: 42, y: 22, z: -50, color: 0xff00ff, intensity: 55 },     // Magenta
+            { x: 36, y: 15, z: -100, color: 0x00ff88, intensity: 50 },    // Green-cyan
+            { x: 45, y: 25, z: -160, color: 0xaa00ff, intensity: 45 },    // Purple
+            { x: 40, y: 18, z: -220, color: 0xff00aa, intensity: 40 },    // Pink
+            { x: 35, y: 20, z: -280, color: 0x8800ff, intensity: 35 },    // Deep purple
+            { x: 48, y: 16, z: -350, color: 0x66ffff, intensity: 30 },    // Light cyan
         ];
 
-        glowPositions.forEach(({ x, z, color }) => {
-            const light = new THREE.PointLight(color, 10, 400);
-            light.position.set(x, 15, z);
-            light.decay = 2;
+        glowPositions.forEach(({ x, y, z, color, intensity }) => {
+            const light = new THREE.PointLight(color, intensity, 120);
+            light.position.set(x, y, z);
+            light.decay = 1.8;
             this.scene.add(light);
         });
 
-        console.log('[NeonDistrict] Added purple city glow lights');
+        console.log('[NeonDistrict] Added building-side neon lights');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Neon Signs and Holographic Ads
     // ─────────────────────────────────────────────────────────────────────────
 
-    createNeonSigns() {
+    async createNeonSigns() {
         this.neonSigns = [];
+        const CHUNK_SIZE = 3; // Small chunks to avoid ANY lag during gameplay
 
-        // Mixed types: Shapes and Vertical Banners - MORE SIGNS!
-        this.buildings.forEach((building) => {
-            // 80% of buildings have at least one sign
-            if (Math.random() > 0.8) return;
+        // Process buildings in chunks for non-blocking sign creation
+        for (let i = 0; i < this.buildings.length; i += CHUNK_SIZE) {
+            if (!this.isActive) return;
 
-            // Add 1-3 signs per building
-            const signCount = 1 + Math.floor(Math.random() * 3);
-            for (let i = 0; i < signCount; i++) {
-                const type = Math.random();
-                if (type < 0.4) {
-                    this.createNeonShape(building);
-                } else if (type < 0.7) {
-                    this.createNeonBanner(building);
-                } else {
-                    this.createNeonStrip(building); // New type!
+            const chunk = this.buildings.slice(i, i + CHUNK_SIZE);
+            chunk.forEach((building) => {
+                // 80% of buildings have at least one sign
+                if (Math.random() > 0.8) return;
+
+                // Add 1-3 signs per building
+                const signCount = 1 + Math.floor(Math.random() * 3);
+                for (let j = 0; j < signCount; j++) {
+                    const type = Math.random();
+                    if (type < 0.4) {
+                        this.createNeonShape(building);
+                    } else if (type < 0.7) {
+                        this.createNeonBanner(building);
+                    } else {
+                        this.createNeonStrip(building);
+                    }
                 }
-            }
-        });
+            });
 
-        // Many more holographic billboards scattered throughout
+            // Wait for idle time - doesn't compete with gameplay
+            if (i + CHUNK_SIZE < this.buildings.length) {
+                await this.deferToIdleTime();
+            }
+        }
+
+        // Holographic billboards (fast, no chunking needed)
         this.createHolographicBillboard(-300, 400, -600);
         this.createHolographicBillboard(350, 350, -400);
         this.createHolographicBillboard(0, 500, -800);
@@ -1675,27 +2003,33 @@ export default class NeonDistrictTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             const vehicle = this.createSpinner();
 
-            // Assign safe lanes to avoid buildings
-            const lane = Math.floor(Math.random() * 3); // 0, 1, 2
+            // DETERMINISTIC lane assignment for variety:
+            // Distribute evenly across 3 lanes (low, mid, high altitude)
+            const lane = i % 3;
             let x, y, z;
 
             if (lane === 0) {
-                // Center Lane (Low Altitude - The "Trench" Run)
-                x = (Math.random() - 0.5) * 40; // Tight center
+                // Low Altitude - The "Trench" Run (center corridor)
+                x = (Math.random() - 0.5) * 40;
                 y = 80 + Math.random() * 100;   // 80 to 180 height
+            } else if (lane === 1) {
+                // Mid Altitude - Between buildings
+                x = (Math.random() - 0.5) * 400;
+                y = 200 + Math.random() * 150;  // 200 to 350 height
             } else {
-                // High Altitude (Above buildings)
+                // High Altitude - Above buildings
                 x = (Math.random() - 0.5) * 1000;
-                y = 350 + Math.random() * 300;  // 350 to 650 height
+                y = 400 + Math.random() * 300;  // 400 to 700 height
             }
             z = (Math.random() - 0.5) * 2000;
 
             vehicle.position.set(x, y, z);
 
-            // Movement parameters mainly along Z axis
-            vehicle.userData.speed = 100 + Math.random() * 100; // Faster
-            const dirZ = Math.random() > 0.5 ? 1 : -1;
-            vehicle.userData.direction = new THREE.Vector3(0, 0, dirZ); // Pure Z movement init
+            // DETERMINISTIC direction: alternate between forward and backward
+            // This ensures some cars always go each way from the start
+            const dirZ = (i % 2 === 0) ? 1 : -1;
+            vehicle.userData.speed = 100 + Math.random() * 100;
+            vehicle.userData.direction = new THREE.Vector3(0, 0, dirZ);
             vehicle.userData.lane = lane;
             vehicle.userData.wobbleOffset = Math.random() * 100;
 
@@ -1811,36 +2145,36 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     updateGroundReflections() {
-        if (!this.groundMaterial) return;
+        if (!this.groundUniforms) return;
 
-        // Find 8 closest/brightest signs to the camera/street center
-        // For simplicity, just pick 8 random bright signs or closest to 0,0,0
-        // Or sort by y height (lower is better for reflection)
-
-        // Filter signs that have a light attached (userData.light)
-        const activeSigns = this.neonSigns.filter(s => s.userData.light).slice(0, 8);
-
-        // Sort by Z to ensure we get signs near the start of the alley
-        // this.neonSigns.sort((a,b) => b.position.z - a.position.z);
-        // Better: pick random sample or distributed
+        // Collect all neon signs with lights, sorted by Z (closer to camera first)
+        const activeSigns = this.neonSigns
+            .filter(s => s.userData.light && s.userData.baseColor)
+            .sort((a, b) => b.position.z - a.position.z)
+            .slice(0, 8);
 
         const positions = [];
         const colors = [];
 
         for (let i = 0; i < 8; i++) {
             if (i < activeSigns.length) {
-                const s = activeSigns[i];
-                positions.push(new THREE.Vector3().copy(s.userData.light.position)); // Use light's position
-                colors.push(new THREE.Color(s.userData.baseColor || 0xffffff));
+                const sign = activeSigns[i];
+                // Get WORLD position of the sign (not local)
+                const worldPos = new THREE.Vector3();
+                sign.getWorldPosition(worldPos);
+                positions.push(worldPos);
+
+                // Boost color brightness for more visible reflections
+                const baseColor = new THREE.Color(sign.userData.baseColor || 0xffffff);
+                colors.push(baseColor);
             } else {
-                // Dummy fillers
                 positions.push(new THREE.Vector3(0, 1000, 0));
                 colors.push(new THREE.Color(0x000000));
             }
         }
 
-        this.groundMaterial.uniforms.uLightPositions.value = positions;
-        this.groundMaterial.uniforms.uLightColors.value = colors;
+        this.groundUniforms.uLightPositions.value = positions;
+        this.groundUniforms.uLightColors.value = colors;
     }
 
     updateFlyingVehicles(delta) {
@@ -1855,16 +2189,50 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // Low Altitude Center: Tight corridor
                 vehicle.position.x = Math.sin(time * 0.5) * 30;
                 vehicle.position.y += Math.sin(time * 1.0) * delta * 5;
+            } else if (vehicle.userData.lane === 1) {
+                // Mid Altitude: Moderate drift
+                vehicle.position.x += Math.cos(time * 0.4) * delta * 10;
+                vehicle.position.y += Math.sin(time * 0.6) * delta * 7;
             } else {
                 // High Altitude: Free drift
                 vehicle.position.x += Math.cos(time * 0.3) * delta * 15;
                 vehicle.position.y += Math.sin(time * 0.5) * delta * 10;
             }
 
-            // Loop / Warp (Infinite traffic)
-            if (vehicle.position.z > 1500) vehicle.position.z = -1500;
-            if (vehicle.position.z < -1500) vehicle.position.z = 1500;
-            if (Math.abs(vehicle.position.x) > 1000) vehicle.position.x *= -0.9; // Soft bound for high flyers
+            // Loop / Warp (Infinite traffic) - RANDOMIZE on re-entry
+            const didLoop = vehicle.position.z > 1500 || vehicle.position.z < -1500;
+
+            if (didLoop) {
+                // Warp to opposite side
+                vehicle.position.z = vehicle.position.z > 0 ? -1500 : 1500;
+
+                // RANDOMIZE lane, height, and position for variety
+                const newLane = Math.floor(Math.random() * 3);
+                vehicle.userData.lane = newLane;
+                vehicle.userData.wobbleOffset = Math.random() * 100; // New wobble pattern
+
+                if (newLane === 0) {
+                    // Low Altitude - Trench
+                    vehicle.position.x = (Math.random() - 0.5) * 40;
+                    vehicle.position.y = 80 + Math.random() * 100;
+                } else if (newLane === 1) {
+                    // Mid Altitude
+                    vehicle.position.x = (Math.random() - 0.5) * 400;
+                    vehicle.position.y = 200 + Math.random() * 150;
+                } else {
+                    // High Altitude
+                    vehicle.position.x = (Math.random() - 0.5) * 1000;
+                    vehicle.position.y = 400 + Math.random() * 300;
+                }
+
+                // Optionally flip direction for more variety
+                if (Math.random() > 0.7) {
+                    vehicle.userData.direction.z *= -1;
+                }
+            }
+
+            // Soft bound for X drift
+            if (Math.abs(vehicle.position.x) > 1000) vehicle.position.x *= -0.9;
 
             // Banking and look ahead
             const driftX = (vehicle.userData.lane === 0) ? Math.cos(time * 0.5) * 30 : 0;
@@ -1885,22 +2253,98 @@ export default class NeonDistrictTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupLighting() {
-        // PURPLE-DOMINANT LIGHTING
-        // Ambient: Deep purple tint
-        const ambientLight = new THREE.AmbientLight(0x1a0a2e, 0.5);
+        // Create PURPLE NEON environment map procedurally (no golden HDR)
+        this.createPurpleEnvironmentMap();
+        // Add scene lights
+        this.setupSceneLighting();
+    }
+
+    createPurpleEnvironmentMap() {
+        // Create a purple/cyan gradient cube map for neon reflections
+        const size = 128;
+
+        const createFace = (topColor, bottomColor) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, size);
+            gradient.addColorStop(0, topColor);
+            gradient.addColorStop(0.5, '#330066');
+            gradient.addColorStop(1, bottomColor);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add some neon spots
+            for (let i = 0; i < 8; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = 5 + Math.random() * 15;
+                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
+                const colors = ['#ff00ff', '#00ffff', '#aa00ff', '#ff00aa'];
+                spotGrad.addColorStop(0, colors[i % 4]);
+                spotGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = spotGrad;
+                ctx.fillRect(0, 0, size, size);
+            }
+
+            return canvas;
+        };
+
+        // Create 6 faces of cube map with purple/cyan neon colors
+        const faces = [
+            createFace('#ff00ff', '#00ffff'), // +x (right)
+            createFace('#aa00ff', '#00ff88'), // -x (left)
+            createFace('#8800ff', '#330066'), // +y (top)
+            createFace('#330066', '#110022'), // -y (bottom)
+            createFace('#ff00aa', '#0088ff'), // +z (front)
+            createFace('#00ffff', '#ff00ff'), // -z (back)
+        ];
+
+        const cubeTexture = new THREE.CubeTexture(faces);
+        cubeTexture.needsUpdate = true;
+
+        // Process for PBR reflections
+        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+        const envMap = pmremGenerator.fromCubemap(cubeTexture).texture;
+
+        this.scene.environment = envMap;
+
+        if (this.groundMaterial) {
+            this.groundMaterial.envMap = envMap;
+            this.groundMaterial.envMapIntensity = 1.5;
+            this.groundMaterial.needsUpdate = true;
+        }
+
+        pmremGenerator.dispose();
+        console.log('[NeonDistrict] Purple neon environment map created');
+    }
+
+    setupSceneLighting() {
+        // ═══════════════════════════════════════════════════════════════════════
+        // SCENE LIGHTING - Balanced for visible asphalt + neon atmosphere
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Brighter ambient for visible ground texture
+        const ambientLight = new THREE.AmbientLight(0x404050, 1.2);
         this.scene.add(ambientLight);
 
-        // Directional (Moon/Neon Glow): Bright Purple
-        const dirLight = new THREE.DirectionalLight(0xaa00ff, 0.4);
-        dirLight.position.set(-100, 100, -50);
+        // Hemisphere light for natural sky/ground lighting
+        const hemiLight = new THREE.HemisphereLight(0x4444aa, 0x222233, 0.8);
+        this.scene.add(hemiLight);
+
+        // Main directional light (moon-like) - aimed at ground
+        const dirLight = new THREE.DirectionalLight(0xaaaaff, 0.6);
+        dirLight.position.set(-50, 200, -100);
         this.scene.add(dirLight);
 
-        // Second directional for purple fill
-        const dirLight2 = new THREE.DirectionalLight(0x6600ff, 0.25);
-        dirLight2.position.set(100, 80, 50);
+        // Secondary fill light 
+        const dirLight2 = new THREE.DirectionalLight(0x8866ff, 0.4);
+        dirLight2.position.set(100, 150, 50);
         this.scene.add(dirLight2);
 
-        // Purple-heavy point lights throughout the scene
+        // Purple-heavy point lights for neon atmosphere
         const lightPositions = [
             // Deep purple lights
             { pos: [-200, 200, -300], color: 0x8800ff, intensity: 6 },
@@ -1924,7 +2368,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.scene.add(light);
         });
 
-        console.log('[NeonDistrict] Purple-dominant lighting configured');
+        console.log('[NeonDistrict] Lighting configured with HDR environment');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2028,6 +2472,12 @@ export default class NeonDistrictTheme extends BaseTheme {
             // Update sky shader
             if (this.sky?.material?.uniforms?.uTime) {
                 this.sky.material.uniforms.uTime.value = this.time;
+            }
+
+            // Update ground uniforms (for ripples and reflections)
+            if (this.groundUniforms) {
+                this.groundUniforms.uTime.value = this.time;
+                this.groundUniforms.uCameraPos.value.copy(this.camera.position);
             }
 
             // Update rain
