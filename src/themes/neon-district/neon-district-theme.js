@@ -1093,9 +1093,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Need UV2 for AO map
         groundGeometry.setAttribute('uv2', groundGeometry.attributes.uv);
 
-        // Load PBR texture maps
+        // Load PBR texture maps - use relative path for GitHub Pages compatibility
         const textureLoader = new THREE.TextureLoader();
-        const texturePath = '/textures/neon-district/';
+        const texturePath = './textures/neon-district/';
 
         const diffuseMap = textureLoader.load(texturePath + 'aerial_asphalt_01_diff_2k.jpg');
         const normalMap = textureLoader.load(texturePath + 'aerial_asphalt_01_nor_gl_2k.jpg');
