@@ -43,40 +43,40 @@ const QUALITY_PRESETS = {
         flyingVehicles: 6,
     },
     Ultra: {
-        buildingCount: 35,
-        rainParticles: 4000,
-        bloomStrength: 0.4, // WAS 1.4
-        bloomRadius: 0.5,
-        bloomThreshold: 0.75, // Only very bright things bloom
-        enablePostProcessing: true,
-        flyingVehicles: 5,
-    },
-    High: {
-        buildingCount: 30,
-        rainParticles: 3000,
-        bloomStrength: 0.4, // WAS 1.2
+        buildingCount: 25,      // Was 35
+        rainParticles: 1500,    // Was 4000
+        bloomStrength: 0.4,
         bloomRadius: 0.5,
         bloomThreshold: 0.75,
         enablePostProcessing: true,
-        flyingVehicles: 4,
+        flyingVehicles: 4,      // Was 5
+    },
+    High: {
+        buildingCount: 20,      // Was 30
+        rainParticles: 1200,    // Was 3000
+        bloomStrength: 0.4,
+        bloomRadius: 0.5,
+        bloomThreshold: 0.75,
+        enablePostProcessing: true,
+        flyingVehicles: 3,      // Was 4
     },
     Medium: {
-        buildingCount: 25,
-        rainParticles: 2000,
-        bloomStrength: 0.35, // WAS 1.0
+        buildingCount: 15,      // Was 25
+        rainParticles: 800,     // Was 2000
+        bloomStrength: 0.35,
         bloomRadius: 0.4,
         bloomThreshold: 0.8,
         enablePostProcessing: true,
-        flyingVehicles: 3,
+        flyingVehicles: 2,      // Was 3
     },
     Low: {
-        buildingCount: 18,
-        rainParticles: 1000,
-        bloomStrength: 0.3, // WAS 0.8
+        buildingCount: 10,      // Was 18
+        rainParticles: 400,     // Was 1000
+        bloomStrength: 0.3,
         bloomRadius: 0.3,
         bloomThreshold: 0.85,
         enablePostProcessing: false,
-        flyingVehicles: 2,
+        flyingVehicles: 1,      // Was 2
     },
     Minimal: {
         buildingCount: 12,
@@ -265,6 +265,7 @@ export default class NeonDistrictTheme extends BaseTheme {
      */
     createEssentialBuildings() {
         const streetWidth = 180;
+        const essentialBuildings = [];
 
         // 3 buildings on each side, closest to camera
         for (let i = 0; i < 3; i++) {
@@ -272,14 +273,112 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             // Left side
             const xLeft = -(streetWidth / 2 + 50 + Math.random() * 30);
-            this.createBuilding(xLeft, zPos, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
+            const leftBuilding = this.createBuilding(xLeft, zPos, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
+            essentialBuildings.push(leftBuilding);
 
             // Right side  
             const xRight = streetWidth / 2 + 50 + Math.random() * 30;
-            this.createBuilding(xRight, zPos - 60, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
+            const rightBuilding = this.createBuilding(xRight, zPos - 60, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
+            essentialBuildings.push(rightBuilding);
         }
 
-        console.log('[NeonDistrict] Created 6 essential buildings');
+        // GUARANTEED neon banners with Kanji on all essential buildings
+        essentialBuildings.forEach(building => {
+            if (building) {
+                this.createNeonBannerKanji(building);
+            }
+        });
+
+        console.log('[NeonDistrict] Created 6 essential buildings with Kanji signs');
+    }
+
+    /**
+     * Creates a neon banner that ALWAYS uses Kanji characters
+     * Positioned to face the STREET (toward x=0)
+     */
+    createNeonBannerKanji(building) {
+        const w = 25 + Math.random() * 15;  // Wider
+        const h = 60 + Math.random() * 40;  // Taller
+        const geometry = new THREE.PlaneGeometry(w, h);
+
+        // Purple-biased hue
+        const hue = 0.75 + Math.random() * 0.2;
+        const color = new THREE.Color().setHSL(hue, 1.0, 0.6);
+        const texture = this.generateKanjiTexture(color);
+
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.95,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
+
+        const sign = new THREE.Mesh(geometry, material);
+
+        // Position sign to FACE THE STREET (x=0)
+        const bx = building.position.x;
+        const bz = building.position.z;
+        const yPos = 40 + Math.random() * 80; // Lower for visibility
+
+        // Offset from building edge toward street
+        const streetOffset = 50; // Distance from building center
+
+        if (bx < 0) {
+            // Left side buildings - sign faces RIGHT (toward street center)
+            sign.position.set(bx + streetOffset, yPos, bz);
+            sign.rotation.y = -Math.PI / 2; // Face right
+        } else {
+            // Right side buildings - sign faces LEFT (toward street center)
+            sign.position.set(bx - streetOffset, yPos, bz);
+            sign.rotation.y = Math.PI / 2; // Face left
+        }
+
+        this.scene.add(sign);
+        this.neonSigns.push(sign);
+
+        // Add point light for glow
+        const signLight = new THREE.PointLight(color.getHex(), 3.0, 100);
+        signLight.position.copy(sign.position);
+        this.scene.add(signLight);
+
+        console.log(`[NeonDistrict] Kanji sign at x=${sign.position.x.toFixed(0)}, y=${sign.position.y.toFixed(0)}, z=${sign.position.z.toFixed(0)}`);
+    }
+
+    /**
+     * Generates a neon texture that ALWAYS uses Kanji
+     */
+    generateKanjiTexture(baseColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, 128, 256);
+
+        const colorStr = '#' + baseColor.getHexString();
+        ctx.strokeStyle = colorStr;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(4, 4, 120, 248);
+
+        // ALWAYS Kanji
+        const kanjis = ['未来', '技術', '電脳', '日本', '東京', '夜', '酒', '愛', '光', '力', '神', '風', '龍', '炎'];
+        const text = kanjis[Math.floor(Math.random() * kanjis.length)];
+
+        ctx.fillStyle = colorStr;
+        ctx.shadowColor = colorStr;
+        ctx.shadowBlur = 10;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 60px Arial';
+
+        // Vertical Kanji
+        ctx.fillText(text.charAt(0), 64, 80);
+        if (text.length > 1) ctx.fillText(text.charAt(1), 64, 160);
+
+        return new THREE.CanvasTexture(canvas);
     }
 
     /**
@@ -405,36 +504,30 @@ export default class NeonDistrictTheme extends BaseTheme {
     createNeonSignsForBuildings(startIdx, endIdx) {
         const buildings = this.buildings.slice(startIdx, Math.min(endIdx, this.buildings.length));
         buildings.forEach((building) => {
-            if (Math.random() > 0.8) return;
+            // 50% skip rate for faster loading (was 20%)
+            if (Math.random() > 0.5) return;
 
-            const signCount = 1 + Math.floor(Math.random() * 3);
-            for (let j = 0; j < signCount; j++) {
-                const type = Math.random();
-                if (type < 0.4) {
-                    this.createNeonShape(building);
-                } else if (type < 0.7) {
-                    this.createNeonBanner(building);
-                } else {
-                    this.createNeonStrip(building);
-                }
+            // Max 1 sign per building for performance (was 1-3)
+            const type = Math.random();
+            if (type < 0.4) {
+                this.createNeonShape(building);
+            } else if (type < 0.7) {
+                this.createNeonBanner(building);
+            } else {
+                this.createNeonStrip(building);
             }
         });
     }
 
     /**
-     * Creates all holographic billboards.
+     * Creates holographic billboards - reduced count for performance.
      */
     createHolographicBillboards() {
+        // Reduced from 10 to 4 for performance
         this.createHolographicBillboard(-300, 400, -600);
         this.createHolographicBillboard(350, 350, -400);
         this.createHolographicBillboard(0, 500, -800);
         this.createHolographicBillboard(-200, 300, -200);
-        this.createHolographicBillboard(250, 450, -150);
-        this.createHolographicBillboard(-350, 380, -350);
-        this.createHolographicBillboard(100, 550, -500);
-        this.createHolographicBillboard(-150, 420, -700);
-        this.createHolographicBillboard(400, 320, -250);
-        this.createHolographicBillboard(-400, 480, -450);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -732,6 +825,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         this.buildings.push(building);
         this.scene.add(building);
+        return building; // Return for essential buildings Kanji signs
     }
 
     createStorefront(building, width, depth) {
@@ -1086,41 +1180,61 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     createStreet() {
         // ═══════════════════════════════════════════════════════════════════════
-        // HIGH QUALITY WET ASPHALT - Using real PBR textures like Faraz demo
+        // HIGH QUALITY WET ASPHALT - Start with placeholder, async load textures
         // ═══════════════════════════════════════════════════════════════════════
         const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
 
         // Need UV2 for AO map
         groundGeometry.setAttribute('uv2', groundGeometry.attributes.uv);
 
-        // Load PBR texture maps - use relative path for GitHub Pages compatibility
+        // Create PLACEHOLDER material first (instant display - purple asphalt color)
+        const wetAsphaltMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x2a1a3a, // Purple-ish asphalt color
+            roughness: 0.15,  // Low base roughness for wet look (was 0.6)
+            metalness: 0.0,
+            envMapIntensity: 2.0, // Strong env reflections
+            clearcoat: 0.8,  // Strong wet clearcoat (was 0.3)
+            clearcoatRoughness: 0.0,
+        });
+
+        // Store reference for later texture swap
+        this.groundMaterial = wetAsphaltMaterial;
+
+        // ASYNC load PBR textures in background (non-blocking)
         const textureLoader = new THREE.TextureLoader();
         const texturePath = './textures/neon-district/';
 
-        const diffuseMap = textureLoader.load(texturePath + 'aerial_asphalt_01_diff_2k.jpg');
-        const normalMap = textureLoader.load(texturePath + 'aerial_asphalt_01_nor_gl_2k.jpg');
-        const roughnessMap = textureLoader.load(texturePath + 'aerial_asphalt_01_rough_2k.jpg');
-        const aoMap = textureLoader.load(texturePath + 'aerial_asphalt_01_ao_2k.jpg');
+        // Use Promise.all to load all textures in parallel
+        const texturePromises = [
+            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_diff_2k.jpg', resolve, undefined, () => resolve(null))),
+            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_nor_gl_2k.jpg', resolve, undefined, () => resolve(null))),
+            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_rough_2k.jpg', resolve, undefined, () => resolve(null))),
+            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_ao_2k.jpg', resolve, undefined, () => resolve(null))),
+        ];
 
-        // Configure texture wrapping and tiling - smaller tiling = more visible detail
-        [diffuseMap, normalMap, roughnessMap, aoMap].forEach(tex => {
-            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(15, 15); // Reduced tiling for visible texture detail
-        });
+        Promise.all(texturePromises).then(([diffuseMap, normalMap, roughnessMap, aoMap]) => {
+            if (!this.isActive) return;
 
-        // Create PHYSICAL material (better reflections than Standard)
-        const wetAsphaltMaterial = new THREE.MeshPhysicalMaterial({
-            map: diffuseMap,
-            normalMap: normalMap,
-            normalScale: new THREE.Vector2(1.0, 1.0),
-            roughnessMap: roughnessMap,
-            roughness: 0.6, // Base roughness - will be modified by shader
-            aoMap: aoMap,
-            aoMapIntensity: 1.0,
-            metalness: 0.0,
-            envMapIntensity: 1.0, // HDR reflections for wet look
-            clearcoat: 0.3, // Adds wet-look clearcoat layer
-            clearcoatRoughness: 0.1,
+            // Configure loaded textures
+            [diffuseMap, normalMap, roughnessMap, aoMap].filter(t => t).forEach(tex => {
+                tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                tex.repeat.set(4, 4); // Lower tiling for visible texture detail (was 15)
+            });
+
+            // Apply textures to material (upgrade from placeholder)
+            if (diffuseMap) wetAsphaltMaterial.map = diffuseMap;
+            if (normalMap) {
+                wetAsphaltMaterial.normalMap = normalMap;
+                wetAsphaltMaterial.normalScale = new THREE.Vector2(1.0, 1.0);
+            }
+            if (roughnessMap) wetAsphaltMaterial.roughnessMap = roughnessMap;
+            if (aoMap) {
+                wetAsphaltMaterial.aoMap = aoMap;
+                wetAsphaltMaterial.aoMapIntensity = 1.0;
+            }
+
+            wetAsphaltMaterial.needsUpdate = true;
+            console.log('[NeonDistrict] PBR textures loaded and applied');
         });
 
         // Store uniforms for animation
@@ -1228,25 +1342,74 @@ export default class NeonDistrictTheme extends BaseTheme {
                 }
                 
                 // ═══════════════════════════════════════════════════════════════
-                // PUDDLE DETECTION using FBM
+                // PUDDLE DETECTION using Smooth FBM (like Faraz's gln_sfbm)
                 // ═══════════════════════════════════════════════════════════════
-                float simpleNoise(vec2 p) {
-                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+                
+                // Smooth value noise with interpolation
+                float valueNoise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    
+                    // Smooth interpolation
+                    vec2 u = f * f * (3.0 - 2.0 * f);
+                    
+                    // Four corners
+                    float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5453);
+                    float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5453);
+                    float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+                    float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+                    
+                    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
                 }
                 
+                // Multi-octave FBM for organic shapes
                 float fbmNoise(vec2 p) {
                     float f = 0.0;
-                    f += 0.5000 * simpleNoise(p); p *= 2.02;
-                    f += 0.2500 * simpleNoise(p); p *= 2.03;
-                    f += 0.1250 * simpleNoise(p); p *= 2.01;
-                    f += 0.0625 * simpleNoise(p);
-                    return f / 0.9375;
+                    float amplitude = 0.5;
+                    float frequency = 1.0;
+                    
+                    for(int i = 0; i < 5; i++) {
+                        f += amplitude * valueNoise(p * frequency);
+                        amplitude *= 0.5;
+                        frequency *= 2.0;
+                    }
+                    return f;
                 }
                 
+                // Faraz-style puddle detection with distinct hotspots
                 float getPuddle(vec2 uv) {
-                    float puddleNoise = fbmNoise((uv + vec2(3.0, 0.0)) * 0.3);
-                    puddleNoise = smoothstep(0.3, 0.7, puddleNoise);
-                    return puddleNoise;
+                    // Multiple noise layers for organic shape variation
+                    float n1 = fbmNoise((uv + vec2(3.0, 0.0)) * 0.2);
+                    float n2 = fbmNoise((uv + vec2(-5.0, 2.0)) * 0.35);
+                    float combined = (n1 * 0.7 + n2 * 0.3);
+                    
+                    // Add distinct puddle hotspots at random locations
+                    float hotspots = 0.0;
+                    
+                    // Puddle hotspot positions (in world space scaled by 0.015)
+                    vec2 spots[8];
+                    spots[0] = vec2(-1.5, -0.8);
+                    spots[1] = vec2(2.0, -2.5);
+                    spots[2] = vec2(-0.5, -4.0);
+                    spots[3] = vec2(1.8, -5.5);
+                    spots[4] = vec2(-2.2, -7.0);
+                    spots[5] = vec2(0.8, -8.5);
+                    spots[6] = vec2(-1.0, -10.0);
+                    spots[7] = vec2(2.5, -12.0);
+                    
+                    for(int i = 0; i < 8; i++) {
+                        float dist = length(uv - spots[i] * 100.0);
+                        // Organic-shaped hotspot using noise-modulated radius
+                        float radius = 25.0 + fbmNoise(spots[i] * 50.0) * 15.0;
+                        float spot = 1.0 - smoothstep(0.0, radius, dist);
+                        hotspots = max(hotspots, spot);
+                    }
+                    
+                    // Combine base wetness with distinct hotspots
+                    combined = smoothstep(0.35, 0.65, combined);
+                    float result = max(combined * 0.6, hotspots);
+                    
+                    return result;
                 }
                 
                 // Perturb normal with ripple effect
@@ -1263,14 +1426,16 @@ export default class NeonDistrictTheme extends BaseTheme {
                 `#include <roughnessmap_fragment>
                 
                 // ═══════════════════════════════════════════════════════════════
-                // PUDDLE & WET SURFACE MODIFICATIONS
+                // PUDDLE & WET SURFACE MODIFICATIONS - Faraz-style
                 // ═══════════════════════════════════════════════════════════════
-                float puddle = getPuddle(vWorldPos.xz * 0.02);
-                float wetness = 0.6 + puddle * 0.4;
+                float puddle = getPuddle(vWorldPos.xz * 0.015);
                 
-                // Wet surfaces have LOW roughness (shiny)
-                float wetRoughness = mix(roughnessFactor, 0.05, wetness);
-                roughnessFactor = wetRoughness;
+                // Full wetness in puddle areas for mirror-like reflections
+                float wetness = smoothstep(0.0, 0.5, puddle);
+                
+                // Wet surfaces have VERY LOW roughness (near mirror)
+                float wetRoughness = mix(roughnessFactor, 0.01, wetness);
+                roughnessFactor = clamp(wetRoughness, 0.01, 0.3);
                 `
             );
 
@@ -1382,39 +1547,88 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createRoadMarkings() {
-        // Center line
+        // ═══════════════════════════════════════════════════════════════════════
+        // HIGH-RES CENTER LINE - Procedural canvas texture like summer grass
+        // ═══════════════════════════════════════════════════════════════════════
+        const texSize = 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = texSize;
+        canvas.height = texSize;
+        const ctx = canvas.getContext('2d');
+
+        // Base yellow with gradient variation
+        const gradient = ctx.createLinearGradient(0, 0, texSize, 0);
+        gradient.addColorStop(0, '#cc9900');
+        gradient.addColorStop(0.3, '#ffcc00');
+        gradient.addColorStop(0.5, '#ffdd22');
+        gradient.addColorStop(0.7, '#ffcc00');
+        gradient.addColorStop(1, '#cc9900');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, texSize, texSize);
+
+        // Add wear/aging patterns
+        for (let i = 0; i < 200; i++) {
+            const x = Math.random() * texSize;
+            const y = Math.random() * texSize;
+            const w = 2 + Math.random() * 6;
+            const h = 10 + Math.random() * 30;
+
+            // Darker worn patches
+            const darkness = 0.7 + Math.random() * 0.3;
+            ctx.fillStyle = `rgba(80, 60, 0, ${1 - darkness})`;
+            ctx.fillRect(x, y, w, h);
+        }
+
+        // Add subtle edge roughness
+        for (let y = 0; y < texSize; y += 2) {
+            const edgeVariation = Math.random() * 8;
+            // Left edge
+            ctx.fillStyle = 'rgba(20, 15, 10, 0.4)';
+            ctx.fillRect(0, y, edgeVariation, 2);
+            // Right edge
+            ctx.fillRect(texSize - edgeVariation, y, edgeVariation, 2);
+        }
+
+        // Add paint splatter/texture
+        for (let i = 0; i < 100; i++) {
+            const x = 20 + Math.random() * (texSize - 40);
+            const y = Math.random() * texSize;
+            const radius = 1 + Math.random() * 3;
+
+            // Brighter paint spots
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 230, 100, ${0.3 + Math.random() * 0.4})`;
+            ctx.fill();
+        }
+
+        // Create texture with proper filtering for smooth distance rendering
+        const lineTexture = new THREE.CanvasTexture(canvas);
+        lineTexture.wrapS = THREE.RepeatWrapping;
+        lineTexture.wrapT = THREE.RepeatWrapping;
+        lineTexture.repeat.set(1, 30); // Less repetition for smoother look
+
+        // CRITICAL: Proper mipmapping and filtering for smooth distance
+        lineTexture.generateMipmaps = true;
+        lineTexture.minFilter = THREE.LinearMipmapLinearFilter; // Trilinear filtering
+        lineTexture.magFilter = THREE.LinearFilter;
+        lineTexture.anisotropy = this.renderer?.capabilities?.getMaxAnisotropy() || 16;
+
         const lineGeometry = new THREE.PlaneGeometry(4, 3000);
         const lineMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffcc00,  // Yellow center line
+            map: lineTexture,
             transparent: true,
-            opacity: 0.7,
+            opacity: 0.85,
         });
         const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
         centerLine.rotation.x = -Math.PI / 2;
         centerLine.position.set(0, 2, -400);
         this.scene.add(centerLine);
 
-        // Side puddles that catch light
-        const puddleGeometry = new THREE.CircleGeometry(30, 16);
-        const puddleMaterial = new THREE.MeshStandardMaterial({
-            color: 0x3a2850,
-            roughness: 0.05,
-            metalness: 0.95,
-            emissive: 0x1a0825,
-            emissiveIntensity: 0.6,
-        });
+        // REMOVED: Circular mesh puddles - now using SHADER-BASED FBM puddles only
+        // This creates organic, natural shapes instead of obvious round circles
 
-        for (let i = 0; i < 8; i++) {
-            const puddle = new THREE.Mesh(puddleGeometry, puddleMaterial);
-            puddle.rotation.x = -Math.PI / 2;
-            puddle.position.set(
-                (Math.random() - 0.5) * 400,
-                1.5,
-                -200 - i * 150
-            );
-            puddle.scale.set(1 + Math.random(), 1 + Math.random() * 0.5, 1);
-            this.scene.add(puddle);
-        }
+        console.log('[NeonDistrict] Road markings created (high-res texture)');
     }
 
     // Ground-level city glow lights - Coming from building sides
