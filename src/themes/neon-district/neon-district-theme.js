@@ -27,63 +27,64 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { NEON_DISTRICT_TETROMINOS } from './neon-district-tetrominos.js';
+import { NeonDistrictAssets } from './neon-district-assets.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
-// Quality Presets - Fixed bloom levels (was WAY too high!)
+// Quality Presets - Balanced: visible window glow without blow-out
 const QUALITY_PRESETS = {
     Extreme: {
         buildingCount: 40,
-        rainParticles: 5000,
-        bloomStrength: 0.4,    // WAS 1.5 - Reduced to prevent whiteout
-        bloomRadius: 0.6,
-        bloomThreshold: 0.75,
+        rainParticles: 2500,    // Reduced from 5000 for performance
+        bloomStrength: 1.2,     // Balanced bloom
+        bloomRadius: 0.8,
+        bloomThreshold: 0.1,    // Low threshold for emissive glow
         enablePostProcessing: true,
         flyingVehicles: 6,
     },
     Ultra: {
-        buildingCount: 25,      // Was 35
-        rainParticles: 1500,    // Was 4000
-        bloomStrength: 0.4,
-        bloomRadius: 0.5,
-        bloomThreshold: 0.75,
+        buildingCount: 25,
+        rainParticles: 1000,    // Reduced from 1500
+        bloomStrength: 1.0,
+        bloomRadius: 0.7,
+        bloomThreshold: 0.15,
         enablePostProcessing: true,
-        flyingVehicles: 4,      // Was 5
+        flyingVehicles: 4,
     },
     High: {
-        buildingCount: 20,      // Was 30
-        rainParticles: 1200,    // Was 3000
-        bloomStrength: 0.4,
-        bloomRadius: 0.5,
-        bloomThreshold: 0.75,
+        buildingCount: 20,
+        rainParticles: 800,     // Reduced from 1200
+        bloomStrength: 0.9,
+        bloomRadius: 0.6,
+        bloomThreshold: 0.2,
         enablePostProcessing: true,
-        flyingVehicles: 3,      // Was 4
+        flyingVehicles: 3,
     },
     Medium: {
-        buildingCount: 15,      // Was 25
-        rainParticles: 800,     // Was 2000
-        bloomStrength: 0.35,
-        bloomRadius: 0.4,
-        bloomThreshold: 0.8,
+        buildingCount: 15,
+        rainParticles: 500,     // Reduced from 800
+        bloomStrength: 0.7,
+        bloomRadius: 0.5,
+        bloomThreshold: 0.25,
         enablePostProcessing: true,
-        flyingVehicles: 2,      // Was 3
+        flyingVehicles: 2,
     },
     Low: {
-        buildingCount: 10,      // Was 18
-        rainParticles: 400,     // Was 1000
-        bloomStrength: 0.3,
-        bloomRadius: 0.3,
-        bloomThreshold: 0.85,
+        buildingCount: 10,
+        rainParticles: 200,     // Reduced from 400
+        bloomStrength: 0.5,
+        bloomRadius: 0.4,
+        bloomThreshold: 0.3,
         enablePostProcessing: false,
-        flyingVehicles: 1,      // Was 2
+        flyingVehicles: 1,
     },
     Minimal: {
         buildingCount: 12,
-        rainParticles: 500,
-        bloomStrength: 0.5,
-        bloomRadius: 0.2,
-        bloomThreshold: 0.8,
+        rainParticles: 100,     // Minimal rain
+        bloomStrength: 0.4,
+        bloomRadius: 0.3,
+        bloomThreshold: 0.35,
         enablePostProcessing: false,
         flyingVehicles: 1,
     },
@@ -172,6 +173,23 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.lightPulseIntensity = 0;
         this.rainIntensity = 1.0;
         this.bloomBoost = 0;
+        this.glitchIntensity = 0;
+
+        // Combo effect state
+        this.neonSignSurgeIntensity = 0;
+        this.neonSignSurgeTime = 0;
+
+        // Piece lock effect particles
+        this.pieceLockSparks = [];
+
+        // Performance: throttle sign updates (every 3rd frame)
+        this.signUpdateCounter = 0;
+
+        // Shared spinner resources (initialized lazily)
+        this.spinnerResources = null;
+
+        // SynthCity Assets Manager
+        this.assets = new NeonDistrictAssets();
 
         console.log('[NeonDistrict] Theme constructed');
     }
@@ -242,54 +260,61 @@ export default class NeonDistrictTheme extends BaseTheme {
         console.log('[NeonDistrict] Phase 1 complete - core rendering active');
 
         // ═══════════════════════════════════════════════════════════════════════
-        // PHASE 2: ESSENTIAL - Minimal playable scene (< 100ms total)
-        // Only create ground and 6 closest buildings - enough for atmosphere
+        // PHASE 1.5: LOAD SYNTHCITY TEXTURES (non-blocking)
+        // ═══════════════════════════════════════════════════════════════════════
+        await this.assets.loadAllTextures();
+        if (!this.isActive) return;
+        console.log('[NeonDistrict] SynthCity textures loaded and materials created');
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 2: Create EVERYTHING immediately (all operations are fast)
         // ═══════════════════════════════════════════════════════════════════════
         await this.deferToNextFrame();
         if (!this.isActive) return;
 
         this.createStreet();
-        this.createEssentialBuildings(); // Just 6 closest buildings
-        console.log('[NeonDistrict] Phase 2 complete - minimal scene ready');
+        this.createAllBuildings();
+        this.createNeonSignsForBuildings(0, this.buildings.length);
+        this.createOverheadWires();
+        this.createHolographicBillboards();
+        this.createRain();
+        this.createFlyingVehicles();
+        this.updateGroundReflections();
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // PHASE 3: BACKGROUND - Everything else loads in TRUE background
-        // Uses setTimeout with delays to NEVER interfere with gameplay
-        // ═══════════════════════════════════════════════════════════════════════
-        this.loadRemainingContentInBackground();
+        console.log('[NeonDistrict] Scene fully loaded!');
     }
 
     /**
-     * Creates only the 6 closest buildings for immediate atmosphere.
-     * These are positioned near the camera for maximum visual impact.
+     * Creates ALL buildings immediately - this is a fast operation.
      */
-    createEssentialBuildings() {
+    createAllBuildings() {
         const streetWidth = 180;
-        const essentialBuildings = [];
+        const buildingSpacing = 120;
+        const buildingCount = this.qualityPreset.buildingCount;
+        const buildingsPerSide = Math.floor(buildingCount / 2);
 
-        // 3 buildings on each side, closest to camera
-        for (let i = 0; i < 3; i++) {
-            const zPos = -i * 120 - 100;
+        // Create buildings on both sides of the street
+        for (let i = 0; i < buildingsPerSide; i++) {
+            const zPos = -i * buildingSpacing - 100;
 
             // Left side
             const xLeft = -(streetWidth / 2 + 50 + Math.random() * 30);
-            const leftBuilding = this.createBuilding(xLeft, zPos, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
-            essentialBuildings.push(leftBuilding);
+            this.createBuilding(xLeft, zPos, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
 
-            // Right side  
+            // Right side (offset by half spacing for variety)
             const xRight = streetWidth / 2 + 50 + Math.random() * 30;
-            const rightBuilding = this.createBuilding(xRight, zPos - 60, 80 + Math.random() * 60, 600 + Math.random() * 800, 80 + Math.random() * 60);
-            essentialBuildings.push(rightBuilding);
+            this.createBuilding(xRight, zPos - buildingSpacing / 2, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
         }
 
-        // GUARANTEED neon banners with Kanji on all essential buildings
-        essentialBuildings.forEach(building => {
-            if (building) {
-                this.createNeonBannerKanji(building);
-            }
-        });
+        // Background buildings (distant, larger)
+        const alleyLength = buildingsPerSide * buildingSpacing;
+        for (let i = 0; i < 6; i++) {
+            const zPos = -alleyLength - 200 - Math.random() * 500;
+            const xPos = (Math.random() - 0.5) * 800;
+            this.createBuilding(xPos, zPos, 100 + Math.random() * 150, 800 + Math.random() * 1500, 100 + Math.random() * 150);
+        }
 
-        console.log('[NeonDistrict] Created 6 essential buildings with Kanji signs');
+        console.log(`[NeonDistrict] Created ${this.buildings.length} buildings`);
     }
 
     /**
@@ -382,120 +407,78 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     /**
-     * Loads all remaining content in the true background.
-     * Uses setTimeout with significant delays to ensure ZERO gameplay interference.
+     * Loads remaining visual elements in background (buildings already created in Phase 2).
      */
     loadRemainingContentInBackground() {
-        // Queue of work items to process
         const workQueue = [];
 
-        // Calculate remaining buildings (total - 6 essential)
-        const remainingBuildingCount = Math.max(0, this.qualityPreset.buildingCount - 6);
-        const buildingsPerSide = Math.floor(remainingBuildingCount / 2);
-        const streetWidth = 180;
-        const buildingSpacing = 120;
-
-        // Add remaining left buildings (starting after the 3 essential ones)
-        for (let i = 3; i < 3 + buildingsPerSide; i++) {
-            const zPos = -i * buildingSpacing - 100;
-            const xPos = -(streetWidth / 2 + 50 + Math.random() * 30);
-            workQueue.push(() => {
-                if (!this.isActive) return;
-                this.createBuilding(xPos, zPos, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
-            });
-        }
-
-        // Add remaining right buildings
-        for (let i = 3; i < 3 + buildingsPerSide; i++) {
-            const zPos = -i * buildingSpacing - 100 - buildingSpacing / 2;
-            const xPos = streetWidth / 2 + 50 + Math.random() * 30;
-            workQueue.push(() => {
-                if (!this.isActive) return;
-                this.createBuilding(xPos, zPos, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
-            });
-        }
-
-        // Add background buildings
-        const alleyLength = (3 + buildingsPerSide) * buildingSpacing;
-        for (let i = 0; i < 6; i++) {
-            const zPos = -alleyLength - 200 - Math.random() * 500;
-            const xPos = (Math.random() - 0.5) * 800;
-            workQueue.push(() => {
-                if (!this.isActive) return;
-                this.createBuilding(xPos, zPos, 100 + Math.random() * 150, 800 + Math.random() * 1500, 100 + Math.random() * 150);
-            });
-        }
-
-        // Add neon signs (one work item per few buildings)
+        // Neon signs for all buildings
         workQueue.push(() => {
             if (!this.isActive) return;
-            this.createNeonSignsForBuildings(0, 5);
-        });
-        workQueue.push(() => {
-            if (!this.isActive) return;
-            this.createNeonSignsForBuildings(5, 10);
-        });
-        workQueue.push(() => {
-            if (!this.isActive) return;
-            this.createNeonSignsForBuildings(10, 20);
-        });
-        workQueue.push(() => {
-            if (!this.isActive) return;
-            this.createNeonSignsForBuildings(20, this.buildings.length);
+            this.createNeonSignsForBuildings(0, this.buildings.length);
         });
 
-        // Add other elements
+        // Wires and billboards
         workQueue.push(() => {
             if (!this.isActive) return;
             this.createOverheadWires();
-        });
-        workQueue.push(() => {
-            if (!this.isActive) return;
-            this.createFloatingNeonElements();
-        });
-        workQueue.push(() => {
-            if (!this.isActive) return;
             this.createHolographicBillboards();
         });
-        workQueue.push(() => {
-            if (!this.isActive) return;
-            // this.createStreetLanterns(); // Removed - orange lanterns
-        });
+
+        // Rain and vehicles
         workQueue.push(() => {
             if (!this.isActive) return;
             this.createRain();
-        });
-        workQueue.push(() => {
-            if (!this.isActive) return;
             this.createFlyingVehicles();
         });
+
+        // Final touches
         workQueue.push(() => {
             if (!this.isActive) return;
             this.updateGroundReflections();
             console.log('[NeonDistrict] Background loading complete!');
         });
 
-        // Process queue with 50ms delays between items
-        // This ensures gameplay always has priority
+        // Process queue using requestIdleCallback
         this.processBackgroundQueue(workQueue, 0);
     }
 
     /**
-     * Process one work item, then schedule the next with a delay.
-     * 50ms delay ensures 20 items/second max - very gentle on the main thread.
+     * Process work items using requestIdleCallback for better performance.
+     * Processes multiple items per callback when time permits.
      */
     processBackgroundQueue(queue, index) {
         if (index >= queue.length || !this.isActive) return;
 
-        setTimeout(() => {
+        const processItems = (deadline) => {
             if (!this.isActive) return;
 
-            // Execute this work item
-            queue[index]();
+            // Process items while we have time (aim for 10ms chunks max)
+            while (index < queue.length && (deadline ? deadline.timeRemaining() > 5 : true)) {
+                queue[index]();
+                index++;
 
-            // Schedule next item
-            this.processBackgroundQueue(queue, index + 1);
-        }, 50); // 50ms between items = ~20 items/second
+                // If no deadline API, only process one item per frame
+                if (!deadline) break;
+            }
+
+            // Schedule next batch
+            if (index < queue.length && this.isActive) {
+                if (typeof requestIdleCallback !== 'undefined') {
+                    requestIdleCallback(processItems, { timeout: 100 });
+                } else {
+                    // Fallback: use requestAnimationFrame for smoother loading
+                    requestAnimationFrame(() => processItems(null));
+                }
+            }
+        };
+
+        // Start processing
+        if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(processItems, { timeout: 100 });
+        } else {
+            requestAnimationFrame(() => processItems(null));
+        }
     }
 
     /**
@@ -671,8 +654,8 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         this.scene = new THREE.Scene();
 
-        // SYNTHCITY FOG - Deep purple atmospheric fog
-        this.scene.fog = new THREE.Fog(0x1a0a2e, 0, 2500);
+        // SYNTHCITY FOG - Extended distance for visible distant buildings
+        this.scene.fog = new THREE.Fog(0x1a0a2e, 200, 3500);
 
         // Street-level camera IN THE ALLEY - more horizontal view
         this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 3000);
@@ -823,56 +806,145 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Add Storefront (Ground Floor)
         this.createStorefront(building, width, depth);
 
+        // Add building-attached ads to most buildings further back (z < -150)
+        const buildingZ = building.position.z;
+        if (Math.random() > 0.3 && buildingZ < -50 && this.assets?.loaded) {
+            this.attachAdsToBuilding(building, width, height, depth);
+        }
+
         this.buildings.push(building);
         this.scene.add(building);
         return building; // Return for essential buildings Kanji signs
+    }
+
+    /**
+     * Attach ads to building faces like SynthCity does
+     */
+    attachAdsToBuilding(building, width, height, depth) {
+        const isLarge = height > 400;
+        const material = isLarge
+            ? this.assets.getRandomLargeAdMaterial()
+            : this.assets.getRandomAdMaterial();
+
+        if (!material) return;
+
+        // Random ad size based on building
+        const adWidth = isLarge ? 60 + Math.random() * 40 : 30 + Math.random() * 25;
+        const adHeight = isLarge ? 40 + Math.random() * 30 : 20 + Math.random() * 15;
+        const geometry = new THREE.PlaneGeometry(adWidth, adHeight);
+
+        // Create ad mesh
+        const ad = new THREE.Mesh(geometry, material);
+
+        // Position on building face (ALWAYS street-facing for visibility per user request)
+        const adY = 50 + Math.random() * Math.min(height * 0.6, 300);
+
+        // Determine street side based on building position
+        // If x < 0 (left side), face is +X (width/2)
+        // If x > 0 (right side), face is -X (-width/2)
+        const isLeftBuilding = building.position.x < 0;
+
+        if (isLeftBuilding) {
+            // Left building, ad faces RIGHT (towards street center)
+            ad.position.set(width / 2 + 1, adY, (Math.random() - 0.5) * depth * 0.5);
+            ad.rotation.y = Math.PI / 2;
+        } else {
+            // Right building, ad faces LEFT (towards street center)
+            ad.position.set(-width / 2 - 1, adY, (Math.random() - 0.5) * depth * 0.5);
+            ad.rotation.y = -Math.PI / 2;
+        }
+
+        // Store for animation (material switching like SynthCity)
+        ad.userData.isAd = true;
+        ad.userData.switchInterval = 200 + Math.random() * 800;
+        ad.userData.switchCounter = Math.random() * ad.userData.switchInterval;
+        ad.userData.switches = Math.random() < 0.3; // 30% of ads switch
+        ad.userData.isLarge = isLarge;
+
+        building.add(ad);
+        this.neonSigns.push(ad); // Add to animation list
     }
 
     createStorefront(building, width, depth) {
         const height = 24; // Standard ground floor height
         const geometry = new THREE.BoxGeometry(width + 2, height, depth + 2);
 
-        // Purple/cyan shop color (avoid red)
-        const hue = 0.5 + Math.random() * 0.4; // Hue 0.5-0.9 = cyan to purple
-        const color = new THREE.Color().setHSL(hue, 1.0, 0.55);
+        // Randomly select between storefront variants (full texture, not cropped)
+        let material = this.assets?.getRandomStorefrontMaterial();
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uColor: { value: color },
-                uTime: { value: 0 }
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 uColor;
-                varying vec2 vUv;
-                
-                void main() {
-                    // Vertical strips (glass doors/windows)
-                    float strip = step(0.1, fract(vUv.x * 4.0)); // 4 windows per side
-                    
-                    // Bottom glow (interior light)
-                    float glow = smoothstep(0.0, 0.5, vUv.y);
-                    
-                    vec3 finalColor = uColor * strip * glow * 2.0;
-                    
-                    // Add "frame"
-                    if (vUv.y > 0.9) finalColor = vec3(0.1); // Top lintel
-                    if (vUv.y < 0.1) finalColor = vec3(0.1); // Bottom sill
-                    
-                    gl_FragColor = vec4(finalColor, 1.0);
-                }
-            `
-        });
+        if (!material) {
+            // Fallback: procedural storefront
+            const hue = 0.5 + Math.random() * 0.4;
+            const color = new THREE.Color().setHSL(hue, 1.0, 0.55);
+            material = new THREE.MeshPhongMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 1.0,
+                shininess: 0
+            });
+        }
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.y = height / 2;
         building.add(mesh);
+
+        // Add ground-level grime/debris for natural transition
+        this.addGroundLevelDetails(building, width, depth);
+    }
+
+    /**
+     * Add ground-level details for more natural building-ground transition
+     */
+    addGroundLevelDetails(building, width, depth) {
+        // Dark grime strip at base of building
+        const grimeHeight = 3;
+        const grimeGeometry = new THREE.BoxGeometry(width + 4, grimeHeight, depth + 4);
+        const grimeMaterial = new THREE.MeshPhongMaterial({
+            color: 0x111111,
+            emissive: 0x000000
+        });
+        const grime = new THREE.Mesh(grimeGeometry, grimeMaterial);
+        grime.position.y = grimeHeight / 2;
+        building.add(grime);
+
+        // Random debris/clutter around base
+        const debrisCount = Math.floor(2 + Math.random() * 4);
+        for (let i = 0; i < debrisCount; i++) {
+            const size = 1 + Math.random() * 3;
+            const debrisGeom = new THREE.BoxGeometry(size, size * 0.5, size);
+            const debrisMat = new THREE.MeshPhongMaterial({
+                color: 0x222222 + Math.floor(Math.random() * 0x111111)
+            });
+            const debris = new THREE.Mesh(debrisGeom, debrisMat);
+
+            // Position around building perimeter
+            const side = Math.floor(Math.random() * 4);
+            const offset = (Math.random() - 0.5) * (side < 2 ? width : depth) * 0.8;
+
+            if (side === 0) debris.position.set(offset, size * 0.25, depth / 2 + 3 + Math.random() * 2);
+            else if (side === 1) debris.position.set(offset, size * 0.25, -depth / 2 - 3 - Math.random() * 2);
+            else if (side === 2) debris.position.set(width / 2 + 3 + Math.random() * 2, size * 0.25, offset);
+            else debris.position.set(-width / 2 - 3 - Math.random() * 2, size * 0.25, offset);
+
+            debris.rotation.y = Math.random() * Math.PI;
+            building.add(debris);
+        }
+
+        // Ground fog/mist plane at building base (very subtle)
+        if (Math.random() > 0.5) {
+            const fogGeometry = new THREE.PlaneGeometry(width + 20, depth + 20);
+            const fogMaterial = new THREE.MeshBasicMaterial({
+                color: 0x331155,
+                transparent: true,
+                opacity: 0.15,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+            const fog = new THREE.Mesh(fogGeometry, fogMaterial);
+            fog.rotation.x = -Math.PI / 2;
+            fog.position.y = 0.5;
+            building.add(fog);
+        }
     }
 
     createComplexTower(building, width, height, depth) {
@@ -880,15 +952,14 @@ export default class NeonDistrictTheme extends BaseTheme {
         const levels = Math.floor(3 + Math.random() * 3); // 3 to 5 levels
         let currentY = 0;
 
+        // Use ONE material for the whole building (like SynthCity)
+        const buildingSeed = Math.random();
+        const buildingMat = this.getBuildingMaterial(buildingSeed);
+
         // Base block
         const baseH = height * (0.3 + Math.random() * 0.2);
         const baseGeom = new THREE.BoxGeometry(width, baseH, depth);
-
-        const baseMat = this.buildingMaterial.clone();
-        baseMat.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-        baseMat.uniforms.uSeed.value = Math.random();
-
-        const baseMesh = new THREE.Mesh(baseGeom, baseMat);
+        const baseMesh = new THREE.Mesh(baseGeom, buildingMat);
         baseMesh.position.y = baseH / 2;
         building.add(baseMesh);
         currentY += baseH;
@@ -909,15 +980,10 @@ export default class NeonDistrictTheme extends BaseTheme {
             const blockH = (i === levels - 1) ? remainingH : (remainingH * (0.4 + Math.random() * 0.3));
 
             const geom = new THREE.BoxGeometry(currentW, blockH, currentD);
-            const mat = this.buildingMaterial.clone();
-            mat.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-            mat.uniforms.uSeed.value = Math.random();
-            mat.uniforms.uWindowScale.value = 0.5 + Math.random() * 0.5; // Varied windows
-
-            const mesh = new THREE.Mesh(geom, mat);
+            // Reuse the same material for consistency
+            const mesh = new THREE.Mesh(geom, buildingMat);
 
             // Offset (Cantilever effect)
-            // But keep center of mass somewhat stable so they don't look impossible
             const offsetX = (Math.random() - 0.5) * (width - currentW) * 0.8;
             const offsetZ = (Math.random() - 0.5) * (depth - currentD) * 0.8;
 
@@ -925,49 +991,36 @@ export default class NeonDistrictTheme extends BaseTheme {
             building.add(mesh);
 
             currentY += blockH;
-
-            // Chance for "Bridge" or lateral extrusion? 
-            // Maybe too complex for now. Stick to stacking.
         }
 
         this.createRooftopDetails(building, currentW, height, currentD);
     }
 
     createStandardTower(building, width, height, depth) {
-        // Per-building random seed for variety
-        const seed = Math.random() * 1000;
-        const glowIntensity = 0.3 + Math.random() * 0.4;
-        const windowScale = 0.8 + Math.random() * 0.5;
+        // Standard rectangular tower using SynthCity textures
+        // Each building gets ONE material for consistency
+        const buildingSeed = Math.random();
+        const bodyMaterial = height > 400
+            ? this.getBigBuildingMaterial(buildingSeed, Math.random() > 0.8)
+            : this.getBuildingMaterial(buildingSeed);
 
-        // Standard rectangular tower
         const bodyGeometry = new THREE.BoxGeometry(width, height, depth);
-        const bodyMaterial = this.buildingMaterial.clone();
-        bodyMaterial.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-        bodyMaterial.uniforms.uBuildingHeight.value = height;
-        bodyMaterial.uniforms.uBuildingWidth.value = width;
-        bodyMaterial.uniforms.uSeed.value = seed;
-        bodyMaterial.uniforms.uGlowIntensity.value = glowIntensity;
-        bodyMaterial.uniforms.uWindowScale.value = windowScale;
-        bodyMaterial.uniforms.uWindowColor.value = new THREE.Color(this.getRandomWindowColor());
-
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.position.y = height / 2;
-        body.userData.material = bodyMaterial; // Store for animation
+        body.userData.material = bodyMaterial;
         building.add(body);
 
-        // Rooftop details (simplified)
+        // Rooftop details
         this.createRooftopDetails(building, width, height, depth);
 
         // Random chance for step-back design
         if (height > 900 && Math.random() > 0.6) {
             const stepHeight = height * 0.25;
             const stepGeometry = new THREE.BoxGeometry(width * 0.6, stepHeight, depth * 0.6);
-            const stepMaterial = bodyMaterial.clone();
-            const step = new THREE.Mesh(stepGeometry, stepMaterial);
+            const step = new THREE.Mesh(stepGeometry, bodyMaterial);
             step.position.y = height + stepHeight / 2;
             building.add(step);
         }
-        // Note: building is added to scene in createBuilding()
     }
 
     createSteppedBuilding(building, width, height, depth) {
@@ -975,19 +1028,14 @@ export default class NeonDistrictTheme extends BaseTheme {
         const levels = 3;
         const levelHeight = height / levels;
 
+        // One material for the whole building
+        const buildingMat = this.getBuildingMaterial(Math.random());
+
         for (let i = 0; i < levels; i++) {
-            const scale = 1 - (i * 0.2);  // Each level smaller
+            const scale = 1 - (i * 0.2);
             const h = levelHeight;
             const geometry = new THREE.BoxGeometry(width * scale, h, depth * scale);
-
-            // Use SHADER material with unique seed
-            const material = this.buildingMaterial.clone();
-            material.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-            material.uniforms.uSeed.value = Math.random();
-            material.uniforms.uWindowScale.value = 0.8 + Math.random() * 0.4;
-            material.uniforms.uGlowIntensity.value = 1.6; // Slightly brighter tops
-
-            const level = new THREE.Mesh(geometry, material);
+            const level = new THREE.Mesh(geometry, buildingMat);
             level.position.y = (i * h) + h / 2;
             building.add(level);
         }
@@ -996,23 +1044,17 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     createSpireBuilding(building, width, height, depth) {
         // Building with antenna/spire on top
+        const bodyMaterial = this.getBuildingMaterial(Math.random());
         const bodyGeometry = new THREE.BoxGeometry(width, height * 0.8, depth);
-
-        // Use SHADER material
-        const bodyMaterial = this.buildingMaterial.clone();
-        bodyMaterial.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-        bodyMaterial.uniforms.uSeed.value = Math.random();
-
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.position.y = height * 0.4;
         building.add(body);
 
         // Spire/antenna on top
         const spireGeometry = new THREE.CylinderGeometry(2, 5, height * 0.4, 8);
-        const spireMaterial = new THREE.MeshStandardMaterial({
+        const spireMaterial = new THREE.MeshPhongMaterial({
             color: 0x333344,
-            roughness: 0.3,
-            metalness: 0.8,
+            shininess: 30,
             emissive: 0xff0033,
             emissiveIntensity: 0.5,
         });
@@ -1029,34 +1071,60 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createWideBaseBuilding(building, width, height, depth) {
-        // Building with wide base that narrows
+        // Building with wide base that narrows - ONE material for whole building
+        const buildingMat = this.getBuildingMaterial(Math.random());
+
         const baseGeometry = new THREE.BoxGeometry(width * 1.3, height * 0.3, depth * 1.3);
-
-        // Use SHADER material
-        const baseMaterial = this.buildingMaterial.clone();
-        baseMaterial.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-        baseMaterial.uniforms.uSeed.value = Math.random();
-
-        const base = new THREE.Mesh(baseGeometry, baseMaterial);
+        const base = new THREE.Mesh(baseGeometry, buildingMat);
         base.position.y = height * 0.15;
         building.add(base);
 
         // Upper tower
         const towerGeometry = new THREE.BoxGeometry(width * 0.7, height * 0.7, depth * 0.7);
-        const towerMaterial = this.buildingMaterial.clone();
-        towerMaterial.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
-        towerMaterial.uniforms.uSeed.value = Math.random();
-
-        const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+        const tower = new THREE.Mesh(towerGeometry, buildingMat);
         tower.position.y = height * 0.3 + height * 0.35;
         building.add(tower);
 
         this.createRooftopDetails(building, width * 0.7, height, depth * 0.7);
     }
 
-    // No longer needed - windows are now procedural in shader
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helper: Get building material (SynthCity-style noise-based selection)
+    // ─────────────────────────────────────────────────────────────────────────
+    getBuildingMaterial(seed = Math.random()) {
+        // Use noise-based selection for visual variety (like SynthCity)
+        if (this.assets?.loaded) {
+            return this.assets.getBuildingMaterial(seed);
+        }
+
+        // Fallback to procedural shader if assets not loaded
+        if (this.buildingMaterial) {
+            const fallback = this.buildingMaterial.clone();
+            fallback.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
+            fallback.uniforms.uSeed.value = seed * 1000;
+            return fallback;
+        }
+
+        // Last resort: simple dark material
+        return new THREE.MeshPhongMaterial({
+            color: 0x1a1a2e,
+            shininess: 0,
+        });
+    }
+
+    /**
+     * Get "big building" material (for tall towers)
+     */
+    getBigBuildingMaterial(seed = Math.random(), rare = false) {
+        if (this.assets?.loaded) {
+            return this.assets.getBigBuildingMaterial(seed, rare);
+        }
+        return this.getBuildingMaterial(seed);
+    }
+
+    // No longer the primary method - windows are now textured from SynthCity
     createWindowStrips() {
-        // Removed - using shader-based windows now
+        // Removed - using texture-based windows now
     }
 
     getRandomWindowColor() {
@@ -1073,7 +1141,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createRooftopDetails(building, width, height, depth) {
-        // Antenna
+        // Antenna with blinking light
         if (Math.random() > 0.5) {
             const antennaGeometry = new THREE.CylinderGeometry(1, 2, 50 + Math.random() * 50, 8);
             const antennaMaterial = new THREE.MeshStandardMaterial({
@@ -1119,6 +1187,65 @@ export default class NeonDistrictTheme extends BaseTheme {
                 (Math.random() - 0.5) * depth * 0.7
             );
             building.add(ac);
+        }
+
+        // Water tank (cylindrical)
+        if (Math.random() > 0.6) {
+            const tankRadius = 8 + Math.random() * 6;
+            const tankHeight = 20 + Math.random() * 15;
+            const tankGeometry = new THREE.CylinderGeometry(tankRadius, tankRadius, tankHeight, 12);
+            const tankMaterial = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                metalness: 0.3,
+                roughness: 0.8,
+            });
+            const tank = new THREE.Mesh(tankGeometry, tankMaterial);
+            tank.position.set(
+                (Math.random() - 0.5) * width * 0.5,
+                height + tankHeight / 2,
+                (Math.random() - 0.5) * depth * 0.5
+            );
+            building.add(tank);
+        }
+
+        // Satellite dish
+        if (Math.random() > 0.7) {
+            const dishSize = 6 + Math.random() * 4;
+            const dishGeometry = new THREE.SphereGeometry(dishSize, 12, 8, 0, Math.PI);
+            const dishMaterial = new THREE.MeshStandardMaterial({
+                color: 0x555566,
+                metalness: 0.7,
+                roughness: 0.4,
+            });
+            const dish = new THREE.Mesh(dishGeometry, dishMaterial);
+            dish.position.set(
+                (Math.random() - 0.5) * width * 0.6,
+                height + 3,
+                (Math.random() - 0.5) * depth * 0.6
+            );
+            dish.rotation.x = -Math.PI / 4 + Math.random() * 0.3;
+            dish.rotation.y = Math.random() * Math.PI * 2;
+            building.add(dish);
+        }
+
+        // Pipes running along roof edge
+        if (Math.random() > 0.5) {
+            const pipeRadius = 1 + Math.random();
+            const pipeLength = Math.min(width, depth) * 0.8;
+            const pipeGeometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, pipeLength, 8);
+            const pipeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x444444,
+                metalness: 0.6,
+                roughness: 0.5,
+            });
+            const pipe = new THREE.Mesh(pipeGeometry, pipeMaterial);
+            pipe.rotation.z = Math.PI / 2;
+            pipe.position.set(
+                0,
+                height + 2,
+                (Math.random() > 0.5 ? 1 : -1) * depth * 0.4
+            );
+            building.add(pipe);
         }
     }
 
@@ -1449,8 +1576,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // ═══════════════════════════════════════════════════════════════
                 float puddle2 = getPuddle(vWorldPos.xz * 0.02);
                 
-                vec3 rippleNormal = getRipples(vWorldPos.xz * 0.4, uTime);
-                vec3 rippleNormal2 = getRipples(vWorldPos.xz * 0.25 + vec2(100.0), uTime * 0.85);
+                // Larger ripples (lower frequency) per user request
+                vec3 rippleNormal = getRipples(vWorldPos.xz * 0.15, uTime);
+                vec3 rippleNormal2 = getRipples(vWorldPos.xz * 0.1 + vec2(100.0), uTime * 0.85);
                 vec3 combinedRipple = normalize(rippleNormal + rippleNormal2 * 0.5);
                 
                 // Stronger ripples in puddle areas
@@ -1701,20 +1829,160 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
         }
 
-        // Holographic billboards (fast, no chunking needed)
-        this.createHolographicBillboard(-300, 400, -600);
-        this.createHolographicBillboard(350, 350, -400);
-        this.createHolographicBillboard(0, 500, -800);
-        this.createHolographicBillboard(-200, 300, -200);
-        this.createHolographicBillboard(250, 450, -150);
-        this.createHolographicBillboard(-350, 380, -350);
-        this.createHolographicBillboard(100, 550, -500);
-        this.createHolographicBillboard(-150, 420, -700);
-        this.createHolographicBillboard(400, 320, -250);
-        this.createHolographicBillboard(-400, 480, -450);
+        // SynthCity textured billboards - positioned on buildings
+        // LEFT side billboards
+        this.createSynthCityBillboard(-300, 350, -500, true);
+        this.createSynthCityBillboard(0, 450, -700, true);
+        this.createSynthCityBillboard(-200, 280, -350, false);
+        this.createSynthCityBillboard(-380, 360, -550, true);
+        this.createSynthCityBillboard(-180, 400, -650, false);
+        this.createSynthCityBillboard(-450, 420, -500, true);
+        this.createSynthCityBillboard(-250, 320, -250, true);  // Closer foreground
+        this.createSynthCityBillboard(-350, 480, -750, true);  // Higher back
+        this.createSynthCityBillboard(-150, 200, -200, false); // Low foreground
+        this.createSynthCityBillboard(-420, 300, -400, false); // Mid-left
+
+        // RIGHT side billboards (ensure both sides have ads)
+        this.createSynthCityBillboard(300, 320, -400, true);
+        this.createSynthCityBillboard(250, 380, -550, false);
+        this.createSynthCityBillboard(350, 280, -300, true);
+        this.createSynthCityBillboard(280, 450, -600, false);
+        this.createSynthCityBillboard(220, 250, -200, true);   // Closer foreground
+        this.createSynthCityBillboard(380, 420, -700, true);   // Higher back
+        this.createSynthCityBillboard(150, 180, -150, false);  // Low foreground
+        this.createSynthCityBillboard(420, 350, -450, false);  // Mid-right
+
+        // Holographic billboards - pushed further back (z < -900)
+        // Holographic billboards - REMOVED per user request
+        /*
+        this.createHolographicBillboard(400, 350, -1000);
+        this.createHolographicBillboard(300, 450, -1100);
+        this.createHolographicBillboard(150, 500, -1200);
+        this.createHolographicBillboard(450, 320, -950);
+        this.createHolographicBillboard(-350, 400, -1050);
+        this.createHolographicBillboard(-200, 480, -1150);
+        */
 
         // Add floating neon strips in the air
-        this.createFloatingNeonElements();
+        // this.createFloatingNeonElements(); // Removed floating rings and lines per user request
+        // Add smoke/steam effects
+        this.createSmokeEffects();
+    }
+
+    /**
+     * Create a billboard using SynthCity's ad textures
+     */
+    createSynthCityBillboard(x, y, z, isLarge = false) {
+        const material = isLarge
+            ? this.assets?.getRandomLargeAdMaterial()
+            : this.assets?.getRandomAdMaterial();
+
+        if (!material) {
+            // Fallback to holographic
+            this.createHolographicBillboard(x, y, z);
+            return;
+        }
+
+        const width = isLarge ? 120 + Math.random() * 60 : 50 + Math.random() * 30;
+        const height = isLarge ? 80 + Math.random() * 40 : 35 + Math.random() * 20;
+        const geometry = new THREE.PlaneGeometry(width, height);
+
+        const billboard = new THREE.Mesh(geometry, material);
+        billboard.position.set(x, y, z);
+        billboard.rotation.y = x > 0 ? -0.3 : 0.3;
+
+        // Add glow light based on ad
+        const light = new THREE.PointLight(0xffffff, 2.0, 120);
+        billboard.add(light);
+
+        // Store for flicker animation
+        billboard.userData.flickerSpeed = 1 + Math.random() * 3;
+        billboard.userData.flickerPhase = Math.random() * 10;
+        billboard.userData.flickerAmount = 0.1;
+
+        this.neonSigns.push(billboard);
+        this.scene.add(billboard);
+    }
+
+    /**
+     * Create smoke/steam effects using SynthCity textures
+     */
+    createSmokeEffects() {
+        // Add smoke billboards near buildings
+        for (let i = 0; i < 8; i++) {
+            const material = this.assets?.getRandomSmokeMaterial();
+            if (!material) continue;
+
+            const size = 40 + Math.random() * 60;
+            const geometry = new THREE.PlaneGeometry(size, size * 1.5);
+
+            const smoke = new THREE.Mesh(geometry, material);
+            smoke.position.set(
+                (Math.random() - 0.5) * 400,
+                200 + Math.random() * 300,
+                -200 - Math.random() * 600
+            );
+
+            // Store for billboard (face camera) animation
+            smoke.userData.isBillboard = true;
+            smoke.userData.rotationSpeed = 0.001 + Math.random() * 0.002;
+
+            this.neonSigns.push(smoke);
+            this.scene.add(smoke);
+        }
+
+        // Add volumetric spotlight beams
+        this.createSpotlightBeams();
+    }
+
+    /**
+     * Create volumetric spotlight beams streaming down between buildings
+     */
+    createSpotlightBeams() {
+        // Create cone-shaped light beams
+        for (let i = 0; i < 6; i++) {
+            // Cone geometry for light beam
+            const beamHeight = 150 + Math.random() * 200;
+            const beamRadius = 30 + Math.random() * 40;
+            const geometry = new THREE.ConeGeometry(beamRadius, beamHeight, 16, 1, true);
+
+            // Volumetric light material
+            const colors = [0xaa00ff, 0xff00ff, 0x8866ff, 0xcc00ff, 0x00ffff];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            const material = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.08,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            const beam = new THREE.Mesh(geometry, material);
+
+            // Position beams at various heights pointing down
+            beam.position.set(
+                (Math.random() - 0.5) * 400,
+                300 + Math.random() * 300,
+                -300 - Math.random() * 600
+            );
+
+            // Point downward with slight random tilt
+            beam.rotation.x = Math.PI + (Math.random() - 0.5) * 0.3;
+            beam.rotation.z = (Math.random() - 0.5) * 0.2;
+
+            // Store for animation
+            beam.userData.isSpotlight = true;
+            beam.userData.pulseSpeed = 0.5 + Math.random() * 0.5;
+            beam.userData.pulsePhase = Math.random() * Math.PI * 2;
+            beam.userData.baseOpacity = material.opacity;
+
+            this.neonSigns.push(beam);
+            this.scene.add(beam);
+        }
+
+        console.log('[NeonDistrict] Added volumetric spotlight beams');
     }
 
     createNeonStrip(building) {
@@ -1841,11 +2109,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Purple-biased hue (0.75-0.95 is purple/magenta range)
         const hue = 0.75 + Math.random() * 0.2;
         const color = new THREE.Color().setHSL(hue, 1.0, 0.55);
-        const texture = this.generateNeonTexture(color);
+        const texture = this.generateNeonTexture(); // Use cached texture
 
         const material = new THREE.MeshBasicMaterial({
             map: texture,
-            color: 0xffffff, // Texture provides color
+            color: color, // Tint the white texture with color
+
             transparent: true,
             opacity: 0.9,
             blending: THREE.AdditiveBlending,
@@ -1896,52 +2165,51 @@ export default class NeonDistrictTheme extends BaseTheme {
         sign.userData.flickerAmount = 0.3;
     }
 
-    generateNeonTexture(baseColor) {
+    generateNeonTexture() {
+        // Initialize cache if needed
+        if (!this.neonCache) this.neonCache = {};
+
+        const words = ['BAR', 'HOTEL', 'OPEN', 'DATA', 'TECH', 'ZONE', 'LIVE', 'SEX', 'XXX', 'GIRLS', 'BOYS', 'CLUB'];
+        const text = words[Math.floor(Math.random() * words.length)];
+
+        // Check cache
+        if (this.neonCache[text]) {
+            return this.neonCache[text];
+        }
+
         const canvas = document.createElement('canvas');
         canvas.width = 128;
         canvas.height = 256;
         const ctx = canvas.getContext('2d');
 
-        // Clear
-        ctx.fillStyle = '#000000'; // Transp? No, keep it distinct
+        // Black background (for additive blending or simple tinting)
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, 128, 256);
 
-        // Border
-        const colorStr = '#' + baseColor.getHexString();
-        ctx.strokeStyle = colorStr;
+        // Border - WHITE for tinting
+        ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 4;
         ctx.strokeRect(4, 4, 120, 248);
 
-        // Text
-        const words = ['BAR', 'HOTEL', 'OPEN', 'DATA', 'TECH', 'ZONE', 'LIVE', 'SEX', 'XXX', 'GIRLS', 'BOYS', 'CLUB'];
-        const kanjis = ['未来', '技術', '電脳', '日本', '東京', '夜', '酒', '愛', '光', '力'];
-
-        const isKanji = Math.random() > 0.5;
-        const text = isKanji ? kanjis[Math.floor(Math.random() * kanjis.length)] : words[Math.floor(Math.random() * words.length)];
-
-        ctx.fillStyle = colorStr;
-        ctx.shadowColor = colorStr;
+        // Text settings
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
         ctx.shadowBlur = 10;
-
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        if (isKanji) {
-            ctx.font = 'bold 60px Arial';
-            // Vertical text for Kanji
-            ctx.fillText(text.charAt(0), 64, 80);
-            if (text.length > 1) ctx.fillText(text.charAt(1), 64, 160);
-        } else {
-            // Vertical text for words? Rotate?
-            ctx.save();
-            ctx.translate(64, 128);
-            ctx.rotate(-Math.PI / 2);
-            ctx.font = 'bold 40px Arial';
-            ctx.fillText(text, 0, 0);
-            ctx.restore();
-        }
+        // Rotate text
+        ctx.save();
+        ctx.translate(64, 128);
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = 'bold 40px Arial';
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
 
         const texture = new THREE.CanvasTexture(canvas);
+
+        // Cache it
+        this.neonCache[text] = texture;
         return texture;
     }
 
@@ -2021,142 +2289,213 @@ export default class NeonDistrictTheme extends BaseTheme {
     createRain() {
         const particleCount = this.qualityPreset.rainParticles;
 
-        // ===== RAIN DROPS using LineSegments for streaks =====
-        const rainGeometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 6); // 2 points per line
-        const velocities = new Float32Array(particleCount);
+        // ===== HIGH-QUALITY BILLBOARDED RAIN STREAKS =====
+        // Using InstancedMesh with soft radial gradient for realistic rain
+
+        // Base plane geometry for each raindrop (thin elongated streak)
+        const rainGeometry = new THREE.PlaneGeometry(0.3, 5.0);
+
+        // Per-instance attributes
+        const instancePositions = new Float32Array(particleCount * 3);
+        const instanceVelocities = new Float32Array(particleCount);
+        const instancePhases = new Float32Array(particleCount);
+        const instanceSizes = new Float32Array(particleCount);
 
         for (let i = 0; i < particleCount; i++) {
-            const i6 = i * 6;
-            const x = (Math.random() - 0.5) * 600;
-            const y = Math.random() * 500;
-            const z = (Math.random() - 0.5) * 800 - 200;
-            const streakLength = 8 + Math.random() * 12;
+            const i3 = i * 3;
+            instancePositions[i3] = (Math.random() - 0.5) * 600;
+            instancePositions[i3 + 1] = Math.random() * 500;
+            instancePositions[i3 + 2] = (Math.random() - 0.5) * 800 - 200;
 
-            // Start point
-            positions[i6] = x;
-            positions[i6 + 1] = y;
-            positions[i6 + 2] = z;
-            // End point (streak below)
-            positions[i6 + 3] = x - 0.5;
-            positions[i6 + 4] = y - streakLength;
-            positions[i6 + 5] = z;
-
-            velocities[i] = 20 + Math.random() * 15;
+            instanceVelocities[i] = 18 + Math.random() * 14;
+            instancePhases[i] = Math.random() * 100;
+            instanceSizes[i] = 0.6 + Math.random() * 0.8; // Size variation
         }
 
-        rainGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        this.rainVelocities = velocities;
+        rainGeometry.setAttribute('aInstancePosition', new THREE.InstancedBufferAttribute(instancePositions, 3));
+        rainGeometry.setAttribute('aVelocity', new THREE.InstancedBufferAttribute(instanceVelocities, 1));
+        rainGeometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(instancePhases, 1));
+        rainGeometry.setAttribute('aSize', new THREE.InstancedBufferAttribute(instanceSizes, 1));
 
-        const rainMaterial = new THREE.LineBasicMaterial({
-            color: 0xaaddff,
+        // High-quality rain shader with soft radial gradient
+        const rainMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uColor: { value: new THREE.Color(0xcceeff) },
+                uIntensity: { value: 1.0 },
+            },
+            vertexShader: `
+                attribute vec3 aInstancePosition;
+                attribute float aVelocity;
+                attribute float aPhase;
+                attribute float aSize;
+
+                uniform float uTime;
+                uniform float uIntensity;
+
+                varying vec2 vUv;
+                varying float vAlpha;
+
+                void main() {
+                    vUv = uv;
+
+                    // Calculate animated instance position
+                    vec3 instancePos = aInstancePosition;
+
+                    // Fast realistic rain fall
+                    float fallDistance = uTime * aVelocity * 60.0 * uIntensity;
+                    instancePos.y = mod(aInstancePosition.y - fallDistance, 500.0);
+
+                    // Subtle wind sway
+                    float wind = sin(uTime * 1.5 + aPhase * 0.1) * 0.5;
+                    instancePos.x += wind;
+
+                    // Fade based on distance from camera for depth
+                    float distFromCenter = length(instancePos.xz) / 400.0;
+                    vAlpha = 1.0 - smoothstep(0.5, 1.0, distFromCenter);
+
+                    // Billboard the plane to face camera (with slight downward tilt for rain angle)
+                    vec3 cameraRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+                    vec3 cameraUp = vec3(0.0, 1.0, -0.15); // Slight tilt for rain angle
+                    cameraUp = normalize(cameraUp);
+
+                    // Scale the plane
+                    vec3 vertexPos = position;
+                    vertexPos.x *= aSize * 0.8;
+                    vertexPos.y *= aSize * 1.2;
+
+                    // Create billboarded position
+                    vec3 worldPos = instancePos
+                        + cameraRight * vertexPos.x
+                        + cameraUp * vertexPos.y;
+
+                    gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor;
+
+                varying vec2 vUv;
+                varying float vAlpha;
+
+                void main() {
+                    // Soft radial gradient with exponential falloff (key to realistic rain)
+                    vec2 center = vUv - vec2(0.5);
+
+                    // Elongate the gradient vertically for streak effect
+                    center.y *= 0.25;
+                    float dist = length(center) * 2.0;
+
+                    // Exponential falloff for soft edges
+                    float alpha = exp(-dist * dist * 8.0);
+
+                    // Vertical gradient - brighter at top, fades at bottom
+                    float vertFade = smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.4, vUv.y);
+                    alpha *= vertFade;
+
+                    // Base opacity for visible rain with soft buildup
+                    alpha *= 0.4 * vAlpha;
+
+                    // Slight blue tint variation
+                    vec3 color = uColor * (0.9 + vUv.y * 0.2);
+
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
             transparent: true,
-            opacity: 0.5,
-            linewidth: 1,
+            depthWrite: false,
+            depthTest: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
         });
 
-        this.rainParticles = new THREE.LineSegments(rainGeometry, rainMaterial);
+        this.rainMaterial = rainMaterial;
+        this.rainParticles = new THREE.InstancedMesh(rainGeometry, rainMaterial, particleCount);
+        this.rainParticles.frustumCulled = false;
         this.scene.add(this.rainParticles);
 
-        // ===== SPLASH PARTICLES =====
+        // ===== GPU-ANIMATED SPLASH PARTICLES =====
         const splashCount = Math.floor(particleCount * 0.3);
         const splashGeometry = new THREE.BufferGeometry();
         const splashPositions = new Float32Array(splashCount * 3);
-        const splashSizes = new Float32Array(splashCount);
-        const splashLifetimes = new Float32Array(splashCount);
+        const splashPhases = new Float32Array(splashCount); // phase offset for staggered animation
 
         for (let i = 0; i < splashCount; i++) {
-            splashPositions[i * 3] = (Math.random() - 0.5) * 300;
-            splashPositions[i * 3 + 1] = 0.5;  // At ground level
-            splashPositions[i * 3 + 2] = (Math.random() - 0.5) * 500 - 180;
-            splashSizes[i] = 0;
-            splashLifetimes[i] = Math.random();
+            splashPositions[i * 3] = (Math.random() - 0.5) * 600;
+            splashPositions[i * 3 + 1] = 0.5;  // Ground level
+            splashPositions[i * 3 + 2] = (Math.random() - 0.5) * 800 - 200;
+            splashPhases[i] = Math.random() * 6.28; // Random phase 0 to 2π
         }
 
         splashGeometry.setAttribute('position', new THREE.BufferAttribute(splashPositions, 3));
-        splashGeometry.setAttribute('size', new THREE.BufferAttribute(splashSizes, 1));
+        splashGeometry.setAttribute('aPhase', new THREE.BufferAttribute(splashPhases, 1));
 
-        const splashMaterial = new THREE.PointsMaterial({
-            color: 0xccddff,
-            size: 1.5,  // SMALLER
+        // High-quality splash shader with soft exponential falloff
+        const splashMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uColor: { value: new THREE.Color(0xccddff) },
+            },
+            vertexShader: `
+                attribute float aPhase;
+                uniform float uTime;
+                varying float vLife;
+
+                void main() {
+                    vec3 pos = position;
+
+                    // Fast lifecycle with staggered phases
+                    float cycle = mod(uTime * 6.0 + aPhase, 6.28);
+                    vLife = max(0.0, sin(cycle));
+
+                    // Quick pop up animation with slight random spread
+                    pos.y += vLife * 1.5;
+
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+
+                    // Size pulses with lifecycle
+                    gl_PointSize = vLife * 5.0 * (300.0 / -mvPosition.z);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor;
+                varying float vLife;
+
+                void main() {
+                    // Soft radial gradient with exponential falloff (matches rain style)
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center) * 2.0;
+
+                    // Exponential falloff for ultra-soft edges
+                    float alpha = exp(-dist * dist * 6.0);
+
+                    // Low opacity for buildup effect
+                    alpha *= 0.25 * vLife;
+
+                    gl_FragColor = vec4(uColor, alpha);
+                }
+            `,
             transparent: true,
-            opacity: 0.35,  // MORE SUBTLE
-            sizeAttenuation: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
 
-        // ACTIVE: Splash particles for ground impact
+        this.splashMaterial = splashMaterial;
         this.splashParticles = new THREE.Points(splashGeometry, splashMaterial);
-        this.splashLifetimes = splashLifetimes;
         this.scene.add(this.splashParticles);
 
-        console.log(`[NeonDistrict] Created rain with ${particleCount} drops`);
+        console.log(`[NeonDistrict] Created high-quality billboarded rain with ${particleCount} drops`);
     }
 
-    updateRain(delta) {
-        if (!this.rainParticles) return;
-
-        const positions = this.rainParticles.geometry.attributes.position.array;
-        const particleCount = positions.length / 6;
-
-        for (let i = 0; i < particleCount; i++) {
-            const i6 = i * 6;
-            const fallSpeed = this.rainVelocities[i] * delta * 60 * this.rainIntensity;
-
-            // Move both points of the line segment down
-            positions[i6 + 1] -= fallSpeed;
-            positions[i6 + 4] -= fallSpeed;
-
-            // Slight wind effect
-            const wind = Math.sin(this.time * 2 + i * 0.01) * 0.15;
-            positions[i6] += wind;
-            positions[i6 + 3] += wind;
-
-            // Reset when below ground
-            if (positions[i6 + 4] < 0) {
-                const newY = 400 + Math.random() * 200;
-                const streakLength = 8 + Math.random() * 12;
-                positions[i6 + 1] = newY;
-                positions[i6 + 4] = newY - streakLength;
-                positions[i6] = (Math.random() - 0.5) * 600;
-                positions[i6 + 3] = positions[i6] - 0.5;
-                positions[i6 + 2] = (Math.random() - 0.5) * 800 - 200;
-                positions[i6 + 5] = positions[i6 + 2];
-            }
+    updateRain() {
+        // GPU-based animation - just update shader uniforms (1 value instead of 15,000+ array ops)
+        if (this.rainMaterial) {
+            this.rainMaterial.uniforms.uTime.value = this.time;
+            this.rainMaterial.uniforms.uIntensity.value = this.rainIntensity;
         }
-
-        this.rainParticles.geometry.attributes.position.needsUpdate = true;
-
-        // Update splash particles
-        if (this.splashParticles && this.splashLifetimes) {
-            const splashPositions = this.splashParticles.geometry.attributes.position.array;
-            const splashSizes = this.splashParticles.geometry.attributes.size.array;
-            const splashCount = splashPositions.length / 3;
-
-            for (let i = 0; i < splashCount; i++) {
-                this.splashLifetimes[i] += delta * 4.0; // Fast splash
-
-                if (this.splashLifetimes[i] > 1.0) {
-                    // Reset splash at new random position
-                    this.splashLifetimes[i] = Math.random() * 0.5; // Random start delay
-
-                    splashPositions[i * 3] = (Math.random() - 0.5) * 600;
-                    splashPositions[i * 3 + 1] = 0.5; // Ground
-                    splashPositions[i * 3 + 2] = (Math.random() - 0.5) * 800 - 200;
-                }
-
-                // Animate splash: Pop up and fade out
-                const life = this.splashLifetimes[i];
-                if (life > 0.0) {
-                    // Simple "fountain" arc
-                    splashPositions[i * 3 + 1] = 0.5 + Math.sin(life * Math.PI) * 1.5;
-                    splashSizes[i] = Math.sin(life * Math.PI) * 1.5; // Grow then shrink
-                } else {
-                    splashSizes[i] = 0;
-                }
-            }
-
-            this.splashParticles.geometry.attributes.position.needsUpdate = true;
-            this.splashParticles.geometry.attributes.size.needsUpdate = true;
+        if (this.splashMaterial) {
+            this.splashMaterial.uniforms.uTime.value = this.time;
         }
     }
 
@@ -2254,104 +2593,125 @@ export default class NeonDistrictTheme extends BaseTheme {
         console.log(`[NeonDistrict] Created ${count} flying vehicles`);
     }
 
-    // Cyberpunk Spinner - detailed flying vehicle
+    /**
+     * Initialize shared geometries and materials for spinners (called once)
+     */
+    initSpinnerResources() {
+        if (this.spinnerResources) return;
+
+        this.spinnerResources = {
+            // Geometries (shared across all spinners)
+            bodyGeometry: new THREE.BoxGeometry(8, 4, 20),
+            canopyGeometry: new THREE.SphereGeometry(3, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+            engineGeometry: new THREE.CylinderGeometry(2, 1.5, 8, 8),
+            exhaustGeometry: new THREE.CircleGeometry(1.8, 8),
+            headlightGeometry: new THREE.CircleGeometry(1, 8),
+            navGeometry: new THREE.SphereGeometry(0.5, 6, 6),
+
+            // Materials (shared across all spinners)
+            bodyMaterial: new THREE.MeshStandardMaterial({
+                color: 0x222233,
+                roughness: 0.4,
+                metalness: 0.7,
+                emissive: 0x111122,
+                emissiveIntensity: 0.2,
+            }),
+            canopyMaterial: new THREE.MeshStandardMaterial({
+                color: 0x4488ff,
+                roughness: 0.1,
+                metalness: 0.9,
+                transparent: true,
+                opacity: 0.7,
+            }),
+            engineMaterial: new THREE.MeshStandardMaterial({
+                color: 0x333344,
+                roughness: 0.3,
+                metalness: 0.8,
+            }),
+            exhaustCyanMaterial: new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.9,
+            }),
+            exhaustOrangeMaterial: new THREE.MeshBasicMaterial({
+                color: 0xff6600,
+                transparent: true,
+                opacity: 0.9,
+            }),
+            headlightMaterial: new THREE.MeshBasicMaterial({
+                color: 0xffffcc,
+                transparent: true,
+                opacity: 1.0,
+            }),
+            tailMaterial: new THREE.MeshBasicMaterial({
+                color: 0xff0033,
+                transparent: true,
+                opacity: 0.9,
+            }),
+            navMaterial: new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+        };
+    }
+
+    // Cyberpunk Spinner - detailed flying vehicle (uses shared resources)
     createSpinner() {
+        // Initialize shared resources on first call
+        this.initSpinnerResources();
+        const r = this.spinnerResources;
+
         const spinner = new THREE.Group();
 
-        // Main body - wedge shaped
-        const bodyGeometry = new THREE.BoxGeometry(8, 4, 20);
-        const bodyMaterial = new THREE.MeshStandardMaterial({
-            color: 0x222233,
-            roughness: 0.4,
-            metalness: 0.7,
-            emissive: 0x111122,
-            emissiveIntensity: 0.2,
-        });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        // Main body
+        const body = new THREE.Mesh(r.bodyGeometry, r.bodyMaterial);
         spinner.add(body);
 
         // Cockpit canopy
-        const canopyGeometry = new THREE.SphereGeometry(3, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-        const canopyMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4488ff,
-            roughness: 0.1,
-            metalness: 0.9,
-            transparent: true,
-            opacity: 0.7,
-        });
-        const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
+        const canopy = new THREE.Mesh(r.canopyGeometry, r.canopyMaterial);
         canopy.rotation.x = Math.PI;
         canopy.position.set(0, 2, 3);
         spinner.add(canopy);
 
         // Engine pods (left and right)
-        const engineGeometry = new THREE.CylinderGeometry(2, 1.5, 8, 8);
-        const engineMaterial = new THREE.MeshStandardMaterial({
-            color: 0x333344,
-            roughness: 0.3,
-            metalness: 0.8,
-        });
-
-        const leftEngine = new THREE.Mesh(engineGeometry, engineMaterial);
+        const leftEngine = new THREE.Mesh(r.engineGeometry, r.engineMaterial);
         leftEngine.rotation.x = Math.PI / 2;
         leftEngine.position.set(-6, -1, -2);
         spinner.add(leftEngine);
 
-        const rightEngine = new THREE.Mesh(engineGeometry, engineMaterial);
+        const rightEngine = new THREE.Mesh(r.engineGeometry, r.engineMaterial);
         rightEngine.rotation.x = Math.PI / 2;
         rightEngine.position.set(6, -1, -2);
         spinner.add(rightEngine);
 
-        // Engine glow (exhaust)
-        const exhaustGeometry = new THREE.CircleGeometry(1.8, 8);
-        const exhaustColor = Math.random() > 0.5 ? 0x00ffff : 0xff6600;
-        const exhaustMaterial = new THREE.MeshBasicMaterial({
-            color: exhaustColor,
-            transparent: true,
-            opacity: 0.9,
-        });
+        // Engine glow (exhaust) - alternate colors
+        const exhaustMaterial = Math.random() > 0.5 ? r.exhaustCyanMaterial : r.exhaustOrangeMaterial;
 
-        const leftExhaust = new THREE.Mesh(exhaustGeometry, exhaustMaterial);
+        const leftExhaust = new THREE.Mesh(r.exhaustGeometry, exhaustMaterial);
         leftExhaust.position.set(-6, -1, -6);
         spinner.add(leftExhaust);
 
-        const rightExhaust = new THREE.Mesh(exhaustGeometry, exhaustMaterial);
+        const rightExhaust = new THREE.Mesh(r.exhaustGeometry, exhaustMaterial);
         rightExhaust.position.set(6, -1, -6);
         spinner.add(rightExhaust);
 
-        // Headlights - bright forward lights
-        const headlightGeometry = new THREE.CircleGeometry(1, 8);
-        const headlightMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffcc,
-            transparent: true,
-            opacity: 1.0,
-        });
-        const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        // Headlights
+        const leftHeadlight = new THREE.Mesh(r.headlightGeometry, r.headlightMaterial);
         leftHeadlight.position.set(-3, 0, 10);
         spinner.add(leftHeadlight);
 
-        const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        const rightHeadlight = new THREE.Mesh(r.headlightGeometry, r.headlightMaterial);
         rightHeadlight.position.set(3, 0, 10);
         spinner.add(rightHeadlight);
 
-        // Tail lights - red
-        const tailMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff0033,
-            transparent: true,
-            opacity: 0.9,
-        });
-        const leftTail = new THREE.Mesh(headlightGeometry, tailMaterial);
+        // Tail lights
+        const leftTail = new THREE.Mesh(r.headlightGeometry, r.tailMaterial);
         leftTail.position.set(-3, 0, -10);
         spinner.add(leftTail);
 
-        const rightTail = new THREE.Mesh(headlightGeometry, tailMaterial);
+        const rightTail = new THREE.Mesh(r.headlightGeometry, r.tailMaterial);
         rightTail.position.set(3, 0, -10);
         spinner.add(rightTail);
 
-        // Navigation lights (blinking in update)
-        const navGeometry = new THREE.SphereGeometry(0.5, 6, 6);
-        const navMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        spinner.navLight = new THREE.Mesh(navGeometry, navMaterial);
+        // Navigation light
+        spinner.navLight = new THREE.Mesh(r.navGeometry, r.navMaterial);
         spinner.navLight.position.set(0, 3, 0);
         spinner.add(spinner.navLight);
 
@@ -2536,53 +2896,49 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     setupSceneLighting() {
-        // ═══════════════════════════════════════════════════════════════════════
-        // SCENE LIGHTING - Balanced for visible asphalt + neon atmosphere
-        // ═══════════════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SCENE LIGHTING - Night with visible buildings
+        // ═══════════════════════════════════════════════════════════════════════════
 
-        // Brighter ambient for visible ground texture
-        const ambientLight = new THREE.AmbientLight(0x404050, 1.2);
+        // Brighter ambient light so buildings aren't pitch black
+        const ambientLight = new THREE.AmbientLight(0x334466, 1.0);
         this.scene.add(ambientLight);
 
-        // Hemisphere light for natural sky/ground lighting
-        const hemiLight = new THREE.HemisphereLight(0x4444aa, 0x222233, 0.8);
-        this.scene.add(hemiLight);
-
-        // Main directional light (moon-like) - aimed at ground
-        const dirLight = new THREE.DirectionalLight(0xaaaaff, 0.6);
-        dirLight.position.set(-50, 200, -100);
+        // Main directional light - gives subtle surface illumination
+        const dirLight = new THREE.DirectionalLight(0x8888ff, 0.4);
+        dirLight.position.set(0.5, 1, 0.3);
         this.scene.add(dirLight);
 
-        // Secondary fill light 
-        const dirLight2 = new THREE.DirectionalLight(0x8866ff, 0.4);
-        dirLight2.position.set(100, 150, 50);
-        this.scene.add(dirLight2);
+        // Secondary fill light for better building visibility from camera
+        const fillLight = new THREE.DirectionalLight(0x6666aa, 0.5);
+        fillLight.position.set(-0.5, 0.5, 1);
+        this.scene.add(fillLight);
+
+        // Hemisphere light for sky/ground gradient
+        const hemiLight = new THREE.HemisphereLight(0x4455aa, 0x222233, 0.6);
+        this.scene.add(hemiLight);
 
         // Purple-heavy point lights for neon atmosphere
         const lightPositions = [
-            // Deep purple lights
-            { pos: [-200, 200, -300], color: 0x8800ff, intensity: 6 },
-            { pos: [280, 250, -500], color: 0xaa00ff, intensity: 5 },
-            { pos: [100, 80, 100], color: 0x6600ff, intensity: 4 },
-            // Magenta/pink lights
-            { pos: [-180, 150, 50], color: 0xff00ff, intensity: 6 },
-            { pos: [200, 180, -150], color: 0xff00aa, intensity: 5 },
-            { pos: [-100, 100, -400], color: 0xcc00ff, intensity: 4 },
-            // Violet accents
-            { pos: [0, 120, 200], color: 0x9933ff, intensity: 4 },
-            { pos: [-250, 300, -200], color: 0x7700ff, intensity: 5 },
-            { pos: [300, 280, -350], color: 0xbb00ff, intensity: 4 },
-            // Cyan accent (small amount for contrast)
-            { pos: [150, 150, -600], color: 0x00ffff, intensity: 3 },
+            { pos: [-200, 200, -300], color: 0x8800ff, intensity: 10 },
+            { pos: [280, 250, -500], color: 0xaa00ff, intensity: 8 },
+            { pos: [100, 80, 100], color: 0x6600ff, intensity: 8 },
+            { pos: [-180, 150, 50], color: 0xff00ff, intensity: 10 },
+            { pos: [200, 180, -150], color: 0xff00aa, intensity: 8 },
+            { pos: [-100, 100, -400], color: 0xcc00ff, intensity: 8 },
+            { pos: [0, 120, 200], color: 0x9933ff, intensity: 6 },
+            { pos: [-250, 300, -200], color: 0x7700ff, intensity: 8 },
+            { pos: [300, 280, -350], color: 0xbb00ff, intensity: 6 },
+            { pos: [150, 150, -600], color: 0x00ffff, intensity: 5 },
         ];
 
         lightPositions.forEach(({ pos, color, intensity }) => {
-            const light = new THREE.PointLight(color, intensity, 600);
+            const light = new THREE.PointLight(color, intensity, 1000);
             light.position.set(...pos);
             this.scene.add(light);
         });
 
-        console.log('[NeonDistrict] Lighting configured with HDR environment');
+        console.log('[NeonDistrict] Lighting configured - brighter for visible buildings');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2622,13 +2978,14 @@ export default class NeonDistrictTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
-        // Piece lock - neon pulse
+        // Piece lock - subtle neon glow pulse
         const onPieceLock = () => {
-            this.lightPulseIntensity = 0.5;
-            this.bloomBoost = 0.3;
+            // Subtle bloom/glow boost
+            this.lightPulseIntensity = 0.3;
+            this.bloomBoost = 0.25;
         };
-        eventBus.on(EVENTS.PIECE_LOCKED, onPieceLock);
-        this.eventUnsubscribers.push(() => eventBus.off(EVENTS.PIECE_LOCKED, onPieceLock));
+        eventBus.on(EVENTS.PIECE_LOCK, onPieceLock);
+        this.eventUnsubscribers.push(() => eventBus.off(EVENTS.PIECE_LOCK, onPieceLock));
 
         // Line clear - lightning flash
         const onLineClear = (data) => {
@@ -2640,11 +2997,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         eventBus.on(EVENTS.LINES_CLEARED, onLineClear);
         this.eventUnsubscribers.push(() => eventBus.off(EVENTS.LINES_CLEARED, onLineClear));
 
-        // Combo - intensify effects
+        // Combo - tiered cyberpunk effects
         const onCombo = (data) => {
-            const combo = data?.combo || 1;
-            this.lightPulseIntensity += combo * 0.15;
-            this.bloomBoost += combo * 0.1;
+            const combo = data?.combo || data?.comboCount || 1;
+            this.triggerComboEffects(combo);
         };
         eventBus.on(EVENTS.COMBO, onCombo);
         this.eventUnsubscribers.push(() => eventBus.off(EVENTS.COMBO, onCombo));
@@ -2653,6 +3009,322 @@ export default class NeonDistrictTheme extends BaseTheme {
         const onResize = () => this.handleResize();
         window.addEventListener('resize', onResize);
         this.eventUnsubscribers.push(() => window.removeEventListener('resize', onResize));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Combo Effects System - Tiered Cyberpunk Effects
+    // ─────────────────────────────────────────────────────────────────────────
+
+    triggerComboEffects(combo) {
+        // === TIER 1: All combos (1+) ===
+        // Bloom/glow boost scales with combo
+        this.lightPulseIntensity = Math.min(0.5 + combo * 0.15, 1.2);
+        this.bloomBoost = Math.min(0.4 + combo * 0.12, 1.0);
+
+        // Rain intensifies
+        this.rainIntensity = Math.min(1.5 + combo * 0.2, 3.0);
+
+        // Spawn neon sparks (scales with combo)
+        const sparkCount = Math.min(combo * 6, 30);  // Increased from 4 to 6 per combo
+        this.spawnComboSparks(sparkCount, combo);
+
+        // EXTRA edge sparks - specifically on screen edges where they're visible
+        this.spawnEdgeSparks(combo);
+
+        // === TIER 2: Medium combos (3+) ===
+        if (combo >= 3) {
+            // Neon sign surge - all signs flare brighter
+            this.triggerNeonSignSurge(combo);
+        }
+
+        // === TIER 3: High combos (5+) ===
+        if (combo >= 5) {
+            // Lightning arc between buildings
+            this.spawnLightningArc(combo);
+
+            // Holographic glitch wave
+            this.triggerGlitchWave(combo);
+        }
+    }
+
+    spawnComboSparks(count, combo) {
+        if (!this.scene) return;
+
+        // Cyberpunk neon colors - bright and saturated
+        const neonColors = [
+            0x00ffff, // Electric cyan
+            0xff00ff, // Hot magenta
+            0xffff00, // Acid yellow
+            0xff00aa, // Pink neon
+            0x00ff66, // Toxic green
+            0xaa00ff, // Purple neon
+            0xffffff, // White hot
+        ];
+
+        // Spawn MORE sparks across the ENTIRE visible screen
+        const actualCount = count * 3;  // Triple the spark count (was 2x)
+
+        for (let i = 0; i < actualCount; i++) {
+            const color = neonColors[Math.floor(Math.random() * neonColors.length)];
+
+            // BIAS toward left and right EDGES - avoid center where game board is
+            let spawnX;
+            if (Math.random() > 0.3) {
+                // 70% chance: spawn on edges (left or right side)
+                const side = Math.random() > 0.5 ? 1 : -1;
+                spawnX = side * (200 + Math.random() * 400);  // 200-600 units from center
+            } else {
+                // 30% chance: full width (some will appear behind board)
+                spawnX = (Math.random() - 0.5) * 1000;
+            }
+            const spawnY = Math.random() * 350;           // Full height from ground to sky
+            const spawnZ = 100 - Math.random() * 500;     // Closer to camera for visibility
+
+            // LARGER sparks for better visibility
+            const sparkSize = 2 + Math.random() * 3;  // 2-5 units (was 0.6-1.2)
+            const geometry = new THREE.SphereGeometry(sparkSize, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const spark = new THREE.Mesh(geometry, material);
+            spark.position.set(spawnX, spawnY, spawnZ);
+
+            // Velocity - dynamic burst with variety
+            const angle = Math.random() * Math.PI * 2;
+            const elevation = (Math.random() - 0.3) * Math.PI;
+            const speed = 20 + Math.random() * 40 + combo * 8;
+
+            spark.userData = {
+                vx: Math.cos(angle) * Math.cos(elevation) * speed,
+                vy: Math.sin(elevation) * speed + 10,
+                vz: Math.sin(angle) * Math.cos(elevation) * speed * 0.5, // Less Z movement
+                life: 1.0,
+                decay: 0.008 + Math.random() * 0.01,  // Slower decay = longer visibility
+                gravity: -40,  // Gentler gravity
+                color: color,
+                baseSize: sparkSize,
+            };
+
+            this.scene.add(spark);
+            this.pieceLockSparks.push(spark);
+        }
+    }
+
+    // Spawn sparks SPECIFICALLY on the far left and right edges of the screen
+    spawnEdgeSparks(combo) {
+        if (!this.scene) return;
+
+        // Bright neon colors for visibility
+        const neonColors = [
+            0x00ffff, // Electric cyan
+            0xff00ff, // Hot magenta
+            0xffff00, // Acid yellow
+            0x00ff66, // Toxic green
+            0xffffff, // White hot
+        ];
+
+        // More sparks for higher combos
+        const count = 15 + combo * 8;  // Increased for more visible edge effects
+
+        for (let i = 0; i < count; i++) {
+            const color = neonColors[Math.floor(Math.random() * neonColors.length)];
+
+            // ONLY spawn on far LEFT or RIGHT edges
+            const side = Math.random() > 0.5 ? 1 : -1;
+            const spawnX = side * (350 + Math.random() * 300);  // 350-650 units from center (far edges)
+            const spawnY = Math.random() * 400;  // Full height
+            const spawnZ = 150 - Math.random() * 300;  // Closer to camera for maximum visibility
+
+            // LARGER, brighter sparks for edges
+            const sparkSize = 3 + Math.random() * 4;  // 3-7 units
+            const geometry = new THREE.SphereGeometry(sparkSize, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const spark = new THREE.Mesh(geometry, material);
+            spark.position.set(spawnX, spawnY, spawnZ);
+
+            // Velocity - burst mostly laterally (stay on edges)
+            const angle = side > 0 ? Math.random() * Math.PI - Math.PI / 2 : Math.random() * Math.PI + Math.PI / 2;
+            const speed = 15 + Math.random() * 30;
+
+            spark.userData = {
+                vx: Math.cos(angle) * speed * 0.5,  // Less horizontal movement to stay on edge
+                vy: (Math.random() - 0.3) * speed + 10,  // Mostly upward
+                vz: 0,  // No depth movement
+                life: 1.0,
+                decay: 0.006 + Math.random() * 0.008,  // Extra slow decay
+                gravity: -30,  // Gentle gravity
+                color: color,
+                baseSize: sparkSize,
+            };
+
+            this.scene.add(spark);
+            this.pieceLockSparks.push(spark);
+        }
+    }
+
+    triggerNeonSignSurge(combo) {
+        // Temporarily boost all neon sign brightness
+        this.neonSignSurgeIntensity = Math.min(0.5 + combo * 0.1, 1.0);
+        this.neonSignSurgeTime = 0;
+    }
+
+    spawnLightningArc(combo) {
+        if (!this.scene || this.buildings.length < 2) return;
+
+        // Spawn multiple lightning arcs for high combos, spread across the scene
+        const arcCount = Math.min(1 + Math.floor((combo - 4) / 2), 3);
+
+        for (let arc = 0; arc < arcCount; arc++) {
+            // Find two buildings at similar Z depth for this arc
+            const leftBuildings = this.buildings.filter(b => b.position.x < 0);
+            const rightBuildings = this.buildings.filter(b => b.position.x > 0);
+
+            if (leftBuildings.length === 0 || rightBuildings.length === 0) return;
+
+            const leftB = leftBuildings[Math.floor(Math.random() * leftBuildings.length)];
+
+            // Find a right building at similar Z depth for more natural arc
+            const sameDepthBuildings = rightBuildings.filter(b =>
+                Math.abs(b.position.z - leftB.position.z) < 200
+            );
+            const rightB = sameDepthBuildings.length > 0
+                ? sameDepthBuildings[Math.floor(Math.random() * sameDepthBuildings.length)]
+                : rightBuildings[Math.floor(Math.random() * rightBuildings.length)];
+
+            // Arc points - full height range
+            const startY = 50 + Math.random() * 250;
+            const endY = 50 + Math.random() * 250;
+
+            // Use averaged Z for the arc to stay in the building corridor
+            const arcZ = (leftB.position.z + rightB.position.z) / 2;
+
+            const start = new THREE.Vector3(
+                leftB.position.x + 20,
+                startY,
+                arcZ + (Math.random() - 0.5) * 50
+            );
+            const end = new THREE.Vector3(
+                rightB.position.x - 20,
+                endY,
+                arcZ + (Math.random() - 0.5) * 50
+            );
+
+            // Create lightning bolt with jagged segments
+            this.createLightningBolt(start, end, combo);
+        }
+    }
+
+    createLightningBolt(start, end, combo) {
+        if (!this.scene) return;
+
+        const points = [start.clone()];
+        const segments = 8 + Math.floor(combo * 2);
+        const direction = end.clone().sub(start);
+
+        // Create jagged path
+        for (let i = 1; i < segments; i++) {
+            const t = i / segments;
+            const point = start.clone().lerp(end, t);
+
+            // Add random displacement (perpendicular jitter)
+            const jitter = 15 + combo * 3;
+            point.x += (Math.random() - 0.5) * jitter;
+            point.y += (Math.random() - 0.5) * jitter;
+            point.z += (Math.random() - 0.5) * jitter * 0.5;
+
+            points.push(point);
+        }
+        points.push(end.clone());
+
+        // Create geometry from points
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+        // Electric blue/white color
+        const colors = [0x88ffff, 0xffffff, 0xaaffff, 0x00ffff];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+
+        const material = new THREE.LineBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 1.0,
+            linewidth: 2,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const lightning = new THREE.Line(geometry, material);
+        lightning.userData = {
+            life: 1.0,
+            decay: 0.06, // Fast fade
+            isLightning: true,
+        };
+
+        this.scene.add(lightning);
+        this.pieceLockSparks.push(lightning);
+
+        // Create glow at both ends
+        this.createSparkFlash(start.x, start.y, start.z, color);
+        this.createSparkFlash(end.x, end.y, end.z, color);
+
+        // Spawn branch lightning (for high combos)
+        if (combo >= 7 && Math.random() > 0.5) {
+            const midPoint = points[Math.floor(points.length / 2)];
+            const branchEnd = new THREE.Vector3(
+                midPoint.x + (Math.random() - 0.5) * 100,
+                midPoint.y - 30 - Math.random() * 50,
+                midPoint.z + (Math.random() - 0.5) * 50
+            );
+            this.createLightningBolt(midPoint, branchEnd, Math.floor(combo / 2));
+        }
+    }
+
+    triggerGlitchWave(combo) {
+        if (!this.scene) return;
+
+        // Create a horizontal "glitch band" plane that sweeps across
+        const height = 3 + combo * 0.5;
+        const geometry = new THREE.PlaneGeometry(600, height);
+
+        // Glitch colors - electric interference
+        const glitchColors = [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00];
+        const color = glitchColors[Math.floor(Math.random() * glitchColors.length)];
+
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
+
+        const glitchWave = new THREE.Mesh(geometry, material);
+
+        // Position on LEFT or RIGHT side - avoid center where game board is
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const randomX = side * (150 + Math.random() * 200);  // 150-350 units from center
+        const randomZ = -50 - Math.random() * 400;
+        glitchWave.position.set(randomX, 400, randomZ);
+        glitchWave.rotation.x = Math.PI / 2; // Horizontal
+
+        glitchWave.userData = {
+            life: 1.0,
+            decay: 0.025,
+            isGlitchWave: true,
+            sweepSpeed: 300 + combo * 50,
+            startY: 400,
+        };
+
+        this.scene.add(glitchWave);
+        this.pieceLockSparks.push(glitchWave);
     }
 
     handleResize() {
@@ -2666,6 +3338,167 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         if (this.composer) {
             this.composer.setSize(width, height);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Piece Lock Effect - Cyberpunk Neon Sparks
+    // ─────────────────────────────────────────────────────────────────────────
+
+    spawnPieceLockSparks() {
+        if (!this.scene) return;
+
+        // Cyberpunk neon colors matching the theme palette
+        const neonColors = [
+            0x00ffff, // Electric cyan
+            0xff00ff, // Hot magenta
+            0xffff00, // Acid yellow
+            0xff00aa, // Pink neon
+            0x00ff66, // Toxic green
+            0xaa00ff, // Purple neon
+        ];
+
+        // Spawn location - spread across the ENTIRE visible city area
+        const spawnX = (Math.random() - 0.5) * 800;  // Full city width
+        const spawnY = 10 + Math.random() * 300;    // Full height range
+        const spawnZ = 50 - Math.random() * 600;    // From foreground to deep background
+
+        // Create 8-15 sparks per piece lock
+        const sparkCount = 8 + Math.floor(Math.random() * 8);
+
+        for (let i = 0; i < sparkCount; i++) {
+            const color = neonColors[Math.floor(Math.random() * neonColors.length)];
+
+            // Spark geometry - small glowing point
+            const geometry = new THREE.SphereGeometry(0.8 + Math.random() * 0.8, 6, 6);
+            const material = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const spark = new THREE.Mesh(geometry, material);
+
+            // Initial position with slight spread
+            spark.position.set(
+                spawnX + (Math.random() - 0.5) * 10,
+                spawnY + (Math.random() - 0.5) * 10,
+                spawnZ + (Math.random() - 0.5) * 10
+            );
+
+            // Velocity - burst outward in all directions
+            const angle = Math.random() * Math.PI * 2;
+            const elevation = (Math.random() - 0.3) * Math.PI; // Bias upward
+            const speed = 40 + Math.random() * 60;
+
+            spark.userData = {
+                vx: Math.cos(angle) * Math.cos(elevation) * speed,
+                vy: Math.sin(elevation) * speed + 20, // Upward bias
+                vz: Math.sin(angle) * Math.cos(elevation) * speed,
+                life: 1.0,
+                decay: 0.015 + Math.random() * 0.02,
+                gravity: -80, // Gravity pulls sparks down
+                color: color,
+            };
+
+            this.scene.add(spark);
+            this.pieceLockSparks.push(spark);
+        }
+
+        // Also create a brief flash/glow at spawn point
+        this.createSparkFlash(spawnX, spawnY, spawnZ, neonColors[Math.floor(Math.random() * neonColors.length)]);
+    }
+
+    createSparkFlash(x, y, z, color) {
+        if (!this.scene) return;
+
+        // Create a larger, quickly fading glow sphere
+        const geometry = new THREE.SphereGeometry(8, 12, 12);
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const flash = new THREE.Mesh(geometry, material);
+        flash.position.set(x, y, z);
+
+        flash.userData = {
+            life: 1.0,
+            decay: 0.08, // Fast decay for quick flash
+            isFlash: true,
+        };
+
+        this.scene.add(flash);
+        this.pieceLockSparks.push(flash);
+    }
+
+    updatePieceLockSparks(delta) {
+        for (let i = this.pieceLockSparks.length - 1; i >= 0; i--) {
+            const spark = this.pieceLockSparks[i];
+
+            // Decay life
+            spark.userData.life -= spark.userData.decay;
+
+            if (spark.userData.life <= 0) {
+                // Remove dead spark
+                this.scene.remove(spark);
+                if (spark.geometry) spark.geometry.dispose();
+                if (spark.material) spark.material.dispose();
+                this.pieceLockSparks.splice(i, 1);
+                continue;
+            }
+
+            // Update opacity based on life
+            spark.material.opacity = spark.userData.life;
+
+            if (spark.userData.isLightning) {
+                // Lightning just fades - no movement
+                continue;
+            }
+
+            if (spark.userData.isGlitchWave) {
+                // Glitch wave sweeps down the screen
+                spark.position.y -= spark.userData.sweepSpeed * delta;
+
+                // Add some horizontal jitter for glitch effect
+                spark.position.x = (Math.random() - 0.5) * 10;
+
+                continue;
+            }
+
+            if (spark.userData.isFlash) {
+                // Flash grows and fades
+                const scale = 1 + (1 - spark.userData.life) * 2;
+                spark.scale.setScalar(scale);
+            } else {
+                // Regular spark - apply physics
+                spark.userData.vy += spark.userData.gravity * delta;
+
+                spark.position.x += spark.userData.vx * delta;
+                spark.position.y += spark.userData.vy * delta;
+                spark.position.z += spark.userData.vz * delta;
+
+                // Friction/drag
+                spark.userData.vx *= 0.98;
+                spark.userData.vz *= 0.98;
+
+                // Shrink as it dies
+                const lifeScale = 0.3 + spark.userData.life * 0.7;
+                spark.scale.setScalar(lifeScale);
+
+                // Trail effect - stretch based on velocity
+                const speed = Math.sqrt(
+                    spark.userData.vx ** 2 +
+                    spark.userData.vy ** 2 +
+                    spark.userData.vz ** 2
+                );
+                if (speed > 20) {
+                    spark.scale.y = 1 + speed * 0.01;
+                }
+            }
         }
     }
 
@@ -2706,10 +3539,16 @@ export default class NeonDistrictTheme extends BaseTheme {
             // Update blinking lights
             this.updateBlinkingLights();
 
+            // Update piece lock sparks
+            this.updatePieceLockSparks(delta);
+
             // Decay effects
             this.lightPulseIntensity *= 0.95;
             this.bloomBoost *= 0.93;
             this.rainIntensity = THREE.MathUtils.lerp(this.rainIntensity, 1.0, delta * 2);
+
+            // Decay neon sign surge
+            this.neonSignSurgeIntensity *= 0.92;
 
             // Apply bloom boost
             if (this.bloomPass) {
@@ -2728,6 +3567,10 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     updateNeonSigns() {
+        // Throttle: only update every 3rd frame (flicker at 20Hz looks identical to 60Hz)
+        this.signUpdateCounter = (this.signUpdateCounter + 1) % 3;
+        if (this.signUpdateCounter !== 0) return;
+
         this.neonSigns.forEach((sign) => {
             if (sign.userData.flickerPhase !== undefined) {
                 // Simple flicker effect
@@ -2735,13 +3578,39 @@ export default class NeonDistrictTheme extends BaseTheme {
                 const flickerAmount = sign.userData.flickerAmount;
 
                 if (sign.material.opacity !== undefined) {
-                    sign.material.opacity = 0.7 + flicker * flickerAmount + this.lightPulseIntensity * 0.3;
+                    // Include combo surge intensity for dramatic flare during combos
+                    const surgeBoost = this.neonSignSurgeIntensity * 0.4;
+                    sign.material.opacity = Math.min(
+                        0.7 + flicker * flickerAmount + this.lightPulseIntensity * 0.3 + surgeBoost,
+                        1.0
+                    );
                 }
             }
 
             // Update holographic billboard shaders
             if (sign.material.uniforms?.uTime) {
                 sign.material.uniforms.uTime.value = this.time;
+            }
+
+            // Animated ad material switching (like SynthCity)
+            if (sign.userData.isAd && sign.userData.switches) {
+                sign.userData.switchCounter++;
+                if (sign.userData.switchCounter > sign.userData.switchInterval) {
+                    sign.userData.switchCounter = 0;
+                    // Switch to a random ad material
+                    const newMat = sign.userData.isLarge
+                        ? this.assets?.getRandomLargeAdMaterial()
+                        : this.assets?.getRandomAdMaterial();
+                    if (newMat) {
+                        sign.material = newMat;
+                    }
+                }
+            }
+
+            // Spotlight beam pulse animation
+            if (sign.userData.isSpotlight && sign.material.opacity !== undefined) {
+                const pulse = Math.sin(this.time * sign.userData.pulseSpeed + sign.userData.pulsePhase);
+                sign.material.opacity = sign.userData.baseOpacity * (0.7 + pulse * 0.3);
             }
         });
     }
@@ -2811,12 +3680,38 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.rainParticles.material.dispose();
         }
 
+        if (this.splashParticles) {
+            this.splashParticles.geometry.dispose();
+            this.splashParticles.material.dispose();
+        }
+
+        // Clear shader material references
+        this.rainMaterial = null;
+        this.splashMaterial = null;
+
+        // Dispose piece lock sparks
+        this.pieceLockSparks.forEach((spark) => {
+            if (spark.geometry) spark.geometry.dispose();
+            if (spark.material) spark.material.dispose();
+        });
+        this.pieceLockSparks = [];
+
         this.flyingVehicles.forEach((vehicle) => {
             vehicle.traverse((child) => {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) child.material.dispose();
             });
         });
+
+        // Dispose shared spinner resources
+        if (this.spinnerResources) {
+            Object.values(this.spinnerResources).forEach(resource => {
+                if (resource && typeof resource.dispose === 'function') {
+                    resource.dispose();
+                }
+            });
+            this.spinnerResources = null;
+        }
 
         if (this.sky) {
             this.sky.geometry.dispose();
@@ -2839,6 +3734,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         if (this.renderer) {
             this.renderer.dispose();
             this.renderer = null;
+        }
+
+        // Dispose SynthCity assets
+        if (this.assets) {
+            this.assets.dispose();
+            this.assets = null;
         }
 
         this.scene = null;
