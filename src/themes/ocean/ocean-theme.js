@@ -416,12 +416,12 @@ export default class OceanTheme extends BaseTheme {
                     
                     // Edge fade - smooth transition at water surface edges
                     float distFromCenter = length(vUv - 0.5) * 2.0;
-                    float edgeFade = 1.0 - smoothstep(0.6, 1.0, distFromCenter);
+                    float edgeFade = 1.0 - smoothstep(0.75, 1.0, distFromCenter);
                     
-                    // View angle fade - more transparent when viewed at grazing angles
-                    float viewFade = smoothstep(0.0, 0.4, abs(dot(-vWorldNormal, viewDir)));
+                    // View angle fade - gentler fade for better visibility
+                    float viewFade = smoothstep(0.0, 0.25, abs(dot(-vWorldNormal, viewDir)));
                     
-                    float alpha = edgeFade * viewFade * 0.85;
+                    float alpha = edgeFade * (0.5 + viewFade * 0.45);
                     
                     gl_FragColor = vec4(color, alpha);
                 }
