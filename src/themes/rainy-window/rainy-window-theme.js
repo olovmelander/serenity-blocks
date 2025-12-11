@@ -113,14 +113,27 @@ export default class RainyWindowTheme extends BaseTheme {
         // Water - darker and stormier
         const waterGeometry = new THREE.PlaneGeometry(10000, 10000);
 
+        // Load water normal texture
+        const textureLoader = new THREE.TextureLoader();
+        const waterNormalTexture = textureLoader.load(
+            '/textures/water-normal.jpg',
+            (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                console.log('⛈️ RainyWindow: Water normal texture loaded');
+            },
+            undefined,
+            (error) => {
+                console.warn('⛈️ RainyWindow: Failed to load water texture, using fallback', error);
+            }
+        );
+
         this.water = new Water(
             waterGeometry,
             {
                 textureWidth: 512,
                 textureHeight: 512,
-                waterNormals: new THREE.TextureLoader().load('/textures/water-normal.jpg', function (texture) {
-                    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-                }),
+                waterNormals: waterNormalTexture,
                 sunDirection: new THREE.Vector3(),
                 sunColor: 0x555555,
                 waterColor: 0x000205,
