@@ -119,6 +119,12 @@ export const THEME_REGISTRY = [
         group: 'biomes',
     },
     {
+        id: 'verdant-hills',
+        displayName: 'Verdant Hills',
+        module: './verdant-hills/verdant-hills-theme.js',
+        group: 'biomes',
+    },
+    {
         id: 'cosmic-chimes',
         displayName: 'Cosmic Chimes',
         module: './cosmic-chimes/cosmic-chimes-theme.js',

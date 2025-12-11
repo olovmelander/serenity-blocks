@@ -1,3 +1,16 @@
+/**
+ * Ocean Depths Theme - Immersive Stylized Underwater World
+ * 
+ * Premium underwater experience with:
+ * - Smooth curved seaweed/kelp with proper geometry
+ * - Circular soft particles (not squared)
+ * - Detailed coral reef formations
+ * - Realistic fish school behavior
+ * - Smooth underwater rendering with volumetric effects
+ * - Gentle camera sway for immersion
+ */
+
+import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { OCEAN_TETROMINOS } from './ocean-tetrominos.js';
@@ -6,46 +19,97 @@ export default class OceanTheme extends BaseTheme {
     constructor() {
         super('ocean');
         this.eventUnsubscribers = [];
-        this.currentComboLevel = 0;
-        this.godRays = [];
-        this.kelpStrands = [];
-        this.lastEffectTime = 0;
-        this.comboCooldownMs = 220;
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.averageFrameTime = 16.67;
-        this.adaptiveScale = 1;
-        this.effectCanvas = null;
-        this.effectCtx = null;
-        this.effectRafId = null;
-        this.effectLastFrame = 0;
-        this.shockwaveEffects = [];
-        this.biolumParticles = [];
-        this.bubbleBurstParticles = [];
-        this.depthFog = [];
-        this.marineCreatures = [];
-        this.presets = {
+        this.animationFrameId = null;
+        this.clock = new THREE.Clock();
+
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.waterSurface = null;
+        this.seabed = null;
+        this.seaweedInstances = null;
+        this.coralGroup = null;
+        this.fishSchools = [];
+        this.jellyfishMesh = null;
+        this.planktonMesh = null;
+        this.bubbleMesh = null;
+        this.godRays = null;
+
+        // Animation state
+        this.currentStrength = 0.5;
+        this.targetCurrentStrength = 0.5;
+        this.glowIntensity = 0.8;
+        this.targetGlowIntensity = 0.8;
+
+        // Uniform update cache
+        this.uniformsToUpdate = [];
+
+        // Quality presets
+        this.currentQuality = 'High';
+        this.qualityPresets = {
             Minimal: {
-                biolumLimit: 8, fishCount: 2, kelpCount: 8, sedimentCount: 20, bubbleCount: 8, planktonCount: 30, jellyCount: 0,
+                seaweedCount: 800,
+                coralCount: 20,
+                fishCount: 60,
+                jellyfishCount: 6,
+                planktonCount: 150,
+                bubbleCount: 60,
+                terrainSegments: 80,
             },
             Low: {
-                biolumLimit: 15, fishCount: 4, kelpCount: 12, sedimentCount: 30, bubbleCount: 12, planktonCount: 50, jellyCount: 0,
+                seaweedCount: 1500,
+                coralCount: 35,
+                fishCount: 100,
+                jellyfishCount: 10,
+                planktonCount: 300,
+                bubbleCount: 100,
+                terrainSegments: 100,
             },
             Medium: {
-                biolumLimit: 30, fishCount: 8, kelpCount: 18, sedimentCount: 50, bubbleCount: 18, planktonCount: 80, jellyCount: 0,
+                seaweedCount: 2500,
+                coralCount: 55,
+                fishCount: 180,
+                jellyfishCount: 15,
+                planktonCount: 500,
+                bubbleCount: 150,
+                terrainSegments: 120,
             },
             High: {
-                biolumLimit: 50, fishCount: 12, kelpCount: 25, sedimentCount: 80, bubbleCount: 25, planktonCount: 120, jellyCount: 0,
+                seaweedCount: 4000,
+                coralCount: 80,
+                fishCount: 280,
+                jellyfishCount: 22,
+                planktonCount: 800,
+                bubbleCount: 220,
+                terrainSegments: 150,
             },
             Ultra: {
-                biolumLimit: 80, fishCount: 18, kelpCount: 35, sedimentCount: 120, bubbleCount: 35, planktonCount: 180, jellyCount: 0,
+                seaweedCount: 6000,
+                coralCount: 120,
+                fishCount: 420,
+                jellyfishCount: 35,
+                planktonCount: 1200,
+                bubbleCount: 350,
+                terrainSegments: 180,
             },
             Extreme: {
-                biolumLimit: 100, fishCount: 25, kelpCount: 100, sedimentCount: 60, bubbleCount: 40, planktonCount: 150, jellyCount: 0,
+                seaweedCount: 9000,
+                coralCount: 180,
+                fishCount: 600,
+                jellyfishCount: 50,
+                planktonCount: 2000,
+                bubbleCount: 500,
+                terrainSegments: 220,
             },
         };
-        this.currentPreset = this.presets.High;
+
+        this.activePreset = this.qualityPresets.High;
+        this.qualityChangeHandler = null;
+    }
+
+    getTetrominoConfig() {
+        return OCEAN_TETROMINOS;
     }
 
     getGraphicsQuality() {
@@ -53,1156 +117,1241 @@ export default class OceanTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
-    applyGraphicsPreset(quality) {
-        this.currentPreset = this.presets[quality] || this.presets.High;
-        this.comboCooldownMs = 200;
+    applyQualityPreset(quality) {
+        if (!this.qualityPresets[quality]) quality = 'High';
+        this.currentQuality = quality;
+        this.activePreset = this.qualityPresets[quality];
+        if (this.isActive && this.scene) this.rebuildScene();
+        console.log(`🌊 [OceanTheme] Applied ${quality} quality preset`);
+    }
+
+    rebuildScene() {
+        this.disposeSceneContents();
+        this.buildScene();
+    }
+
+    disposeSceneContents() {
+        if (!this.scene) return;
+        const toRemove = [];
+        this.scene.traverse(obj => {
+            if (obj !== this.scene && obj !== this.camera && !(obj instanceof THREE.Light)) {
+                toRemove.push(obj);
+            }
+        });
+        toRemove.forEach(obj => {
+            this.scene.remove(obj);
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) {
+                if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                else obj.material.dispose();
+            }
+        });
+        this.uniformsToUpdate = [];
+        this.fishSchools = [];
     }
 
     setupQualityListener() {
-        if (typeof window === 'undefined') return;
         this.teardownQualityListener();
-        this.qualityListener = (event) => {
-            const next = event.detail?.effectQuality;
-            if (next) this.applyGraphicsPreset(next);
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (newQuality && newQuality !== this.currentQuality) this.applyQualityPreset(newQuality);
         };
-        window.addEventListener('settingsChanged', this.qualityListener);
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
     }
 
     teardownQualityListener() {
-        if (this.qualityListener && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityListener);
-            this.qualityListener = null;
-        }
-    }
-
-    calculateAdaptiveScale() {
-        const ft = this.averageFrameTime;
-        if (ft <= 18) return 1;
-        if (ft <= 22) return 0.85;
-        if (ft <= 28) return 0.65;
-        return 0.4;
-    }
-
-    startPerformanceMonitor() {
-        if (this.perfMonitorId) return;
-        const step = (ts) => {
-            if (!this.isActive) { this.perfMonitorId = null; return; }
-            if (this.lastFrameTime === 0) this.lastFrameTime = ts;
-            const dt = ts - this.lastFrameTime;
-            this.lastFrameTime = ts;
-            this.frameTimeAccumulator += dt;
-            this.frameTimeCount += 1;
-            if (this.frameTimeCount >= 30) {
-                this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
-                this.frameTimeAccumulator = 0;
-                this.frameTimeCount = 0;
-            }
-            this.adaptiveScale = this.calculateAdaptiveScale();
-            this.perfMonitorId = requestAnimationFrame(step);
-        };
-        this.perfMonitorId = requestAnimationFrame(step);
-    }
-
-    setupEffectCanvas() {
-        const theme = document.getElementById('ocean-theme');
-        if (!theme) return;
-        this.effectCanvas = theme.querySelector('.ocean-effects-canvas');
-        if (!this.effectCanvas) {
-            this.effectCanvas = document.createElement('canvas');
-            this.effectCanvas.className = 'ocean-effects-canvas';
-            Object.assign(this.effectCanvas.style, {
-                position: 'absolute',
-                top: '0',
-                left: '0',
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-                zIndex: '120',
-            });
-            theme.appendChild(this.effectCanvas);
-        }
-        this.resizeEffectCanvas();
-        // Optimize canvas for frequent reads and 2D rendering
-        this.effectCtx = this.effectCanvas.getContext('2d', {
-            alpha: true,
-            desynchronized: true, // Better performance for animations
-        });
-        window.addEventListener('resize', () => this.resizeEffectCanvas());
-    }
-
-    resizeEffectCanvas() {
-        if (!this.effectCanvas) return;
-        const theme = document.getElementById('ocean-theme');
-        const rect = theme ? theme.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
-        this.effectCanvas.width = rect.width;
-        this.effectCanvas.height = rect.height;
-    }
-
-    startEffectLoop() {
-        if (!this.effectCanvas) return;
-        this.lastAmbientSpawn = 0;
-
-        const loop = (ts) => {
-            if (!this.isActive || !this.effectCanvas || !this.effectCtx) {
-                this.effectRafId = null;
-                return;
-            }
-            if (!this.effectLastFrame) this.effectLastFrame = ts;
-            const dt = (ts - this.effectLastFrame) / 1000;
-            this.effectLastFrame = ts;
-
-            // Simple direct canvas dimensions
-            const canvasWidth = this.effectCanvas.width;
-            const canvasHeight = this.effectCanvas.height;
-
-            // Only clear and redraw if we have active effects
-            const hasEffects = this.shockwaveEffects.length > 0
-                || this.biolumParticles.length > 0
-                || this.bubbleBurstParticles.length > 0
-                || this.marineCreatures.length > 0;
-
-            if (hasEffects) {
-                this.effectCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-                this.updateShockwaveEffects(dt);
-                this.updateBiolumParticles(dt);
-                this.updateBubbleParticles(dt);
-                this.updateMarineCreatures(dt);
-            }
-
-            // Spawn ambient life occasionally
-            this.updateAmbientLife(ts);
-
-            this.effectRafId = requestAnimationFrame(loop);
-        };
-        this.effectRafId = requestAnimationFrame(loop);
-    }
-
-    updateShockwaveEffects(dt) {
-        for (let i = this.shockwaveEffects.length - 1; i >= 0; i--) {
-            const sw = this.shockwaveEffects[i];
-            sw.life -= dt / sw.duration;
-            if (sw.life <= 0) {
-                this.shockwaveEffects.splice(i, 1);
-                continue;
-            }
-            const progress = 1 - sw.life;
-            const easeOut = 1 - (1 - progress) ** 3;
-            const radius = sw.startRadius + (sw.maxRadius - sw.startRadius) * easeOut;
-            const alpha = sw.life * 0.6;
-
-            const ctx = this.effectCtx;
-            ctx.save();
-            ctx.globalAlpha = alpha;
-            const gradient = ctx.createRadialGradient(sw.x, sw.y, radius * 0.5, sw.x, sw.y, radius);
-            gradient.addColorStop(0, 'rgba(100, 220, 255, 0.6)');
-            gradient.addColorStop(0.5, 'rgba(150, 240, 255, 0.4)');
-            gradient.addColorStop(1, 'rgba(200, 250, 255, 0)');
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = Math.max(2, sw.width * (1 - easeOut));
-            ctx.beginPath();
-            ctx.arc(sw.x, sw.y, radius, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.restore();
-        }
-    }
-
-    updateBiolumParticles(dt) {
-        for (let i = this.biolumParticles.length - 1; i >= 0; i--) {
-            const p = this.biolumParticles[i];
-            p.life -= dt / p.duration;
-            if (p.life <= 0) {
-                this.biolumParticles.splice(i, 1);
-                continue;
-            }
-            p.x += p.vx * dt * 30;
-            p.y += p.vy * dt * 30;
-            const pulse = 0.5 + Math.sin(p.life * 12) * 0.5;
-            const alpha = p.life * pulse * 0.9;
-            const size = p.size * (0.8 + pulse * 0.4);
-
-            const ctx = this.effectCtx;
-            ctx.save();
-            ctx.globalAlpha = alpha;
-            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 2);
-            grad.addColorStop(0, p.color.replace('0.8)', '0.95)'));
-            grad.addColorStop(0.4, p.color);
-            grad.addColorStop(1, p.color.replace('0.8)', '0)'));
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, size * 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-
-    updateBubbleParticles(dt) {
-        for (let i = this.bubbleBurstParticles.length - 1; i >= 0; i--) {
-            const b = this.bubbleBurstParticles[i];
-            b.life -= dt / b.duration;
-            if (b.life <= 0) {
-                this.bubbleBurstParticles.splice(i, 1);
-                continue;
-            }
-            b.driftTime = (b.driftTime || 0) + dt;
-            const drift = Math.sin(b.driftTime * 4) * 1.2;
-            b.y -= b.speed * dt * 70;
-            b.x += drift;
-            const alpha = b.life * 0.75;
-
-            const ctx = this.effectCtx;
-            ctx.save();
-            ctx.globalAlpha = alpha;
-            const grad = ctx.createRadialGradient(b.x - b.size * 0.35, b.y - b.size * 0.35, 0, b.x, b.y, b.size);
-            grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-            grad.addColorStop(0.3, 'rgba(220, 245, 255, 0.7)');
-            grad.addColorStop(0.7, 'rgba(180, 230, 255, 0.3)');
-            grad.addColorStop(1, 'rgba(150, 210, 255, 0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.beginPath();
-            ctx.arc(b.x - b.size * 0.4, b.y - b.size * 0.4, b.size * 0.25, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-
-    updateMarineCreatures(dt) {
-        const ctx = this.effectCtx;
-        const dt50 = dt * 50; // Pre-calculate for speed
-        const dt15 = dt * 15;
-
-        for (let i = this.marineCreatures.length - 1; i >= 0; i--) {
-            const c = this.marineCreatures[i];
-            c.life -= dt / c.duration;
-            if (c.life <= 0) {
-                this.marineCreatures.splice(i, 1);
-                continue;
-            }
-
-            // Initialize behavior state
-            if (!c.behaviorTime) {
-                c.behaviorTime = 0;
-                c.targetSpeed = c.vx;
-                c.currentSpeed = c.vx;
-                c.verticalDrift = 0;
-            }
-
-            c.behaviorTime += dt;
-
-            // Random behavior changes every 2-4 seconds
-            if (c.behaviorTime > (c.nextBehaviorChange || 2)) {
-                c.nextBehaviorChange = 2 + Math.random() * 2;
-                c.behaviorTime = 0;
-                c.targetSpeed = c.vx * (0.6 + Math.random() * 0.8);
-                c.verticalDrift = (Math.random() - 0.5) * 20;
-            }
-
-            // Smooth speed transitions and movement
-            c.currentSpeed += (c.targetSpeed - c.currentSpeed) * dt * 2;
-            c.x += c.currentSpeed * dt50;
-
-            // Natural swimming motion with random element
-            c.swimTime = (c.swimTime || 0) + dt * (3 + Math.random() * 2);
-            const swimPhase = c.swimTime;
-            const swimOffset = Math.sin(swimPhase) * 3;
-            c.y += (swimOffset + c.verticalDrift * 0.1) * dt15;
-
-            // Occasional small depth changes
-            if (Math.random() < dt * 0.3) {
-                c.y += (Math.random() - 0.5) * 2;
-            }
-
-            // Calculate alpha once
-            const fadeIn = Math.min(c.life * 3, 1);
-            const fadeOut = Math.min((1 - c.life) * 3, 1);
-            const alpha = Math.min(fadeIn, fadeOut) * 0.65;
-
-            ctx.save();
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = c.color;
-
-            // Flip fish based on direction
-            const flipX = c.currentSpeed > 0 ? 1 : -1;
-            ctx.translate(c.x, c.y);
-            ctx.scale(flipX, 1);
-
-            // Draw realistic fish shape
-            this.drawFish(ctx, c, swimPhase);
-
-            ctx.restore();
-        }
-    }
-
-    drawFish(ctx, fish, swimPhase) {
-        const { size } = fish;
-        const tailWave = Math.sin(swimPhase * 2) * 0.4; // Tail animation
-        const bodyWave = Math.sin(swimPhase) * 0.15; // Body undulation
-
-        if (fish.fishType === 'seahorse') {
-            this.drawSeahorse(ctx, size, swimPhase);
-        } else if (fish.fishType === 'shrimp') {
-            this.drawShrimp(ctx, size, swimPhase);
-        } else if (fish.fishType === 'elongated') {
-            // Elongated fish (barracuda-like)
-            this.drawElongatedFish(ctx, size, tailWave, bodyWave);
-        } else {
-            // Standard fish shape
-            this.drawStandardFish(ctx, size, tailWave, bodyWave);
-        }
-    }
-
-    drawStandardFish(ctx, size, tailWave, bodyWave) {
-        // Body - fish-like shape using bezier curves
-        ctx.beginPath();
-        ctx.moveTo(-size * 0.6, 0);
-
-        // Top of body
-        ctx.bezierCurveTo(
-            -size * 0.2,
-            -size * 0.5 + bodyWave * size,
-            size * 0.2,
-            -size * 0.5 + bodyWave * size,
-            size * 0.7,
-            -size * 0.1,
-        );
-
-        // Bottom of body
-        ctx.bezierCurveTo(
-            size * 0.2,
-            size * 0.5 - bodyWave * size,
-            -size * 0.2,
-            size * 0.5 - bodyWave * size,
-            -size * 0.6,
-            0,
-        );
-        ctx.fill();
-
-        // Tail fin
-        ctx.beginPath();
-        ctx.moveTo(-size * 0.6, 0);
-        ctx.lineTo(-size * 1.0, -size * 0.4 + tailWave * size);
-        ctx.lineTo(-size * 0.8, 0);
-        ctx.lineTo(-size * 1.0, size * 0.4 + tailWave * size);
-        ctx.lineTo(-size * 0.6, 0);
-        ctx.fill();
-
-        // Dorsal fin
-        ctx.beginPath();
-        ctx.moveTo(0, -size * 0.5);
-        ctx.lineTo(size * 0.1, -size * 0.9);
-        ctx.lineTo(size * 0.3, -size * 0.5);
-        ctx.fill();
-
-        // Pectoral fin
-        ctx.globalAlpha *= 0.7;
-        ctx.beginPath();
-        ctx.ellipse(size * 0.1, size * 0.3, size * 0.3, size * 0.2, Math.PI / 4, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    drawElongatedFish(ctx, size, tailWave, bodyWave) {
-        // Elongated torpedo-shaped fish
-        ctx.beginPath();
-        ctx.moveTo(-size * 0.8, 0);
-
-        // Top
-        ctx.bezierCurveTo(
-            -size * 0.3,
-            -size * 0.3,
-            size * 0.5,
-            -size * 0.3,
-            size * 1.2,
-            -size * 0.1,
-        );
-
-        // Bottom
-        ctx.bezierCurveTo(
-            size * 0.5,
-            size * 0.3,
-            -size * 0.3,
-            size * 0.3,
-            -size * 0.8,
-            0,
-        );
-        ctx.fill();
-
-        // Tail
-        ctx.beginPath();
-        ctx.moveTo(-size * 0.8, 0);
-        ctx.lineTo(-size * 1.3, -size * 0.3 + tailWave * size * 0.8);
-        ctx.lineTo(-size * 1.0, 0);
-        ctx.lineTo(-size * 1.3, size * 0.3 + tailWave * size * 0.8);
-        ctx.lineTo(-size * 0.8, 0);
-        ctx.fill();
-
-        // Small dorsal fin
-        ctx.beginPath();
-        ctx.moveTo(size * 0.2, -size * 0.3);
-        ctx.lineTo(size * 0.25, -size * 0.6);
-        ctx.lineTo(size * 0.4, -size * 0.3);
-        ctx.fill();
-    }
-
-    drawSeahorse(ctx, size, swimPhase) {
-        // Seahorse - distinctive S-shaped vertical creature
-        const sway = Math.sin(swimPhase) * 0.2;
-
-        // Rotate to vertical orientation
-        ctx.rotate(Math.PI / 2);
-
-        // Head
-        ctx.beginPath();
-        ctx.arc(size * 0.8, 0, size * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Snout
-        ctx.beginPath();
-        ctx.moveTo(size * 1.0, -size * 0.1);
-        ctx.lineTo(size * 1.3, 0);
-        ctx.lineTo(size * 1.0, size * 0.1);
-        ctx.fill();
-
-        // S-curved body
-        ctx.beginPath();
-        ctx.moveTo(size * 0.6, -size * 0.2);
-        ctx.bezierCurveTo(
-            size * 0.3,
-            -size * 0.3 + sway * size,
-            size * 0.1,
-            size * 0.1 + sway * size,
-            -size * 0.2,
-            size * 0.3 + sway * size * 0.5,
-        );
-        ctx.bezierCurveTo(
-            size * 0.1,
-            size * 0.1 + sway * size * 0.5,
-            size * 0.3,
-            -size * 0.1 - sway * size * 0.5,
-            size * 0.6,
-            size * 0.2,
-        );
-        ctx.fill();
-
-        // Dorsal fin
-        ctx.globalAlpha *= 0.7;
-        for (let i = 0; i < 4; i++) {
-            const finY = size * (0.4 - i * 0.2);
-            ctx.beginPath();
-            ctx.moveTo(finY, -size * 0.15);
-            ctx.lineTo(finY - size * 0.15, -size * 0.3);
-            ctx.lineTo(finY - size * 0.1, -size * 0.15);
-            ctx.fill();
-        }
-
-        // Tail curl
-        ctx.globalAlpha /= 0.7;
-        ctx.beginPath();
-        ctx.arc(-size * 0.3, size * 0.4, size * 0.25, Math.PI, Math.PI * 2);
-        ctx.stroke();
-    }
-
-    drawShrimp(ctx, size, swimPhase) {
-        // Shrimp - segmented body with tail fan
-        const curve = Math.sin(swimPhase * 3) * 0.3;
-
-        // Main body segments
-        for (let i = 0; i < 4; i++) {
-            const segX = -size * 0.5 + i * size * 0.3;
-            const segCurve = curve * (1 - i * 0.2);
-
-            ctx.beginPath();
-            ctx.ellipse(segX, segCurve * size * 0.5, size * 0.25, size * 0.2, 0, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Head with antennae
-        ctx.beginPath();
-        ctx.ellipse(size * 0.6, 0, size * 0.3, size * 0.25, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Antennae
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(size * 0.7, -size * 0.1);
-        ctx.lineTo(size * 1.0, -size * 0.4);
-        ctx.moveTo(size * 0.7, size * 0.1);
-        ctx.lineTo(size * 1.0, size * 0.4);
-        ctx.stroke();
-
-        // Tail fan
-        ctx.globalAlpha *= 0.6;
-        ctx.beginPath();
-        ctx.moveTo(-size * 0.7, 0);
-        ctx.lineTo(-size * 1.0, -size * 0.4);
-        ctx.lineTo(-size * 0.9, 0);
-        ctx.lineTo(-size * 1.0, size * 0.4);
-        ctx.lineTo(-size * 0.7, 0);
-        ctx.fill();
-
-        // Legs (simple lines)
-        ctx.globalAlpha *= 1.67;
-        ctx.lineWidth = 0.5;
-        for (let i = 0; i < 3; i++) {
-            const legX = -size * 0.2 + i * size * 0.25;
-            ctx.beginPath();
-            ctx.moveTo(legX, size * 0.2);
-            ctx.lineTo(legX, size * 0.5);
-            ctx.stroke();
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
         }
     }
 
     async createScene() {
-        this.applyGraphicsPreset(this.getGraphicsQuality());
-        this.startPerformanceMonitor();
+        const themeContainer = document.getElementById('ocean-theme');
+        if (!themeContainer) return;
 
-        const theme = document.getElementById('ocean-theme');
-        if (!theme) return;
+        themeContainer.innerHTML = '';
+        themeContainer.style.background = '#001018';
 
-        // Deep vignette for mystery
-        if (!theme.querySelector('.ocean-deep-vignette')) {
-            const vignette = document.createElement('div');
-            vignette.className = 'ocean-deep-vignette';
-            // Styles moved to CSS for better control
-            theme.appendChild(vignette);
-        }
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
 
-        // Volumetric god rays - subtle light from surface
-        const godRayContainer = document.querySelector('.ocean-god-rays');
-        if (godRayContainer && godRayContainer.children.length === 0) {
-            this.godRays = [];
-            // Only 6-8 rays for performance and realism
-            const rayCount = 6 + Math.floor(Math.random() * 3);
+        // High-quality renderer with antialiasing
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: false,
+            powerPreference: 'high-performance',
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setClearColor(0x001520);
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.1;
 
-            for (let i = 0; i < rayCount; i++) {
-                const ray = document.createElement('div');
-                ray.className = 'ocean-god-ray';
+        const canvas = this.renderer.domElement;
+        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none';
+        themeContainer.appendChild(canvas);
 
-                const width = 40 + Math.random() * 80; // 40-120px wide
-                const angle = (Math.random() * 20 - 10); // -10 to +10 degrees
-                const leftPos = Math.random() * 110 - 5; // -5% to 105%
+        this.scene = new THREE.Scene();
+        // Smooth exponential fog for underwater depth - matches water surface
+        this.scene.fog = new THREE.FogExp2(0x001825, 0.007);
 
-                Object.assign(ray.style, {
-                    position: 'absolute',
-                    left: `${leftPos}%`,
-                    top: '-10%',
-                    width: `${width}px`,
-                    height: '120%',
-                    transform: `rotate(${angle}deg)`,
-                    transformOrigin: 'top center',
-                    opacity: Math.random() * 0.15 + 0.05, // Very subtle: 0.05-0.2
-                    animation: `godRayDrift ${20 + Math.random() * 15}s ease-in-out infinite`,
-                    animationDelay: `-${Math.random() * 30}s`,
-                    pointerEvents: 'none',
-                });
+        // Camera
+        this.camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.5,
+            500
+        );
+        this.camera.position.set(0, 20, 80);
+        this.camera.lookAt(0, 5, 0);
 
-                godRayContainer.appendChild(ray);
-                this.godRays.push(ray);
-            }
-            this.registerContainer(godRayContainer);
-        }
-
-        // Enhanced caustics
-        const causticsContainer = document.querySelector('#ocean-theme .caustics-container');
-        if (causticsContainer && causticsContainer.children.length === 0) {
-            // Layer 1
-            const light1 = document.createElement('div');
-            light1.className = 'caustic-light';
-            causticsContainer.appendChild(light1);
-
-            // Layer 2 for interference/depth
-            const light2 = document.createElement('div');
-            light2.className = 'caustic-light-2';
-            causticsContainer.appendChild(light2);
-
-            this.registerContainer(causticsContainer);
-        }
-
-        // Kelp forest
-        const kelpContainer = document.getElementById('ocean-floor-mid');
-        if (kelpContainer) {
-            const kelpCount = this.currentPreset.kelpCount || 40;
-            for (let i = 0; i < kelpCount; i++) {
-                const kelp = document.createElement('div');
-                kelp.className = 'ocean-kelp';
-                const height = 35 + Math.random() * 45;
-                const xPos = Math.random() * 100;
-                Object.assign(kelp.style, {
-                    position: 'absolute',
-                    bottom: '0',
-                    left: `${xPos}%`,
-                    width: `${2 + Math.random() * 3}px`,
-                    height: `${height}%`,
-                    background: 'linear-gradient(180deg, transparent 0%, rgba(20, 80, 60, 0.6) 20%, rgba(30, 100, 70, 0.8) 100%)',
-                    transformOrigin: 'bottom center',
-                    animation: `kelpSway ${4 + Math.random() * 3}s ease-in-out infinite`,
-                    animationDelay: `-${Math.random() * 7}s`,
-                    filter: 'blur(0px)',
-                });
-                kelpContainer.appendChild(kelp);
-                this.kelpStrands.push(kelp);
-            }
-        }
-
-        // Floating sediment
-        const sedimentContainer = document.getElementById('ocean-sediment-layer');
-        if (sedimentContainer) {
-            sedimentContainer.innerHTML = '';
-            const sedimentCount = this.currentPreset.sedimentCount || 200;
-            for (let i = 0; i < sedimentCount; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'ocean-sediment';
-                const size = Math.random() * 2 + 1; // 1-3px - realistic marine snow size
-                Object.assign(particle.style, {
-                    position: 'absolute',
-                    // Static position across screen
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    width: `${size}px`,
-                    height: `${size}px`,
-                    // Realistic marine snow - soft white/gray
-                    background: `rgba(200, 210, 220, ${Math.random() * 0.4 + 0.3})`,
-                    borderRadius: '50%',
-                    // Very subtle glow - natural organic particles
-                    boxShadow: `0 0 ${size * 2}px rgba(220, 230, 240, 0.3)`,
-                    // Simple float animation
-                    animation: `simpleFloat ${15 + Math.random() * 10}s ease-in-out infinite`,
-                    animationDelay: `-${Math.random() * 20}s`,
-                });
-                sedimentContainer.appendChild(particle);
-            }
-            this.registerContainer(sedimentContainer);
-        }
-
-        // Bubbles
-        const bubblesContainer = document.getElementById('bubbles');
-        if (bubblesContainer) {
-            bubblesContainer.innerHTML = '';
-            const bubbleCount = this.currentPreset.bubbleCount || 350;
-            for (let i = 0; i < bubbleCount; i++) {
-                const el = document.createElement('div');
-                el.className = 'bubble';
-                const size = Math.random() * 10 + 2;
-                Object.assign(el.style, {
-                    position: 'absolute',
-                    bottom: '-20px',
-                    left: `${Math.random() * 100}%`,
-                    width: `${size}px`,
-                    height: `${size}px`,
-                    background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(200, 235, 255, 0.3))',
-                    borderRadius: '50%',
-                    opacity: Math.random() * 0.7 + 0.3,
-                    animation: `rise-deep ${10 + Math.random() * 12}s linear infinite`,
-                    animationDelay: `-${Math.random() * 20}s`,
-                    '--x-drift': `${Math.random() * 8 - 4}vw`,
-                });
-                bubblesContainer.appendChild(el);
-            }
-            this.registerContainer(bubblesContainer);
-        }
-
-        // Plankton
-        const planktonContainer = document.getElementById('ocean-plankton-layer');
-        if (planktonContainer) {
-            planktonContainer.innerHTML = '';
-            const planktonCount = this.currentPreset.planktonCount || 350;
-            for (let i = 0; i < planktonCount; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'ocean-plankton';
-                const size = Math.random() * 1.5 + 1.5; // 1.5-3px - realistic plankton size
-                const hue = 175 + Math.random() * 20; // Softer teal-blue range
-                Object.assign(particle.style, {
-                    position: 'absolute',
-                    // Static position across screen
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    width: `${size}px`,
-                    height: `${size}px`,
-                    // Natural bioluminescent glow - soft blue-green
-                    background: `hsla(${hue}, 70%, 65%, ${Math.random() * 0.4 + 0.4})`,
-                    borderRadius: '50%',
-                    // Soft organic bioluminescence
-                    boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 60%, 0.5)`,
-                    // Simple float animation
-                    animation: `simpleFloat ${12 + Math.random() * 8}s ease-in-out infinite`,
-                    animationDelay: `-${Math.random() * 15}s`,
-                });
-                planktonContainer.appendChild(particle);
-            }
-            this.registerContainer(planktonContainer);
-        }
-
-        // Jellyfish
-        const jellyfishContainer = document.getElementById('jellyfish-layer');
-        if (jellyfishContainer) {
-            // Always clear to remove any stuck jellyfish
-            jellyfishContainer.innerHTML = '';
-            const jellyCount = this.currentPreset.jellyCount || 0;
-
-            // Only create if count > 0
-            if (jellyCount > 0) {
-                for (let i = 0; i < jellyCount; i++) {
-                    const fish = document.createElement('div');
-                    fish.className = 'jellyfish';
-                    const bodySize = 15 + Math.random() * 25;
-                    const body = document.createElement('div');
-                    body.className = 'jelly-body';
-                    Object.assign(body.style, {
-                        width: `${bodySize}px`,
-                        height: `${bodySize}px`,
-                        background: 'radial-gradient(circle, rgba(150, 200, 255, 0.6), rgba(100, 180, 240, 0.3))',
-                        borderRadius: '50% 50% 40% 40%',
-                        boxShadow: `0 0 ${bodySize}px rgba(120, 200, 255, 0.5), inset 0 0 ${bodySize * 0.5}px rgba(200, 230, 255, 0.4)`,
-                        animation: `pulse-jelly ${2 + Math.random() * 1.5}s ease-in-out infinite`,
-                    });
-
-                    const tentacles = document.createElement('div');
-                    tentacles.className = 'jelly-tentacles';
-                    for (let j = 0; j < 3; j++) {
-                        const tentacle = document.createElement('div');
-                        tentacle.className = 'tentacle';
-                        const tHeight = 25 + Math.random() * 35;
-                        Object.assign(tentacle.style, {
-                            position: 'absolute',
-                            top: `${bodySize}px`,
-                            left: `${j * (bodySize / 6)}px`,
-                            width: '1px',
-                            height: `${tHeight}px`,
-                            background: 'linear-gradient(180deg, rgba(120, 180, 240, 0.5), transparent)',
-                            transformOrigin: 'top',
-                            animation: `wave-tentacle ${1.5 + Math.random() * 1}s ease-in-out infinite`,
-                            animationDelay: `-${Math.random() * 3}s`,
-                        });
-                        tentacles.appendChild(tentacle);
-                    }
-
-                    fish.appendChild(body);
-                    fish.appendChild(tentacles);
-                    Object.assign(fish.style, {
-                        position: 'absolute',
-                        '--x-start': `${Math.random() * 120 - 10}vw`,
-                        '--y-start': `${110}vh`,
-                        '--x-end': `${Math.random() * 120 - 10}vw`,
-                        '--y-end': `${-20}vh`,
-                        animation: `swim-jellyfish ${18 + Math.random() * 15}s linear infinite`,
-                        animationDelay: `-${Math.random() * 30}s`,
-                    });
-
-                    jellyfishContainer.appendChild(fish);
-                }
-                this.registerContainer(jellyfishContainer);
-            }
-        }
-
+        this.buildScene();
         this.setupEventListeners();
-        this.setupEffectCanvas();
-        this.startEffectLoop();
+        this.handleResize();
+        this.startAnimation();
     }
 
+    buildScene() {
+        this.createWaterSurface();
+        this.createGodRays();
+        this.createSeabed();
+        this.createSeaweed();
+        this.createCoralReef();
+        this.createFishSchools();
+        this.createJellyfish();
+        this.createPlankton();
+        this.createBubbles();
+        this.createLighting();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // WATER SURFACE - Waves-style shader with Gerstner waves (viewed from below)
+    // ═══════════════════════════════════════════════════════════════════════════
+    createWaterSurface() {
+        // Large plane above the scene representing water surface from below
+        const geometry = new THREE.PlaneGeometry(500, 500, 128, 128);
+        geometry.rotateX(Math.PI / 2);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uDeepColor: { value: new THREE.Color(0x001520) },
+                uMidColor: { value: new THREE.Color(0x003344) },
+                uSurfaceColor: { value: new THREE.Color(0x005566) },
+                uCrestColor: { value: new THREE.Color(0x227788) },
+                uFoamColor: { value: new THREE.Color(0x88aaaa) },
+                uWaveIntensity: { value: 1.0 },
+                uCausticsIntensity: { value: 0.35 },
+                uGlowIntensity: { value: 0.0 },
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uWaveIntensity;
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                varying vec3 vWorldNormal;
+                varying vec2 vUv;
+                varying float vElevation;
+                
+                // Perlin noise
+                vec4 permute(vec4 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+                vec3 fade(vec3 t) { return t*t*t*(t*(t*6.0-15.0)+10.0); }
+                
+                float cnoise(vec3 P) {
+                    vec3 Pi0 = floor(P); vec3 Pi1 = Pi0 + vec3(1.0);
+                    Pi0 = mod(Pi0, 289.0); Pi1 = mod(Pi1, 289.0);
+                    vec3 Pf0 = fract(P); vec3 Pf1 = Pf0 - vec3(1.0);
+                    vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+                    vec4 iy = vec4(Pi0.yy, Pi1.yy); vec4 iz0 = Pi0.zzzz; vec4 iz1 = Pi1.zzzz;
+                    vec4 ixy = permute(permute(ix) + iy);
+                    vec4 ixy0 = permute(ixy + iz0); vec4 ixy1 = permute(ixy + iz1);
+                    vec4 gx0 = ixy0 / 7.0; vec4 gy0 = fract(floor(gx0) / 7.0) - 0.5;
+                    gx0 = fract(gx0); vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+                    vec4 sz0 = step(gz0, vec4(0.0));
+                    gx0 -= sz0 * (step(0.0, gx0) - 0.5); gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+                    vec4 gx1 = ixy1 / 7.0; vec4 gy1 = fract(floor(gx1) / 7.0) - 0.5;
+                    gx1 = fract(gx1); vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+                    vec4 sz1 = step(gz1, vec4(0.0));
+                    gx1 -= sz1 * (step(0.0, gx1) - 0.5); gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+                    vec3 g000 = vec3(gx0.x,gy0.x,gz0.x); vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+                    vec3 g010 = vec3(gx0.z,gy0.z,gz0.z); vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+                    vec3 g001 = vec3(gx1.x,gy1.x,gz1.x); vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+                    vec3 g011 = vec3(gx1.z,gy1.z,gz1.z); vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+                    vec4 norm0 = taylorInvSqrt(vec4(dot(g000,g000),dot(g010,g010),dot(g100,g100),dot(g110,g110)));
+                    g000 *= norm0.x; g010 *= norm0.y; g100 *= norm0.z; g110 *= norm0.w;
+                    vec4 norm1 = taylorInvSqrt(vec4(dot(g001,g001),dot(g011,g011),dot(g101,g101),dot(g111,g111)));
+                    g001 *= norm1.x; g011 *= norm1.y; g101 *= norm1.z; g111 *= norm1.w;
+                    float n000 = dot(g000, Pf0); float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+                    float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z)); float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+                    float n001 = dot(g001, vec3(Pf0.xy, Pf1.z)); float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+                    float n011 = dot(g011, vec3(Pf0.x, Pf1.yz)); float n111 = dot(g111, Pf1);
+                    vec3 fade_xyz = fade(Pf0);
+                    vec4 n_z = mix(vec4(n000,n100,n010,n110), vec4(n001,n101,n011,n111), fade_xyz.z);
+                    vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+                    return 2.2 * mix(n_yz.x, n_yz.y, fade_xyz.x);
+                }
+                
+                // Gerstner wave
+                vec3 gerstnerWave(vec2 dir, float steep, float wlen, vec3 p, float t) {
+                    float k = 6.28318 / wlen;
+                    float c = sqrt(9.8 / k);
+                    vec2 d = normalize(dir);
+                    float f = k * (dot(d, p.xz) - c * t);
+                    float a = steep / k;
+                    return vec3(d.x * a * cos(f), a * sin(f), d.y * a * cos(f));
+                }
+                
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    float time = uTime * 0.5;
+                    
+                    // Gerstner waves
+                    vec3 wave = vec3(0.0);
+                    wave += gerstnerWave(vec2(1.0, 0.3), 0.2, 25.0, pos, time);
+                    wave += gerstnerWave(vec2(0.7, 0.7), 0.15, 18.0, pos, time * 1.1);
+                    wave += gerstnerWave(vec2(-0.4, 0.9), 0.1, 12.0, pos, time * 0.9);
+                    wave += gerstnerWave(vec2(0.9, -0.2), 0.08, 9.0, pos, time * 0.85);
+                    
+                    // Perlin noise detail
+                    float noise = cnoise(vec3(pos.xz * 0.08, time * 0.3)) * 0.4;
+                    noise += cnoise(vec3(pos.xz * 0.04, time * 0.2)) * 0.3;
+                    
+                    float displacement = (wave.y + noise) * uWaveIntensity;
+                    vElevation = displacement;
+                    
+                    pos.y += displacement * 1.5;
+                    pos.x += wave.x * 0.3;
+                    pos.z += wave.z * 0.3;
+                    
+                    vPosition = pos;
+                    vNormal = normal;
+                    vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uDeepColor;
+                uniform vec3 uMidColor;
+                uniform vec3 uSurfaceColor;
+                uniform vec3 uCrestColor;
+                uniform vec3 uFoamColor;
+                uniform float uCausticsIntensity;
+                uniform float uGlowIntensity;
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                varying vec3 vWorldNormal;
+                varying vec2 vUv;
+                varying float vElevation;
+                
+                // Simplex noise for caustics
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+                float snoise(vec2 v) {
+                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                    vec2 i = floor(v + dot(v, C.yy)); vec2 x0 = v - i + dot(i, C.xx);
+                    vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                    vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod289(i);
+                    vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                    m = m*m; m = m*m;
+                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                    vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5); vec3 a0 = x - ox;
+                    m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+                    vec3 g; g.x = a0.x * x0.x + h.x * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                    return 130.0 * dot(m, g);
+                }
+                
+                void main() {
+                    float heightFactor = clamp(vElevation * 1.5 + 0.5, 0.0, 1.0);
+                    float depthFactor = clamp((vPosition.z + 150.0) / 300.0, 0.0, 1.0);
+                    
+                    // Color gradient
+                    vec3 color = mix(uDeepColor, uMidColor, depthFactor * 0.6);
+                    color = mix(color, uSurfaceColor, depthFactor * 0.9);
+                    color = mix(color, uCrestColor, heightFactor * 0.5);
+                    
+                    // Lighting from above
+                    vec3 lightDir = normalize(vec3(0.2, -0.9, 0.1));
+                    vec3 viewDir = normalize(cameraPosition - vPosition);
+                    float diffuse = max(dot(-vWorldNormal, lightDir), 0.0);
+                    diffuse = pow(diffuse, 0.5) * 0.6 + 0.3;
+                    
+                    // Specular (shimmering water)
+                    vec3 halfDir = normalize(lightDir + viewDir);
+                    float specular = pow(max(dot(-vWorldNormal, halfDir), 0.0), 48.0);
+                    
+                    // Fresnel (glassy edge)
+                    float fresnel = pow(1.0 - max(dot(-vWorldNormal, viewDir), 0.0), 2.5);
+                    
+                    // Caustics on water surface
+                    vec2 causticsUV = vPosition.xz * 0.15;
+                    float c1 = snoise(causticsUV + uTime * 0.2);
+                    float c2 = snoise(causticsUV * 1.4 - uTime * 0.15);
+                    float c3 = snoise(causticsUV * 0.8 + uTime * 0.25);
+                    float caustics = (c1 + c2 + c3) * 0.33;
+                    caustics = pow(max(caustics, 0.0), 2.0) * uCausticsIntensity;
+                    
+                    // Foam at wave crests
+                    float foamNoise = snoise(vPosition.xz * 0.8 + uTime * 0.1);
+                    float foam = smoothstep(0.35, 0.65, vElevation) * (foamNoise * 0.35 + 0.5);
+                    
+                    // Sub-surface scattering
+                    float sss = pow(max(dot(-viewDir, lightDir), 0.0), 3.0) * 0.3;
+                    
+                    // Combine
+                    color *= diffuse;
+                    color += vec3(1.0) * specular * 0.5;
+                    color += uCrestColor * fresnel * 0.35;
+                    color += uCrestColor * caustics;
+                    color += uSurfaceColor * sss;
+                    color = mix(color, uFoamColor, foam * 0.4);
+                    color += uCrestColor * uGlowIntensity * 0.3;
+                    
+                    // Edge fade - smooth transition at water surface edges
+                    float distFromCenter = length(vUv - 0.5) * 2.0;
+                    float edgeFade = 1.0 - smoothstep(0.6, 1.0, distFromCenter);
+                    
+                    // View angle fade - more transparent when viewed at grazing angles
+                    float viewFade = smoothstep(0.0, 0.4, abs(dot(-vWorldNormal, viewDir)));
+                    
+                    float alpha = edgeFade * viewFade * 0.85;
+                    
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            side: THREE.DoubleSide,
+            transparent: true,
+            depthWrite: false,
+        });
+
+        this.waterSurface = new THREE.Mesh(geometry, material);
+        this.waterSurface.position.y = 65;
+        this.waterSurfaceMaterial = material;
+        this.uniformsToUpdate.push(material.uniforms);
+        this.scene.add(this.waterSurface);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GOD RAYS - Volumetric light beams from surface
+    // ═══════════════════════════════════════════════════════════════════════════
+    createGodRays() {
+        const rayCount = 10;
+        const positions = [];
+        const uvs = [];
+
+        for (let i = 0; i < rayCount; i++) {
+            const w = 18 + Math.random() * 15;
+            const h = 180;
+            const x = (i - rayCount / 2) * 22 + (Math.random() - 0.5) * 25;
+            const y = 90;
+            const z = -25 - i * 10 + (Math.random() - 0.5) * 15;
+            const rot = (Math.random() - 0.5) * 0.35;
+
+            const cos = Math.cos(rot), sin = Math.sin(rot);
+            const hw = w / 2, hh = h / 2;
+
+            const verts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, -hh], [hw, hh], [-hw, hh]];
+            const uv = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
+
+            verts.forEach((v, idx) => {
+                positions.push(x + v[0] * cos - v[1] * sin, y + v[0] * sin + v[1] * cos, z);
+                uvs.push(uv[idx][0], uv[idx][1]);
+            });
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uIntensity: { value: 0.4 } },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uIntensity;
+                varying vec2 vUv;
+                
+                void main() {
+                    // Soft ray shape with smooth falloff
+                    float rayX = smoothstep(0.0, 0.3, vUv.x) * smoothstep(1.0, 0.7, vUv.x);
+                    float rayY = smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.35, vUv.y);
+                    float ray = rayX * rayY;
+                    
+                    // Animated shimmer
+                    ray *= 0.8 + sin(vUv.y * 25.0 + uTime * 1.8) * 0.2;
+                    
+                    vec3 color = vec3(0.2, 0.45, 0.55) * ray * uIntensity;
+                    gl_FragColor = vec4(color, ray * 0.22 * uIntensity);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        this.godRays = new THREE.Mesh(geometry, material);
+        this.uniformsToUpdate.push(material.uniforms);
+        this.scene.add(this.godRays);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SEABED - Sandy ocean floor with caustic lighting
+    // ═══════════════════════════════════════════════════════════════════════════
+    createSeabed() {
+        const segments = this.activePreset.terrainSegments;
+        const geometry = new THREE.PlaneGeometry(400, 400, segments, segments);
+        geometry.rotateX(-Math.PI / 2);
+
+        const positions = geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+            const x = positions.getX(i);
+            const z = positions.getZ(i);
+            positions.setY(i, this.getSeabedHeight(x, z));
+        }
+        geometry.computeVertexNormals();
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSandColor1: { value: new THREE.Color(0x0a1820) },
+                uSandColor2: { value: new THREE.Color(0x152a35) },
+                uFogColor: { value: new THREE.Color(0x001825) },
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                varying float vHeight;
+                varying float vDist;
+                varying vec2 vWorldXZ;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vHeight = position.y;
+                    vWorldXZ = position.xz;
+                    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+                    vDist = length(mvPos.xyz);
+                    gl_Position = projectionMatrix * mvPos;
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uSandColor1;
+                uniform vec3 uSandColor2;
+                uniform vec3 uFogColor;
+                varying vec3 vNormal;
+                varying float vHeight;
+                varying float vDist;
+                varying vec2 vWorldXZ;
+                
+                void main() {
+                    float hf = smoothstep(-25.0, 10.0, vHeight);
+                    vec3 color = mix(uSandColor1, uSandColor2, hf);
+                    
+                    // Animated caustic pattern
+                    float c1 = sin(vWorldXZ.x * 0.12 + uTime * 0.7) * sin(vWorldXZ.y * 0.1 + uTime * 0.5);
+                    float c2 = sin(vWorldXZ.x * 0.18 - uTime * 0.6) * sin(vWorldXZ.y * 0.15 + uTime * 0.8);
+                    float caustic = pow(max(0.0, (c1 + c2) * 0.5 + 0.3), 2.5) * 0.35;
+                    color += vec3(0.15, 0.4, 0.5) * caustic;
+                    
+                    // Lighting
+                    float light = max(0.3, dot(vNormal, normalize(vec3(0.2, 0.9, -0.15))));
+                    color *= light;
+                    
+                    // Distance fog
+                    float fog = 1.0 - exp(-vDist * 0.006);
+                    color = mix(color, uFogColor, fog);
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+        });
+
+        this.seabed = new THREE.Mesh(geometry, material);
+        this.uniformsToUpdate.push(material.uniforms);
+        this.scene.add(this.seabed);
+    }
+
+    getSeabedHeight(x, z) {
+        return Math.sin(x * 0.018) * 14 +
+            Math.sin(z * 0.015) * 12 +
+            Math.sin(x * 0.04 + z * 0.035) * 6 +
+            Math.cos(x * 0.025 - z * 0.02) * 8 - 18;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SEAWEED - Smooth curved kelp with proper geometry (not pixelated)
+    // ═══════════════════════════════════════════════════════════════════════════
+    createSeaweed() {
+        const count = this.activePreset.seaweedCount;
+        const spread = 150;
+
+        // Create smooth curved seaweed blade geometry with multiple segments
+        const segments = 8;
+        const width = 0.12;
+        const height = 4.0;
+
+        const bladeVertices = [];
+        const bladeIndices = [];
+        const bladeHeights = [];
+
+        for (let s = 0; s <= segments; s++) {
+            const t = s / segments;
+            const y = t * height;
+            const w = width * (1 - t * 0.7); // Taper towards top
+
+            // Left and right vertices
+            bladeVertices.push(-w, y, 0);
+            bladeVertices.push(w, y, 0);
+            bladeHeights.push(t, t);
+
+            if (s < segments) {
+                const i = s * 2;
+                bladeIndices.push(i, i + 1, i + 2);
+                bladeIndices.push(i + 1, i + 3, i + 2);
+            }
+        }
+
+        const bladeGeometry = new THREE.BufferGeometry();
+        bladeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bladeVertices, 3));
+        bladeGeometry.setAttribute('aHeight', new THREE.Float32BufferAttribute(bladeHeights, 1));
+        bladeGeometry.setIndex(bladeIndices);
+        bladeGeometry.computeVertexNormals();
+
+        const bladeMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uCurrentStrength: { value: 0.5 },
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uCurrentStrength;
+                attribute float aHeight;
+                attribute float aPhase;
+                attribute float aColorVar;
+                varying float vHeight;
+                varying float vColorVar;
+                varying float vDist;
+                varying vec3 vNormal;
+                
+                void main() {
+                    vec3 pos = position;
+                    vec4 iPos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+                    
+                    // Smooth sinusoidal wave motion along the blade
+                    float h = aHeight;
+                    float phase = aPhase + iPos.x * 0.03 + iPos.z * 0.025;
+                    
+                    // Primary wave
+                    float wave1 = sin(uTime * 1.2 + phase) * h * h;
+                    // Secondary wave for more organic motion
+                    float wave2 = sin(uTime * 0.8 + phase * 1.5 + h * 2.0) * h * h * 0.4;
+                    
+                    pos.x += (wave1 + wave2) * uCurrentStrength;
+                    pos.z += cos(uTime * 0.9 + phase * 0.7) * h * h * uCurrentStrength * 0.3;
+                    
+                    vec4 worldPos = instanceMatrix * vec4(pos, 1.0);
+                    vec4 mvPos = modelViewMatrix * worldPos;
+                    
+                    vHeight = aHeight;
+                    vColorVar = aColorVar;
+                    vDist = length(mvPos.xyz);
+                    vNormal = normalize(normalMatrix * mat3(instanceMatrix) * normal);
+                    
+                    gl_Position = projectionMatrix * mvPos;
+                }
+            `,
+            fragmentShader: `
+                varying float vHeight;
+                varying float vColorVar;
+                varying float vDist;
+                varying vec3 vNormal;
+                
+                void main() {
+                    // Rich kelp color gradient
+                    vec3 base = vec3(0.04, 0.18, 0.12);
+                    vec3 mid = vec3(0.08, 0.32, 0.18);
+                    vec3 tip = vec3(0.12, 0.45, 0.22);
+                    
+                    vec3 color = mix(base, mid, smoothstep(0.0, 0.5, vHeight));
+                    color = mix(color, tip, smoothstep(0.5, 1.0, vHeight));
+                    
+                    // Color variation
+                    color *= 0.85 + vColorVar * 0.3;
+                    
+                    // Subtle lighting
+                    float light = max(0.5, dot(vNormal, normalize(vec3(0.2, 0.8, 0.1))));
+                    color *= light;
+                    
+                    // Translucency effect at tips
+                    float translucency = vHeight * 0.15;
+                    color += vec3(0.05, 0.15, 0.08) * translucency;
+                    
+                    // Distance fog
+                    vec3 fogColor = vec3(0.0, 0.1, 0.15);
+                    float fog = 1.0 - exp(-vDist * 0.008);
+                    color = mix(color, fogColor, fog);
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+            side: THREE.DoubleSide,
+        });
+
+        const seaweedMesh = new THREE.InstancedMesh(bladeGeometry, bladeMaterial, count);
+
+        const phases = new Float32Array(count);
+        const colorVars = new Float32Array(count);
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < count; i++) {
+            const x = (Math.random() - 0.5) * spread * 2;
+            const z = (Math.random() - 0.5) * spread * 2;
+            const y = this.getSeabedHeight(x, z);
+
+            dummy.position.set(x, y, z);
+            dummy.rotation.y = Math.random() * Math.PI * 2;
+            dummy.scale.setScalar(0.6 + Math.random() * 0.8);
+            dummy.updateMatrix();
+            seaweedMesh.setMatrixAt(i, dummy.matrix);
+
+            phases[i] = Math.random() * 6.28;
+            colorVars[i] = Math.random();
+        }
+
+        seaweedMesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
+        seaweedMesh.geometry.setAttribute('aColorVar', new THREE.InstancedBufferAttribute(colorVars, 1));
+        seaweedMesh.instanceMatrix.needsUpdate = true;
+        seaweedMesh.frustumCulled = false;
+
+        this.seaweedInstances = seaweedMesh;
+        this.uniformsToUpdate.push(seaweedMesh.material.uniforms);
+        this.scene.add(seaweedMesh);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CORAL REEF - Detailed colorful coral formations
+    // ═══════════════════════════════════════════════════════════════════════════
+    createCoralReef() {
+        const count = this.activePreset.coralCount;
+        const spread = 140;
+        this.coralGroup = new THREE.Group();
+
+        const coralColors = [
+            new THREE.Color(0xff6b6b), // Coral pink
+            new THREE.Color(0xff8c42), // Orange
+            new THREE.Color(0xfeca57), // Yellow
+            new THREE.Color(0xa55eea), // Purple
+            new THREE.Color(0xff69b4), // Hot pink
+            new THREE.Color(0x20b2aa), // Teal
+            new THREE.Color(0xff4757), // Red
+            new THREE.Color(0x7bed9f), // Mint
+        ];
+
+        // Create shared geometries with higher detail
+        const brainGeo = new THREE.IcosahedronGeometry(1, 2);
+        const branchGeo = new THREE.CylinderGeometry(0.08, 0.15, 1, 8);
+        const tubeGeo = new THREE.TorusGeometry(0.4, 0.15, 8, 16);
+        const fanGeo = new THREE.CircleGeometry(1, 12);
+
+        for (let c = 0; c < count; c++) {
+            const x = (Math.random() - 0.5) * spread * 2;
+            const z = (Math.random() - 0.5) * spread * 2;
+            const y = this.getSeabedHeight(x, z);
+            if (y < -22) continue;
+
+            const scale = 1.0 + Math.random() * 2.0;
+            const color = coralColors[Math.floor(Math.random() * coralColors.length)];
+            const type = Math.random();
+
+            const material = new THREE.MeshLambertMaterial({
+                color: color,
+                side: THREE.DoubleSide,
+            });
+
+            if (type < 0.3) {
+                // Brain coral
+                const coral = new THREE.Mesh(brainGeo, material);
+                coral.position.set(x, y + scale * 0.8, z);
+                coral.scale.set(scale, scale * 0.7, scale);
+                coral.rotation.y = Math.random() * Math.PI;
+                this.coralGroup.add(coral);
+            } else if (type < 0.6) {
+                // Branching coral
+                const branchCount = 4 + Math.floor(Math.random() * 5);
+                for (let b = 0; b < branchCount; b++) {
+                    const branch = new THREE.Mesh(branchGeo, material);
+                    const angle = (b / branchCount) * Math.PI * 2 + Math.random() * 0.3;
+                    const dist = Math.random() * scale * 0.5;
+                    const bHeight = scale * (0.5 + Math.random() * 0.8);
+
+                    branch.position.set(
+                        x + Math.cos(angle) * dist,
+                        y + bHeight * 0.5,
+                        z + Math.sin(angle) * dist
+                    );
+                    branch.scale.set(scale * 0.4, bHeight, scale * 0.4);
+                    branch.rotation.x = (Math.random() - 0.5) * 0.3;
+                    branch.rotation.z = (Math.random() - 0.5) * 0.3;
+                    this.coralGroup.add(branch);
+                }
+            } else if (type < 0.8) {
+                // Tube coral
+                const coral = new THREE.Mesh(tubeGeo, material);
+                coral.position.set(x, y + scale * 0.3, z);
+                coral.scale.setScalar(scale);
+                coral.rotation.x = Math.PI / 2;
+                this.coralGroup.add(coral);
+            } else {
+                // Fan coral
+                const coral = new THREE.Mesh(fanGeo, material);
+                coral.position.set(x, y + scale, z);
+                coral.scale.setScalar(scale * 1.2);
+                coral.rotation.y = Math.random() * Math.PI;
+                this.coralGroup.add(coral);
+            }
+        }
+
+        this.scene.add(this.coralGroup);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FISH SCHOOLS - Smooth circular particles with school behavior
+    // ═══════════════════════════════════════════════════════════════════════════
+    createFishSchools() {
+        const totalFish = this.activePreset.fishCount;
+        const schoolCount = 5;
+        const fishPerSchool = Math.floor(totalFish / schoolCount);
+
+        const fishColors = [
+            new THREE.Color(0x00bfff),
+            new THREE.Color(0xffd700),
+            new THREE.Color(0xff6b6b),
+            new THREE.Color(0x40e0d0),
+            new THREE.Color(0xff8c00),
+            new THREE.Color(0x9370db),
+            new THREE.Color(0x00fa9a),
+        ];
+
+        for (let s = 0; s < schoolCount; s++) {
+            const schoolColor = fishColors[s % fishColors.length];
+            const schoolCenter = {
+                x: (Math.random() - 0.5) * 120,
+                y: 15 + Math.random() * 40,
+                z: (Math.random() - 0.5) * 120,
+            };
+            const schoolRadius = 20 + Math.random() * 30;
+            const orbitSpeed = 0.2 + Math.random() * 0.3;
+            const orbitPhase = Math.random() * Math.PI * 2;
+
+            const positions = new Float32Array(fishPerSchool * 3);
+            const offsets = new Float32Array(fishPerSchool * 3);
+            const phases = new Float32Array(fishPerSchool);
+            const sizes = new Float32Array(fishPerSchool);
+
+            for (let i = 0; i < fishPerSchool; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * schoolRadius;
+                const vDist = (Math.random() - 0.5) * 15;
+
+                positions[i * 3] = schoolCenter.x;
+                positions[i * 3 + 1] = schoolCenter.y;
+                positions[i * 3 + 2] = schoolCenter.z;
+
+                offsets[i * 3] = Math.cos(angle) * dist;
+                offsets[i * 3 + 1] = vDist;
+                offsets[i * 3 + 2] = Math.sin(angle) * dist;
+
+                phases[i] = Math.random() * Math.PI * 2;
+                sizes[i] = 4 + Math.random() * 3;
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aOffset', new THREE.BufferAttribute(offsets, 3));
+            geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+            geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor: { value: schoolColor },
+                    uSchoolCenter: { value: new THREE.Vector3(schoolCenter.x, schoolCenter.y, schoolCenter.z) },
+                    uOrbitSpeed: { value: orbitSpeed },
+                    uOrbitPhase: { value: orbitPhase },
+                },
+                vertexShader: `
+                    uniform float uTime;
+                    uniform vec3 uSchoolCenter;
+                    uniform float uOrbitSpeed;
+                    uniform float uOrbitPhase;
+                    attribute vec3 aOffset;
+                    attribute float aPhase;
+                    attribute float aSize;
+                    varying float vDist;
+                    
+                    void main() {
+                        // School orbits around center
+                        float angle = uOrbitPhase + uTime * uOrbitSpeed;
+                        float ca = cos(angle);
+                        float sa = sin(angle);
+                        
+                        // Rotate offset around Y axis
+                        vec3 rotatedOffset = vec3(
+                            aOffset.x * ca - aOffset.z * sa,
+                            aOffset.y + sin(uTime * 1.5 + aPhase) * 2.0,
+                            aOffset.x * sa + aOffset.z * ca
+                        );
+                        
+                        // Individual fish wiggle
+                        rotatedOffset.x += sin(uTime * 5.0 + aPhase * 3.0) * 0.3;
+                        rotatedOffset.z += cos(uTime * 4.0 + aPhase * 2.5) * 0.2;
+                        
+                        vec3 pos = uSchoolCenter + rotatedOffset;
+                        
+                        vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+                        vDist = length(mvPos.xyz);
+                        
+                        gl_PointSize = aSize * (200.0 / -mvPos.z);
+                        gl_Position = projectionMatrix * mvPos;
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uColor;
+                    varying float vDist;
+                    
+                    void main() {
+                        // Smooth circular fish shape (not squared!)
+                        vec2 uv = gl_PointCoord - 0.5;
+                        float d = length(uv * vec2(1.0, 1.8)); // Slightly elongated
+                        if (d > 0.5) discard;
+                        
+                        // Smooth anti-aliased edge
+                        float alpha = 1.0 - smoothstep(0.35, 0.5, d);
+                        
+                        vec3 color = uColor;
+                        // Shiny highlight
+                        float highlight = pow(1.0 - d * 2.0, 3.0) * 0.3;
+                        color += vec3(highlight);
+                        
+                        // Distance fog
+                        float fog = 1.0 - exp(-vDist * 0.01);
+                        color = mix(color, vec3(0.0, 0.1, 0.15), fog * 0.7);
+                        
+                        gl_FragColor = vec4(color, alpha);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+            });
+
+            const school = new THREE.Points(geometry, material);
+            school.userData = { schoolCenter, orbitSpeed, orbitPhase };
+            this.uniformsToUpdate.push(material.uniforms);
+            this.fishSchools.push(school);
+            this.scene.add(school);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // JELLYFISH - Glowing soft circular creatures
+    // ═══════════════════════════════════════════════════════════════════════════
+    createJellyfish() {
+        const count = this.activePreset.jellyfishCount;
+        const jellyColors = [
+            new THREE.Color(0xff80ff),
+            new THREE.Color(0x80ffff),
+            new THREE.Color(0xffff80),
+            new THREE.Color(0x80ff80),
+            new THREE.Color(0xff8080),
+            new THREE.Color(0x8080ff),
+        ];
+
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const phases = new Float32Array(count);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 180;
+            positions[i * 3 + 1] = 25 + Math.random() * 55;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 180;
+
+            const c = jellyColors[Math.floor(Math.random() * jellyColors.length)];
+            colors[i * 3] = c.r;
+            colors[i * 3 + 1] = c.g;
+            colors[i * 3 + 2] = c.b;
+
+            phases[i] = Math.random() * 6.28;
+            sizes[i] = 12 + Math.random() * 18;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                uniform float uTime;
+                attribute vec3 aColor;
+                attribute float aPhase;
+                attribute float aSize;
+                varying vec3 vColor;
+                varying float vPulse;
+                
+                void main() {
+                    vec3 pos = position;
+                    pos.y += sin(uTime * 0.45 + aPhase) * 3.0;
+                    pos.x += sin(uTime * 0.25 + aPhase * 1.3) * 2.0;
+                    pos.z += cos(uTime * 0.35 + aPhase * 0.8) * 1.5;
+                    
+                    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+                    vColor = aColor;
+                    vPulse = sin(uTime * 1.8 + aPhase) * 0.25 + 0.75;
+                    
+                    gl_PointSize = aSize * vPulse * (250.0 / -mvPos.z);
+                    gl_Position = projectionMatrix * mvPos;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vPulse;
+                
+                void main() {
+                    // Smooth circular glow (not squared!)
+                    float d = length(gl_PointCoord - 0.5) * 2.0;
+                    if (d > 1.0) discard;
+                    
+                    // Soft dome shape
+                    float alpha = pow(1.0 - d, 1.8) * vPulse;
+                    vec3 color = vColor * (0.6 + vPulse * 0.5);
+                    
+                    // Bright glowing center
+                    color += vec3(1.0) * pow(1.0 - d, 5.0) * 0.5;
+                    
+                    gl_FragColor = vec4(color, alpha * 0.75);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.jellyfishMesh = new THREE.Points(geometry, material);
+        this.uniformsToUpdate.push(material.uniforms);
+        this.scene.add(this.jellyfishMesh);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PLANKTON - Bioluminescent soft circular particles
+    // ═══════════════════════════════════════════════════════════════════════════
+    createPlankton() {
+        const count = this.activePreset.planktonCount;
+
+        const positions = new Float32Array(count * 3);
+        const phases = new Float32Array(count);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 220;
+            positions[i * 3 + 1] = Math.random() * 90 + 5;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 220;
+            phases[i] = Math.random() * 6.28;
+            sizes[i] = 2 + Math.random() * 4;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uGlowIntensity: { value: 0.8 },
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uGlowIntensity;
+                attribute float aPhase;
+                attribute float aSize;
+                varying float vGlow;
+                
+                void main() {
+                    vec3 pos = position;
+                    pos.y += sin(uTime * 0.25 + aPhase) * 0.8;
+                    pos.x += sin(uTime * 0.18 + aPhase * 1.2) * 0.5;
+                    pos.z += cos(uTime * 0.22 + aPhase * 0.9) * 0.4;
+                    
+                    vGlow = sin(uTime * 1.8 + aPhase * 3.5) * 0.5 + 0.5;
+                    vGlow *= uGlowIntensity;
+                    
+                    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+                    gl_PointSize = (aSize + vGlow * 3.0) * (180.0 / -mvPos.z);
+                    gl_Position = projectionMatrix * mvPos;
+                }
+            `,
+            fragmentShader: `
+                varying float vGlow;
+                
+                void main() {
+                    // Smooth circular glow (not squared!)
+                    float d = length(gl_PointCoord - 0.5) * 2.0;
+                    if (d > 1.0) discard;
+                    
+                    float alpha = pow(1.0 - d, 2.0);
+                    vec3 color = mix(vec3(0.2, 0.7, 0.5), vec3(0.4, 1.0, 0.8), vGlow);
+                    
+                    gl_FragColor = vec4(color, alpha * (0.35 + vGlow * 0.5));
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.planktonMesh = new THREE.Points(geometry, material);
+        this.uniformsToUpdate.push(material.uniforms);
+        this.scene.add(this.planktonMesh);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BUBBLES - Smooth circular rising particles
+    // ═══════════════════════════════════════════════════════════════════════════
+    createBubbles() {
+        const count = this.activePreset.bubbleCount;
+
+        const positions = new Float32Array(count * 3);
+        const speeds = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 180;
+            positions[i * 3 + 1] = Math.random() * 80 - 10;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 180;
+            speeds[i] = 0.4 + Math.random() * 0.6;
+            phases[i] = Math.random() * 6.28;
+            sizes[i] = 3 + Math.random() * 5;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        this.bubbleData = { speeds, phases, count };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                uniform float uTime;
+                attribute float aSpeed;
+                attribute float aPhase;
+                attribute float aSize;
+                varying float vAlpha;
+                
+                void main() {
+                    vec3 pos = position;
+                    // Wobble motion
+                    pos.x += sin(uTime * 2.5 + aPhase) * 0.4;
+                    pos.z += cos(uTime * 2.0 + aPhase * 0.8) * 0.3;
+                    
+                    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+                    vAlpha = 1.0;
+                    
+                    gl_PointSize = aSize * (180.0 / -mvPos.z);
+                    gl_Position = projectionMatrix * mvPos;
+                }
+            `,
+            fragmentShader: `
+                varying float vAlpha;
+                
+                void main() {
+                    // Smooth circular bubble (not squared!)
+                    float d = length(gl_PointCoord - 0.5) * 2.0;
+                    if (d > 1.0) discard;
+                    
+                    // Bubble with highlight and soft edge
+                    float alpha = 1.0 - smoothstep(0.7, 1.0, d);
+                    alpha *= 0.4;
+                    
+                    // Shiny highlight
+                    vec2 highlightPos = gl_PointCoord - vec2(0.35, 0.35);
+                    float highlight = 1.0 - smoothstep(0.0, 0.25, length(highlightPos));
+                    
+                    vec3 color = vec3(0.6, 0.85, 1.0);
+                    color += vec3(highlight * 0.5);
+                    
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.bubbleMesh = new THREE.Points(geometry, material);
+        this.uniformsToUpdate.push(material.uniforms);
+        this.scene.add(this.bubbleMesh);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LIGHTING
+    // ═══════════════════════════════════════════════════════════════════════════
+    createLighting() {
+        const ambient = new THREE.AmbientLight(0x153050, 0.45);
+        this.scene.add(ambient);
+
+        const directional = new THREE.DirectionalLight(0x4488aa, 0.7);
+        directional.position.set(25, 80, -25);
+        this.scene.add(directional);
+
+        const hemisphere = new THREE.HemisphereLight(0x4488cc, 0x001020, 0.35);
+        this.scene.add(hemisphere);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EVENT LISTENERS
+    // ═══════════════════════════════════════════════════════════════════════════
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onLineClear(data.lineCount);
+                this.targetCurrentStrength = Math.min(2.5, this.currentStrength + data.lineCount * 0.35);
+                this.targetGlowIntensity = Math.min(1.5, this.glowIntensity + data.lineCount * 0.18);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onCombo(data.comboCount);
+            if (this.isActive && settings?.backgroundComboEffects === true && data.comboCount > 1) {
+                this.targetCurrentStrength = Math.min(3.5, this.currentStrength + data.comboCount * 0.45);
+                this.targetGlowIntensity = Math.min(2.0, this.glowIntensity + data.comboCount * 0.22);
             }
         });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true && Math.random() < 0.3) {
-                this.createSmallBubblePop();
-            }
-        });
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-        this.setupQualityListener();
+        const resizeHandler = () => this.handleResize();
+        window.addEventListener('resize', resizeHandler);
+        this.eventUnsubscribers.push(() => window.removeEventListener('resize', resizeHandler));
     }
 
-    onLineClear(lineCount) {
-        this.createBubbleBurst(lineCount * 8);
-        this.intensifyCaustics(lineCount);
-        this.brightenGodRays(lineCount);
+    handleResize() {
+        if (!this.renderer || !this.camera) return;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
     }
 
-    onCombo(comboCount) {
-        this.currentComboLevel = comboCount;
-        const now = Date.now();
-        if (now - this.lastEffectTime < this.comboCooldownMs) return;
-        this.lastEffectTime = now;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ANIMATION LOOP
+    // ═══════════════════════════════════════════════════════════════════════════
+    startAnimation() {
+        if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
 
-        const scale = this.adaptiveScale;
+        const loop = () => {
+            if (!this.isActive) return;
 
-        // Low combo (1-3): Shockwave + Bioluminescence
-        if (comboCount <= 3) {
-            this.createShockwave(comboCount);
-            this.createBioluminescence(Math.floor(comboCount * 8 * scale), 'small');
-        }
+            const time = this.clock.getElapsedTime();
 
-        // Medium combo (4-6): Small fish + More light
-        else if (comboCount <= 6) {
-            // Small school of tiny fish instead of big ones
-            this.spawnSmallFishBurst(Math.min(comboCount * 2, 8));
-            this.createBioluminescence(Math.floor(comboCount * 12 * scale), 'medium');
-            this.intensifyOcean(comboCount);
-        }
+            // Smooth transitions
+            this.currentStrength += (this.targetCurrentStrength - this.currentStrength) * 0.018;
+            this.targetCurrentStrength += (0.5 - this.targetCurrentStrength) * 0.006;
+            this.glowIntensity += (this.targetGlowIntensity - this.glowIntensity) * 0.022;
+            this.targetGlowIntensity += (0.8 - this.targetGlowIntensity) * 0.008;
 
-        // High combo (7-10): No whale, just more effects
-        else if (comboCount <= 10) {
-            this.createBioluminescence(Math.floor(comboCount * 18 * scale), 'large');
-            this.intensifyOcean(comboCount);
-            this.createShockwave(comboCount);
-        }
-
-        // Epic combo (11+): Bioluminescent bloom
-        else {
-            this.createBiolumBloom(comboCount);
-            this.intensifyOcean(comboCount);
-        }
-
-        this.createBubbleBurst(Math.floor(comboCount * 3 * scale));
-    }
-
-    createBubbleBurst(count) {
-        if (!this.effectCanvas) return;
-        const cap = Math.min(count, 80);
-        for (let i = 0; i < cap; i++) {
-            setTimeout(() => {
-                if (!this.effectCanvas) return;
-                this.bubbleBurstParticles.push({
-                    x: Math.random() * this.effectCanvas.width,
-                    y: this.effectCanvas.height * (0.6 + Math.random() * 0.2),
-                    size: Math.random() * 8 + 3,
-                    life: 1,
-                    duration: 1.5 + Math.random() * 1,
-                    speed: Math.random() * 1.8 + 1,
-                });
-            }, i * 40);
-        }
-    }
-
-    intensifyCaustics(intensity) {
-        const causticsLight = document.querySelector('.caustic-light');
-        if (causticsLight) {
-            causticsLight.style.transition = 'opacity 0.4s ease-out, filter 0.4s ease-out';
-            causticsLight.style.filter = `brightness(${1.5 + intensity * 0.4}) contrast(1.3)`;
-            causticsLight.style.opacity = '0.6';
-            setTimeout(() => {
-                causticsLight.style.filter = '';
-                causticsLight.style.opacity = '';
-            }, 600);
-        }
-    }
-
-    brightenGodRays(intensity) {
-        const count = Math.min(intensity * 3, this.godRays.length);
-        for (let i = 0; i < count; i++) {
-            const ray = this.godRays[Math.floor(Math.random() * this.godRays.length)];
-            if (ray) {
-                const original = ray.style.opacity;
-                ray.style.transition = 'opacity 0.3s ease-out';
-                ray.style.opacity = '0.5';
-                setTimeout(() => { ray.style.opacity = original; }, 500);
-            }
-        }
-    }
-
-    resizeEffectCanvas() {
-        if (!this.effectCanvas) return;
-        const rect = this.effectCanvas.getBoundingClientRect();
-
-        // Simple 1:1 sizing - no DPR complexity
-        this.effectCanvas.width = rect.width;
-        this.effectCanvas.height = rect.height;
-    }
-
-    createShockwave(comboCount) {
-        if (!this.effectCanvas) return;
-        const rect = this.effectCanvas.getBoundingClientRect();
-        this.shockwaveEffects.push({
-            x: rect.width / 2,
-            y: rect.height / 2,
-            startRadius: Math.max(rect.width, rect.height) * 0.1,
-            maxRadius: Math.max(rect.width, rect.height) * 0.7,
-            life: 1,
-            duration: 2.5,
-            width: 25,
-        });
-    }
-
-    intensifyOcean(comboCount) {
-        const theme = document.getElementById('ocean-theme');
-        if (!theme) return;
-        const saturation = 100 + Math.min(comboCount * 15, 60);
-        const brightness = 100 + Math.min(comboCount * 10, 35);
-        theme.style.filter = `saturate(${saturation}%) brightness(${brightness}%)`;
-        setTimeout(() => { theme.style.filter = ''; }, 800 + comboCount * 100);
-    }
-
-    createBioluminescence(count, size = 'medium') {
-        if (!this.effectCanvas) return;
-        const cap = Math.min(count, this.currentPreset.biolumLimit || 50);
-        const sizes = { small: [6, 12], medium: [10, 18], large: [15, 28] };
-        const [minSize, maxSize] = sizes[size] || sizes.medium;
-
-        const colors = [
-            'rgba(100, 255, 220, 0.8)',
-            'rgba(120, 240, 255, 0.8)',
-            'rgba(140, 200, 255, 0.8)',
-            'rgba(80, 255, 200, 0.8)',
-        ];
-
-        for (let i = 0; i < cap; i++) {
-            setTimeout(() => {
-                if (!this.effectCanvas) return;
-                this.biolumParticles.push({
-                    x: Math.random() * this.effectCanvas.width,
-                    y: Math.random() * this.effectCanvas.height * 0.85,
-                    size: Math.random() * (maxSize - minSize) + minSize,
-                    life: 1,
-                    duration: 2 + Math.random() * 1.5,
-                    vx: (Math.random() - 0.5) * 0.3,
-                    vy: (Math.random() - 0.5) * 0.3,
-                    color: colors[Math.floor(Math.random() * colors.length)],
-                });
-            }, i * 25);
-        }
-    }
-
-    createBiolumBloom(comboCount) {
-        // Epic effect: Massive bioluminescent explosion
-        if (!this.effectCanvas) return;
-        const centerX = this.effectCanvas.width / 2;
-        const centerY = this.effectCanvas.height / 2;
-        const particleCount = Math.min(comboCount * 15, 200);
-
-        for (let i = 0; i < particleCount; i++) {
-            const angle = (Math.PI * 2 * i) / particleCount;
-            const speed = 1 + Math.random() * 2;
-            this.biolumParticles.push({
-                x: centerX,
-                y: centerY,
-                size: 12 + Math.random() * 20,
-                life: 1,
-                duration: 3 + Math.random() * 2,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                color: `rgba(${80 + Math.random() * 80}, ${200 + Math.random() * 55}, ${220 + Math.random() * 35}, 0.8)`,
+            // Update all registered uniforms
+            this.uniformsToUpdate.forEach(u => {
+                if (u.uTime) u.uTime.value = time;
+                if (u.uCurrentStrength) u.uCurrentStrength.value = this.currentStrength;
+                if (u.uWaveIntensity) u.uWaveIntensity.value = 1.0 + this.currentStrength * 0.3;
+                if (u.uIntensity) u.uIntensity.value = this.glowIntensity;
+                if (u.uGlowIntensity) u.uGlowIntensity.value = this.glowIntensity;
             });
-        }
-    }
 
-    spawnSmallFishBurst(count) {
-        // Small, quick fish burst for combos
-        const schoolSize = Math.min(count, 8);
-        const startY = 30 + Math.random() * 40;
-        const direction = Math.random() > 0.5 ? 1 : -1;
+            // Animate bubbles rising
+            if (this.bubbleMesh && this.bubbleData) {
+                const pos = this.bubbleMesh.geometry.attributes.position;
+                const { speeds, phases, count } = this.bubbleData;
 
-        for (let i = 0; i < schoolSize; i++) {
-            setTimeout(() => {
-                if (!this.effectCanvas) return;
-                const offsetY = (Math.random() - 0.5) * 10;
-                const size = 4 + Math.random() * 4; // Very small: 4-8px
-                const hue = 195 + Math.random() * 30;
-
-                this.marineCreatures.push({
-                    x: direction > 0 ? -30 : this.effectCanvas.width + 30,
-                    y: this.effectCanvas.height * (startY / 100 + offsetY / 100),
-                    size,
-                    vx: direction * (2.5 + Math.random() * 1), // Faster
-                    life: 1,
-                    duration: 4 + Math.random() * 2, // Quick across screen
-                    color: `hsla(${hue}, 50%, 35%, 0.5)`, // More transparent
-                    isAmbient: false,
-                    fishType: 'normal',
-                    behaviorTime: 0,
-                    targetSpeed: direction * 3,
-                    currentSpeed: direction * 3,
-                    verticalDrift: (Math.random() - 0.5) * 5,
-                });
-            }, i * 80);
-        }
-    }
-
-    spawnSchoolOfFish(count) {
-        const schoolSize = Math.min(count, 18);
-        const startY = 15 + Math.random() * 70;
-        const direction = Math.random() > 0.5 ? 1 : -1;
-
-        for (let i = 0; i < schoolSize; i++) {
-            setTimeout(() => {
-                if (!this.effectCanvas) return;
-                const offsetY = (Math.random() - 0.5) * 18;
-                const size = 6 + Math.random() * 10;
-                const hue = 180 + Math.random() * 60;
-
-                this.marineCreatures.push({
-                    x: direction > 0 ? -50 : this.effectCanvas.width + 50,
-                    y: this.effectCanvas.height * (startY / 100 + offsetY / 100),
-                    size,
-                    vx: direction * (2 + Math.random() * 1.5),
-                    life: 1,
-                    duration: 6 + Math.random() * 2,
-                    color: `hsla(${hue}, 70%, 60%, 0.7)`,
-                });
-            }, i * 120);
-        }
-    }
-
-    spawnWhale() {
-        // Majestic whale silhouette
-        if (!this.effectCanvas) return;
-        const direction = Math.random() > 0.5 ? 1 : -1;
-        const startY = 30 + Math.random() * 40;
-
-        this.marineCreatures.push({
-            x: direction > 0 ? -100 : this.effectCanvas.width + 100,
-            y: this.effectCanvas.height * (startY / 100),
-            size: 50 + Math.random() * 40,
-            vx: direction * 0.8,
-            life: 1,
-            duration: 15,
-            color: 'rgba(40, 80, 120, 0.6)',
-        });
-
-        // Whale creates bioluminescent trails
-        this.createBioluminescence(40, 'small');
-    }
-
-    createSmallBubblePop() {
-        if (!this.effectCanvas) return;
-        for (let i = 0; i < 2; i++) {
-            this.bubbleBurstParticles.push({
-                x: this.effectCanvas.width / 2 + (Math.random() - 0.5) * 100,
-                y: this.effectCanvas.height * 0.7,
-                size: Math.random() * 6 + 2,
-                life: 1,
-                duration: 0.8,
-                speed: Math.random() * 1.2 + 0.8,
-            });
-        }
-    }
-
-    updateAmbientLife(timestamp) {
-        if (!this.effectCanvas) return;
-
-        // Spawn small fish occasionally - every 8-15 seconds
-        const spawnInterval = 8000 + Math.random() * 7000;
-        if (timestamp - this.lastAmbientSpawn > spawnInterval) {
-            this.lastAmbientSpawn = timestamp;
-
-            // Keep max 3 ambient creatures at once
-            const ambientCount = this.marineCreatures.filter((c) => c.isAmbient).length;
-            if (ambientCount < 3) {
-                this.spawnAmbientFish();
+                for (let i = 0; i < count; i++) {
+                    let y = pos.getY(i) + speeds[i] * 0.4;
+                    if (y > 100) {
+                        y = -15;
+                        pos.setX(i, (Math.random() - 0.5) * 180);
+                        pos.setZ(i, (Math.random() - 0.5) * 180);
+                    }
+                    pos.setY(i, y);
+                }
+                pos.needsUpdate = true;
             }
-        }
+
+            // Smooth camera sway (underwater drift feel)
+            this.camera.position.x = Math.sin(time * 0.06) * 5;
+            this.camera.position.y = 20 + Math.sin(time * 0.09) * 3;
+            this.camera.position.z = 80 + Math.sin(time * 0.04) * 2;
+            this.camera.lookAt(
+                Math.sin(time * 0.03) * 2,
+                5 + Math.sin(time * 0.05) * 2,
+                Math.cos(time * 0.04) * 3
+            );
+
+            this.renderer.render(this.scene, this.camera);
+            this.animationFrameId = requestAnimationFrame(loop);
+        };
+
+        this.animationFrameId = requestAnimationFrame(loop);
     }
 
-    spawnAmbientFish() {
-        if (!this.effectCanvas) return;
-
-        // Random creature type selection
-        const rand = Math.random();
-        let creatureType;
-
-        if (rand < 0.6) {
-            creatureType = 'fish'; // 60% fish
-        } else if (rand < 0.8) {
-            creatureType = 'seahorse'; // 20% seahorse
-        } else {
-            creatureType = 'shrimp'; // 20% shrimp
-        }
-
-        const direction = Math.random() > 0.5 ? 1 : -1;
-        const depth = 20 + Math.random() * 60; // 20-80% down the screen
-
-        let size; let speed; let color; let fishType; let
-            verticalPattern;
-
-        if (creatureType === 'seahorse') {
-            // Seahorses - vertical, slow, distinctive
-            size = 10 + Math.random() * 8; // 10-18px
-            speed = 0.3 + Math.random() * 0.3; // Very slow
-            color = 'hsla(190, 35%, 30%, 0.7)'; // Muted blue-green
-            fishType = 'seahorse';
-            verticalPattern = 'bobbing'; // Up and down gently
-        } else if (creatureType === 'shrimp') {
-            // Shrimp - small, quick, darting
-            size = 6 + Math.random() * 6; // 6-12px
-            speed = 1.2 + Math.random() * 0.8; // Quick but erratic
-            color = 'hsla(15, 25%, 35%, 0.6)'; // Pinkish-brown
-            fishType = 'shrimp';
-            verticalPattern = 'darting'; // Fast vertical movements
-        } else {
-            // Regular fish
-            size = 8 + Math.random() * 12; // 8-20px
-            speed = 0.8 + Math.random() * 0.7; // Normal speed
-            const hue = 200 + Math.random() * 30;
-            const lightness = 25 + Math.random() * 15;
-            color = `hsla(${hue}, 40%, ${lightness}%, 0.6)`;
-            fishType = Math.random() > 0.7 ? 'elongated' : 'normal';
-            verticalPattern = 'smooth';
-        }
-
-        this.marineCreatures.push({
-            x: direction > 0 ? -50 : this.effectCanvas.width + 50,
-            y: this.effectCanvas.height * (depth / 100),
-            size,
-            vx: direction * speed,
-            life: 1,
-            duration: 15 + Math.random() * 10,
-            color,
-            isAmbient: true,
-            fishType,
-            verticalPattern,
-            creatureType,
-        });
-    }
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLEANUP
+    // ═══════════════════════════════════════════════════════════════════════════
     stop() {
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers.forEach(unsub => {
+            if (typeof unsub === 'function') unsub();
+        });
         this.eventUnsubscribers = [];
-        this.teardownQualityListener();
-        this.currentComboLevel = 0;
-        const theme = document.getElementById('ocean-theme');
-        if (theme) theme.style.filter = '';
-        this.godRays = [];
-        this.kelpStrands = [];
-        this.lastEffectTime = 0;
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.averageFrameTime = 16.67;
-        this.adaptiveScale = 1;
-        if (this.perfMonitorId) {
-            cancelAnimationFrame(this.perfMonitorId);
-            this.perfMonitorId = null;
-        }
-        if (this.effectRafId) {
-            cancelAnimationFrame(this.effectRafId);
-            this.effectRafId = null;
-        }
-        this.effectLastFrame = 0;
-        this.shockwaveEffects = [];
-        this.biolumParticles = [];
-        this.bubbleBurstParticles = [];
-        this.marineCreatures = [];
-        if (this.effectCtx && this.effectCanvas) {
-            this.effectCtx.clearRect(0, 0, this.effectCanvas.width, this.effectCanvas.height);
-        }
-        super.stop();
-    }
 
-    getTetrominoConfig() {
-        return OCEAN_TETROMINOS;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        this.teardownQualityListener();
+        this.disposeSceneContents();
+
+        if (this.renderer) {
+            this.renderer.dispose();
+            this.renderer = null;
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.uniformsToUpdate = [];
+        this.fishSchools = [];
+
+        const container = document.getElementById('ocean-theme');
+        if (container) container.innerHTML = '';
+
+        super.stop();
     }
 }

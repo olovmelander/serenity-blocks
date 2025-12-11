@@ -24,11 +24,20 @@ export default class RainyWindowTheme extends BaseTheme {
         this.lightningBolts = [];
         this.activeBolt = null;
         this.horizonHaze = null;
+        this.fogSystem = null;
+
+        // Fog State
+        this.fogIntensity = 0;
+        this.targetFogIntensity = 0;
+        this.nextFogTime = 0;
+        this.fogDuration = 0;
+        this.isFogActive = false;
 
         // State
         this.time = 0;
         this.isRaining = true;
         this.lightningIntensity = 0;
+        this.skyFlashIntensity = 0.0; // Smooth sky glow
         this.stormIntensity = 0.5; // 0 to 1
         this.targetStormIntensity = 0.5;
         this.nextLightningTime = 0;
@@ -56,6 +65,9 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Create Rain
         this.createRainSystem();
+
+        // Create Fog System
+        this.createFogSystem();
 
         // Create Lightning System
         this.createLightningSystem();
@@ -429,6 +441,227 @@ export default class RainyWindowTheme extends BaseTheme {
         this.scene.add(this.rainSystem);
     }
 
+    createFogSystem() {
+        // V5: Silky "Smoke" Aesthetic
+        // Focus on smooth gradients and gentle movement
+        const particleCount = 200;
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const sizes = [];
+        const randoms = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            // Spread wide
+            const x = (Math.random() - 0.5) * 3500;
+            const y = -80 + Math.random() * 150;
+            const z = -3000 + Math.random() * 4500;
+
+            positions.push(x, y, z);
+            sizes.push(1200 + Math.random() * 600); // Massive particles for overlapping volumetric look
+            randoms.push(Math.random());
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+        geometry.setAttribute('random', new THREE.Float32BufferAttribute(randoms, 1));
+
+        const fogMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                color: { value: new THREE.Color(0x8899aa) },
+                windStrength: { value: 0.3 },
+                lightningFlash: { value: 0.0 }
+            },
+            vertexShader: `
+                attribute float size;
+                attribute float random;
+                varying float vOpacity;
+                varying vec2 vUv;
+                varying float vRand;
+                varying float vZ;
+                varying vec3 vWorldPos;
+                
+                uniform float time;
+                uniform float windStrength;
+
+                void main() {
+                    vRand = random;
+                    vec3 pos = position;
+
+                    // --- PHYSICAL MOVEMENT ---
+                    // Fog banks roll in from positive Z (behind camera) to negative Z
+                    float moveSpeed = 40.0 + windStrength * 100.0;
+                    float zOffset = time * moveSpeed;
+                    
+                    // Infinite scroll logic
+                    // Original range: -3000 to 1500 (width 4500)
+                    float range = 4500.0;
+                    float startZ = 1500.0;
+                    float currentZ = pos.z - zOffset;
+                    
+                    // Wrap: 1500 -> -3000 -> 1500
+                    pos.z = 1500.0 - mod(1500.0 - currentZ, range);
+
+                    // Organic Wiggle (Smoother for V5)
+                    pos.x += sin(time * 0.05 + random * 100.0) * 40.0;
+
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    
+                    vZ = pos.z;
+                    // Scale down for large smooth features
+                    vWorldPos = pos * 0.0015; 
+
+                    // Size attenuation
+                    gl_PointSize = size * (400.0 / -mvPosition.z);
+
+                    // Fade bounds
+                    float farFade = smoothstep(-3000.0, -2000.0, pos.z);
+                    float nearFade = 1.0 - smoothstep(100.0, 500.0, pos.z); 
+                    
+                    vOpacity = farFade * nearFade;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 color;
+                uniform float lightningFlash;
+                uniform float time;
+                uniform float windStrength;
+                
+                varying float vOpacity;
+                varying float vZ;
+                varying float vRand;
+                varying vec3 vWorldPos;
+
+                // --- NOISE FUNCTIONS ---
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+                float snoise(vec3 v) { 
+                    const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                    const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy) );
+                    vec3 x0 = v - i + dot(i, C.xxx) ;
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min( g.xyz, l.zxy );
+                    vec3 i2 = max( g.xyz, l.zxy );
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+                    i = mod289(i); 
+                    vec4 p = permute( permute( permute( 
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                    float n_ = 0.142857142857; 
+                    vec3  ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z); 
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_ ); 
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4( x.xy, y.xy );
+                    vec4 b1 = vec4( x.zw, y.zw );
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                    vec3 p0 = vec3(a0.xy,h.x);
+                    vec3 p1 = vec3(a0.zw,h.y);
+                    vec3 p2 = vec3(a1.xy,h.z);
+                    vec3 p3 = vec3(a1.zw,h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+                }
+
+                // V5: Smoother FBM
+                float smoothFbm(vec3 p) {
+                    float value = 0.0;
+                    float amplitude = 0.5;
+                    float frequency = 1.0;
+                    // Fewer octaves, lower frequency growth for smoother blending
+                    for (int i = 0; i < 2; i++) { 
+                        value += amplitude * snoise(p * frequency);
+                        p.xy *= 1.5; 
+                        frequency *= 1.8; // Lower lacunarity
+                        amplitude *= 0.5;
+                    }
+                    return value;
+                }
+
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+                    if (dist > 0.5) discard;
+                    
+                    // Super soft edges
+                    float mask = smoothstep(0.5, 0.0, dist);
+                    mask = pow(mask, 1.5); // Smoother falloff
+
+                    // --- V5 SILKY SMOKE ---
+                    
+                    // Slow, smooth time
+                    float smokeTime = time * (0.1 + windStrength * 0.3);
+
+                    // Coordinate
+                    vec3 p = vWorldPos + vec3(uv * 1.5, smokeTime * 0.1);
+                    
+                    // Simple domain warp for large smooth curls
+                    vec3 warp = vec3(
+                        snoise(p + vec3(0.0, 0.0, smokeTime)),
+                        snoise(p + vec3(4.3, 1.1, smokeTime * 1.1)),
+                        0.0
+                    );
+                    
+                    // Single smooth FBM sample on warped coord
+                    float n = smoothFbm(p + warp * 0.5);
+                    
+                    // Normalize to 0..1
+                    n = n * 0.5 + 0.5;
+                    
+                    // Increase contrast for puffy look, but keep gradients smooth
+                    n = smoothstep(0.3, 0.8, n);
+
+                    // Bank density (large gaps)
+                    float bankDensity = snoise(vWorldPos * 1.5 + vec3(0.0, 0.0, time * 0.05));
+                    bankDensity = smoothstep(-0.3, 0.6, bankDensity);
+                    
+                    float density = n * bankDensity;
+                    
+                    // Final alpha - lower opacity for silky see-through look
+                    float alpha = mask * density * vOpacity * 0.5;
+
+                    vec3 fogColor = mix(color * 0.9, color * 1.2, density); // Subtle coloring
+                    fogColor = mix(fogColor, vec3(0.8, 0.85, 1.0), lightningFlash * 0.7);
+
+                    gl_FragColor = vec4(fogColor, alpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.NormalBlending
+        });
+
+        this.fogSystem = new THREE.Points(geometry, fogMaterial);
+        this.fogSystem.renderOrder = -1;
+        this.scene.add(this.fogSystem);
+    }
+
+    scheduleNextFog() {
+        // Random interval for fog banks to roll in
+        // Every 20-40 seconds
+        this.nextFogTime = this.time + 20 + Math.random() * 20;
+        this.fogDuration = 10 + Math.random() * 10; // Fog lasts 10-20 seconds
+    }
+
     createLightningSystem() {
         // Pre-create some lightning bolt geometries
         for (let i = 0; i < 5; i++) {
@@ -542,6 +775,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
     triggerLightning(intensity = 1) {
         this.lightningIntensity = 1.5 + (intensity * 0.5);
+        this.skyFlashIntensity = 1.2 + (intensity * 0.4); // Ignite sky glow
 
         // Show a random lightning bolt
         if (this.lightningBolts.length > 0) {
@@ -601,21 +835,48 @@ export default class RainyWindowTheme extends BaseTheme {
             this.water.material.uniforms['distortionScale'].value = 5.0 + (this.stormIntensity * 3.0);
         }
 
+        // Lightning Decay
+        if (this.lightningIntensity > 0) {
+            this.lightningIntensity *= 0.8; // Sharp decay for bolt
+
+            // Main light with flicker
+            let intensity1 = this.lightningIntensity * 3;
+            let intensity2 = this.lightningIntensity * 2;
+
+            // Random flicker for BOLT only
+            if (Math.random() < 0.4) {
+                intensity1 *= 0.3 + Math.random() * 0.7;
+                intensity2 *= 0.3 + Math.random() * 0.7;
+            }
+
+            if (this.lightningLight) this.lightningLight.intensity = intensity1;
+            if (this.lightningLight2) this.lightningLight2.intensity = intensity2;
+
+            if (this.lightningIntensity < 0.05) this.lightningIntensity = 0;
+        }
+
+        // Sky Flash Decay (Smooth, constant)
+        if (this.skyFlashIntensity > 0) {
+            this.skyFlashIntensity *= 0.96; // Very slow decay (approx 1s)
+            if (this.skyFlashIntensity < 0.01) this.skyFlashIntensity = 0;
+        }
+
+        // Update shaders with smooth skyFlashIntensity
         // Animate Clouds
         if (this.clouds && this.clouds.material.uniforms) {
             this.clouds.material.uniforms.time.value = this.time;
-            this.clouds.material.uniforms.lightningFlash.value = this.lightningIntensity;
+            this.clouds.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
         }
 
         // Animate Sky
         if (this.sky && this.sky.material.uniforms) {
             this.sky.material.uniforms.time.value = this.time;
-            this.sky.material.uniforms.lightningFlash.value = this.lightningIntensity * 0.7;
+            this.sky.material.uniforms.lightningFlash.value = this.skyFlashIntensity * 0.7;
         }
 
         // Animate Horizon Haze
         if (this.horizonHaze && this.horizonHaze.material.uniforms) {
-            this.horizonHaze.material.uniforms.lightningFlash.value = this.lightningIntensity * 0.6;
+            this.horizonHaze.material.uniforms.lightningFlash.value = this.skyFlashIntensity * 0.6;
         }
 
         // Animate Rain
@@ -625,28 +886,31 @@ export default class RainyWindowTheme extends BaseTheme {
             this.rainSystem.material.uniforms.lightningFlash.value = this.lightningIntensity;
         }
 
+        // Animate Fog
+        if (this.fogSystem && this.fogSystem.material.uniforms) {
+            this.fogSystem.material.uniforms.time.value = this.time;
+            this.fogSystem.material.uniforms.windStrength.value = this.windStrength;
+            this.fogSystem.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
+        }
+
         // Lightning Decay
         if (this.lightningIntensity > 0) {
-            this.lightningIntensity *= 0.85;
+            this.lightningIntensity *= 0.8; // Sharp decay for bolt
 
             // Main light with flicker
             let intensity1 = this.lightningIntensity * 3;
             let intensity2 = this.lightningIntensity * 2;
 
-            // Random flicker
+            // Random flicker for BOLT only
             if (Math.random() < 0.4) {
                 intensity1 *= 0.3 + Math.random() * 0.7;
                 intensity2 *= 0.3 + Math.random() * 0.7;
             }
 
-            this.lightningLight.intensity = intensity1;
-            this.lightningLight2.intensity = intensity2;
-
-            // Flash ambient
-            this.ambientLight.intensity = 0.3 + this.lightningIntensity * 0.5;
-
-            // Fog flash
-            this.scene.fog.density = 0.0025 - (this.lightningIntensity * 0.001);
+            if (this.lightningLight) this.lightningLight.intensity = intensity1;
+            if (this.lightningLight2) this.lightningLight2.intensity = intensity2;
+            if (this.ambientLight) this.ambientLight.intensity = 0.3 + this.lightningIntensity * 0.5;
+            if (this.scene && this.scene.fog) this.scene.fog.density = 0.0025 - (this.lightningIntensity * 0.001);
 
             // Fade bolt opacity
             if (this.activeBolt) {
@@ -655,16 +919,21 @@ export default class RainyWindowTheme extends BaseTheme {
                     this.activeBolt.children[0].material.opacity = this.lightningIntensity * 0.5;
                 }
             }
-        } else {
-            this.lightningLight.intensity = 0;
-            this.lightningLight2.intensity = 0;
-            this.ambientLight.intensity = 0.3;
-            this.scene.fog.density = 0.0025;
 
-            // Hide bolt
-            if (this.activeBolt) {
-                this.activeBolt.visible = false;
-            }
+            if (this.lightningIntensity < 0.05) this.lightningIntensity = 0;
+        } else {
+            if (this.lightningLight) this.lightningLight.intensity = 0;
+            if (this.lightningLight2) this.lightningLight2.intensity = 0;
+            if (this.ambientLight) this.ambientLight.intensity = 0.3;
+            if (this.scene && this.scene.fog) this.scene.fog.density = 0.0025;
+
+            if (this.activeBolt) this.activeBolt.visible = false;
+        }
+
+        // Sky Flash Decay (Smooth, constant)
+        if (this.skyFlashIntensity > 0) {
+            this.skyFlashIntensity *= 0.96; // Very slow decay (approx 1s)
+            if (this.skyFlashIntensity < 0.01) this.skyFlashIntensity = 0;
         }
 
         // Render
@@ -698,6 +967,12 @@ export default class RainyWindowTheme extends BaseTheme {
         if (this.rainSystem) {
             this.rainSystem.geometry.dispose();
             this.rainSystem.material.dispose();
+        }
+
+        // Dispose fog system
+        if (this.fogSystem) {
+            this.fogSystem.geometry.dispose();
+            this.fogSystem.material.dispose();
         }
 
         // Dispose lightning bolts
