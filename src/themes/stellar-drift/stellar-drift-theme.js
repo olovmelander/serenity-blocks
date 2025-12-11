@@ -135,6 +135,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.bloomPulseIntensity = 0;  // Smooth bloom boost
         this.nebulaBoostIntensity = 0; // Smooth nebula brightness
         this.glowSurgeIntensity = 0;   // Smooth planet glow surge
+        this.meteorActivity = 0;       // Dynamic meteor spin speed based on APM
 
         // Animation
         this.clock = new THREE.Clock();
@@ -178,6 +179,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.initRenderer(container);
         this.createStarfield();      // 3D point stars
         this.createNebulaClouds();   // Colorful nebula
+        this.createOrbitingParticles(); // NEW: 3D Orbiting particles (Supernova-style)
         // this.createBackground();   // REMOVED: Was causing foreground artifact issues
         this.createPlanet();
         this.createDustRing();        // Dust ring around planet
@@ -405,6 +407,125 @@ export default class StellarDriftTheme extends BaseTheme {
         });
 
         console.log('[StellarDrift] Vibrant Nebula clouds created with edge lights');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Orbiting Particles (Supernova Style)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createOrbitingParticles() {
+        // High count for dense field
+        const particleCount = 2000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const randoms = new Float32Array(particleCount); // For phase/size variation
+        const colors = new Float32Array(particleCount * 3);
+
+        const colorPalette = [
+            new THREE.Color(0x00FFFF), // Cyan
+            new THREE.Color(0xFF00FF), // Magenta
+            new THREE.Color(0xFFFFFF), // White
+            new THREE.Color(0x0088FF), // Blue
+        ];
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            randoms[i] = Math.random();
+
+            // Distribute in a thick torus/disk around the planet
+            const theta = Math.random() * Math.PI * 2;
+            // Radius from 400 (near planet) to 1500 (far out)
+            const r = 400 + Math.pow(Math.random(), 2) * 1100;
+
+            // Random scatter
+            const scatter = 50 + Math.random() * 150;
+
+            positions[i3] = Math.cos(theta) * r + (Math.random() - 0.5) * scatter;
+            // Y spread depends on radius (thicker near planet)
+            positions[i3 + 1] = (Math.random() - 0.5) * (300 - (r * 0.1));
+            positions[i3 + 2] = Math.sin(theta) * r + (Math.random() - 0.5) * scatter;
+
+            // Colors
+            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        // Custom shader for smooth points with size attenuation and transparency
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+            },
+            vertexShader: `
+                uniform float uTime;
+                attribute float aRandom;
+                attribute vec3 color;
+                varying vec3 vColor;
+                varying float vAlpha;
+                
+                void main() {
+                    vColor = color;
+                    vec3 pos = position;
+                    
+                    // Orbit rotation (slow)
+                    float angle = uTime * 0.05 * (0.5 + aRandom * 0.5);
+                    // Add slight vertical wave
+                    pos.y += sin(angle * 2.0 + pos.x * 0.01) * 20.0;
+                    
+                    // Simple rotation matrix around Y axis
+                    float c = cos(angle);
+                    float s = sin(angle);
+                    vec3 rotatedPos = vec3(
+                        pos.x * c + pos.z * s,
+                        pos.y,
+                        -pos.x * s + pos.z * c
+                    );
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    
+                    // Size attenuation - INCREASED SIZE
+                    gl_PointSize = (8.0 * aRandom + 4.0) * (500.0 / -mvPosition.z);
+                    
+                    // Twinkle support
+                    float twinkle = sin(uTime * 3.0 + aRandom * 10.0);
+                    vAlpha = 0.8 + 0.2 * twinkle; // Higher base opacity
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vAlpha;
+                
+                void main() {
+                    // Soft circular particle
+                    vec2 coord = gl_PointCoord - vec2(0.5);
+                    float dist = length(coord);
+                    if (dist > 0.5) discard;
+                    
+                    // Soft edge glow
+                    float strength = 1.0 - (dist * 2.0);
+                    strength = pow(strength, 1.5);
+                    
+                    gl_FragColor = vec4(vColor, vAlpha * strength);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.orbitingParticles = new THREE.Points(geometry, material);
+        // Tilt the whole system to match the other rings
+        this.orbitingParticles.rotation.z = 0.2;
+        this.orbitingParticles.rotation.x = 0.3;
+
+        this.scene.add(this.orbitingParticles);
+        console.log('[StellarDrift] 3D Orbiting particles created');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -847,7 +968,7 @@ export default class StellarDriftTheme extends BaseTheme {
             mesh.position.y = (Math.random() - 0.5) * 150 - 200 + beltTilt; // Much lower (-200)
 
             // Define animation properties
-            const speed = -(Math.random() * 0.2 + 0.1) * 0.005; // Negative for Opposite Rotation
+            const speed = -(Math.random() * 0.2 + 0.1) * 0.002; // Reduced base speed (was 0.005)
 
             this.meteors.push({
                 mesh,
@@ -857,9 +978,9 @@ export default class StellarDriftTheme extends BaseTheme {
                 yBase: mesh.position.y,
                 // Rotation (tumbling)
                 rotationSpeed: {
-                    x: Math.random() * 0.005 + 0.005,
-                    y: Math.random() * 0.005 + 0.005,
-                    z: Math.random() * 0.005 + 0.005,
+                    x: Math.random() * 0.002 + 0.002, // Reduced rotation speed
+                    y: Math.random() * 0.002 + 0.002,
+                    z: Math.random() * 0.002 + 0.002,
                 },
             });
 
@@ -935,6 +1056,10 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // 3. BLOOM PULSE - Smooth intensity boost
         this.bloomPulseIntensity = 0.3; // Will decay smoothly
+
+        // 4. METEOR SPIN BOOST - Spin faster when playing fast
+        // Cap at 5.0 (significant speed boost)
+        this.meteorActivity = Math.min(this.meteorActivity + 0.8, 5.0);
     }
 
     createShockwaveRing() {
@@ -1025,9 +1150,23 @@ export default class StellarDriftTheme extends BaseTheme {
 
             this.time += 0.002;
 
-            // Update planet shader
             if (this.planet?.material?.uniforms) {
                 this.planet.material.uniforms.uTime.value = this.time;
+            }
+
+            // Update Orbiting Particles Shader
+            if (this.orbitingParticles?.material?.uniforms) {
+                this.orbitingParticles.material.uniforms.uTime.value = this.time;
+            }
+
+            // CAMERA DRIFT: Figure-8 parallax movement - INCREASED AMPLITUDE
+            if (this.camera) {
+                const xDrift = Math.sin(this.time * 0.15) * 150;  // Was 50 - tripled
+                const yDrift = Math.cos(this.time * 0.1) * 80;    // Was 30 - nearly tripled
+                this.camera.position.x = xDrift;
+                this.camera.position.y = 100 + yDrift; // Add to base Y=100
+                // Always look at center (0,0,0) to maintain focus
+                this.camera.lookAt(0, 0, 0);
             }
 
             // Rotate planet around its axis
@@ -1045,10 +1184,21 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             });
 
+            // ─────────────────────────────────────────────────────────────────
+            // DYNAMIC METEOR ACTIVITY
+            // Decay meteor activity smoothly
+            if (this.meteorActivity > 0) {
+                this.meteorActivity *= 0.998; // Decays much slower (stays fast longer)
+                if (this.meteorActivity < 0.01) this.meteorActivity = 0;
+            }
+
+            // Speed multiplier: 1.0 (base) up to ~5.0 (fastest, was ~8.5)
+            const speedMultiplier = 1.0 + (this.meteorActivity * 0.8);
+
             // Move meteors (Rotate around planet)
             this.meteors.forEach((m) => {
                 // Orbital rotation
-                m.angle += m.speed;
+                m.angle += m.speed * speedMultiplier;
 
                 // Update position based on new angle
                 m.mesh.position.x = Math.sin(m.angle) * m.radius;
@@ -1058,9 +1208,9 @@ export default class StellarDriftTheme extends BaseTheme {
                 m.mesh.position.y = m.yBase + Math.sin(m.angle * 2.0 + this.time) * 10;
 
                 // Tumble rotation
-                m.mesh.rotation.x -= m.rotationSpeed.x;
-                m.mesh.rotation.y -= m.rotationSpeed.y;
-                m.mesh.rotation.z -= m.rotationSpeed.z;
+                m.mesh.rotation.x -= m.rotationSpeed.x * speedMultiplier;
+                m.mesh.rotation.y -= m.rotationSpeed.y * speedMultiplier;
+                m.mesh.rotation.z -= m.rotationSpeed.z * speedMultiplier;
             });
 
             // Animate ambient particles (very gentle drift - reduced speed to prevent jitter)

@@ -654,8 +654,8 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         this.scene = new THREE.Scene();
 
-        // SYNTHCITY FOG - Extended distance for visible distant buildings
-        this.scene.fog = new THREE.Fog(0x1a0a2e, 200, 3500);
+        // SYNTHCITY FOG - Pushed further away for clearer center view
+        this.scene.fog = new THREE.Fog(0x1a0a2e, 600, 4500);
 
         // Street-level camera IN THE ALLEY - more horizontal view
         this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 3000);
@@ -858,7 +858,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         ad.userData.isAd = true;
         ad.userData.switchInterval = 200 + Math.random() * 800;
         ad.userData.switchCounter = Math.random() * ad.userData.switchInterval;
-        ad.userData.switches = Math.random() < 0.3; // 30% of ads switch
+        ad.userData.switches = Math.random() < 0.7; // 70% of ads switch
         ad.userData.isLarge = isLarge;
 
         building.add(ad);
@@ -866,23 +866,16 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     createStorefront(building, width, depth) {
-        const height = 24; // Standard ground floor height
-        const geometry = new THREE.BoxGeometry(width + 2, height, depth + 2);
+        // Try to get a unique storefront material
+        const material = this.assets?.getRandomStorefrontMaterial();
 
-        // Randomly select between storefront variants (full texture, not cropped)
-        let material = this.assets?.getRandomStorefrontMaterial();
-
+        // If no storefront available, skip entirely (no glow on this building)
         if (!material) {
-            // Fallback: procedural storefront
-            const hue = 0.5 + Math.random() * 0.4;
-            const color = new THREE.Color().setHSL(hue, 1.0, 0.55);
-            material = new THREE.MeshPhongMaterial({
-                color: color,
-                emissive: color,
-                emissiveIntensity: 1.0,
-                shininess: 0
-            });
+            return;
         }
+
+        const height = 36; // Ground floor height
+        const geometry = new THREE.BoxGeometry(width + 2, height, depth + 2);
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.y = height / 2;
@@ -1746,7 +1739,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const lineMaterial = new THREE.MeshBasicMaterial({
             map: lineTexture,
             transparent: true,
-            opacity: 0.85,
+            opacity: 0.55,  // Reduced from 0.85 for less glow
         });
         const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
         centerLine.rotation.x = -Math.PI / 2;
