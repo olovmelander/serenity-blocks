@@ -1,976 +1,526 @@
+import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SUPERNOVA_TETROMINOS } from './supernova-tetrominos.js';
+import { coreVertexShader, coreFragmentShader, shockwaveVertexShader, shockwaveFragmentShader, particleFragmentShader } from './supernova-shaders.js';
 
 export default class SupernovaTheme extends BaseTheme {
     constructor() {
         super('supernova');
         this.eventUnsubscribers = [];
-        this.stars = [];
-        this.shockwaveParticles = [];
+
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null; // Container for drifting elements
+        this.coreMesh = null;
+        this.starSystem = null;
+        this.shockwaves = [];
+        this.flares = []; // Solar flares
+        this.particles = null;
+
+        // Animation loop
         this.animationFrame = null;
-        this.canvas = null;
-        this.ctx = null;
+        this.clock = new THREE.Clock();
 
-        // Performance optimization
-        this.lastFrameTime = 0;
-        this.targetFrameTime = 1000 / 60; // 60 FPS
-        this.particleRenderBatch = 10; // Render particles in batches
-
-        // Pre-compute color cache
-        this.colorCache = new Map();
-
-        // Effect state tracking for smooth transitions
-        this.activeEffectTimeout = null;
-        this.currentBrightness = 100;
-        this.currentSaturation = 100;
-
-        // Drift state for slow screen movement
-        this.driftAngle = 0;
-        this.driftSpeed = 0.0005; // Very slow drift (radians per frame) - about 2 minutes per cycle
-        this.driftRadius = 0; // Will be set based on screen size
-        this.driftX = 0;
-        this.driftY = 0;
-        this.baseCenterX = 0;
-        this.baseCenterY = 0;
-
-        // Cached DOM references for rebuilds
-        this.starsContainer = null;
-        this.rayContainer = null;
-        this.filamentContainer = null;
-
-        // Graphics quality presets
-        this.qualityChangeHandler = null;
-        this.qualityPresets = {
-            Minimal: {
-                starCount: 40,
-                shockwaveParticles: 100,
-                energyRays: 4,
-                coreFilaments: 6,
-                driftRadiusScale: 0.15,
-            },
-            Low: {
-                starCount: 60,
-                shockwaveParticles: 160,
-                energyRays: 6,
-                coreFilaments: 10,
-                driftRadiusScale: 0.2,
-            },
-            Medium: {
-                starCount: 80,
-                shockwaveParticles: 200,
-                energyRays: 8,
-                coreFilaments: 12,
-                driftRadiusScale: 0.25,
-            },
-            High: {
-                starCount: 100,
-                shockwaveParticles: 250,
-                energyRays: 10,
-                coreFilaments: 15,
-                driftRadiusScale: 0.3,
-            },
-            Ultra: {
-                starCount: 140,
-                shockwaveParticles: 320,
-                energyRays: 14,
-                coreFilaments: 20,
-                driftRadiusScale: 0.35,
-            },
-            Extreme: {
-                starCount: 200,
-                shockwaveParticles: 450,
-                energyRays: 20,
-                coreFilaments: 30,
-                driftRadiusScale: 0.42,
-            },
+        // State
+        this.uniforms = {
+            time: { value: 0 },
+            coreIntensity: { value: 1.0 },
+            coreColorPrimary: { value: new THREE.Color(0xFF0033) }, // Deep Nebula Red
+            coreColorSecondary: { value: new THREE.Color(0xFFD700) }, // Solar Gold
+            coreColorTertiary: { value: new THREE.Color(0x0088FF) }, // Electric Blue (Outer)
         };
 
-        this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets.High;
+        // Theme palette for random effects
+        this.palette = [
+            new THREE.Color(0xFF3333), // Red
+            new THREE.Color(0x0088FF), // Blue
+            new THREE.Color(0xFFAA00), // Gold
+            new THREE.Color(0x00FF88), // Mint
+            new THREE.Color(0xFF00FF), // Magenta
+            new THREE.Color(0x00FFFF)  // Cyan
+        ];
     }
 
-    applyQualityPreset(quality, { skipRefresh = false } = {}) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Supernova: Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        if (!skipRefresh) {
-            this.refreshQualityDependentElements();
-        }
-
-        console.log(`💥 Supernova: Applying ${quality} quality preset`);
-    }
-
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
-    }
-
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-        }
-
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            this.applyQualityPreset(newQuality);
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
-    refreshQualityDependentElements() {
-        this.createStars(true);
-        this.createEnergyRays(true);
-        this.createCoreFilaments(true);
-        this.resetShockwaveParticles();
+    getRandomThemeColor() {
+        return this.palette[Math.floor(Math.random() * this.palette.length)];
     }
 
     async createScene() {
-        console.log('[Supernova] Creating scene...');
+        console.log('[Supernova] Initializing Three.js scene...');
 
-        try {
-            const quality = this.getGraphicsQuality();
-            this.applyQualityPreset(quality, { skipRefresh: true });
-
-            // Create background stars
-            this.createStars(true);
-
-            // Create expanding shockwave particles using canvas
-            this.createShockwaveCanvas();
-
-            // Create energy rays
-            this.createEnergyRays(true);
-
-            // Create pulsing core filaments
-            this.createCoreFilaments(true);
-
-            // Setup event listeners for reactive effects
-            this.setupEventListeners();
-
-            // Listen for runtime graphics changes
-            this.setupQualityListener();
-
-            console.log('[Supernova] Scene created successfully!');
-        } catch (error) {
-            console.error('[Supernova] Error in createScene():', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Create background stars
-     */
-    createStars(force = false) {
-        if (!this.starsContainer) {
-            this.starsContainer = document.getElementById('supernova-stars');
-            if (this.starsContainer) {
-                this.registerContainer(this.starsContainer);
-            }
-        }
-
-        const { starsContainer } = this;
-        if (!starsContainer) return;
-        if (!force && starsContainer.children.length > 0) return;
-
-        starsContainer.textContent = '';
-        this.stars = [];
-
-        const fragment = document.createDocumentFragment();
-        const starCount = this.activePreset?.starCount ?? 100; // Reduced from 150 for performance
-
-        // Define star color palette matching the supernova theme
-        const starColors = [
-            'rgba(255, 255, 255, 1)', // White
-            'rgba(100, 220, 255, 1)', // Bright cyan
-            'rgba(150, 100, 255, 1)', // Electric purple
-            'rgba(255, 80, 220, 1)', // Hot pink
-            'rgba(255, 150, 100, 1)', // Orange
-            'rgba(255, 200, 80, 1)', // Golden yellow
-            'rgba(80, 255, 200, 1)', // Turquoise
-            'rgba(180, 150, 255, 1)', // Lavender
-        ];
-
-        for (let i = 0; i < starCount; i++) {
-            const star = document.createElement('div');
-            star.className = 'supernova-star';
-            const size = this.random(0.5, 2);
-            const isBright = Math.random() < 0.15; // 15% chance of bright star
-
-            star.style.width = `${size}px`;
-            star.style.height = `${size}px`;
-            star.style.left = `${this.random(0, 100)}%`;
-            star.style.top = `${this.random(0, 100)}%`;
-            star.style.backgroundColor = starColors[Math.floor(Math.random() * starColors.length)];
-            star.style.opacity = `${this.random(0.4, 0.9).toFixed(2)}`;
-            star.style.animationDelay = `${this.random(0, 5)}s`;
-
-            if (isBright) {
-                star.classList.add('supernova-star-bright');
-                star.style.boxShadow = `0 0 ${size * 3}px ${star.style.backgroundColor}`;
-            }
-
-            fragment.appendChild(star);
-            this.stars.push(star);
-        }
-
-        starsContainer.appendChild(fragment);
-    }
-
-    /**
-     * Create shockwave particles using canvas for better performance
-     */
-    createShockwaveCanvas() {
-        this.canvas = document.getElementById('supernova-shockwave-canvas');
-        if (!this.canvas) {
-            console.warn('[Supernova] Shockwave canvas not found!');
+        const container = document.getElementById('supernova-theme');
+        if (!container) {
+            console.error('[Supernova] Container not found');
             return;
         }
 
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        // Clean up previous elements if any (fallback)
+        container.innerHTML = '';
 
-        this.ctx = this.canvas.getContext('2d', {
+        // -- Setup Scene --
+        this.scene = new THREE.Scene();
+        // Deep space fog
+        this.scene.fog = new THREE.FogExp2(0x050011, 0.002);
+
+        // -- Setup Camera --
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.z = 20;
+
+        // -- Setup Renderer --
+        this.renderer = new THREE.WebGLRenderer({
             alpha: true,
-            desynchronized: true, // Enable async rendering
+            antialias: true,
+            powerPreference: "high-performance"
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(this.renderer.domElement);
+
+        // -- Create Elements --
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        this.createCore();
+        this.createStars(); // Stars stay in root scene (background)
+        this.createNebulaParticles();
+        this.setupLighting();
+
+        // -- Setup Listeners --
+        this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // -- Start Loop --
+        this.animate();
+
+        console.log('[Supernova] Scene initialized.');
+    }
+
+    createCore() {
+        const geometry = new THREE.SphereGeometry(3, 64, 64);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                intensity: this.uniforms.coreIntensity,
+                colorPrimary: this.uniforms.coreColorPrimary,
+                colorSecondary: this.uniforms.coreColorSecondary,
+                colorTertiary: this.uniforms.coreColorTertiary,
+            },
+            vertexShader: coreVertexShader,
+            fragmentShader: coreFragmentShader,
+            transparent: true,
+            side: THREE.FrontSide,
+            blending: THREE.AdditiveBlending
         });
 
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
+        this.coreMesh = new THREE.Mesh(geometry, material);
+        this.mainGroup.add(this.coreMesh);
 
-        // Initialize drift parameters
-        this.baseCenterX = centerX;
-        this.baseCenterY = centerY;
-        const driftScale = this.activePreset?.driftRadiusScale ?? 0.3;
-        this.driftRadius = Math.min(this.canvas.width, this.canvas.height) * driftScale;
-
-        this.initializeShockwaveParticles();
-
-        // Start animation
-        this.animateShockwave(this.canvas, this.ctx, centerX, centerY);
+        // Add a simple glow sprite behind/around the core for extra bloom
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: this.createGlowTexture(),
+            color: 0xffaa00, // Golden-orange glow
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false // Prevent writing to depth buffer to avoid sorting issues
+        });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(16, 16, 1); // Slightly larger
+        this.coreMesh.add(sprite); // Attach to core so it moves with it
     }
 
-    initializeShockwaveParticles() {
-        if (!this.canvas || !this.ctx) return;
+    createGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; // Increased resolution
+        canvas.height = 64;
+        const context = canvas.getContext('2d');
+        const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 100, 100, 0.8)'); // Red center
+        gradient.addColorStop(0.3, 'rgba(255, 0, 255, 0.3)'); // Magenta mid
+        gradient.addColorStop(0.6, 'rgba(0, 100, 255, 0.15)'); // Blue outer
+        gradient.addColorStop(1, 'rgba(0,0,0,0)'); // Transparency at edge
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, 64, 64);
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+    }
 
-        this.shockwaveParticles = [];
-        const particleCount = this.activePreset?.shockwaveParticles ?? 250;
-        const driftScale = this.activePreset?.driftRadiusScale ?? 0.3;
-        this.driftRadius = Math.min(this.canvas.width, this.canvas.height) * driftScale;
+    createStars() {
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 2000;
 
-        // Supernova color palette - vibrant explosion colors
+        const posArray = new Float32Array(starsCount * 3);
+        const colorArray = new Float32Array(starsCount * 3);
+
         const colors = [
-            { r: 100, g: 220, b: 255 }, // Bright cyan (core)
-            { r: 80, g: 180, b: 255 }, // Cyan-blue
-            { r: 150, g: 100, b: 255 }, // Electric purple
-            { r: 255, g: 80, b: 220 }, // Hot pink
-            { r: 255, g: 100, b: 150 }, // Pink-red
-            { r: 255, g: 150, b: 100 }, // Orange
-            { r: 255, g: 200, b: 80 }, // Golden yellow
-            { r: 180, g: 150, b: 255 }, // Lavender
+            new THREE.Color(0xFF3333), // Red
+            new THREE.Color(0x0088FF), // Blue
+            new THREE.Color(0xFFAA00), // Gold
+            new THREE.Color(0x00FF88)  // Mint/Green hint from image
         ];
 
-        for (let i = 0; i < particleCount; i++) {
-            const angle = this.random(0, Math.PI * 2);
-            const distance = this.random(50, 400);
-            const expansionSpeed = this.random(0.1, 0.4);
-            const size = this.random(1.5, 3.5);
-            const opacity = this.random(0.35, 0.75);
+        for (let i = 0; i < starsCount * 3; i += 3) {
+            // Spread stars in a wide volume
+            posArray[i] = (Math.random() - 0.5) * 100;   // x
+            posArray[i + 1] = (Math.random() - 0.5) * 100; // y
+            posArray[i + 2] = (Math.random() - 0.5) * 80 - 10; // z (mostly behind)
 
-            const colorIndex = Math.floor((distance / 400) * colors.length);
-            const color = colors[Math.min(colorIndex, colors.length - 1)];
-
-            this.shockwaveParticles.push({
-                angle,
-                distance,
-                maxDistance: this.random(300, 500),
-                expansionSpeed,
-                size,
-                opacity,
-                baseOpacity: opacity,
-                color,
-                pulse: this.random(0, Math.PI * 2),
-                pulseSpeed: this.random(0.02, 0.05),
-                orbitAngle: this.random(0, Math.PI * 2),
-                orbitSpeed: this.random(-0.01, 0.01),
-                turbulence: this.random(0.5, 2),
-            });
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            colorArray[i] = color.r;
+            colorArray[i + 1] = color.g;
+            colorArray[i + 2] = color.b;
         }
+
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        starsGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.15,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.starSystem = new THREE.Points(starsGeometry, material);
+        this.scene.add(this.starSystem);
     }
 
-    resetShockwaveParticles() {
-        if (!this.canvas) return;
-        this.initializeShockwaveParticles();
+    createNebulaParticles() {
+        const particleCount = 200;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const randoms = new Float32Array(particleCount); // For phase offset
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            // Orbiting ring shape
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 5 + Math.random() * 10;
+
+            positions[i3] = Math.cos(angle) * radius;
+            positions[i3 + 1] = (Math.random() - 0.5) * 2; // Flattened disc
+            positions[i3 + 2] = Math.sin(angle) * radius;
+
+            randoms[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+
+        // Use a simple shader-like material for particles
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                color: { value: new THREE.Color(0x00FFFF) }, // Cyan particles (shockwave debris)
+                opacity: { value: 0.6 }
+            },
+            vertexShader: `
+                uniform float time;
+                attribute float aRandom;
+                varying float vAlpha;
+                void main() {
+                    vec3 pos = position;
+                    // Orbit rotation
+                    float angle = time * 0.1 * (1.0 + aRandom);
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    vec3 rotatedPos = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
+                    
+                    // Gentle floatiness
+                    rotatedPos.y += sin(time + aRandom * 10.0) * 0.5;
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    
+                    // Size attenuation
+                    gl_PointSize = (4.0 * aRandom + 2.0) * (20.0 / -mvPosition.z);
+                    
+                    vAlpha = 0.5 + 0.5 * sin(time * 2.0 + aRandom * 10.0);
+                }
+            `,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.particles);
     }
 
-    /**
-     * Animate shockwave particles - OPTIMIZED
-     */
-    animateShockwave(canvas, ctx, centerX, centerY) {
+    setupLighting() {
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.0); // Soft purple ambient
+        this.scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xff6600, 2, 80);
+        pointLight.position.set(0, 0, 0); // Light from the core
+        this.mainGroup.add(pointLight); // Light moves with the core
+    }
+
+    animate() {
         if (!this.isActive) return;
 
-        // Frame throttling for performance
-        const now = performance.now();
-        const deltaTime = now - this.lastFrameTime;
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
-        if (deltaTime < this.targetFrameTime) {
-            this.animationFrame = requestAnimationFrame(() => this.animateShockwave(canvas, ctx, centerX, centerY));
-            return;
+        const delta = this.clock.getDelta();
+        const elapsedTime = this.clock.getElapsedTime();
+        this.uniforms.time.value = elapsedTime;
+
+        // Rotate stars slowly
+        if (this.starSystem) {
+            this.starSystem.rotation.y = elapsedTime * 0.02;
+            this.starSystem.rotation.z = elapsedTime * 0.005;
         }
 
-        this.lastFrameTime = now - (deltaTime % this.targetFrameTime);
+        // Pulse core intensity decay
+        if (this.uniforms.coreIntensity.value > 1.0) {
+            this.uniforms.coreIntensity.value = THREE.MathUtils.lerp(this.uniforms.coreIntensity.value, 1.0, delta * 2.0);
+        }
 
-        // Update drift - creates a slow figure-8 pattern
-        this.driftAngle += this.driftSpeed;
-        this.driftX = Math.cos(this.driftAngle) * this.driftRadius;
-        this.driftY = Math.sin(this.driftAngle * 2) * this.driftRadius * 0.5; // Half amplitude on Y for figure-8
+        // Subtle drift for the core group
+        if (this.mainGroup) {
+            // Slow, complex figure-8-like drift
+            const time = elapsedTime * 0.15; // Very slow
+            this.mainGroup.position.x = Math.sin(time) * 3.0 + Math.cos(time * 0.7) * 1.5;
+            this.mainGroup.position.y = Math.cos(time * 0.8) * 2.0 + Math.sin(time * 0.4) * 1.0;
 
-        // Update DOM element positions to follow the drift
-        this.updateDriftPositions();
+            // Also gently rotate the whole group
+            this.mainGroup.rotation.z = Math.sin(time * 0.2) * 0.1;
+        }
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Update shockwaves and flares
+        this.updateShockwaves(delta);
+        this.updateFlares(delta);
 
-        // Remove expired combo particles
-        this.shockwaveParticles = this.shockwaveParticles.filter((particle) => {
-            if (particle.isComboParticle) {
-                particle.lifetime += deltaTime;
-                return particle.lifetime < particle.maxLifetime;
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    updateShockwaves(delta) {
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+            const wave = this.shockwaves[i];
+            wave.scale.addScalar(wave.userData.speed * delta);
+            wave.userData.life -= delta;
+
+            // Fade out
+            if (wave.material.uniforms) {
+                wave.material.uniforms.opacity.value = wave.userData.life / wave.userData.maxLife;
+            } else {
+                wave.material.opacity = wave.userData.life / wave.userData.maxLife;
             }
-            return true; // Keep non-combo particles
+
+            if (wave.userData.life <= 0) {
+                this.mainGroup.remove(wave);
+                if (wave.geometry) wave.geometry.dispose();
+                if (wave.material) wave.material.dispose();
+                this.shockwaves.splice(i, 1);
+            }
+        }
+    }
+
+    createShockwave(intensity) {
+        const geometry = new THREE.TorusGeometry(3.5, 0.1, 8, 50);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                opacity: { value: 1.0 },
+                color: { value: this.getRandomThemeColor() } // Random palette color
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
         });
 
-        // Batch particle updates and renders
-        const particleCount = this.shockwaveParticles.length;
+        const wave = new THREE.Mesh(geometry, material);
+        wave.rotation.x = Math.random() * Math.PI; // Random orientation
+        wave.rotation.y = Math.random() * Math.PI;
+
+        wave.userData = {
+            speed: 5.0 + intensity * 2.0,
+            life: 1.0,
+            maxLife: 1.0
+        };
+
+        this.mainGroup.add(wave);
+        this.shockwaves.push(wave);
+    }
+
+    createSolarFlare() {
+        if (!this.mainGroup) return;
+
+        const particleCount = 20;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        // Pick a random direction for the burst
+        const angle = Math.random() * Math.PI * 2;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
 
         for (let i = 0; i < particleCount; i++) {
-            const particle = this.shockwaveParticles[i];
+            // Start near core surface
+            positions[i * 3] = dirX * 2.0 + (Math.random() - 0.5);
+            positions[i * 3 + 1] = dirY * 2.0 + (Math.random() - 0.5);
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 2.0;
 
-            // Expand outward
-            particle.distance += particle.expansionSpeed;
-
-            // Add turbulence/orbital motion
-            particle.orbitAngle += particle.orbitSpeed;
-            const turbulenceX = Math.cos(particle.orbitAngle) * particle.turbulence;
-            const turbulenceY = Math.sin(particle.orbitAngle) * particle.turbulence;
-
-            // Update pulse
-            particle.pulse += particle.pulseSpeed;
-
-            // Reset if particle goes beyond max distance
-            if (particle.distance > particle.maxDistance) {
-                particle.distance = this.random(30, 80);
-                particle.opacity = particle.baseOpacity;
-            }
-
-            // Fade out as it expands
-            const fadeStart = particle.maxDistance * 0.7;
-            if (particle.distance > fadeStart) {
-                const fadeProgress = (particle.distance - fadeStart) / (particle.maxDistance - fadeStart);
-                particle.opacity = particle.baseOpacity * (1 - fadeProgress);
-            }
-
-            // Fade out combo particles based on lifetime
-            if (particle.isComboParticle) {
-                const lifetimeProgress = particle.lifetime / particle.maxLifetime;
-                // Start fading at 70% of lifetime
-                if (lifetimeProgress > 0.7) {
-                    const fadeOutProgress = (lifetimeProgress - 0.7) / 0.3;
-                    particle.opacity *= (1 - fadeOutProgress);
-                }
-            }
-
-            // Calculate position with turbulence (canvas itself is drifting)
-            const x = centerX + Math.cos(particle.angle) * particle.distance + turbulenceX;
-            const y = centerY + Math.sin(particle.angle) * particle.distance + turbulenceY;
-
-            // Calculate pulsing opacity
-            const pulseOpacity = Math.max(0, particle.opacity + Math.sin(particle.pulse) * 0.15);
-
-            // Skip particles that are too dim (optimization)
-            if (pulseOpacity < 0.05) continue;
-
-            // Cache color string for better performance
-            const { r, g, b } = particle.color;
-            const colorKey = `${r}-${g}-${b}`;
-
-            if (!this.colorCache.has(colorKey)) {
-                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2.5);
-                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
-                gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.5)`);
-                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-                this.colorCache.set(colorKey, gradient);
-            }
-
-            // Draw particle with cached gradient
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.globalAlpha = pulseOpacity;
-            ctx.fillStyle = this.colorCache.get(colorKey);
-            ctx.beginPath();
-            ctx.arc(0, 0, particle.size * 2.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+            // Explosion velocity
+            const speed = 5.0 + Math.random() * 10.0;
+            const spread = 0.5;
+            velocities.push({
+                x: dirX * speed + (Math.random() - 0.5) * spread,
+                y: dirY * speed + (Math.random() - 0.5) * spread,
+                z: (Math.random() - 0.5) * spread * 2.0
+            });
         }
 
-        this.animationFrame = requestAnimationFrame(() => this.animateShockwave(canvas, ctx, centerX, centerY));
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: this.getRandomThemeColor(), // Random palette color
+            size: 0.4,
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending
+        });
+
+        const flare = new THREE.Points(geometry, material);
+        flare.userData = {
+            velocities: velocities,
+            life: 0.6, // Short life
+            maxLife: 0.6
+        };
+
+        this.mainGroup.add(flare);
+        this.flares.push(flare);
     }
 
-    /**
-     * Update positions of DOM elements to follow the drift
-     */
-    updateDriftPositions() {
-        // Apply drift using CSS translate property for all elements (consistent approach)
-        const starsContainer = document.getElementById('supernova-stars');
-        if (starsContainer) {
-            starsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
+    updateFlares(delta) {
+        for (let i = this.flares.length - 1; i >= 0; i--) {
+            const flare = this.flares[i];
+            const positions = flare.geometry.attributes.position.array;
+            const velocities = flare.userData.velocities;
 
-        const core = document.querySelector('.supernova-core');
-        if (core) {
-            core.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
+            flare.userData.life -= delta;
 
-        const shell = document.querySelector('.supernova-shell');
-        if (shell) {
-            shell.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
+            // Move particles
+            for (let j = 0; j < velocities.length; j++) {
+                positions[j * 3] += velocities[j].x * delta;
+                positions[j * 3 + 1] += velocities[j].y * delta;
+                positions[j * 3 + 2] += velocities[j].z * delta;
+            }
+            flare.geometry.attributes.position.needsUpdate = true;
 
-        const canvas = document.getElementById('supernova-shockwave-canvas');
-        if (canvas) {
-            canvas.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
+            // Fade out
+            flare.material.opacity = flare.userData.life / flare.userData.maxLife;
 
-        const raysContainer = document.getElementById('supernova-rays');
-        if (raysContainer) {
-            raysContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
-
-        const filamentsContainer = document.getElementById('supernova-filaments');
-        if (filamentsContainer) {
-            filamentsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
-
-        const pulsesContainer = document.getElementById('supernova-pulses');
-        if (pulsesContainer) {
-            pulsesContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
-
-        const burstsContainer = document.getElementById('supernova-bursts');
-        if (burstsContainer) {
-            burstsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
-        }
-
-        const explosionsContainer = document.getElementById('supernova-explosions');
-        if (explosionsContainer) {
-            explosionsContainer.style.translate = `${this.driftX}px ${this.driftY}px`;
+            if (flare.userData.life <= 0) {
+                this.mainGroup.remove(flare);
+                flare.geometry.dispose();
+                flare.material.dispose();
+                this.flares.splice(i, 1);
+            }
         }
     }
 
-    /**
-     * Create energy rays radiating from core
-     */
-    createEnergyRays(force = false) {
-        if (!this.rayContainer) {
-            this.rayContainer = document.getElementById('supernova-rays');
-            if (this.rayContainer) {
-                this.registerContainer(this.rayContainer);
-            }
-        }
-
-        const { rayContainer } = this;
-        if (!rayContainer) return;
-        if (!force && rayContainer.children.length > 0) return;
-
-        rayContainer.textContent = '';
-
-        const fragment = document.createDocumentFragment();
-        const rayCount = this.activePreset?.energyRays ?? 10; // Reduced from 12 for performance
-        for (let i = 0; i < rayCount; i++) {
-            const ray = document.createElement('div');
-            ray.className = 'supernova-ray';
-
-            const angle = (i * 36) + this.random(-10, 10);
-            const length = this.random(300, 600);
-            const width = this.random(60, 120);
-            const duration = this.random(5, 10);
-
-            ray.style.setProperty('--ray-angle', `${angle}deg`);
-            ray.style.setProperty('--ray-length', `${length}px`);
-            ray.style.setProperty('--ray-width', `${width}px`);
-            ray.style.setProperty('--ray-duration', `${duration}s`);
-            ray.style.animationDelay = `${this.random(0, 4)}s`;
-
-            fragment.appendChild(ray);
-        }
-
-        rayContainer.appendChild(fragment);
-    }
-
-    /**
-     * Create pulsing filaments in the core
-     */
-    createCoreFilaments(force = false) {
-        if (!this.filamentContainer) {
-            this.filamentContainer = document.getElementById('supernova-filaments');
-            if (this.filamentContainer) {
-                this.registerContainer(this.filamentContainer);
-            }
-        }
-
-        const { filamentContainer } = this;
-        if (!filamentContainer) return;
-        if (!force && filamentContainer.children.length > 0) return;
-
-        filamentContainer.textContent = '';
-
-        const fragment = document.createDocumentFragment();
-        const filamentCount = this.activePreset?.coreFilaments ?? 15; // Reduced from 18 for performance
-
-        for (let i = 0; i < filamentCount; i++) {
-            const filament = document.createElement('div');
-            filament.className = 'supernova-filament';
-
-            const angle = (i * 24) + this.random(-10, 10);
-            const length = this.random(80, 150);
-            const duration = this.random(3, 6);
-
-            filament.style.setProperty('--filament-angle', `${angle}deg`);
-            filament.style.setProperty('--filament-length', `${length}px`);
-            filament.style.setProperty('--filament-duration', `${duration}s`);
-            filament.style.animationDelay = `${this.random(0, 3)}s`;
-
-            fragment.appendChild(filament);
-        }
-
-        filamentContainer.appendChild(fragment);
-        this.registerContainer(filamentContainer);
-    }
-
-    /**
-     * Setup event listeners for reactive effects
-     */
     setupEventListeners() {
+        // Line Clear
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onLineClear(data.lineCount);
-            }
+            if (this.isActive) this.onLineClear(data.lineCount);
         });
 
+        // Combo
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onCombo(data.comboCount);
-            }
+            if (this.isActive) this.onCombo(data.comboCount);
         });
 
+        // Piece Lock
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onPieceLock(data.piece);
-            }
+            if (this.isActive) this.onPieceLock(data.piece);
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
-    /**
-     * React to line clears
-     */
-    onLineClear(lineCount) {
-        console.log('[Supernova] Line clear:', lineCount);
-
-        // Brighten core
-        this.brightenCore(lineCount);
-
-        // Create shockwave pulse
-        this.createShockwavePulse(lineCount);
-
-        // Brighten stars
-        this.brightenStars(lineCount);
-
-        // Pulse rays
-        this.pulseRays(lineCount);
+    onLineClear(count) {
+        // Boost core intensity
+        this.uniforms.coreIntensity.value += count * 0.5;
+        // Create shockwave
+        this.createShockwave(count);
     }
 
-    /**
-     * React to combos
-     */
-    onCombo(comboCount) {
-        console.log('[Supernova] Combo:', comboCount);
-
-        // Intensify supernova
-        this.intensifySupernova(comboCount);
-
-        // Create energy burst for big combos
-        if (comboCount >= 3) {
-            this.createEnergyBurst(comboCount);
-        }
-
-        // Super explosion for massive combos
-        if (comboCount >= 5) {
-            this.createSuperExplosion(comboCount);
+    onCombo(count) {
+        if (count > 1) {
+            this.uniforms.coreIntensity.value += 0.3;
+            // Create a faster expanding wave for combos
+            this.createShockwave(count * 0.5);
         }
     }
 
-    /**
-     * React to piece locks
-     */
     onPieceLock(piece) {
-        // Subtle particle pulse
-        if (Math.random() < 0.3) {
-            this.pulseShockwaveParticles();
-        }
+        // Tiny pulse
+        this.uniforms.coreIntensity.value += 0.2;
+        // Directional solar flare
+        this.createSolarFlare();
     }
 
-    /**
-     * Brighten supernova core on line clear
-     */
-    brightenCore(intensity) {
-        const core = document.querySelector('.supernova-core');
-        if (!core) return;
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
 
-        const originalFilter = core.style.filter;
-        const originalScale = core.style.scale;
-        core.style.transition = 'filter 0.4s ease-out, scale 0.4s ease-out';
-        core.style.filter = `brightness(${1 + intensity * 0.4}) saturate(${100 + intensity * 30}%)`;
-        // Use scale property (separate from transform) to preserve both animation and drift
-        core.style.scale = `${1 + intensity * 0.08}`;
-
-        setTimeout(() => {
-            core.style.filter = originalFilter;
-            core.style.scale = originalScale;
-        }, 400);
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    /**
-     * Create shockwave pulse effect
-     */
-    createShockwavePulse(intensity) {
-        const pulseContainer = document.getElementById('supernova-pulses');
-        if (!pulseContainer) return;
+    dispose() {
+        super.dispose();
 
-        const pulseCount = Math.min(intensity, 3);
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
 
-        for (let i = 0; i < pulseCount; i++) {
-            setTimeout(() => {
-                const pulse = document.createElement('div');
-                pulse.className = 'supernova-pulse';
-
-                const duration = 1.5 + this.random(0, 0.5);
-                pulse.style.animationDuration = `${duration}s`;
-                pulse.style.animationDelay = `${i * 0.15}s`;
-
-                pulseContainer.appendChild(pulse);
-
-                setTimeout(() => {
-                    if (pulse.parentNode) {
-                        pulse.parentNode.removeChild(pulse);
-                    }
-                }, (duration + i * 0.15) * 1000);
-            }, i * 200);
-        }
-    }
-
-    /**
-     * Brighten stars
-     */
-    brightenStars(intensity) {
-        const starsToBrighten = Math.min(Math.floor(intensity * 10), this.stars.length);
-
-        for (let i = 0; i < starsToBrighten; i++) {
-            const star = this.stars[Math.floor(Math.random() * this.stars.length)];
-            if (star) {
-                const originalOpacity = star.style.opacity;
-                const originalTransform = star.style.transform;
-                star.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
-                star.style.opacity = '1';
-                star.style.transform = 'scale(1.5)';
-
-                setTimeout(() => {
-                    star.style.opacity = originalOpacity;
-                    star.style.transform = originalTransform;
-                }, 300 + Math.random() * 200);
-            }
-        }
-    }
-
-    /**
-     * Pulse energy rays
-     */
-    pulseRays(intensity) {
-        const rays = document.querySelectorAll('.supernova-ray');
-        rays.forEach((ray, index) => {
-            setTimeout(() => {
-                ray.style.transition = 'opacity 0.4s ease-out, filter 0.4s ease-out';
-                ray.style.opacity = '1';
-                ray.style.filter = `brightness(${1 + intensity * 0.3})`;
-
-                setTimeout(() => {
-                    ray.style.opacity = '';
-                    ray.style.filter = '';
-                }, 400);
-            }, index * 50);
-        });
-    }
-
-    /**
-     * Intensify supernova
-     */
-    intensifySupernova(comboCount) {
-        const theme = document.getElementById('supernova-theme');
-        if (!theme) return;
-
-        // Clear any existing timeout
-        if (this.activeEffectTimeout) {
-            clearTimeout(this.activeEffectTimeout);
-            this.activeEffectTimeout = null;
-        }
-
-        // Calculate new target values (accumulate but cap)
-        const targetBrightness = Math.min(this.currentBrightness + comboCount * 15, 170);
-        const targetSaturation = Math.min(this.currentSaturation + comboCount * 25, 200);
-
-        this.currentBrightness = targetBrightness;
-        this.currentSaturation = targetSaturation;
-
-        // Apply the effect with smooth transition
-        theme.style.transition = 'filter 0.3s ease-out';
-        theme.style.filter = `brightness(${this.currentBrightness}%) saturate(${this.currentSaturation}%)`;
-
-        // Gradually fade back to normal
-        this.activeEffectTimeout = setTimeout(() => {
-            this.fadeBackToNormal(theme);
-        }, 800 + comboCount * 100);
-    }
-
-    /**
-     * Gradually fade effects back to normal state
-     */
-    fadeBackToNormal(theme) {
-        if (!theme) return;
-
-        // Smoothly transition back to normal
-        theme.style.transition = 'filter 1.5s ease-in-out';
-        theme.style.filter = 'brightness(100%) saturate(100%)';
-
-        // Reset internal state
-        this.currentBrightness = 100;
-        this.currentSaturation = 100;
-
-        // Clear the timeout reference
-        this.activeEffectTimeout = null;
-    }
-
-    /**
-     * Create energy burst effect
-     */
-    createEnergyBurst(comboCount) {
-        const burstContainer = document.getElementById('supernova-bursts');
-        if (!burstContainer) return;
-
-        const burstCount = Math.min(comboCount - 2, 4);
-
-        for (let i = 0; i < burstCount; i++) {
-            setTimeout(() => {
-                const burst = document.createElement('div');
-                burst.className = 'supernova-burst';
-
-                const angle = this.random(0, 360);
-                const duration = 1.2 + this.random(0, 0.8);
-
-                burst.style.setProperty('--burst-angle', `${angle}deg`);
-                burst.style.animationDuration = `${duration}s`;
-
-                burstContainer.appendChild(burst);
-
-                setTimeout(() => {
-                    if (burst.parentNode) {
-                        burst.parentNode.removeChild(burst);
-                    }
-                }, duration * 1000);
-            }, i * 300);
-        }
-    }
-
-    /**
-     * Create super explosion effect for massive combos
-     */
-    createSuperExplosion(comboCount) {
-        const explosionContainer = document.getElementById('supernova-explosions');
-        if (!explosionContainer) return;
-
-        const explosion = document.createElement('div');
-        explosion.className = 'supernova-super-explosion';
-
-        explosion.style.setProperty('--explosion-intensity', Math.min(comboCount, 8));
-
-        explosionContainer.appendChild(explosion);
-
-        // Add extra shockwave particles
-        this.createExplosionParticles(comboCount);
-
-        setTimeout(() => {
-            if (explosion.parentNode) {
-                explosion.parentNode.removeChild(explosion);
-            }
-        }, 2000);
-    }
-
-    /**
-     * Create explosion particles for super explosions
-     */
-    createExplosionParticles(intensity) {
-        const particleCount = Math.min(intensity * 8, 50);
-
-        const colors = [
-            { r: 100, g: 220, b: 255 }, // Bright cyan
-            { r: 150, g: 100, b: 255 }, // Electric purple
-            { r: 255, g: 80, b: 220 }, // Hot pink
-            { r: 255, g: 150, b: 100 }, // Orange
-            { r: 255, g: 200, b: 80 }, // Golden yellow
-            { r: 80, g: 255, b: 200 }, // Turquoise
-        ];
-
-        for (let i = 0; i < particleCount; i++) {
-            const angle = this.random(0, Math.PI * 2);
-            const speed = this.random(2, 6);
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            this.shockwaveParticles.push({
-                angle,
-                distance: this.random(50, 100),
-                maxDistance: this.random(400, 600),
-                expansionSpeed: speed,
-                size: this.random(2, 5),
-                opacity: 0.9,
-                baseOpacity: 0.9,
-                color,
-                pulse: this.random(0, Math.PI * 2),
-                pulseSpeed: this.random(0.03, 0.06),
-                orbitAngle: this.random(0, Math.PI * 2),
-                orbitSpeed: this.random(-0.02, 0.02),
-                turbulence: this.random(1, 3),
-                isComboParticle: true, // Mark as temporary combo particle
-                lifetime: 0, // Track how long this particle has existed
-                maxLifetime: 3000, // Remove after 3 seconds
-            });
-        }
-    }
-
-    /**
-     * Pulse shockwave particles
-     */
-    pulseShockwaveParticles() {
-        this.shockwaveParticles.forEach((particle) => {
-            particle.baseOpacity = Math.min(particle.baseOpacity * 1.3, 1);
-
-            setTimeout(() => {
-                particle.baseOpacity = particle.opacity;
-            }, 300);
-        });
-    }
-
-    stop() {
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-
-        // Cancel animation frame
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
         }
 
-        // Clear any active effect timeouts
-        if (this.activeEffectTimeout) {
-            clearTimeout(this.activeEffectTimeout);
-            this.activeEffectTimeout = null;
-        }
-
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Clear particles
-        this.shockwaveParticles = [];
-        this.stars = [];
-
-        // Clear canvas references
-        this.canvas = null;
-        this.ctx = null;
-
-        // Clear color cache to prevent memory leaks
-        this.colorCache.clear();
-
-        // Reset performance tracking
-        this.lastFrameTime = 0;
-
-        // Reset effect state
-        this.currentBrightness = 100;
-        this.currentSaturation = 100;
-
-        // Reset drift state
-        this.driftAngle = 0;
-        this.driftX = 0;
-        this.driftY = 0;
-        this.baseCenterX = 0;
-        this.baseCenterY = 0;
-        this.driftRadius = 0;
-
-        // Clear any active effects
-        const theme = document.getElementById('supernova-theme');
-        if (theme) {
-            theme.style.filter = '';
-            theme.style.transition = '';
-        }
-
-        // Clear drift transforms from all elements
-        const core = document.querySelector('.supernova-core');
-        if (core) {
-            core.style.translate = '';
-            core.style.scale = '';
-        }
-
-        const shell = document.querySelector('.supernova-shell');
-        if (shell) {
-            shell.style.translate = '';
-        }
-
-        const containers = [
-            'supernova-stars',
-            'supernova-shockwave-canvas',
-            'supernova-rays',
-            'supernova-filaments',
-            'supernova-pulses',
-            'supernova-bursts',
-            'supernova-explosions',
-        ];
-
-        containers.forEach((id) => {
-            const container = document.getElementById(id);
-            if (container) {
-                container.style.translate = '';
+        // Cleanup Three.js
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('supernova-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
             }
-        });
+        }
 
-        super.stop();
+        // Traverse and dispose scene objects
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.shockwaves = [];
+        this.flares = [];
     }
 
-    /**
-     * Provide Supernova themed tetromino styling (explosive neon palette)
-     * @returns {Object} Supernova tetromino configuration
-     */
     getTetrominoConfig() {
         return SUPERNOVA_TETROMINOS;
     }

@@ -24,8 +24,12 @@ export class NeonDistrictAssets {
         // Configuration - balanced brightness
         this.textureAnisotropy = 8;
         this.windowsEmissiveIntensity = 3.0;  // Higher to punch through fog on distant buildings
-        this.adsEmissiveIntensity = 0.4;      // Reduced for less glare
-        this.storefrontEmissiveIntensity = 0.55; // Further reduced for less glare
+        this.adsEmissiveIntensity = 0.35;      // Reduced for less glare
+        this.storefrontEmissiveIntensity = 0.4; // Further reduced for less glare
+
+        // Track used storefronts to ensure uniqueness
+        this.availableStorefronts = [];
+        this.usedStorefronts = new Set();
 
         // Track loaded state
         this.loaded = false;
@@ -78,8 +82,8 @@ export class NeonDistrictAssets {
         texturePromises.push(loadTex('ground.jpg'));
         texturePromises.push(loadTex('ground_em.jpg'));
 
-        // Storefronts - 6 variants (storefront_02 through _07)
-        for (let i = 2; i <= 7; i++) {
+        // Storefronts - 17 variants (storefront_02 through _18)
+        for (let i = 2; i <= 18; i++) {
             texturePromises.push(loadTex(`storefront_${this.padNumber(i)}.jpg`, true, true));
         }
 
@@ -113,8 +117,8 @@ export class NeonDistrictAssets {
             texturePromises.push(loadTex(`ads_${this.padNumber(i)}.jpg`));
         }
 
-        // Large ads (10)
-        for (let i = 1; i <= 10; i++) {
+        // Large ads (14)
+        for (let i = 1; i <= 14; i++) {
             texturePromises.push(loadTex(`ads_large_${this.padNumber(i)}.jpg`));
         }
 
@@ -161,9 +165,9 @@ export class NeonDistrictAssets {
         });
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // STOREFRONTS - 6 variants (storefront_02 through _07) (Phong with reduced emissive)
+        // STOREFRONTS - 17 variants (storefront_02 through _18) (Phong with reduced emissive)
         // ═══════════════════════════════════════════════════════════════════════════
-        for (let i = 2; i <= 7; i++) {
+        for (let i = 2; i <= 18; i++) {
             const id = this.padNumber(i);
             this.materials[`storefront_${id}`] = new THREE.MeshPhongMaterial({
                 map: this.getTexture(`storefront_${id}`),
@@ -231,7 +235,7 @@ export class NeonDistrictAssets {
         }
 
         // Large ads (for towers) - visible billboard textures (use Phong)
-        for (let i = 1; i <= 10; i++) {
+        for (let i = 1; i <= 14; i++) {
             const id = this.padNumber(i);
             this.materials[`ads_large_${id}`] = new THREE.MeshPhongMaterial({
                 map: this.getTexture(`ads_large_${id}`),
@@ -331,7 +335,7 @@ export class NeonDistrictAssets {
      * Get random large ad material
      */
     getRandomLargeAdMaterial() {
-        const index = Math.floor(Math.random() * 10) + 1;
+        const index = Math.floor(Math.random() * 14) + 1;
         return this.getMaterial(`ads_large_${this.padNumber(index)}`);
     }
 
@@ -344,11 +348,42 @@ export class NeonDistrictAssets {
     }
 
     /**
-     * Get random storefront material (6 variants: 02-07)
+     * Get unique storefront material (each storefront only used once)
+     * Returns null if all storefronts have been used
      */
     getRandomStorefrontMaterial() {
-        const index = Math.floor(Math.random() * 6) + 2;  // 2-7
+        // Initialize available storefronts if empty
+        if (this.availableStorefronts.length === 0 && this.usedStorefronts.size === 0) {
+            // Create shuffled array of storefront indices (2-18)
+            for (let i = 2; i <= 18; i++) {
+                this.availableStorefronts.push(i);
+            }
+            // Shuffle using Fisher-Yates
+            for (let i = this.availableStorefronts.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [this.availableStorefronts[i], this.availableStorefronts[j]] =
+                    [this.availableStorefronts[j], this.availableStorefronts[i]];
+            }
+        }
+
+        // If no storefronts available, return null (all used)
+        if (this.availableStorefronts.length === 0) {
+            return null;
+        }
+
+        // Pop from available and track as used
+        const index = this.availableStorefronts.pop();
+        this.usedStorefronts.add(index);
+
         return this.getMaterial(`storefront_${this.padNumber(index)}`);
+    }
+
+    /**
+     * Reset storefront tracking (call when theme reinitializes)
+     */
+    resetStorefronts() {
+        this.availableStorefronts = [];
+        this.usedStorefronts.clear();
     }
 
     /**
