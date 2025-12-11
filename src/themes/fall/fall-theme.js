@@ -791,12 +791,12 @@ export default class FallTheme extends BaseTheme {
             const c = palette[Math.floor(Math.random() * palette.length)];
             instColor[i * 3] = c.r; instColor[i * 3 + 1] = c.g; instColor[i * 3 + 2] = c.b;
 
-            // FULL DEPTH: -2000 to +200
-            const z = (Math.random() * 2200) - 2000;
+            // FULL DEPTH: -2000 to -200 (Reduced to remove close-up leaves)
+            const z = (Math.random() * 1800) - 2000;
             const dist = 100.0 - z; // Camera at Z=100
             const visibleH = dist * 0.577; // tan(30deg)
 
-            instOffset[i * 3] = (Math.random() - 0.5) * visibleH * 3.0; // Wide X coverage
+            instOffset[i * 3] = (Math.random() - 0.5) * visibleH * 6.0; // Wide X coverage (Increased for fill)
             instOffset[i * 3 + 1] = (Math.random() - 0.5) * visibleH * 2.2; // Cover full screen height initially
             instOffset[i * 3 + 2] = z;
 
@@ -1054,8 +1054,8 @@ export default class FallTheme extends BaseTheme {
             const bottomY = -visibleY - 100; // Buffer to ensure it's off-screen
 
             if (arr[i3 + 1] < bottomY || Math.abs(arr[i3]) > visibleY * 2.5) {
-                // Pick new random depth first
-                const newZ = (Math.random() * 2200) - 2000;
+                // Pick new random depth first (Max -200 to avoid annoying close-ups)
+                const newZ = (Math.random() * 1800) - 2000;
                 const newDist = 100.0 - newZ;
                 const newVisibleY = newDist * 0.577;
 
@@ -1063,7 +1063,7 @@ export default class FallTheme extends BaseTheme {
                 // Offset by 20-60 units to ensures leaves enter smoothly without long gaps
                 arr[i3 + 1] = newVisibleY + 20 + Math.random() * 40;
 
-                arr[i3] = (Math.random() - 0.5) * (newVisibleY * 3.0); // Random X
+                arr[i3] = (Math.random() - 0.5) * (newVisibleY * 6.0); // Random X (Increased for fill)
                 arr[i3 + 2] = newZ;
             }
         }

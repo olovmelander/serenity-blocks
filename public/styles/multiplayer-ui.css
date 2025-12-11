@@ -2127,7 +2127,7 @@ body:has(.multi-player-layout:not(.hidden)) #single-player-container {
   border: 1px solid rgba(102, 126, 234, 0.3);
   border-radius: 12px;
   background: rgba(18, 23, 31, 0.85);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(4px);
   /* Ensure card content doesn't overlap the avatar */
   margin-top: 15px;
 }

@@ -135,6 +135,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.bloomPulseIntensity = 0;  // Smooth bloom boost
         this.nebulaBoostIntensity = 0; // Smooth nebula brightness
         this.glowSurgeIntensity = 0;   // Smooth planet glow surge
+        this.meteorActivity = 0;       // Dynamic meteor spin speed based on APM
 
         // Animation
         this.clock = new THREE.Clock();
@@ -847,7 +848,7 @@ export default class StellarDriftTheme extends BaseTheme {
             mesh.position.y = (Math.random() - 0.5) * 150 - 200 + beltTilt; // Much lower (-200)
 
             // Define animation properties
-            const speed = -(Math.random() * 0.2 + 0.1) * 0.005; // Negative for Opposite Rotation
+            const speed = -(Math.random() * 0.2 + 0.1) * 0.002; // Reduced base speed (was 0.005)
 
             this.meteors.push({
                 mesh,
@@ -857,9 +858,9 @@ export default class StellarDriftTheme extends BaseTheme {
                 yBase: mesh.position.y,
                 // Rotation (tumbling)
                 rotationSpeed: {
-                    x: Math.random() * 0.005 + 0.005,
-                    y: Math.random() * 0.005 + 0.005,
-                    z: Math.random() * 0.005 + 0.005,
+                    x: Math.random() * 0.002 + 0.002, // Reduced rotation speed
+                    y: Math.random() * 0.002 + 0.002,
+                    z: Math.random() * 0.002 + 0.002,
                 },
             });
 
@@ -935,6 +936,10 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // 3. BLOOM PULSE - Smooth intensity boost
         this.bloomPulseIntensity = 0.3; // Will decay smoothly
+
+        // 4. METEOR SPIN BOOST - Spin faster when playing fast
+        // Cap at 5.0 (significant speed boost)
+        this.meteorActivity = Math.min(this.meteorActivity + 0.8, 5.0);
     }
 
     createShockwaveRing() {
@@ -1045,10 +1050,21 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             });
 
+            // ─────────────────────────────────────────────────────────────────
+            // DYNAMIC METEOR ACTIVITY
+            // Decay meteor activity smoothly
+            if (this.meteorActivity > 0) {
+                this.meteorActivity *= 0.998; // Decays much slower (stays fast longer)
+                if (this.meteorActivity < 0.01) this.meteorActivity = 0;
+            }
+
+            // Speed multiplier: 1.0 (base) up to ~5.0 (fastest, was ~8.5)
+            const speedMultiplier = 1.0 + (this.meteorActivity * 0.8);
+
             // Move meteors (Rotate around planet)
             this.meteors.forEach((m) => {
                 // Orbital rotation
-                m.angle += m.speed;
+                m.angle += m.speed * speedMultiplier;
 
                 // Update position based on new angle
                 m.mesh.position.x = Math.sin(m.angle) * m.radius;
@@ -1058,9 +1074,9 @@ export default class StellarDriftTheme extends BaseTheme {
                 m.mesh.position.y = m.yBase + Math.sin(m.angle * 2.0 + this.time) * 10;
 
                 // Tumble rotation
-                m.mesh.rotation.x -= m.rotationSpeed.x;
-                m.mesh.rotation.y -= m.rotationSpeed.y;
-                m.mesh.rotation.z -= m.rotationSpeed.z;
+                m.mesh.rotation.x -= m.rotationSpeed.x * speedMultiplier;
+                m.mesh.rotation.y -= m.rotationSpeed.y * speedMultiplier;
+                m.mesh.rotation.z -= m.rotationSpeed.z * speedMultiplier;
             });
 
             // Animate ambient particles (very gentle drift - reduced speed to prevent jitter)

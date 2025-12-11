@@ -75,8 +75,6 @@ export class InfinityHUD {
                 rgba(8, 12, 28, 0.92) 50%,
                 rgba(5, 8, 20, 0.95) 100%
             );
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(100, 200, 255, 0.25);
             border-radius: 20px;
             padding: clamp(16px, 2vw, 24px);
@@ -545,19 +543,14 @@ export class InfinityHUD {
 
         // PERFORMANCE: Only update height displays if values changed
         if (this.lastBuildHeight !== buildHeight || this.lastTopRow !== topRow) {
+            // Update all height-related displays together
+            this._updateHeightDisplays(buildHeight);
+            this._updateProgressBar(buildHeight);
+            this._updateMilestones(buildHeight);
+
+            // Cache values AFTER updates
             this.lastBuildHeight = buildHeight;
             this.lastTopRow = topRow;
-            this._updateHeightDisplays(buildHeight);
-        }
-
-        // PERFORMANCE: Only update progress bar if build height changed
-        if (this.lastBuildHeight !== buildHeight) {
-            this._updateProgressBar(buildHeight);
-        }
-
-        // PERFORMANCE: Only update milestones when build height changes
-        if (this.lastBuildHeight !== buildHeight) {
-            this._updateMilestones(buildHeight);
         }
 
         // PERFORMANCE: Only update statistics when piece count changes

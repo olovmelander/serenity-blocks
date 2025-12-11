@@ -16073,6 +16073,10 @@ body {
     font-size: clamp(9px, 0.85vw, 13px);
     box-sizing: border-box;
     padding: clamp(12px, 1.5vw, 20px) !important;
+    /* Reduced size and transparency */
+    transform: scale(0.85);
+    transform-origin: center center;
+    background: rgba(10, 10, 20, 0.65) !important;
 }
 
 /* HUD sections - compact spacing */
@@ -16143,6 +16147,12 @@ body {
     flex-direction: column;
     /* Ensure content fits */
     padding: clamp(8px, 1vw, 12px) !important;
+    /* Reduced size and transparency */
+    transform: scale(0.85);
+    transform-origin: center center;
+    background: rgba(10, 10, 20, 0.65) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 /* Minimap canvas - scale to fit */
@@ -16264,10 +16274,13 @@ body {
     --player-primary: #8b5cf6;
     --player-primary-light: #c4b5fd;
     --player-glow: rgba(139, 92, 246, 0.35);
+    /* Reduced size to show more background */
+    --board-width: min(clamp(220px, 22vw, 300px), calc((100vh - 250px) / 2));
+    --board-height: calc(var(--board-width) * 2);
     width: auto;
     align-items: stretch;
     gap: 18px;
-    padding: 24px;
+    padding: 20px;
     border-color: var(--player-primary);
     box-shadow:
         0 0 26px var(--player-glow),
@@ -16402,22 +16415,22 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 .single-player-stat {
-    width: 170px;
-    padding: 12px 14px;
-    border-radius: 14px;
+    width: 140px;
+    padding: 8px 10px;
+    border-radius: 12px;
     background: linear-gradient(135deg, rgba(24, 20, 64, 0.85), rgba(8, 9, 24, 0.75));
     border: 1px solid rgba(139, 92, 246, 0.35);
     box-shadow:
-        0 12px 28px rgba(10, 8, 24, 0.45),
-        inset 0 0 16px rgba(99, 102, 241, 0.18);
+        0 10px 22px rgba(10, 8, 24, 0.45),
+        inset 0 0 12px rgba(99, 102, 241, 0.18);
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .single-player-stat .stat-icon {
-    font-size: 22px;
+    font-size: 18px;
     line-height: 1;
     filter: saturate(0.85);
 }
@@ -16447,10 +16460,10 @@ body.phaser-multiplayer-active #p2-canvas {
 .single-player-stat-value {
     font-family: 'Orbitron', 'Space Mono', monospace;
     font-weight: 700;
-    font-size: 22px;
+    font-size: 18px;
     line-height: 1.05;
     color: #ffffff;
-    text-shadow: 0 0 14px rgba(99, 102, 241, 0.5);
+    text-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
 }
 
 /* Color-coded stat values */
@@ -23615,8 +23628,8 @@ body.phaser-multiplayer-active #single-player-container {
     height: 100%;
     border-radius: 12px;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(10px);
+    background: transparent;
+    backdrop-filter: none;
 }
 
 .phaser-board-container canvas {
@@ -23859,15 +23872,12 @@ body.phaser-multiplayer-active #single-player-container {
     max-width: none;
     /* Constrain width */
     box-sizing: border-box;
-    background: linear-gradient(180deg, rgba(20, 20, 35, 0.85) 0%, rgba(10, 10, 20, 0.95) 100%);
+    background: transparent;
     border-radius: 24px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow:
-        0 20px 50px rgba(0, 0, 0, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-        0 0 20px rgba(0, 0, 0, 0.2) inset;
+    box-shadow: none;
     transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -23942,7 +23952,7 @@ body.phaser-multiplayer-active #single-player-container {
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(6px);
+    backdrop-filter: none;
 }
 
 .player-card .player-next-piece {
@@ -23989,9 +23999,9 @@ body.phaser-multiplayer-active #single-player-container {
     height: var(--board-height);
     border-radius: 8px;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.4);
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    box-shadow: none;
     margin-top: 10px;
 }
 
