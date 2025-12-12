@@ -33,39 +33,40 @@ export default class VerdantHillsTheme extends BaseTheme {
 
         // Graphics quality presets
         this.currentQuality = 'High';
+        // OPTIMIZED: Cross-billboard grass (2 quads at 90°) - each looks like 2 blades
         this.qualityPresets = {
             Minimal: {
-                grassCount: 5000,
+                grassCount: 3000,
                 treeCount: 10,
                 particleCount: 50,
                 terrainSegments: 64,
             },
             Low: {
-                grassCount: 15000,
+                grassCount: 7000,
                 treeCount: 25,
                 particleCount: 100,
                 terrainSegments: 96,
             },
             Medium: {
-                grassCount: 30000,
+                grassCount: 14000,
                 treeCount: 50,
                 particleCount: 200,
                 terrainSegments: 128,
             },
             High: {
-                grassCount: 50000,
+                grassCount: 25000,
                 treeCount: 80,
                 particleCount: 300,
                 terrainSegments: 160,
             },
             Ultra: {
-                grassCount: 80000,
+                grassCount: 40000,
                 treeCount: 120,
                 particleCount: 500,
                 terrainSegments: 200,
             },
             Extreme: {
-                grassCount: 120000,
+                grassCount: 60000,
                 treeCount: 180,
                 particleCount: 800,
                 terrainSegments: 256,
@@ -363,25 +364,65 @@ export default class VerdantHillsTheme extends BaseTheme {
         const count = this.activePreset.grassCount;
         const spread = 180;
 
-        // Grass blade geometry (simple triangle)
-        const bladeWidth = 0.15;
-        const bladeHeight = 2.0;
-        const bladeGeometry = new THREE.BufferGeometry();
-        const vertices = new Float32Array([
-            -bladeWidth / 2, 0, 0,
-            bladeWidth / 2, 0, 0,
-            0, bladeHeight, 0,
-        ]);
-        bladeGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        // CROSS-BILLBOARD: Two quads at 90° angles for denser look with fewer instances
+        // Each instance = 2 crossed grass blades = 4 triangles (8 vertices)
+        // This looks much fuller than single blades while using fewer instances
 
-        // Instanced mesh
-        const bladeMaterial = new THREE.ShaderMaterial({
+        const bladeWidth = 0.25;  // Wider blades
+        const bladeHeight = 2.2;  // Taller blades
+
+        // Create cross-billboard geometry (2 quads intersecting at 90°)
+        const bladeGeometry = new THREE.BufferGeometry();
+        const hw = bladeWidth * 0.5;
+
+        // Two crossed quads - each is a tapered blade shape
+        const vertices = new Float32Array([
+            // First quad (along X axis)
+            -hw, 0, 0,
+            hw, 0, 0,
+            hw, bladeHeight, 0,
+            -hw, 0, 0,
+            hw, bladeHeight, 0,
+            -hw, bladeHeight, 0,
+
+            // Second quad (along Z axis, rotated 90°)
+            0, 0, -hw,
+            0, 0, hw,
+            0, bladeHeight, hw,
+            0, 0, -hw,
+            0, bladeHeight, hw,
+            0, bladeHeight, -hw,
+        ]);
+
+        const uvs = new Float32Array([
+            // First quad UVs
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+
+            // Second quad UVs
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0,
+        ]);
+
+        bladeGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        bladeGeometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+        // Simple, clean grass shader - no procedural patterns
+        const grassMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
                 uWindStrength: { value: 0.5 },
-                uWindDirection: { value: new THREE.Vector2(1, 0.3) },
-                uGrassColor1: { value: new THREE.Color(0x4a7c2e) },
-                uGrassColor2: { value: new THREE.Color(0x7cb342) },
+                uGrassColorBase: { value: new THREE.Color(0x2d5016) },
+                uGrassColorMid: { value: new THREE.Color(0x4a7c2e) },
+                uGrassColorTip: { value: new THREE.Color(0x8bc34a) },
                 uFogColor: { value: new THREE.Color(0xb8d4a8) },
                 uFogNear: { value: 50 },
                 uFogFar: { value: 350 },
@@ -389,56 +430,69 @@ export default class VerdantHillsTheme extends BaseTheme {
             vertexShader: `
                 uniform float uTime;
                 uniform float uWindStrength;
-                uniform vec2 uWindDirection;
                 
                 attribute float aPhase;
-                attribute float aScale;
+                attribute vec3 aColor;
                 
                 varying float vHeight;
                 varying vec3 vWorldPosition;
+                varying vec3 vColor;
                 
                 void main() {
                     vec3 transformed = position;
                     
-                    // Get instance matrix to find world position
-                    vec4 instancePos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+                    // Get world position of instance
+                    vec4 instanceWorldPos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
                     
-                    // Wind animation - stronger at top of blade
-                    float heightFactor = position.y / 2.0; // normalized height
-                    float windPhase = uTime * 2.0 + aPhase + instancePos.x * 0.1 + instancePos.z * 0.1;
+                    // Wind animation - height factor from UV.y
+                    float heightFactor = uv.y; // UV.y goes from 0 at bottom to 1 at top
                     
-                    float windX = sin(windPhase) * uWindStrength * heightFactor * heightFactor;
-                    float windZ = cos(windPhase * 0.7) * uWindStrength * 0.5 * heightFactor * heightFactor;
+                    // Multi-frequency wind for natural look
+                    float windTime = uTime * 1.2;
+                    float windPhase = aPhase + instanceWorldPos.x * 0.03 + instanceWorldPos.z * 0.03;
                     
-                    transformed.x += windX * uWindDirection.x;
-                    transformed.z += windZ * uWindDirection.y;
+                    float wind1 = sin(windTime + windPhase) * 0.6;
+                    float wind2 = sin(windTime * 1.5 + windPhase * 1.2) * 0.25;
+                    float wind3 = cos(windTime * 0.4 + windPhase * 0.8) * 0.15;
                     
-                    // Apply instance transform
-                    vec4 mvPosition = instanceMatrix * vec4(transformed, 1.0);
-                    mvPosition = modelViewMatrix * mvPosition;
+                    float windOffset = (wind1 + wind2 + wind3) * uWindStrength * heightFactor * heightFactor;
                     
-                    vHeight = position.y / 2.0;
+                    // Apply wind
+                    transformed.x += windOffset;
+                    transformed.z += windOffset * 0.25;
+                    transformed.y -= abs(windOffset) * 0.1 * heightFactor; // Squash slightly when bent
+                    
+                    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(transformed, 1.0);
+                    
+                    vHeight = heightFactor;
                     vWorldPosition = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+                    vColor = aColor;
                     
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
             fragmentShader: `
-                uniform vec3 uGrassColor1;
-                uniform vec3 uGrassColor2;
+                uniform vec3 uGrassColorBase;
+                uniform vec3 uGrassColorMid;
+                uniform vec3 uGrassColorTip;
                 uniform vec3 uFogColor;
                 uniform float uFogNear;
                 uniform float uFogFar;
                 
                 varying float vHeight;
                 varying vec3 vWorldPosition;
+                varying vec3 vColor;
                 
                 void main() {
-                    // Gradient from dark at base to light at tip
-                    vec3 color = mix(uGrassColor1, uGrassColor2, vHeight);
+                    // Simple smooth gradient based on height - no procedural patterns
+                    vec3 color = mix(uGrassColorBase, uGrassColorMid, smoothstep(0.0, 0.5, vHeight));
+                    color = mix(color, uGrassColorTip, smoothstep(0.4, 1.0, vHeight));
                     
-                    // Add slight yellow tint at tips (sun-kissed)
-                    color = mix(color, color + vec3(0.1, 0.1, 0.0), pow(vHeight, 2.0));
+                    // Apply per-instance color variation
+                    color *= vColor;
+                    
+                    // Ambient occlusion at base
+                    color *= 0.6 + vHeight * 0.4;
                     
                     // Fog
                     float dist = length(vWorldPosition - cameraPosition);
@@ -451,11 +505,11 @@ export default class VerdantHillsTheme extends BaseTheme {
             side: THREE.DoubleSide,
         });
 
-        const grassMesh = new THREE.InstancedMesh(bladeGeometry, bladeMaterial, count);
+        const grassMesh = new THREE.InstancedMesh(bladeGeometry, grassMaterial, count);
 
         // Instance attributes
         const phases = new Float32Array(count);
-        const scales = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
         const dummy = new THREE.Object3D();
 
         for (let i = 0; i < count; i++) {
@@ -465,26 +519,38 @@ export default class VerdantHillsTheme extends BaseTheme {
             const y = this.getTerrainHeight(x, z);
 
             dummy.position.set(x, y, z);
+
+            // Random rotation
             dummy.rotation.y = Math.random() * Math.PI * 2;
 
-            const scale = 0.8 + Math.random() * 0.6;
-            dummy.scale.setScalar(scale);
+            // Scale variation
+            const scaleXZ = 0.8 + Math.random() * 0.5;
+            const scaleY = 0.7 + Math.random() * 0.6;
+            dummy.scale.set(scaleXZ, scaleY, scaleXZ);
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
 
+            // Random phase for wind
             phases[i] = Math.random() * Math.PI * 2;
-            scales[i] = scale;
+
+            // Per-instance color variation (subtle)
+            const colorVar = 0.85 + Math.random() * 0.3;
+            colors[i * 3] = colorVar;
+            colors[i * 3 + 1] = colorVar;
+            colors[i * 3 + 2] = colorVar;
         }
 
         // Add custom attributes
         grassMesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-        grassMesh.geometry.setAttribute('aScale', new THREE.InstancedBufferAttribute(scales, 1));
+        grassMesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
 
         grassMesh.instanceMatrix.needsUpdate = true;
         grassMesh.frustumCulled = false;
 
         this.grassSystem = grassMesh;
         this.scene.add(grassMesh);
+
+        console.log(`🌿 [VerdantHillsTheme] Created ${count} grass blades`);
     }
 
     createTrees() {
