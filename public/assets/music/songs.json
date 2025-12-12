@@ -125,6 +125,11 @@
     "path": "./assets/music/Rainy Window.mp3"
   },
   {
+    "name": "Shifting Sands",
+    "file": "Shifting Sands.mp3",
+    "path": "./assets/music/Shifting Sands.mp3"
+  },
+  {
     "name": "Starlight",
     "file": "Starlight.mp3",
     "path": "./assets/music/Starlight.mp3"
