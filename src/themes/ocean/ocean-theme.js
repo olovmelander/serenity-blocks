@@ -1305,15 +1305,24 @@ export default class OceanTheme extends BaseTheme {
                 pos.needsUpdate = true;
             }
 
-            // Smooth camera sway (underwater drift feel)
-            this.camera.position.x = Math.sin(time * 0.06) * 5;
-            this.camera.position.y = 20 + Math.sin(time * 0.09) * 3;
-            this.camera.position.z = 80 + Math.sin(time * 0.04) * 2;
-            this.camera.lookAt(
-                Math.sin(time * 0.03) * 2,
-                5 + Math.sin(time * 0.05) * 2,
-                Math.cos(time * 0.04) * 3
-            );
+            // Smooth continuous camera drift (underwater floating feel)
+            // Multiple overlapping sine waves at different frequencies for organic motion
+            const drift1 = Math.sin(time * 0.05) * 8;
+            const drift2 = Math.sin(time * 0.08 + 1.5) * 4;
+            const drift3 = Math.cos(time * 0.03) * 6;
+
+            this.camera.position.x = drift1 + Math.sin(time * 0.12) * 2;
+            this.camera.position.y = 22 + Math.sin(time * 0.07) * 4 + Math.sin(time * 0.15) * 1.5;
+            this.camera.position.z = 75 + drift3 * 0.5 + Math.sin(time * 0.06) * 3;
+
+            // Smooth look-at target that drifts gently
+            const lookX = drift2 * 0.4 + Math.sin(time * 0.04) * 3;
+            const lookY = 8 + Math.sin(time * 0.06) * 3;
+            const lookZ = -10 + Math.cos(time * 0.05) * 5;
+            this.camera.lookAt(lookX, lookY, lookZ);
+
+            // Subtle camera roll for extra underwater feel
+            this.camera.rotation.z = Math.sin(time * 0.04) * 0.015;
 
             this.renderer.render(this.scene, this.camera);
             this.animationFrameId = requestAnimationFrame(loop);

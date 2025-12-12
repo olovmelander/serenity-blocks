@@ -1,530 +1,764 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  🌑 BLOOD MOON 🌑
+ *  A Stunning 3D Blood Moon Theme for Serenity Blocks
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Features:
+ * - Deep 3D Starfield with twinkling white and red stars
+ * - 3D Blood Moon sphere with procedural craters and pulsing crimson glow
+ * - Multiple glow layers around the moon for intense atmosphere
+ * - Drifting nebula clouds at varying depths
+ * - Floating crimson particles throughout 3D space
+ * - Gameplay effects: blood waves, crimson lightning, soul orbs
+ * - Post-processing: Bloom + Vignette for atmospheric depth
+ */
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { BLOOD_MOON_TETROMINOS } from './blood-moon-tetrominos.js';
-import WebGLBloodRenderer from './webgl-blood-renderer.js';
+import {
+    moonVertexShader,
+    moonFragmentShader,
+    waveVertexShader,
+    waveFragmentShader,
+    particleVertexShader,
+    particleFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+} from './blood-moon-shaders.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+const QUALITY_PRESETS = {
+    Extreme: {
+        starCount: 6000,
+        nebulaCount: 25,
+        ambientParticles: 400,
+        bloomStrength: 0.6,
+        bloomRadius: 0.5,
+        enablePostProcessing: true,
+        moonDetail: 64,
+        glowLayers: 8,
+    },
+    Ultra: {
+        starCount: 5000,
+        nebulaCount: 20,
+        ambientParticles: 300,
+        bloomStrength: 0.55,
+        bloomRadius: 0.45,
+        enablePostProcessing: true,
+        moonDetail: 56,
+        glowLayers: 7,
+    },
+    High: {
+        starCount: 4000,
+        nebulaCount: 15,
+        ambientParticles: 200,
+        bloomStrength: 0.5,
+        bloomRadius: 0.4,
+        enablePostProcessing: true,
+        moonDetail: 48,
+        glowLayers: 6,
+    },
+    Medium: {
+        starCount: 2500,
+        nebulaCount: 10,
+        ambientParticles: 120,
+        bloomStrength: 0.4,
+        bloomRadius: 0.35,
+        enablePostProcessing: true,
+        moonDetail: 36,
+        glowLayers: 5,
+    },
+    Low: {
+        starCount: 1500,
+        nebulaCount: 6,
+        ambientParticles: 60,
+        bloomStrength: 0.3,
+        bloomRadius: 0.3,
+        enablePostProcessing: false,
+        moonDetail: 24,
+        glowLayers: 4,
+    },
+    Minimal: {
+        starCount: 800,
+        nebulaCount: 4,
+        ambientParticles: 30,
+        bloomStrength: 0.25,
+        bloomRadius: 0.25,
+        enablePostProcessing: false,
+        moonDetail: 16,
+        glowLayers: 3,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vignette Shader
+// ─────────────────────────────────────────────────────────────────────────────
+const VignetteShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        darkness: { value: 0.7 },
+        offset: { value: 1.3 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float darkness;
+        uniform float offset;
+        varying vec2 vUv;
+        
+        void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            vec2 uv = (vUv - 0.5) * 2.0;
+            float dist = length(uv);
+            float vig = smoothstep(offset, offset - 0.7, dist);
+            texel.rgb = mix(texel.rgb * (1.0 - darkness), texel.rgb, vig);
+            gl_FragColor = texel;
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
 export default class BloodMoonTheme extends BaseTheme {
     constructor() {
         super('blood-moon');
-        this.canvas = null;
-        this.ctx = null;
-        this.resizeHandler = null;
-        this.time = 0;
-        this.stars = [];
-        this.nebulaClouds = [];
-        this.moonX = 0;
-        this.moonY = 0;
-        this.moonRadius = 0;
-        this.moonFloatOffset = { x: 0, y: 0 };
-        this.moonRotation = Math.random() * Math.PI * 2; // Random starting rotation
 
-        // Random phase offsets for unique moon paths each time
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+
+        // Scene elements
+        this.moon = null;
+        this.moonGroup = null;
+        this.starfield = null;
+        this.nebulaClouds = [];
+        this.ambientParticles = null;
+        this.moonGlowLayers = [];
+        this.bloodWaves = [];
+        this.soulOrbs = [];
+
+        // Effect states
+        this.moonPulseIntensity = 0;
+        this.moonGlowIntensity = 1.0;
+        this.comboMultiplier = 1.0;
+
+        // Moon drift animation
         this.moonPhaseX = Math.random() * Math.PI * 2;
         this.moonPhaseY = Math.random() * Math.PI * 2;
         this.moonPhaseX2 = Math.random() * Math.PI * 2;
         this.moonPhaseY2 = Math.random() * Math.PI * 2;
 
-        // Performance optimizations
-        this.cachedGradients = {};
-        this.craterData = [];
-        this.moonGlowIntensity = 1.0;
-        this.glowPulse = 0;
+        // Animation
+        this.clock = new THREE.Clock();
+        this.time = 0;
 
-        // WebGL Renderer
-        this.bloodCanvas = null;
-        this.bloodRenderer = null;
-        this.useWebGL = true; // Try to use WebGL by default
-
-        // Performance limits
-        this.MAX_PARTICLES = 150;
-        this.MAX_LIGHTNING = 3;
-        this.MAX_WAVES = 6;
-        this.MAX_ORBS = 15;
-        this.MAX_VORTEXES = 3;
-
-        // Gameplay effects
-        this.bloodBurstParticles = [];
-        this.crimsonLightning = [];
-        this.bloodWaves = [];
-        this.moonPulseIntensity = 0;
-        this.comboMultiplier = 1.0;
+        // State
         this.eventUnsubscribers = [];
+        this.qualityPreset = QUALITY_PRESETS.High;
         this.pendingComboCount = 0;
-        this.soulOrbs = [];
-        this.bloodVortexes = [];
 
-        // Piece lock effects
-        this.crimsonMeteors = [];
-        this.bloodRipples = [];
-        this.shadowBursts = [];
-
-        // Graphics quality presets
-        this.qualityPresets = {
-            Minimal: {
-                stars: 2000,
-                nebulaClouds: 5,
-                craterData: 10,
-                moonTexture: 150,
-                maxParticles: 50,
-                maxLightning: 1,
-                maxWaves: 2,
-                maxOrbs: 5,
-                maxVortexes: 1,
-                lightningBranches: 3,
-                lightningSegments: 4,
-                vortexParticleLimit: 15,
-                vortexSpawnRate: 0.2,
-            },
-            Low: {
-                stars: 5000,
-                nebulaClouds: 8,
-                craterData: 15,
-                moonTexture: 250,
-                maxParticles: 80,
-                maxLightning: 2,
-                maxWaves: 4,
-                maxOrbs: 8,
-                maxVortexes: 2,
-                lightningBranches: 4,
-                lightningSegments: 5,
-                vortexParticleLimit: 25,
-                vortexSpawnRate: 0.25,
-            },
-            Medium: {
-                stars: 10000,
-                nebulaClouds: 12,
-                craterData: 20,
-                moonTexture: 400,
-                maxParticles: 120,
-                maxLightning: 3,
-                maxWaves: 5,
-                maxOrbs: 12,
-                maxVortexes: 2,
-                lightningBranches: 6,
-                lightningSegments: 6,
-                vortexParticleLimit: 30,
-                vortexSpawnRate: 0.35,
-            },
-            High: {
-                stars: 20000,
-                nebulaClouds: 15,
-                craterData: 25,
-                moonTexture: 600,
-                maxParticles: 150,
-                maxLightning: 3,
-                maxWaves: 6,
-                maxOrbs: 15,
-                maxVortexes: 3,
-                lightningBranches: 8,
-                lightningSegments: 7,
-                vortexParticleLimit: 40,
-                vortexSpawnRate: 0.4,
-            },
-            Ultra: {
-                stars: 40000,
-                nebulaClouds: 20,
-                craterData: 35,
-                moonTexture: 900,
-                maxParticles: 250,
-                maxLightning: 5,
-                maxWaves: 10,
-                maxOrbs: 25,
-                maxVortexes: 4,
-                lightningBranches: 10,
-                lightningSegments: 10,
-                vortexParticleLimit: 60,
-                vortexSpawnRate: 0.5,
-            },
-            Extreme: {
-                stars: 60000,
-                nebulaClouds: 28,
-                craterData: 50,
-                moonTexture: 1200,
-                maxParticles: 350,
-                maxLightning: 7,
-                maxWaves: 15,
-                maxOrbs: 35,
-                maxVortexes: 6,
-                lightningBranches: 12,
-                lightningSegments: 12,
-                vortexParticleLimit: 80,
-                vortexSpawnRate: 0.6,
-            },
-        };
-
-        this.currentQuality = 'High'; // Default
-        this.activePreset = this.qualityPresets.High;
+        console.log('[BloodMoon] Theme constructed');
     }
 
-    /**
-     * Apply graphics quality preset
-     * @param {string} quality - Quality level: 'Low', 'Medium', 'High', or 'Ultra'
-     */
+    getTetrominoConfig() {
+        return BLOOD_MOON_TETROMINOS;
+    }
+
+    getCurrentQualityLevel() {
+        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
+            return normalizeQuality(window.settings.graphicsQuality);
+        }
+        return 'High';
+    }
+
     applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Unknown quality preset: ${quality}, using High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        // Update max limits based on preset
-        this.MAX_PARTICLES = this.activePreset.maxParticles;
-        this.MAX_LIGHTNING = this.activePreset.maxLightning;
-        this.MAX_WAVES = this.activePreset.maxWaves;
-        this.MAX_ORBS = this.activePreset.maxOrbs;
-        this.MAX_VORTEXES = this.activePreset.maxVortexes;
-
-        console.log(`🌙 Blood Moon: Applying ${quality} quality preset`);
-    }
-
-    /**
-     * Get current graphics quality from settings
-     * @returns {string} Quality level
-     */
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
-    }
-
-    /**
-     * Initialize WebGL renderer
-     */
-    initWebGLRenderer() {
-        if (!this.canvas) return;
-
-        try {
-            this.bloodCanvas = document.createElement('canvas');
-            this.bloodCanvas.width = this.canvas.width;
-            this.bloodCanvas.height = this.canvas.height;
-
-            this.bloodRenderer = new WebGLBloodRenderer(this.bloodCanvas);
-
-            if (this.bloodRenderer.init()) {
-                this.bloodRenderer.allocateParticles(this.activePreset.stars);
-                this.useWebGL = true;
-                console.log('🌙 Blood Moon: WebGL renderer active');
-            } else {
-                this.useWebGL = false;
-                this.bloodRenderer = null;
-                this.bloodCanvas = null;
-                console.log('🌙 Blood Moon: Falling back to Canvas2D');
-            }
-        } catch (e) {
-            console.warn('🌙 Blood Moon: WebGL init failed:', e);
-            this.useWebGL = false;
-            this.bloodRenderer = null;
-            this.bloodCanvas = null;
-        }
-    }
-
-    uploadStarsToWebGL() {
-        if (!this.useWebGL || !this.bloodRenderer) return;
-
-        // Convert relative coordinates to pixel coordinates for WebGL
-        const pixelStars = this.stars.map(star => ({
-            ...star,
-            x: star.x * this.canvas.width,
-            y: star.y * this.canvas.height,
-            pulseBoost: 0, // Initialize pulse boost
-        }));
-
-        this.bloodRenderer.uploadParticles(pixelStars);
+        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
     }
 
     async createScene() {
-        this.canvas = document.getElementById('blood-moon-canvas');
-        if (!this.canvas) return;
+        console.log('[BloodMoon] Creating stunning 3D blood moon scene...');
 
-        this.ctx = this.canvas.getContext('2d', {
-            alpha: false,
-            desynchronized: true, // Better performance
-        });
-
-        this.resizeHandler = () => this.resizeCanvas();
-        window.addEventListener('resize', this.resizeHandler, false);
-        this.resizeCanvas();
-
-        // Apply graphics quality preset from settings
-        const quality = this.getGraphicsQuality();
+        const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
-        console.log(`🌙 Blood Moon: Using ${quality} quality preset`);
 
-        // Initialize stars
-        this.createStars();
-
-        // Initialize WebGL renderer
-        this.initWebGLRenderer();
-        this.uploadStarsToWebGL();
-
-        // Initialize nebula clouds
-        this.createNebulaClouds();
-
-        // Initialize crater data for the moon
-        this.createCraterData();
-
-        // Setup gameplay event listeners
-        this.setupEventListeners();
-
-        // Setup quality change listener
-        this.setupQualityListener();
-
-        this.animate();
-    }
-
-    /**
-     * Setup listener for graphics quality changes
-     */
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        this.qualityChangeHandler = (event) => {
-            if (event.detail && event.detail.effectQuality) {
-                const newQuality = event.detail.effectQuality;
-                console.log(`🌙 Blood Moon: Quality changed to ${newQuality}`);
-
-                // Apply new quality preset
-                this.applyQualityPreset(newQuality);
-
-                // Recreate scene elements with new quality
-                this.stars = [];
-                this.nebulaClouds = [];
-                this.craterData = [];
-
-                this.createStars();
-                this.createNebulaClouds();
-                this.createCraterData();
-            }
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
-    resizeCanvas() {
-        if (!this.canvas) return;
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-
-        // Moon size
-        this.moonRadius = Math.min(this.canvas.width, this.canvas.height) * 0.15;
-
-        // Initialize moon position if not set (first time)
-        if (this.moonX === 0 && this.moonY === 0) {
-            this.moonX = this.canvas.width * 0.5;
-            this.moonY = this.canvas.height * 0.35;
-        }
-
-        // Pre-create gradients that don't change
-        this.cacheGradients();
-
-        // Resize WebGL canvas
-        if (this.useWebGL && this.bloodRenderer) {
-            this.bloodRenderer.resize(this.canvas.width, this.canvas.height);
-            this.uploadStarsToWebGL(); // Re-upload with new pixel coordinates
-        }
-    }
-
-    cacheGradients() {
-        // Background gradient
-        this.cachedGradients.background = this.ctx.createRadialGradient(
-            this.canvas.width * 0.5,
-            this.canvas.height * 0.3,
-            0,
-            this.canvas.width * 0.5,
-            this.canvas.height * 0.3,
-            this.canvas.height * 0.8,
-        );
-        this.cachedGradients.background.addColorStop(0, '#1a0510');
-        this.cachedGradients.background.addColorStop(0.3, '#0d0208');
-        this.cachedGradients.background.addColorStop(0.6, '#0a0306');
-        this.cachedGradients.background.addColorStop(1, '#000000');
-    }
-
-    createStars() {
-        const starCount = this.activePreset.stars;
-        for (let i = 0; i < starCount; i++) {
-            this.stars.push({
-                x: Math.random(),
-                y: Math.random(),
-                size: Math.random() * 2.5 + 0.8, // Increased size for better visibility
-                brightness: Math.random() * 0.6 + 0.4,
-                twinkleSpeed: Math.random() * 0.02 + 0.005,
-                twinklePhase: Math.random() * Math.PI * 2,
-                color: Math.random() > 0.7 ? 'red' : 'white', // Some stars have red tint
-            });
-        }
-    }
-
-    createNebulaClouds() {
-        const cloudCount = this.activePreset.nebulaClouds;
-        for (let i = 0; i < cloudCount; i++) {
-            this.nebulaClouds.push({
-                x: Math.random(),
-                y: Math.random() * 0.9 + 0.05, // Spread across more of the screen
-                size: Math.random() * 300 + 150, // Larger clouds
-                opacity: Math.random() * 0.18 + 0.08, // More visible (increased from 0.08)
-                speed: Math.random() * 0.0003 + 0.0001, // Faster drift (3x faster)
-                phase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.01 + 0.005, // Add pulsing
-                pulsePhase: Math.random() * Math.PI * 2,
-            });
-        }
-    }
-
-    createCraterData() {
-        // Create realistic crater positions and sizes
-        const craterCount = this.activePreset.craterData;
-        for (let i = 0; i < craterCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * 0.8; // Within 80% of moon radius
-
-            this.craterData.push({
-                x: Math.cos(angle) * distance,
-                y: Math.sin(angle) * distance,
-                size: Math.random() * 0.15 + 0.03,
-                depth: Math.random() * 0.4 + 0.3,
-            });
-        }
-    }
-
-    drawBackground() {
-        // Draw deep space background with red tint
-        this.ctx.fillStyle = this.cachedGradients.background;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Add enhanced red atmospheric glow across the scene
-        const centerX = this.canvas.width * 0.5;
-        const centerY = this.canvas.height * 0.35;
-        const atmosphereGradient = this.ctx.createRadialGradient(
-            centerX,
-            centerY,
-            this.canvas.height * 0.2,
-            centerX,
-            centerY,
-            this.canvas.height * 0.8,
-        );
-        atmosphereGradient.addColorStop(0, 'rgba(120, 10, 25, 0.12)'); // More intense
-        atmosphereGradient.addColorStop(0.4, 'rgba(100, 5, 20, 0.08)');
-        atmosphereGradient.addColorStop(0.7, 'rgba(80, 0, 15, 0.04)');
-        atmosphereGradient.addColorStop(1, 'rgba(40, 5, 10, 0)');
-        this.ctx.fillStyle = atmosphereGradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
-
-    drawStars(moonX, moonY) {
-        // Use WebGL if available
-        if (this.useWebGL && this.bloodRenderer) {
-            // Update positions if they drift (currently they don't drift in this theme, but good for future)
-            // If stars were moving, we'd call updatePositions here.
-
-            // Render
-            this.bloodRenderer.render(
-                this.time * 0.01, // Time
-                this.glowPulse - 1.0, // Global pulse (centered around 0)
-                { x: moonX, y: moonY }, // Moon pos
-                this.moonRadius // Moon radius
-            );
-
-            // Composite
-            this.ctx.drawImage(this.bloodCanvas, 0, 0);
+        const container = document.getElementById('blood-moon-theme');
+        if (!container) {
+            console.error('[BloodMoon] Container not found');
             return;
         }
 
-        // Fallback to Canvas2D
-        for (const star of this.stars) {
-            const x = star.x * this.canvas.width;
-            const y = star.y * this.canvas.height;
+        // Clear any existing content (old canvas)
+        container.innerHTML = '';
 
-            // Skip stars behind the moon
-            const dx = x - moonX;
-            const dy = y - moonY;
-            if (Math.sqrt(dx * dx + dy * dy) < this.moonRadius * 1.2) continue;
+        this.initRenderer(container);
+        this.createStarfield();
+        this.createNebulaClouds();
+        this.createMoon();
+        this.createAmbientParticles();
+        this.setupPostProcessing();
+        this.setupEventListeners();
+        this.startAnimation();
 
-            // Twinkling effect
-            star.twinklePhase += star.twinkleSpeed;
-            const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
-            const alpha = star.brightness * twinkle;
+        console.log('[BloodMoon] Scene created successfully');
+    }
 
-            if (star.color === 'red') {
-                this.ctx.fillStyle = `rgba(255, 150, 150, ${alpha})`;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Renderer & Camera
+    // ─────────────────────────────────────────────────────────────────────────
+
+    initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer.setClearColor(0x050005, 1); // Deep crimson-black
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setSize(width, height);
+        this.renderer.sortObjects = true;
+        this.renderer.autoClear = false;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
+
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
+
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x0a0208, 0.0008); // Crimson fog
+
+        // Camera positioned for depth
+        this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 50000);
+        this.camera.position.set(0, 0, 1200);
+        this.camera.lookAt(0, 0, 0);
+
+        // Crimson lighting from moon
+        const moonLight = new THREE.PointLight(0xcc1a2e, 2, 3000);
+        moonLight.position.set(0, 0, 0);
+        this.scene.add(moonLight);
+
+        // Subtle ambient
+        const ambientLight = new THREE.AmbientLight(0x150508, 0.4);
+        this.scene.add(ambientLight);
+
+        // Resize handler
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        console.log('[BloodMoon] Renderer initialized');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Starfield - Deep 3D stars with white and red tinting
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createStarfield() {
+        const starCount = this.qualityPreset.starCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(starCount * 3);
+        const colors = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
+        const phases = new Float32Array(starCount);
+
+        const starColors = [
+            new THREE.Color(0xffffff), // White
+            new THREE.Color(0xffeedd), // Warm white
+            new THREE.Color(0xffcccc), // Light pink
+            new THREE.Color(0xff9999), // Pink
+            new THREE.Color(0xff6666), // Red tint
+            new THREE.Color(0xcc3333), // Deep red
+        ];
+
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+
+            // Spread stars across a large 3D sphere
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const radius = 1500 + Math.random() * 5000;
+
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = radius * Math.cos(phi) - 2000;
+
+            // Color - mostly white with some red-tinted
+            const colorIndex = Math.random() > 0.7
+                ? Math.floor(2 + Math.random() * 4) // Red tints
+                : Math.floor(Math.random() * 2); // White
+            const color = starColors[colorIndex];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 1.0 + Math.random() * 3.0;
+            phases[i] = Math.random() * Math.PI * 2;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.starfield = new THREE.Points(geometry, material);
+        this.scene.add(this.starfield);
+        console.log('[BloodMoon] Starfield created with', starCount, 'stars');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Nebula Clouds - Crimson/burgundy clouds at varying depths
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createNebulaClouds() {
+        const cloudCount = this.qualityPreset.nebulaCount;
+
+        for (let i = 0; i < cloudCount; i++) {
+            const size = 800 + Math.random() * 1500;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            // Crimson/burgundy color palette
+            const colorType = Math.random();
+            let hue, sat, light;
+            if (colorType < 0.4) {
+                hue = 350 + Math.random() * 20; // Deep red
+                sat = 70 + Math.random() * 20;
+                light = 15 + Math.random() * 10;
+            } else if (colorType < 0.7) {
+                hue = 330 + Math.random() * 20; // Crimson
+                sat = 60 + Math.random() * 25;
+                light = 12 + Math.random() * 8;
             } else {
-                this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                hue = 310 + Math.random() * 20; // Dark magenta
+                sat = 50 + Math.random() * 30;
+                light = 10 + Math.random() * 10;
             }
 
-            // Draw star with subtle glow
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, star.size, 0, Math.PI * 2);
-            this.ctx.fill();
+            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            gradient.addColorStop(0, `hsla(${hue}, ${sat}%, ${light}%, 0.15)`);
+            gradient.addColorStop(0.4, `hsla(${hue}, ${sat}%, ${light}%, 0.08)`);
+            gradient.addColorStop(0.7, `hsla(${hue}, ${sat}%, ${light}%, 0.03)`);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
 
-            // Add glow for brighter stars
-            if (star.size > 1) {
-                this.ctx.beginPath();
-                this.ctx.arc(x, y, star.size * 2, 0, Math.PI * 2);
-                this.ctx.fillStyle = star.color === 'red'
-                    ? `rgba(255, 100, 100, ${alpha * 0.2})`
-                    : `rgba(255, 255, 255, ${alpha * 0.2})`;
-                this.ctx.fill();
-            }
+            const texture = new THREE.CanvasTexture(canvas);
+            const geometry = new THREE.PlaneGeometry(size, size);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+
+            const cloud = new THREE.Mesh(geometry, material);
+
+            // Spread at varying depths for parallax
+            cloud.position.x = (Math.random() - 0.5) * 4000;
+            cloud.position.y = (Math.random() - 0.5) * 2500;
+            cloud.position.z = -500 - Math.random() * 2500;
+            cloud.rotation.z = Math.random() * Math.PI;
+
+            // Store animation properties
+            cloud.userData = {
+                driftSpeed: 0.0001 + Math.random() * 0.0002,
+                pulsePhase: Math.random() * Math.PI * 2,
+                baseOpacity: material.opacity,
+            };
+
+            this.nebulaClouds.push(cloud);
+            this.scene.add(cloud);
+        }
+
+        console.log('[BloodMoon] Nebula clouds created');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Blood Moon - 3D Sphere with craters and intense glow
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createMoon() {
+        const moonSize = 180;
+
+        // Create moon group for drifting
+        this.moonGroup = new THREE.Group();
+        this.scene.add(this.moonGroup);
+
+        // Moon sphere with shader material
+        const geometry = new THREE.SphereGeometry(moonSize, this.qualityPreset.moonDetail, this.qualityPreset.moonDetail);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPulseIntensity: { value: 0 },
+                uGlowIntensity: { value: 1.0 },
+            },
+            vertexShader: moonVertexShader,
+            fragmentShader: moonFragmentShader,
+        });
+
+        this.moon = new THREE.Mesh(geometry, material);
+        this.moon.renderOrder = 100;
+        this.moonGroup.add(this.moon);
+
+        // Create glow layers around the moon
+        this.createMoonGlowLayers(moonSize);
+
+        console.log('[BloodMoon] 3D Blood Moon created');
+    }
+
+    createMoonGlowLayers(moonSize) {
+        const glowConfigs = [];
+        const layerCount = this.qualityPreset.glowLayers;
+
+        for (let i = 0; i < layerCount; i++) {
+            const sizeMult = 1.3 + i * 0.25;
+            const opacity = 0.35 - i * 0.04;
+            glowConfigs.push({
+                size: moonSize * sizeMult,
+                color: i < 3 ? 0xcc1a2e : (i < 5 ? 0x8a0f1e : 0x500a12),
+                opacity: Math.max(0.05, opacity),
+                z: -5 * (i + 1),
+            });
+        }
+
+        for (const config of glowConfigs) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.15, 'rgba(255, 200, 200, 0.8)');
+            gradient.addColorStop(0.4, 'rgba(255, 100, 100, 0.4)');
+            gradient.addColorStop(0.7, 'rgba(255, 50, 50, 0.15)');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const geometry = new THREE.PlaneGeometry(config.size, config.size);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                color: config.color,
+                transparent: true,
+                opacity: config.opacity,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+
+            const glow = new THREE.Mesh(geometry, material);
+            glow.position.set(0, 0, config.z);
+            glow.renderOrder = 50;
+            glow.userData.baseOpacity = config.opacity;
+            this.moonGlowLayers.push(glow);
+            this.moonGroup.add(glow);
         }
     }
 
-    drawNebulaClouds() {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ambient Particles - Floating crimson particles
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createAmbientParticles() {
+        const particleCount = this.qualityPreset.ambientParticles;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const randoms = new Float32Array(particleCount);
+        const sizes = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            // Orbit around moon area
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 200 + Math.random() * 600;
+
+            positions[i3] = Math.cos(angle) * radius;
+            positions[i3 + 1] = (Math.random() - 0.5) * 400;
+            positions[i3 + 2] = Math.sin(angle) * radius - 100;
+
+            randoms[i] = Math.random();
+            sizes[i] = 3.0 + Math.random() * 6.0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+            },
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.ambientParticles = new THREE.Points(geometry, material);
+        this.moonGroup.add(this.ambientParticles);
+
+        console.log('[BloodMoon] Ambient particles created');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Post Processing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupPostProcessing() {
+        if (!this.qualityPreset.enablePostProcessing) {
+            console.log('[BloodMoon] Post-processing disabled for quality level');
+            return;
+        }
+
+        this.composer = new EffectComposer(this.renderer);
+
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.qualityPreset.bloomStrength,
+            this.qualityPreset.bloomRadius,
+            0.2
+        );
+        this.composer.addPass(bloomPass);
+
+        const vignettePass = new ShaderPass(VignetteShader);
+        this.composer.addPass(vignettePass);
+
+        console.log('[BloodMoon] Post-processing configured');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    startAnimation() {
+        this.animate();
+    }
+
+    animate() {
+        if (!this.isActive) return;
+
+        const animId = requestAnimationFrame(() => this.animate());
+        this.registerAnimation(animId);
+
+        const delta = this.clock.getDelta();
+        this.time += delta;
+
+        // Update shader uniforms
+        if (this.moon && this.moon.material.uniforms) {
+            this.moon.material.uniforms.uTime.value = this.time;
+            this.moon.material.uniforms.uPulseIntensity.value = this.moonPulseIntensity;
+            this.moon.material.uniforms.uGlowIntensity.value = this.moonGlowIntensity;
+        }
+
+        if (this.starfield && this.starfield.material.uniforms) {
+            this.starfield.material.uniforms.uTime.value = this.time;
+        }
+
+        if (this.ambientParticles && this.ambientParticles.material.uniforms) {
+            this.ambientParticles.material.uniforms.uTime.value = this.time;
+        }
+
+        // Slow drift moon across scene
+        if (this.moonGroup) {
+            const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 200 +
+                Math.cos(this.time * 0.02 + this.moonPhaseX2) * 100;
+            const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 120 +
+                Math.sin(this.time * 0.015 + this.moonPhaseY2) * 60;
+
+            this.moonGroup.position.x = driftX;
+            this.moonGroup.position.y = driftY + 50;
+
+            // Gentle rotation
+            this.moonGroup.rotation.z = Math.sin(this.time * 0.01) * 0.05;
+        }
+
+        // Pulse glow layers with moon pulse intensity
+        const glowPulse = Math.sin(this.time * 2.0) * 0.15 + 1.0;
+        for (const glow of this.moonGlowLayers) {
+            const pulse = (1 + this.moonPulseIntensity * 0.5) * glowPulse;
+            glow.material.opacity = glow.userData.baseOpacity * pulse;
+        }
+
+        // Nebula drift and pulse
         for (const cloud of this.nebulaClouds) {
-            cloud.phase += cloud.speed;
-            cloud.pulsePhase += cloud.pulseSpeed;
+            cloud.position.x += cloud.userData.driftSpeed * 50;
+            if (cloud.position.x > 2500) cloud.position.x = -2500;
 
-            // Add pulsing effect
-            const pulse = Math.sin(cloud.pulsePhase) * 0.3 + 0.7;
+            cloud.userData.pulsePhase += 0.005;
+            const pulse = Math.sin(cloud.userData.pulsePhase) * 0.2 + 1.0;
+            cloud.material.opacity = cloud.userData.baseOpacity * pulse;
+        }
 
-            // Drift horizontally with wrapping
-            cloud.x += cloud.speed * 0.05;
-            if (cloud.x > 1.2) cloud.x = -0.2; // Wrap around
+        // Slowly rotate starfield
+        if (this.starfield) {
+            this.starfield.rotation.y = this.time * 0.005;
+            this.starfield.rotation.z = this.time * 0.002;
+        }
 
-            const x = (cloud.x + Math.sin(cloud.phase) * 0.15) * this.canvas.width;
-            const y = (cloud.y + Math.cos(cloud.phase * 0.5) * 0.05) * this.canvas.height; // Add vertical drift
+        // Decay pulse intensity
+        if (this.moonPulseIntensity > 0) {
+            this.moonPulseIntensity *= 0.95;
+            if (this.moonPulseIntensity < 0.01) this.moonPulseIntensity = 0;
+        }
 
-            // Create multiple layers for richer nebula effect
-            const baseOpacity = cloud.opacity * pulse;
+        // Update blood waves
+        this.updateBloodWaves(delta);
 
-            // Outer glow layer
-            const outerGradient = this.ctx.createRadialGradient(
-                x,
-                y,
-                0,
-                x,
-                y,
-                cloud.size * 1.2,
-            );
-            outerGradient.addColorStop(0, `rgba(150, 30, 40, ${baseOpacity * 0.6})`);
-            outerGradient.addColorStop(0.3, `rgba(120, 20, 30, ${baseOpacity * 0.4})`);
-            outerGradient.addColorStop(0.6, `rgba(80, 10, 20, ${baseOpacity * 0.2})`);
-            outerGradient.addColorStop(1, 'rgba(40, 5, 10, 0)');
+        // Update soul orbs
+        this.updateSoulOrbs(delta);
 
-            this.ctx.fillStyle = outerGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, cloud.size * 1.2, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Inner bright core
-            const coreGradient = this.ctx.createRadialGradient(
-                x,
-                y,
-                0,
-                x,
-                y,
-                cloud.size * 0.5,
-            );
-            coreGradient.addColorStop(0, `rgba(200, 50, 60, ${baseOpacity * 0.8})`);
-            coreGradient.addColorStop(0.5, `rgba(150, 30, 40, ${baseOpacity * 0.5})`);
-            coreGradient.addColorStop(1, `rgba(100, 15, 25, ${baseOpacity * 0.2})`);
-
-            this.ctx.fillStyle = coreGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, cloud.size * 0.5, 0, Math.PI * 2);
-            this.ctx.fill();
+        // Render
+        this.renderer.clear();
+        if (this.composer && this.qualityPreset.enablePostProcessing) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Blood Waves - Expanding crimson torus rings
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBloodWave(intensity) {
+        const geometry = new THREE.TorusGeometry(30, 2, 8, 48);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: this.time },
+                uOpacity: { value: 1.0 },
+                uColor: { value: new THREE.Color(0xcc1a2e) },
+            },
+            vertexShader: waveVertexShader,
+            fragmentShader: waveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        });
+
+        const wave = new THREE.Mesh(geometry, material);
+        wave.rotation.x = Math.random() * Math.PI * 0.3;
+        wave.rotation.y = Math.random() * Math.PI * 2;
+
+        wave.userData = {
+            speed: 80 + intensity * 20,
+            life: 1.0,
+            maxLife: 1.0,
+        };
+
+        this.moonGroup.add(wave);
+        this.bloodWaves.push(wave);
+    }
+
+    updateBloodWaves(delta) {
+        for (let i = this.bloodWaves.length - 1; i >= 0; i--) {
+            const wave = this.bloodWaves[i];
+            wave.scale.addScalar(wave.userData.speed * delta * 0.1);
+            wave.userData.life -= delta * 0.8;
+
+            if (wave.material.uniforms) {
+                wave.material.uniforms.uOpacity.value = wave.userData.life;
+            }
+
+            if (wave.userData.life <= 0) {
+                this.moonGroup.remove(wave);
+                wave.geometry.dispose();
+                wave.material.dispose();
+                this.bloodWaves.splice(i, 1);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Soul Orbs - Glowing particles rising upward
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSoulOrb() {
+        const geometry = new THREE.SphereGeometry(4 + Math.random() * 4, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xff4060,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const orb = new THREE.Mesh(geometry, material);
+        orb.position.x = (Math.random() - 0.5) * 300;
+        orb.position.y = -200;
+        orb.position.z = (Math.random() - 0.5) * 200;
+
+        orb.userData = {
+            velocityY: 30 + Math.random() * 40,
+            velocityX: (Math.random() - 0.5) * 10,
+            life: 1.0,
+            pulsePhase: Math.random() * Math.PI * 2,
+        };
+
+        this.moonGroup.add(orb);
+        this.soulOrbs.push(orb);
+    }
+
+    updateSoulOrbs(delta) {
+        for (let i = this.soulOrbs.length - 1; i >= 0; i--) {
+            const orb = this.soulOrbs[i];
+            orb.position.y += orb.userData.velocityY * delta;
+            orb.position.x += orb.userData.velocityX * delta;
+            orb.userData.life -= delta * 0.3;
+
+            // Pulse
+            orb.userData.pulsePhase += delta * 5;
+            const pulse = Math.sin(orb.userData.pulsePhase) * 0.3 + 0.7;
+            orb.material.opacity = orb.userData.life * pulse;
+
+            if (orb.userData.life <= 0 || orb.position.y > 300) {
+                this.moonGroup.remove(orb);
+                orb.geometry.dispose();
+                orb.material.dispose();
+                this.soulOrbs.splice(i, 1);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Event Handlers
+    // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
@@ -552,79 +786,15 @@ export default class BloodMoonTheme extends BaseTheme {
     }
 
     handlePieceLock() {
-        this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.1, 0.4);
+        this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.15, 0.5);
+    }
 
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+    handleCombo(eventPayload) {
+        const detail = eventPayload?.detail || eventPayload || {};
+        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
 
-        // === CRIMSON METEORS ===
-        // Fast, streaking red particles
-        const meteorCount = 2 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < meteorCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 10 + Math.random() * 15;
-
-            // Start from random positions, often top/sides
-            let startX, startY;
-            if (Math.random() > 0.5) {
-                startX = Math.random() * w;
-                startY = Math.random() * h * 0.3;
-            } else {
-                startX = Math.random() * w;
-                startY = Math.random() * h * 0.5;
-            }
-
-            this.crimsonMeteors.push({
-                x: startX,
-                y: startY,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                size: 2 + Math.random() * 3,
-                life: 1.0,
-                decay: 0.03 + Math.random() * 0.02,
-                trail: [],
-                maxTrailLength: 10 + Math.floor(Math.random() * 5),
-            });
-        }
-
-        // === BLOOD RIPPLE ===
-        // A dark red distortion wave
-        if (Math.random() > 0.4) {
-            this.bloodRipples.push({
-                x: w * 0.2 + Math.random() * w * 0.6,
-                y: h * 0.2 + Math.random() * h * 0.6,
-                radius: 0,
-                maxRadius: 100 + Math.random() * 100,
-                width: 20 + Math.random() * 20,
-                speed: 5 + Math.random() * 5,
-                life: 1.0,
-                decay: 0.02,
-                opacity: 0.6,
-            });
-        }
-
-        // === SHADOW BURST ===
-        // Dark particles exploding outward
-        if (Math.random() > 0.6) {
-            const burstX = w * 0.2 + Math.random() * w * 0.6;
-            const burstY = h * 0.2 + Math.random() * h * 0.6;
-            const particleCount = 10 + Math.floor(Math.random() * 10);
-
-            for (let i = 0; i < particleCount; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 2 + Math.random() * 4;
-
-                this.shadowBursts.push({
-                    x: burstX,
-                    y: burstY,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    size: 2 + Math.random() * 4,
-                    life: 1.0,
-                    decay: 0.02 + Math.random() * 0.02,
-                    color: Math.random() > 0.5 ? '#000000' : '#300000',
-                });
-            }
+        if (comboCount > 0) {
+            this.pendingComboCount = comboCount;
         }
     }
 
@@ -641,743 +811,88 @@ export default class BloodMoonTheme extends BaseTheme {
         this.onLineClear(lineCount, comboCount);
     }
 
-    handleCombo(eventPayload) {
-        const detail = eventPayload?.detail || eventPayload || {};
-        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
-
-        if (comboCount > 0) {
-            this.pendingComboCount = comboCount;
-        }
-    }
-
     onLineClear(lineCount, comboCount) {
-        // Update combo multiplier
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
+        this.moonPulseIntensity = Math.min(0.6 + comboCount * 0.2, 1.5);
 
-        // Moon pulse intensity based on combo
-        this.moonPulseIntensity = Math.min(0.5 + comboCount * 0.15, 1.5);
-
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-
-        // Blood burst particles from center - reduced for performance
-        // Enforce particle limit
-        if (this.bloodBurstParticles.length >= this.MAX_PARTICLES) {
-            // Remove oldest particles
-            this.bloodBurstParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
-        }
-
-        const burstCount = Math.min(lineCount * 15 + comboCount * 10, this.MAX_PARTICLES);
-        for (let i = 0; i < burstCount; i++) {
-            this.bloodBurstParticles.push(this.createBloodBurstParticle(centerX, centerY, lineCount));
-        }
-
-        // Crimson lightning for big combos - limit instances
-        if (comboCount >= 4 && this.crimsonLightning.length < this.MAX_LIGHTNING) {
-            this.createCrimsonLightning(centerX, centerY, comboCount);
-        }
-
-        // Blood waves rippling from moon - limit waves
-        if (lineCount >= 2 && this.bloodWaves.length < this.MAX_WAVES) {
-            this.createBloodWaves(lineCount, comboCount);
-        }
-
-        // Soul orbs rising for combos - limit orbs
-        if (comboCount >= 2 && this.soulOrbs.length < this.MAX_ORBS) {
-            const orbCount = Math.min(comboCount * 2, this.MAX_ORBS - this.soulOrbs.length);
-            for (let i = 0; i < orbCount; i++) {
-                this.soulOrbs.push(this.createSoulOrb());
-            }
-        }
-
-        // Blood vortexes for massive combos - limit vortexes
-        if (comboCount >= 7 && this.bloodVortexes.length < this.MAX_VORTEXES) {
-            const vortexCount = Math.min(Math.floor(comboCount / 5), this.MAX_VORTEXES - this.bloodVortexes.length);
-            for (let i = 0; i < vortexCount; i++) {
-                this.bloodVortexes.push(this.createBloodVortex());
-            }
-        }
-    }
-
-    createBloodBurstParticle(x, y, lineCount) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 12 + 6 + lineCount * 2;
-
-        return {
-            x,
-            y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size: Math.random() * 5 + 2,
-            opacity: Math.random() * 0.9 + 0.4,
-            life: 1.0,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.2,
-            color: Math.random() > 0.5 ? 'blood' : 'dark',
-            sparkle: Math.random() * Math.PI * 2,
-            trail: [],
-        };
-    }
-
-    createCrimsonLightning(x, y, comboCount) {
-        const branches = [];
-        const numBranches = Math.min(
-            Math.floor(comboCount / 3) + 3,
-            this.activePreset.lightningBranches,
-        );
-
-        for (let i = 0; i < numBranches; i++) {
-            const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.5;
-            const segments = [];
-            let currentX = x;
-            let currentY = y;
-
-            const segmentCount = this.activePreset.lightningSegments;
-            for (let j = 0; j < segmentCount; j++) {
-                const length = Math.random() * 100 + 60;
-                const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.9) * length;
-                const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.9) * length;
-
-                segments.push({
-                    x1: currentX,
-                    y1: currentY,
-                    x2: nextX,
-                    y2: nextY,
-                });
-
-                currentX = nextX;
-                currentY = nextY;
-            }
-
-            branches.push(segments);
-        }
-
-        this.crimsonLightning.push({
-            branches,
-            opacity: 1.0,
-            life: 1.0,
-            pulsePhase: 0,
-        });
-    }
-
-    createBloodWaves(lineCount, comboCount) {
-        const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), this.MAX_WAVES - this.bloodWaves.length);
-
+        // Create blood waves
+        const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
         for (let i = 0; i < waveCount; i++) {
-            this.bloodWaves.push({
-                radius: 0,
-                maxRadius: 300 + comboCount * 50,
-                opacity: 0.8,
-                life: 1.0,
-                speed: 4 + comboCount * 0.5,
-                delay: i * 0.15,
-                started: false,
-            });
+            setTimeout(() => this.createBloodWave(comboCount), i * 100);
+        }
+
+        // Create soul orbs for combos
+        if (comboCount >= 2) {
+            const orbCount = Math.min(comboCount * 2, 10);
+            for (let i = 0; i < orbCount; i++) {
+                setTimeout(() => this.createSoulOrb(), i * 50);
+            }
         }
     }
 
-    createSoulOrb() {
-        return {
-            x: Math.random() * this.canvas.width,
-            y: this.canvas.height + 50,
-            vx: (Math.random() - 0.5) * 2,
-            vy: -(Math.random() * 3 + 2),
-            size: Math.random() * 8 + 4,
-            opacity: Math.random() * 0.7 + 0.4,
-            life: 1.0,
-            pulsePhase: Math.random() * Math.PI * 2,
-            glowIntensity: Math.random() * 0.5 + 0.5,
-        };
+    // ─────────────────────────────────────────────────────────────────────────
+    // Resize
+    // ─────────────────────────────────────────────────────────────────────────
+
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
     }
 
-    createBloodVortex() {
-        return {
-            x: Math.random() * this.canvas.width,
-            y: Math.random() * this.canvas.height * 0.6,
-            particles: [],
-            angle: 0,
-            radius: 0,
-            maxRadius: Math.random() * 250 + 200,
-            spinSpeed: 0.12,
-            expansionRate: 3,
-            life: 1.0,
-            direction: Math.random() < 0.5 ? 1 : -1,
-        };
-    }
-
-    calculateMoonPosition() {
-        // Update moon position with ultra-slow drifting motion across entire screen
-        // Use very slow sine/cosine waves with different periods for natural movement
-        // Movement spans the entire screen width and height
-        const horizontalRange = (this.canvas.width - this.moonRadius * 2) * 0.8; // 80% of screen width
-        const verticalRange = (this.canvas.height - this.moonRadius * 2) * 0.6; // 60% of screen height
-
-        // Center positions
-        const centerX = this.canvas.width * 0.5;
-        const centerY = this.canvas.height * 0.4;
-
-        // Ultra-slow, smooth movement using multiple sine waves with random phase offsets
-        // Each session starts at a different point in the path
-        const moonX = centerX + Math.sin(this.time * 0.00008 + this.moonPhaseX) * (horizontalRange * 0.5);
-        const moonY = centerY + Math.cos(this.time * 0.00006 + this.moonPhaseY) * (verticalRange * 0.5);
-
-        // Add secondary movement for more natural path with different random offsets
-        const moonXOffset = Math.sin(this.time * 0.0001 + this.moonPhaseX2) * (horizontalRange * 0.2);
-        const moonYOffset = Math.cos(this.time * 0.00012 + this.moonPhaseY2) * (verticalRange * 0.2);
-
-        return {
-            x: moonX + moonXOffset,
-            y: moonY + moonYOffset,
-        };
-    }
-
-    drawMoon(moonPos) {
-        this.moonRotation += 0.0001;
-
-        // Decay moon pulse intensity
-        if (this.moonPulseIntensity > 0) {
-            this.moonPulseIntensity *= 0.95;
-        }
-
-        // Update glow pulse - stronger and more dramatic, enhanced by gameplay
-        const basePulse = Math.sin(this.time * 0.002) * 0.35 + 0.85;
-        this.glowPulse = basePulse * (1 + this.moonPulseIntensity * 0.5); // Increased pulse range
-
-        this.ctx.save();
-        this.ctx.translate(moonPos.x, moonPos.y);
-        this.ctx.rotate(this.moonRotation);
-
-        // Draw outer glow layers (most intense) - Enhanced for more glow
-        for (let i = 8; i >= 1; i--) { // Increased from 5 to 8 layers
-            const glowRadius = this.moonRadius * (1 + i * 0.2); // Increased spread
-            const glowOpacity = (0.25 / i) * this.glowPulse; // Increased base opacity
-
-            const glowGradient = this.ctx.createRadialGradient(0, 0, this.moonRadius, 0, 0, glowRadius);
-            glowGradient.addColorStop(0, `rgba(220, 40, 60, ${glowOpacity * 1.2})`); // Brighter
-            glowGradient.addColorStop(0.3, `rgba(200, 30, 50, ${glowOpacity * 0.8})`);
-            glowGradient.addColorStop(0.6, `rgba(160, 20, 35, ${glowOpacity * 0.5})`);
-            glowGradient.addColorStop(1, 'rgba(100, 10, 20, 0)');
-
-            this.ctx.fillStyle = glowGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-
-        // Draw main moon body with gradient
-        const moonGradient = this.ctx.createRadialGradient(
-            -this.moonRadius * 0.2,
-            -this.moonRadius * 0.2,
-            this.moonRadius * 0.2,
-            0,
-            0,
-            this.moonRadius,
-        );
-        moonGradient.addColorStop(0, '#cc1a2e');
-        moonGradient.addColorStop(0.4, '#a01525');
-        moonGradient.addColorStop(0.7, '#7a0f1a');
-        moonGradient.addColorStop(1, '#4d0a0f');
-
-        this.ctx.fillStyle = moonGradient;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.moonRadius, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Draw craters
-        for (const crater of this.craterData) {
-            const craterX = crater.x * this.moonRadius;
-            const craterY = crater.y * this.moonRadius;
-            const craterRadius = crater.size * this.moonRadius;
-
-            // Crater shadow
-            const craterGradient = this.ctx.createRadialGradient(
-                craterX,
-                craterY,
-                0,
-                craterX,
-                craterY,
-                craterRadius,
-            );
-            craterGradient.addColorStop(0, `rgba(20, 5, 5, ${crater.depth})`);
-            craterGradient.addColorStop(0.6, `rgba(40, 10, 10, ${crater.depth * 0.5})`);
-            craterGradient.addColorStop(1, 'rgba(60, 15, 15, 0)');
-
-            this.ctx.fillStyle = craterGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(craterX, craterY, craterRadius, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Crater rim highlight
-            this.ctx.strokeStyle = `rgba(200, 50, 60, ${crater.depth * 0.3})`;
-            this.ctx.lineWidth = 1;
-            this.ctx.beginPath();
-            this.ctx.arc(craterX, craterY, craterRadius * 0.9, 0, Math.PI * 2);
-            this.ctx.stroke();
-        }
-
-        // Add animated texture noise and shimmer for moon surface
-        for (let i = 0; i < this.activePreset.moonTexture; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * this.moonRadius;
-            const x = Math.cos(angle) * distance;
-            const y = Math.sin(angle) * distance;
-
-            // Add shimmer animation
-            const shimmerPhase = this.time * 0.01 + i * 0.1;
-            const shimmer = Math.sin(shimmerPhase) * 0.3 + 0.7;
-
-            // More variety in texture with increased visibility
-            const isDark = Math.random() > 0.5;
-            const color = isDark ? '60, 10, 15' : '140, 30, 35'; // Slightly brighter
-            const baseOpacity = Math.random() * 0.45 * shimmer; // Increased from 0.3
-
-            this.ctx.fillStyle = `rgba(${color}, ${baseOpacity})`;
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2); // Slightly larger
-            this.ctx.fill();
-
-            // Add more bright shimmer spots
-            if (Math.random() > 0.92) { // Increased from 0.95 (more spots)
-                this.ctx.fillStyle = `rgba(255, 90, 110, ${Math.random() * 0.5 * shimmer})`; // Increased opacity
-                this.ctx.beginPath();
-                this.ctx.arc(x, y, Math.random() * 2, 0, Math.PI * 2); // Slightly larger
-                this.ctx.fill();
-            }
-        }
-
-        // Add animated edge highlight for 3D effect and shimmer
-        const shimmerIntensity = Math.sin(this.time * 0.005) * 0.2 + 0.5;
-        const edgeGradient = this.ctx.createRadialGradient(
-            -this.moonRadius * 0.3,
-            -this.moonRadius * 0.3,
-            0,
-            0,
-            0,
-            this.moonRadius,
-        );
-        edgeGradient.addColorStop(0, `rgba(255, 120, 140, ${0.5 * shimmerIntensity})`); // More intense
-        edgeGradient.addColorStop(0.4, `rgba(240, 90, 110, ${0.3 * shimmerIntensity})`);
-        edgeGradient.addColorStop(0.7, `rgba(200, 60, 80, ${0.15 * shimmerIntensity})`);
-        edgeGradient.addColorStop(1, 'rgba(150, 40, 60, 0)');
-
-        this.ctx.fillStyle = edgeGradient;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.moonRadius, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Add pulsing rim glow
-        this.ctx.strokeStyle = `rgba(255, 100, 120, ${0.4 * this.glowPulse})`;
-        this.ctx.lineWidth = 3;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.moonRadius - 2, 0, Math.PI * 2);
-        this.ctx.stroke();
-
-        this.ctx.restore();
-
-        // Draw enhanced atmospheric glow around moon - multiple layers
-        // Layer 1: Extended outer atmosphere
-        const outerAtmosphere = this.ctx.createRadialGradient(
-            moonPos.x,
-            moonPos.y,
-            this.moonRadius,
-            moonPos.x,
-            moonPos.y,
-            this.moonRadius * 2.5,
-        );
-        outerAtmosphere.addColorStop(0, `rgba(220, 60, 80, ${0.25 * this.glowPulse})`);
-        outerAtmosphere.addColorStop(0.3, `rgba(200, 40, 60, ${0.15 * this.glowPulse})`);
-        outerAtmosphere.addColorStop(0.6, `rgba(150, 20, 40, ${0.08 * this.glowPulse})`);
-        outerAtmosphere.addColorStop(1, 'rgba(100, 10, 20, 0)');
-
-        this.ctx.fillStyle = outerAtmosphere;
-        this.ctx.beginPath();
-        this.ctx.arc(moonPos.x, moonPos.y, this.moonRadius * 2.5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Layer 2: Intense inner atmosphere
-        const innerAtmosphere = this.ctx.createRadialGradient(
-            moonPos.x,
-            moonPos.y,
-            this.moonRadius * 0.8,
-            moonPos.x,
-            moonPos.y,
-            this.moonRadius * 1.4,
-        );
-        innerAtmosphere.addColorStop(0, `rgba(255, 80, 100, ${0.35 * this.glowPulse})`);
-        innerAtmosphere.addColorStop(0.5, `rgba(230, 50, 70, ${0.2 * this.glowPulse})`);
-        innerAtmosphere.addColorStop(1, 'rgba(180, 30, 50, 0)');
-
-        this.ctx.fillStyle = innerAtmosphere;
-        this.ctx.beginPath();
-        this.ctx.arc(moonPos.x, moonPos.y, this.moonRadius * 1.4, 0, Math.PI * 2);
-        this.ctx.fill();
-    }
-
-    animate() {
-        if (!this.isActive) return;
-
-        this.time += 1;
-
-        // Calculate moon position once per frame
-        const moonPos = this.calculateMoonPosition();
-
-        // Clear and draw
-        this.drawBackground();
-        this.drawNebulaClouds();
-        this.drawStars(moonPos.x, moonPos.y);
-
-        // Draw blood waves emanating from moon
-        for (let i = this.bloodWaves.length - 1; i >= 0; i--) {
-            const wave = this.bloodWaves[i];
-
-            wave.delay -= 0.016;
-            if (wave.delay <= 0 && !wave.started) {
-                wave.started = true;
-            }
-
-            if (!wave.started) continue;
-
-            wave.radius += wave.speed;
-            wave.life -= 0.01;
-            wave.opacity = wave.life * 0.6;
-
-            if (wave.life <= 0 || wave.radius > wave.maxRadius) {
-                this.bloodWaves.splice(i, 1);
-                continue;
-            }
-
-            // Draw pulsing blood wave rings
-            for (let j = 0; j < 3; j++) {
-                const offsetRadius = wave.radius - j * 20;
-                if (offsetRadius <= 0) continue;
-
-                this.ctx.beginPath();
-                this.ctx.arc(moonPos.x, moonPos.y, offsetRadius, 0, Math.PI * 2);
-                this.ctx.strokeStyle = `rgba(200, 30, 50, ${wave.opacity * (1 - j * 0.3)})`;
-                this.ctx.lineWidth = 3 + j;
-                this.ctx.stroke();
-            }
-        }
-
-        // Draw crimson lightning
-        for (let i = this.crimsonLightning.length - 1; i >= 0; i--) {
-            const lightning = this.crimsonLightning[i];
-            lightning.life -= 0.02;
-            lightning.opacity = lightning.life;
-            lightning.pulsePhase += 0.15;
-
-            if (lightning.life <= 0) {
-                this.crimsonLightning.splice(i, 1);
-                continue;
-            }
-
-            const pulseOpacity = lightning.opacity * (0.4 + Math.sin(lightning.pulsePhase) * 0.2);
-
-            this.ctx.lineCap = 'round';
-
-            // Outer glow
-            this.ctx.strokeStyle = `rgba(200, 40, 60, ${pulseOpacity * 0.2})`;
-            this.ctx.lineWidth = 8;
-            this.ctx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.ctx.stroke();
-
-            // Middle layer
-            this.ctx.strokeStyle = `rgba(220, 50, 70, ${pulseOpacity * 0.4})`;
-            this.ctx.lineWidth = 4;
-            this.ctx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.ctx.stroke();
-
-            // Core
-            this.ctx.strokeStyle = `rgba(255, 80, 100, ${pulseOpacity * 0.7})`;
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.ctx.moveTo(segment.x1, segment.y1);
-                    this.ctx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.ctx.stroke();
-        }
-
-        // Draw blood burst particles
-        for (let i = this.bloodBurstParticles.length - 1; i >= 0; i--) {
-            const p = this.bloodBurstParticles[i];
-
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vy += 0.2; // Gravity
-            p.vx *= 0.98;
-            p.rotation += p.rotationSpeed;
-            p.life -= 0.015;
-            p.opacity = p.life * 0.9;
-            p.sparkle += 0.2;
-
-            if (p.life <= 0 || p.y > this.canvas.height) {
-                this.bloodBurstParticles.splice(i, 1);
-                continue;
-            }
-
-            const sparkle = Math.sin(p.sparkle) * 0.3 + 0.7;
-
-            this.ctx.save();
-            this.ctx.translate(p.x, p.y);
-            this.ctx.rotate(p.rotation);
-            this.ctx.globalAlpha = p.opacity * sparkle;
-
-            // Blood-red particle
-            if (p.color === 'blood') {
-                this.ctx.fillStyle = 'rgba(200, 30, 50, 1)';
-            } else {
-                this.ctx.fillStyle = 'rgba(100, 15, 25, 1)';
-            }
-
-            // Draw droplet shape
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, -p.size);
-            this.ctx.bezierCurveTo(p.size * 0.5, -p.size * 0.5, p.size * 0.5, p.size * 0.5, 0, p.size);
-            this.ctx.bezierCurveTo(-p.size * 0.5, p.size * 0.5, -p.size * 0.5, -p.size * 0.5, 0, -p.size);
-            this.ctx.fill();
-
-            // Highlight
-            this.ctx.fillStyle = 'rgba(255, 100, 120, 0.6)';
-            this.ctx.beginPath();
-            this.ctx.arc(-p.size * 0.2, -p.size * 0.3, p.size * 0.3, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.globalAlpha = 1;
-            this.ctx.restore();
-        }
-
-        // Draw soul orbs
-        for (let i = this.soulOrbs.length - 1; i >= 0; i--) {
-            const orb = this.soulOrbs[i];
-
-            orb.x += orb.vx;
-            orb.y += orb.vy;
-            orb.vx *= 0.99;
-            orb.vy *= 0.98;
-            orb.life -= 0.008;
-            orb.opacity = orb.life * 0.8;
-            orb.pulsePhase += 0.1;
-
-            if (orb.life <= 0 || orb.y < -50) {
-                this.soulOrbs.splice(i, 1);
-                continue;
-            }
-
-            const pulse = Math.sin(orb.pulsePhase) * 0.3 + 0.7;
-
-            // Outer glow
-            const outerGrad = this.ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.size * 2);
-            outerGrad.addColorStop(0, `rgba(180, 50, 70, ${orb.opacity * pulse * 0.4})`);
-            outerGrad.addColorStop(0.5, `rgba(150, 30, 50, ${orb.opacity * pulse * 0.2})`);
-            outerGrad.addColorStop(1, 'rgba(100, 20, 30, 0)');
-
-            this.ctx.fillStyle = outerGrad;
-            this.ctx.beginPath();
-            this.ctx.arc(orb.x, orb.y, orb.size * 2, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Core
-            const coreGrad = this.ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.size);
-            coreGrad.addColorStop(0, `rgba(255, 100, 120, ${orb.opacity * pulse})`);
-            coreGrad.addColorStop(0.6, `rgba(220, 60, 80, ${orb.opacity * pulse * 0.7})`);
-            coreGrad.addColorStop(1, `rgba(180, 40, 60, ${orb.opacity * pulse * 0.3})`);
-
-            this.ctx.fillStyle = coreGrad;
-            this.ctx.beginPath();
-            this.ctx.arc(orb.x, orb.y, orb.size, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-
-        // Draw blood vortexes
-        for (let i = this.bloodVortexes.length - 1; i >= 0; i--) {
-            const vortex = this.bloodVortexes[i];
-
-            vortex.angle += vortex.spinSpeed * vortex.direction;
-            vortex.radius += vortex.expansionRate;
-            vortex.life -= 0.006;
-
-            // Spawn vortex particles - quality-based spawn rate
-            if (Math.random() < this.activePreset.vortexSpawnRate
-                && vortex.radius < vortex.maxRadius
-                && vortex.particles.length < this.activePreset.vortexParticleLimit) {
-                const particleAngle = vortex.angle + Math.random() * Math.PI * 0.4;
-                const particleRadius = vortex.radius + Math.random() * 50;
-                vortex.particles.push({
-                    x: vortex.x + Math.cos(particleAngle) * particleRadius,
-                    y: vortex.y + Math.sin(particleAngle) * particleRadius,
-                    size: Math.random() * 4 + 2,
-                    opacity: Math.random() * 0.9 + 0.3,
-                    vx: Math.cos(particleAngle) * 2,
-                    vy: Math.sin(particleAngle) * 2,
-                    life: 1.0,
-                });
-            }
-
-            // Update vortex particles
-            for (let j = vortex.particles.length - 1; j >= 0; j--) {
-                const p = vortex.particles[j];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= 0.02;
-                p.opacity = p.life * vortex.life * 0.8;
-
-                if (p.life <= 0) {
-                    vortex.particles.splice(j, 1);
-                    continue;
-                }
-
-                this.ctx.globalAlpha = p.opacity;
-                this.ctx.fillStyle = 'rgba(220, 50, 70, 1)';
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.globalAlpha = 1;
-            }
-
-            if (vortex.life <= 0 || vortex.radius > vortex.maxRadius) {
-                this.bloodVortexes.splice(i, 1);
-            }
-        }
-
-        // Draw crimson meteors
-        for (let i = this.crimsonMeteors.length - 1; i >= 0; i--) {
-            const meteor = this.crimsonMeteors[i];
-
-            // Update
-            meteor.x += meteor.vx;
-            meteor.y += meteor.vy;
-            meteor.life -= meteor.decay;
-
-            // Trail
-            meteor.trail.unshift({ x: meteor.x, y: meteor.y });
-            if (meteor.trail.length > meteor.maxTrailLength) {
-                meteor.trail.pop();
-            }
-
-            if (meteor.life <= 0) {
-                this.crimsonMeteors.splice(i, 1);
-                continue;
-            }
-
-            // Draw trail
-            this.ctx.beginPath();
-            this.ctx.strokeStyle = `rgba(200, 20, 40, ${meteor.life * 0.6})`;
-            this.ctx.lineWidth = meteor.size;
-            this.ctx.lineCap = 'round';
-
-            if (meteor.trail.length > 1) {
-                this.ctx.moveTo(meteor.trail[0].x, meteor.trail[0].y);
-                for (let j = 1; j < meteor.trail.length; j++) {
-                    this.ctx.lineTo(meteor.trail[j].x, meteor.trail[j].y);
-                }
-                this.ctx.stroke();
-            }
-
-            // Draw head
-            this.ctx.fillStyle = `rgba(255, 50, 70, ${meteor.life})`;
-            this.ctx.beginPath();
-            this.ctx.arc(meteor.x, meteor.y, meteor.size * 1.5, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-
-        // Draw blood ripples
-        for (let i = this.bloodRipples.length - 1; i >= 0; i--) {
-            const ripple = this.bloodRipples[i];
-
-            ripple.radius += ripple.speed;
-            ripple.life -= ripple.decay;
-
-            if (ripple.life <= 0) {
-                this.bloodRipples.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.beginPath();
-            this.ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
-            this.ctx.strokeStyle = `rgba(150, 10, 30, ${ripple.life * ripple.opacity})`;
-            this.ctx.lineWidth = ripple.width * ripple.life;
-            this.ctx.stroke();
-        }
-
-        // Draw shadow bursts
-        for (let i = this.shadowBursts.length - 1; i >= 0; i--) {
-            const p = this.shadowBursts[i];
-
-            p.x += p.vx;
-            p.y += p.vy;
-            p.life -= p.decay;
-
-            if (p.life <= 0) {
-                this.shadowBursts.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.fillStyle = p.color;
-            this.ctx.globalAlpha = p.life * 0.8;
-            this.ctx.beginPath();
-            this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.globalAlpha = 1.0;
-        }
-
-        this.drawMoon(moonPos);
-
-        const animId = requestAnimationFrame(() => this.animate());
-        this.registerAnimation(animId);
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Cleanup
+    // ─────────────────────────────────────────────────────────────────────────
 
     stop() {
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
-        }
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
 
-        // Remove quality change listener
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-
-        // Unsubscribe from events
+        // Unsubscribe events
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
-        // Clear gameplay effects
-        this.bloodBurstParticles = [];
-        this.crimsonLightning = [];
+        // Cleanup Three.js
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('blood-moon-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
+        }
+
+        // Dispose scene objects
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach((m) => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.moon = null;
+        this.moonGroup = null;
+        this.starfield = null;
+        this.nebulaClouds = [];
+        this.moonGlowLayers = [];
         this.bloodWaves = [];
         this.soulOrbs = [];
-        this.bloodVortexes = [];
-        this.crimsonMeteors = [];
-        this.bloodRipples = [];
-        this.shadowBursts = [];
-        this.moonPulseIntensity = 0;
-        this.comboMultiplier = 1.0;
-        this.pendingComboCount = 0;
+        this.ambientParticles = null;
 
         super.stop();
-    }
-
-    /**
-     * Get custom tetromino configuration for Blood Moon theme
-     * @returns {Object} Tetromino configuration with crimson blood moon colors
-     */
-    getTetrominoConfig() {
-        return BLOOD_MOON_TETROMINOS;
     }
 }
