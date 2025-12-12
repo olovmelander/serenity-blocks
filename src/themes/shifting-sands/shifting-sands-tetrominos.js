@@ -1,5 +1,5 @@
 /**
- * Desert Oasis Theme - Tetromino Visual Configuration
+ * Shifting Sands Theme - Tetromino Visual Configuration
  *
  * A magical desert night palette featuring:
  * - Warm lantern glows and firefly lights
@@ -8,7 +8,7 @@
  * - Oasis water reflections
  */
 
-export const DESERT_OASIS_TETROMINOS = {
+export const SHIFTING_SANDS_TETROMINOS = {
     version: 1,
 
     colors: {

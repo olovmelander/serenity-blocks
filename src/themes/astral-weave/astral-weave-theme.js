@@ -1,162 +1,86 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { ASTRAL_WEAVE_TETROMINOS } from './astral-weave-tetrominos.js';
 import {
-    cosmicThreadVertexShader,
-    cosmicThreadFragmentShader,
-    starVertexShader,
-    starFragmentShader,
+    ribbonVertexShader,
+    ribbonFragmentShader,
+    weaveParticleVertexShader,
+    weaveParticleFragmentShader,
+    starsVertexShader,
+    starsFragmentShader,
     nebulaVertexShader,
     nebulaFragmentShader,
-    stardustVertexShader,
-    stardustFragmentShader,
-    pulseWaveVertexShader,
-    pulseWaveFragmentShader,
-    warpVortexVertexShader,
-    warpVortexFragmentShader,
-    cosmicOrbVertexShader,
-    cosmicOrbFragmentShader,
-    shootingStarVertexShader,
-    shootingStarFragmentShader
+    pulseVertexShader,
+    pulseFragmentShader,
+    dustVertexShader,
+    dustFragmentShader
 } from './astral-weave-shaders.js';
 
 /**
- * Astral Weave Theme - Three.js 3D Edition
- *
- * A breathtaking visualization of cosmic threads weaving through deep space.
+ * Astral Weave Theme - An immersive 3D cosmic weave experience
+ * 
  * Features:
- * - 3D cosmic weave ribbons with flowing animation
- * - Deep space starfield with twinkling stars
+ * - Central glowing nexus where energy converges
+ * - Multiple flowing energy ribbons weaving through space
+ * - Thousands of particles flowing along the weave pattern
+ * - Deep background starfield with twinkling
  * - Volumetric nebula clouds
- * - Energy pulses and cosmic orbs on events
- * - Warp vortex effects on big combos
- * - Dynamic camera drift for immersive depth
+ * - Dynamic game event effects (pulses, particle bursts)
+ * - Slow drift animation for immersive depth
  */
 export default class AstralWeaveTheme extends BaseTheme {
     constructor() {
         super('astral-weave');
-
-        this.tetrominoConfig = ASTRAL_WEAVE_TETROMINOS;
+        this.eventUnsubscribers = [];
 
         // Three.js components
         this.scene = null;
         this.camera = null;
         this.renderer = null;
-        this.composer = null;
         this.mainGroup = null;
-
-        // Visual elements
-        this.cosmicThreads = [];
-        this.starSystem = null;
-        this.nebulaParticles = null;
-        this.stardustSystem = null;
+        this.nexusSprites = [];
+        this.energyRibbons = [];
+        this.weaveParticles = null;
+        this.backgroundStars = null;
+        this.nebulaClouds = [];
+        this.cosmicDust = null;
         this.pulseWaves = [];
-        this.cosmicOrbs = null;
-        this.warpVortexes = [];
-        this.shootingStars = [];
-        this.constellations = [];
 
         // Animation
         this.animationFrame = null;
         this.clock = new THREE.Clock();
 
-        // Uniforms
+        // Uniforms for shader animation
         this.uniforms = {
             time: { value: 0 },
             intensity: { value: 1.0 }
         };
 
-        // State
-        this.comboIntensity = 0;
-
-        // Color palette - Cosmic ethereal colors
-        this.colorPalette = {
-            cyan: new THREE.Color(0x00ffff),
-            magenta: new THREE.Color(0xff00ff),
-            gold: new THREE.Color(0xffd700),
-            purple: new THREE.Color(0x7c4dff),
-            green: new THREE.Color(0x00ff88),
-            white: new THREE.Color(0xffffff)
+        // Cosmic color palette - Ethereal cyans, magentas, purples, golds
+        this.palette = {
+            cyan: new THREE.Color(0x00FFFF),
+            magenta: new THREE.Color(0xFF00FF),
+            purple: new THREE.Color(0x9933FF),
+            gold: new THREE.Color(0xFFD700),
+            green: new THREE.Color(0x00FF88),
+            pink: new THREE.Color(0xFF66AA),
+            blue: new THREE.Color(0x3399FF),
+            white: new THREE.Color(0xFFFFFF)
         };
 
-        // Quality presets
-        this.qualityPresets = {
-            Minimal: {
-                threadCount: 4,
-                starCount: 600,
-                nebulaCount: 40,
-                stardustCount: 80,
-                bloomEnabled: false,
-                bloomStrength: 0.3,
-                bloomRadius: 0.2
-            },
-            Low: {
-                threadCount: 6,
-                starCount: 1000,
-                nebulaCount: 60,
-                stardustCount: 120,
-                bloomEnabled: false,
-                bloomStrength: 0.35,
-                bloomRadius: 0.25
-            },
-            Medium: {
-                threadCount: 8,
-                starCount: 1500,
-                nebulaCount: 100,
-                stardustCount: 180,
-                bloomEnabled: true,
-                bloomStrength: 0.4,
-                bloomRadius: 0.3
-            },
-            High: {
-                threadCount: 10,
-                starCount: 2200,
-                nebulaCount: 150,
-                stardustCount: 250,
-                bloomEnabled: true,
-                bloomStrength: 0.45,
-                bloomRadius: 0.35
-            },
-            Ultra: {
-                threadCount: 12,
-                starCount: 3000,
-                nebulaCount: 200,
-                stardustCount: 350,
-                bloomEnabled: true,
-                bloomStrength: 0.5,
-                bloomRadius: 0.4
-            },
-            Extreme: {
-                threadCount: 15,
-                starCount: 4000,
-                nebulaCount: 280,
-                stardustCount: 500,
-                bloomEnabled: true,
-                bloomStrength: 0.55,
-                bloomRadius: 0.45
-            }
-        };
-        this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets.High;
-
-        // Event handling
-        this.eventUnsubscribers = [];
+        this.tetrominoConfig = ASTRAL_WEAVE_TETROMINOS;
     }
 
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
+    getRandomColor() {
+        const colors = Object.values(this.palette);
+        return colors[Math.floor(Math.random() * colors.length)];
     }
 
     async createScene() {
-        console.log('[AstralWeave3D] Initializing Three.js scene...');
+        console.log('[AstralWeave] Initializing Three.js scene...');
 
-        // Create container if it doesn't exist
+        // Create container if needed
         let container = document.getElementById('astral-weave-theme');
         if (!container) {
             container = document.createElement('div');
@@ -175,8 +99,6 @@ export default class AstralWeaveTheme extends BaseTheme {
             });
             document.body.appendChild(container);
             this.registerContainer(container);
-
-            // Trigger reflow and fade in
             container.offsetHeight;
             container.classList.add('active');
             container.style.opacity = '1';
@@ -184,14 +106,9 @@ export default class AstralWeaveTheme extends BaseTheme {
             container.innerHTML = '';
         }
 
-        this.currentQuality = this.getGraphicsQuality();
-        this.activePreset = this.qualityPresets[this.currentQuality] || this.qualityPresets.High;
-
         // Setup Scene
         this.scene = new THREE.Scene();
-        // Deep cosmic purple-indigo background
-        this.scene.background = new THREE.Color(0x050010);
-        this.scene.fog = new THREE.FogExp2(0x080018, 0.006);
+        this.scene.fog = new THREE.FogExp2(0x050015, 0.012);
 
         // Setup Camera
         this.camera = new THREE.PerspectiveCamera(
@@ -200,7 +117,8 @@ export default class AstralWeaveTheme extends BaseTheme {
             0.1,
             1000
         );
-        this.camera.position.set(0, 0, 30);
+        this.camera.position.z = 30;
+        this.camera.position.y = 5;
         this.camera.lookAt(0, 0, 0);
 
         // Setup Renderer
@@ -213,194 +131,262 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(this.renderer.domElement);
 
-        // Create main group for drifting
+        // Create Main Group for Drifting
         this.mainGroup = new THREE.Group();
         this.scene.add(this.mainGroup);
 
-        // Create all elements
-        this.createStarField();
-        this.createCosmicThreads();
-        this.createNebulaParticles();
-        this.createStardust();
-        this.createCosmicOrbsPool();
+        // Create Scene Elements
+        this.createNexusCore();
+        this.createEnergyRibbons();
+        this.createWeaveParticles();
+        this.createBackgroundStars();
+        this.createNebulaClouds();
+        this.createCosmicDust();
         this.setupLighting();
-        this.setupPostProcessing();
 
-        // Event listeners
+        // Event Listeners
         this.setupEventListeners();
         window.addEventListener('resize', this.onWindowResize.bind(this));
 
-        // Start animation
+        // Start Animation
         this.animate();
 
-        console.log(`[AstralWeave3D] Scene initialized with ${this.currentQuality} quality.`);
+        console.log('[AstralWeave] Scene initialized.');
     }
 
-    createStarField() {
-        const count = this.activePreset.starCount;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
+    createNexusCore() {
+        // Central nexus where energy converges - layered glow sprites
+        this.nexusSprites = [];
 
-        // Star color palette
-        const starColors = [
-            new THREE.Color(0xffffff), // White
-            new THREE.Color(0xe0f0ff), // Pale blue
-            new THREE.Color(0xffd0e0), // Pink tint
-            new THREE.Color(0xd0e8ff), // Cyan tint
-            new THREE.Color(0xffffee), // Warm white
-            new THREE.Color(0xccffee)  // Green tint
-        ];
+        const glowTexture = this.createGlowTexture();
 
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-
-            // Spread stars in a large sphere around camera
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const radius = 50 + Math.random() * 100;
-
-            positions[i3] = Math.sin(phi) * Math.cos(theta) * radius;
-            positions[i3 + 1] = Math.sin(phi) * Math.sin(theta) * radius;
-            positions[i3 + 2] = Math.cos(phi) * radius;
-
-            sizes[i] = Math.random() * 2.5 + 0.5;
-            phases[i] = Math.random() * Math.PI * 2;
-
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
+        // Inner bright white/cyan core
+        const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: 0xFFFFFF,
             transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
+            opacity: 0.95,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        innerGlow.scale.set(4, 4, 1);
+        this.mainGroup.add(innerGlow);
+        this.nexusSprites.push(innerGlow);
 
-        this.starSystem = new THREE.Points(geometry, material);
-        this.scene.add(this.starSystem);
+        // Cyan mid glow
+        const midGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: 0x00FFFF,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        midGlow.scale.set(8, 8, 1);
+        this.mainGroup.add(midGlow);
+        this.nexusSprites.push(midGlow);
+
+        // Magenta outer glow
+        const outerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: 0xFF00FF,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        outerGlow.scale.set(14, 14, 1);
+        this.mainGroup.add(outerGlow);
+        this.nexusSprites.push(outerGlow);
+
+        // Purple diffuse halo
+        const haloGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: 0x6633FF,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        haloGlow.scale.set(22, 22, 1);
+        this.mainGroup.add(haloGlow);
+        this.nexusSprites.push(haloGlow);
     }
 
-    createCosmicThreads() {
-        const threadCount = this.activePreset.threadCount;
+    createGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
 
-        // Thread color sets - ethereal cosmic colors
-        const threadColorSets = [
-            { primary: this.colorPalette.cyan, secondary: this.colorPalette.magenta, tertiary: this.colorPalette.gold },
-            { primary: this.colorPalette.magenta, secondary: this.colorPalette.purple, tertiary: this.colorPalette.cyan },
-            { primary: this.colorPalette.purple, secondary: this.colorPalette.cyan, tertiary: this.colorPalette.green },
-            { primary: this.colorPalette.gold, secondary: this.colorPalette.cyan, tertiary: this.colorPalette.magenta },
-            { primary: this.colorPalette.green, secondary: this.colorPalette.gold, tertiary: this.colorPalette.purple }
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        gradient.addColorStop(0.1, 'rgba(200, 255, 255, 0.9)');
+        gradient.addColorStop(0.3, 'rgba(150, 200, 255, 0.5)');
+        gradient.addColorStop(0.5, 'rgba(100, 150, 255, 0.25)');
+        gradient.addColorStop(0.7, 'rgba(80, 100, 200, 0.1)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    createEnergyRibbons() {
+        // Create multiple flowing energy ribbons emanating from the nexus
+        const ribbonConfigs = [
+            { angle: 0, color: [this.palette.cyan, this.palette.magenta, this.palette.gold] },
+            { angle: Math.PI * 0.5, color: [this.palette.magenta, this.palette.purple, this.palette.cyan] },
+            { angle: Math.PI, color: [this.palette.purple, this.palette.cyan, this.palette.green] },
+            { angle: Math.PI * 1.5, color: [this.palette.gold, this.palette.magenta, this.palette.purple] },
+            { angle: Math.PI * 0.25, color: [this.palette.green, this.palette.cyan, this.palette.white] },
+            { angle: Math.PI * 0.75, color: [this.palette.pink, this.palette.purple, this.palette.cyan] },
+            { angle: Math.PI * 1.25, color: [this.palette.blue, this.palette.cyan, this.palette.magenta] },
+            { angle: Math.PI * 1.75, color: [this.palette.cyan, this.palette.gold, this.palette.pink] },
         ];
 
-        for (let i = 0; i < threadCount; i++) {
-            const colorSet = threadColorSets[i % threadColorSets.length];
+        ribbonConfigs.forEach((config, index) => {
+            // Create a curved path from center outward
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(
+                    Math.cos(config.angle) * 5 + Math.sin(config.angle + index) * 2,
+                    Math.sin(index * 0.5) * 3,
+                    Math.sin(config.angle) * 5
+                ),
+                new THREE.Vector3(
+                    Math.cos(config.angle) * 12 + Math.cos(config.angle + index * 0.7) * 4,
+                    Math.sin(index * 0.8 + 1) * 5,
+                    Math.sin(config.angle) * 12 + Math.sin(config.angle + index * 0.5) * 3
+                ),
+                new THREE.Vector3(
+                    Math.cos(config.angle) * 22 + Math.sin(config.angle + index * 0.3) * 6,
+                    Math.cos(index * 0.6) * 4,
+                    Math.sin(config.angle) * 22 + Math.cos(config.angle + index * 0.4) * 5
+                ),
+            ]);
 
-            // Create smooth, elegant sine wave path for the thread
-            const points = [];
-            const numPoints = 80;
-
-            // Spread threads vertically across screen
-            const baseY = ((i / threadCount) - 0.5) * 35;
-            const baseZ = -15 + (i % 3) * 5; // Layer threads at different depths
-
-            // Each thread has unique wave properties for organic variation
-            const amplitude = 6 + (i % 4) * 2; // Wave height
-            const frequency = 1.5 + (i % 3) * 0.5; // Wave frequency
-            const phaseOffset = (i / threadCount) * Math.PI * 2; // Phase offset
-
-            for (let j = 0; j < numPoints; j++) {
-                const t = j / (numPoints - 1);
-                const x = -50 + t * 100; // Span from -50 to +50
-
-                // Smooth sine wave with secondary harmonic for organic feel
-                const y = baseY +
-                    Math.sin(t * Math.PI * frequency + phaseOffset) * amplitude +
-                    Math.sin(t * Math.PI * frequency * 2 + phaseOffset * 1.5) * (amplitude * 0.3);
-
-                // Gentle Z undulation for depth
-                const z = baseZ + Math.cos(t * Math.PI * frequency * 0.7 + phaseOffset) * 3;
-
-                points.push(new THREE.Vector3(x, y, z));
-            }
-
-            const curve = new THREE.CatmullRomCurve3(points);
-
-            // Create thin, elegant tube geometry
-            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 0.08, 6, false);
+            // Create ribbon geometry from curve
+            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 0.15 + index * 0.02, 8, false);
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     time: this.uniforms.time,
                     intensity: this.uniforms.intensity,
-                    waveSpeed: { value: 0.2 + (i % 5) * 0.05 },
-                    waveAmplitude: { value: 1.0 },
-                    threadOffset: { value: i * 1.5 },
-                    colorPrimary: { value: colorSet.primary },
-                    colorSecondary: { value: colorSet.secondary },
-                    colorTertiary: { value: colorSet.tertiary }
+                    flowSpeed: { value: 1.5 + index * 0.2 },
+                    waveIntensity: { value: 0.3 + index * 0.05 },
+                    colorA: { value: config.color[0] },
+                    colorB: { value: config.color[1] },
+                    colorC: { value: config.color[2] }
                 },
-                vertexShader: cosmicThreadVertexShader,
-                fragmentShader: cosmicThreadFragmentShader,
+                vertexShader: ribbonVertexShader,
+                fragmentShader: ribbonFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 side: THREE.DoubleSide,
                 blending: THREE.AdditiveBlending
             });
 
-            const thread = new THREE.Mesh(tubeGeometry, material);
-            thread.userData.baseY = baseY;
-            thread.userData.phaseOffset = phaseOffset;
+            const ribbon = new THREE.Mesh(tubeGeometry, material);
+            ribbon.userData.baseAngle = config.angle;
+            ribbon.userData.index = index;
 
-            this.mainGroup.add(thread);
-            this.cosmicThreads.push(thread);
-        }
+            this.mainGroup.add(ribbon);
+            this.energyRibbons.push(ribbon);
+        });
     }
 
-    createNebulaParticles() {
-        const count = this.activePreset.nebulaCount;
+    createWeaveParticles() {
+        // Particles that flow along the weave pattern
+        const particleCount = 4000;
         const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const randoms = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
 
-        // Nebula colors - deep purples, cyans, magentas
-        const nebulaColors = [
-            new THREE.Color(0x4a0080), // Deep purple
-            new THREE.Color(0x0060a0), // Deep blue
-            new THREE.Color(0x800060), // Deep magenta
-            new THREE.Color(0x005858), // Deep teal
-            new THREE.Color(0x3a1480)  // Violet
+        const angles = new Float32Array(particleCount);
+        const radii = new Float32Array(particleCount);
+        const speeds = new Float32Array(particleCount);
+        const randoms = new Float32Array(particleCount);
+        const colors = new Float32Array(particleCount * 3);
+        const positions = new Float32Array(particleCount * 3);
+
+        const colorOptions = [
+            this.palette.cyan,
+            this.palette.magenta,
+            this.palette.purple,
+            this.palette.gold,
+            this.palette.white
         ];
 
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
+        for (let i = 0; i < particleCount; i++) {
+            angles[i] = Math.random() * Math.PI * 2;
+            radii[i] = 2 + Math.pow(Math.random(), 0.6) * 20;
+            speeds[i] = 0.5 + Math.random() * 1.0;
+            randoms[i] = Math.random();
 
-            // Spread around the scene
-            positions[i3] = (Math.random() - 0.5) * 100;
-            positions[i3 + 1] = (Math.random() - 0.5) * 60;
-            positions[i3 + 2] = (Math.random() - 0.5) * 80 - 20;
+            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            const brightness = 0.7 + Math.random() * 0.3;
+            colors[i * 3] = color.r * brightness;
+            colors[i * 3 + 1] = color.g * brightness;
+            colors[i * 3 + 2] = color.b * brightness;
+
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = 0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aAngle', new THREE.BufferAttribute(angles, 1));
+        geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time
+            },
+            vertexShader: weaveParticleVertexShader,
+            fragmentShader: weaveParticleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.weaveParticles = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.weaveParticles);
+    }
+
+    createBackgroundStars() {
+        const starCount = 3000;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(starCount * 3);
+        const randoms = new Float32Array(starCount);
+        const colors = new Float32Array(starCount * 3);
+
+        const colorOptions = [
+            new THREE.Color(0xFFFFFF),
+            new THREE.Color(0xCCDDFF),
+            new THREE.Color(0xFFCCFF),
+            new THREE.Color(0xCCFFFF),
+            new THREE.Color(0xFFFFCC),
+        ];
+
+        for (let i = 0; i < starCount; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const radius = 50 + Math.random() * 80;
+
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = radius * Math.cos(phi);
 
             randoms[i] = Math.random();
 
-            const color = nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
+            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -411,369 +397,108 @@ export default class AstralWeaveTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time
             },
-            vertexShader: nebulaVertexShader,
-            fragmentShader: nebulaFragmentShader,
+            vertexShader: starsVertexShader,
+            fragmentShader: starsFragmentShader,
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending
         });
 
-        this.nebulaParticles = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.nebulaParticles);
+        this.backgroundStars = new THREE.Points(geometry, material);
+        this.scene.add(this.backgroundStars);
     }
 
-    createStardust() {
-        const count = this.activePreset.stardustCount;
+    createNebulaClouds() {
+        const nebulaConfigs = [
+            { position: [-10, 3, -20], scale: 18, colorA: 0x00FFFF, colorB: 0xFF00FF, opacity: 0.25 },
+            { position: [12, -2, -22], scale: 20, colorA: 0x9933FF, colorB: 0x00FFFF, opacity: 0.2 },
+            { position: [0, 6, -28], scale: 25, colorA: 0xFF00FF, colorB: 0x6633FF, opacity: 0.18 },
+            { position: [-15, -5, -25], scale: 16, colorA: 0xFFD700, colorB: 0xFF00FF, opacity: 0.22 },
+        ];
+
+        nebulaConfigs.forEach((config, index) => {
+            const geometry = new THREE.PlaneGeometry(config.scale, config.scale);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: this.uniforms.time,
+                    opacity: { value: config.opacity },
+                    colorA: { value: new THREE.Color(config.colorA) },
+                    colorB: { value: new THREE.Color(config.colorB) }
+                },
+                vertexShader: nebulaVertexShader,
+                fragmentShader: nebulaFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const cloud = new THREE.Mesh(geometry, material);
+            cloud.position.set(...config.position);
+            cloud.rotation.z = Math.random() * Math.PI;
+
+            this.nebulaClouds.push(cloud);
+            this.scene.add(cloud);
+        });
+    }
+
+    createCosmicDust() {
+        const dustCount = 300;
         const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const phases = new Float32Array(count);
-        const sizes = new Float32Array(count);
 
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
+        const positions = new Float32Array(dustCount * 3);
+        const randoms = new Float32Array(dustCount);
+        const sizes = new Float32Array(dustCount);
 
-            positions[i3] = (Math.random() - 0.5) * 80;
-            positions[i3 + 1] = (Math.random() - 0.5) * 50;
-            positions[i3 + 2] = (Math.random() - 0.5) * 60 - 10;
+        for (let i = 0; i < dustCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 5 + Math.random() * 20;
 
-            phases[i] = Math.random() * Math.PI * 2;
-            sizes[i] = Math.random() * 2 + 0.5;
+            positions[i * 3] = Math.cos(angle) * radius;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 8;
+            positions[i * 3 + 2] = Math.sin(angle) * radius;
+
+            randoms[i] = Math.random();
+            sizes[i] = 2 + Math.random() * 4;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: this.uniforms.time
+                time: this.uniforms.time,
+                color: { value: this.palette.cyan }
             },
-            vertexShader: stardustVertexShader,
-            fragmentShader: stardustFragmentShader,
+            vertexShader: dustVertexShader,
+            fragmentShader: dustFragmentShader,
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending
         });
 
-        this.stardustSystem = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.stardustSystem);
-    }
-
-    createCosmicOrbsPool() {
-        // Create a pool of cosmic orbs for event effects
-        const maxOrbs = 20;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(maxOrbs * 3);
-        const phases = new Float32Array(maxOrbs);
-        const sizes = new Float32Array(maxOrbs);
-        const colors = new Float32Array(maxOrbs * 3);
-
-        for (let i = 0; i < maxOrbs; i++) {
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = -1000; // Hidden initially
-            positions[i * 3 + 2] = 0;
-            phases[i] = Math.random() * Math.PI * 2;
-            sizes[i] = 0;
-            colors[i * 3] = 0;
-            colors[i * 3 + 1] = 1;
-            colors[i * 3 + 2] = 1;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time
-            },
-            vertexShader: cosmicOrbVertexShader,
-            fragmentShader: cosmicOrbFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
-
-        this.cosmicOrbs = new THREE.Points(geometry, material);
-        this.cosmicOrbs.userData.activeOrbs = [];
-        this.mainGroup.add(this.cosmicOrbs);
+        this.cosmicDust = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.cosmicDust);
     }
 
     setupLighting() {
-        // Ambient light - deep space blue
-        const ambient = new THREE.AmbientLight(0x1a1a40, 0.4);
-        this.scene.add(ambient);
+        const ambientLight = new THREE.AmbientLight(0x202050, 0.5);
+        this.scene.add(ambientLight);
 
-        // Cyan cosmic light
-        const cyanLight = new THREE.PointLight(0x00ffff, 1.2, 80);
-        cyanLight.position.set(20, 15, 10);
-        this.mainGroup.add(cyanLight);
+        // Central nexus light
+        const pointLight = new THREE.PointLight(0x00FFFF, 2, 50);
+        pointLight.position.set(0, 0, 0);
+        this.mainGroup.add(pointLight);
 
-        // Magenta cosmic light
-        const magentaLight = new THREE.PointLight(0xff00ff, 1.0, 70);
-        magentaLight.position.set(-20, -10, 5);
+        // Secondary colored lights
+        const magentaLight = new THREE.PointLight(0xFF00FF, 1, 40);
+        magentaLight.position.set(10, 5, -5);
         this.mainGroup.add(magentaLight);
 
-        // Gold accent light
-        const goldLight = new THREE.PointLight(0xffd700, 0.8, 50);
-        goldLight.position.set(0, 20, -15);
-        this.mainGroup.add(goldLight);
-    }
-
-    setupPostProcessing() {
-        if (!this.activePreset.bloomEnabled) {
-            this.composer = null;
-            return;
-        }
-
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.composer = new EffectComposer(this.renderer);
-        this.composer.addPass(new RenderPass(this.scene, this.camera));
-
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(width, height),
-            this.activePreset.bloomStrength,
-            this.activePreset.bloomRadius,
-            0.7
-        );
-        this.composer.addPass(this.bloomPass);
-    }
-
-    setupEventListeners() {
-        // Line Clear - energy pulses
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (!this.isActive || settings?.backgroundComboEffects === false) return;
-
-            this.uniforms.intensity.value += data.lineCount * 0.3;
-            this.comboIntensity += data.lineCount * 0.25;
-
-            // Create pulse waves
-            this.createPulseWave(data.lineCount);
-
-            // Spawn cosmic orbs
-            if (data.lineCount >= 2) {
-                this.spawnCosmicOrbs(data.lineCount * 2);
-            }
-
-            // Create warp vortex for big clears
-            if (data.lineCount >= 3) {
-                this.createWarpVortex();
-            }
-        });
-
-        // Combo - shooting stars
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (!this.isActive || settings?.backgroundComboEffects === false) return;
-
-            this.uniforms.intensity.value += 0.2;
-            this.comboIntensity += data.comboCount * 0.12;
-
-            if (data.comboCount >= 2) {
-                this.createShootingStar();
-            }
-            if (data.comboCount >= 4) {
-                this.createShootingStar();
-            }
-            if (data.comboCount >= 6) {
-                this.createWarpVortex();
-            }
-        });
-
-        // Piece Lock - subtle intensity boost
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (!this.isActive || settings?.backgroundComboEffects === false) return;
-
-            this.uniforms.intensity.value += 0.08;
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-    }
-
-    createPulseWave(intensity) {
-        const geometry = new THREE.TorusGeometry(3, 0.2, 8, 48);
-
-        const colors = [this.colorPalette.cyan, this.colorPalette.magenta, this.colorPalette.gold];
-        const color = colors[Math.floor(Math.random() * colors.length)];
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                opacity: { value: 0.9 },
-                color: { value: color }
-            },
-            vertexShader: pulseWaveVertexShader,
-            fragmentShader: pulseWaveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.position.set(
-            (Math.random() - 0.5) * 30,
-            (Math.random() - 0.5) * 20,
-            (Math.random() - 0.5) * 10
-        );
-        wave.rotation.set(
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-            0
-        );
-
-        wave.userData = {
-            speed: 8 + intensity * 2,
-            life: 1.5,
-            maxLife: 1.5
-        };
-
-        this.mainGroup.add(wave);
-        this.pulseWaves.push(wave);
-    }
-
-    spawnCosmicOrbs(count) {
-        if (!this.cosmicOrbs) return;
-
-        const positions = this.cosmicOrbs.geometry.attributes.position.array;
-        const sizes = this.cosmicOrbs.geometry.attributes.aSize.array;
-        const colors = this.cosmicOrbs.geometry.attributes.aColor.array;
-        const activeOrbs = this.cosmicOrbs.userData.activeOrbs;
-
-        const orbColors = [
-            this.colorPalette.cyan,
-            this.colorPalette.magenta,
-            this.colorPalette.gold,
-            this.colorPalette.green
-        ];
-
-        for (let i = 0; i < Math.min(count, 20); i++) {
-            const orbIndex = activeOrbs.length < 20 ? activeOrbs.length : Math.floor(Math.random() * 20);
-            const i3 = orbIndex * 3;
-
-            positions[i3] = (Math.random() - 0.5) * 40;
-            positions[i3 + 1] = (Math.random() - 0.5) * 30;
-            positions[i3 + 2] = (Math.random() - 0.5) * 20;
-
-            sizes[orbIndex] = 4 + Math.random() * 4;
-
-            const color = orbColors[Math.floor(Math.random() * orbColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-
-            if (activeOrbs.length < 20) {
-                activeOrbs.push({
-                    index: orbIndex,
-                    life: 2.0,
-                    vx: (Math.random() - 0.5) * 2,
-                    vy: (Math.random() - 0.5) * 2,
-                    vz: (Math.random() - 0.5) * 1
-                });
-            }
-        }
-
-        this.cosmicOrbs.geometry.attributes.position.needsUpdate = true;
-        this.cosmicOrbs.geometry.attributes.aSize.needsUpdate = true;
-        this.cosmicOrbs.geometry.attributes.aColor.needsUpdate = true;
-    }
-
-    createWarpVortex() {
-        const geometry = new THREE.TorusGeometry(6, 0.8, 16, 64);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                opacity: { value: 0.8 },
-                rotation: { value: 0 },
-                colorA: { value: this.colorPalette.cyan },
-                colorB: { value: this.colorPalette.magenta }
-            },
-            vertexShader: warpVortexVertexShader,
-            fragmentShader: warpVortexFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-
-        const vortex = new THREE.Mesh(geometry, material);
-        vortex.position.set(
-            (Math.random() - 0.5) * 30,
-            (Math.random() - 0.5) * 20,
-            (Math.random() - 0.5) * 15 - 5
-        );
-
-        vortex.userData = {
-            life: 2.5,
-            maxLife: 2.5,
-            rotationSpeed: (Math.random() - 0.5) * 2
-        };
-
-        this.mainGroup.add(vortex);
-        this.warpVortexes.push(vortex);
-    }
-
-    createShootingStar() {
-        const trailLength = 25;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(trailLength * 3);
-        const progress = new Float32Array(trailLength);
-
-        // Random start position
-        const startX = (Math.random() - 0.5) * 80;
-        const startY = 20 + Math.random() * 20;
-        const startZ = (Math.random() - 0.5) * 40 - 10;
-
-        // Random direction (diagonal down)
-        const dirX = (Math.random() - 0.5) * 2;
-        const dirY = -1 - Math.random() * 0.5;
-        const dirZ = (Math.random() - 0.5);
-
-        for (let i = 0; i < trailLength; i++) {
-            positions[i * 3] = startX;
-            positions[i * 3 + 1] = startY;
-            positions[i * 3 + 2] = startZ;
-            progress[i] = i / trailLength;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
-
-        const starColors = [
-            new THREE.Color(0xaaffdd),
-            new THREE.Color(0xffaaff),
-            new THREE.Color(0xffffaa)
-        ];
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                color: { value: starColors[Math.floor(Math.random() * starColors.length)] },
-                opacity: { value: 1.0 }
-            },
-            vertexShader: shootingStarVertexShader,
-            fragmentShader: shootingStarFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
-
-        const star = new THREE.Points(geometry, material);
-        star.userData = {
-            direction: new THREE.Vector3(dirX, dirY, dirZ).normalize(),
-            speed: 40 + Math.random() * 25,
-            life: 1.8,
-            maxLife: 1.8,
-            headPosition: new THREE.Vector3(startX, startY, startZ)
-        };
-
-        this.scene.add(star);
-        this.shootingStars.push(star);
+        const purpleLight = new THREE.PointLight(0x9933FF, 0.8, 35);
+        purpleLight.position.set(-10, -3, 5);
+        this.mainGroup.add(purpleLight);
     }
 
     animate() {
@@ -785,189 +510,157 @@ export default class AstralWeaveTheme extends BaseTheme {
         const elapsedTime = this.clock.getElapsedTime();
         this.uniforms.time.value = elapsedTime;
 
-        // Decay intensity
+        // Camera orbit for dynamic view
+        if (this.camera) {
+            const cameraTime = elapsedTime * 0.06;
+            const orbitRadius = 28;
+
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadius * 0.25;
+            this.camera.position.y = 5 + Math.sin(cameraTime * 0.7) * 4;
+            this.camera.position.z = 30 + Math.cos(cameraTime) * 6;
+
+            const lookAtOffset = Math.sin(cameraTime * 0.5) * 2;
+            this.camera.lookAt(lookAtOffset, 0, 0);
+        }
+
+        // Rotate background stars slowly
+        if (this.backgroundStars) {
+            this.backgroundStars.rotation.y = elapsedTime * 0.008;
+            this.backgroundStars.rotation.x = elapsedTime * 0.002;
+        }
+
+        // Pulse nexus core based on intensity
+        if (this.nexusSprites && this.nexusSprites.length > 0) {
+            const pulseScale = 1.0 + (this.uniforms.intensity.value - 1.0) * 0.3;
+            this.nexusSprites.forEach((sprite, i) => {
+                const baseScale = [4, 8, 14, 22][i];
+                sprite.scale.setScalar(baseScale * pulseScale);
+            });
+        }
+
+        // Main group drift - large floating motion across the screen
+        if (this.mainGroup) {
+            const driftTime = elapsedTime * 0.05; // Slower, more graceful movement
+            // Large figure-8 / lissajous pattern across the screen
+            this.mainGroup.position.x = Math.sin(driftTime) * 12 + Math.cos(driftTime * 0.7) * 6;
+            this.mainGroup.position.y = Math.cos(driftTime * 0.8) * 8 + Math.sin(driftTime * 0.5) * 4;
+            this.mainGroup.position.z = Math.sin(driftTime * 0.6) * 5; // Also drift in depth
+            this.mainGroup.rotation.y = elapsedTime * 0.015;
+            this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.04;
+        }
+
+        // Nebula cloud animation
+        this.nebulaClouds.forEach((cloud, i) => {
+            cloud.rotation.z += delta * 0.008 * (i % 2 === 0 ? 1 : -1);
+        });
+
+        // Intensity decay
         if (this.uniforms.intensity.value > 1.0) {
             this.uniforms.intensity.value = THREE.MathUtils.lerp(
                 this.uniforms.intensity.value,
                 1.0,
-                delta * 1.5
+                delta * 2.0
             );
-        }
-        this.comboIntensity *= 0.97;
-
-        // Slow star rotation
-        if (this.starSystem) {
-            this.starSystem.rotation.y = elapsedTime * 0.003;
-            this.starSystem.rotation.x = Math.sin(elapsedTime * 0.01) * 0.02;
-        }
-
-        // Main group drift
-        if (this.mainGroup) {
-            const driftTime = elapsedTime * 0.06;
-            this.mainGroup.position.x = Math.sin(driftTime) * 2;
-            this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 1;
-            this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.015;
-        }
-
-        // Camera drift
-        if (this.camera) {
-            const camTime = elapsedTime * 0.04;
-            this.camera.position.x = Math.sin(camTime) * 4;
-            this.camera.position.y = Math.cos(camTime * 0.6) * 3;
-            this.camera.position.z = 30 + Math.sin(camTime * 0.4) * 3;
-
-            const lookX = Math.sin(camTime * 0.8) * 2;
-            const lookY = Math.cos(camTime * 0.5) * 1.5;
-            this.camera.lookAt(lookX, lookY, 0);
         }
 
         // Update pulse waves
         this.updatePulseWaves(delta);
 
-        // Update warp vortexes
-        this.updateWarpVortexes(delta);
-
-        // Update shooting stars
-        this.updateShootingStars(delta);
-
-        // Update cosmic orbs
-        this.updateCosmicOrbs(delta);
-
-        // Update bloom intensity
-        if (this.bloomPass) {
-            this.bloomPass.strength = this.activePreset.bloomStrength * (1 + this.comboIntensity * 0.3);
-        }
-
-        // Render
-        if (this.composer) {
-            this.composer.render(delta);
-        } else {
-            this.renderer.render(this.scene, this.camera);
-        }
+        this.renderer.render(this.scene, this.camera);
     }
 
     updatePulseWaves(delta) {
         for (let i = this.pulseWaves.length - 1; i >= 0; i--) {
             const wave = this.pulseWaves[i];
-            const data = wave.userData;
+            wave.scale.addScalar(wave.userData.speed * delta);
+            wave.userData.life -= delta;
 
-            data.life -= delta;
+            if (wave.material.uniforms) {
+                wave.material.uniforms.opacity.value = wave.userData.life / wave.userData.maxLife;
+            }
 
-            // Expand
-            const expansion = data.speed * delta;
-            wave.scale.x += expansion * 0.4;
-            wave.scale.y += expansion * 0.4;
-            wave.scale.z += expansion * 0.3;
-
-            // Fade out
-            wave.material.uniforms.opacity.value = (data.life / data.maxLife) * 0.7;
-
-            if (data.life <= 0) {
+            if (wave.userData.life <= 0) {
                 this.mainGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
+                if (wave.geometry) wave.geometry.dispose();
+                if (wave.material) wave.material.dispose();
                 this.pulseWaves.splice(i, 1);
             }
         }
     }
 
-    updateWarpVortexes(delta) {
-        for (let i = this.warpVortexes.length - 1; i >= 0; i--) {
-            const vortex = this.warpVortexes[i];
-            const data = vortex.userData;
+    createPulseWave(intensity) {
+        const geometry = new THREE.TorusGeometry(2, 0.08, 8, 50);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                opacity: { value: 1.0 },
+                color: { value: this.getRandomColor() }
+            },
+            vertexShader: pulseVertexShader,
+            fragmentShader: pulseFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
 
-            data.life -= delta;
-            vortex.rotation.z += data.rotationSpeed * delta;
+        const wave = new THREE.Mesh(geometry, material);
+        wave.rotation.x = Math.random() * Math.PI;
+        wave.rotation.y = Math.random() * Math.PI;
 
-            // Scale up
-            const scale = 1 + (1 - data.life / data.maxLife) * 2;
-            vortex.scale.set(scale, scale, 1);
+        wave.userData = {
+            speed: 4.0 + intensity * 2.0,
+            life: 1.2,
+            maxLife: 1.2
+        };
 
-            // Fade out
-            vortex.material.uniforms.opacity.value = (data.life / data.maxLife) * 0.8;
+        this.mainGroup.add(wave);
+        this.pulseWaves.push(wave);
+    }
 
-            if (data.life <= 0) {
-                this.mainGroup.remove(vortex);
-                vortex.geometry.dispose();
-                vortex.material.dispose();
-                this.warpVortexes.splice(i, 1);
+    setupEventListeners() {
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
+                this.onLineClear(data.lineCount);
             }
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
+                this.onCombo(data.comboCount);
+            }
+        });
+
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
+                this.onPieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    onLineClear(count) {
+        this.uniforms.intensity.value += count * 0.4;
+        this.createPulseWave(count);
+
+        if (count >= 4) {
+            this.createPulseWave(count * 0.6);
+            this.createPulseWave(count * 0.4);
         }
     }
 
-    updateShootingStars(delta) {
-        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
-            const star = this.shootingStars[i];
-            const data = star.userData;
-
-            data.life -= delta;
-
-            // Move head
-            data.headPosition.addScaledVector(data.direction, data.speed * delta);
-
-            // Update trail positions
-            const positions = star.geometry.attributes.position.array;
-            const trailLength = positions.length / 3;
-
-            for (let j = trailLength - 1; j > 0; j--) {
-                positions[j * 3] = positions[(j - 1) * 3];
-                positions[j * 3 + 1] = positions[(j - 1) * 3 + 1];
-                positions[j * 3 + 2] = positions[(j - 1) * 3 + 2];
-            }
-
-            positions[0] = data.headPosition.x;
-            positions[1] = data.headPosition.y;
-            positions[2] = data.headPosition.z;
-
-            star.geometry.attributes.position.needsUpdate = true;
-
-            // Fade out
-            star.material.uniforms.opacity.value = data.life / data.maxLife;
-
-            if (data.life <= 0) {
-                this.scene.remove(star);
-                star.geometry.dispose();
-                star.material.dispose();
-                this.shootingStars.splice(i, 1);
-            }
+    onCombo(count) {
+        if (count > 1) {
+            this.uniforms.intensity.value += 0.25;
+            this.createPulseWave(count * 0.4);
         }
     }
 
-    updateCosmicOrbs(delta) {
-        if (!this.cosmicOrbs) return;
-
-        const positions = this.cosmicOrbs.geometry.attributes.position.array;
-        const sizes = this.cosmicOrbs.geometry.attributes.aSize.array;
-        const activeOrbs = this.cosmicOrbs.userData.activeOrbs;
-
-        for (let i = activeOrbs.length - 1; i >= 0; i--) {
-            const orb = activeOrbs[i];
-            orb.life -= delta;
-
-            const i3 = orb.index * 3;
-
-            // Move orb
-            positions[i3] += orb.vx * delta * 5;
-            positions[i3 + 1] += orb.vy * delta * 5;
-            positions[i3 + 2] += orb.vz * delta * 3;
-
-            // Slow down
-            orb.vx *= 0.98;
-            orb.vy *= 0.98;
-            orb.vz *= 0.98;
-
-            // Fade size
-            sizes[orb.index] *= 0.99;
-
-            if (orb.life <= 0) {
-                positions[i3 + 1] = -1000; // Hide
-                sizes[orb.index] = 0;
-                activeOrbs.splice(i, 1);
-            }
-        }
-
-        this.cosmicOrbs.geometry.attributes.position.needsUpdate = true;
-        this.cosmicOrbs.geometry.attributes.aSize.needsUpdate = true;
+    onPieceLock() {
+        this.uniforms.intensity.value += 0.12;
     }
 
     onWindowResize() {
@@ -976,10 +669,6 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-        if (this.composer) {
-            this.composer.setSize(window.innerWidth, window.innerHeight);
-        }
     }
 
     dispose() {
@@ -994,34 +683,13 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Cleanup shooting stars
-        this.shootingStars.forEach(star => {
-            this.scene.remove(star);
-            star.geometry.dispose();
-            star.material.dispose();
-        });
-        this.shootingStars = [];
-
         // Cleanup pulse waves
         this.pulseWaves.forEach(wave => {
             this.mainGroup.remove(wave);
-            wave.geometry.dispose();
-            wave.material.dispose();
+            if (wave.geometry) wave.geometry.dispose();
+            if (wave.material) wave.material.dispose();
         });
         this.pulseWaves = [];
-
-        // Cleanup warp vortexes
-        this.warpVortexes.forEach(vortex => {
-            this.mainGroup.remove(vortex);
-            vortex.geometry.dispose();
-            vortex.material.dispose();
-        });
-        this.warpVortexes = [];
-
-        // Cleanup composer
-        if (this.composer) {
-            this.composer.dispose();
-        }
 
         // Cleanup renderer
         if (this.renderer) {
@@ -1032,7 +700,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             }
         }
 
-        // Dispose all scene objects
+        // Traverse and dispose scene objects
         if (this.scene) {
             this.scene.traverse((object) => {
                 if (object.geometry) object.geometry.dispose();
@@ -1049,13 +717,13 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
-        this.composer = null;
         this.mainGroup = null;
-        this.cosmicThreads = [];
-        this.starSystem = null;
-        this.nebulaParticles = null;
-        this.stardustSystem = null;
-        this.cosmicOrbs = null;
+        this.nexusSprites = [];
+        this.energyRibbons = [];
+        this.weaveParticles = null;
+        this.backgroundStars = null;
+        this.nebulaClouds = [];
+        this.cosmicDust = null;
     }
 
     getTetrominoConfig() {
