@@ -1,1444 +1,1286 @@
 /**
- * @fileoverview Ice Temple Theme - Immersive frozen vistas with auroras, ice cracks, and drifting shards.
+ * @fileoverview Ice Temple Theme - Three.js 3D Implementation
+ * 
+ * Immersive frozen temple with translucent ice pillars, aurora borealis,
+ * frost patterns, and dynamic snow. All effects rendered in full 3D.
  */
 
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { BaseTheme } from '../base-theme.js';
-import { iceTempleCache } from '../../utils/cache.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { ICE_TEMPLE_TETROMINOS } from './ice-temple-tetrominos.js';
+import {
+    auroraVertexShader,
+    auroraFragmentShader,
+    snowVertexShader,
+    snowFragmentShader,
+    iceShardVertexShader,
+    iceShardFragmentShader,
+    shockwaveVertexShader,
+    shockwaveFragmentShader
+} from './ice-temple-shaders.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THEME CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const COLORS = {
+    // Ice colors
+    iceBase: new THREE.Color(0x0e3352),      // Deep ice blue
+    iceGlow: new THREE.Color(0x74b9ff),      // Bright cyan glow
+    iceHighlight: new THREE.Color(0xb4f5ff), // White-cyan highlight
+
+    // Floor colors
+    floorIce: new THREE.Color(0x0a1f35),     // Dark frozen floor
+    floorCracks: new THREE.Color(0x55efc4),  // Teal crack glow
+    floorSnow: new THREE.Color(0xe8fcff),    // Snow white
+
+    // Aurora colors
+    aurora1: new THREE.Color(0x74b9ff),      // Cyan
+    aurora2: new THREE.Color(0x55efc4),      // Emerald green
+    aurora3: new THREE.Color(0xa29bfe),      // Purple
+
+    // Particles
+    snow: new THREE.Color(0xe8fcff),
+    iceShards: new THREE.Color(0x96d7ff),
+
+    // Fog and ambient
+    fog: new THREE.Color(0x051525),
+    ambient: new THREE.Color(0x1a3a5c),
+};
 
 export default class IceTempleTheme extends BaseTheme {
     constructor() {
         super('ice-temple');
 
-        // Gameplay integration
-        this.comboMultiplier = 1.0;
-        this.comboDecay = 0;
+        // Event handling
         this.eventUnsubscribers = [];
-        this.pendingComboCount = 0;
-        this.qualityListener = null;
-        this.currentQuality = 'Ultra';
-        this.activePreset = null;
 
-        // Canvas for dynamic effects
-        this.effectsCanvas = null;
-        this.effectsCtx = null;
-        this.animationId = null;
-        this.time = 0;
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;  // Post-processing for bloom
+        this.mainGroup = null;
+        this.clock = new THREE.Clock();
+        this.animationFrame = null;
 
-        // Effect particles
-        this.iceShardBurst = [];
-        this.auroraWaves = [];
-        this.frozenCrystals = [];
-        this.comboRings = [];
-        this.glacialLightning = [];
-        this.iceStorm = [];
+        // Scene elements
+        this.icePillars = [];
+        this.auroraPlanes = [];
+        this.snowSystem = null;
+        this.shardBursts = [];
+        this.shockwaves = [];
+        this.starField = null;
+        this.frostFloor = null;
 
-        this.sprites = {};
-
-        // Dynamic state
-        this.auroraIntensity = 0.85;
-        this.targetAuroraIntensity = 0.85;
-        this.crackGlow = 0;
-        this.flashIntensity = 0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-
-        // Effect limits and adaptive performance state
-        this.effectLimits = {
-            maxIceShards: 550,
-            maxFrozenCrystals: 220,
-            maxComboRings: 6,
-            maxGlacialLightning: 3,
-            maxIceStormParticles: 240,
+        // Shared uniforms for synchronized animation
+        this.uniforms = {
+            time: { value: 0 },
+            pulseIntensity: { value: 0 },
+            crackGlow: { value: 0 },
+            auroraIntensity: { value: 0.8 },
         };
 
-        this.comboCooldownMs = 220;
-        this.lastLineClearTime = 0;
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.averageFrameTime = 16.67;
-        this.adaptiveScale = 1;
-
-        this.spawnScales = {
-            shards: 1,
-            crystals: 1,
-            rings: 1,
-            lightning: 1,
-            storm: 1,
-            aurora: 1,
-        };
-
-        this.effectToggles = {
-            glacialLightning: true,
-            iceStorm: true,
-        };
-
-        this.qualityPresets = {
-            Minimal: {
-                effectLimits: {
-                    maxIceShards: 130,
-                    maxFrozenCrystals: 55,
-                    maxComboRings: 2,
-                    maxGlacialLightning: 1,
-                    maxIceStormParticles: 55,
-                },
-                spawnScale: {
-                    shards: 0.33,
-                    crystals: 0.3,
-                    rings: 0.33,
-                    lightning: 0.33,
-                    storm: 0.24,
-                    aurora: 0.54,
-                },
-                enableGlacialLightning: true,
-                enableIceStorm: false,
-                comboCooldownMs: 280,
-            },
-            Low: {
-                effectLimits: {
-                    maxIceShards: 220,
-                    maxFrozenCrystals: 90,
-                    maxComboRings: 3,
-                    maxGlacialLightning: 1,
-                    maxIceStormParticles: 90,
-                },
-                spawnScale: {
-                    shards: 0.55,
-                    crystals: 0.5,
-                    rings: 0.55,
-                    lightning: 0.55,
-                    storm: 0.4,
-                    aurora: 0.9,
-                },
-                enableGlacialLightning: true,
-                enableIceStorm: false,
-                comboCooldownMs: 260,
-            },
-            Medium: {
-                effectLimits: {
-                    maxIceShards: 360,
-                    maxFrozenCrystals: 150,
-                    maxComboRings: 4,
-                    maxGlacialLightning: 2,
-                    maxIceStormParticles: 150,
-                },
-                spawnScale: {
-                    shards: 0.75,
-                    crystals: 0.7,
-                    rings: 0.8,
-                    lightning: 0.8,
-                    storm: 0.7,
-                    aurora: 1,
-                },
-                enableGlacialLightning: true,
-                enableIceStorm: true,
-                comboCooldownMs: 230,
-            },
-            High: {
-                effectLimits: {
-                    maxIceShards: 520,
-                    maxFrozenCrystals: 220,
-                    maxComboRings: 6,
-                    maxGlacialLightning: 3,
-                    maxIceStormParticles: 220,
-                },
-                spawnScale: {
-                    shards: 1,
-                    crystals: 1,
-                    rings: 1,
-                    lightning: 1,
-                    storm: 1,
-                    aurora: 1.05,
-                },
-                enableGlacialLightning: true,
-                enableIceStorm: true,
-                comboCooldownMs: 210,
-            },
-            Ultra: {
-                effectLimits: {
-                    maxIceShards: 650,
-                    maxFrozenCrystals: 260,
-                    maxComboRings: 7,
-                    maxGlacialLightning: 4,
-                    maxIceStormParticles: 280,
-                },
-                spawnScale: {
-                    shards: 1.15,
-                    crystals: 1.1,
-                    rings: 1.1,
-                    lightning: 1.15,
-                    storm: 1.15,
-                    aurora: 1.1,
-                },
-                enableGlacialLightning: true,
-                enableIceStorm: true,
-                comboCooldownMs: 200,
-            },
-            Extreme: {
-                effectLimits: {
-                    maxIceShards: 880,
-                    maxFrozenCrystals: 350,
-                    maxComboRings: 9,
-                    maxGlacialLightning: 5,
-                    maxIceStormParticles: 380,
-                },
-                spawnScale: {
-                    shards: 1.55,
-                    crystals: 1.5,
-                    rings: 1.5,
-                    lightning: 1.55,
-                    storm: 1.55,
-                    aurora: 1.5,
-                },
-                enableGlacialLightning: true,
-                enableIceStorm: true,
-                comboCooldownMs: 150,
-            },
-        };
+        // Effect state
+        this.targetPulseIntensity = 0;
+        this.targetCrackGlow = 0;
+        this.targetAuroraIntensity = 0.8;
     }
 
     getTetrominoConfig() {
         return ICE_TEMPLE_TETROMINOS;
     }
 
-    async init() {
-        // Theme resources are created on-demand in createScene()
-        this.setupEffectsCanvas();
-        this.initSprites();
-    }
-
-    setupEffectsCanvas() {
-        // Create or get the effects canvas
-        let canvas = document.getElementById('ice-temple-effects-canvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.id = 'ice-temple-effects-canvas';
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.pointerEvents = 'none';
-            canvas.style.zIndex = '10';
-
-            const themeContainer = document.getElementById('ice-temple-theme');
-            if (themeContainer) {
-                themeContainer.appendChild(canvas);
-            }
-        }
-
-        this.effectsCanvas = canvas;
-        this.effectsCtx = canvas.getContext('2d', { alpha: true });
-        this.resizeEffectsCanvas();
-
-        window.addEventListener('resize', () => this.resizeEffectsCanvas());
-    }
-
-    resizeEffectsCanvas() {
-        if (!this.effectsCanvas) return;
-        this.effectsCanvas.width = window.innerWidth;
-        this.effectsCanvas.height = window.innerHeight;
-    }
-
     async createScene() {
-        this.applyQualityPreset(this.getGraphicsQuality());
+        console.log('[IceTemple] Initializing Three.js scene...');
 
-        this.createStars();
-        this.createAurora();
-        this.createIceField();
-        this.createCrackNetwork();
-        this.createFrostHaze();
-        this.createMistLayers();
-        this.createSnowfall();
-        this.createRefractions();
-
-        // Setup gameplay event listeners
-        this.setupEventListeners();
-
-        // Start animation loop
-        this.startEffectsAnimation();
-
-        // Listen for graphics quality changes
-        this.setupQualityListener();
-    }
-
-    setupEventListeners() {
-        this.teardownEventListeners();
-
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!this.shouldProcessComboEffects()) return;
-            this.handleLineClear(data);
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (!this.shouldProcessComboEffects()) return;
-            this.handleCombo(data);
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
-    }
-
-    teardownEventListeners() {
-        if (!this.eventUnsubscribers.length) return;
-
-        this.eventUnsubscribers.forEach((unsubscribe) => {
-            try {
-                unsubscribe?.();
-            } catch (error) {
-                console.error('[IceTempleTheme] Failed to remove event listener', error);
-            }
-        });
-
-        this.eventUnsubscribers = [];
-    }
-
-    shouldProcessComboEffects() {
-        if (!this.isActive) return false;
-        if (typeof window === 'undefined') return true;
-        const { settings } = window;
-        return settings?.backgroundComboEffects === true;
-    }
-
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'Ultra';
-    }
-
-    applyQualityPreset(quality) {
-        const preset = this.qualityPresets[quality] || this.qualityPresets.Ultra;
-        const presetName = this.qualityPresets[quality] ? quality : 'Ultra';
-        this.currentQuality = presetName;
-        this.activePreset = preset;
-
-        if (preset.effectLimits) {
-            Object.assign(this.effectLimits, preset.effectLimits);
-        }
-        if (preset.spawnScale) {
-            Object.assign(this.spawnScales, preset.spawnScale);
+        const container = document.getElementById('ice-temple-theme');
+        if (!container) {
+            console.error('[IceTemple] Container not found');
+            return;
         }
 
-        this.effectToggles.glacialLightning = preset.enableGlacialLightning !== false;
-        this.effectToggles.iceStorm = preset.enableIceStorm !== false;
+        // Clean up any existing content
+        container.innerHTML = '';
 
-        if (typeof preset.comboCooldownMs === 'number') {
-            this.comboCooldownMs = preset.comboCooldownMs;
-        }
+        // ─────────────────────────────────────────────────────────────────────
+        // SCENE SETUP
+        // ─────────────────────────────────────────────────────────────────────
 
-        this.trimEffectCollections();
-    }
+        this.scene = new THREE.Scene();
+        // Denser fog for atmospheric depth and edge hiding
+        this.scene.fog = new THREE.FogExp2(0x040c14, 0.022);
+        this.scene.background = new THREE.Color(0x040c14);
 
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
+        // ─────────────────────────────────────────────────────────────────────
+        // CAMERA
+        // ─────────────────────────────────────────────────────────────────────
 
-        this.teardownQualityListener();
-        this.qualityListener = (event) => {
-            const nextQuality = event.detail?.effectQuality;
-            if (!nextQuality || nextQuality === this.currentQuality) {
-                return;
-            }
-            this.applyQualityPreset(nextQuality);
-        };
-
-        window.addEventListener('settingsChanged', this.qualityListener);
-    }
-
-    teardownQualityListener() {
-        if (this.qualityListener && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityListener);
-            this.qualityListener = null;
-        }
-    }
-
-    shouldThrottleEffects() {
-        const now = Date.now();
-        const timeSinceLast = now - this.lastLineClearTime;
-        const performanceDrop = this.averageFrameTime > 24;
-        const shardPressure = this.iceShardBurst.length >= this.effectLimits.maxIceShards * 0.85;
-        const stormPressure = this.iceStorm.length >= this.effectLimits.maxIceStormParticles * 0.85;
-        return (
-            performanceDrop
-            || shardPressure
-            || stormPressure
-            || (this.adaptiveScale ?? 1) < 0.65
-            || timeSinceLast < this.comboCooldownMs
+        this.camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            200
         );
-    }
+        this.camera.position.set(0, 8, 25);
+        this.camera.lookAt(0, 3, 0);
 
-    isPerformanceStressed(threshold = 24) {
-        return this.averageFrameTime > threshold;
-    }
+        // ─────────────────────────────────────────────────────────────────────
+        // RENDERER
+        // ─────────────────────────────────────────────────────────────────────
 
-    calculateAdaptiveScale() {
-        const frame = this.averageFrameTime;
-        if (frame <= 18) return 1;
-        if (frame <= 20) return 0.92;
-        if (frame <= 23) return 0.8;
-        if (frame <= 26) return 0.68;
-        if (frame <= 30) return 0.56;
-        return 0.45;
-    }
-
-    getSpawnScale(type) {
-        const presetScale = this.spawnScales?.[type] ?? 1;
-        const adaptive = this.adaptiveScale ?? 1;
-        const scale = presetScale * adaptive;
-        return Math.max(0.35, Math.min(scale, 1.4));
-    }
-
-    normalizeEventPayload(payload = {}) {
-        if (payload && typeof payload === 'object' && 'detail' in payload && payload.detail) {
-            return payload.detail;
-        }
-        return payload || {};
-    }
-
-    handleLineClear(eventPayload) {
-        const detail = this.normalizeEventPayload(eventPayload);
-        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
-
-        if (!comboCount && this.pendingComboCount > 0) {
-            comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
-        }
-
-        console.log(`[IceTempleTheme] Line clear: ${lineCount} lines, combo: ${comboCount}`);
-        this.onLineClear(lineCount, comboCount);
-    }
-
-    handleCombo(eventPayload) {
-        const detail = this.normalizeEventPayload(eventPayload);
-        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
-
-        if (comboCount > 0) {
-            this.pendingComboCount = comboCount;
-        }
-
-        console.log(`[IceTempleTheme] Combo: ${comboCount}`);
-    }
-
-    onLineClear(lineCount, comboCount) {
-        if (!this.effectsCanvas) return;
-
-        const throttled = this.shouldThrottleEffects();
-        this.lastLineClearTime = Date.now();
-
-        // Update combo multiplier
-        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
-        this.comboDecay = 180; // 3 seconds at 60fps
-
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
-
-        // Aurora pulse effect
-        const auroraScale = this.getSpawnScale('aurora');
-        this.targetAuroraIntensity = Math.min((0.85 + lineCount * 0.1 + comboCount * 0.05) * auroraScale, 1.7);
-        this.pulseAurora(lineCount, comboCount);
-
-        // Ice shard burst
-        const shardScale = this.getSpawnScale('shards');
-        let shardCount = Math.floor((lineCount * 35 + comboCount * 18) * shardScale * (throttled ? 0.55 : 1));
-        const shardCapacity = Math.max(this.effectLimits.maxIceShards - this.iceShardBurst.length, 0);
-        shardCount = Math.max(0, Math.min(shardCount, shardCapacity));
-        for (let i = 0; i < shardCount; i++) {
-            this.iceShardBurst.push(this.createIceShardParticle(centerX, centerY, lineCount));
-        }
-
-        // Crack glow pulse
-        this.crackGlow = Math.min(0.6 + lineCount * 0.15 + comboCount * 0.1, 1.0);
-
-        // Flash effect
-        this.flashIntensity = Math.min(0.2 + lineCount * 0.08, 0.5);
-
-        // Frozen crystals for multi-line clears
-        if (lineCount >= 2) {
-            const crystalCapacity = Math.max(this.effectLimits.maxFrozenCrystals - this.frozenCrystals.length, 0);
-            const crystalScale = this.getSpawnScale('crystals');
-            let crystalCount = Math.floor(lineCount * 12 * crystalScale * (throttled ? 0.6 : 1));
-            crystalCount = Math.max(0, Math.min(crystalCount, crystalCapacity));
-            for (let i = 0; i < crystalCount; i++) {
-                this.frozenCrystals.push(this.createFrozenCrystal(centerX, centerY));
-            }
-        }
-
-        // Combo rings
-        if (comboCount >= 2) {
-            const ringCapacity = Math.max(this.effectLimits.maxComboRings - this.comboRings.length, 0);
-            const ringScale = this.getSpawnScale('rings');
-            let ringCount = Math.min(Math.max(1, Math.floor(comboCount * ringScale)), 5, ringCapacity);
-            if (throttled) {
-                ringCount = Math.min(ringCount, 1);
-            }
-            for (let i = 0; i < ringCount; i++) {
-                this.comboRings.push(this.createComboRing(centerX, centerY, i));
-            }
-        }
-
-        // Glacial lightning for big combos
-        const lightningThreshold = throttled ? 6 : 5;
-        const lightningCap = Math.max(1, Math.floor(this.effectLimits.maxGlacialLightning * this.getSpawnScale('lightning')));
-        if (
-            this.effectToggles.glacialLightning
-            && comboCount >= lightningThreshold
-            && this.glacialLightning.length < lightningCap
-        ) {
-            this.createGlacialLightning(centerX, centerY, comboCount, throttled);
-        }
-
-        // Ice storm for massive combos
-        const stormThreshold = throttled ? 9 : 8;
-        const stormCap = Math.max(1, Math.floor(this.effectLimits.maxIceStormParticles * this.getSpawnScale('storm')));
-        if (this.effectToggles.iceStorm && comboCount >= stormThreshold && this.iceStorm.length < stormCap) {
-            this.triggerIceStorm(comboCount, throttled);
-        }
-
-        // Screen shake
-        if (comboCount >= 3 || lineCount >= 3) {
-            this.screenShake.intensity = Math.min((comboCount + lineCount) * 1.5, 12);
-        }
-
-        this.trimEffectCollections();
-    }
-
-    pulseAurora(lineCount, comboCount) {
-        const auroraScale = this.getSpawnScale('aurora');
-        const intensity = (0.3 + lineCount * 0.1 + comboCount * 0.15) * auroraScale;
-        const duration = 60 + comboCount * 20;
-
-        this.auroraWaves.push({
-            intensity: Math.min(intensity, 1.8),
-            life: 1.0,
-            duration,
-            phase: 0,
-            speed: 0.08 + comboCount * 0.02,
+        this.renderer = new THREE.WebGLRenderer({
+            alpha: true,
+            antialias: true,
+            powerPreference: 'high-performance'
         });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.4;
+        container.appendChild(this.renderer.domElement);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // POST-PROCESSING - Bloom for magical ice glow
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        // UnrealBloomPass for ethereal ice glow
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.8,   // strength - intensity of bloom
+            0.4,   // radius - spread of bloom
+            0.3    // threshold - brightness cutoff
+        );
+        this.composer.addPass(bloomPass);
+        this.bloomPass = bloomPass;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // MAIN GROUP (for subtle drift animation)
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CREATE SCENE ELEMENTS
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.createStarField();
+        this.createAurora();
+        this.createFrostFloor();
+        this.createIcePillars();
+        this.createSnowSystem();
+        this.setupLighting();
+        this.createEnvironmentMap();
+
+        // ─────────────────────────────────────────────────────────────────────
+        // EVENT LISTENERS
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // ─────────────────────────────────────────────────────────────────────
+        // START ANIMATION
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.animate();
+
+        console.log('[IceTemple] Scene initialized.');
     }
 
-    createIceShardParticle(x, y, lineCount) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 12 + 6 + lineCount * 2;
-        const size = Math.random() * 5 + 3;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STAR FIELD
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        return {
-            x,
-            y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size,
-            opacity: Math.random() * 0.8 + 0.4,
-            life: 1.0,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.25,
-            gravity: 0.25,
-            sparkle: Math.random() * Math.PI * 2,
-            color: Math.random() < 0.3 ? 'cyan' : 'white',
-        };
-    }
+    createStarField() {
+        const starCount = 1500;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(starCount * 3);
+        const colors = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
 
-    createFrozenCrystal(x, y) {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = Math.random() * 200 + 50;
+        const starColors = [
+            new THREE.Color(0xffffff),
+            new THREE.Color(0xb4f5ff),
+            new THREE.Color(0x74b9ff),
+        ];
 
-        return {
-            x: x + Math.cos(angle) * distance,
-            y: y + Math.sin(angle) * distance,
-            targetX: x + Math.cos(angle) * (distance + 300),
-            targetY: y + Math.sin(angle) * (distance + 300),
-            size: Math.random() * 4 + 2,
-            opacity: Math.random() * 0.7 + 0.5,
-            life: 1.0,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.2,
-            sparkle: Math.random() * Math.PI * 2,
-        };
-    }
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
 
-    createComboRing(x, y, index) {
-        return {
-            x,
-            y,
-            radius: 20 + index * 15,
-            maxRadius: 300 + index * 80,
-            opacity: 0.9,
-            life: 1.0,
-            thickness: 3 + index,
-            expansionSpeed: 4 + index * 0.5,
-            pulsePhase: index * Math.PI * 0.4,
-        };
-    }
+            // Hemisphere distribution above camera
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.5;
+            const radius = 80 + Math.random() * 50;
 
-    createGlacialLightning(x, y, comboCount, throttled = false) {
-        if (!this.effectToggles.glacialLightning) {
-            return;
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.cos(phi) + 10;
+            positions[i3 + 2] = radius * Math.sin(phi) * Math.sin(theta) - 30;
+
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 0.5 + Math.random() * 1.5;
         }
-        const lightningScale = this.getSpawnScale('lightning');
-        const dynamicCap = Math.max(1, Math.floor(this.effectLimits.maxGlacialLightning * lightningScale));
-        if (this.glacialLightning.length >= dynamicCap) {
-            return;
-        }
 
-        const branches = [];
-        const branchCap = throttled ? 4 : 8;
-        const numBranches = Math.min(Math.floor(comboCount / 2) + 3, branchCap);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-        for (let i = 0; i < numBranches; i++) {
-            const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.4;
-            const segments = [];
-            let currentX = x;
-            let currentY = y;
-
-            const segmentCount = throttled ? Math.max(4, 4 + Math.floor(comboCount / 4)) : 6 + Math.floor(comboCount / 3);
-            for (let j = 0; j < segmentCount; j++) {
-                const length = Math.random() * 70 + 50;
-                const nextX = currentX + Math.cos(angle + (Math.random() - 0.5) * 0.7) * length;
-                const nextY = currentY + Math.sin(angle + (Math.random() - 0.5) * 0.7) * length;
-
-                segments.push({
-                    x1: currentX, y1: currentY, x2: nextX, y2: nextY,
-                });
-                currentX = nextX;
-                currentY = nextY;
-            }
-
-            branches.push(segments);
-        }
-
-        this.glacialLightning.push({
-            branches,
-            opacity: 1.0,
-            life: 1.0,
-            pulsePhase: 0,
+        const material = new THREE.PointsMaterial({
+            size: 0.8,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true,
         });
+
+        this.starField = new THREE.Points(geometry, material);
+        this.scene.add(this.starField);
     }
 
-    triggerIceStorm(comboCount, throttled = false) {
-        if (!this.effectToggles.iceStorm) {
-            return;
-        }
-        const stormScale = this.getSpawnScale('storm');
-        const dynamicLimit = Math.max(1, Math.floor(this.effectLimits.maxIceStormParticles * stormScale));
-        const remainingAllowance = dynamicLimit - this.iceStorm.length;
-        if (remainingAllowance <= 0) return;
-
-        const baseCapacity = Math.max(this.effectLimits.maxIceStormParticles - this.iceStorm.length, 0);
-        const capacity = Math.min(baseCapacity, remainingAllowance);
-        if (capacity <= 0) return;
-
-        let stormCount = Math.min(comboCount * 18, capacity, 220);
-        if (throttled) {
-            stormCount = Math.min(stormCount, 100);
-        }
-        stormCount = Math.max(0, stormCount);
-
-        for (let i = 0; i < stormCount; i++) {
-            this.iceStorm.push({
-                x: Math.random() * this.effectsCanvas.width,
-                y: -Math.random() * 200,
-                vx: (Math.random() - 0.5) * 8,
-                vy: Math.random() * 6 + 4,
-                size: Math.random() * 3 + 1,
-                opacity: Math.random() * 0.6 + 0.4,
-                life: 1.0,
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.3,
-            });
-        }
-    }
-
-    trimEffectCollections() {
-        const clamp = (collection, limit) => {
-            if (collection.length > limit) {
-                collection.splice(0, collection.length - limit);
-            }
-        };
-
-        clamp(this.iceShardBurst, this.effectLimits.maxIceShards);
-        clamp(this.frozenCrystals, this.effectLimits.maxFrozenCrystals);
-        clamp(this.comboRings, this.effectLimits.maxComboRings);
-        clamp(this.iceStorm, this.effectLimits.maxIceStormParticles);
-        clamp(this.glacialLightning, this.effectLimits.maxGlacialLightning);
-    }
-
-    startEffectsAnimation() {
-        if (!this.isActive || !this.effectsCanvas) return;
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.animateEffects();
-    }
-
-    animateEffects() {
-        if (!this.isActive || !this.effectsCanvas) return;
-
-        const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-            ? performance.now()
-            : Date.now();
-        if (this.lastFrameTime > 0) {
-            const frameTime = now - this.lastFrameTime;
-            this.frameTimeAccumulator += frameTime;
-            this.frameTimeCount += 1;
-            if (this.frameTimeCount >= 30) {
-                this.averageFrameTime = this.frameTimeAccumulator / this.frameTimeCount;
-                this.frameTimeAccumulator = 0;
-                this.frameTimeCount = 0;
-            }
-        }
-        this.lastFrameTime = now;
-        this.adaptiveScale = this.calculateAdaptiveScale();
-
-        this.time += 1;
-
-        // Decay combo multiplier
-        if (this.comboDecay > 0) {
-            this.comboDecay -= 1;
-            if (this.comboDecay === 0) {
-                this.comboMultiplier = 1.0;
-            }
-        }
-
-        // Smooth aurora intensity transition
-        this.auroraIntensity += (this.targetAuroraIntensity - this.auroraIntensity) * 0.05;
-        if (Math.abs(this.targetAuroraIntensity - this.auroraIntensity) < 0.01) {
-            this.targetAuroraIntensity = 0.85;
-        }
-
-        // Apply aurora intensity to aurora container
-        const auroraContainer = this.getContainer('ice-temple-aurora');
-        if (auroraContainer) {
-            auroraContainer.style.opacity = this.auroraIntensity.toString();
-        }
-
-        // Decay crack glow
-        if (this.crackGlow > 0) {
-            this.crackGlow *= 0.95;
-            const cracksContainer = this.getContainer('ice-temple-cracks');
-            if (cracksContainer) {
-                cracksContainer.style.filter = `brightness(${1 + this.crackGlow})`;
-            }
-        }
-
-        // Decay flash
-        if (this.flashIntensity > 0) {
-            this.flashIntensity *= 0.88;
-        }
-
-        // Screen shake decay
-        if (this.screenShake.intensity > 0) {
-            this.screenShake.intensity *= 0.90;
-            this.screenShake.x = (Math.random() - 0.5) * this.screenShake.intensity;
-            this.screenShake.y = (Math.random() - 0.5) * this.screenShake.intensity;
-        } else {
-            this.screenShake.x = 0;
-            this.screenShake.y = 0;
-        }
-
-        // Clear canvas
-        this.effectsCtx.clearRect(0, 0, this.effectsCanvas.width, this.effectsCanvas.height);
-
-        // Apply screen shake
-        this.effectsCtx.save();
-        this.effectsCtx.translate(this.screenShake.x, this.screenShake.y);
-
-        // Draw flash effect
-        if (this.flashIntensity > 0.01) {
-            this.effectsCtx.fillStyle = `rgba(180, 220, 255, ${this.flashIntensity * 0.4})`;
-            this.effectsCtx.fillRect(0, 0, this.effectsCanvas.width, this.effectsCanvas.height);
-        }
-
-        // Draw and update all effects
-        this.updateAuroraWaves();
-        this.updateGlacialLightning();
-        this.updateComboRings();
-        this.updateIceShardBurst();
-        this.updateFrozenCrystals();
-        this.updateIceStorm();
-        this.trimEffectCollections();
-
-        this.effectsCtx.restore();
-
-        this.animationId = requestAnimationFrame(() => this.animateEffects());
-    }
-
-    updateAuroraWaves() {
-        if (this.auroraWaves.length === 0) return;
-
-        const lowPerf = this.isPerformanceStressed(25);
-        for (let i = this.auroraWaves.length - 1; i >= 0; i--) {
-            const wave = this.auroraWaves[i];
-            wave.phase += wave.speed;
-            wave.life -= 1 / wave.duration;
-
-            if (wave.life <= 0) {
-                this.auroraWaves.splice(i, 1);
-                continue;
-            }
-
-            const opacity = wave.intensity * wave.life * (0.7 + Math.sin(wave.phase) * 0.3);
-
-            // Use sprite for better performance
-            const size = this.effectsCanvas.width * 1.2;
-            const x = this.effectsCanvas.width / 2 - size / 2;
-            const y = this.effectsCanvas.height * 0.3 - size / 2;
-
-            this.effectsCtx.save();
-            this.effectsCtx.globalAlpha = lowPerf ? opacity * 0.7 : opacity;
-            this.effectsCtx.drawImage(this.sprites.aurora, x, y, size, size);
-            this.effectsCtx.restore();
-        }
-    }
-
-    updateGlacialLightning() {
-        if (this.glacialLightning.length === 0) return;
-
-        const lowPerf = this.isPerformanceStressed(23);
-        for (let i = this.glacialLightning.length - 1; i >= 0; i--) {
-            const lightning = this.glacialLightning[i];
-            lightning.life -= 0.012;
-            lightning.opacity = lightning.life;
-            lightning.pulsePhase += 0.12;
-
-            if (lightning.life <= 0) {
-                this.glacialLightning.splice(i, 1);
-                continue;
-            }
-
-            const pulseOpacity = lightning.opacity * (0.75 + Math.sin(lightning.pulsePhase) * 0.25);
-
-            // Batch drawing for better performance
-            if (!lowPerf) {
-                this.effectsCtx.beginPath();
-                for (const branch of lightning.branches) {
-                    for (const segment of branch) {
-                        this.effectsCtx.moveTo(segment.x1, segment.y1);
-                        this.effectsCtx.lineTo(segment.x2, segment.y2);
-                    }
-                }
-                this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.35})`;
-                this.effectsCtx.lineWidth = 10;
-                this.effectsCtx.lineCap = 'round';
-                this.effectsCtx.stroke();
-
-                this.effectsCtx.beginPath();
-                for (const branch of lightning.branches) {
-                    for (const segment of branch) {
-                        this.effectsCtx.moveTo(segment.x1, segment.y1);
-                        this.effectsCtx.lineTo(segment.x2, segment.y2);
-                    }
-                }
-                this.effectsCtx.strokeStyle = `rgba(180, 220, 255, ${pulseOpacity * 0.65})`;
-                this.effectsCtx.lineWidth = 5;
-                this.effectsCtx.stroke();
-            }
-
-            this.effectsCtx.beginPath();
-            for (const branch of lightning.branches) {
-                for (const segment of branch) {
-                    this.effectsCtx.moveTo(segment.x1, segment.y1);
-                    this.effectsCtx.lineTo(segment.x2, segment.y2);
-                }
-            }
-            this.effectsCtx.strokeStyle = `rgba(230, 250, 255, ${pulseOpacity})`;
-            this.effectsCtx.lineWidth = lowPerf ? 1.4 : 2;
-            this.effectsCtx.stroke();
-        }
-    }
-
-    updateComboRings() {
-        if (this.comboRings.length === 0) return;
-
-        const lowPerf = this.isPerformanceStressed(23);
-        for (let i = this.comboRings.length - 1; i >= 0; i--) {
-            const ring = this.comboRings[i];
-            ring.radius += ring.expansionSpeed;
-            ring.life -= 0.01;
-            ring.opacity = ring.life * 0.8;
-            ring.pulsePhase += 0.1;
-
-            if (ring.life <= 0 || ring.radius > ring.maxRadius) {
-                this.comboRings.splice(i, 1);
-                continue;
-            }
-
-            const pulseOpacity = ring.opacity * (0.7 + Math.sin(ring.pulsePhase) * 0.3);
-
-            if (!lowPerf) {
-                this.effectsCtx.beginPath();
-                this.effectsCtx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
-                this.effectsCtx.strokeStyle = `rgba(116, 185, 255, ${pulseOpacity * 0.4})`;
-                this.effectsCtx.lineWidth = ring.thickness + 6;
-                this.effectsCtx.stroke();
-            }
-
-            this.effectsCtx.beginPath();
-            this.effectsCtx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
-            this.effectsCtx.strokeStyle = `rgba(200, 235, 255, ${pulseOpacity})`;
-            this.effectsCtx.lineWidth = lowPerf ? ring.thickness * 0.8 : ring.thickness;
-            this.effectsCtx.stroke();
-        }
-    }
-
-    updateIceShardBurst() {
-        if (this.iceShardBurst.length === 0) return;
-
-        const lowPerf = this.isPerformanceStressed(26);
-        for (let i = this.iceShardBurst.length - 1; i >= 0; i--) {
-            const particle = this.iceShardBurst[i];
-
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            particle.vy += particle.gravity;
-            particle.vx *= 0.98;
-            particle.rotation += particle.rotationSpeed;
-            particle.life -= 0.015;
-            particle.opacity = particle.life * 0.85;
-            particle.sparkle += 0.18;
-
-            if (particle.life <= 0 || particle.y > this.effectsCanvas.height) {
-                this.iceShardBurst.splice(i, 1);
-                continue;
-            }
-
-            const sparkleIntensity = Math.sin(particle.sparkle) * 0.35 + 0.65;
-            const glowSprite = particle.color === 'cyan' ? this.sprites.glowCyan : this.sprites.glowWhite;
-            const shardSprite = particle.color === 'cyan' ? this.sprites.shardCyan : this.sprites.shardWhite;
-
-            this.effectsCtx.save();
-            this.effectsCtx.translate(particle.x, particle.y);
-            this.effectsCtx.rotate(particle.rotation);
-
-            // Glow
-            const glowSize = particle.size * 3.5;
-            this.effectsCtx.globalAlpha = particle.opacity * sparkleIntensity;
-            this.effectsCtx.drawImage(glowSprite, -glowSize, -glowSize, glowSize * 2, glowSize * 2);
-
-            // Ice shard shape (hexagon)
-            this.effectsCtx.drawImage(shardSprite, -particle.size, -particle.size, particle.size * 2, particle.size * 2);
-
-            this.effectsCtx.restore();
-        }
-    }
-
-    updateFrozenCrystals() {
-        if (this.frozenCrystals.length === 0) return;
-
-        const lowPerf = this.isPerformanceStressed(23);
-
-        for (let i = this.frozenCrystals.length - 1; i >= 0; i--) {
-            const crystal = this.frozenCrystals[i];
-
-            crystal.x += (crystal.targetX - crystal.x) * 0.08;
-            crystal.y += (crystal.targetY - crystal.y) * 0.08;
-            crystal.rotation += crystal.rotationSpeed;
-            crystal.life -= 0.012;
-            crystal.opacity = crystal.life * 0.8;
-            crystal.sparkle += 0.2;
-
-            if (crystal.life <= 0) {
-                this.frozenCrystals.splice(i, 1);
-                continue;
-            }
-
-            const sparkleIntensity = Math.sin(crystal.sparkle) * 0.4 + 0.6;
-
-            this.effectsCtx.save();
-            this.effectsCtx.translate(crystal.x, crystal.y);
-            this.effectsCtx.rotate(crystal.rotation);
-
-            if (!lowPerf) {
-                const glowSize = crystal.size * 2.5;
-                this.effectsCtx.globalAlpha = crystal.opacity * sparkleIntensity;
-                this.effectsCtx.drawImage(this.sprites.crystalGlow, -glowSize, -glowSize, glowSize * 2, glowSize * 2);
-            }
-
-            this.effectsCtx.globalAlpha = crystal.opacity * sparkleIntensity;
-            this.effectsCtx.drawImage(this.sprites.crystal, -crystal.size * 0.5, -crystal.size, crystal.size, crystal.size * 2);
-
-            this.effectsCtx.restore();
-        }
-    }
-
-    updateIceStorm() {
-        if (this.iceStorm.length === 0) return;
-
-        const lowPerf = this.isPerformanceStressed(26);
-        for (let i = this.iceStorm.length - 1; i >= 0; i--) {
-            const particle = this.iceStorm[i];
-
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            particle.rotation += particle.rotationSpeed;
-            particle.life -= 0.008;
-            particle.opacity = particle.life * 0.7;
-
-            if (particle.life <= 0 || particle.y > this.effectsCanvas.height) {
-                this.iceStorm.splice(i, 1);
-                continue;
-            }
-
-            this.effectsCtx.save();
-            this.effectsCtx.translate(particle.x, particle.y);
-            this.effectsCtx.rotate(particle.rotation);
-
-            if (!lowPerf) {
-                this.effectsCtx.globalAlpha = particle.opacity;
-                this.effectsCtx.drawImage(this.sprites.stormGlow, -particle.size * 2, -particle.size * 2, particle.size * 4, particle.size * 4);
-            }
-
-            this.effectsCtx.globalAlpha = particle.opacity;
-            this.effectsCtx.drawImage(this.sprites.storm, -particle.size, -particle.size, particle.size * 2, particle.size * 2);
-
-            this.effectsCtx.restore();
-        }
-    }
-
-    initSprites() {
-        this.sprites = {
-            shardCyan: this.createShardSprite('cyan'),
-            shardWhite: this.createShardSprite('white'),
-            glowCyan: this.createGlowSprite('cyan'),
-            glowWhite: this.createGlowSprite('white'),
-            crystal: this.createCrystalSprite(),
-            crystalGlow: this.createCrystalGlowSprite(),
-            storm: this.createStormSprite(),
-            stormGlow: this.createStormGlowSprite(),
-            aurora: this.createAuroraSprite(),
-        };
-    }
-
-    createShardSprite(type) {
-        const size = 20;
-        const canvas = document.createElement('canvas');
-        canvas.width = size * 2;
-        canvas.height = size * 2;
-        const ctx = canvas.getContext('2d');
-        ctx.translate(size, size);
-
-        ctx.beginPath();
-        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 3) {
-            const px = Math.cos(angle) * (size - 2);
-            const py = Math.sin(angle) * (size - 2);
-            if (angle === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-
-        const color = type === 'cyan' ? 'rgba(150, 215, 255, 1)' : 'rgba(230, 245, 255, 1)';
-        ctx.fillStyle = color;
-        ctx.fill();
-
-        // Highlight
-        ctx.beginPath();
-        ctx.arc(-(size - 2) * 0.2, -(size - 2) * 0.3, (size - 2) * 0.4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.fill();
-
-        return canvas;
-    }
-
-    createGlowSprite(type) {
-        const size = 40;
-        const canvas = document.createElement('canvas');
-        canvas.width = size * 2;
-        canvas.height = size * 2;
-        const ctx = canvas.getContext('2d');
-
-        const glowColor = type === 'cyan' ? '116, 185, 255' : '200, 230, 255';
-        const gradient = ctx.createRadialGradient(size, size, 0, size, size, size);
-        gradient.addColorStop(0, `rgba(${glowColor}, 0.7)`);
-        gradient.addColorStop(0.5, `rgba(${glowColor}, 0.4)`);
-        gradient.addColorStop(1, `rgba(${glowColor}, 0)`);
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, size * 2, size * 2);
-        return canvas;
-    }
-
-    createCrystalSprite() {
-        const size = 20;
-        const canvas = document.createElement('canvas');
-        canvas.width = size * 2;
-        canvas.height = size * 2;
-        const ctx = canvas.getContext('2d');
-        ctx.translate(size, size);
-
-        ctx.beginPath();
-        ctx.moveTo(0, -size);
-        ctx.lineTo(size * 0.5, 0);
-        ctx.lineTo(0, size);
-        ctx.lineTo(-size * 0.5, 0);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(220, 240, 255, 1)';
-        ctx.fill();
-
-        return canvas;
-    }
-
-    createCrystalGlowSprite() {
-        const size = 40;
-        const canvas = document.createElement('canvas');
-        canvas.width = size * 2;
-        canvas.height = size * 2;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createRadialGradient(size, size, 0, size, size, size);
-        gradient.addColorStop(0, 'rgba(180, 220, 255, 0.6)');
-        gradient.addColorStop(1, 'rgba(160, 200, 240, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, size * 2, size * 2);
-        return canvas;
-    }
-
-    createStormSprite() {
-        const size = 10;
-        const canvas = document.createElement('canvas');
-        canvas.width = size * 2;
-        canvas.height = size * 2;
-        const ctx = canvas.getContext('2d');
-
-        ctx.beginPath();
-        ctx.arc(size, size, size, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(240, 250, 255, 1)';
-        ctx.fill();
-        return canvas;
-    }
-
-    createStormGlowSprite() {
-        const size = 20;
-        const canvas = document.createElement('canvas');
-        canvas.width = size * 2;
-        canvas.height = size * 2;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createRadialGradient(size, size, 0, size, size, size);
-        gradient.addColorStop(0, 'rgba(200, 230, 255, 0.5)');
-        gradient.addColorStop(1, 'rgba(180, 210, 240, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, size * 2, size * 2);
-        return canvas;
-    }
-
-    createAuroraSprite() {
-        const size = 512;
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-        gradient.addColorStop(0, 'rgba(116, 185, 255, 0.6)');
-        gradient.addColorStop(0.5, 'rgba(85, 239, 196, 0.4)');
-        gradient.addColorStop(1, 'rgba(162, 155, 254, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, size, size);
-        return canvas;
-    }
-
-    createStars() {
-        const container = this.getContainer('ice-temple-stars');
-        if (!container) return;
-
-        const width = container.clientWidth || 1920;
-        const height = container.clientHeight || 1080;
-        const cacheKey = `ice-temple-stars-${width}x${height}`;
-
-        // Use canvas for static stars, only animate a few bright ones
-        if (!iceTempleCache.has(cacheKey)) {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d', { alpha: true });
-
-            const rng = this.seededRandom(11111);
-            // Draw 220 static stars on canvas
-            for (let i = 0; i < 220; i++) {
-                const size = rng() * 1.4 + 0.4;
-                const x = rng() * width;
-                const y = rng() * height;
-                const opacity = 0.3 + rng() * 0.4;
-
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.7);
-                gradient.addColorStop(0, `rgba(255, 255, 255, ${opacity})`);
-                gradient.addColorStop(0.7, `rgba(255, 255, 255, ${opacity * 0.3})`);
-                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-                ctx.fillStyle = gradient;
-                ctx.fillRect(x - size, y - size, size * 2, size * 2);
-            }
-
-            iceTempleCache.set(cacheKey, canvas.toDataURL('image/png'));
-        }
-
-        // Set canvas as background
-        container.style.backgroundImage = `url(${iceTempleCache.get(cacheKey)})`;
-        container.style.backgroundSize = 'cover';
-
-        // Only animate 20 bright twinkling stars
-        if (container.children.length) return;
-        const rng = this.seededRandom(11112);
-        for (let i = 0; i < 20; i++) {
-            const star = document.createElement('div');
-            star.className = 'ice-temple-star';
-            const size = rng() * 1.6 + 0.8;
-            star.style.width = `${size}px`;
-            star.style.height = `${size}px`;
-            star.style.left = `${rng() * 100}%`;
-            star.style.top = `${rng() * 100}%`;
-            star.style.setProperty('--min-opacity', `${0.4 + rng() * 0.3}`);
-            star.style.setProperty('--max-opacity', `${0.7 + rng() * 0.3}`);
-            star.style.setProperty('--twinkle-duration', `${3 + rng() * 2.5}s`);
-            star.style.setProperty('--twinkle-delay', `${rng() * 4}s`);
-            container.appendChild(star);
-        }
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AURORA BOREALIS - Single unified curtain
+    // ═══════════════════════════════════════════════════════════════════════════
 
     createAurora() {
-        const container = this.getContainer('ice-temple-aurora');
-        if (!container || container.children.length) return;
+        // Single wide aurora curtain using cylinder arc geometry for curved sky effect
+        // This creates a seamless aurora spanning the entire horizon
 
-        // Reduce from 4 to 3 aurora curtains for better performance
-        const colors = ['#74b9ff', '#55efc4', '#a29bfe'];
-        const rng = this.seededRandom(12222);
-        for (let i = 0; i < 3; i++) {
-            const curtain = document.createElement('div');
-            curtain.className = 'ice-aurora-curtain';
-            curtain.style.setProperty('--aurora-color', colors[i]);
-            curtain.style.setProperty('--aurora-duration', `${24 + i * 5 + rng() * 4}s`);
-            curtain.style.setProperty('--aurora-delay', `${i * 3}s`);
-            curtain.style.left = `${i * 30}%`;
-            curtain.style.width = `${35}%`; // Wider to maintain coverage
-            if (i % 2 === 1) {
-                curtain.style.animationDirection = 'alternate-reverse';
-            }
-            container.appendChild(curtain);
-        }
+        const arcAngle = Math.PI * 1.4;  // ~250 degrees - full left to right coverage
+        const radius = 80;               // Larger radius for wider span
+        const height = 60;
+        const segments = 160;            // Smooth curve
+
+        // Create curved geometry (partial cylinder, open-ended)
+        const geometry = new THREE.CylinderGeometry(
+            radius,      // top radius
+            radius,      // bottom radius  
+            height,      // height
+            segments,    // radial segments
+            64,          // height segments
+            true,        // open-ended
+            -arcAngle / 2,  // start angle (centered)
+            arcAngle     // arc length
+        );
+
+        // Rotate to face camera
+        geometry.rotateY(Math.PI);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uIntensity: this.uniforms.auroraIntensity,
+                uColor1: { value: COLORS.aurora1 },
+                uColor2: { value: COLORS.aurora2 },
+                uColor3: { value: COLORS.aurora3 },
+            },
+            vertexShader: auroraVertexShader,
+            fragmentShader: auroraFragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const aurora = new THREE.Mesh(geometry, material);
+        aurora.position.set(0, 28, -20);  // Move closer and adjust height
+
+        this.auroraPlanes.push(aurora);
+        this.scene.add(aurora);
+
+        // ─────────────────────────────────────────────────────────────────
+        // AURORA REFLECTION (Under the ice)
+        // ─────────────────────────────────────────────────────────────────
+        // We create a duplicate flipped aurora below the floor.
+        // The floor's PBR transmission/roughness will naturally distort it.
+
+        const reflectionGeometry = geometry.clone();
+
+        const reflectionMaterial = material.clone();
+        // Slightly dim the reflection
+        reflectionMaterial.uniforms = THREE.UniformsUtils.clone(material.uniforms);
+        // We can't easily dim the shader without changing uniforms usage, 
+        // but the floor's attenuation will handle the dimming naturally!
+
+        const reflectionAurora = new THREE.Mesh(reflectionGeometry, reflectionMaterial);
+        reflectionAurora.position.set(0, -28, -20); // Mirror position across XZ plane (y=0)
+        reflectionAurora.scale.y = -1;              // Mirror the geometry vertically
+
+        this.auroraReflections = [reflectionAurora]; // Store for animation updates
+        this.scene.add(reflectionAurora);
     }
 
-    createIceField() {
-        const container = this.getContainer('ice-temple-icefield');
-        if (!container) return;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FROST FLOOR - Circular with PBR ice (transmission + volume)
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        const width = 2200;
-        const height = 900;
-        const cacheKey = `ice-temple-icefield-${width}x${height}`;
+    createFrostFloor() {
+        // Use circular geometry avoiding sharp edges - Large radius to fade efficiently
+        const geometry = new THREE.CircleGeometry(140, 64);
 
-        if (!iceTempleCache.has(cacheKey)) {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
+        // Load the cracked ice texture as NORMAL MAP (not diffuse - color comes from physics)
+        const textureLoader = new THREE.TextureLoader();
+        const iceNormalTexture = textureLoader.load(
+            new URL('./textures/ice-diffuse.jpg', import.meta.url).href
+        );
+        iceNormalTexture.wrapS = THREE.MirroredRepeatWrapping;
+        iceNormalTexture.wrapT = THREE.MirroredRepeatWrapping;
+        iceNormalTexture.repeat.set(3, 3); // Larger cracks, fewer seams
 
-            const baseGradient = ctx.createLinearGradient(0, 0, 0, height);
-            baseGradient.addColorStop(0, '#0a1f35');
-            baseGradient.addColorStop(0.4, '#0e3352');
-            baseGradient.addColorStop(1, '#15526c');
-            ctx.fillStyle = baseGradient;
-            ctx.fillRect(0, 0, width, height);
+        // Create gradient alpha texture for edge fading
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
 
-            // Etch subtle ice ridges
-            for (let i = 0; i < 140; i++) {
-                const startX = Math.random() * width;
-                const startY = height * (0.35 + Math.random() * 0.6);
-                const length = 120 + Math.random() * 280;
-                const slope = (Math.random() * 0.7) - 0.35;
-                ctx.beginPath();
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(startX + length, startY - length * slope);
-                ctx.lineWidth = Math.random() * 1.4 + 0.2;
-                ctx.strokeStyle = `rgba(220, 245, 255, ${0.015 + Math.random() * 0.05})`;
-                ctx.stroke();
-            }
+        // Radial gradient from center (opaque) to edge (transparent)
+        // Soft fade out starting at 60%
+        const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.9)');
+        gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.5)');
+        gradient.addColorStop(0.9, 'rgba(255, 255, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
-            // Scatter crystalline facets
-            for (let i = 0; i < 1100; i++) {
-                const radius = Math.random() * 1.6 + 0.2;
-                const alpha = 0.015 + Math.random() * 0.03;
-                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-                ctx.beginPath();
-                ctx.arc(Math.random() * width, height * (0.25 + Math.random() * 0.75), radius, 0, Math.PI * 2);
-                ctx.fill();
-            }
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 512, 512);
 
-            const dataURL = `url(${canvas.toDataURL('image/png')})`;
-            iceTempleCache.set(cacheKey, {
-                backgroundImage: dataURL,
-                backgroundSize: `${width}px ${height}px`,
-            });
-        }
+        const alphaTexture = new THREE.CanvasTexture(canvas);
 
-        const cached = iceTempleCache.get(cacheKey);
-        container.style.backgroundImage = cached.backgroundImage;
-        container.style.backgroundSize = cached.backgroundSize;
+        // Floor material with FULL PBR ice settings - Enhanced Blue Tint
+        const material = new THREE.MeshPhysicalMaterial({
+            // 1. Basic Optical Properties
+            color: 0x4488ff,              // Blue surface tint
+            roughness: 0.15,              // Low for wet ice
+            metalness: 0.1,               // Slight metalness for extra reflection
+            transmission: 0.85,           // Glass-like
+            ior: 1.31,                    // Index of Refraction for ice
+
+            // 2. Volume / Depth (The Blue Tint)
+            thickness: 2.5,               // Thicker for deeper color
+            attenuationColor: new THREE.Color(0x0044ff), // Richer blue
+            attenuationDistance: 0.5,     // Stronger blue absorption (lower value = bluer)
+
+            // 3. Surface Detail (The "Frost" layer)
+            clearcoat: 1.0,               // Polished wet layer
+            clearcoatRoughness: 0.05,
+
+            // 4. Texture as normal map for cracks
+            normalMap: iceNormalTexture,
+            normalScale: new THREE.Vector2(0.5, 0.5), // Deeper cracks
+
+            // 5. Glow and Edges
+            emissive: 0x001133,           // Deep blue inner glow
+            emissiveIntensity: 0.4,       // Visible glow
+
+            transparent: true,
+            alphaMap: alphaTexture,
+            // alphaTest removed to allow soft blending
+            depthWrite: false,            // Prevent z-fighting and allow proper blending
+            side: THREE.DoubleSide,
+
+            envMapIntensity: 1.5,
+        });
+
+        this.frostFloor = new THREE.Mesh(geometry, material);
+        this.frostFloor.rotation.x = -Math.PI / 2;
+        this.frostFloor.renderOrder = -1; // Draw first to act as background
+        this.frostFloor.position.y = 0;
+        this.frostFloor.receiveShadow = true;
+
+        this.mainGroup.add(this.frostFloor);
+        this.floorMaterial = material;
+
+        // Add mist layers
+        this.createMistLayers();
     }
 
-    createCrackNetwork() {
-        const container = this.getContainer('ice-temple-cracks');
-        if (!container || container.children.length) return;
+    createIceCracksOverlay() {
+        // Circular crack overlay matching the floor
+        const crackGeometry = new THREE.CircleGeometry(75, 64);
 
-        // Reduce crack count from 20 to 10 for better performance
-        const rng = this.seededRandom(13337);
-        const crackCount = 10;
-        for (let i = 0; i < crackCount; i++) {
-            const crack = document.createElement('div');
-            crack.className = 'ice-temple-crack';
-            crack.style.left = `${rng() * 100}%`;
-            crack.style.top = `${55 + rng() * 40}%`;
-            crack.style.setProperty('--crack-length', `${28 + rng() * 50}vh`); // Longer cracks
-            crack.style.setProperty('--crack-thickness', `${0.9 + rng() * 2}px`); // Slightly thicker
-            crack.style.setProperty('--crack-rotate', `${-40 + rng() * 80}deg`);
-            crack.style.setProperty('--crack-delay', `${rng() * 6}s`);
-            crack.style.setProperty('--crack-glow', `${0.4 + rng() * 0.4}`);
-            const glintDuration = 5 + rng() * 4;
-            crack.style.setProperty('--crack-glint-duration', `${glintDuration}s`);
-            crack.style.setProperty('--crack-phase', `-${rng() * glintDuration}s`);
-            if (rng() > 0.5) {
-                crack.classList.add('branching');
-                crack.style.setProperty('--branch-rotate', `${-35 + rng() * 70}deg`);
-                crack.style.setProperty('--branch-length', `${15 + rng() * 25}vh`); // Longer branches
+        // Create crack texture procedurally
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+
+        // Transparent background
+        ctx.clearRect(0, 0, 1024, 1024);
+
+        // Draw glowing crack network
+        ctx.strokeStyle = 'rgba(85, 239, 196, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = 'rgba(85, 239, 196, 0.9)';
+        ctx.shadowBlur = 12;
+
+        // Generate organic crack patterns radiating from random points
+        for (let i = 0; i < 40; i++) {
+            const startX = 256 + (Math.random() - 0.5) * 512;
+            const startY = 256 + (Math.random() - 0.5) * 512;
+
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+
+            let x = startX;
+            let y = startY;
+            const segments = 4 + Math.floor(Math.random() * 6);
+
+            for (let j = 0; j < segments; j++) {
+                const angle = Math.random() * Math.PI * 2;
+                const length = 30 + Math.random() * 80;
+                x += Math.cos(angle) * length;
+                y += Math.sin(angle) * length;
+                ctx.lineTo(x, y);
+
+                // Branch occasionally
+                if (Math.random() > 0.7) {
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                }
             }
-            container.appendChild(crack);
+            ctx.stroke();
         }
-    }
 
-    createFrostHaze() {
-        const container = this.getContainer('ice-temple-ice-shards');
-        if (!container || container.children.length) return;
+        // Edge fade gradient
+        const fadeGradient = ctx.createRadialGradient(512, 512, 300, 512, 512, 512);
+        fadeGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        fadeGradient.addColorStop(1, 'rgba(0, 0, 0, 1)');
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = fadeGradient;
+        ctx.fillRect(0, 0, 1024, 1024);
 
-        // Reduce frost haze count from 12 to 6 for better performance
-        const rng = this.seededRandom(17777);
-        const spriteCount = 6;
-        for (let i = 0; i < spriteCount; i++) {
-            const haze = document.createElement('div');
-            haze.className = 'ice-temple-frost-haze';
-            const size = 120 + rng() * 180; // Much larger to maintain visual density
-            haze.style.width = `${size}px`;
-            haze.style.height = `${size}px`;
-            haze.style.left = `${rng() * 100}%`;
-            haze.style.top = `${rng() * 100}%`;
-            const duration = 20 + rng() * 16;
-            haze.style.setProperty('--haze-duration', `${duration}s`);
-            haze.style.setProperty('--haze-delay', `-${rng() * duration}s`);
-            haze.style.setProperty('--haze-drift-x', `${rng() * 20 - 10}vw`);
-            haze.style.setProperty('--haze-drift-y', `${rng() * 12 - 6}vh`);
-            haze.style.setProperty('--haze-scale', `${0.8 + rng() * 0.8}`);
-            haze.style.setProperty('--haze-opacity', `${0.18 + rng() * 0.3}`);
-            container.appendChild(haze);
-        }
+        const crackTexture = new THREE.CanvasTexture(canvas);
+
+        const crackMaterial = new THREE.MeshBasicMaterial({
+            map: crackTexture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const crackMesh = new THREE.Mesh(crackGeometry, crackMaterial);
+        crackMesh.rotation.x = -Math.PI / 2;
+        crackMesh.position.y = 0.03;
+
+        this.mainGroup.add(crackMesh);
+        this.crackOverlay = crackMesh;
     }
 
     createMistLayers() {
-        const container = this.getContainer('ice-temple-mist');
-        if (!container || container.children.length) return;
-
-        // Reduce from 3 to 2 mist layers for better performance
-        for (let i = 0; i < 2; i++) {
-            const mist = document.createElement('div');
-            mist.className = 'ice-temple-mist-layer';
-            mist.style.setProperty('--mist-duration', `${26 + i * 10}s`);
-            mist.style.setProperty('--mist-delay', `${i * -5}s`);
-            mist.style.opacity = `${0.14 + i * 0.08}`; // Slightly more visible
-            mist.dataset.layer = i === 0 ? 'back' : 'front';
-            container.appendChild(mist);
-        }
-    }
-
-    createSnowfall() {
-        const container = this.getContainer('ice-temple-snow');
-        if (!container || container.children.length) return;
-
-        // Reduce snowflake count from 45 to 25 for better performance
-        const rng = this.seededRandom(15555);
-        const flakeCount = 25;
-        for (let i = 0; i < flakeCount; i++) {
-            const snowflake = document.createElement('div');
-            snowflake.className = 'ice-temple-snowflake';
-            const size = rng() * 2.6 + 1.5; // Larger to compensate for fewer flakes
-            snowflake.style.width = `${size}px`;
-            snowflake.style.height = `${size}px`;
-            snowflake.style.left = `${rng() * 100}%`;
-
-            const depthFactor = rng();
-            const duration = 12 + depthFactor * 10;
-            snowflake.style.setProperty('--fall-duration', `${duration}s`);
-            snowflake.style.setProperty('--fall-delay', `-${rng() * duration}s`);
-            snowflake.style.setProperty('--sway-amount', `${rng() * 60 - 30}px`);
-            snowflake.style.setProperty('--snow-scale', `${0.8 + depthFactor * 1}`);
-            snowflake.style.setProperty('--snow-opacity', `${0.45 + (1 - depthFactor) * 0.5}`);
-            container.appendChild(snowflake);
-        }
-    }
-
-    createRefractions() {
-        const container = this.getContainer('ice-temple-refractions');
-        if (!container || container.children.length) return;
-
-        const colors = [
-            'rgba(116, 185, 255, 0.5)',
-            'rgba(255, 255, 255, 0.45)',
-            'rgba(162, 155, 254, 0.4)',
-            'rgba(137, 217, 255, 0.5)',
+        // Add atmospheric mist/fog layers for depth
+        const mistColors = [
+            { color: 0x1a5577, opacity: 0.15, y: 0.5, scale: 60 },
+            { color: 0x2a6688, opacity: 0.1, y: 1.5, scale: 80 },
+            { color: 0x3a7799, opacity: 0.08, y: 3, scale: 100 },
         ];
-        const rng = this.seededRandom(16666);
-        // Reduce from 14 to 8 rays for better performance
-        for (let i = 0; i < 8; i++) {
-            const ray = document.createElement('div');
-            ray.className = 'ice-refraction-ray';
-            ray.style.left = `${rng() * 100}%`;
-            ray.style.top = `${rng() * 100}%`;
-            ray.style.setProperty('--ray-color', colors[i % colors.length]);
-            ray.style.setProperty('--ray-angle', `${rng() * 360}deg`);
-            ray.style.setProperty('--ray-rotation-duration', `${28 + rng() * 18}s`);
-            ray.style.setProperty('--ray-pulse-duration', `${2 + rng() * 2.5}s`);
-            ray.style.setProperty('--ray-delay', `${rng() * 8}s`);
-            container.appendChild(ray);
+
+        this.mistLayers = [];
+
+        for (const config of mistColors) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            // Soft circular gradient
+            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            gradient.addColorStop(0, `rgba(255, 255, 255, ${config.opacity})`);
+            gradient.addColorStop(0.5, `rgba(255, 255, 255, ${config.opacity * 0.6})`);
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({
+                map: texture,
+                color: config.color,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(config.scale, config.scale * 0.3, 1);
+            sprite.position.y = config.y;
+
+            this.mistLayers.push(sprite);
+            this.mainGroup.add(sprite);
+        }
+
+        // Add low-lying fog ring around the edges
+        this.createFogRing();
+    }
+
+    createFogRing() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Create ring-shaped fog
+        const gradient = ctx.createRadialGradient(256, 256, 100, 256, 256, 256);
+        gradient.addColorStop(0, 'rgba(26, 85, 119, 0)');
+        gradient.addColorStop(0.4, 'rgba(26, 85, 119, 0)');
+        gradient.addColorStop(0.6, 'rgba(42, 102, 136, 0.2)');
+        gradient.addColorStop(0.8, 'rgba(58, 119, 153, 0.3)');
+        gradient.addColorStop(1, 'rgba(74, 136, 170, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 512, 512);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const geometry = new THREE.PlaneGeometry(150, 150);
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        const fogRing = new THREE.Mesh(geometry, material);
+        fogRing.rotation.x = -Math.PI / 2;
+        fogRing.position.y = 0.2;
+
+        this.fogRing = fogRing;
+        this.mainGroup.add(fogRing);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ICE PILLARS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createIcePillars() {
+        const pillarPositions = [
+            { x: -12, z: -5, height: 15, radius: 1.2 },
+            { x: -8, z: -12, height: 18, radius: 1.5 },
+            { x: 8, z: -8, height: 16, radius: 1.3 },
+            { x: 14, z: -3, height: 12, radius: 1.0 },
+            { x: -5, z: 5, height: 10, radius: 0.9 },
+            { x: 6, z: 8, height: 8, radius: 0.8 },
+            { x: 0, z: -18, height: 20, radius: 1.8 },
+        ];
+
+        for (const config of pillarPositions) {
+            const pillar = this.createIcePillar(config);
+            this.icePillars.push(pillar);
+            this.mainGroup.add(pillar.group);
         }
     }
+
+    createIcePillar(config) {
+        const group = new THREE.Group();
+        group.position.set(config.x, 0, config.z);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // UNIFIED ORGANIC PILLAR (Lathe Geometry)
+        // ─────────────────────────────────────────────────────────────────────
+
+        const profilePoints = [];
+
+        // 1. Root Base (Slightly wider but mostly submerged)
+        profilePoints.push(new THREE.Vector2(config.radius * 1.5, 0));      // Base
+        profilePoints.push(new THREE.Vector2(config.radius * 1.2, 1.0));    // Transition
+
+        // 2. Main Shaft (Straight rise)
+        profilePoints.push(new THREE.Vector2(config.radius * 1.0, 4.0));
+        profilePoints.push(new THREE.Vector2(config.radius * 0.9, config.height * 0.8));
+
+        // 3. Peak (Sharp tip)
+        profilePoints.push(new THREE.Vector2(0, config.height));
+
+        const geometry = new THREE.LatheGeometry(profilePoints, 6);
+
+        // Add random vertex displacement
+        const positions = geometry.attributes.position.array;
+        const seed = config.x * 100 + config.z;
+        for (let i = 0; i < positions.length; i += 3) {
+            const y = positions[i + 1];
+            const heightFactor = Math.max(0, (y - 0.5) / config.height);
+            const noise = Math.sin(seed + y * 0.5 + i * 0.1) * 0.2 * config.radius * heightFactor;
+
+            const angle = Math.atan2(positions[i + 2], positions[i]);
+            const r = Math.sqrt(positions[i] * positions[i] + positions[i + 2] * positions[i + 2]);
+            const newR = r + noise;
+            positions[i] = Math.cos(angle) * newR;
+            positions[i + 2] = Math.sin(angle) * newR;
+        }
+        geometry.computeVertexNormals();
+
+        // ─────────────────────────────────────────────────────────────────────
+        // UPLIFTED ICE SHARDS (Breaking the surface)
+        // ─────────────────────────────────────────────────────────────────────
+        // Create a ring of jagged shards that look like the floor being pushed up
+
+        const shardCount = 8 + Math.floor(Math.random() * 4);
+        const shardMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xccffff,       // White/Blue ice
+            roughness: 0.3,        // Rough fracture
+            metalness: 0.1,
+            transmission: 0.4,     // Semi-opaque (looks like floor ice)
+            thickness: 1.0,
+            clearcoat: 1.0,
+            side: THREE.DoubleSide
+        });
+
+        for (let i = 0; i < shardCount; i++) {
+            // Irregular shard geometry
+            const w = config.radius * (0.8 + Math.random() * 0.6);
+            const h = config.radius * (1.5 + Math.random() * 1.0);
+            const shardGeo = new THREE.PlaneGeometry(w, h);
+
+            // Displace shard vertices for jagged edges
+            const pos = shardGeo.attributes.position.array;
+            for (let j = 0; j < pos.length; j += 3) {
+                pos[j] += (Math.random() - 0.5) * w * 0.2;
+                pos[j + 1] += (Math.random() - 0.5) * h * 0.1;
+                pos[j + 2] += (Math.random() - 0.5) * 0.2; // slight depth noise
+            }
+            shardGeo.computeVertexNormals();
+
+            const shard = new THREE.Mesh(shardGeo, shardMaterial);
+
+            // Position in ring
+            const angle = (i / shardCount) * Math.PI * 2 + (Math.random() * 0.4);
+            const dist = config.radius * 1.0; // Close to pillar
+
+            shard.position.x = Math.cos(angle) * dist;
+            shard.position.z = Math.sin(angle) * dist;
+            shard.position.y = 0;
+
+            // Rotate to point UP and OUT
+            shard.lookAt(0, 0, 0); // Face center first
+            shard.rotation.x -= Math.PI * 0.3; // Tilt back (30-45 degrees up from floor?) 
+            // Actually Plane is XY. lookAt(0,0,0) makes it face center. 
+            // We want it lying flat then angled up.
+            // Let's reset and do explicit rotation
+            shard.rotation.set(0, -angle + Math.PI / 2, 0); // Face outward
+            shard.rotation.x = -Math.PI / 4 - Math.random() * 0.2; // Tilt 45-60 deg up
+
+            // Lift base slightly
+            shard.position.y = h * 0.3;
+
+            group.add(shard);
+        }
+
+        const material = new THREE.MeshPhysicalMaterial({
+            color: 0xccEeff,              // Very pale blue-white
+            emissive: 0x114488,           // Deep subtle glow
+            emissiveIntensity: 0.2,
+
+            metalness: 0.1,               // Slight metallic reflection
+            roughness: 0.05,              // very smooth but not perfect for base blending
+
+            transmission: 1.0,            // Fully transparent
+            thickness: config.radius * 4, // Deep volume
+            ior: 1.5,                     // Glass IOR (higher refraction)
+
+            clearcoat: 1.0,               // High polish
+            clearcoatRoughness: 0.0,
+
+            attenuationColor: new THREE.Color(0xeeffff), // Clear volume with slight tint
+            attenuationDistance: 2.0,
+
+            envMapIntensity: 2.0,         // Strong environment reflections
+            side: THREE.DoubleSide,
+            transparent: true,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.y = 0; // Sits perfectly on ground now
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+
+        // Internal glow point light (brighter for transmission to show through)
+        const light = new THREE.PointLight(0x66ddff, 1.0, config.height * 2.5);
+        light.position.y = config.height * 0.5;
+        group.add(light);
+
+        // Add subtle outer glow sprite
+        const glowSprite = this.createPillarGlow(config);
+        group.add(glowSprite);
+
+        return { group, mesh, light, config, material };
+    }
+
+    createPillarGlow(config) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+
+        // Vertical gradient glow
+        const gradient = ctx.createLinearGradient(64, 256, 64, 0);
+        gradient.addColorStop(0, 'rgba(100, 200, 255, 0.0)');
+        gradient.addColorStop(0.3, 'rgba(100, 200, 255, 0.3)');
+        gradient.addColorStop(0.6, 'rgba(150, 220, 255, 0.2)');
+        gradient.addColorStop(1, 'rgba(180, 240, 255, 0.0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 256);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(config.radius * 4, config.height * 1.1, 1);
+        sprite.position.y = config.height * 0.5;
+
+        return sprite;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SNOW PARTICLE SYSTEM
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createSnowSystem() {
+        const snowCount = 3000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(snowCount * 3);
+        const randoms = new Float32Array(snowCount);
+        const speeds = new Float32Array(snowCount);
+
+        for (let i = 0; i < snowCount; i++) {
+            const i3 = i * 3;
+            positions[i3] = (Math.random() - 0.5) * 80;
+            positions[i3 + 1] = Math.random() * 40;
+            positions[i3 + 2] = (Math.random() - 0.5) * 60;
+
+            randoms[i] = Math.random();
+            speeds[i] = 0.5 + Math.random() * 1.0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uSize: { value: 3.0 },
+                uColor: { value: COLORS.snow },
+            },
+            vertexShader: snowVertexShader,
+            fragmentShader: snowFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.snowSystem = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.snowSystem);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LIGHTING
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    setupLighting() {
+        // Ambient light - cold blue tint
+        const ambient = new THREE.AmbientLight(COLORS.ambient.getHex(), 0.4);
+        this.scene.add(ambient);
+
+        // Directional light from above (moonlight)
+        const moonLight = new THREE.DirectionalLight(0x8899bb, 0.3);
+        moonLight.position.set(10, 30, -20);
+        this.scene.add(moonLight);
+
+        // Hemisphere light for sky/ground color variation
+        const hemiLight = new THREE.HemisphereLight(
+            0x74b9ff,  // Sky (aurora tint)
+            0x0a1f35,  // Ground (ice)
+            0.4
+        );
+        this.scene.add(hemiLight);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ENVIRONMENT MAP - For realistic ice reflections/refractions
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createEnvironmentMap() {
+        // Create a procedural environment map for reflections
+        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+        pmremGenerator.compileEquirectangularShader();
+
+        // Create a simple gradient environment
+        const envScene = new THREE.Scene();
+
+        // Create gradient sky dome
+        const skyGeometry = new THREE.SphereGeometry(50, 32, 32);
+        const skyCanvas = document.createElement('canvas');
+        skyCanvas.width = 512;
+        skyCanvas.height = 256;
+        const skyCtx = skyCanvas.getContext('2d');
+
+        // Gradient from dark blue (bottom) to aurora colors (top)
+        const gradient = skyCtx.createLinearGradient(0, 256, 0, 0);
+        gradient.addColorStop(0, '#051525');    // Dark ice floor
+        gradient.addColorStop(0.3, '#0a2a4a');  // Deep blue
+        gradient.addColorStop(0.5, '#1a4466');  // Mid blue
+        gradient.addColorStop(0.7, '#2a6688');  // Light blue
+        gradient.addColorStop(0.85, '#55efc4'); // Aurora green
+        gradient.addColorStop(1.0, '#74b9ff');  // Aurora cyan
+
+        skyCtx.fillStyle = gradient;
+        skyCtx.fillRect(0, 0, 512, 256);
+
+        // Add some stars/sparkles
+        skyCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        for (let i = 0; i < 100; i++) {
+            const x = Math.random() * 512;
+            const y = Math.random() * 128; // Upper half only
+            const size = Math.random() * 2 + 0.5;
+            skyCtx.beginPath();
+            skyCtx.arc(x, y, size, 0, Math.PI * 2);
+            skyCtx.fill();
+        }
+
+        const skyTexture = new THREE.CanvasTexture(skyCanvas);
+        const skyMaterial = new THREE.MeshBasicMaterial({
+            map: skyTexture,
+            side: THREE.BackSide,
+        });
+
+        const skyMesh = new THREE.Mesh(skyGeometry, skyMaterial);
+        envScene.add(skyMesh);
+
+        // Generate environment map
+        const envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
+        this.scene.environment = envMap;
+
+        // Apply to ice materials
+        for (const pillar of this.icePillars) {
+            if (pillar.material) {
+                pillar.material.envMap = envMap;
+                pillar.material.needsUpdate = true;
+            }
+        }
+
+        // Apply to floor
+        if (this.frostFloor && this.frostFloor.material) {
+            this.frostFloor.material.envMap = envMap;
+            this.frostFloor.material.needsUpdate = true;
+        }
+
+        // Cleanup
+        pmremGenerator.dispose();
+        skyMaterial.dispose();
+        skyTexture.dispose();
+        skyGeometry.dispose();
+
+        this.environmentMap = envMap;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GAMEPLAY EFFECTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    setupEventListeners() {
+        // Clean up existing listeners
+        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers = [];
+
+        // Line Clear
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (this.isActive) this.onLineClear(data.lineCount || 1);
+        });
+
+        // Combo
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (this.isActive) this.onCombo(data.comboCount || 0);
+        });
+
+        // Piece Lock
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            if (this.isActive) this.onPieceLock(data);
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    onLineClear(lineCount) {
+        console.log(`[IceTemple] Line clear: ${lineCount}`);
+
+        // Pulse ice pillars
+        this.targetPulseIntensity = Math.min(lineCount * 0.5, 1.5);
+
+        // Flash cracks
+        this.targetCrackGlow = Math.min(0.5 + lineCount * 0.2, 1.0);
+
+        // Create shockwave
+        this.createShockwave(lineCount);
+
+        // Create ice shard burst
+        this.createIceShardBurst(lineCount * 15);
+    }
+
+    onCombo(comboCount) {
+        if (comboCount < 2) return;
+
+        console.log(`[IceTemple] Combo: ${comboCount}`);
+
+        // Intensify aurora
+        this.targetAuroraIntensity = Math.min(0.8 + comboCount * 0.15, 1.8);
+
+        // Extended pillar pulse
+        this.targetPulseIntensity = Math.min(comboCount * 0.3, 1.0);
+
+        // Extra crack glow
+        this.targetCrackGlow = Math.min(comboCount * 0.15, 0.8);
+
+        // Multiple shockwaves for big combos
+        if (comboCount >= 4) {
+            this.createShockwave(comboCount);
+        }
+    }
+
+    onPieceLock(data) {
+        // Strong pillar pulse (impact feel)
+        this.targetPulseIntensity = 3.0;
+
+        // Shard burst from the base of EACH pillar
+        for (const pillar of this.icePillars) {
+            const pos = pillar.group.position;
+            this.createIceShardBurst(5, pos.x, pos.z); // 5 shards per pillar
+        }
+
+        // Slight aurora disturbance
+        this.targetAuroraIntensity = 1.0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EFFECT CREATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createShockwave(intensity) {
+        const geometry = new THREE.TorusGeometry(2, 0.15, 8, 50);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uOpacity: { value: 1.0 },
+                uColor: { value: COLORS.iceGlow.clone() },
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        });
+
+        const wave = new THREE.Mesh(geometry, material);
+        wave.rotation.x = Math.PI / 2;
+        wave.position.y = 0.5;
+
+        wave.userData = {
+            life: 1.0,
+            speed: 8 + intensity * 2,
+        };
+
+        this.shockwaves.push(wave);
+        this.mainGroup.add(wave);
+    }
+
+    createIceShardBurst(count, originX = 0, originZ = 0) {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const velocities = new Float32Array(count * 3);
+        const lifes = new Float32Array(count);
+        const randoms = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+
+            // Start at the specified origin (pillar base)
+            positions[i3] = originX + (Math.random() - 0.5) * 1.5;
+            positions[i3 + 1] = 0.5 + Math.random() * 2;  // Start near ground
+            positions[i3 + 2] = originZ + (Math.random() - 0.5) * 1.5;
+
+            // Explosion velocity
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 3 + Math.random() * 5;
+            velocities[i3] = Math.cos(angle) * speed;
+            velocities[i3 + 1] = 2 + Math.random() * 4;
+            velocities[i3 + 2] = Math.sin(angle) * speed;
+
+            lifes[i] = 1.0;
+            randoms[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(lifes, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSize: { value: 8.0 },
+                uColor: { value: COLORS.iceShards },
+            },
+            vertexShader: iceShardVertexShader,
+            fragmentShader: iceShardFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const burst = new THREE.Points(geometry, material);
+        burst.userData = {
+            startTime: this.uniforms.time.value,
+            duration: 1.5,
+        };
+
+        this.shardBursts.push(burst);
+        this.mainGroup.add(burst);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ANIMATION LOOP
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    animate() {
+        if (!this.isActive) return;
+
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+
+        const delta = this.clock.getDelta();
+        const elapsed = this.clock.getElapsedTime();
+        this.uniforms.time.value = elapsed;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // SMOOTH TRANSITIONS
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Decay pulse intensity
+        this.uniforms.pulseIntensity.value = THREE.MathUtils.lerp(
+            this.uniforms.pulseIntensity.value,
+            this.targetPulseIntensity,
+            delta * 3
+        );
+        this.targetPulseIntensity *= 0.95;
+
+        // Decay crack glow
+        this.uniforms.crackGlow.value = THREE.MathUtils.lerp(
+            this.uniforms.crackGlow.value,
+            this.targetCrackGlow,
+            delta * 3
+        );
+        this.targetCrackGlow *= 0.97;
+
+        // Aurora intensity
+        this.uniforms.auroraIntensity.value = THREE.MathUtils.lerp(
+            this.uniforms.auroraIntensity.value,
+            this.targetAuroraIntensity,
+            delta * 2
+        );
+        if (this.targetAuroraIntensity > 0.85) {
+            this.targetAuroraIntensity -= delta * 0.2;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CAMERA MOVEMENT (Continuous gentle orbit/sway)
+        // ─────────────────────────────────────────────────────────────────────
+
+        const camTime = elapsed * 0.15; // Smooth continuous movement
+        const camRadius = 25;
+        const camHeight = 8 + Math.sin(camTime * 0.5) * 2; // Gentle vertical bob
+
+        this.camera.position.x = Math.sin(camTime) * 5;       // Side-to-side sway
+        this.camera.position.y = camHeight;
+        this.camera.position.z = camRadius + Math.cos(camTime * 0.3) * 3; // Slight forward/back
+        this.camera.lookAt(0, 3, 0);  // Always look at center
+
+        // ─────────────────────────────────────────────────────────────────────
+        // MAIN GROUP DRIFT
+        // ─────────────────────────────────────────────────────────────────────
+
+        const driftTime = elapsed * 0.08;
+        this.mainGroup.position.x = Math.sin(driftTime) * 1.5;
+        this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 0.5;
+        this.mainGroup.rotation.y = Math.sin(driftTime * 0.5) * 0.02;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAR FIELD ROTATION
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (this.starField) {
+            this.starField.rotation.y = elapsed * 0.005;
+        }
+
+        // Update aurora reflections
+        if (this.auroraReflections) {
+            for (const reflection of this.auroraReflections) {
+                if (reflection.material.uniforms) {
+                    reflection.material.uniforms.uTime.value = this.uniforms.time.value;
+                    reflection.material.uniforms.uIntensity.value = this.uniforms.auroraIntensity.value * 0.6; // Slightly dimmer
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // PILLAR LIGHT PULSING
+        // ─────────────────────────────────────────────────────────────────────
+
+        for (let i = 0; i < this.icePillars.length; i++) {
+            const pillar = this.icePillars[i];
+            const baseIntensity = 0.5;
+            const pulse = Math.sin(elapsed * 1.5 + i * 0.8) * 0.2;
+            pillar.light.intensity = baseIntensity + pulse + this.uniforms.pulseIntensity.value * 1.5;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // UPDATE SHOCKWAVES
+        // ─────────────────────────────────────────────────────────────────────
+
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+            const wave = this.shockwaves[i];
+            wave.userData.life -= delta * 0.8;
+
+            wave.scale.addScalar(wave.userData.speed * delta);
+            wave.material.uniforms.uOpacity.value = wave.userData.life;
+
+            if (wave.userData.life <= 0) {
+                this.mainGroup.remove(wave);
+                wave.geometry.dispose();
+                wave.material.dispose();
+                this.shockwaves.splice(i, 1);
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // UPDATE SHARD BURSTS
+        // ─────────────────────────────────────────────────────────────────────
+
+        for (let i = this.shardBursts.length - 1; i >= 0; i--) {
+            const burst = this.shardBursts[i];
+            const age = this.uniforms.time.value - burst.userData.startTime;
+
+            burst.material.uniforms.uTime.value = age;
+
+            // Update life attribute
+            const lifes = burst.geometry.attributes.aLife.array;
+            let allDead = true;
+            for (let j = 0; j < lifes.length; j++) {
+                lifes[j] = Math.max(0, 1.0 - age / burst.userData.duration);
+                if (lifes[j] > 0) allDead = false;
+            }
+            burst.geometry.attributes.aLife.needsUpdate = true;
+
+            if (allDead || age > burst.userData.duration) {
+                this.mainGroup.remove(burst);
+                burst.geometry.dispose();
+                burst.material.dispose();
+                this.shardBursts.splice(i, 1);
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // RENDER
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Use composer for bloom post-processing
+        this.composer.render();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // WINDOW RESIZE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Update composer size for bloom
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+        if (this.bloomPass) {
+            this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLEANUP
+    // ═══════════════════════════════════════════════════════════════════════════
 
     stop() {
         // Cancel animation frame
-        if (this.animationId) {
-            cancelAnimationFrame(this.animationId);
-            this.animationId = null;
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
         }
 
-        this.teardownQualityListener();
+        // Remove event listeners
+        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers = [];
 
-        // Teardown event listeners
-        this.teardownEventListeners();
-        this.pendingComboCount = 0;
+        // Remove resize listener
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
 
-        // Clean up effects canvas
-        if (this.effectsCanvas) {
-            this.effectsCanvas.remove();
-            this.effectsCanvas = null;
-            this.effectsCtx = null;
+        // Cleanup Three.js
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('ice-temple-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
         }
 
-        // Clear all effect arrays
-        this.iceShardBurst = [];
-        this.auroraWaves = [];
-        this.frozenCrystals = [];
-        this.comboRings = [];
-        this.glacialLightning = [];
-        this.iceStorm = [];
+        // Dispose scene objects
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
 
-        // Reset state
-        this.auroraIntensity = 0.85;
-        this.targetAuroraIntensity = 0.85;
-        this.crackGlow = 0;
-        this.flashIntensity = 0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-        this.comboMultiplier = 1.0;
-        this.comboDecay = 0;
-        this.lastFrameTime = 0;
-        this.frameTimeAccumulator = 0;
-        this.frameTimeCount = 0;
-        this.averageFrameTime = 16.67;
-        this.lastLineClearTime = 0;
-        this.adaptiveScale = 1;
+        // Clear arrays
+        this.icePillars = [];
+        this.auroraPlanes = [];
+        this.shardBursts = [];
+        this.shockwaves = [];
+
+        // Null references
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.starField = null;
+        this.snowSystem = null;
+        this.frostFloor = null;
 
         super.stop();
     }

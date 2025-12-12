@@ -1,810 +1,1080 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  🌲 SWEDISH FOREST THEME - Three.js 3D Implementation 🌲
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 
+ * A mystical Nordic forest with layered triangular spruce trees, fireflies,
+ * god rays, forest spirits, aurora borealis, stars, and atmospheric mist.
+ * Inspired by Swedish forest landscapes with deep blue-green atmosphere.
+ */
+
+import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
+import {
+    treeFoliageVertexShader,
+    treeFoliageFragmentShader,
+    trunkVertexShader,
+    trunkFragmentShader,
+    groundVertexShader,
+    groundFragmentShader,
+    mistVertexShader,
+    mistFragmentShader,
+    godRayVertexShader,
+    godRayFragmentShader,
+    fireflyVertexShader,
+    fireflyFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+    spiritVertexShader,
+    spiritFragmentShader,
+    auroraVertexShader,
+    auroraFragmentShader,
+    spiritWindVertexShader,
+    spiritWindFragmentShader,
+    leafVertexShader,
+    leafFragmentShader,
+} from './swedish-forest-shaders.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THEME CONSTANTS - Nordic forest color palette
+// ═══════════════════════════════════════════════════════════════════════════
+
+const COLORS = {
+    // Background gradient - darker at top, lighter at horizon
+    skyTop: new THREE.Color(0x020508),     // Very dark blue-black
+    skyMid: new THREE.Color(0x051015),     // Dark blue-green
+    skyHorizon: new THREE.Color(0x1A3040), // Lighter teal at horizon
+
+    // Tree layers (front to back) - more contrast
+    treeLayers: [
+        new THREE.Color(0x0A1518), // Front - very dark
+        new THREE.Color(0x0F1F26), // Mid-front
+        new THREE.Color(0x162A33), // Mid-back
+        new THREE.Color(0x1C3642), // Back
+    ],
+
+    // Trunk colors
+    trunkLayers: [
+        new THREE.Color(0x050A0C),
+        new THREE.Color(0x0A1518),
+        new THREE.Color(0x101D22),
+        new THREE.Color(0x152830),
+    ],
+
+    // Ground floor colors
+    groundBase: new THREE.Color(0x1A2520),  // Dark forest floor
+    groundMoss: new THREE.Color(0x2A3A30),  // Moss green
+    groundDirt: new THREE.Color(0x151A18),  // Dark dirt
+
+    // Effects
+    mist: new THREE.Color(0xA0B8C0),    // Cooler mist
+    godRay: new THREE.Color(0xB0E0C8),  // Soft green-white
+    firefly: new THREE.Color(0xCCFFAA), // Yellow-green
+
+    // Spirit colors - more ethereal
+    spiritBase: new THREE.Color(0x70E0C0), // Bright cyan-green
+    spiritGlow: new THREE.Color(0xB0FFF0),
+
+    // Aurora colors
+    aurora1: new THREE.Color(0x32FF96), // Green
+    aurora2: new THREE.Color(0x32C8FF), // Cyan
+    aurora3: new THREE.Color(0x9632FF), // Purple
+
+    // Spirit wind
+    windColor: new THREE.Color(0x70E0B0),
+
+    // Fog
+    fog: new THREE.Color(0x0A1820),
+};
 
 export default class SwedishForestTheme extends BaseTheme {
     constructor() {
         super('swedish-forest');
-        this.canvas = null;
-        this.ctx = null;
-        this.animationTime = 0;
 
-        // Offscreen buffers for performance
-        this.mistSprite = null;
-        this.godRaySprite = null;
-
-        // Forest elements
-        this.trees = [];
-        this.mistLayers = [];
-        this.fireflies = [];
-        this.fallingLeaves = [];
-        this.godRays = [];
-        this.godRays = [];
-        this.forestSpirits = [];
-        this.auroraLayers = [];
-        this.spiritWinds = [];
-
-        // Visual state
-        this.comboMultiplier = 1.0;
-        this.pulseIntensity = 0.0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-        this.magicGlow = 0;
-        this.windSpeed = 0;
-
-        // Performance limits - Tuned for high FPS
-        this.maxFireflies = 30;
-        this.maxLeaves = 20;
-        this.maxGodRays = 8;
-        this.maxSpirits = 10;
-        this.maxSpiritWinds = 5;
-
-        // Gradient cache
-        this.gradientCache = new Map();
-        this.frameCount = 0;
-
-        // Event tracking
+        // Event handling
         this.eventUnsubscribers = [];
-        this.pendingComboCount = 0;
+
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.clock = new THREE.Clock();
+        this.animationFrame = null;
+
+        // Scene elements
+        this.treeMeshes = [];
+        this.trunkMeshes = [];
+        this.groundPlane = null;
+        this.starfield = null;
+        this.mistPlanes = [];
+        this.godRays = [];
+        this.fireflySystem = null;
+        this.spirits = [];
+        this.auroraPlanes = [];
+        this.spiritWinds = [];
+        this.fallingLeaves = null;
+
+        // Shared uniforms
+        this.uniforms = {
+            time: { value: 0 },
+            glowIntensity: { value: 0 },
+            mistIntensity: { value: 0.6 },
+            auroraIntensity: { value: 0 },
+            windSpeed: { value: 0 },
+        };
+
+        // Effect targets for smooth transitions
+        this.targetGlowIntensity = 0;
+        this.targetMistIntensity = 0.6;
+        this.targetAuroraIntensity = 0;
+        this.targetWindSpeed = 0;
+        this.comboMultiplier = 1.0;
+    }
+
+    getTetrominoConfig() {
+        return SWEDISH_FOREST_TETROMINOS;
     }
 
     async createScene() {
-        const themeContainer = document.getElementById('swedish-forest-theme');
-        this.canvas = document.getElementById('swedish-forest-canvas');
+        console.log('[SwedishForest] Initializing Three.js scene...');
 
-        if (!this.canvas && themeContainer) {
-            this.canvas = document.createElement('canvas');
-            this.canvas.id = 'swedish-forest-canvas';
-            this.canvas.style.position = 'absolute';
-            this.canvas.style.top = '0';
-            this.canvas.style.left = '0';
-            this.canvas.style.width = '100%';
-            this.canvas.style.height = '100%';
-            this.canvas.style.pointerEvents = 'none';
-            this.canvas.style.zIndex = '1';
-            themeContainer.appendChild(this.canvas);
+        const container = document.getElementById('swedish-forest-theme');
+        if (!container) {
+            console.error('[SwedishForest] Container not found');
+            return;
         }
 
-        if (!this.canvas) return;
+        container.innerHTML = '';
 
-        this.ctx = this.canvas.getContext('2d', {
+        // ─────────────────────────────────────────────────────────────────────
+        // SCENE SETUP
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(COLORS.fog.getHex(), 0.012);
+        this.scene.background = this.createGradientBackground();
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CAMERA
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.camera = new THREE.PerspectiveCamera(
+            55,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            400
+        );
+        this.camera.position.set(0, 8, 30);
+        this.camera.lookAt(0, 10, -30);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // RENDERER
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.renderer = new THREE.WebGLRenderer({
             alpha: true,
-            desynchronized: true, // Hint for performance
+            antialias: true,
+            powerPreference: 'high-performance'
         });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(this.renderer.domElement);
 
-        // Set canvas size
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        // ─────────────────────────────────────────────────────────────────────
+        // MAIN GROUP (for drift animation)
+        // ─────────────────────────────────────────────────────────────────────
 
-        // Create offscreen sprites
-        this.createMistSprite();
-        this.createGodRaySprite();
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
 
-        // Clear all existing elements
-        this.trees = [];
-        this.mistLayers = [];
-        this.fireflies = [];
-        this.fallingLeaves = [];
-        this.godRays = [];
-        this.forestSpirits = [];
-        this.auroraLayers = [];
-        this.spiritWinds = [];
+        // ─────────────────────────────────────────────────────────────────────
+        // CREATE SCENE ELEMENTS (order matters for depth)
+        // ─────────────────────────────────────────────────────────────────────
 
-        // Initialize scene elements
-        this.createTrees();
-        this.createMist();
-        this.createGodRays();
-        this.createSpiritWinds();
-        this.createFireflies();
-        this.createForestSpirits();
-        this.createAurora();
+        this.createStarfield();      // Background stars
+        this.createAuroraLayers();   // Aurora in sky
+        this.createGodRays();        // Light beams
+        this.createTrees();          // Layered trees
+        this.createForestFloor();    // Textured ground
+        this.createMistLayers();     // Atmospheric fog
+        this.createSpiritWinds();    // Flowing energy
+        this.createFireflySystem();  // Glowing particles
+        this.createForestSpirits();  // Ethereal orbs
+        this.createFallingLeavesSystem();
+        this.setupLighting();
+
+        // ─────────────────────────────────────────────────────────────────────
+        // EVENT LISTENERS
+        // ─────────────────────────────────────────────────────────────────────
 
         this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // ─────────────────────────────────────────────────────────────────────
+        // START ANIMATION
+        // ─────────────────────────────────────────────────────────────────────
+
         this.animate();
+
+        console.log('[SwedishForest] Scene initialized.');
     }
 
-    createMistSprite() {
-        this.mistSprite = document.createElement('canvas');
-        this.mistSprite.width = 200;
-        this.mistSprite.height = 200;
-        const ctx = this.mistSprite.getContext('2d');
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GRADIENT BACKGROUND - Dark top to lighter horizon
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        const gradient = ctx.createRadialGradient(100, 100, 0, 100, 100, 100);
-        gradient.addColorStop(0, 'rgba(200, 220, 230, 0.4)');
-        gradient.addColorStop(1, 'rgba(200, 220, 230, 0)');
+    createGradientBackground() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 2;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+        gradient.addColorStop(0, '#020508');   // Very dark at top
+        gradient.addColorStop(0.3, '#051015'); // Dark blue-green
+        gradient.addColorStop(0.6, '#0A1820'); // Mid teal
+        gradient.addColorStop(0.85, '#152830'); // Lighter
+        gradient.addColorStop(1, '#1A3040');   // Teal horizon
 
         ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 200, 200);
+        ctx.fillRect(0, 0, 2, 512);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+
+        return texture;
     }
 
-    createGodRaySprite() {
-        this.godRaySprite = document.createElement('canvas');
-        this.godRaySprite.width = 50;
-        this.godRaySprite.height = 500;
-        const ctx = this.godRaySprite.getContext('2d');
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STARFIELD - Twinkling stars in the night sky
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        const gradient = ctx.createLinearGradient(0, 0, 0, 500);
-        gradient.addColorStop(0, 'rgba(200, 255, 220, 0.5)');
-        gradient.addColorStop(1, 'rgba(200, 255, 220, 0)');
+    createStarfield() {
+        const starCount = 300;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(starCount * 3);
+        const randoms = new Float32Array(starCount);
+        const phases = new Float32Array(starCount);
+        const brightness = new Float32Array(starCount);
 
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 50, 500);
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+
+            // Spread stars across upper sky dome
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.4; // Upper hemisphere
+            const radius = 150 + Math.random() * 50;
+
+            positions[i3] = Math.sin(phi) * Math.cos(theta) * radius;
+            positions[i3 + 1] = Math.cos(phi) * radius + 20; // Shift up
+            positions[i3 + 2] = Math.sin(phi) * Math.sin(theta) * radius - 80;
+
+            randoms[i] = Math.random();
+            phases[i] = Math.random() * Math.PI * 2;
+            brightness[i] = 0.3 + Math.random() * 0.7;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uSize: { value: 3.0 },
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.starfield = new THREE.Points(geometry, material);
+        this.scene.add(this.starfield); // Add to scene (not mainGroup) for fixed background
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FOREST FLOOR - Textured ground with moss
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createForestFloor() {
+        const geometry = new THREE.PlaneGeometry(200, 80, 64, 32);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uGroundColor: { value: COLORS.groundBase },
+                uMossColor: { value: COLORS.groundMoss },
+                uDirtColor: { value: COLORS.groundDirt },
+                uGlowIntensity: this.uniforms.glowIntensity,
+            },
+            vertexShader: groundVertexShader,
+            fragmentShader: groundFragmentShader,
+            side: THREE.DoubleSide,
+        });
+
+        this.groundPlane = new THREE.Mesh(geometry, material);
+        this.groundPlane.rotation.x = -Math.PI / 2;
+        this.groundPlane.position.set(0, -0.5, -10);
+
+        this.mainGroup.add(this.groundPlane);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LAYERED SPRUCE TREES - Triangular foliage with minimal sway
+    // ═══════════════════════════════════════════════════════════════════════════
 
     createTrees() {
-        this.trees = [];
-        // Create trees in parallax layers
+        // Layer configurations - more depth separation
         const layers = [
-            {
-                count: 90, height: 180, color: '#0F1F26', spacing: 90, blur: 0,
-            }, // Front
-            {
-                count: 70, height: 300, color: '#162A33', spacing: 110, blur: 0,
-            }, // Mid
-            {
-                count: 50, height: 450, color: '#1C3642', spacing: 140, blur: 1,
-            }, // Back
-            {
-                count: 30, height: 600, color: '#224250', spacing: 200, blur: 2,
-            }, // Far Back
+            { count: 20, z: -2, height: 16, spacing: 8, colorIdx: 0, sway: 0.35 },   // Front
+            { count: 22, z: -12, height: 22, spacing: 9, colorIdx: 1, sway: 0.30 },  // Mid-front
+            { count: 20, z: -25, height: 30, spacing: 11, colorIdx: 2, sway: 0.25 }, // Mid-back
+            { count: 18, z: -45, height: 42, spacing: 14, colorIdx: 3, sway: 0.20 }, // Back
         ];
 
-        layers.forEach((layer, layerIndex) => {
+        layers.forEach((layer, layerIdx) => {
             for (let i = 0; i < layer.count; i++) {
-                const h = layer.height * (0.7 + Math.random() * 0.5);
-                const tH = h * (0.15 + Math.random() * 0.1);
-                const x = i * layer.spacing + (Math.random() - 0.5) * 40;
-                const y = this.canvas.height;
-                const w = layer.spacing * 0.8;
-                const numLayers = 6 + Math.floor(Math.random() * 4);
+                const x = (i - layer.count / 2) * layer.spacing + (Math.random() - 0.5) * 5;
+                const height = layer.height * (0.75 + Math.random() * 0.4);
+                const numLayers = 5 + Math.floor(Math.random() * 3);
 
-                const hasRune = Math.random() < 0.4 && layerIndex < 2;
-                const runeType = Math.floor(Math.random() * 3);
-
-                this.trees.push({
-                    x,
-                    y,
-                    height: h,
-                    trunkHeight: tH,
-                    width: w,
-                    color: layer.color,
-                    layer: layerIndex,
-                    numFoliageLayers: numLayers,
-                    swayPhase: Math.random() * Math.PI * 2,
-                    swaySpeed: Math.random() * 0.001 + 0.0005, // Slightly faster for more "life"
-                    swayAmount: Math.random() * 0.015 + 0.005, // Visible sway
-                    baseSwayAmount: Math.random() * 0.015 + 0.005,
-                    glowIntensity: 0,
-                    hasRune,
-                    runeType,
-                    runeY: -tH * 0.6,
-                });
+                this.createSpruceTree(x, layer.z, height, numLayers, layerIdx, layer.sway);
             }
         });
     }
 
-    createMist() {
-        const mistCount = 8;
-        for (let i = 0; i < mistCount; i++) {
-            this.mistLayers.push({
-                x: Math.random() * this.canvas.width,
-                y: this.canvas.height - (Math.random() * 250),
-                width: this.canvas.width * 0.5,
-                height: 150,
-                opacity: Math.random() * 0.3 + 0.1,
-                speed: Math.random() * 0.3 + 0.1,
+    createSpruceTree(x, z, height, numLayers, layerIdx, swayAmount) {
+        const treeColor = COLORS.treeLayers[layerIdx];
+        const trunkColor = COLORS.trunkLayers[layerIdx];
+        const trunkHeight = height * 0.12;
+        const baseWidth = height * 0.35;
+
+        // Create trunk
+        const trunkGeometry = new THREE.CylinderGeometry(
+            0.15, 0.35, trunkHeight, 6
+        );
+        const trunkMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTrunkColor: { value: trunkColor },
+                uGlowIntensity: this.uniforms.glowIntensity,
+            },
+            vertexShader: trunkVertexShader,
+            fragmentShader: trunkFragmentShader,
+        });
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+        trunk.position.set(x, trunkHeight / 2, z);
+        this.trunkMeshes.push(trunk);
+        this.mainGroup.add(trunk);
+
+        // Create foliage layers
+        const layerHeight = (height - trunkHeight) / numLayers;
+
+        for (let j = 0; j < numLayers; j++) {
+            const widthScale = (numLayers - j) / numLayers;
+            const layerWidth = baseWidth * widthScale;
+            const y = trunkHeight + j * layerHeight;
+
+            const shape = new THREE.Shape();
+            shape.moveTo(0, layerHeight);
+            shape.lineTo(-layerWidth / 2, 0);
+            shape.lineTo(layerWidth / 2, 0);
+            shape.closePath();
+
+            const geometry = new THREE.ShapeGeometry(shape);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uSwayAmount: { value: swayAmount },
+                    uLayer: { value: layerIdx + j * 0.1 },
+                    uTreeColor: { value: treeColor },
+                    uGlowIntensity: this.uniforms.glowIntensity,
+                },
+                vertexShader: treeFoliageVertexShader,
+                fragmentShader: treeFoliageFragmentShader,
+                side: THREE.DoubleSide,
             });
+
+            const foliage = new THREE.Mesh(geometry, material);
+            foliage.position.set(x, y, z);
+
+            this.treeMeshes.push(foliage);
+            this.mainGroup.add(foliage);
         }
     }
 
-    createAurora() {
-        for (let i = 0; i < 3; i++) {
-            this.auroraLayers.push({
-                points: [],
-                color: i === 0 ? 'rgba(50, 255, 150, 0.15)' : (i === 1 ? 'rgba(50, 200, 255, 0.1)' : 'rgba(150, 50, 255, 0.08)'),
-                offset: i * 100,
-                speed: 0.002 + i * 0.001,
-                intensity: 0,
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MIST LAYERS - Atmospheric ground fog
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createMistLayers() {
+        const mistConfigs = [
+            { y: 2, z: 8, width: 100, height: 10, density: 0.35 },
+            { y: 4, z: -8, width: 120, height: 14, density: 0.3 },
+            { y: 6, z: -22, width: 140, height: 18, density: 0.25 },
+        ];
+
+        for (const config of mistConfigs) {
+            const geometry = new THREE.PlaneGeometry(config.width, config.height);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uDensity: { value: config.density },
+                    uMistColor: { value: COLORS.mist },
+                    uIntensity: this.uniforms.mistIntensity,
+                },
+                vertexShader: mistVertexShader,
+                fragmentShader: mistFragmentShader,
+                transparent: true,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
             });
+
+            const mist = new THREE.Mesh(geometry, material);
+            mist.position.set(0, config.y, config.z);
+            mist.rotation.x = -0.15;
+
+            this.mistPlanes.push(mist);
+            this.mainGroup.add(mist);
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GOD RAYS - Light beams through trees
+    // ═══════════════════════════════════════════════════════════════════════════
 
     createGodRays() {
-        for (let i = 0; i < this.maxGodRays; i++) {
-            this.godRays.push({
-                x: Math.random() * this.canvas.width,
-                y: -100,
-                width: Math.random() * 40 + 20,
-                height: this.canvas.height * 1.5,
-                opacity: Math.random() * 0.15 + 0.05,
-                angle: (Math.random() - 0.5) * 0.3,
-                speed: Math.random() * 0.05 + 0.02,
+        const rayCount = 10;
+
+        for (let i = 0; i < rayCount; i++) {
+            const width = 4 + Math.random() * 5;
+            const height = 45 + Math.random() * 25;
+
+            const geometry = new THREE.PlaneGeometry(width, height);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uOpacity: { value: 0.12 + Math.random() * 0.08 },
+                    uRayColor: { value: COLORS.godRay },
+                },
+                vertexShader: godRayVertexShader,
+                fragmentShader: godRayFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
             });
+
+            const ray = new THREE.Mesh(geometry, material);
+            ray.position.set(
+                (Math.random() - 0.5) * 70,
+                height / 2 + 8,
+                -15 - Math.random() * 35
+            );
+            ray.rotation.z = (Math.random() - 0.5) * 0.25;
+
+            ray.userData = {
+                baseX: ray.position.x,
+                swayPhase: Math.random() * Math.PI * 2,
+                swaySpeed: 0.2 + Math.random() * 0.15,
+            };
+
+            this.godRays.push(ray);
+            this.mainGroup.add(ray);
         }
     }
 
-    createFireflies() {
-        for (let i = 0; i < this.maxFireflies; i++) {
-            this.fireflies.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height * 0.8 + this.canvas.height * 0.2,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: (Math.random() - 0.5) * 0.5,
-                size: Math.random() * 2 + 1,
-                opacity: Math.random() * 0.8 + 0.2,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.05 + 0.02,
-                hue: Math.random() * 20 + 50,
-            });
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIREFLIES - Glowing particle system
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createFireflySystem() {
+        const fireflyCount = 50;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(fireflyCount * 3);
+        const randoms = new Float32Array(fireflyCount);
+        const phases = new Float32Array(fireflyCount);
+        const velocities = new Float32Array(fireflyCount * 3);
+
+        for (let i = 0; i < fireflyCount; i++) {
+            const i3 = i * 3;
+
+            positions[i3] = (Math.random() - 0.5) * 70;
+            positions[i3 + 1] = 3 + Math.random() * 18;
+            positions[i3 + 2] = -5 - Math.random() * 40;
+
+            randoms[i] = Math.random();
+            phases[i] = Math.random() * Math.PI * 2;
+
+            velocities[i3] = (Math.random() - 0.5) * 0.4;
+            velocities[i3 + 1] = (Math.random() - 0.5) * 0.25;
+            velocities[i3 + 2] = (Math.random() - 0.5) * 0.15;
         }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uSize: { value: 10.0 },
+            },
+            vertexShader: fireflyVertexShader,
+            fragmentShader: fireflyFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.fireflySystem = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.fireflySystem);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FOREST SPIRITS - Larger, more visible ethereal orbs
+    // ═══════════════════════════════════════════════════════════════════════════
 
     createForestSpirits() {
-        for (let i = 0; i < this.maxSpirits; i++) {
-            this.forestSpirits.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height * 0.6 + this.canvas.height * 0.2,
-                targetX: Math.random() * this.canvas.width,
-                targetY: Math.random() * this.canvas.height * 0.5,
-                vx: 0,
-                vy: 0,
-                size: Math.random() * 15 + 10,
-                opacity: Math.random() * 0.3 + 0.1,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.03 + 0.01,
-                hue: Math.random() * 40 + 160,
-                trail: [],
-                maxTrailLength: 6, // Reduced trail length for performance
-                wanderPhase: Math.random() * 100,
+        const spiritCount = 12;
+
+        for (let i = 0; i < spiritCount; i++) {
+            const size = 4 + Math.random() * 3;
+            const geometry = new THREE.PlaneGeometry(size, size);
+
+            // Vary hue for each spirit
+            const hueShift = (Math.random() - 0.5) * 0.15;
+            const spiritColor = new THREE.Color().setHSL(
+                0.42 + hueShift,
+                0.75,
+                0.7
+            );
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uOpacity: { value: 0.4 + Math.random() * 0.3 },
+                    uSpiritColor: { value: spiritColor },
+                },
+                vertexShader: spiritVertexShader,
+                fragmentShader: spiritFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
             });
+
+            const spirit = new THREE.Mesh(geometry, material);
+            spirit.position.set(
+                (Math.random() - 0.5) * 60,
+                6 + Math.random() * 15,
+                -8 - Math.random() * 30
+            );
+
+            spirit.userData = {
+                basePosition: spirit.position.clone(),
+                targetX: spirit.position.x,
+                targetY: spirit.position.y,
+                velocity: new THREE.Vector2(0, 0),
+                wanderPhase: Math.random() * 100,
+            };
+
+            spirit.lookAt(this.camera.position);
+
+            this.spirits.push(spirit);
+            this.mainGroup.add(spirit);
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AURORA BOREALIS - Combo effect in sky
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createAuroraLayers() {
+        const auroraConfigs = [
+            { offset: 0, color1: COLORS.aurora1, color2: COLORS.aurora2, color3: COLORS.aurora3 },
+            { offset: 1.5, color1: COLORS.aurora2, color2: COLORS.aurora3, color3: COLORS.aurora1 },
+            { offset: 3.0, color1: COLORS.aurora3, color2: COLORS.aurora1, color3: COLORS.aurora2 },
+        ];
+
+        for (const config of auroraConfigs) {
+            const geometry = new THREE.PlaneGeometry(150, 30, 32, 8);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uIntensity: this.uniforms.auroraIntensity,
+                    uColor1: { value: config.color1 },
+                    uColor2: { value: config.color2 },
+                    uColor3: { value: config.color3 },
+                    uOffset: { value: config.offset },
+                },
+                vertexShader: auroraVertexShader,
+                fragmentShader: auroraFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+
+            const aurora = new THREE.Mesh(geometry, material);
+            aurora.position.set(0, 45 + config.offset * 4, -80);
+            aurora.rotation.x = 0.25;
+
+            this.auroraPlanes.push(aurora);
+            this.mainGroup.add(aurora);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SPIRIT WINDS - Flowing energy ribbons
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createSpiritWinds() {
+        const windCount = 6;
+
+        for (let i = 0; i < windCount; i++) {
+            const width = 50 + Math.random() * 25;
+            const height = 2.5 + Math.random() * 2;
+
+            const geometry = new THREE.PlaneGeometry(width, height, 32, 2);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uOpacity: { value: 0.3 },
+                    uWindColor: { value: COLORS.windColor },
+                    uOffset: { value: i * 2.0 },
+                },
+                vertexShader: spiritWindVertexShader,
+                fragmentShader: spiritWindFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+
+            const wind = new THREE.Mesh(geometry, material);
+            wind.position.set(
+                -60 + Math.random() * 30,
+                6 + Math.random() * 12,
+                -12 - Math.random() * 25
+            );
+            wind.rotation.z = (Math.random() - 0.5) * 0.2;
+
+            wind.userData = {
+                baseX: wind.position.x,
+                speed: 0.6 + Math.random() * 0.3,
+            };
+
+            this.spiritWinds.push(wind);
+            this.mainGroup.add(wind);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FALLING LEAVES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createFallingLeavesSystem() {
+        const maxLeaves = 50;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(maxLeaves * 3);
+        const randoms = new Float32Array(maxLeaves);
+        const phases = new Float32Array(maxLeaves);
+        const velocities = new Float32Array(maxLeaves * 3);
+        const rotations = new Float32Array(maxLeaves);
+
+        for (let i = 0; i < maxLeaves; i++) {
+            const i3 = i * 3;
+            positions[i3] = (Math.random() - 0.5) * 60;
+            positions[i3 + 1] = 60 + Math.random() * 20;
+            positions[i3 + 2] = -10 - Math.random() * 30;
+
+            randoms[i] = Math.random();
+            phases[i] = Math.random() * Math.PI * 2;
+
+            velocities[i3] = (Math.random() - 0.5) * 0.3;
+            velocities[i3 + 1] = 1.5 + Math.random() * 1.0;
+            velocities[i3 + 2] = (Math.random() - 0.5) * 0.2;
+
+            rotations[i] = Math.random() * Math.PI * 2;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
+        geometry.setAttribute('aRotation', new THREE.BufferAttribute(rotations, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSize: { value: 10.0 },
+            },
+            vertexShader: leafVertexShader,
+            fragmentShader: leafFragmentShader,
+            transparent: true,
+            blending: THREE.NormalBlending,
+            depthWrite: false,
+        });
+
+        this.fallingLeaves = new THREE.Points(geometry, material);
+        this.fallingLeaves.userData = {
+            activeLeaves: 0,
+            startTime: 0,
+        };
+        this.mainGroup.add(this.fallingLeaves);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LIGHTING - Enhanced for more depth
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    setupLighting() {
+        // Subtle ambient with cool tint
+        const ambient = new THREE.AmbientLight(0x0A1520, 0.3);
+        this.scene.add(ambient);
+
+        // Moonlight from above-behind
+        const moonLight = new THREE.DirectionalLight(0x304050, 0.4);
+        moonLight.position.set(0, 40, -50);
+        this.scene.add(moonLight);
+
+        // Rim light for tree silhouettes
+        const rimLight = new THREE.DirectionalLight(0x2A4050, 0.25);
+        rimLight.position.set(-30, 10, 20);
+        this.scene.add(rimLight);
+
+        // Hemisphere light for subtle color variation
+        const hemiLight = new THREE.HemisphereLight(
+            0x1A2535,  // Sky - cool blue
+            0x0A1510,  // Ground - dark green
+            0.35
+        );
+        this.scene.add(hemiLight);
+
+        // Subtle point light in center for spirit glow
+        const spiritGlow = new THREE.PointLight(0x40A080, 0.4, 50);
+        spiritGlow.position.set(0, 10, -15);
+        this.mainGroup.add(spiritGlow);
+        this.spiritLight = spiritGlow;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GAMEPLAY EVENT HANDLERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
     setupEventListeners() {
+        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers = [];
+
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleLineClear(data);
+                this.onLineClear(data.lineCount || 1);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleCombo(data);
+                this.onCombo(data.comboCount || 0);
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
-
-        this.resizeHandler = () => {
-            if (!this.canvas) return;
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
-            this.createTrees();
-        };
-        window.addEventListener('resize', this.resizeHandler);
-    }
-
-    handleLineClear(eventPayload) {
-        const detail = eventPayload?.detail || eventPayload || {};
-        const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
-
-        if (!comboCount && this.pendingComboCount > 0) {
-            comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
-        }
-
-        this.onLineClear(lineCount, comboCount);
-    }
-
-    handleCombo(eventPayload) {
-        const detail = eventPayload?.detail || eventPayload || {};
-        const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
-
-        if (comboCount > 0) {
-            this.pendingComboCount = comboCount;
-        }
-
-        this.onCombo(comboCount);
-    }
-
-    onLineClear(lineCount, comboCount = 0) {
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.2 * lineCount, 1.0);
-
-        const leavesToSpawn = Math.min(lineCount * 2, 8);
-        for (let i = 0; i < leavesToSpawn; i++) {
-            if (this.fallingLeaves.length < this.maxLeaves * 2) {
-                this.addLeaf();
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.onPieceLock(data);
             }
-        }
-
-        this.forestSpirits.forEach((s) => {
-            s.vx += (Math.random() - 0.5) * 2;
-            s.vy += (Math.random() - 0.5) * 2;
-            s.opacity = Math.min(s.opacity + 0.2, 0.8);
         });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    onLineClear(lineCount) {
+        this.targetGlowIntensity = Math.min(lineCount * 0.35, 1.0);
+        this.targetMistIntensity = Math.min(0.6 + lineCount * 0.12, 1.0);
+
+        this.spawnLeaves(lineCount * 4);
+
+        this.spirits.forEach(spirit => {
+            spirit.userData.velocity.x += (Math.random() - 0.5) * 2.5;
+            spirit.userData.velocity.y += (Math.random() - 0.5) * 2.5;
+            spirit.material.uniforms.uOpacity.value = Math.min(
+                spirit.material.uniforms.uOpacity.value + 0.25,
+                0.95
+            );
+        });
+
+        // Boost spirit light
+        if (this.spiritLight) {
+            this.spiritLight.intensity = 0.8 + lineCount * 0.2;
+        }
     }
 
     onCombo(comboCount) {
-        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3, 1.0);
+        if (comboCount < 1) return;
 
-        this.windSpeed = Math.min(comboCount * 0.003, 0.03); // Increased wind effect
-        this.magicGlow = Math.min(comboCount * 0.15, 1.0);
+        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
+        this.targetGlowIntensity = Math.min(comboCount * 0.3, 1.0);
+        this.targetWindSpeed = Math.min(comboCount * 0.012, 0.06);
 
         if (comboCount >= 3) {
-            this.auroraLayers.forEach((layer) => {
-                layer.intensity = Math.min(layer.intensity + 0.2, 1.0);
+            this.targetAuroraIntensity = Math.min(comboCount * 0.18, 0.9);
+        }
+
+        if (this.comboMultiplier > 1.5) {
+            const centerX = 0;
+            const centerY = 12;
+            this.spirits.forEach(spirit => {
+                spirit.userData.velocity.x += (centerX - spirit.position.x) * 0.012 * this.comboMultiplier;
+                spirit.userData.velocity.y += (centerY - spirit.position.y) * 0.012 * this.comboMultiplier;
             });
         }
     }
 
-    addLeaf() {
-        this.fallingLeaves.push({
-            x: Math.random() * this.canvas.width,
-            y: -20,
-            vx: (Math.random() - 0.5) * 2 + this.windSpeed * 100,
-            vy: Math.random() * 1 + 1,
-            size: Math.random() * 6 + 3,
-            rotation: Math.random() * Math.PI * 2,
-            rotationSpeed: (Math.random() - 0.5) * 0.1,
-            hue: Math.random() * 40 + 30,
-            opacity: 1.0,
-            life: 1.0,
+    onPieceLock(data) {
+        this.targetGlowIntensity += 0.1;
+
+        this.spirits.forEach(spirit => {
+            spirit.material.uniforms.uOpacity.value += 0.06;
         });
     }
+
+    spawnLeaves(count) {
+        if (!this.fallingLeaves) return;
+
+        const positions = this.fallingLeaves.geometry.attributes.position.array;
+        const start = this.fallingLeaves.userData.activeLeaves;
+        const maxLeaves = positions.length / 3;
+
+        this.fallingLeaves.userData.startTime = this.uniforms.time.value;
+        this.fallingLeaves.material.uniforms.uTime.value = 0;
+
+        for (let i = 0; i < count && (start + i) < maxLeaves; i++) {
+            const idx = ((start + i) % maxLeaves) * 3;
+            positions[idx] = (Math.random() - 0.5) * 70;
+            positions[idx + 1] = 45 + Math.random() * 15;
+            positions[idx + 2] = -8 - Math.random() * 35;
+        }
+
+        this.fallingLeaves.geometry.attributes.position.needsUpdate = true;
+        this.fallingLeaves.userData.activeLeaves = Math.min(start + count, maxLeaves);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ANIMATION LOOP
+    // ═══════════════════════════════════════════════════════════════════════════
 
     animate() {
-        if (!this.isActive || !this.ctx || !this.canvas) return;
+        if (!this.isActive) return;
 
-        this.animationTime += 0.016;
-        this.frameCount++;
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
-        // Decay effects
-        this.pulseIntensity *= 0.97;
-        this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.005);
-        this.magicGlow *= 0.98;
-        this.windSpeed *= 0.98;
+        const delta = this.clock.getDelta();
+        const elapsed = this.clock.getElapsedTime();
+        this.uniforms.time.value = elapsed;
 
-        this.auroraLayers.forEach((layer) => {
-            layer.intensity *= 0.99;
-        });
+        // ─────────────────────────────────────────────────────────────────────
+        // SMOOTH EFFECT TRANSITIONS
+        // ─────────────────────────────────────────────────────────────────────
 
-        // Draw Background
-        this.drawBackground();
+        this.uniforms.glowIntensity.value = THREE.MathUtils.lerp(
+            this.uniforms.glowIntensity.value,
+            this.targetGlowIntensity,
+            delta * 3
+        );
+        this.targetGlowIntensity *= 0.95;
 
-        // Draw Scene - Order matters for depth
-        this.drawAurora();
-        this.drawGodRays();
-        this.drawSpiritWinds();
-        this.drawTrees();
-        this.drawMist();
-        this.drawForestSpirits();
-        this.drawFireflies();
-        this.drawFallingLeaves();
-
-        this.registerAnimation(requestAnimationFrame(() => this.animate()));
-    }
-
-    drawBackground() {
-        // Simple gradient background - very fast
-        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, '#051015');
-        gradient.addColorStop(1, '#02080A');
-        this.ctx.fillStyle = gradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
-
-    drawAurora() {
-        const maxIntensity = Math.max(...this.auroraLayers.map((l) => l.intensity));
-        if (maxIntensity < 0.01) return;
-
-        this.ctx.save();
-        this.ctx.globalCompositeOperation = 'screen';
-
-        // Optimized Aurora: No shadowBlur, just transparency
-        this.auroraLayers.forEach((layer, i) => {
-            if (layer.intensity < 0.01) return;
-
-            this.ctx.beginPath();
-            const yBase = this.canvas.height * 0.2;
-
-            this.ctx.moveTo(0, yBase);
-
-            // Reduced resolution for sine wave calculation
-            for (let x = 0; x <= this.canvas.width; x += 100) {
-                const noise = Math.sin(x * 0.005 + this.animationTime * 0.5 + layer.offset)
-                    * Math.cos(x * 0.01 - this.animationTime * 0.2);
-                const y = yBase + noise * 100 - (layer.intensity * 50);
-                this.ctx.lineTo(x, y);
-            }
-
-            this.ctx.lineTo(this.canvas.width, 0);
-            this.ctx.lineTo(0, 0);
-            this.ctx.closePath();
-
-            this.ctx.fillStyle = layer.color;
-            this.ctx.globalAlpha = layer.intensity * 0.5;
-            this.ctx.fill();
-
-            // Simple stroke for definition
-            this.ctx.strokeStyle = layer.color;
-            this.ctx.globalAlpha = layer.intensity * 0.8;
-            this.ctx.lineWidth = 2;
-            this.ctx.stroke();
-        });
-
-        this.ctx.restore();
-    }
-
-    drawTrees() {
-        // Sort trees by layer
-        const sortedTrees = [...this.trees].sort((a, b) => b.layer - a.layer);
-
-        sortedTrees.forEach((tree) => {
-            // Apply wind and sway
-            const currentSwayAmount = tree.baseSwayAmount + this.windSpeed;
-            tree.swayPhase += tree.swaySpeed + this.windSpeed * 0.5;
-            const sway = Math.sin(tree.swayPhase) * currentSwayAmount * tree.height;
-
-            this.ctx.save();
-            this.ctx.translate(tree.x, tree.y);
-
-            // Draw Trunk
-            this.ctx.fillStyle = tree.color;
-            this.ctx.beginPath();
-            this.ctx.moveTo(-tree.width / 4, 0);
-            this.ctx.lineTo(-tree.width / 8 + sway * 0.1, -tree.trunkHeight);
-            this.ctx.lineTo(tree.width / 8 + sway * 0.1, -tree.trunkHeight);
-            this.ctx.lineTo(tree.width / 4, 0);
-            this.ctx.fill();
-
-            // Draw Runes (Optimized: No shadowBlur)
-            if (tree.hasRune && this.magicGlow > 0.05) {
-                this.ctx.save();
-                this.ctx.globalCompositeOperation = 'screen';
-                // Draw glow as thick transparent line
-                this.ctx.strokeStyle = `rgba(100, 255, 255, ${this.magicGlow * 0.3})`;
-                this.ctx.lineWidth = 6;
-                this.ctx.lineCap = 'round';
-
-                const ry = tree.runeY;
-                this.drawRunePath(tree.runeType, ry);
-                this.ctx.stroke();
-
-                // Draw core as thin bright line
-                this.ctx.strokeStyle = `rgba(200, 255, 255, ${this.magicGlow})`;
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
-
-                this.ctx.restore();
-            }
-
-            // Draw Foliage
-            const startY = -tree.trunkHeight;
-            const layerHeight = (tree.height - tree.trunkHeight) / tree.numFoliageLayers;
-
-            for (let j = 0; j < tree.numFoliageLayers; j++) {
-                const cY = startY - j * layerHeight;
-                const widthScale = (tree.numFoliageLayers - j) / tree.numFoliageLayers;
-                const cW = tree.width * widthScale;
-                const layerSway = sway * ((j + 1) / tree.numFoliageLayers);
-
-                this.ctx.beginPath();
-                this.ctx.moveTo(layerSway, cY - layerHeight);
-                this.ctx.lineTo(-cW / 2 + layerSway * 0.8, cY);
-                this.ctx.lineTo(cW / 2 + layerSway * 0.8, cY);
-                this.ctx.closePath();
-
-                this.ctx.fillStyle = tree.color;
-                this.ctx.fill();
-            }
-
-            this.ctx.restore();
-        });
-    }
-
-    drawRunePath(type, ry) {
-        this.ctx.beginPath();
-        if (type === 0) {
-            this.ctx.moveTo(0, ry - 10);
-            this.ctx.lineTo(0, ry + 10);
-            this.ctx.moveTo(-5, ry);
-            this.ctx.lineTo(5, ry);
-        } else if (type === 1) {
-            this.ctx.moveTo(0, ry - 8);
-            this.ctx.lineTo(5, ry);
-            this.ctx.lineTo(0, ry + 8);
-            this.ctx.lineTo(-5, ry);
-            this.ctx.closePath();
-        } else {
-            this.ctx.moveTo(0, ry - 10);
-            this.ctx.lineTo(0, ry + 10);
-            this.ctx.moveTo(0, ry - 10);
-            this.ctx.lineTo(-5, ry - 5);
-            this.ctx.moveTo(0, ry - 10);
-            this.ctx.lineTo(5, ry - 5);
+        this.uniforms.mistIntensity.value = THREE.MathUtils.lerp(
+            this.uniforms.mistIntensity.value,
+            this.targetMistIntensity,
+            delta * 2
+        );
+        if (this.targetMistIntensity > 0.6) {
+            this.targetMistIntensity -= delta * 0.04;
         }
-    }
 
-    drawMist() {
-        if (!this.mistSprite) return;
+        this.uniforms.auroraIntensity.value = THREE.MathUtils.lerp(
+            this.uniforms.auroraIntensity.value,
+            this.targetAuroraIntensity,
+            delta * 2
+        );
+        this.targetAuroraIntensity *= 0.97;
 
-        this.mistLayers.forEach((mist) => {
-            mist.x += mist.speed;
-            if (mist.x > this.canvas.width + mist.width) {
-                mist.x = -mist.width;
-            }
+        this.uniforms.windSpeed.value = THREE.MathUtils.lerp(
+            this.uniforms.windSpeed.value,
+            this.targetWindSpeed,
+            delta * 2
+        );
+        this.targetWindSpeed *= 0.96;
 
-            this.ctx.save();
-            this.ctx.globalAlpha = mist.opacity;
-            this.ctx.translate(mist.x, mist.y);
-            this.ctx.scale(mist.width / 200, mist.height / 200); // Scale sprite
-            this.ctx.drawImage(this.mistSprite, 0, 0);
-            this.ctx.restore();
-        });
-    }
+        this.comboMultiplier = Math.max(1, this.comboMultiplier - delta * 0.25);
 
-    drawGodRays() {
-        if (!this.godRaySprite) return;
-
-        this.ctx.save();
-        this.ctx.globalCompositeOperation = 'screen';
-
-        this.godRays.forEach((ray) => {
-            ray.x += Math.sin(this.animationTime * 0.5) * 0.2;
-
-            this.ctx.save();
-            this.ctx.translate(ray.x, ray.y);
-            this.ctx.rotate(ray.angle);
-            this.ctx.globalAlpha = ray.opacity;
-            // Stretch sprite to fit ray dimensions
-            this.ctx.drawImage(this.godRaySprite, -ray.width / 2, 0, ray.width, ray.height);
-            this.ctx.restore();
-        });
-
-        this.ctx.restore();
-    }
-
-    drawForestSpirits() {
-        this.forestSpirits.forEach((spirit) => {
-            // Logic update
-            spirit.wanderPhase += 0.01;
-            spirit.targetX += Math.cos(spirit.wanderPhase) * 2;
-            spirit.targetY += Math.sin(spirit.wanderPhase * 1.3) * 1;
-
-            const dx = spirit.targetX - spirit.x;
-            const dy = spirit.targetY - spirit.y;
-            spirit.vx += dx * 0.001;
-            spirit.vy += dy * 0.001;
-
-            if (this.comboMultiplier > 1.5) {
-                const cx = this.canvas.width / 2;
-                const cy = this.canvas.height / 2;
-                spirit.vx += (cx - spirit.x) * 0.0005 * this.comboMultiplier;
-                spirit.vy += (cy - spirit.y) * 0.0005 * this.comboMultiplier;
-            }
-
-            spirit.vx *= 0.96;
-            spirit.vy *= 0.96;
-            spirit.x += spirit.vx;
-            spirit.y += spirit.vy;
-
-            if (this.frameCount % 3 === 0) {
-                spirit.trail.push({ x: spirit.x, y: spirit.y });
-                if (spirit.trail.length > spirit.maxTrailLength) spirit.trail.shift();
-            }
-
-            // Draw Trail
-            if (spirit.trail.length > 1) {
-                this.ctx.beginPath();
-                this.ctx.moveTo(spirit.trail[0].x, spirit.trail[0].y);
-                for (let i = 1; i < spirit.trail.length; i++) {
-                    this.ctx.lineTo(spirit.trail[i].x, spirit.trail[i].y);
-                }
-                this.ctx.strokeStyle = `hsla(${spirit.hue}, 80%, 70%, ${spirit.opacity * 0.5})`;
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
-            }
-
-            // Draw Spirit (Optimized: No shadowBlur)
-            const pulse = Math.sin(this.animationTime * 5 + spirit.x) * 0.2 + 1;
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 85%, ${spirit.opacity})`;
-
-            // Draw outer glow as a larger, transparent circle
-            this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.6 * pulse, 0, Math.PI * 2);
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 70%, ${spirit.opacity * 0.3})`;
-            this.ctx.fill();
-
-            // Draw core
-            this.ctx.beginPath();
-            this.ctx.arc(spirit.x, spirit.y, spirit.size * 0.3 * pulse, 0, Math.PI * 2);
-            this.ctx.fillStyle = `hsla(${spirit.hue}, 100%, 90%, ${spirit.opacity})`;
-            this.ctx.fill();
-        });
-    }
-
-    drawFireflies() {
-        this.ctx.fillStyle = '#ccffaa';
-        this.fireflies.forEach((fly) => {
-            fly.x += fly.vx + Math.sin(this.animationTime + fly.y * 0.01) * 0.5;
-            fly.y += fly.vy;
-
-            if (fly.x < 0) fly.x = this.canvas.width;
-            if (fly.x > this.canvas.width) fly.x = 0;
-            if (fly.y < 0) fly.y = this.canvas.height;
-            if (fly.y > this.canvas.height) fly.y = 0;
-
-            const opacity = Math.sin(this.animationTime * 5 + fly.x) * 0.5 + 0.5;
-            this.ctx.globalAlpha = opacity * fly.opacity;
-            this.ctx.beginPath();
-            this.ctx.arc(fly.x, fly.y, fly.size, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
-        this.ctx.globalAlpha = 1;
-    }
-
-    drawFallingLeaves() {
-        for (let i = this.fallingLeaves.length - 1; i >= 0; i--) {
-            const leaf = this.fallingLeaves[i];
-            leaf.life -= 0.005;
-            leaf.x += leaf.vx;
-            leaf.y += leaf.vy;
-            leaf.rotation += leaf.rotationSpeed;
-
-            if (leaf.life <= 0 || leaf.y > this.canvas.height) {
-                this.fallingLeaves.splice(i, 1);
-                continue;
-            }
-
-            this.ctx.save();
-            this.ctx.translate(leaf.x, leaf.y);
-            this.ctx.rotate(leaf.rotation);
-            this.ctx.fillStyle = `hsla(${leaf.hue}, 70%, 50%, ${leaf.opacity * leaf.life})`;
-            this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, leaf.size, leaf.size / 2, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.restore();
+        // Spirit light decay
+        if (this.spiritLight && this.spiritLight.intensity > 0.4) {
+            this.spiritLight.intensity -= delta * 0.2;
         }
-    }
 
-    createSpiritWinds() {
-        this.spiritWinds = [];
-        for (let i = 0; i < this.maxSpiritWinds; i++) {
-            this.spiritWinds.push(this.createWindAgent(true));
-        }
-    }
+        // ─────────────────────────────────────────────────────────────────────
+        // MAIN GROUP DRIFT - very subtle
+        // ─────────────────────────────────────────────────────────────────────
 
-    createWindAgent(randomX = false) {
-        return {
-            x: randomX ? Math.random() * this.canvas.width : -100 - Math.random() * 200,
-            y: Math.random() * this.canvas.height * 0.6 + 100,
-            speed: Math.random() * 1.0 + 1.5, // Slower for grace
-            angle: (Math.random() - 0.5) * 0.5,
-            trail: [],
-            maxTrailLength: 40 + Math.floor(Math.random() * 20), // Longer trails
-            life: 0,
-            maxLife: 400 + Math.random() * 200,
-            width: Math.random() * 2 + 1, // Thinner
-            swirlTimer: Math.floor(Math.random() * 200),
-            swirlDuration: 0,
-            color: `hsla(${160 + Math.random() * 30}, 70%, 65%,`, // Less bright/saturated
-        };
-    }
+        const driftTime = elapsed * 0.025;
+        this.mainGroup.position.x = Math.sin(driftTime) * 0.4;
+        this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 0.15;
+        this.mainGroup.rotation.y = Math.sin(driftTime * 0.5) * 0.005;
 
-    drawSpiritWinds() {
-        this.ctx.save();
-        this.ctx.lineCap = 'round';
-        this.ctx.lineJoin = 'round';
+        // ─────────────────────────────────────────────────────────────────────
+        // GOD RAY SWAY
+        // ─────────────────────────────────────────────────────────────────────
 
-        this.spiritWinds.forEach((wind, index) => {
-            // --- UPDATE ---
-            wind.life++;
-
-            // 1. Movement Logic
-
-            // Base forward movement (Reduced speed for subtlety)
-            const speed = (wind.speed + this.windSpeed * 60) * 0.8;
-            wind.x += Math.cos(wind.angle) * speed;
-            wind.y += Math.sin(wind.angle) * speed;
-
-            // Wavy wandering motion (Layered Sine waves for organic feel)
-            const t = this.animationTime * 1.5 + index * 10;
-            wind.angle += Math.sin(t) * 0.02 + Math.cos(t * 2.3) * 0.01;
-
-            // 2. Swirl/Loop Logic
-            wind.swirlTimer++;
-            if (wind.swirlTimer > 400) { // Less frequent loops
-                wind.swirlDuration = 60; // Slower, larger loops
-                wind.swirlTimer = 0;
-            }
-
-            if (wind.swirlDuration > 0) {
-                // Execute loop: Gentle turn
-                wind.angle += 0.12;
-                wind.swirlDuration--;
-            } else {
-                // Return to horizontal-ish flow gently
-                wind.angle *= 0.98;
-            }
-
-            // 3. Trail Management
-            wind.trail.push({ x: wind.x, y: wind.y });
-
-            // Prune trail
-            if (wind.trail.length > wind.maxTrailLength) {
-                wind.trail.shift();
-            }
-
-            // Reset if dead or far off screen
-            if (wind.life > wind.maxLife || wind.x > this.canvas.width + 200) {
-                this.spiritWinds[index] = this.createWindAgent();
-                return;
-            }
-
-            // --- DRAW ---
-            if (wind.trail.length < 3) return;
-
-            // Calculate opacity based on life (fade in/out)
-            const lifeOpacity = Math.min(1, wind.life / 100) * Math.min(1, (wind.maxLife - wind.life) / 100);
-            const maxOpacity = 0.35; // Much more subtle (was ~1.0 effectively)
-            const finalOpacity = lifeOpacity * maxOpacity;
-
-            // Draw Outer Glow
-            this.ctx.beginPath();
-            this.ctx.moveTo(wind.trail[0].x, wind.trail[0].y);
-
-            // Smooth curve through trail points
-            for (let i = 1; i < wind.trail.length - 1; i++) {
-                const xc = (wind.trail[i].x + wind.trail[i + 1].x) / 2;
-                const yc = (wind.trail[i].y + wind.trail[i + 1].y) / 2;
-                this.ctx.quadraticCurveTo(wind.trail[i].x, wind.trail[i].y, xc, yc);
-            }
-            this.ctx.lineTo(wind.trail[wind.trail.length - 1].x, wind.trail[wind.trail.length - 1].y);
-
-            this.ctx.strokeStyle = `${wind.color}${finalOpacity})`;
-            this.ctx.lineWidth = wind.width;
-            this.ctx.shadowBlur = 20; // Softer blur
-            this.ctx.shadowColor = `${wind.color}0.4)`;
-            this.ctx.stroke();
-
-            // Draw Inner Core (Tinted, not pure white, and more transparent)
-            this.ctx.strokeStyle = `rgba(200, 240, 230, ${finalOpacity * 0.6})`; // Pale Cyan/Green
-            this.ctx.lineWidth = 1; // Thinner core
-            this.ctx.shadowBlur = 0;
-            this.ctx.stroke();
+        this.godRays.forEach(ray => {
+            ray.position.x = ray.userData.baseX +
+                Math.sin(elapsed * ray.userData.swaySpeed + ray.userData.swayPhase) * 1.5;
         });
 
-        this.ctx.restore();
+        // ─────────────────────────────────────────────────────────────────────
+        // SPIRIT MOVEMENT
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.spirits.forEach(spirit => {
+            spirit.userData.wanderPhase += delta * 0.4;
+
+            spirit.userData.targetX += Math.cos(spirit.userData.wanderPhase) * 0.08;
+            spirit.userData.targetY += Math.sin(spirit.userData.wanderPhase * 1.3) * 0.04;
+
+            const dx = spirit.userData.targetX - spirit.position.x;
+            const dy = spirit.userData.targetY - spirit.position.y;
+            spirit.userData.velocity.x += dx * 0.0015;
+            spirit.userData.velocity.y += dy * 0.0015;
+
+            spirit.userData.velocity.x *= 0.97;
+            spirit.userData.velocity.y *= 0.97;
+
+            spirit.position.x += spirit.userData.velocity.x;
+            spirit.position.y += spirit.userData.velocity.y;
+
+            spirit.material.uniforms.uOpacity.value *= 0.997;
+            if (spirit.material.uniforms.uOpacity.value < 0.25) {
+                spirit.material.uniforms.uOpacity.value = 0.25;
+            }
+
+            spirit.lookAt(this.camera.position);
+        });
+
+        // ─────────────────────────────────────────────────────────────────────
+        // SPIRIT WIND MOVEMENT
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.spiritWinds.forEach(wind => {
+            wind.position.x += wind.userData.speed * (1 + this.uniforms.windSpeed.value * 25);
+
+            if (wind.position.x > 70) {
+                wind.position.x = -70;
+                wind.position.y = 6 + Math.random() * 12;
+            }
+        });
+
+        // ─────────────────────────────────────────────────────────────────────
+        // FALLING LEAVES UPDATE
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (this.fallingLeaves && this.fallingLeaves.userData.startTime > 0) {
+            const leafTime = elapsed - this.fallingLeaves.userData.startTime;
+            this.fallingLeaves.material.uniforms.uTime.value = leafTime;
+
+            if (leafTime > 18) {
+                this.fallingLeaves.userData.startTime = 0;
+                this.fallingLeaves.userData.activeLeaves = 0;
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // RENDER
+        // ─────────────────────────────────────────────────────────────────────
+
+        this.renderer.render(this.scene, this.camera);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // WINDOW RESIZE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLEANUP
+    // ═══════════════════════════════════════════════════════════════════════════
 
     stop() {
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        super.stop();
+
+        this.eventUnsubscribers.forEach(unsub => unsub?.());
         this.eventUnsubscribers = [];
 
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
+
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
         }
 
-        super.stop();
-        this.animationTime = 0;
-        this.trees = [];
-        this.mistLayers = [];
-        this.fireflies = [];
-        this.fallingLeaves = [];
-        this.godRays = [];
-        this.forestSpirits = [];
-        this.auroraLayers = [];
-        this.spiritWinds = [];
-        this.gradientCache.clear();
-        this.mistSprite = null;
-        this.godRaySprite = null;
-    }
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('swedish-forest-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
+        }
 
-    getTetrominoConfig() {
-        return SWEDISH_FOREST_TETROMINOS;
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.treeMeshes = [];
+        this.trunkMeshes = [];
+        this.groundPlane = null;
+        this.starfield = null;
+        this.mistPlanes = [];
+        this.godRays = [];
+        this.fireflySystem = null;
+        this.spirits = [];
+        this.auroraPlanes = [];
+        this.spiritWinds = [];
+        this.fallingLeaves = null;
+        this.spiritLight = null;
     }
 }
