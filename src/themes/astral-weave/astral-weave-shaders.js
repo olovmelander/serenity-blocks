@@ -2,10 +2,10 @@
  * Astral Weave Theme Shaders
  * 
  * GLSL shaders for creating immersive 3D cosmic weave effects
- * with flowing threads, stars, nebula, and energy effects.
+ * Central nexus with energy ribbons weaving through space
  */
 
-// Simplex 3D noise functions (shared across shaders)
+// Simplex 3D noise for organic effects
 const noiseGLSL = `
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -74,239 +74,255 @@ float snoise(vec3 v) {
 `;
 
 /**
- * Cosmic Thread Vertex Shader
- * Minimal displacement - just passes through geometry with subtle animation
+ * Energy Ribbon Vertex Shader
+ * Creates flowing energy threads that weave through space
  */
-export const cosmicThreadVertexShader = `
+export const ribbonVertexShader = `
 uniform float time;
-uniform float waveSpeed;
-uniform float threadOffset;
+uniform float flowSpeed;
+uniform float waveIntensity;
 
 varying vec2 vUv;
-varying float vPosition;
+varying float vEnergy;
+varying vec3 vWorldPos;
+
+${noiseGLSL}
 
 void main() {
     vUv = uv;
-    vPosition = position.x;
     
-    // Very subtle breathing effect - no displacement, just for fragment shader
     vec3 pos = position;
+    
+    // Flowing energy wave along the ribbon
+    float wave = sin(uv.x * 10.0 - time * flowSpeed) * waveIntensity;
+    float wave2 = sin(uv.x * 20.0 - time * flowSpeed * 1.5) * waveIntensity * 0.5;
+    
+    // Subtle organic movement
+    float organic = snoise(vec3(pos.x * 0.1, pos.y * 0.1, time * 0.2)) * 0.2;
+    
+    pos.y += wave + wave2 + organic;
+    pos.z += cos(uv.x * 8.0 - time * flowSpeed * 0.8) * waveIntensity * 0.5;
+    
+    vEnergy = 0.5 + wave * 2.0;
+    vWorldPos = pos;
     
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
 `;
 
-
 /**
- * Cosmic Thread Fragment Shader
- * Creates elegant glowing cosmic thread effect
+ * Energy Ribbon Fragment Shader
+ * Glowing, color-shifting energy threads
  */
-export const cosmicThreadFragmentShader = `
+export const ribbonFragmentShader = `
 uniform float time;
 uniform float intensity;
-uniform vec3 colorPrimary;
-uniform vec3 colorSecondary;
-uniform vec3 colorTertiary;
+uniform vec3 colorA;
+uniform vec3 colorB;
+uniform vec3 colorC;
 
 varying vec2 vUv;
-varying float vPosition;
+varying float vEnergy;
+varying vec3 vWorldPos;
 
 void main() {
-    // Edge glow - brighter at center of tube
-    float edgeGlow = 1.0 - abs(vUv.y - 0.5) * 2.0;
-    edgeGlow = pow(edgeGlow, 1.5);
+    // Center glow - brighter at center of ribbon
+    float centerGlow = 1.0 - abs(vUv.y - 0.5) * 2.0;
+    centerGlow = pow(centerGlow, 1.2);
     
-    // Smooth color gradient along thread
-    float colorMix = sin(vPosition * 0.15 + time * 0.3) * 0.5 + 0.5;
-    float colorMix2 = cos(vPosition * 0.08 - time * 0.2) * 0.5 + 0.5;
+    // Flowing color gradient
+    float colorFlow = sin(vUv.x * 5.0 - time * 0.5) * 0.5 + 0.5;
+    float colorFlow2 = cos(vUv.x * 3.0 + time * 0.3) * 0.5 + 0.5;
     
-    vec3 color = mix(colorPrimary, colorSecondary, colorMix * 0.6);
-    color = mix(color, colorTertiary, colorMix2 * 0.3);
+    vec3 color = mix(colorA, colorB, colorFlow);
+    color = mix(color, colorC, colorFlow2 * 0.4);
     
-    // Energy pulse flowing along thread
-    float pulse = sin(vPosition * 0.3 - time * 1.5) * 0.15 + 0.85;
+    // Energy pulse traveling along ribbon
+    float pulse = sin(vUv.x * 15.0 - time * 3.0) * 0.5 + 0.5;
+    pulse = pow(pulse, 3.0);
     
-    // Combine for final alpha  
-    float alpha = edgeGlow * pulse * intensity * 0.9;
+    // Add bright energy core
+    color += vec3(1.0, 0.9, 0.8) * pulse * centerGlow * 0.5;
+    
+    float alpha = centerGlow * intensity * (0.6 + vEnergy * 0.4);
     
     // Brighten the core
-    color *= 1.0 + edgeGlow * 0.3;
+    color *= 1.0 + centerGlow * 0.5;
     
     gl_FragColor = vec4(color, alpha);
 }
 `;
 
-
 /**
- * Star Field Vertex Shader
- * Handles twinkling and size variation for background stars
+ * Weave Particle Vertex Shader
+ * Particles that flow along the weave pattern
  */
-export const starVertexShader = `
+export const weaveParticleVertexShader = `
 uniform float time;
-attribute float aSize;
-attribute float aPhase;
+attribute float aAngle;
+attribute float aRadius;
+attribute float aSpeed;
+attribute float aRandom;
 attribute vec3 aColor;
 
-varying float vAlpha;
 varying vec3 vColor;
+varying float vAlpha;
 
 void main() {
-    vColor = aColor;
+    // Particles spiral outward from center
+    float angle = aAngle + time * aSpeed * 0.5;
+    float radius = aRadius + sin(time * 0.5 + aRandom * 6.28) * 0.5;
     
-    // Twinkling effect with varied speed
-    float twinkle = sin(time * 1.5 + aPhase * 10.0) * 0.4 + 0.6;
-    vAlpha = twinkle;
+    vec3 pos;
+    pos.x = cos(angle) * radius;
+    pos.y = sin(time * 0.3 + aRandom * 10.0) * 2.0;
+    pos.z = sin(angle) * radius;
     
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Size attenuation with distance
-    gl_PointSize = aSize * (200.0 / -mvPosition.z) * twinkle;
+    // Size based on distance
+    float baseSize = 2.0 + aRandom * 3.0;
+    gl_PointSize = baseSize * (20.0 / -mvPosition.z);
+    
+    vColor = aColor;
+    vAlpha = 0.4 + 0.4 * sin(time * 2.0 + aRandom * 6.28);
 }
 `;
 
 /**
- * Star Field Fragment Shader
- * Creates soft, glowing star points
+ * Weave Particle Fragment Shader
  */
-export const starFragmentShader = `
-uniform float time;
-varying float vAlpha;
+export const weaveParticleFragmentShader = `
 varying vec3 vColor;
+varying float vAlpha;
 
 void main() {
-    // Circular point with soft edges
     vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
     
-    if (dist > 1.0) {
-        discard;
-    }
+    float alpha = vAlpha * (1.0 - smoothstep(0.3, 1.0, dist));
     
-    // Soft glow falloff
-    float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
-    alpha *= alpha;
-    
-    gl_FragColor = vec4(vColor, alpha * vAlpha);
+    gl_FragColor = vec4(vColor, alpha);
 }
 `;
 
 /**
- * Nebula Particle Vertex Shader
- * Creates floating nebula cloud particles
+ * Background Stars Vertex Shader
  */
-export const nebulaVertexShader = `
+export const starsVertexShader = `
 uniform float time;
 attribute float aRandom;
 attribute vec3 aColor;
 
-varying float vAlpha;
 varying vec3 vColor;
+varying float vAlpha;
 
 void main() {
-    vec3 pos = position;
-    
-    // Gentle floating motion with cosmic drift
-    pos.y += sin(time * 0.3 + aRandom * 8.0) * 1.0;
-    pos.x += cos(time * 0.25 + aRandom * 6.0) * 0.8;
-    pos.z += sin(time * 0.2 + aRandom * 4.0) * 0.6;
-    
-    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Size with depth attenuation - larger nebula particles
-    gl_PointSize = (8.0 + aRandom * 12.0) * (100.0 / -mvPosition.z);
+    float baseSize = 1.0 + aRandom * 2.5;
+    gl_PointSize = baseSize * (30.0 / -mvPosition.z);
     
-    // Pulsing alpha
-    vAlpha = 0.3 + 0.2 * sin(time * 0.5 + aRandom * 5.0);
     vColor = aColor;
+    vAlpha = 0.5 + 0.5 * sin(time * (1.0 + aRandom * 2.0) + aRandom * 6.28);
 }
 `;
 
 /**
- * Nebula Particle Fragment Shader
- * Creates soft glowing nebula cloud effect
+ * Background Stars Fragment Shader
+ */
+export const starsFragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
+    
+    float alpha = vAlpha * (1.0 - smoothstep(0.2, 1.0, dist));
+    
+    gl_FragColor = vec4(vColor, alpha);
+}
+`;
+
+/**
+ * Nebula Cloud Vertex Shader
+ */
+export const nebulaVertexShader = `
+varying vec2 vUv;
+
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+/**
+ * Nebula Cloud Fragment Shader
  */
 export const nebulaFragmentShader = `
-varying float vAlpha;
-varying vec3 vColor;
-
-void main() {
-    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
-    
-    if (dist > 1.0) {
-        discard;
-    }
-    
-    // Very soft glow for nebula
-    float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
-    alpha = pow(alpha, 1.2);
-    
-    gl_FragColor = vec4(vColor, alpha * vAlpha);
-}
-`;
-
-/**
- * Stardust Vertex Shader
- * Small floating particles with twinkle effect
- */
-export const stardustVertexShader = `
 uniform float time;
-attribute float aPhase;
-attribute float aSize;
+uniform float opacity;
+uniform vec3 colorA;
+uniform vec3 colorB;
 
-varying float vAlpha;
+varying vec2 vUv;
 
-void main() {
-    vec3 pos = position;
-    
-    // Very gentle drift
-    pos += vec3(
-        sin(time * 0.2 + aPhase * 5.0) * 0.5,
-        cos(time * 0.15 + aPhase * 3.0) * 0.3,
-        sin(time * 0.1 + aPhase * 4.0) * 0.4
-    );
-    
-    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    
-    // Twinkling
-    float twinkle = sin(time * 3.0 + aPhase * 15.0) * 0.5 + 0.5;
-    vAlpha = twinkle;
-    
-    gl_PointSize = aSize * (80.0 / -mvPosition.z) * (0.5 + twinkle * 0.5);
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
-`;
 
-/**
- * Stardust Fragment Shader
- */
-export const stardustFragmentShader = `
-varying float vAlpha;
-
-void main() {
-    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
     
-    if (dist > 1.0) {
-        discard;
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 4; i++) {
+        value += amplitude * noise(p);
+        p *= 2.0;
+        amplitude *= 0.5;
     }
+    return value;
+}
+
+void main() {
+    vec2 uv = vUv - 0.5;
     
-    float alpha = 1.0 - smoothstep(0.0, 0.8, dist);
+    float n1 = fbm(uv * 3.0 + time * 0.02);
+    float n2 = fbm(uv * 2.0 - time * 0.015 + vec2(5.0, 3.0));
     
-    // White/cyan stardust
-    vec3 color = vec3(0.8, 0.95, 1.0);
+    float finalNoise = (n1 + n2) * 0.5;
     
-    gl_FragColor = vec4(color, alpha * vAlpha * 0.7);
+    float dist = length(uv) * 2.0;
+    float falloff = 1.0 - smoothstep(0.2, 1.0, dist);
+    
+    vec3 color = mix(colorA, colorB, finalNoise);
+    
+    float alpha = finalNoise * falloff * opacity;
+    
+    gl_FragColor = vec4(color, alpha);
 }
 `;
 
 /**
- * Energy Pulse Wave Vertex Shader
- * For expanding ring effects
+ * Energy Pulse Wave Shaders
  */
-export const pulseWaveVertexShader = `
+export const pulseVertexShader = `
 varying vec2 vUv;
 varying vec3 vNormal;
 
@@ -317,10 +333,7 @@ void main() {
 }
 `;
 
-/**
- * Energy Pulse Wave Fragment Shader
- */
-export const pulseWaveFragmentShader = `
+export const pulseFragmentShader = `
 uniform float time;
 uniform float opacity;
 uniform vec3 color;
@@ -329,158 +342,51 @@ varying vec2 vUv;
 varying vec3 vNormal;
 
 void main() {
-    // Ring/edge glow effect
-    float intensity = pow(0.7 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
-    
-    // Add shimmer
-    float shimmer = sin(vUv.x * 30.0 + time * 5.0) * 0.1 + 0.9;
-    
-    gl_FragColor = vec4(color * shimmer, opacity * (0.4 + intensity));
+    float intensity = pow(0.6 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+    gl_FragColor = vec4(color, opacity * (0.3 + intensity));
 }
 `;
 
 /**
- * Warp Vortex Vertex Shader
- * Spiraling cosmic distortion effect
+ * Cosmic Dust Vertex Shader
  */
-export const warpVortexVertexShader = `
+export const dustVertexShader = `
 uniform float time;
-uniform float rotation;
-
-varying vec2 vUv;
-varying float vAngle;
-
-void main() {
-    vUv = uv;
-    
-    // Calculate angle for spiral effect
-    vec3 pos = position;
-    float angle = atan(pos.y, pos.x);
-    vAngle = angle;
-    
-    // Add spiral rotation
-    float spiralOffset = sin(angle * 4.0 + time * 2.0) * 0.2;
-    pos.z += spiralOffset;
-    
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-}
-`;
-
-/**
- * Warp Vortex Fragment Shader
- */
-export const warpVortexFragmentShader = `
-uniform float time;
-uniform float opacity;
-uniform vec3 colorA;
-uniform vec3 colorB;
-
-varying vec2 vUv;
-varying float vAngle;
-
-void main() {
-    // Spiral color gradient
-    float spiral = sin(vAngle * 4.0 + time * 3.0) * 0.5 + 0.5;
-    vec3 color = mix(colorA, colorB, spiral);
-    
-    // Edge fade
-    float edge = smoothstep(0.0, 0.3, vUv.x) * smoothstep(1.0, 0.7, vUv.x);
-    
-    // Energy pulse
-    float pulse = sin(time * 4.0 + vAngle * 2.0) * 0.2 + 0.8;
-    
-    gl_FragColor = vec4(color * pulse, opacity * edge);
-}
-`;
-
-/**
- * Cosmic Orb Vertex Shader
- * Glowing energy sphere effect
- */
-export const cosmicOrbVertexShader = `
-uniform float time;
-attribute float aPhase;
+attribute float aRandom;
 attribute float aSize;
-attribute vec3 aColor;
 
 varying float vAlpha;
-varying vec3 vColor;
 
 void main() {
-    vColor = aColor;
+    vec3 pos = position;
     
-    // Pulsing effect
-    float pulse = sin(time * 3.0 + aPhase * 8.0) * 0.3 + 0.7;
-    vAlpha = pulse;
+    // Gentle floating motion
+    pos.y += sin(time * 0.5 + aRandom * 10.0) * 0.5;
+    pos.x += cos(time * 0.3 + aRandom * 8.0) * 0.3;
     
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    gl_PointSize = aSize * (120.0 / -mvPosition.z) * pulse;
+    gl_PointSize = aSize * (25.0 / -mvPosition.z);
+    
+    vAlpha = 0.3 + 0.3 * sin(time * 1.5 + aRandom * 10.0);
 }
 `;
 
 /**
- * Cosmic Orb Fragment Shader
+ * Cosmic Dust Fragment Shader
  */
-export const cosmicOrbFragmentShader = `
-varying float vAlpha;
-varying vec3 vColor;
-
-void main() {
-    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
-    
-    if (dist > 1.0) {
-        discard;
-    }
-    
-    // Core glow
-    float core = 1.0 - smoothstep(0.0, 0.3, dist);
-    // Outer glow
-    float glow = 1.0 - smoothstep(0.0, 1.0, dist);
-    glow = pow(glow, 1.5);
-    
-    vec3 color = vColor + vec3(1.0) * core * 0.5;
-    float alpha = glow * vAlpha;
-    
-    gl_FragColor = vec4(color, alpha);
-}
-`;
-
-/**
- * Shooting Star Trail Vertex Shader
- */
-export const shootingStarVertexShader = `
-attribute float aProgress;
-varying float vProgress;
-
-void main() {
-    vProgress = aProgress;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    gl_PointSize = (10.0 - aProgress * 8.0) * (120.0 / -mvPosition.z);
-}
-`;
-
-/**
- * Shooting Star Trail Fragment Shader
- */
-export const shootingStarFragmentShader = `
+export const dustFragmentShader = `
 uniform vec3 color;
-uniform float opacity;
-varying float vProgress;
+
+varying float vAlpha;
 
 void main() {
     vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
     
-    if (dist > 1.0) {
-        discard;
-    }
-    
-    float alpha = 1.0 - smoothstep(0.0, 1.0, dist);
-    alpha *= (1.0 - vProgress) * opacity;
+    float alpha = vAlpha * (1.0 - smoothstep(0.5, 1.0, dist));
     
     gl_FragColor = vec4(color, alpha);
 }

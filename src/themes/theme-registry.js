@@ -162,9 +162,9 @@ export const THEME_REGISTRY = [
         icon: './bioluminescence/bioluminescence-theme-icon.png',
     },
     {
-        id: 'desert-oasis',
-        displayName: 'Desert Oasis',
-        module: './desert-oasis/desert-oasis-theme.js',
+        id: 'shifting-sands',
+        displayName: 'Shifting Sands',
+        module: './shifting-sands/shifting-sands-theme.js',
         group: 'biomes',
     },
     {
