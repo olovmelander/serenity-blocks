@@ -1,500 +1,666 @@
+import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
-import { GALAXY_TETROMINOS } from './galaxy-tetrominos.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { GALAXY_TETROMINOS } from './galaxy-tetrominos.js';
+import {
+    spiralVertexShader,
+    spiralFragmentShader,
+    nebulaVertexShader,
+    nebulaFragmentShader,
+    shockwaveVertexShader,
+    shockwaveFragmentShader,
+    dustVertexShader,
+    dustFragmentShader,
+    starsVertexShader,
+    starsFragmentShader
+} from './galaxy-shaders.js';
 
 /**
- * Galaxy Theme - An immersive cosmic experience
+ * Galaxy Theme - An immersive 3D cosmic experience using Three.js
  * 
  * Features:
- * - Multi-layered nebula with depth and rotation
- * - Dynamic starfield with varying intensities
- * - Cosmic dust particles drifting through space
- * - Distant spiral galaxies
- * - Theme-integrated combo effects:
- *   - Supernova bursts for high combos
- *   - Cosmic ripple waves on line clears
- *   - Shooting star showers
- *   - Warp speed streaks for epic combos
- * 
- * Quality Presets: Minimal, Low, Medium, High, Ultra, Extreme
+ * - Central spiral galaxy with glowing core
+ * - Thousands of stars in spiral arm formation
+ * - Deep background starfield with twinkling
+ * - Volumetric nebula clouds
+ * - Floating cosmic dust particles
+ * - Dynamic game event effects (shockwaves, particle bursts)
+ * - Slow drift animation for immersive depth
  */
 export default class GalaxyTheme extends BaseTheme {
     constructor() {
         super('galaxy');
         this.eventUnsubscribers = [];
-        this.animationFrameId = null;
-        this.cosmicDustParticles = [];
-        this.shootingStars = [];
-        this.activeEffects = [];
-        this.lastTime = 0;
-        
-        // Graphics quality presets
-        this.qualityChangeHandler = null;
-        this.currentQuality = 'High';
-        this.qualityPresets = {
-            Minimal: {
-                // Starfield
-                starCount: 80,
-                coloredStarChance: 0.03,
-                twinkleDurationRange: [15, 20],
-                
-                // Cosmic dust
-                dustCount: 0,
-                
-                // Distant galaxies
-                galaxyCount: 0,
-                
-                // Nebula
-                nebulaBlur: 60,
-                nebulaAnimationEnabled: false,
-                additionalNebulaLayers: false,
-                
-                // Effects
-                enableComboEffects: false,
-                supernovaParticles: 0,
-                supernovaRings: 0,
-                shootingStarMultiplier: 0,
-                constellationStars: 0,
-                constellationLines: false,
-                warpStreaks: 0,
-                cosmicRippleCount: 0,
-                
-                // Performance
-                animationFrameSkip: 3,
-            },
-            Low: {
-                // Starfield
-                starCount: 120,
-                coloredStarChance: 0.05,
-                twinkleDurationRange: [12, 18],
-                
-                // Cosmic dust
-                dustCount: 10,
-                
-                // Distant galaxies
-                galaxyCount: 1,
-                
-                // Nebula
-                nebulaBlur: 55,
-                nebulaAnimationEnabled: true,
-                additionalNebulaLayers: false,
-                
-                // Effects
-                enableComboEffects: true,
-                supernovaParticles: 8,
-                supernovaRings: 1,
-                shootingStarMultiplier: 0.3,
-                constellationStars: 4,
-                constellationLines: false,
-                warpStreaks: 15,
-                cosmicRippleCount: 1,
-                
-                // Performance
-                animationFrameSkip: 2,
-            },
-            Medium: {
-                // Starfield
-                starCount: 180,
-                coloredStarChance: 0.08,
-                twinkleDurationRange: [10, 16],
-                
-                // Cosmic dust
-                dustCount: 20,
-                
-                // Distant galaxies
-                galaxyCount: 2,
-                
-                // Nebula
-                nebulaBlur: 50,
-                nebulaAnimationEnabled: true,
-                additionalNebulaLayers: true,
-                
-                // Effects
-                enableComboEffects: true,
-                supernovaParticles: 12,
-                supernovaRings: 2,
-                shootingStarMultiplier: 0.5,
-                constellationStars: 6,
-                constellationLines: true,
-                warpStreaks: 30,
-                cosmicRippleCount: 2,
-                
-                // Performance
-                animationFrameSkip: 1,
-            },
-            High: {
-                // Starfield
-                starCount: 250,
-                coloredStarChance: 0.1,
-                twinkleDurationRange: [8, 14],
-                
-                // Cosmic dust
-                dustCount: 30,
-                
-                // Distant galaxies
-                galaxyCount: 2,
-                
-                // Nebula
-                nebulaBlur: 45,
-                nebulaAnimationEnabled: true,
-                additionalNebulaLayers: true,
-                
-                // Effects
-                enableComboEffects: true,
-                supernovaParticles: 16,
-                supernovaRings: 2,
-                shootingStarMultiplier: 0.7,
-                constellationStars: 8,
-                constellationLines: true,
-                warpStreaks: 45,
-                cosmicRippleCount: 3,
-                
-                // Performance
-                animationFrameSkip: 0,
-            },
-            Ultra: {
-                // Starfield
-                starCount: 350,
-                coloredStarChance: 0.12,
-                twinkleDurationRange: [8, 12],
-                
-                // Cosmic dust
-                dustCount: 45,
-                
-                // Distant galaxies
-                galaxyCount: 3,
-                
-                // Nebula
-                nebulaBlur: 40,
-                nebulaAnimationEnabled: true,
-                additionalNebulaLayers: true,
-                
-                // Effects
-                enableComboEffects: true,
-                supernovaParticles: 24,
-                supernovaRings: 3,
-                shootingStarMultiplier: 0.9,
-                constellationStars: 10,
-                constellationLines: true,
-                warpStreaks: 60,
-                cosmicRippleCount: 4,
-                
-                // Performance
-                animationFrameSkip: 0,
-            },
-            Extreme: {
-                // Starfield
-                starCount: 500,
-                coloredStarChance: 0.15,
-                twinkleDurationRange: [6, 12],
-                
-                // Cosmic dust
-                dustCount: 60,
-                
-                // Distant galaxies
-                galaxyCount: 4,
-                
-                // Nebula
-                nebulaBlur: 35,
-                nebulaAnimationEnabled: true,
-                additionalNebulaLayers: true,
-                
-                // Effects
-                enableComboEffects: true,
-                supernovaParticles: 32,
-                supernovaRings: 4,
-                shootingStarMultiplier: 1.0,
-                constellationStars: 14,
-                constellationLines: true,
-                warpStreaks: 80,
-                cosmicRippleCount: 5,
-                
-                // Performance
-                animationFrameSkip: 0,
-            },
-        };
-        
-        // Active preset reference
-        this.activePreset = this.qualityPresets.High;
-    }
 
-    /**
-     * Get current graphics quality from settings
-     */
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
-    }
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null; // Container for drifting elements
+        this.coreSprites = [];
+        this.spiralStars = null;
+        this.backgroundStars = null;
+        this.nebulaClouds = [];
+        this.cosmicDust = null;
+        this.shockwaves = [];
+        this.flares = [];
 
-    /**
-     * Apply a graphics quality preset
-     * @param {string} quality - Quality level (Minimal, Low, Medium, High, Ultra, Extreme)
-     */
-    applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`[GalaxyTheme] Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
-        }
+        // Animation
+        this.animationFrame = null;
+        this.clock = new THREE.Clock();
 
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        // If scene is active, refresh quality-dependent elements
-        if (this.isActive) {
-            this.refreshQualityDependentElements();
-        }
-
-        console.log(`🌌 [GalaxyTheme] Applied ${quality} quality preset`);
-    }
-
-    /**
-     * Refresh elements that depend on quality settings
-     */
-    refreshQualityDependentElements() {
-        // Clear and recreate starfield with new count
-        const starsContainer = document.getElementById('galaxy-stars-bg');
-        if (starsContainer) {
-            starsContainer.innerHTML = '';
-            this.createStarfield();
-        }
-
-        // Clear and recreate cosmic dust
-        const dustContainer = document.getElementById('galaxy-cosmic-dust');
-        if (dustContainer) {
-            dustContainer.innerHTML = '';
-            this.cosmicDustParticles = [];
-            this.createCosmicDust();
-        }
-
-        // Clear and recreate distant galaxies
-        const galaxyContainer = document.getElementById('galaxy-distant');
-        if (galaxyContainer) {
-            galaxyContainer.innerHTML = '';
-            this.createDistantGalaxies();
-        }
-
-        // Update nebula settings
-        this.updateNebulaSettings();
-    }
-
-    /**
-     * Setup listener for quality setting changes
-     */
-    setupQualityListener() {
-        this.teardownQualityListener();
-
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            this.applyQualityPreset(newQuality);
+        // Uniforms for shader animation
+        this.uniforms = {
+            time: { value: 0 },
+            coreIntensity: { value: 1.0 },
+            coreColorPrimary: { value: new THREE.Color(0xFF33CC) },   // Magenta/Pink
+            coreColorSecondary: { value: new THREE.Color(0x3399FF) }, // Bright Blue
+            coreColorTertiary: { value: new THREE.Color(0x9933FF) },  // Purple
         };
 
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+        // Theme palette for effects
+        this.palette = [
+            new THREE.Color(0xFF33CC), // Magenta
+            new THREE.Color(0x3399FF), // Blue
+            new THREE.Color(0x9933FF), // Purple
+            new THREE.Color(0xFF66AA), // Pink
+            new THREE.Color(0x66CCFF), // Cyan
+            new THREE.Color(0xFFFFFF)  // White
+        ];
     }
 
-    /**
-     * Remove quality listener
-     */
-    teardownQualityListener() {
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
+    getRandomThemeColor() {
+        return this.palette[Math.floor(Math.random() * this.palette.length)];
     }
 
     async createScene() {
-        // Apply quality preset at scene creation
-        this.applyQualityPreset(this.getGraphicsQuality());
-        this.setupQualityListener();
+        console.log('[Galaxy] Initializing Three.js scene...');
 
-        // Create background stars with varying sizes and intensities
-        this.createStarfield();
-        
-        // Create cosmic dust particles
-        this.createCosmicDust();
-        
-        // Create distant galaxies
-        this.createDistantGalaxies();
-        
-        // Update nebula based on quality
-        this.updateNebulaSettings();
-        
-        // Setup event listeners for combo effects
-        this.setupEventListeners();
-        
-        // Start animation loop
-        this.startAnimation();
-    }
-
-    /**
-     * Create multi-layered starfield with depth
-     */
-    createStarfield() {
-        const starsContainer = document.getElementById('galaxy-stars-bg');
-        if (!starsContainer) return;
-        
-        // Clear existing stars
-        if (starsContainer.children.length > 0) {
-            starsContainer.innerHTML = '';
+        const container = document.getElementById('galaxy-theme');
+        if (!container) {
+            console.error('[Galaxy] Container not found');
+            return;
         }
 
-        const preset = this.activePreset;
-        const starCount = preset.starCount;
-        const coloredStarChance = preset.coloredStarChance;
-        const [minDuration, maxDuration] = preset.twinkleDurationRange;
-        
-        for (let i = 0; i < starCount; i++) {
-            const star = document.createElement('div');
-            star.className = 'galaxy-star-bg';
-            
-            // Varied star sizes - mostly tiny with some larger bright ones
-            const sizeRoll = Math.random();
-            let size;
-            if (sizeRoll < 0.6) {
-                size = Math.random() * 1 + 0.3; // Tiny stars
-            } else if (sizeRoll < 0.9) {
-                size = Math.random() * 1.5 + 1; // Medium stars
-            } else {
-                size = Math.random() * 2 + 2; // Bright stars
-            }
-            
-            star.style.width = `${size}px`;
-            star.style.height = `${size}px`;
-            star.style.left = `${Math.random() * 100}%`;
-            star.style.top = `${Math.random() * 100}%`;
-            
-            // Varied animation delays and durations for organic twinkling
-            star.style.animationDelay = `${Math.random() * 15}s`;
-            const duration = minDuration + Math.random() * (maxDuration - minDuration);
-            star.style.animationDuration = `${duration}s`;
-            
-            // Some stars are brighter/colored
-            if (sizeRoll > (1 - coloredStarChance)) {
-                const colors = ['#4fcfff', '#ff5ed1', '#ffe26b', '#5bffd5', '#d050ff'];
-                const color = colors[Math.floor(Math.random() * colors.length)];
-                star.style.backgroundColor = color;
-                star.style.boxShadow = `0 0 ${size * 3}px ${color}`;
-            }
-            
-            starsContainer.appendChild(star);
-        }
-        
-        this.registerContainer(starsContainer);
-    }
+        // Clean up any existing content
+        container.innerHTML = '';
 
-    /**
-     * Create floating cosmic dust particles
-     */
-    createCosmicDust() {
-        const container = document.getElementById('galaxy-cosmic-dust');
-        if (!container) return;
+        // -- Setup Scene --
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x050011, 0.008);
 
-        const preset = this.activePreset;
-        const dustCount = preset.dustCount;
-        
-        if (dustCount === 0) return;
-        
-        for (let i = 0; i < dustCount; i++) {
-            const dust = document.createElement('div');
-            dust.className = 'cosmic-dust-particle';
-            
-            const size = Math.random() * 3 + 1;
-            dust.style.width = `${size}px`;
-            dust.style.height = `${size}px`;
-            dust.style.left = `${Math.random() * 100}%`;
-            dust.style.top = `${Math.random() * 100}%`;
-            dust.style.animationDelay = `${Math.random() * 30}s`;
-            dust.style.animationDuration = `${40 + Math.random() * 40}s`;
-            
-            // Subtle color variations
-            const hue = 220 + Math.random() * 60; // Blue to purple range
-            dust.style.backgroundColor = `hsla(${hue}, 70%, 70%, ${0.2 + Math.random() * 0.3})`;
-            
-            container.appendChild(dust);
-            this.cosmicDustParticles.push(dust);
-        }
-        
-        this.registerContainer(container);
-    }
+        // -- Setup Camera --
+        this.camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        this.camera.position.z = 25;
+        this.camera.position.y = 5;
+        this.camera.lookAt(0, 0, 0);
 
-    /**
-     * Create distant spiral galaxies in the background
-     */
-    createDistantGalaxies() {
-        const container = document.getElementById('galaxy-distant');
-        if (!container) return;
-
-        const preset = this.activePreset;
-        const galaxyCount = preset.galaxyCount;
-        
-        if (galaxyCount === 0) return;
-        
-        for (let i = 0; i < galaxyCount; i++) {
-            const galaxy = document.createElement('div');
-            galaxy.className = 'distant-galaxy';
-            
-            const size = 60 + Math.random() * 100;
-            galaxy.style.width = `${size}px`;
-            galaxy.style.height = `${size}px`;
-            galaxy.style.left = `${15 + Math.random() * 70}%`;
-            galaxy.style.top = `${15 + Math.random() * 70}%`;
-            galaxy.style.animationDelay = `${Math.random() * 60}s`;
-            galaxy.style.transform = `rotate(${Math.random() * 360}deg)`;
-            galaxy.style.opacity = 0.15 + Math.random() * 0.15;
-            
-            container.appendChild(galaxy);
-        }
-        
-        this.registerContainer(container);
-    }
-
-    /**
-     * Update nebula visual settings based on quality
-     */
-    updateNebulaSettings() {
-        const preset = this.activePreset;
-        const nebulas = document.querySelectorAll('.nebula');
-        
-        nebulas.forEach((nebula) => {
-            nebula.style.filter = `blur(${preset.nebulaBlur}px)`;
-            
-            if (!preset.nebulaAnimationEnabled) {
-                nebula.style.animation = 'none';
-            }
+        // -- Setup Renderer --
+        this.renderer = new THREE.WebGLRenderer({
+            alpha: true,
+            antialias: true,
+            powerPreference: 'high-performance'
         });
-        
-        // Show/hide 4th nebula layer based on quality
-        const nebula4 = document.getElementById('nebula-layer-4');
-        if (nebula4) {
-            nebula4.style.display = preset.additionalNebulaLayers ? 'block' : 'none';
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(this.renderer.domElement);
+
+        // -- Create Main Group for Drifting --
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        // -- Create Scene Elements --
+        this.createGalaxyCore();
+        this.createSpiralArms();
+        this.createBackgroundStars();
+        this.createNebulaClouds();
+        this.createCosmicDust();
+        this.setupLighting();
+
+        // -- Event Listeners --
+        this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // -- Start Animation --
+        this.animate();
+
+        console.log('[Galaxy] Scene initialized.');
+    }
+
+    createGalaxyCore() {
+        // Create multiple layered glow sprites for a diffuse, bright center
+        // No solid sphere - just pure glow like in real galaxy images
+
+        this.coreSprites = [];
+
+        // Inner bright white/pink core glow
+        const coreGlowTexture = this.createCoreGlowTexture();
+
+        // Layer 1: Bright white/pink center
+        const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: coreGlowTexture,
+            color: 0xFFFFFF,
+            transparent: true,
+            opacity: 0.95,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        innerGlow.scale.set(5, 5, 1);
+        this.mainGroup.add(innerGlow);
+        this.coreSprites.push(innerGlow);
+
+        // Layer 2: Pink/magenta mid glow
+        const midGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: coreGlowTexture,
+            color: 0xFF66CC,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        midGlow.scale.set(10, 10, 1);
+        this.mainGroup.add(midGlow);
+        this.coreSprites.push(midGlow);
+
+        // Layer 3: Purple outer glow
+        const outerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: coreGlowTexture,
+            color: 0x9933FF,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        outerGlow.scale.set(18, 18, 1);
+        this.mainGroup.add(outerGlow);
+        this.coreSprites.push(outerGlow);
+
+        // Layer 4: Blue diffuse halo
+        const haloGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: coreGlowTexture,
+            color: 0x3366FF,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        haloGlow.scale.set(25, 25, 1);
+        this.mainGroup.add(haloGlow);
+        this.coreSprites.push(haloGlow);
+
+        // Tilt the main group to show galaxy at an angle (like the reference)
+        this.mainGroup.rotation.x = 0.6; // Tilt forward
+        this.mainGroup.rotation.z = -0.2; // Slight rotation
+    }
+
+    createCoreGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+
+        // Soft radial gradient for glow
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        gradient.addColorStop(0.1, 'rgba(255, 220, 255, 0.9)');
+        gradient.addColorStop(0.3, 'rgba(255, 150, 220, 0.5)');
+        gradient.addColorStop(0.5, 'rgba(200, 100, 255, 0.25)');
+        gradient.addColorStop(0.7, 'rgba(100, 80, 255, 0.1)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    createGlowTexture() {
+        // Keep for compatibility with effects
+        return this.createCoreGlowTexture();
+    }
+
+    createSpiralArms() {
+        // More particles for denser spiral arms like in reference
+        const particleCount = 8000;
+        const geometry = new THREE.BufferGeometry();
+
+        const angles = new Float32Array(particleCount);
+        const radii = new Float32Array(particleCount);
+        const randoms = new Float32Array(particleCount);
+        const colors = new Float32Array(particleCount * 3);
+        const positions = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            // Create 2 main spiral arms with some secondary structure
+            const arm = i % 2;
+            const baseAngle = arm * Math.PI;
+
+            // Radius distribution - exponential falloff from center
+            const t = Math.random();
+            const radius = 0.5 + Math.pow(t, 0.4) * 16; // Start closer to center
+
+            // Spiral tightness increases with radius
+            const spiralOffset = radius * 0.35;
+
+            // Add randomness/spread to make arms fuzzy
+            const spreadAngle = (Math.random() - 0.5) * (0.3 + radius * 0.02);
+
+            angles[i] = baseAngle + spiralOffset + spreadAngle;
+            radii[i] = radius;
+            randoms[i] = Math.random();
+
+            // Color gradient: white/pink center → magenta mid → purple/blue outer
+            const colorT = Math.min(radius / 14, 1.0);
+            let color;
+            if (colorT < 0.2) {
+                // Inner: bright white/pink
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0xFFFFFF),
+                    new THREE.Color(0xFFAADD),
+                    colorT / 0.2
+                );
+            } else if (colorT < 0.5) {
+                // Mid: pink to magenta
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0xFFAADD),
+                    new THREE.Color(0xCC44FF),
+                    (colorT - 0.2) / 0.3
+                );
+            } else {
+                // Outer: magenta to purple/blue
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0xCC44FF),
+                    new THREE.Color(0x6633CC),
+                    (colorT - 0.5) / 0.5
+                );
+            }
+
+            // Add some brightness variation
+            const brightness = 0.7 + Math.random() * 0.3;
+            colors[i * 3] = color.r * brightness;
+            colors[i * 3 + 1] = color.g * brightness;
+            colors[i * 3 + 2] = color.b * brightness;
+
+            // Placeholder positions
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = 0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aAngle', new THREE.BufferAttribute(angles, 1));
+        geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                spiralTightness: { value: 0.5 },
+                coreIntensity: this.uniforms.coreIntensity
+            },
+            vertexShader: spiralVertexShader,
+            fragmentShader: spiralFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.spiralStars = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.spiralStars);
+    }
+
+    createBackgroundStars() {
+        const starCount = 3000;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(starCount * 3);
+        const randoms = new Float32Array(starCount);
+        const colors = new Float32Array(starCount * 3);
+
+        const colorOptions = [
+            new THREE.Color(0xFFFFFF),
+            new THREE.Color(0xCCDDFF),
+            new THREE.Color(0xFFCCFF),
+            new THREE.Color(0xCCFFFF),
+            new THREE.Color(0xFFFFCC),
+        ];
+
+        for (let i = 0; i < starCount; i++) {
+            // Distribute in a large sphere
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const radius = 40 + Math.random() * 60;
+
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = radius * Math.cos(phi);
+
+            randoms[i] = Math.random();
+
+            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time
+            },
+            vertexShader: starsVertexShader,
+            fragmentShader: starsFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.backgroundStars = new THREE.Points(geometry, material);
+        this.scene.add(this.backgroundStars);
+    }
+
+    createNebulaClouds() {
+        const nebulaConfigs = [
+            { position: [-8, 3, -15], scale: 15, colorA: 0xFF33CC, colorB: 0x9933FF, opacity: 0.3 },
+            { position: [10, -2, -18], scale: 18, colorA: 0x3399FF, colorB: 0x66CCFF, opacity: 0.25 },
+            { position: [0, 5, -25], scale: 22, colorA: 0x9933FF, colorB: 0x3399FF, opacity: 0.2 },
+            { position: [-12, -4, -20], scale: 14, colorA: 0xFF66AA, colorB: 0xFF33CC, opacity: 0.25 },
+        ];
+
+        nebulaConfigs.forEach((config, index) => {
+            const geometry = new THREE.PlaneGeometry(config.scale, config.scale);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: this.uniforms.time,
+                    opacity: { value: config.opacity },
+                    colorA: { value: new THREE.Color(config.colorA) },
+                    colorB: { value: new THREE.Color(config.colorB) }
+                },
+                vertexShader: nebulaVertexShader,
+                fragmentShader: nebulaFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const cloud = new THREE.Mesh(geometry, material);
+            cloud.position.set(...config.position);
+            cloud.rotation.z = Math.random() * Math.PI;
+
+            this.nebulaClouds.push(cloud);
+            this.scene.add(cloud);
+        });
+    }
+
+    createCosmicDust() {
+        const dustCount = 200;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(dustCount * 3);
+        const randoms = new Float32Array(dustCount);
+        const sizes = new Float32Array(dustCount);
+
+        for (let i = 0; i < dustCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 5 + Math.random() * 15;
+
+            positions[i * 3] = Math.cos(angle) * radius;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 4;
+            positions[i * 3 + 2] = Math.sin(angle) * radius;
+
+            randoms[i] = Math.random();
+            sizes[i] = 2 + Math.random() * 4;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                color: { value: new THREE.Color(0x66CCFF) }
+            },
+            vertexShader: dustVertexShader,
+            fragmentShader: dustFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.cosmicDust = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.cosmicDust);
+    }
+
+    setupLighting() {
+        const ambientLight = new THREE.AmbientLight(0x202040, 0.5);
+        this.scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xFF66CC, 2, 50);
+        pointLight.position.set(0, 0, 0);
+        this.mainGroup.add(pointLight);
+    }
+
+    animate() {
+        if (!this.isActive) return;
+
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+
+        const delta = this.clock.getDelta();
+        const elapsedTime = this.clock.getElapsedTime();
+        this.uniforms.time.value = elapsedTime;
+
+        // Slow camera orbit/drift for immersive effect
+        if (this.camera) {
+            const cameraTime = elapsedTime * 0.08; // Very slow orbit
+            const orbitRadius = 25;
+            const orbitHeight = 8;
+
+            // Gentle orbit around the galaxy
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadius * 0.3;
+            this.camera.position.y = 5 + Math.sin(cameraTime * 0.7) * orbitHeight * 0.2;
+            this.camera.position.z = 25 + Math.cos(cameraTime) * 5;
+
+            // Keep looking at center (with slight offset for dynamic feel)
+            const lookAtOffset = Math.sin(cameraTime * 0.5) * 2;
+            this.camera.lookAt(lookAtOffset, 0, 0);
+        }
+
+        // Rotate background stars slowly
+        if (this.backgroundStars) {
+            this.backgroundStars.rotation.y = elapsedTime * 0.01;
+            this.backgroundStars.rotation.x = elapsedTime * 0.003;
+        }
+
+        // Pulse core glow intensity based on coreIntensity uniform
+        if (this.coreSprites && this.coreSprites.length > 0) {
+            const pulseScale = 1.0 + (this.uniforms.coreIntensity.value - 1.0) * 0.3;
+            this.coreSprites.forEach((sprite, i) => {
+                // Each layer pulses slightly differently
+                const baseScale = [5, 10, 18, 25][i];
+                sprite.scale.setScalar(baseScale * pulseScale);
+            });
+        }
+
+        // Main group drift (figure-8 pattern)
+        if (this.mainGroup) {
+            const driftTime = elapsedTime * 0.1;
+            this.mainGroup.position.x = Math.sin(driftTime) * 2 + Math.cos(driftTime * 0.7) * 1;
+            this.mainGroup.position.y = Math.cos(driftTime * 0.8) * 1.5 + Math.sin(driftTime * 0.5) * 0.5;
+            this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.05;
+        }
+
+        // Nebula cloud animation
+        this.nebulaClouds.forEach((cloud, i) => {
+            cloud.rotation.z += delta * 0.01 * (i % 2 === 0 ? 1 : -1);
+        });
+
+        // Core intensity decay
+        if (this.uniforms.coreIntensity.value > 1.0) {
+            this.uniforms.coreIntensity.value = THREE.MathUtils.lerp(
+                this.uniforms.coreIntensity.value,
+                1.0,
+                delta * 2.0
+            );
+        }
+
+        // Update effects
+        this.updateShockwaves(delta);
+        this.updateFlares(delta);
+
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    updateShockwaves(delta) {
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+            const wave = this.shockwaves[i];
+            wave.scale.addScalar(wave.userData.speed * delta);
+            wave.userData.life -= delta;
+
+            if (wave.material.uniforms) {
+                wave.material.uniforms.opacity.value = wave.userData.life / wave.userData.maxLife;
+            } else {
+                wave.material.opacity = wave.userData.life / wave.userData.maxLife;
+            }
+
+            if (wave.userData.life <= 0) {
+                this.mainGroup.remove(wave);
+                if (wave.geometry) wave.geometry.dispose();
+                if (wave.material) wave.material.dispose();
+                this.shockwaves.splice(i, 1);
+            }
         }
     }
 
-    /**
-     * Setup game event listeners for combo effects
-     */
+    createShockwave(intensity) {
+        const geometry = new THREE.TorusGeometry(2, 0.08, 8, 50);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                opacity: { value: 1.0 },
+                color: { value: this.getRandomThemeColor() }
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
+
+        const wave = new THREE.Mesh(geometry, material);
+        wave.rotation.x = Math.random() * Math.PI;
+        wave.rotation.y = Math.random() * Math.PI;
+
+        wave.userData = {
+            speed: 4.0 + intensity * 2.0,
+            life: 1.2,
+            maxLife: 1.2
+        };
+
+        this.mainGroup.add(wave);
+        this.shockwaves.push(wave);
+    }
+
+    createSolarFlare() {
+        if (!this.mainGroup) return;
+
+        const particleCount = 25;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = dirX * 1.5 + (Math.random() - 0.5) * 0.5;
+            positions[i * 3 + 1] = dirY * 1.5 + (Math.random() - 0.5) * 0.5;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 1.0;
+
+            const speed = 4.0 + Math.random() * 8.0;
+            velocities.push({
+                x: dirX * speed + (Math.random() - 0.5) * 2,
+                y: dirY * speed + (Math.random() - 0.5) * 2,
+                z: (Math.random() - 0.5) * 2
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: this.getRandomThemeColor(),
+            size: 0.3,
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending
+        });
+
+        const flare = new THREE.Points(geometry, material);
+        flare.userData = {
+            velocities: velocities,
+            life: 0.8,
+            maxLife: 0.8
+        };
+
+        this.mainGroup.add(flare);
+        this.flares.push(flare);
+    }
+
+    updateFlares(delta) {
+        for (let i = this.flares.length - 1; i >= 0; i--) {
+            const flare = this.flares[i];
+            const positions = flare.geometry.attributes.position.array;
+            const velocities = flare.userData.velocities;
+
+            flare.userData.life -= delta;
+
+            for (let j = 0; j < velocities.length; j++) {
+                positions[j * 3] += velocities[j].x * delta;
+                positions[j * 3 + 1] += velocities[j].y * delta;
+                positions[j * 3 + 2] += velocities[j].z * delta;
+            }
+            flare.geometry.attributes.position.needsUpdate = true;
+
+            flare.material.opacity = flare.userData.life / flare.userData.maxLife;
+
+            if (flare.userData.life <= 0) {
+                this.mainGroup.remove(flare);
+                flare.geometry.dispose();
+                flare.material.dispose();
+                this.flares.splice(i, 1);
+            }
+        }
+    }
+
     setupEventListeners() {
-        // Line clear events
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.onLineClear(data.lineCount);
             }
         });
 
-        // Combo events
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.onCombo(data.comboCount);
             }
         });
 
-        // Piece lock events
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
+            if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.onPieceLock();
             }
         });
@@ -502,580 +668,93 @@ export default class GalaxyTheme extends BaseTheme {
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
-    /**
-     * Handle line clear with cosmic effects
-     */
-    onLineClear(lineCount) {
-        const preset = this.activePreset;
-        if (!preset.enableComboEffects) return;
+    onLineClear(count) {
+        this.uniforms.coreIntensity.value += count * 0.4;
+        this.createShockwave(count);
 
-        if (lineCount >= 4) {
-            // Tetris! Epic supernova explosion
-            this.triggerSupernova();
-            this.triggerShootingStarShower(12);
-            this.pulseNebula(1.5);
-        } else if (lineCount >= 2) {
-            // Multi-line: cosmic ripple
-            this.triggerCosmicRipple(lineCount);
-            this.triggerShootingStarShower(lineCount * 2);
-            this.pulseNebula(1.2);
-        } else {
-            // Single line: subtle star burst
-            this.triggerStarBurst();
-            this.pulseNebula(1.05);
+        if (count >= 4) {
+            // Tetris - extra effects
+            this.createShockwave(count * 0.5);
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => this.createSolarFlare(), i * 100);
+            }
         }
     }
 
-    /**
-     * Handle combo with escalating effects
-     */
-    onCombo(comboCount) {
-        const preset = this.activePreset;
-        if (!preset.enableComboEffects) return;
-
-        if (comboCount >= 8) {
-            // Epic combo: Warp speed effect + supernova
-            this.triggerWarpSpeed();
-            this.triggerSupernova();
-            this.triggerConstellationBurst(comboCount);
-        } else if (comboCount >= 5) {
-            // High combo: Supernova burst
-            this.triggerSupernova();
-            this.triggerShootingStarShower(comboCount);
-        } else if (comboCount >= 3) {
-            // Medium combo: Constellation burst
-            this.triggerConstellationBurst(comboCount);
-            this.pulseNebula(1.3);
-        } else {
-            // Low combo: Star shimmer
-            this.triggerStarShimmer();
-            this.pulseNebula(1.1);
+    onCombo(count) {
+        if (count > 1) {
+            this.uniforms.coreIntensity.value += 0.25;
+            this.createShockwave(count * 0.4);
+        }
+        if (count >= 4) {
+            this.createSolarFlare();
         }
     }
 
-    /**
-     * Handle piece lock with subtle cosmic effects
-     */
     onPieceLock() {
-        const preset = this.activePreset;
-        if (!preset.enableComboEffects) return;
-        
-        // Subtle nebula pulse
-        this.pulseNebula(1.02);
-        
-        // Small chance for extra visual feedback
-        const roll = Math.random();
-        if (roll < 0.4) {
-            // 40% chance: tiny star sparkle
-            this.triggerPieceLockSparkle();
-        } else if (roll < 0.55) {
-            // 15% chance: brief shooting star
-            this.triggerMiniShootingStar();
+        this.uniforms.coreIntensity.value += 0.15;
+        if (Math.random() < 0.3) {
+            this.createSolarFlare();
         }
     }
 
-    /**
-     * Trigger a small sparkle effect for piece lock
-     */
-    triggerPieceLockSparkle() {
-        const effectsContainer = document.getElementById('galaxy-effects');
-        if (!effectsContainer) return;
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
 
-        const sparkle = document.createElement('div');
-        sparkle.className = 'piece-lock-sparkle';
-        
-        const pos = this.getEdgePosition('any');
-        sparkle.style.left = `${pos.x}%`;
-        sparkle.style.top = `${pos.y}%`;
-        
-        effectsContainer.appendChild(sparkle);
-        setTimeout(() => sparkle.remove(), 500);
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    /**
-     * Trigger a mini shooting star for piece lock
-     */
-    triggerMiniShootingStar() {
-        const container = document.getElementById('galaxy-shooting-stars');
-        if (!container) return;
+    dispose() {
+        super.dispose();
 
-        const star = document.createElement('div');
-        star.className = 'mini-shooting-star';
-        
-        // Start from a random edge
-        const pos = this.getEdgePosition('corner');
-        star.style.left = `${pos.x}%`;
-        star.style.top = `${pos.y}%`;
-        
-        const angle = -30 - Math.random() * 60;
-        star.style.setProperty('--angle', `${angle}deg`);
-        
-        container.appendChild(star);
-        setTimeout(() => star.remove(), 600);
-    }
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
 
-    /**
-     * Get a random position avoiding the center of the screen (where the game board is)
-     * Returns positions in the edges and corners of the screen
-     * @param {string} zone - Optional: 'corner', 'edge', 'side', or 'any' (default)
-     * @returns {{x: number, y: number}} Position as percentages
-     */
-    getEdgePosition(zone = 'any') {
-        // Define screen regions that avoid the center game board area
-        // Center is roughly 30-70% horizontally and 15-85% vertically
-        const regions = {
-            // Corners (safest - always visible)
-            topLeft: { xMin: 0, xMax: 25, yMin: 0, yMax: 30 },
-            topRight: { xMin: 75, xMax: 100, yMin: 0, yMax: 30 },
-            bottomLeft: { xMin: 0, xMax: 25, yMin: 70, yMax: 100 },
-            bottomRight: { xMin: 75, xMax: 100, yMin: 70, yMax: 100 },
-            // Sides (left and right of game board)
-            leftSide: { xMin: 0, xMax: 20, yMin: 20, yMax: 80 },
-            rightSide: { xMin: 80, xMax: 100, yMin: 20, yMax: 80 },
-            // Top and bottom edges
-            topEdge: { xMin: 20, xMax: 80, yMin: 0, yMax: 15 },
-            bottomEdge: { xMin: 20, xMax: 80, yMin: 85, yMax: 100 },
-        };
-
-        let availableRegions;
-        
-        switch (zone) {
-            case 'corner':
-                availableRegions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
-                break;
-            case 'edge':
-                availableRegions = ['topEdge', 'bottomEdge'];
-                break;
-            case 'side':
-                availableRegions = ['leftSide', 'rightSide'];
-                break;
-            default:
-                availableRegions = Object.keys(regions);
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
         }
 
-        const regionName = availableRegions[Math.floor(Math.random() * availableRegions.length)];
-        const region = regions[regionName];
-
-        return {
-            x: region.xMin + Math.random() * (region.xMax - region.xMin),
-            y: region.yMin + Math.random() * (region.yMax - region.yMin),
-        };
-    }
-
-    /**
-     * Trigger a supernova explosion effect
-     */
-    triggerSupernova() {
-        const effectsContainer = document.getElementById('galaxy-effects');
-        if (!effectsContainer) return;
-
-        const preset = this.activePreset;
-        if (preset.supernovaParticles === 0 && preset.supernovaRings === 0) return;
-
-        // Create multiple supernovas across the screen
-        const supernovaCount = Math.ceil(preset.supernovaRings / 2) + 1;
-        
-        for (let s = 0; s < supernovaCount; s++) {
-            setTimeout(() => {
-                const supernova = document.createElement('div');
-                supernova.className = 'supernova-burst';
-                
-                // Position in corners and edges, avoiding center
-                const pos = this.getEdgePosition('any');
-                supernova.style.left = `${pos.x}%`;
-                supernova.style.top = `${pos.y}%`;
-                
-                effectsContainer.appendChild(supernova);
-                
-                // Create rings based on preset (distributed across supernovas)
-                const ringsPerSupernova = Math.ceil(preset.supernovaRings / supernovaCount);
-                for (let i = 0; i < ringsPerSupernova; i++) {
-                    const ring = document.createElement('div');
-                    ring.className = 'supernova-ring';
-                    ring.style.animationDelay = `${i * 100}ms`;
-                    supernova.appendChild(ring);
-                }
-                
-                // Create particle burst based on preset (distributed across supernovas)
-                const particlesPerSupernova = Math.ceil(preset.supernovaParticles / supernovaCount);
-                for (let i = 0; i < particlesPerSupernova; i++) {
-                    const particle = document.createElement('div');
-                    particle.className = 'supernova-particle';
-                    const angle = (i / particlesPerSupernova) * Math.PI * 2;
-                    particle.style.setProperty('--angle', `${angle}rad`);
-                    particle.style.setProperty('--distance', `${100 + Math.random() * 150}px`);
-                    particle.style.animationDelay = `${Math.random() * 100}ms`;
-                    supernova.appendChild(particle);
-                }
-                
-                // Cleanup after animation
-                setTimeout(() => supernova.remove(), 2000);
-            }, s * 150);
-        }
-    }
-
-    /**
-     * Trigger cosmic ripple waves
-     */
-    triggerCosmicRipple(intensity = 1) {
-        const effectsContainer = document.getElementById('galaxy-effects');
-        if (!effectsContainer) return;
-
-        const preset = this.activePreset;
-        const rippleCount = Math.min(intensity + 1, preset.cosmicRippleCount);
-        
-        if (rippleCount === 0) return;
-        
-        // Spawn ripples from different corners/edges
-        for (let i = 0; i < rippleCount; i++) {
-            setTimeout(() => {
-                const ripple = document.createElement('div');
-                ripple.className = 'cosmic-ripple';
-                
-                // Position ripples in corners for better visibility
-                const pos = this.getEdgePosition('corner');
-                ripple.style.left = `${pos.x}%`;
-                ripple.style.top = `${pos.y}%`;
-                
-                effectsContainer.appendChild(ripple);
-                
-                setTimeout(() => ripple.remove(), 1500);
-            }, i * 150);
-        }
-    }
-
-    /**
-     * Trigger a shooting star shower
-     */
-    triggerShootingStarShower(count = 5) {
-        const starsContainer = document.getElementById('galaxy-shooting-stars');
-        if (!starsContainer) return;
-
-        const preset = this.activePreset;
-        if (preset.shootingStarMultiplier === 0) return;
-
-        const actualCount = Math.floor(count * preset.shootingStarMultiplier);
-        
-        for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
-                const star = document.createElement('div');
-                star.className = 'shooting-star-effect';
-                
-                // Varied starting positions from all edges
-                const edge = Math.floor(Math.random() * 4);
-                
-                switch (edge) {
-                    case 0: // Top edge
-                        star.style.left = `${Math.random() * 100}%`;
-                        star.style.top = '-5%';
-                        break;
-                    case 1: // Right edge
-                        star.style.left = '105%';
-                        star.style.top = `${Math.random() * 100}%`;
-                        break;
-                    case 2: // Left edge (shooting right)
-                        star.style.left = '-5%';
-                        star.style.top = `${Math.random() * 50}%`;
-                        break;
-                    case 3: // Bottom corners shooting up
-                        star.style.left = `${Math.random() > 0.5 ? Math.random() * 20 : 80 + Math.random() * 20}%`;
-                        star.style.top = '105%';
-                        break;
-                }
-                
-                // Angle based on starting edge for natural trajectory
-                let angle;
-                switch (edge) {
-                    case 0: angle = -60 - Math.random() * 60; break; // Down-left or down-right
-                    case 1: angle = -150 - Math.random() * 60; break; // Left
-                    case 2: angle = -30 + Math.random() * 60; break; // Right
-                    case 3: angle = -120 + Math.random() * 60; break; // Up
-                }
-                
-                const length = 100 + Math.random() * 150;
-                star.style.setProperty('--angle', `${angle}deg`);
-                star.style.setProperty('--length', `${length}px`);
-                star.style.animationDuration = `${0.6 + Math.random() * 0.4}s`;
-                
-                starsContainer.appendChild(star);
-                
-                setTimeout(() => star.remove(), 1500);
-            }, i * (80 + Math.random() * 150));
-        }
-    }
-
-    /**
-     * Trigger a constellation burst pattern
-     */
-    triggerConstellationBurst(count = 3) {
-        const effectsContainer = document.getElementById('galaxy-effects');
-        if (!effectsContainer) return;
-
-        const preset = this.activePreset;
-        if (preset.constellationStars === 0) return;
-
-        // Create multiple constellations in different screen areas
-        const constellationCount = Math.min(count, 4);
-        
-        for (let c = 0; c < constellationCount; c++) {
-            setTimeout(() => {
-                const constellation = document.createElement('div');
-                constellation.className = 'constellation-burst';
-                
-                // Position in corners and sides
-                const pos = this.getEdgePosition(c < 2 ? 'corner' : 'side');
-                constellation.style.left = `${pos.x}%`;
-                constellation.style.top = `${pos.y}%`;
-                
-                effectsContainer.appendChild(constellation);
-
-                // Create connected star points based on preset (distributed)
-                const starsPerConstellation = Math.ceil(preset.constellationStars / constellationCount);
-                const starCount = Math.min(count + 3, starsPerConstellation);
-                const stars = [];
-                
-                for (let i = 0; i < starCount; i++) {
-                    const star = document.createElement('div');
-                    star.className = 'constellation-star';
-                    
-                    const angle = (i / starCount) * Math.PI * 2;
-                    const distance = 40 + Math.random() * 80;
-                    const x = Math.cos(angle) * distance;
-                    const y = Math.sin(angle) * distance;
-                    
-                    star.style.setProperty('--x', `${x}px`);
-                    star.style.setProperty('--y', `${y}px`);
-                    star.style.animationDelay = `${i * 50}ms`;
-                    
-                    constellation.appendChild(star);
-                    stars.push({ x, y });
-                }
-
-                // Create connecting lines if enabled
-                if (preset.constellationLines && stars.length > 1) {
-                    for (let i = 0; i < stars.length; i++) {
-                        const line = document.createElement('div');
-                        line.className = 'constellation-line';
-                        
-                        const nextI = (i + 1) % stars.length;
-                        const dx = stars[nextI].x - stars[i].x;
-                        const dy = stars[nextI].y - stars[i].y;
-                        const length = Math.sqrt(dx * dx + dy * dy);
-                        const angle = Math.atan2(dy, dx);
-                        
-                        line.style.width = `${length}px`;
-                        line.style.left = `calc(50% + ${stars[i].x}px)`;
-                        line.style.top = `calc(50% + ${stars[i].y}px)`;
-                        line.style.transform = `rotate(${angle}rad)`;
-                        line.style.animationDelay = `${i * 50 + 200}ms`;
-                        
-                        constellation.appendChild(line);
-                    }
-                }
-                
-                setTimeout(() => constellation.remove(), 2000);
-            }, c * 200);
-        }
-    }
-
-    /**
-     * Trigger warp speed streaks effect
-     */
-    triggerWarpSpeed() {
-        const effectsContainer = document.getElementById('galaxy-effects');
-        if (!effectsContainer) return;
-
-        const preset = this.activePreset;
-        if (preset.warpStreaks === 0) return;
-
-        const warpContainer = document.createElement('div');
-        warpContainer.className = 'warp-speed-container';
-        effectsContainer.appendChild(warpContainer);
-
-        const streakCount = preset.warpStreaks;
-        
-        for (let i = 0; i < streakCount; i++) {
-            const streak = document.createElement('div');
-            streak.className = 'warp-streak';
-            
-            // Radiate from multiple points across the screen (not just center)
-            // Choose a random origin point biased toward edges
-            const originPoints = [
-                { x: 10, y: 10 },   // Top-left
-                { x: 90, y: 10 },   // Top-right
-                { x: 10, y: 90 },   // Bottom-left
-                { x: 90, y: 90 },   // Bottom-right
-                { x: 50, y: 5 },    // Top center
-                { x: 50, y: 95 },   // Bottom center
-                { x: 5, y: 50 },    // Left center
-                { x: 95, y: 50 },   // Right center
-            ];
-            
-            const origin = originPoints[Math.floor(Math.random() * originPoints.length)];
-            
-            const angle = Math.random() * Math.PI * 2;
-            const startDistance = 2 + Math.random() * 5;
-            const x = Math.cos(angle) * startDistance;
-            const y = Math.sin(angle) * startDistance;
-            
-            streak.style.left = `calc(${origin.x}% + ${x}vw)`;
-            streak.style.top = `calc(${origin.y}% + ${y}vh)`;
-            streak.style.setProperty('--angle', `${angle}rad`);
-            streak.style.animationDelay = `${Math.random() * 200}ms`;
-            
-            warpContainer.appendChild(streak);
-        }
-        
-        setTimeout(() => warpContainer.remove(), 1500);
-    }
-
-    /**
-     * Trigger a simple star burst
-     */
-    triggerStarBurst() {
-        const effectsContainer = document.getElementById('galaxy-effects');
-        if (!effectsContainer) return;
-
-        const preset = this.activePreset;
-        if (!preset.enableComboEffects) return;
-
-        // Create multiple star bursts across screen edges
-        const burstCount = 3;
-        for (let i = 0; i < burstCount; i++) {
-            setTimeout(() => {
-                const burst = document.createElement('div');
-                burst.className = 'star-burst-effect';
-                
-                const pos = this.getEdgePosition('any');
-                burst.style.left = `${pos.x}%`;
-                burst.style.top = `${pos.y}%`;
-                effectsContainer.appendChild(burst);
-                
-                setTimeout(() => burst.remove(), 800);
-            }, i * 100);
-        }
-    }
-
-    /**
-     * Trigger star shimmer across the field
-     */
-    triggerStarShimmer() {
-        const starsContainer = document.getElementById('galaxy-stars-bg');
-        if (!starsContainer) return;
-
-        starsContainer.classList.add('star-shimmer-active');
-        setTimeout(() => {
-            starsContainer.classList.remove('star-shimmer-active');
-        }, 600);
-    }
-
-    /**
-     * Pulse the nebula layers
-     */
-    pulseNebula(intensity = 1.1) {
-        const nebulas = document.querySelectorAll('.nebula');
-        const preset = this.activePreset;
-        
-        nebulas.forEach((nebula, index) => {
-            nebula.style.transition = 'transform 300ms ease-out, filter 300ms ease-out';
-            nebula.style.transform = `${nebula.style.transform || ''} scale(${intensity})`;
-            nebula.style.filter = `blur(${preset.nebulaBlur}px) brightness(${1 + (intensity - 1) * 2})`;
-            
-            setTimeout(() => {
-                nebula.style.transition = 'transform 800ms ease-in, filter 800ms ease-in';
-                nebula.style.transform = '';
-                nebula.style.filter = `blur(${preset.nebulaBlur}px)`;
-            }, 300 + index * 50);
-        });
-    }
-
-    /**
-     * Start animation loop for continuous effects
-     */
-    startAnimation() {
-        let frameCount = 0;
-        
-        const animate = (currentTime) => {
-            if (!this.isActive) return;
-
-            frameCount++;
-            const preset = this.activePreset;
-            
-            // Frame skipping for performance on lower quality
-            if (preset.animationFrameSkip > 0 && frameCount % (preset.animationFrameSkip + 1) !== 0) {
-                this.animationFrameId = requestAnimationFrame(animate);
-                this.registerAnimation(this.animationFrameId);
-                return;
-            }
-
-            if (this.lastTime === 0) {
-                this.lastTime = currentTime;
-            }
-
-            const deltaTime = (currentTime - this.lastTime) / 1000;
-            this.lastTime = currentTime;
-
-            // Update any active effects here if needed
-            this.update(deltaTime);
-
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
-        };
-
-        this.lastTime = 0;
-        this.animationFrameId = requestAnimationFrame(animate);
-        this.registerAnimation(this.animationFrameId);
-    }
-
-    /**
-     * Update method called each frame
-     */
-    update(deltaTime) {
-        // Placeholder for any per-frame updates
-        // Currently the CSS handles most animations
-    }
-
-    /**
-     * Provide Galaxy themed tetromino styling
-     * @returns {Object} Galaxy tetromino configuration
-     */
-    getTetrominoConfig() {
-        return GALAXY_TETROMINOS;
-    }
-
-    /**
-     * Stop the theme
-     */
-    stop() {
-        if (!this.isActive) return;
-
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Remove quality listener
-        this.teardownQualityListener();
-
-        // Cancel animation frame
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+        // Cleanup Three.js
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('galaxy-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
         }
 
-        super.stop();
+        // Traverse and dispose scene objects
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.coreSprites = [];
+        this.spiralStars = null;
+        this.backgroundStars = null;
+        this.nebulaClouds = [];
+        this.cosmicDust = null;
+        this.shockwaves = [];
+        this.flares = [];
     }
 
-    /**
-     * Cleanup resources
-     */
-    cleanup() {
-        this.stop();
-        
-        // Clear particle arrays
-        this.cosmicDustParticles = [];
-        this.shootingStars = [];
-        this.activeEffects = [];
-        
-        super.cleanup();
+    getTetrominoConfig() {
+        return GALAXY_TETROMINOS;
     }
 }

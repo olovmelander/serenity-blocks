@@ -7846,7 +7846,10 @@ body {
     }
 }
 
-/* --- Galaxy Theme --- Enhanced Cosmic Experience */
+/* --- Galaxy Theme --- LEGACY CSS (Theme now uses Three.js) ---
+ * The styles below are kept for reference but not actively used.
+ * Galaxy theme now renders via WebGL in galaxy-theme.js
+ */
 #galaxy-theme {
     background: radial-gradient(ellipse at 30% 20%, #0a0020 0%, #050010 30%, #020008 60%, #000005 100%);
     overflow: hidden;

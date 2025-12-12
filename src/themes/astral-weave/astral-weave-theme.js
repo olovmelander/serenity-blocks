@@ -1,20 +1,41 @@
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { ASTRAL_WEAVE_TETROMINOS } from './astral-weave-tetrominos.js';
+import {
+    cosmicThreadVertexShader,
+    cosmicThreadFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+    nebulaVertexShader,
+    nebulaFragmentShader,
+    stardustVertexShader,
+    stardustFragmentShader,
+    pulseWaveVertexShader,
+    pulseWaveFragmentShader,
+    warpVortexVertexShader,
+    warpVortexFragmentShader,
+    cosmicOrbVertexShader,
+    cosmicOrbFragmentShader,
+    shootingStarVertexShader,
+    shootingStarFragmentShader
+} from './astral-weave-shaders.js';
 
 /**
- * Astral Weave Theme - Enhanced Cosmic Tapestry
- * 
- * A breathtaking visualization of cosmic threads weaving through space.
+ * Astral Weave Theme - Three.js 3D Edition
+ *
+ * A breathtaking visualization of cosmic threads weaving through deep space.
  * Features:
- * - Deep space nebula background with animated color shifts
- * - Luminous weaving threads with multi-layer glow
- * - Ambient star field with twinkling
- * - Cosmic fog/mist layers
- * - Energy pulses and cosmic orbs
- * - Constellation formations
- * - Warp point vortexes
- * - Piece lock effects (thread pulses, mini sparkles)
+ * - 3D cosmic weave ribbons with flowing animation
+ * - Deep space starfield with twinkling stars
+ * - Volumetric nebula clouds
+ * - Energy pulses and cosmic orbs on events
+ * - Warp vortex effects on big combos
+ * - Dynamic camera drift for immersive depth
  */
 export default class AstralWeaveTheme extends BaseTheme {
     constructor() {
@@ -22,262 +43,109 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         this.tetrominoConfig = ASTRAL_WEAVE_TETROMINOS;
 
-        this.canvas = null;
-        this.ctx = null;
-        this.resizeHandler = null;
-        this.time = 0;
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.mainGroup = null;
 
         // Visual elements
-        this.threads = [];
-        this.particles = [];
-        this.rifts = [];
-        this.energyPulses = [];
-        this.energyBeams = [];
-        this.cosmicOrbs = [];
+        this.cosmicThreads = [];
+        this.starSystem = null;
+        this.nebulaParticles = null;
+        this.stardustSystem = null;
+        this.pulseWaves = [];
+        this.cosmicOrbs = null;
+        this.warpVortexes = [];
+        this.shootingStars = [];
         this.constellations = [];
-        this.warpPoints = [];
-        this.stardust = [];
-        this.backgroundStars = [];
-        this.nebulaClouds = [];
-        this.fogLayers = [];
+
+        // Animation
+        this.animationFrame = null;
+        this.clock = new THREE.Clock();
+
+        // Uniforms
+        this.uniforms = {
+            time: { value: 0 },
+            intensity: { value: 1.0 }
+        };
 
         // State
         this.comboIntensity = 0;
-        this.weaveSpeed = 1.0;
-        this.riftOpenness = 0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-        this.backgroundHue = 0;
-        this.nebulaPhase = 0;
 
-        // Color palette - Enhanced ethereal colors
+        // Color palette - Cosmic ethereal colors
         this.colorPalette = {
-            primary: ['#00ffff', '#00e5ff', '#00d4ff'],      // Cyans
-            secondary: ['#ff00ff', '#e040fb', '#d500f9'],    // Magentas
-            accent: ['#ffd700', '#ffab00', '#ff6d00'],       // Golds/Ambers
-            aurora: ['#00ff88', '#00e676', '#69f0ae'],       // Greens
-            cosmic: ['#7c4dff', '#651fff', '#6200ea'],       // Deep purples
+            cyan: new THREE.Color(0x00ffff),
+            magenta: new THREE.Color(0xff00ff),
+            gold: new THREE.Color(0xffd700),
+            purple: new THREE.Color(0x7c4dff),
+            green: new THREE.Color(0x00ff88),
+            white: new THREE.Color(0xffffff)
         };
 
-        // Performance limits
-        this.MAX_PARTICLES = 100;
-        this.MAX_THREADS = 12;
-        this.MAX_PULSES = 5;
-        this.MAX_BEAMS = 8;
-        this.MAX_ORBS = 12;
-        this.MAX_CONSTELLATIONS = 3;
-        this.MAX_WARP_POINTS = 4;
-        this.MAX_STARDUST = 150;
-
-        // Quality presets - Enhanced with atmosphere controls
+        // Quality presets
         this.qualityPresets = {
             Minimal: {
-                threads: 4,
-                particles: 20,
-                resolution: 0.4,
-                maxBeams: 2,
-                maxOrbs: 3,
-                maxConstellations: 0,
-                maxWarpPoints: 1,
-                maxStardust: 25,
-                maxPulses: 2,
-                backgroundStars: 40,
-                nebulaClouds: 0,
-                fogLayers: 0,
-                enableScreenShake: false,
-                enableTrails: false,
-                enableThreadGlow: false,
-                enableParticleGlow: false,
-                enableRiftEffect: false,
-                enableNebula: false,
-                enableFog: false,
-                enablePieceLockEffects: false,
-                stardustSpawnRate: 0.06,
-                particleBurstMultiplier: 0.4,
-                threadThickness: 1.0,
-                threadGlowLayers: 0,
-                pulseWidth: 2,
-                beamWidth: 1.5,
-                orbTrailLength: 0,
-                constellationStars: 4,
+                threadCount: 4,
+                starCount: 600,
+                nebulaCount: 40,
+                stardustCount: 80,
+                bloomEnabled: false,
+                bloomStrength: 0.3,
+                bloomRadius: 0.2
             },
             Low: {
-                threads: 6,
-                particles: 40,
-                resolution: 0.5,
-                maxBeams: 3,
-                maxOrbs: 5,
-                maxConstellations: 1,
-                maxWarpPoints: 1,
-                maxStardust: 50,
-                maxPulses: 3,
-                backgroundStars: 60,
-                nebulaClouds: 2,
-                fogLayers: 1,
-                enableScreenShake: false,
-                enableTrails: false,
-                enableThreadGlow: true,
-                enableParticleGlow: false,
-                enableRiftEffect: true,
-                enableNebula: true,
-                enableFog: false,
-                enablePieceLockEffects: true,
-                stardustSpawnRate: 0.1,
-                particleBurstMultiplier: 0.6,
-                threadThickness: 1.2,
-                threadGlowLayers: 1,
-                pulseWidth: 3,
-                beamWidth: 2,
-                orbTrailLength: 4,
-                constellationStars: 5,
+                threadCount: 6,
+                starCount: 1000,
+                nebulaCount: 60,
+                stardustCount: 120,
+                bloomEnabled: false,
+                bloomStrength: 0.35,
+                bloomRadius: 0.25
             },
             Medium: {
-                threads: 10,
-                particles: 70,
-                resolution: 0.75,
-                maxBeams: 5,
-                maxOrbs: 8,
-                maxConstellations: 2,
-                maxWarpPoints: 2,
-                maxStardust: 80,
-                maxPulses: 4,
-                backgroundStars: 100,
-                nebulaClouds: 3,
-                fogLayers: 2,
-                enableScreenShake: true,
-                enableTrails: true,
-                enableThreadGlow: true,
-                enableParticleGlow: true,
-                enableRiftEffect: true,
-                enableNebula: true,
-                enableFog: true,
-                enablePieceLockEffects: true,
-                stardustSpawnRate: 0.15,
-                particleBurstMultiplier: 0.8,
-                threadThickness: 1.4,
-                threadGlowLayers: 2,
-                pulseWidth: 4,
-                beamWidth: 2.5,
-                orbTrailLength: 6,
-                constellationStars: 6,
+                threadCount: 8,
+                starCount: 1500,
+                nebulaCount: 100,
+                stardustCount: 180,
+                bloomEnabled: true,
+                bloomStrength: 0.4,
+                bloomRadius: 0.3
             },
             High: {
-                threads: 14,
-                particles: 100,
-                resolution: 1.0,
-                maxBeams: 7,
-                maxOrbs: 10,
-                maxConstellations: 3,
-                maxWarpPoints: 3,
-                maxStardust: 120,
-                maxPulses: 5,
-                backgroundStars: 150,
-                nebulaClouds: 4,
-                fogLayers: 3,
-                enableScreenShake: true,
-                enableTrails: true,
-                enableThreadGlow: true,
-                enableParticleGlow: true,
-                enableRiftEffect: true,
-                enableNebula: true,
-                enableFog: true,
-                enablePieceLockEffects: true,
-                stardustSpawnRate: 0.2,
-                particleBurstMultiplier: 1.0,
-                threadThickness: 1.6,
-                threadGlowLayers: 3,
-                pulseWidth: 5,
-                beamWidth: 3,
-                orbTrailLength: 10,
-                constellationStars: 7,
+                threadCount: 10,
+                starCount: 2200,
+                nebulaCount: 150,
+                stardustCount: 250,
+                bloomEnabled: true,
+                bloomStrength: 0.45,
+                bloomRadius: 0.35
             },
             Ultra: {
-                threads: 18,
-                particles: 140,
-                resolution: 1.0,
-                maxBeams: 9,
-                maxOrbs: 13,
-                maxConstellations: 3,
-                maxWarpPoints: 4,
-                maxStardust: 150,
-                maxPulses: 6,
-                backgroundStars: 200,
-                nebulaClouds: 5,
-                fogLayers: 3,
-                enableScreenShake: true,
-                enableTrails: true,
-                enableThreadGlow: true,
-                enableParticleGlow: true,
-                enableRiftEffect: true,
-                enableNebula: true,
-                enableFog: true,
-                enablePieceLockEffects: true,
-                stardustSpawnRate: 0.25,
-                particleBurstMultiplier: 1.1,
-                threadThickness: 1.8,
-                threadGlowLayers: 4,
-                pulseWidth: 6,
-                beamWidth: 3.5,
-                orbTrailLength: 12,
-                constellationStars: 8,
+                threadCount: 12,
+                starCount: 3000,
+                nebulaCount: 200,
+                stardustCount: 350,
+                bloomEnabled: true,
+                bloomStrength: 0.5,
+                bloomRadius: 0.4
             },
             Extreme: {
-                threads: 22,
-                particles: 180,
-                resolution: 1.0,
-                maxBeams: 11,
-                maxOrbs: 15,
-                maxConstellations: 4,
-                maxWarpPoints: 5,
-                maxStardust: 180,
-                maxPulses: 7,
-                backgroundStars: 300,
-                nebulaClouds: 6,
-                fogLayers: 4,
-                enableScreenShake: true,
-                enableTrails: true,
-                enableThreadGlow: true,
-                enableParticleGlow: true,
-                enableRiftEffect: true,
-                enableNebula: true,
-                enableFog: true,
-                enablePieceLockEffects: true,
-                stardustSpawnRate: 0.3,
-                particleBurstMultiplier: 1.2,
-                threadThickness: 2.0,
-                threadGlowLayers: 4,
-                pulseWidth: 7,
-                beamWidth: 4,
-                orbTrailLength: 15,
-                constellationStars: 9,
-            },
+                threadCount: 15,
+                starCount: 4000,
+                nebulaCount: 280,
+                stardustCount: 500,
+                bloomEnabled: true,
+                bloomStrength: 0.55,
+                bloomRadius: 0.45
+            }
         };
-        this.activePreset = this.qualityPresets.High;
         this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets.High;
 
         // Event handling
         this.eventUnsubscribers = [];
-    }
-
-    applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`[Astral Weave] Unknown quality preset: ${quality}, using High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        // Update max limits
-        this.MAX_PARTICLES = this.activePreset.particles;
-        this.MAX_THREADS = this.activePreset.threads;
-        this.MAX_PULSES = this.activePreset.maxPulses;
-        this.MAX_BEAMS = this.activePreset.maxBeams;
-        this.MAX_ORBS = this.activePreset.maxOrbs;
-        this.MAX_CONSTELLATIONS = this.activePreset.maxConstellations;
-        this.MAX_WARP_POINTS = this.activePreset.maxWarpPoints;
-        this.MAX_STARDUST = this.activePreset.maxStardust;
-
-        console.log(`✨ [Astral Weave] Applied ${quality} quality preset`);
     }
 
     getGraphicsQuality() {
@@ -285,37 +153,10 @@ export default class AstralWeaveTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        this.qualityChangeHandler = (event) => {
-            if (event.detail && event.detail.effectQuality) {
-                const newQuality = event.detail.effectQuality;
-                this.applyQualityPreset(newQuality);
-
-                if (this.canvas) {
-                    this.threads = [];
-                    this.initThreads();
-                    this.initBackgroundStars();
-                    this.initNebulaClouds();
-                    this.initFogLayers();
-
-                    // Trim arrays
-                    this.particles = this.particles.slice(0, this.MAX_PARTICLES);
-                    this.energyPulses = this.energyPulses.slice(0, this.MAX_PULSES);
-                    this.energyBeams = this.energyBeams.slice(0, this.MAX_BEAMS);
-                    this.cosmicOrbs = this.cosmicOrbs.slice(0, this.MAX_ORBS);
-                    this.constellations = this.constellations.slice(0, this.MAX_CONSTELLATIONS);
-                    this.warpPoints = this.warpPoints.slice(0, this.MAX_WARP_POINTS);
-                    this.stardust = this.stardust.slice(0, this.MAX_STARDUST);
-                }
-            }
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
     async createScene() {
+        console.log('[AstralWeave3D] Initializing Three.js scene...');
+
+        // Create container if it doesn't exist
         let container = document.getElementById('astral-weave-theme');
         if (!container) {
             container = document.createElement('div');
@@ -332,1053 +173,889 @@ export default class AstralWeaveTheme extends BaseTheme {
                 opacity: '0',
                 transition: 'opacity 0.5s ease-in-out',
             });
-
-            this.canvas = document.createElement('canvas');
-            this.canvas.id = 'astral-weave-canvas';
-            Object.assign(this.canvas.style, {
-                display: 'block',
-                width: '100%',
-                height: '100%',
-            });
-
-            container.appendChild(this.canvas);
             document.body.appendChild(container);
             this.registerContainer(container);
 
+            // Trigger reflow and fade in
             container.offsetHeight;
             container.classList.add('active');
             container.style.opacity = '1';
         } else {
-            this.canvas = document.getElementById('astral-weave-canvas');
+            container.innerHTML = '';
         }
 
-        if (!this.canvas) return;
+        this.currentQuality = this.getGraphicsQuality();
+        this.activePreset = this.qualityPresets[this.currentQuality] || this.qualityPresets.High;
 
-        this.ctx = this.canvas.getContext('2d', { alpha: false, desynchronized: true });
+        // Setup Scene
+        this.scene = new THREE.Scene();
+        // Deep cosmic purple-indigo background
+        this.scene.background = new THREE.Color(0x050010);
+        this.scene.fog = new THREE.FogExp2(0x080018, 0.006);
 
-        this.resizeHandler = () => this.resizeCanvas();
-        window.addEventListener('resize', this.resizeHandler, false);
-        this.resizeCanvas();
+        // Setup Camera
+        this.camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        this.camera.position.set(0, 0, 30);
+        this.camera.lookAt(0, 0, 0);
 
-        const quality = this.getGraphicsQuality();
-        this.applyQualityPreset(quality);
+        // Setup Renderer
+        this.renderer = new THREE.WebGLRenderer({
+            alpha: true,
+            antialias: true,
+            powerPreference: 'high-performance'
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(this.renderer.domElement);
 
-        this.initBackgroundStars();
-        this.initNebulaClouds();
-        this.initFogLayers();
-        this.initThreads();
-        this.initParticles();
+        // Create main group for drifting
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        // Create all elements
+        this.createStarField();
+        this.createCosmicThreads();
+        this.createNebulaParticles();
+        this.createStardust();
+        this.createCosmicOrbsPool();
+        this.setupLighting();
+        this.setupPostProcessing();
+
+        // Event listeners
         this.setupEventListeners();
-        this.setupQualityListener();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
 
+        // Start animation
         this.animate();
+
+        console.log(`[AstralWeave3D] Scene initialized with ${this.currentQuality} quality.`);
     }
 
-    resizeCanvas() {
-        if (!this.canvas) return;
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        
-        // Reinitialize background elements on resize
-        if (this.backgroundStars.length > 0) {
-            this.initBackgroundStars();
-            this.initNebulaClouds();
-        }
-    }
+    createStarField() {
+        const count = this.activePreset.starCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
 
-    initBackgroundStars() {
-        this.backgroundStars = [];
-        const count = this.activePreset.backgroundStars;
-        
-        for (let i = 0; i < count; i++) {
-            this.backgroundStars.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                size: Math.random() * 1.8 + 0.3,
-                brightness: Math.random() * 0.6 + 0.4,
-                twinkleSpeed: Math.random() * 0.03 + 0.01,
-                twinklePhase: Math.random() * Math.PI * 2,
-                color: this.getRandomStarColor(),
-            });
-        }
-    }
-
-    getRandomStarColor() {
-        const rand = Math.random();
-        if (rand < 0.6) return '#ffffff';
-        if (rand < 0.75) return '#e0f0ff';
-        if (rand < 0.85) return '#ffe8d0';
-        if (rand < 0.92) return '#d0e8ff';
-        return '#ffd0e0';
-    }
-
-    initNebulaClouds() {
-        this.nebulaClouds = [];
-        if (!this.activePreset.enableNebula) return;
-        
-        const count = this.activePreset.nebulaClouds;
-        const colors = [
-            { r: 80, g: 0, b: 120 },   // Purple
-            { r: 0, g: 60, b: 100 },   // Deep blue
-            { r: 100, g: 0, b: 80 },   // Magenta
-            { r: 0, g: 80, b: 80 },    // Teal
-            { r: 60, g: 20, b: 100 },  // Violet
-            { r: 20, g: 40, b: 80 },   // Navy
-        ];
-        
-        for (let i = 0; i < count; i++) {
-            const color = colors[i % colors.length];
-            this.nebulaClouds.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                radius: Math.random() * 300 + 200,
-                color,
-                alpha: Math.random() * 0.15 + 0.05,
-                driftX: (Math.random() - 0.5) * 0.2,
-                driftY: (Math.random() - 0.5) * 0.1,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: Math.random() * 0.005 + 0.002,
-            });
-        }
-    }
-
-    initFogLayers() {
-        this.fogLayers = [];
-        if (!this.activePreset.enableFog) return;
-        
-        const count = this.activePreset.fogLayers;
-        for (let i = 0; i < count; i++) {
-            this.fogLayers.push({
-                y: this.canvas.height * (0.3 + i * 0.2),
-                height: Math.random() * 150 + 100,
-                alpha: Math.random() * 0.08 + 0.03,
-                speed: Math.random() * 0.3 + 0.1,
-                offset: Math.random() * 1000,
-            });
-        }
-    }
-
-    initThreads() {
-        this.threads = [];
-        const count = this.activePreset.threads;
-        const baseThickness = this.activePreset.threadThickness;
-
-        // Enhanced thread colors with gradients
-        const threadColors = [
-            { main: '#00ffff', glow: '#00e5ff' },
-            { main: '#ff00ff', glow: '#e040fb' },
-            { main: '#7c4dff', glow: '#651fff' },
-            { main: '#00ff88', glow: '#00e676' },
-            { main: '#ffd700', glow: '#ffab00' },
+        // Star color palette
+        const starColors = [
+            new THREE.Color(0xffffff), // White
+            new THREE.Color(0xe0f0ff), // Pale blue
+            new THREE.Color(0xffd0e0), // Pink tint
+            new THREE.Color(0xd0e8ff), // Cyan tint
+            new THREE.Color(0xffffee), // Warm white
+            new THREE.Color(0xccffee)  // Green tint
         ];
 
         for (let i = 0; i < count; i++) {
-            const colorSet = threadColors[i % threadColors.length];
-            this.threads.push({
-                y: Math.random() * this.canvas.height,
-                amplitude: Math.random() * 120 + 40,
-                frequency: Math.random() * 0.008 + 0.003,
-                phase: Math.random() * Math.PI * 2,
-                speed: Math.random() * 0.003 + 0.001,
-                color: colorSet.main,
-                glowColor: colorSet.glow,
-                thickness: baseThickness * (Math.random() * 0.5 + 0.75),
-                alpha: Math.random() * 0.4 + 0.15,
-                waveOffset: Math.random() * 100,
+            const i3 = i * 3;
+
+            // Spread stars in a large sphere around camera
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const radius = 50 + Math.random() * 100;
+
+            positions[i3] = Math.sin(phi) * Math.cos(theta) * radius;
+            positions[i3 + 1] = Math.sin(phi) * Math.sin(theta) * radius;
+            positions[i3 + 2] = Math.cos(phi) * radius;
+
+            sizes[i] = Math.random() * 2.5 + 0.5;
+            phases[i] = Math.random() * Math.PI * 2;
+
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.starSystem = new THREE.Points(geometry, material);
+        this.scene.add(this.starSystem);
+    }
+
+    createCosmicThreads() {
+        const threadCount = this.activePreset.threadCount;
+
+        // Thread color sets - ethereal cosmic colors
+        const threadColorSets = [
+            { primary: this.colorPalette.cyan, secondary: this.colorPalette.magenta, tertiary: this.colorPalette.gold },
+            { primary: this.colorPalette.magenta, secondary: this.colorPalette.purple, tertiary: this.colorPalette.cyan },
+            { primary: this.colorPalette.purple, secondary: this.colorPalette.cyan, tertiary: this.colorPalette.green },
+            { primary: this.colorPalette.gold, secondary: this.colorPalette.cyan, tertiary: this.colorPalette.magenta },
+            { primary: this.colorPalette.green, secondary: this.colorPalette.gold, tertiary: this.colorPalette.purple }
+        ];
+
+        for (let i = 0; i < threadCount; i++) {
+            const colorSet = threadColorSets[i % threadColorSets.length];
+
+            // Create smooth, elegant sine wave path for the thread
+            const points = [];
+            const numPoints = 80;
+
+            // Spread threads vertically across screen
+            const baseY = ((i / threadCount) - 0.5) * 35;
+            const baseZ = -15 + (i % 3) * 5; // Layer threads at different depths
+
+            // Each thread has unique wave properties for organic variation
+            const amplitude = 6 + (i % 4) * 2; // Wave height
+            const frequency = 1.5 + (i % 3) * 0.5; // Wave frequency
+            const phaseOffset = (i / threadCount) * Math.PI * 2; // Phase offset
+
+            for (let j = 0; j < numPoints; j++) {
+                const t = j / (numPoints - 1);
+                const x = -50 + t * 100; // Span from -50 to +50
+
+                // Smooth sine wave with secondary harmonic for organic feel
+                const y = baseY +
+                    Math.sin(t * Math.PI * frequency + phaseOffset) * amplitude +
+                    Math.sin(t * Math.PI * frequency * 2 + phaseOffset * 1.5) * (amplitude * 0.3);
+
+                // Gentle Z undulation for depth
+                const z = baseZ + Math.cos(t * Math.PI * frequency * 0.7 + phaseOffset) * 3;
+
+                points.push(new THREE.Vector3(x, y, z));
+            }
+
+            const curve = new THREE.CatmullRomCurve3(points);
+
+            // Create thin, elegant tube geometry
+            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 0.08, 6, false);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: this.uniforms.time,
+                    intensity: this.uniforms.intensity,
+                    waveSpeed: { value: 0.2 + (i % 5) * 0.05 },
+                    waveAmplitude: { value: 1.0 },
+                    threadOffset: { value: i * 1.5 },
+                    colorPrimary: { value: colorSet.primary },
+                    colorSecondary: { value: colorSet.secondary },
+                    colorTertiary: { value: colorSet.tertiary }
+                },
+                vertexShader: cosmicThreadVertexShader,
+                fragmentShader: cosmicThreadFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
             });
+
+            const thread = new THREE.Mesh(tubeGeometry, material);
+            thread.userData.baseY = baseY;
+            thread.userData.phaseOffset = phaseOffset;
+
+            this.mainGroup.add(thread);
+            this.cosmicThreads.push(thread);
         }
     }
 
-    initParticles() {
-        this.particles = [];
-        const count = this.activePreset.particles;
+    createNebulaParticles() {
+        const count = this.activePreset.nebulaCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const randoms = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        // Nebula colors - deep purples, cyans, magentas
+        const nebulaColors = [
+            new THREE.Color(0x4a0080), // Deep purple
+            new THREE.Color(0x0060a0), // Deep blue
+            new THREE.Color(0x800060), // Deep magenta
+            new THREE.Color(0x005858), // Deep teal
+            new THREE.Color(0x3a1480)  // Violet
+        ];
+
         for (let i = 0; i < count; i++) {
-            this.particles.push(this.createParticle());
-        }
-    }
+            const i3 = i * 3;
 
-    createParticle() {
-        const colors = ['#00ffff', '#ff00ff', '#7c4dff', '#00ff88', '#ffd700'];
-        return {
-            x: Math.random() * this.canvas.width,
-            y: Math.random() * this.canvas.height,
-            vx: (Math.random() - 0.5) * 0.4,
-            vy: (Math.random() - 0.5) * 0.4,
-            size: Math.random() * 2.5 + 0.5,
-            alpha: Math.random() * 0.6 + 0.2,
-            life: Math.random() * 0.5 + 0.5,
-            decay: Math.random() * 0.004 + 0.001,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            trail: [],
-        };
-    }
+            // Spread around the scene
+            positions[i3] = (Math.random() - 0.5) * 100;
+            positions[i3 + 1] = (Math.random() - 0.5) * 60;
+            positions[i3 + 2] = (Math.random() - 0.5) * 80 - 20;
 
-    createEnergyBeam(x, y, targetX, targetY) {
-        const colors = ['#00ffff', '#ff00ff', '#7c4dff'];
-        return {
-            x,
-            y,
-            targetX,
-            targetY,
-            progress: 0,
-            life: 1.0,
-            width: Math.random() * 4 + 2,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            particles: [],
-        };
-    }
+            randoms[i] = Math.random();
 
-    createCosmicOrb(x, y) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 3 + 2;
-        const colors = ['#00ffff', '#ff00ff', '#ffd700', '#00ff88'];
-        return {
-            x,
-            y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size: Math.random() * 8 + 4,
-            life: 1.0,
-            pulsePhase: Math.random() * Math.PI * 2,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            trail: [],
-        };
-    }
-
-    createWarpPoint(x, y) {
-        return {
-            x,
-            y,
-            radius: 0,
-            maxRadius: Math.random() * 180 + 120,
-            rotation: 0,
-            rotationSpeed: (Math.random() - 0.5) * 0.06,
-            life: 1.0,
-            particles: [],
-            color: Math.random() > 0.5 ? '#00ffff' : '#ff00ff',
-        };
-    }
-
-    createConstellation() {
-        const centerX = Math.random() * this.canvas.width;
-        const centerY = Math.random() * this.canvas.height;
-        const stars = [];
-        const starCount = this.activePreset.constellationStars;
-        const colors = ['#00ffff', '#ff00ff', '#ffffff', '#ffd700'];
-
-        for (let i = 0; i < starCount; i++) {
-            const angle = (Math.PI * 2 / starCount) * i + Math.random() * 0.5;
-            const distance = Math.random() * 120 + 60;
-            stars.push({
-                x: centerX + Math.cos(angle) * distance,
-                y: centerY + Math.sin(angle) * distance,
-                size: Math.random() * 4 + 1.5,
-                brightness: Math.random() * 0.5 + 0.5,
-                color: colors[Math.floor(Math.random() * colors.length)],
-            });
+            const color = nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
         }
 
-        return {
-            stars,
-            life: 1.0,
-            pulsePhase: Math.random() * Math.PI * 2,
-        };
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time
+            },
+            vertexShader: nebulaVertexShader,
+            fragmentShader: nebulaFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.nebulaParticles = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.nebulaParticles);
+    }
+
+    createStardust() {
+        const count = this.activePreset.stardustCount;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const phases = new Float32Array(count);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+
+            positions[i3] = (Math.random() - 0.5) * 80;
+            positions[i3 + 1] = (Math.random() - 0.5) * 50;
+            positions[i3 + 2] = (Math.random() - 0.5) * 60 - 10;
+
+            phases[i] = Math.random() * Math.PI * 2;
+            sizes[i] = Math.random() * 2 + 0.5;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time
+            },
+            vertexShader: stardustVertexShader,
+            fragmentShader: stardustFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.stardustSystem = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.stardustSystem);
+    }
+
+    createCosmicOrbsPool() {
+        // Create a pool of cosmic orbs for event effects
+        const maxOrbs = 20;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(maxOrbs * 3);
+        const phases = new Float32Array(maxOrbs);
+        const sizes = new Float32Array(maxOrbs);
+        const colors = new Float32Array(maxOrbs * 3);
+
+        for (let i = 0; i < maxOrbs; i++) {
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = -1000; // Hidden initially
+            positions[i * 3 + 2] = 0;
+            phases[i] = Math.random() * Math.PI * 2;
+            sizes[i] = 0;
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 1;
+            colors[i * 3 + 2] = 1;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time
+            },
+            vertexShader: cosmicOrbVertexShader,
+            fragmentShader: cosmicOrbFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.cosmicOrbs = new THREE.Points(geometry, material);
+        this.cosmicOrbs.userData.activeOrbs = [];
+        this.mainGroup.add(this.cosmicOrbs);
+    }
+
+    setupLighting() {
+        // Ambient light - deep space blue
+        const ambient = new THREE.AmbientLight(0x1a1a40, 0.4);
+        this.scene.add(ambient);
+
+        // Cyan cosmic light
+        const cyanLight = new THREE.PointLight(0x00ffff, 1.2, 80);
+        cyanLight.position.set(20, 15, 10);
+        this.mainGroup.add(cyanLight);
+
+        // Magenta cosmic light
+        const magentaLight = new THREE.PointLight(0xff00ff, 1.0, 70);
+        magentaLight.position.set(-20, -10, 5);
+        this.mainGroup.add(magentaLight);
+
+        // Gold accent light
+        const goldLight = new THREE.PointLight(0xffd700, 0.8, 50);
+        goldLight.position.set(0, 20, -15);
+        this.mainGroup.add(goldLight);
+    }
+
+    setupPostProcessing() {
+        if (!this.activePreset.bloomEnabled) {
+            this.composer = null;
+            return;
+        }
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(width, height),
+            this.activePreset.bloomStrength,
+            this.activePreset.bloomRadius,
+            0.7
+        );
+        this.composer.addPass(this.bloomPass);
     }
 
     setupEventListeners() {
+        // Line Clear - energy pulses
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.handleLineClear(data);
+            if (!this.isActive || settings?.backgroundComboEffects === false) return;
+
+            this.uniforms.intensity.value += data.lineCount * 0.3;
+            this.comboIntensity += data.lineCount * 0.25;
+
+            // Create pulse waves
+            this.createPulseWave(data.lineCount);
+
+            // Spawn cosmic orbs
+            if (data.lineCount >= 2) {
+                this.spawnCosmicOrbs(data.lineCount * 2);
+            }
+
+            // Create warp vortex for big clears
+            if (data.lineCount >= 3) {
+                this.createWarpVortex();
             }
         });
-        
+
+        // Combo - shooting stars
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.handleCombo(data);
+            if (!this.isActive || settings?.backgroundComboEffects === false) return;
+
+            this.uniforms.intensity.value += 0.2;
+            this.comboIntensity += data.comboCount * 0.12;
+
+            if (data.comboCount >= 2) {
+                this.createShootingStar();
+            }
+            if (data.comboCount >= 4) {
+                this.createShootingStar();
+            }
+            if (data.comboCount >= 6) {
+                this.createWarpVortex();
             }
         });
-        
+
+        // Piece Lock - subtle intensity boost
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.handlePieceLock();
-            }
+            if (!this.isActive || settings?.backgroundComboEffects === false) return;
+
+            this.uniforms.intensity.value += 0.08;
         });
-        
+
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
-    handleLineClear(data) {
-        const count = data.lineCount || 1;
-        const combo = data.comboCount || 0;
-        this.comboIntensity += count * 0.25;
-        this.weaveSpeed = 1.0 + this.comboIntensity;
+    createPulseWave(intensity) {
+        const geometry = new THREE.TorusGeometry(3, 0.2, 8, 48);
 
-        // Spawn effects at random screen locations
-        const numSpawnPoints = Math.min(count + 1, 4);
-        const spawnPoints = [];
-        for (let i = 0; i < numSpawnPoints; i++) {
-            spawnPoints.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-            });
-        }
+        const colors = [this.colorPalette.cyan, this.colorPalette.magenta, this.colorPalette.gold];
+        const color = colors[Math.floor(Math.random() * colors.length)];
 
-        // Particle burst
-        const particlesPerSpawn = Math.floor(count * 6 * this.activePreset.particleBurstMultiplier);
-        spawnPoints.forEach((spawn) => {
-            for (let i = 0; i < particlesPerSpawn; i++) {
-                if (this.particles.length < this.MAX_PARTICLES * 1.5) {
-                    this.particles.push({
-                        ...this.createParticle(),
-                        x: spawn.x,
-                        y: spawn.y,
-                        vx: (Math.random() - 0.5) * 14,
-                        vy: (Math.random() - 0.5) * 14,
-                        life: 1.0,
-                        alpha: 0.9,
-                    });
-                }
-            }
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                opacity: { value: 0.9 },
+                color: { value: color }
+            },
+            vertexShader: pulseWaveVertexShader,
+            fragmentShader: pulseWaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
         });
 
-        // Energy pulses
-        spawnPoints.forEach((spawn, index) => {
-            if (this.energyPulses.length < this.MAX_PULSES) {
-                const colors = ['#00ffff', '#ff00ff', '#ffd700', '#7c4dff'];
-                this.energyPulses.push({
-                    x: spawn.x,
-                    y: spawn.y,
-                    radius: 0,
-                    maxRadius: 350 + count * 60,
-                    alpha: 0.8,
-                    color: count >= 4 ? '#ffd700' : colors[index % colors.length],
+        const wave = new THREE.Mesh(geometry, material);
+        wave.position.set(
+            (Math.random() - 0.5) * 30,
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 10
+        );
+        wave.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            0
+        );
+
+        wave.userData = {
+            speed: 8 + intensity * 2,
+            life: 1.5,
+            maxLife: 1.5
+        };
+
+        this.mainGroup.add(wave);
+        this.pulseWaves.push(wave);
+    }
+
+    spawnCosmicOrbs(count) {
+        if (!this.cosmicOrbs) return;
+
+        const positions = this.cosmicOrbs.geometry.attributes.position.array;
+        const sizes = this.cosmicOrbs.geometry.attributes.aSize.array;
+        const colors = this.cosmicOrbs.geometry.attributes.aColor.array;
+        const activeOrbs = this.cosmicOrbs.userData.activeOrbs;
+
+        const orbColors = [
+            this.colorPalette.cyan,
+            this.colorPalette.magenta,
+            this.colorPalette.gold,
+            this.colorPalette.green
+        ];
+
+        for (let i = 0; i < Math.min(count, 20); i++) {
+            const orbIndex = activeOrbs.length < 20 ? activeOrbs.length : Math.floor(Math.random() * 20);
+            const i3 = orbIndex * 3;
+
+            positions[i3] = (Math.random() - 0.5) * 40;
+            positions[i3 + 1] = (Math.random() - 0.5) * 30;
+            positions[i3 + 2] = (Math.random() - 0.5) * 20;
+
+            sizes[orbIndex] = 4 + Math.random() * 4;
+
+            const color = orbColors[Math.floor(Math.random() * orbColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            if (activeOrbs.length < 20) {
+                activeOrbs.push({
+                    index: orbIndex,
+                    life: 2.0,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    vz: (Math.random() - 0.5) * 1
                 });
             }
-        });
-
-        // Energy beams
-        if (count >= 2 && this.energyBeams.length < this.activePreset.maxBeams) {
-            for (let i = 0; i < Math.min(count, 4); i++) {
-                const startX = Math.random() * this.canvas.width;
-                const startY = Math.random() * this.canvas.height;
-                const endX = Math.random() * this.canvas.width;
-                const endY = Math.random() * this.canvas.height;
-                this.energyBeams.push(this.createEnergyBeam(startX, startY, endX, endY));
-            }
         }
 
-        // Cosmic orbs
-        if (count >= 2 && this.cosmicOrbs.length < this.activePreset.maxOrbs) {
-            spawnPoints.forEach((spawn) => {
-                this.cosmicOrbs.push(this.createCosmicOrb(spawn.x, spawn.y));
-            });
-        }
-
-        // Warp points for big clears
-        if (count >= 3 && this.warpPoints.length < this.activePreset.maxWarpPoints) {
-            const warpX = Math.random() * this.canvas.width;
-            const warpY = Math.random() * this.canvas.height;
-            this.warpPoints.push(this.createWarpPoint(warpX, warpY));
-        }
-
-        // Screen shake
-        if (this.activePreset.enableScreenShake && combo >= 3) {
-            this.screenShake.intensity = Math.min(combo * 2.5, 15);
-        }
+        this.cosmicOrbs.geometry.attributes.position.needsUpdate = true;
+        this.cosmicOrbs.geometry.attributes.aSize.needsUpdate = true;
+        this.cosmicOrbs.geometry.attributes.aColor.needsUpdate = true;
     }
 
-    handleCombo(data) {
-        const combo = data.comboCount || 0;
-        this.comboIntensity += combo * 0.12;
-        this.riftOpenness = Math.min(1.0, combo * 0.18);
+    createWarpVortex() {
+        const geometry = new THREE.TorusGeometry(6, 0.8, 16, 64);
 
-        // Constellations for big combos
-        if (combo >= 5 && this.constellations.length < this.activePreset.maxConstellations) {
-            this.constellations.push(this.createConstellation());
-        }
-
-        // Extra warp point for massive combos
-        if (combo >= 7 && this.warpPoints.length < this.activePreset.maxWarpPoints) {
-            const warpX = Math.random() * this.canvas.width;
-            const warpY = Math.random() * this.canvas.height;
-            this.warpPoints.push(this.createWarpPoint(warpX, warpY));
-        }
-    }
-
-    handlePieceLock() {
-        if (!this.activePreset.enablePieceLockEffects) return;
-
-        // Subtle thread pulse
-        this.threads.forEach(thread => {
-            thread.alpha = Math.min(thread.alpha + 0.08, 0.6);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                opacity: { value: 0.8 },
+                rotation: { value: 0 },
+                colorA: { value: this.colorPalette.cyan },
+                colorB: { value: this.colorPalette.magenta }
+            },
+            vertexShader: warpVortexVertexShader,
+            fragmentShader: warpVortexFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
         });
 
-        // Spawn a few sparkle particles
-        if (Math.random() < 0.4) {
-            const sparkleCount = Math.floor(Math.random() * 3) + 1;
-            for (let i = 0; i < sparkleCount; i++) {
-                if (this.stardust.length < this.MAX_STARDUST) {
-                    this.stardust.push({
-                        x: Math.random() * this.canvas.width,
-                        y: Math.random() * this.canvas.height,
-                        vx: (Math.random() - 0.5) * 0.5,
-                        vy: (Math.random() - 0.5) * 0.5,
-                        size: Math.random() * 2 + 1,
-                        alpha: 0.8,
-                        life: 0.8,
-                        twinkle: Math.random() * Math.PI * 2,
-                    });
-                }
-            }
-        }
-    }
-
-    update() {
-        this.time++;
-        this.backgroundHue = (this.backgroundHue + 0.05) % 360;
-        this.nebulaPhase += 0.002;
-
-        // Decay intensity
-        this.comboIntensity *= 0.97;
-        this.weaveSpeed = 1.0 + this.comboIntensity * 2;
-        this.riftOpenness *= 0.98;
-
-        // Thread alpha decay back to normal
-        this.threads.forEach(thread => {
-            thread.alpha *= 0.995;
-            if (thread.alpha < 0.15) thread.alpha = 0.15;
-        });
-
-        // Screen shake
-        if (this.screenShake.intensity > 0) {
-            this.screenShake.x = (Math.random() - 0.5) * this.screenShake.intensity;
-            this.screenShake.y = (Math.random() - 0.5) * this.screenShake.intensity;
-            this.screenShake.intensity *= 0.88;
-        } else {
-            this.screenShake.x = 0;
-            this.screenShake.y = 0;
-        }
-
-        // Update nebula clouds
-        this.nebulaClouds.forEach(cloud => {
-            cloud.x += cloud.driftX;
-            cloud.y += cloud.driftY;
-            cloud.pulsePhase += cloud.pulseSpeed;
-            
-            // Wrap around screen
-            if (cloud.x < -cloud.radius) cloud.x = this.canvas.width + cloud.radius;
-            if (cloud.x > this.canvas.width + cloud.radius) cloud.x = -cloud.radius;
-            if (cloud.y < -cloud.radius) cloud.y = this.canvas.height + cloud.radius;
-            if (cloud.y > this.canvas.height + cloud.radius) cloud.y = -cloud.radius;
-        });
-
-        // Update background stars twinkling
-        this.backgroundStars.forEach(star => {
-            star.twinklePhase += star.twinkleSpeed;
-        });
-
-        // Spawn stardust
-        if (Math.random() < this.activePreset.stardustSpawnRate && this.stardust.length < this.MAX_STARDUST) {
-            this.stardust.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                vx: (Math.random() - 0.5) * 0.3,
-                vy: (Math.random() - 0.5) * 0.3,
-                size: Math.random() * 1.5 + 0.3,
-                alpha: Math.random() * 0.5 + 0.3,
-                life: 1.0,
-                twinkle: Math.random() * Math.PI * 2,
-            });
-        }
-
-        // Update threads
-        this.threads.forEach((thread) => {
-            thread.phase += thread.speed * this.weaveSpeed;
-        });
-
-        // Update particles with trails
-        this.particles.forEach((p, index) => {
-            if (this.activePreset.enableTrails) {
-                p.trail.unshift({ x: p.x, y: p.y, alpha: p.alpha });
-                if (p.trail.length > 8) p.trail.pop();
-            }
-
-            p.x += p.vx;
-            p.y += p.vy;
-            p.life -= p.decay;
-            p.vx *= 0.98;
-            p.vy *= 0.98;
-
-            if (p.life <= 0) {
-                this.particles[index] = this.createParticle();
-            }
-        });
-
-        // Update stardust
-        for (let i = this.stardust.length - 1; i >= 0; i--) {
-            const dust = this.stardust[i];
-            dust.x += dust.vx;
-            dust.y += dust.vy;
-            dust.life -= 0.008;
-            dust.twinkle += 0.12;
-
-            if (dust.life <= 0) {
-                this.stardust.splice(i, 1);
-            }
-        }
-
-        // Update pulses
-        for (let i = this.energyPulses.length - 1; i >= 0; i--) {
-            const pulse = this.energyPulses[i];
-            pulse.radius += 12 + this.comboIntensity * 6;
-            pulse.alpha -= 0.012;
-            if (pulse.alpha <= 0 || pulse.radius > pulse.maxRadius) {
-                this.energyPulses.splice(i, 1);
-            }
-        }
-
-        // Update energy beams
-        for (let i = this.energyBeams.length - 1; i >= 0; i--) {
-            const beam = this.energyBeams[i];
-            beam.progress += 0.04;
-            beam.life -= 0.015;
-
-            if (beam.life <= 0 || beam.progress >= 1) {
-                this.energyBeams.splice(i, 1);
-            }
-        }
-
-        // Update cosmic orbs
-        for (let i = this.cosmicOrbs.length - 1; i >= 0; i--) {
-            const orb = this.cosmicOrbs[i];
-
-            if (this.activePreset.enableTrails && this.activePreset.orbTrailLength > 0) {
-                orb.trail.unshift({ x: orb.x, y: orb.y, size: orb.size });
-                if (orb.trail.length > this.activePreset.orbTrailLength) orb.trail.pop();
-            }
-
-            orb.x += orb.vx;
-            orb.y += orb.vy;
-            orb.vx *= 0.97;
-            orb.vy *= 0.97;
-            orb.life -= 0.006;
-            orb.pulsePhase += 0.1;
-
-            if (orb.life <= 0 || orb.x < -50 || orb.x > this.canvas.width + 50
-                || orb.y < -50 || orb.y > this.canvas.height + 50) {
-                this.cosmicOrbs.splice(i, 1);
-            }
-        }
-
-        // Update warp points
-        for (let i = this.warpPoints.length - 1; i >= 0; i--) {
-            const warp = this.warpPoints[i];
-            warp.radius += 5;
-            warp.rotation += warp.rotationSpeed;
-            warp.life -= 0.004;
-
-            // Spawn particles from warp point
-            if (Math.random() < 0.5 && warp.particles.length < 35) {
-                const angle = Math.random() * Math.PI * 2;
-                const speed = Math.random() * 4 + 1;
-                warp.particles.push({
-                    x: warp.x,
-                    y: warp.y,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    size: Math.random() * 2.5 + 0.5,
-                    life: 1.0,
-                    alpha: 0.9,
-                });
-            }
-
-            // Update warp particles
-            for (let j = warp.particles.length - 1; j >= 0; j--) {
-                const p = warp.particles[j];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= 0.02;
-                p.alpha = p.life * 0.9;
-
-                if (p.life <= 0) {
-                    warp.particles.splice(j, 1);
-                }
-            }
-
-            if (warp.life <= 0 || warp.radius > warp.maxRadius) {
-                this.warpPoints.splice(i, 1);
-            }
-        }
-
-        // Update constellations
-        for (let i = this.constellations.length - 1; i >= 0; i--) {
-            const constellation = this.constellations[i];
-            constellation.life -= 0.002;
-            constellation.pulsePhase += 0.05;
-
-            if (constellation.life <= 0) {
-                this.constellations.splice(i, 1);
-            }
-        }
-    }
-
-    draw() {
-        if (!this.ctx) return;
-
-        this.ctx.save();
-        this.ctx.translate(this.screenShake.x, this.screenShake.y);
-
-        // Draw animated background gradient
-        this.drawBackground();
-
-        // Draw nebula clouds
-        if (this.activePreset.enableNebula) {
-            this.drawNebulaClouds();
-        }
-
-        // Draw background stars
-        this.drawBackgroundStars();
-
-        // Draw fog layers
-        if (this.activePreset.enableFog) {
-            this.drawFogLayers();
-        }
-
-        // Draw stardust
-        this.ctx.globalCompositeOperation = 'lighter';
-        this.stardust.forEach((dust) => {
-            const twinkle = Math.sin(dust.twinkle) * 0.4 + 0.6;
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.globalAlpha = dust.alpha * dust.life * twinkle;
-            this.ctx.beginPath();
-            this.ctx.arc(dust.x, dust.y, dust.size, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
-
-        // Draw Rift (Center Glow)
-        if (this.activePreset.enableRiftEffect && this.riftOpenness > 0.01) {
-            const cx = this.canvas.width / 2;
-            const cy = this.canvas.height / 2;
-            const riftGradient = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, this.canvas.width * 0.5 * this.riftOpenness);
-            riftGradient.addColorStop(0, `rgba(255, 255, 255, ${this.riftOpenness * 0.7})`);
-            riftGradient.addColorStop(0.2, `rgba(0, 255, 255, ${this.riftOpenness * 0.4})`);
-            riftGradient.addColorStop(0.5, `rgba(255, 0, 255, ${this.riftOpenness * 0.2})`);
-            riftGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            this.ctx.fillStyle = riftGradient;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-
-        // Draw constellations
-        this.drawConstellations();
-
-        // Draw warp points
-        this.drawWarpPoints();
-
-        // Draw energy beams
-        this.drawEnergyBeams();
-
-        // Draw threads
-        this.drawThreads();
-
-        // Draw energy pulses
-        this.drawEnergyPulses();
-
-        // Draw cosmic orbs
-        this.drawCosmicOrbs();
-
-        // Draw particles
-        this.drawParticles();
-
-        this.ctx.globalCompositeOperation = 'source-over';
-        this.ctx.globalAlpha = 1.0;
-        this.ctx.restore();
-    }
-
-    drawBackground() {
-        // Animated multi-layer gradient
-        const hueShift = Math.sin(this.time * 0.0008) * 10;
-        
-        const bgGradient = this.ctx.createRadialGradient(
-            this.canvas.width * 0.3,
-            this.canvas.height * 0.3,
-            0,
-            this.canvas.width * 0.5,
-            this.canvas.height * 0.5,
-            this.canvas.width * 0.8
+        const vortex = new THREE.Mesh(geometry, material);
+        vortex.position.set(
+            (Math.random() - 0.5) * 30,
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 15 - 5
         );
-        
-        bgGradient.addColorStop(0, `hsl(${260 + hueShift}, 80%, 8%)`);
-        bgGradient.addColorStop(0.3, `hsl(${270 + hueShift}, 70%, 6%)`);
-        bgGradient.addColorStop(0.6, `hsl(${280 + hueShift}, 60%, 4%)`);
-        bgGradient.addColorStop(1, `hsl(${290 + hueShift}, 50%, 2%)`);
-        
-        this.ctx.fillStyle = bgGradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Secondary gradient for depth
-        const secondaryGradient = this.ctx.createRadialGradient(
-            this.canvas.width * 0.8,
-            this.canvas.height * 0.7,
-            0,
-            this.canvas.width * 0.8,
-            this.canvas.height * 0.7,
-            this.canvas.width * 0.5
-        );
-        
-        secondaryGradient.addColorStop(0, `hsla(${200 + hueShift}, 60%, 15%, 0.15)`);
-        secondaryGradient.addColorStop(0.5, `hsla(${220 + hueShift}, 50%, 10%, 0.1)`);
-        secondaryGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
-        this.ctx.fillStyle = secondaryGradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        vortex.userData = {
+            life: 2.5,
+            maxLife: 2.5,
+            rotationSpeed: (Math.random() - 0.5) * 2
+        };
+
+        this.mainGroup.add(vortex);
+        this.warpVortexes.push(vortex);
     }
 
-    drawNebulaClouds() {
-        this.nebulaClouds.forEach(cloud => {
-            const pulse = Math.sin(cloud.pulsePhase) * 0.3 + 0.7;
-            const gradient = this.ctx.createRadialGradient(
-                cloud.x, cloud.y, 0,
-                cloud.x, cloud.y, cloud.radius
-            );
-            
-            const { r, g, b } = cloud.color;
-            gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${cloud.alpha * pulse})`);
-            gradient.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, ${cloud.alpha * pulse * 0.5})`);
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(
-                cloud.x - cloud.radius,
-                cloud.y - cloud.radius,
-                cloud.radius * 2,
-                cloud.radius * 2
-            );
+    createShootingStar() {
+        const trailLength = 25;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(trailLength * 3);
+        const progress = new Float32Array(trailLength);
+
+        // Random start position
+        const startX = (Math.random() - 0.5) * 80;
+        const startY = 20 + Math.random() * 20;
+        const startZ = (Math.random() - 0.5) * 40 - 10;
+
+        // Random direction (diagonal down)
+        const dirX = (Math.random() - 0.5) * 2;
+        const dirY = -1 - Math.random() * 0.5;
+        const dirZ = (Math.random() - 0.5);
+
+        for (let i = 0; i < trailLength; i++) {
+            positions[i * 3] = startX;
+            positions[i * 3 + 1] = startY;
+            positions[i * 3 + 2] = startZ;
+            progress[i] = i / trailLength;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
+
+        const starColors = [
+            new THREE.Color(0xaaffdd),
+            new THREE.Color(0xffaaff),
+            new THREE.Color(0xffffaa)
+        ];
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                color: { value: starColors[Math.floor(Math.random() * starColors.length)] },
+                opacity: { value: 1.0 }
+            },
+            vertexShader: shootingStarVertexShader,
+            fragmentShader: shootingStarFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
         });
-    }
 
-    drawBackgroundStars() {
-        this.backgroundStars.forEach(star => {
-            const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
-            this.ctx.fillStyle = star.color;
-            this.ctx.globalAlpha = star.brightness * twinkle;
-            this.ctx.beginPath();
-            this.ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
-        this.ctx.globalAlpha = 1;
-    }
+        const star = new THREE.Points(geometry, material);
+        star.userData = {
+            direction: new THREE.Vector3(dirX, dirY, dirZ).normalize(),
+            speed: 40 + Math.random() * 25,
+            life: 1.8,
+            maxLife: 1.8,
+            headPosition: new THREE.Vector3(startX, startY, startZ)
+        };
 
-    drawFogLayers() {
-        this.fogLayers.forEach(fog => {
-            const offset = (this.time * fog.speed + fog.offset) % (this.canvas.width * 2);
-            
-            const gradient = this.ctx.createLinearGradient(
-                0, fog.y - fog.height / 2,
-                0, fog.y + fog.height / 2
-            );
-            gradient.addColorStop(0, 'rgba(60, 30, 90, 0)');
-            gradient.addColorStop(0.5, `rgba(60, 30, 90, ${fog.alpha})`);
-            gradient.addColorStop(1, 'rgba(60, 30, 90, 0)');
-            
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(-offset, fog.y - fog.height / 2, this.canvas.width * 3, fog.height);
-        });
-    }
-
-    drawConstellations() {
-        this.constellations.forEach((constellation) => {
-            const pulse = Math.sin(constellation.pulsePhase) * 0.3 + 0.7;
-            this.ctx.globalAlpha = constellation.life * pulse;
-
-            // Draw connecting lines
-            this.ctx.strokeStyle = '#00ffff';
-            this.ctx.lineWidth = 1.5;
-            this.ctx.beginPath();
-            for (let i = 0; i < constellation.stars.length; i++) {
-                const star = constellation.stars[i];
-                if (i === 0) {
-                    this.ctx.moveTo(star.x, star.y);
-                } else {
-                    this.ctx.lineTo(star.x, star.y);
-                }
-            }
-            this.ctx.closePath();
-            this.ctx.stroke();
-
-            // Draw stars with glow
-            constellation.stars.forEach((star) => {
-                const starGlow = this.ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, star.size * 4);
-                starGlow.addColorStop(0, `rgba(255, 255, 255, ${star.brightness})`);
-                starGlow.addColorStop(0.3, `${star.color}${Math.floor(star.brightness * 180).toString(16).padStart(2, '0')}`);
-                starGlow.addColorStop(1, `${star.color}00`);
-
-                this.ctx.fillStyle = starGlow;
-                this.ctx.beginPath();
-                this.ctx.arc(star.x, star.y, star.size * 4, 0, Math.PI * 2);
-                this.ctx.fill();
-            });
-        });
-    }
-
-    drawWarpPoints() {
-        this.warpPoints.forEach((warp) => {
-            this.ctx.save();
-            this.ctx.translate(warp.x, warp.y);
-            this.ctx.rotate(warp.rotation);
-
-            // Draw spiraling energy arcs
-            for (let i = 0; i < 4; i++) {
-                const angle = (Math.PI * 2 / 4) * i + warp.rotation * 2;
-                const spiralRadius = warp.radius * 0.7;
-
-                const arcColor = i % 2 === 0 ? warp.color : (warp.color === '#00ffff' ? '#ff00ff' : '#00ffff');
-                this.ctx.strokeStyle = arcColor;
-                this.ctx.lineWidth = 2.5;
-                this.ctx.globalAlpha = warp.life * 0.7;
-
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, spiralRadius, angle, angle + Math.PI * 0.7);
-                this.ctx.stroke();
-            }
-
-            // Draw center vortex
-            const vortexGradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, warp.radius * 0.5);
-            vortexGradient.addColorStop(0, `rgba(255, 255, 255, ${warp.life * 0.9})`);
-            vortexGradient.addColorStop(0.3, `${warp.color}${Math.floor(warp.life * 200).toString(16).padStart(2, '0')}`);
-            vortexGradient.addColorStop(1, `${warp.color}00`);
-
-            this.ctx.fillStyle = vortexGradient;
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, warp.radius * 0.5, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.restore();
-
-            // Draw warp particles
-            warp.particles.forEach((p) => {
-                const color = Math.random() > 0.5 ? '#00ffff' : '#ff00ff';
-                this.ctx.fillStyle = color;
-                this.ctx.globalAlpha = p.alpha;
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fill();
-            });
-        });
-    }
-
-    drawEnergyBeams() {
-        this.energyBeams.forEach((beam) => {
-            const currentX = beam.x + (beam.targetX - beam.x) * beam.progress;
-            const currentY = beam.y + (beam.targetY - beam.y) * beam.progress;
-
-            // Outer glow
-            const beamGradient = this.ctx.createLinearGradient(beam.x, beam.y, currentX, currentY);
-            beamGradient.addColorStop(0, `${beam.color}cc`);
-            beamGradient.addColorStop(0.5, `${beam.color}88`);
-            beamGradient.addColorStop(1, `${beam.color}00`);
-
-            this.ctx.strokeStyle = beamGradient;
-            this.ctx.lineWidth = this.activePreset.beamWidth * 3.5;
-            this.ctx.globalAlpha = beam.life * 0.35;
-            this.ctx.lineCap = 'round';
-            this.ctx.beginPath();
-            this.ctx.moveTo(beam.x, beam.y);
-            this.ctx.lineTo(currentX, currentY);
-            this.ctx.stroke();
-
-            // Core beam
-            this.ctx.strokeStyle = '#ffffff';
-            this.ctx.lineWidth = this.activePreset.beamWidth;
-            this.ctx.globalAlpha = beam.life * 0.85;
-            this.ctx.beginPath();
-            this.ctx.moveTo(beam.x, beam.y);
-            this.ctx.lineTo(currentX, currentY);
-            this.ctx.stroke();
-        });
-    }
-
-    drawThreads() {
-        this.threads.forEach((thread) => {
-            // Glow layers
-            if (this.activePreset.enableThreadGlow) {
-                const glowLayers = this.activePreset.threadGlowLayers;
-                for (let layer = glowLayers; layer > 0; layer--) {
-                    this.ctx.beginPath();
-                    this.ctx.strokeStyle = thread.glowColor;
-                    this.ctx.lineWidth = thread.thickness * (1 + layer * 2);
-                    this.ctx.globalAlpha = (thread.alpha + this.comboIntensity * 0.15) * (0.12 / layer);
-
-                    for (let x = 0; x < this.canvas.width; x += 15) {
-                        const y = thread.y + Math.sin(x * thread.frequency + thread.phase) * thread.amplitude;
-                        if (x === 0) this.ctx.moveTo(x, y);
-                        else this.ctx.lineTo(x, y);
-                    }
-                    this.ctx.stroke();
-                }
-            }
-
-            // Core thread
-            this.ctx.beginPath();
-            this.ctx.strokeStyle = thread.color;
-            this.ctx.lineWidth = thread.thickness;
-            this.ctx.globalAlpha = thread.alpha + (this.comboIntensity * 0.2);
-
-            for (let x = 0; x < this.canvas.width; x += 15) {
-                const y = thread.y + Math.sin(x * thread.frequency + thread.phase) * thread.amplitude;
-                if (x === 0) this.ctx.moveTo(x, y);
-                else this.ctx.lineTo(x, y);
-            }
-            this.ctx.stroke();
-        });
-    }
-
-    drawEnergyPulses() {
-        this.energyPulses.forEach((pulse) => {
-            // Outer ring glow
-            this.ctx.beginPath();
-            this.ctx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
-            this.ctx.strokeStyle = pulse.color;
-            this.ctx.lineWidth = this.activePreset.pulseWidth * 1.5;
-            this.ctx.globalAlpha = pulse.alpha * 0.25;
-            this.ctx.stroke();
-
-            // Inner ring
-            this.ctx.beginPath();
-            this.ctx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
-            this.ctx.strokeStyle = '#ffffff';
-            this.ctx.lineWidth = this.activePreset.pulseWidth * 0.6;
-            this.ctx.globalAlpha = pulse.alpha * 0.7;
-            this.ctx.stroke();
-        });
-    }
-
-    drawCosmicOrbs() {
-        this.cosmicOrbs.forEach((orb) => {
-            const pulse = Math.sin(orb.pulsePhase) * 0.3 + 0.7;
-
-            // Draw trail
-            if (this.activePreset.enableTrails) {
-                for (let i = 0; i < orb.trail.length; i++) {
-                    const trailPoint = orb.trail[i];
-                    const trailFade = 1 - (i / orb.trail.length);
-
-                    const trailGradient = this.ctx.createRadialGradient(
-                        trailPoint.x, trailPoint.y, 0,
-                        trailPoint.x, trailPoint.y, trailPoint.size * 2.5 * trailFade
-                    );
-                    
-                    const alpha = Math.floor(orb.life * trailFade * 150);
-                    trailGradient.addColorStop(0, `${orb.color}${alpha.toString(16).padStart(2, '0')}`);
-                    trailGradient.addColorStop(1, `${orb.color}00`);
-
-                    this.ctx.fillStyle = trailGradient;
-                    this.ctx.beginPath();
-                    this.ctx.arc(trailPoint.x, trailPoint.y, trailPoint.size * 2.5 * trailFade, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-            }
-
-            // Draw outer glow
-            const orbGlow = this.ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.size * 3.5);
-            orbGlow.addColorStop(0, `rgba(255, 255, 255, ${orb.life * pulse})`);
-            const alpha = Math.floor(orb.life * pulse * 200);
-            orbGlow.addColorStop(0.25, `${orb.color}${alpha.toString(16).padStart(2, '0')}`);
-            orbGlow.addColorStop(1, `${orb.color}00`);
-
-            this.ctx.fillStyle = orbGlow;
-            this.ctx.globalAlpha = orb.life;
-            this.ctx.beginPath();
-            this.ctx.arc(orb.x, orb.y, orb.size * 3.5, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Draw core
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.globalAlpha = orb.life * pulse;
-            this.ctx.beginPath();
-            this.ctx.arc(orb.x, orb.y, orb.size * 0.6, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
-    }
-
-    drawParticles() {
-        this.ctx.globalCompositeOperation = 'lighter';
-        
-        this.particles.forEach((p) => {
-            // Draw trail
-            if (this.activePreset.enableTrails && p.trail.length > 1) {
-                for (let i = 1; i < p.trail.length; i++) {
-                    const trailPoint = p.trail[i];
-                    const trailFade = 1 - (i / p.trail.length);
-                    this.ctx.fillStyle = p.color;
-                    this.ctx.globalAlpha = trailPoint.alpha * p.life * trailFade * 0.4;
-                    this.ctx.beginPath();
-                    this.ctx.arc(trailPoint.x, trailPoint.y, p.size * trailFade, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-            }
-
-            // Draw particle glow
-            if (this.activePreset.enableParticleGlow) {
-                const particleGlow = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2.5);
-                particleGlow.addColorStop(0, '#ffffff');
-                particleGlow.addColorStop(0.4, p.color);
-                particleGlow.addColorStop(1, `${p.color}00`);
-
-                this.ctx.fillStyle = particleGlow;
-                this.ctx.globalAlpha = p.alpha * p.life;
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size * 2.5, 0, Math.PI * 2);
-                this.ctx.fill();
-            } else {
-                this.ctx.fillStyle = p.color;
-                this.ctx.globalAlpha = p.alpha * p.life;
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
-        });
+        this.scene.add(star);
+        this.shootingStars.push(star);
     }
 
     animate() {
         if (!this.isActive) return;
-        this.update();
-        this.draw();
-        requestAnimationFrame(() => this.animate());
-    }
 
-    cleanup() {
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        window.removeEventListener('resize', this.resizeHandler);
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
+        const delta = this.clock.getDelta();
+        const elapsedTime = this.clock.getElapsedTime();
+        this.uniforms.time.value = elapsedTime;
+
+        // Decay intensity
+        if (this.uniforms.intensity.value > 1.0) {
+            this.uniforms.intensity.value = THREE.MathUtils.lerp(
+                this.uniforms.intensity.value,
+                1.0,
+                delta * 1.5
+            );
+        }
+        this.comboIntensity *= 0.97;
+
+        // Slow star rotation
+        if (this.starSystem) {
+            this.starSystem.rotation.y = elapsedTime * 0.003;
+            this.starSystem.rotation.x = Math.sin(elapsedTime * 0.01) * 0.02;
         }
 
-        // Clear all visual elements
-        this.threads = [];
-        this.particles = [];
-        this.rifts = [];
-        this.energyPulses = [];
-        this.energyBeams = [];
-        this.cosmicOrbs = [];
-        this.constellations = [];
-        this.warpPoints = [];
-        this.stardust = [];
-        this.backgroundStars = [];
-        this.nebulaClouds = [];
-        this.fogLayers = [];
+        // Main group drift
+        if (this.mainGroup) {
+            const driftTime = elapsedTime * 0.06;
+            this.mainGroup.position.x = Math.sin(driftTime) * 2;
+            this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 1;
+            this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.015;
+        }
 
-        // Reset state
-        this.comboIntensity = 0;
-        this.weaveSpeed = 1.0;
-        this.riftOpenness = 0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
+        // Camera drift
+        if (this.camera) {
+            const camTime = elapsedTime * 0.04;
+            this.camera.position.x = Math.sin(camTime) * 4;
+            this.camera.position.y = Math.cos(camTime * 0.6) * 3;
+            this.camera.position.z = 30 + Math.sin(camTime * 0.4) * 3;
 
-        this.isActive = false;
+            const lookX = Math.sin(camTime * 0.8) * 2;
+            const lookY = Math.cos(camTime * 0.5) * 1.5;
+            this.camera.lookAt(lookX, lookY, 0);
+        }
+
+        // Update pulse waves
+        this.updatePulseWaves(delta);
+
+        // Update warp vortexes
+        this.updateWarpVortexes(delta);
+
+        // Update shooting stars
+        this.updateShootingStars(delta);
+
+        // Update cosmic orbs
+        this.updateCosmicOrbs(delta);
+
+        // Update bloom intensity
+        if (this.bloomPass) {
+            this.bloomPass.strength = this.activePreset.bloomStrength * (1 + this.comboIntensity * 0.3);
+        }
+
+        // Render
+        if (this.composer) {
+            this.composer.render(delta);
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
+    }
+
+    updatePulseWaves(delta) {
+        for (let i = this.pulseWaves.length - 1; i >= 0; i--) {
+            const wave = this.pulseWaves[i];
+            const data = wave.userData;
+
+            data.life -= delta;
+
+            // Expand
+            const expansion = data.speed * delta;
+            wave.scale.x += expansion * 0.4;
+            wave.scale.y += expansion * 0.4;
+            wave.scale.z += expansion * 0.3;
+
+            // Fade out
+            wave.material.uniforms.opacity.value = (data.life / data.maxLife) * 0.7;
+
+            if (data.life <= 0) {
+                this.mainGroup.remove(wave);
+                wave.geometry.dispose();
+                wave.material.dispose();
+                this.pulseWaves.splice(i, 1);
+            }
+        }
+    }
+
+    updateWarpVortexes(delta) {
+        for (let i = this.warpVortexes.length - 1; i >= 0; i--) {
+            const vortex = this.warpVortexes[i];
+            const data = vortex.userData;
+
+            data.life -= delta;
+            vortex.rotation.z += data.rotationSpeed * delta;
+
+            // Scale up
+            const scale = 1 + (1 - data.life / data.maxLife) * 2;
+            vortex.scale.set(scale, scale, 1);
+
+            // Fade out
+            vortex.material.uniforms.opacity.value = (data.life / data.maxLife) * 0.8;
+
+            if (data.life <= 0) {
+                this.mainGroup.remove(vortex);
+                vortex.geometry.dispose();
+                vortex.material.dispose();
+                this.warpVortexes.splice(i, 1);
+            }
+        }
+    }
+
+    updateShootingStars(delta) {
+        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+            const star = this.shootingStars[i];
+            const data = star.userData;
+
+            data.life -= delta;
+
+            // Move head
+            data.headPosition.addScaledVector(data.direction, data.speed * delta);
+
+            // Update trail positions
+            const positions = star.geometry.attributes.position.array;
+            const trailLength = positions.length / 3;
+
+            for (let j = trailLength - 1; j > 0; j--) {
+                positions[j * 3] = positions[(j - 1) * 3];
+                positions[j * 3 + 1] = positions[(j - 1) * 3 + 1];
+                positions[j * 3 + 2] = positions[(j - 1) * 3 + 2];
+            }
+
+            positions[0] = data.headPosition.x;
+            positions[1] = data.headPosition.y;
+            positions[2] = data.headPosition.z;
+
+            star.geometry.attributes.position.needsUpdate = true;
+
+            // Fade out
+            star.material.uniforms.opacity.value = data.life / data.maxLife;
+
+            if (data.life <= 0) {
+                this.scene.remove(star);
+                star.geometry.dispose();
+                star.material.dispose();
+                this.shootingStars.splice(i, 1);
+            }
+        }
+    }
+
+    updateCosmicOrbs(delta) {
+        if (!this.cosmicOrbs) return;
+
+        const positions = this.cosmicOrbs.geometry.attributes.position.array;
+        const sizes = this.cosmicOrbs.geometry.attributes.aSize.array;
+        const activeOrbs = this.cosmicOrbs.userData.activeOrbs;
+
+        for (let i = activeOrbs.length - 1; i >= 0; i--) {
+            const orb = activeOrbs[i];
+            orb.life -= delta;
+
+            const i3 = orb.index * 3;
+
+            // Move orb
+            positions[i3] += orb.vx * delta * 5;
+            positions[i3 + 1] += orb.vy * delta * 5;
+            positions[i3 + 2] += orb.vz * delta * 3;
+
+            // Slow down
+            orb.vx *= 0.98;
+            orb.vy *= 0.98;
+            orb.vz *= 0.98;
+
+            // Fade size
+            sizes[orb.index] *= 0.99;
+
+            if (orb.life <= 0) {
+                positions[i3 + 1] = -1000; // Hide
+                sizes[orb.index] = 0;
+                activeOrbs.splice(i, 1);
+            }
+        }
+
+        this.cosmicOrbs.geometry.attributes.position.needsUpdate = true;
+        this.cosmicOrbs.geometry.attributes.aSize.needsUpdate = true;
+    }
+
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+    }
+
+    dispose() {
+        super.dispose();
+
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
+
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+        }
+
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // Cleanup shooting stars
+        this.shootingStars.forEach(star => {
+            this.scene.remove(star);
+            star.geometry.dispose();
+            star.material.dispose();
+        });
+        this.shootingStars = [];
+
+        // Cleanup pulse waves
+        this.pulseWaves.forEach(wave => {
+            this.mainGroup.remove(wave);
+            wave.geometry.dispose();
+            wave.material.dispose();
+        });
+        this.pulseWaves = [];
+
+        // Cleanup warp vortexes
+        this.warpVortexes.forEach(vortex => {
+            this.mainGroup.remove(vortex);
+            vortex.geometry.dispose();
+            vortex.material.dispose();
+        });
+        this.warpVortexes = [];
+
+        // Cleanup composer
+        if (this.composer) {
+            this.composer.dispose();
+        }
+
+        // Cleanup renderer
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('astral-weave-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
+        }
+
+        // Dispose all scene objects
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.mainGroup = null;
+        this.cosmicThreads = [];
+        this.starSystem = null;
+        this.nebulaParticles = null;
+        this.stardustSystem = null;
+        this.cosmicOrbs = null;
     }
 
     getTetrominoConfig() {
