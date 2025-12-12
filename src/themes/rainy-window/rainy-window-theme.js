@@ -128,7 +128,7 @@ export default class RainyWindowTheme extends BaseTheme {
         // Load water normal texture
         const textureLoader = new THREE.TextureLoader();
         const waterNormalTexture = textureLoader.load(
-            '/textures/water-normal.jpg',
+            './textures/water-normal.jpg',
             (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
