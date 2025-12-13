@@ -92,6 +92,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.dustHaze = null;
         this.sandSmoke = null;  // Volumetric sand smoke
 
+        // DUNE-specific elements
+        this.blueGlowOverlay = null; // Blue-within-blue glow effect
+
         // Post-processing
         this.composer = null;
         this.heatShimmerPass = null;
@@ -111,7 +114,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
             moonGlowIntensity: { value: 1.0 },
             spiceIntensity: { value: 1.0 },
             dustDensity: { value: 0.3 },
-            heatShimmerStrength: { value: 0.003 },
+            heatShimmerStrength: { value: 0.006 }, // Boosted from 0.003
+            blueGlowIntensity: { value: 0 },       // Blue-within-blue glow
+            wormHeatIntensity: { value: 0 },       // Underground heat effect
         };
 
         // Procedural Generation Config - Larger, more dramatic Arrakis dunes
@@ -170,32 +175,32 @@ export default class ShiftingSandsTheme extends BaseTheme {
             dustStorm: new THREE.Color(0xc4a35a),   // Storm color
         };
 
-        // Quality presets - Arrakis elements
+        // Quality presets - Arrakis elements (OPTIMIZED particle counts)
         this.currentQuality = 'High';
         this.qualityPresets = {
             Minimal: {
-                starCount: 300, duneRes: 64, spiceParticleCount: 500, dustParticleCount: 200,
-                sandSmokeCount: 50, enableHeatShimmer: false, enableComboEffects: false
+                starCount: 300, duneRes: 64, spiceParticleCount: 400, dustParticleCount: 150,
+                sandSmokeCount: 30, enableHeatShimmer: false, enableComboEffects: false
             },
             Low: {
-                starCount: 500, duneRes: 96, spiceParticleCount: 1000, dustParticleCount: 400,
-                sandSmokeCount: 100, enableHeatShimmer: false, enableComboEffects: true
+                starCount: 500, duneRes: 96, spiceParticleCount: 800, dustParticleCount: 300,
+                sandSmokeCount: 60, enableHeatShimmer: false, enableComboEffects: true
             },
             Medium: {
-                starCount: 800, duneRes: 128, spiceParticleCount: 2000, dustParticleCount: 600,
-                sandSmokeCount: 250, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 800, duneRes: 128, spiceParticleCount: 1500, dustParticleCount: 450,
+                sandSmokeCount: 120, enableHeatShimmer: true, enableComboEffects: true
             },
             High: {
-                starCount: 1200, duneRes: 196, spiceParticleCount: 3000, dustParticleCount: 800,
-                sandSmokeCount: 450, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 1200, duneRes: 196, spiceParticleCount: 2000, dustParticleCount: 600,
+                sandSmokeCount: 200, enableHeatShimmer: true, enableComboEffects: true
             },
             Ultra: {
-                starCount: 2000, duneRes: 256, spiceParticleCount: 5000, dustParticleCount: 1000,
-                sandSmokeCount: 650, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 2000, duneRes: 256, spiceParticleCount: 3000, dustParticleCount: 800,
+                sandSmokeCount: 350, enableHeatShimmer: true, enableComboEffects: true
             },
             Extreme: {
-                starCount: 3000, duneRes: 350, spiceParticleCount: 8000, dustParticleCount: 1500,
-                sandSmokeCount: 900, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 3000, duneRes: 350, spiceParticleCount: 5000, dustParticleCount: 1000,
+                sandSmokeCount: 500, enableHeatShimmer: true, enableComboEffects: true
             },
         };
 
@@ -314,6 +319,10 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.createSpiceParticles();     // The spice must flow
         this.createDustHaze();           // Atmospheric dust
         this.createSandSmoke();          // Volumetric sand smoke
+
+        // DUNE-specific effects
+        this.createBlueGlowOverlay();    // Blue-within-blue effect
+
         this.setupLighting();
         this.setupPostProcessing();      // Heat shimmer effect
 
@@ -667,6 +676,58 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.scene.add(this.sandSmoke);
     }
 
+    // --- BLUE GLOW OVERLAY: Blue-within-blue Fremen eyes effect ---
+    createBlueGlowOverlay() {
+        // Full-screen overlay that pulses blue during events
+        const overlayGeometry = new THREE.PlaneGeometry(2, 2);
+        const overlayMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uIntensity: this.uniforms.blueGlowIntensity,
+                uTime: this.uniforms.time,
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uIntensity;
+                uniform float uTime;
+                varying vec2 vUv;
+                
+                void main() {
+                    // Radial gradient from edges
+                    vec2 center = vUv - 0.5;
+                    float dist = length(center);
+                    float vignette = smoothstep(0.2, 0.7, dist);
+                    
+                    // Blue-within-blue color (Fremen eyes)
+                    vec3 spiceBlue = vec3(0.1, 0.3, 0.8);
+                    vec3 deepBlue = vec3(0.05, 0.15, 0.5);
+                    
+                    // Pulsing effect
+                    float pulse = 0.5 + 0.5 * sin(uTime * 4.0);
+                    vec3 blueColor = mix(deepBlue, spiceBlue, pulse);
+                    
+                    float alpha = uIntensity * vignette * 0.4;
+                    
+                    gl_FragColor = vec4(blueColor, alpha);
+                }
+            `,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.blueGlowOverlay = new THREE.Mesh(overlayGeometry, overlayMaterial);
+        this.blueGlowOverlay.renderOrder = 100; // Render last
+        this.blueGlowOverlay.frustumCulled = false;
+        this.scene.add(this.blueGlowOverlay);
+    }
+
     // --- POST-PROCESSING: Heat Shimmer ---
     setupPostProcessing() {
         this.composer = new EffectComposer(this.renderer);
@@ -731,11 +792,29 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.uniforms.spiceIntensity.value += (1.0 - this.uniforms.spiceIntensity.value) * 0.01;
         this.uniforms.dustDensity.value += (0.3 - this.uniforms.dustDensity.value) * 0.02;
 
-        // Camera Sway + Shake
+        // Decay blue glow and worm heat back to normal
+        this.uniforms.blueGlowIntensity.value *= 0.95;
+        this.uniforms.wormHeatIntensity.value += (0 - this.uniforms.wormHeatIntensity.value) * 0.02;
+
+        // Boost heat shimmer based on worm activity
+        const baseShimmer = 0.006;
+        const wormHeatBoost = this.uniforms.wormHeatIntensity.value * 0.015;
+        this.uniforms.heatShimmerStrength.value = baseShimmer + wormHeatBoost;
+
+        // Camera Sway + Shake - Enhanced for cinematic feel
         if (this.camera) {
-            let camX = this.baseCameraPos.x + Math.sin(elapsed * 0.05) * 5;
-            let camY = this.baseCameraPos.y + Math.cos(elapsed * 0.03) * 2;
-            let camZ = this.baseCameraPos.z;
+            // Multi-layered organic motion
+            let camX = this.baseCameraPos.x
+                + Math.sin(elapsed * 0.08) * 12        // Slow side-to-side sweep
+                + Math.sin(elapsed * 0.23) * 4;        // Faster subtle drift
+
+            let camY = this.baseCameraPos.y
+                + Math.cos(elapsed * 0.05) * 3         // Gentle vertical bob
+                + Math.sin(elapsed * 0.17) * 1.5;      // Secondary bob
+
+            let camZ = this.baseCameraPos.z
+                + Math.sin(elapsed * 0.11) * 8         // Slow forward/back drift
+                + Math.cos(elapsed * 0.31) * 3;        // Faster subtle pulse
 
             // Apply camera shake
             if (this.cameraShake.duration > 0) {
@@ -747,7 +826,11 @@ export default class ShiftingSandsTheme extends BaseTheme {
             }
 
             this.camera.position.set(camX, camY, camZ);
-            this.camera.lookAt(0, 0, 0);
+
+            // Subtle look target drift for extra dynamism
+            const lookX = Math.sin(elapsed * 0.06) * 5;
+            const lookY = Math.cos(elapsed * 0.04) * 2;
+            this.camera.lookAt(lookX, lookY, 0);
         }
 
         // Update twin moons (subtle pulse)
@@ -755,6 +838,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
             const pulse = 1 + Math.sin(elapsed * 0.5 + i * 0.3) * 0.05;
             sprite.material.opacity = sprite.userData?.baseOpacity * pulse || sprite.material.opacity;
         });
+
+        // Update DUNE effects (worm tracking)
+        this.updateWormEffects(elapsed, delta);
 
         // Update effects
         this.updateShockwaves(delta);
@@ -815,11 +901,14 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Screen shake
         this.triggerCameraShake(cnt * 0.5, 0.3);
 
-        // Tetris (4-line clear) - MAXIMUM DRAMA
+        // Underground worm heat effect
+        this.uniforms.wormHeatIntensity.value = Math.min(1.0, this.uniforms.wormHeatIntensity.value + cnt * 0.3);
+
+        // Tetris (4-line clear) - MAXIMUM DRAMA + BLUE GLOW
         if (cnt >= 4) {
             this.triggerDustStorm();
             this.uniforms.moonGlowIntensity.value += 0.5;
-            this.uniforms.heatShimmerStrength.value = 0.008;
+            this.uniforms.blueGlowIntensity.value = 1.0; // Full blue glow!
         }
     }
 
@@ -835,17 +924,19 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Camera rumble (worm activity)
         if (cnt >= 2) {
             this.triggerCameraShake(cnt * 0.3, 0.2);
+            this.uniforms.wormHeatIntensity.value += 0.2; // Worm activity!
         }
 
-        // Combo 3+ creates sand swirl
+        // Combo 3+ - Blue glow (rings removed)
         if (cnt >= 3) {
-            this.createSandSwirl(cnt * 0.5);
+            this.uniforms.blueGlowIntensity.value = Math.min(1.0, cnt * 0.25); // Subtle blue
         }
     }
 
     onPieceLock() {
-        // Subtle spice shimmer
-        this.uniforms.spiceIntensity.value += 0.1;
+        // Enhanced lock effect: Spice flash + shake
+        this.uniforms.spiceIntensity.value += 0.8;
+        this.triggerCameraShake(0.2, 0.15);
     }
 
     // Trigger camera shake
@@ -854,26 +945,33 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.cameraShake.duration = Math.max(this.cameraShake.duration, duration);
     }
 
+    // --- UPDATE WORM EFFECTS (eruption, spice trail) ---
+    updateWormEffects(elapsed, delta) {
+        // Calculate worm position (must match shader logic)
+        const wormSpeed = 30.0;
+        const wormCycleLength = 2000.0;
+        const wormCycleTime = wormCycleLength / wormSpeed;
+        const currentCycle = Math.floor(elapsed / wormCycleTime);
+        const wormHeadZ = (elapsed * wormSpeed % wormCycleLength) - 1000.0;
+
+        // Pseudo-random path per cycle
+        const cycleHash = (Math.sin(currentCycle * 12.9898) * 43758.5453) % 1;
+        const cycleHash2 = (Math.sin(currentCycle * 78.233 + 1.0) * 43758.5453) % 1;
+        const wormPathBaseX = (Math.abs(cycleHash) - 0.5) * 200.0;
+        const wormPathSlope = (Math.abs(cycleHash2) - 0.5) * 0.6;
+        const wormHeadX = wormPathBaseX + wormHeadZ * wormPathSlope;
+
+        // Get approximate terrain height at worm head
+        const wormHeadY = this.getTerrainHeight(wormHeadX, wormHeadZ) + 5;
+
+        // Worm position is now tracked for heat shimmer and future effects
+        // (wormHeadX, wormHeadY, wormHeadZ) is available for use
+    }
+
     // Dust storm effect
     triggerDustStorm() {
         this.uniforms.dustDensity.value = 1.0;
         this.uniforms.heatShimmerStrength.value = 0.01;
-
-        // Create expanding dust ring
-        const ring = new THREE.Mesh(
-            new THREE.RingGeometry(5, 8, 32),
-            new THREE.MeshBasicMaterial({
-                color: this.palette.dustStorm,
-                transparent: true,
-                opacity: 0.6,
-                side: THREE.DoubleSide,
-            })
-        );
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.set(0, 5, 0);
-        ring.userData = { life: 2.0, type: 'dustStorm' };
-        this.scene.add(ring);
-        this.shockwaves.push(ring);
     }
 
     // Spice blow particle burst
@@ -921,22 +1019,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.spiceBlows.push(spiceBlow);
     }
 
-    // Sand swirl effect
-    createSandSwirl(scale) {
-        const g = new THREE.TorusGeometry(5 * scale, 1, 8, 24);
-        const m = new THREE.MeshBasicMaterial({
-            color: this.palette.sandC,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-        });
-        const mesh = new THREE.Mesh(g, m);
-        mesh.position.set((Math.random() - 0.5) * 80, 15, (Math.random() - 0.5) * 80);
-        mesh.rotation.x = Math.PI / 2;
-        mesh.userData = { life: 1.5 };
-        this.scene.add(mesh);
-        this.shockwaves.push(mesh);
-    }
+
 
     // Update shockwaves (sand swirls, dust storms)
     updateShockwaves(dt) {
@@ -1013,6 +1096,14 @@ export default class ShiftingSandsTheme extends BaseTheme {
             b.material?.dispose();
         });
         this.spiceBlows = [];
+
+        // Cleanup DUNE effects
+        if (this.blueGlowOverlay) {
+            this.scene?.remove(this.blueGlowOverlay);
+            this.blueGlowOverlay.geometry?.dispose();
+            this.blueGlowOverlay.material?.dispose();
+            this.blueGlowOverlay = null;
+        }
 
         // Cleanup composer
         if (this.composer) {

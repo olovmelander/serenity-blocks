@@ -93,6 +93,8 @@ uniform float uSpiritGlow;
 uniform vec3 uDeepColor;
 uniform vec3 uSurfaceColor;
 uniform vec3 uSpiritReflection;
+uniform vec3 uSpiritPos;
+uniform float uSpiritTransition;
 
 varying vec2 vUv;
 varying vec3 vWorldPos;
@@ -101,33 +103,45 @@ ${noiseCommon}
 
 void main() {
     vec2 uv = vUv;
-    
+
     // Dreamy slow ripples
     float ripple = snoise(vec3(uv * 2.0, uTime * 0.08)) * 0.02;
     ripple += snoise(vec3(uv * 4.0, uTime * 0.05 + 100.0)) * 0.01;
-    
+
     // Depth gradient - deep forest pool
     float depth = smoothstep(0.0, 0.6, uv.y);
     vec3 color = mix(uDeepColor, uSurfaceColor, depth * 0.4);
-    
-    // Spirit reflection in the water - glowing center
-    vec2 center = vec2(0.5, 0.35);
-    float distToSpirit = length(uv - center);
+
+    // Dynamic spirit reflection - follows spirit position
+    // Convert spirit world position to UV space (approximate)
+    // Water plane is 80 wide, 35 deep, centered at z=3
+    vec2 spiritUV = vec2(
+        (uSpiritPos.x + 40.0) / 80.0,  // Map x from [-40, 40] to [0, 1]
+        1.0 - (uSpiritPos.z + 14.5) / 35.0  // Map z from [-14.5, 20.5] to [0, 1], inverted
+    );
+
+    // Clamp to reasonable range
+    spiritUV = clamp(spiritUV, vec2(0.1), vec2(0.9));
+
+    float distToSpirit = length(uv - spiritUV);
     float spiritRefl = 1.0 - smoothstep(0.0, 0.35, distToSpirit);
     spiritRefl = pow(spiritRefl, 2.0);
-    
+
     // Shimmer the reflection
     float shimmer = snoise(vec3(uv * 10.0, uTime * 0.3)) * 0.3 + 0.7;
     spiritRefl *= shimmer;
-    
+
+    // Apply spirit transition (fade reflection when spirit fades)
+    spiritRefl *= uSpiritTransition;
+
     // Add spirit's warm glow to water
     color = mix(color, uSpiritReflection, spiritRefl * 0.6 * uSpiritGlow);
-    
+
     // Magical sparkles on surface
     float sparkle = snoise(vec3(uv * 40.0, uTime * 0.4));
     sparkle = smoothstep(0.85, 0.95, sparkle) * depth * 0.3;
     color += vec3(1.0, 0.95, 0.8) * sparkle;
-    
+
     gl_FragColor = vec4(color, 0.95);
 }
 `;
@@ -274,6 +288,7 @@ void main() {
 export const spiritFragmentShader = `
 uniform float uTime;
 uniform float uGlowIntensity;
+uniform float uTransition;
 
 varying vec2 vUv;
 
@@ -282,23 +297,23 @@ ${noiseCommon}
 void main() {
     vec2 uv = vUv;
     vec2 center = vec2(0.5, 0.35);
-    
+
     // Create humanoid silhouette shape
     float body = 0.0;
-    
+
     // Head (upper circle)
     vec2 headCenter = vec2(0.5, 0.72);
     float head = 1.0 - smoothstep(0.0, 0.12, length(uv - headCenter));
-    
+
     // Body (oval)
     vec2 bodyCenter = vec2(0.5, 0.45);
     vec2 bodyScale = vec2(1.0, 0.6);
     float bodyDist = length((uv - bodyCenter) * bodyScale);
     float bodyShape = 1.0 - smoothstep(0.0, 0.2, bodyDist);
-    
+
     // Combine shapes
     body = max(head, bodyShape);
-    
+
     // Flowing hair strands
     float hair = 0.0;
     for (float i = 0.0; i < 5.0; i++) {
@@ -308,35 +323,41 @@ void main() {
         strand *= smoothstep(0.65, 0.4, uv.y) * smoothstep(0.2, 0.35, uv.y);
         hair = max(hair, strand * 0.7);
     }
-    
+
     body = max(body, hair);
-    
+
     // Inner glow (brightest at center)
     float innerGlow = body * 1.5;
     innerGlow = pow(innerGlow, 1.5);
-    
+
     // Outer ethereal aura
     float aura = 1.0 - smoothstep(0.0, 0.5, length(uv - center));
     aura = pow(aura, 3.0) * 0.6;
-    
+
     // Shimmer effect
     float shimmer = snoise(vec3(uv * 15.0, uTime * 0.5));
     shimmer = shimmer * 0.15 + 0.85;
-    
+
     // Pulsing
     float pulse = sin(uTime * 0.6) * 0.1 + 1.0;
-    
+
+    // Transition effect - dissolve with noise when fading
+    float dissolveMask = snoise(vec3(uv * 8.0, uTime * 0.2));
+    dissolveMask = dissolveMask * 0.5 + 0.5;
+    float transitionMask = smoothstep(1.0 - uTransition - 0.3, 1.0 - uTransition + 0.1, dissolveMask);
+
     // Final glow
     float glow = (innerGlow + aura) * shimmer * pulse;
     glow *= uGlowIntensity;
-    
+    glow *= transitionMask * uTransition;  // Apply fade transition
+
     // Warm, ethereal color - cream/gold
     vec3 coreColor = vec3(1.0, 0.97, 0.9);
     vec3 auraColor = vec3(1.0, 0.92, 0.75);
     vec3 color = mix(auraColor, coreColor, innerGlow);
-    
+
     float alpha = clamp(glow, 0.0, 1.0);
-    
+
     gl_FragColor = vec4(color * glow, alpha);
 }
 `;
@@ -777,6 +798,8 @@ void main() {
 // ─────────────────────────────────────────────────────────────────────────────
 export const trollVertexShader = `
 uniform float uTime;
+uniform float uBreathScale;
+uniform float uSquish; // New: Vertical squish/stretch factor (1.0 = normal)
 
 varying vec2 vUv;
 
@@ -784,7 +807,21 @@ void main() {
     vUv = uv;
     
     vec3 pos = position;
-    pos.y += sin(uTime * 0.8) * 0.02;
+    
+    // Playful squish/stretch effect (bouncing)
+    // Scale y by uSquish, and x/z by inverse sqrt to maintain volume approx
+    float inverseSquish = 1.0 / sqrt(max(0.1, uSquish));
+    
+    // Apply squish relative to bottom (approximate)
+    // Plane geometry typically centered, so we offset origin
+    float yOffset = -0.5;
+    
+    pos.y = (pos.y - yOffset) * uSquish + yOffset;
+    pos.x *= inverseSquish;
+    
+    // Apply breathing scale from center (existing logic)
+    vec2 center = vec2(0.0, 0.0);
+    pos.xy = center + (pos.xy - center) * uBreathScale;
     
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -794,12 +831,24 @@ export const trollFragmentShader = `
 uniform float uTime;
 uniform float uGlowIntensity;
 uniform vec3 uEyeColor;
+uniform vec3 uSpiritPos;
+uniform float uPeekAmount;
+uniform float uBlinkState;
+
+// New uniforms
+uniform vec2 uEyeLook;    // [-1, 1] for x and y direction
+uniform float uExpression; // 0=normal, 1=wide/surprised, -1=squint/suspicious
 
 varying vec2 vUv;
+
+${noiseCommon}
 
 void main() {
     vec2 uv = vUv;
     
+    // ─────────────────────────────────────────────────────────────────────────
+    // BODY SHAPE - Shadowy rounded creature
+    // ─────────────────────────────────────────────────────────────────────────
     float body = 0.0;
     
     vec2 bodyCenter = vec2(0.5, 0.4);
@@ -822,19 +871,75 @@ void main() {
     
     float troll = max(max(body, head), max(max(earL, earR), nose));
     
+    // Darker body color with slight variation
     vec3 trollColor = vec3(0.08, 0.06, 0.05);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // EYES - Glowing and Expressive
+    // ─────────────────────────────────────────────────────────────────────────
     
-    vec2 leftEye = vec2(0.42, 0.65);
-    vec2 rightEye = vec2(0.58, 0.65);
-    float eyeL = 1.0 - smoothstep(0.0, 0.03, length(uv - leftEye));
-    float eyeR = 1.0 - smoothstep(0.0, 0.03, length(uv - rightEye));
-    float eyes = max(eyeL, eyeR);
+    // Eye positions
+    vec2 leftEyeCenter = vec2(0.35, 0.55);
+    vec2 rightEyeCenter = vec2(0.65, 0.55);
     
-    float blink = step(0.95, sin(uTime * 0.3));
-    eyes *= (1.0 - blink);
+    // Apply expression to eye shape
+    float eyeSquint = max(0.0, -uExpression); // Squint if expression < 0
+    float eyeWide = max(0.0, uExpression);    // Wide if expression > 0
     
+    // Dynamic eye size
+    float eyeSizeBase = 0.07;
+    float eyeSize = eyeSizeBase * (1.0 + eyeWide * 0.4 - eyeSquint * 0.3);
+    
+    // Blink (squash eyes vertically)
+    float blinkScale = max(0.05, 1.0 - uBlinkState);
+    
+    // Look direction offset (eyes move)
+    vec2 lookOffset = uEyeLook * 0.04;
+    
+    // Calculate eye shape distance (elliptical during blink)
+    float leftEyeDist = length((uv - leftEyeCenter) * vec2(1.0, 1.0/blinkScale));
+    float rightEyeDist = length((uv - rightEyeCenter) * vec2(1.0, 1.0/blinkScale));
+    
+    // Eye whites (glow)
+    float eyes = 0.0;
+    eyes += 1.0 - smoothstep(eyeSize - 0.01, eyeSize + 0.01, leftEyeDist);
+    eyes += 1.0 - smoothstep(eyeSize - 0.01, eyeSize + 0.01, rightEyeDist);
+    
+    // Pupils (darker center) - moves with look direction
+    float pupilSize = eyeSize * 0.4;
+    float leftPupil = 1.0 - smoothstep(pupilSize - 0.01, pupilSize, length(uv - (leftEyeCenter + lookOffset)));
+    float rightPupil = 1.0 - smoothstep(pupilSize - 0.01, pupilSize, length(uv - (rightEyeCenter + lookOffset)));
+    float pupilMask = (leftPupil + rightPupil) * blinkScale; // Hide pupils when blinking
+    
+    // Expression: Squint lids (mask top/bottom of eyes)
+    if (eyeSquint > 0.01) {
+        // Top lid
+        float lidY = 0.59 - eyeSquint * 0.04;
+        float lid = smoothstep(lidY, lidY + 0.02, uv.y);
+        eyes *= (1.0 - lid);
+        // Bottom lid
+        float botLidY = 0.51 + eyeSquint * 0.04;
+        float botLid = 1.0 - smoothstep(botLidY - 0.02, botLidY, uv.y);
+        eyes *= (1.0 - botLid);
+    }
+    
+    // Eye Glow Color
+    vec3 eyeGlow = uEyeColor * 2.5; // Bright glow
+    vec3 finalEyeColor = mix(eyeGlow, vec3(1.0, 1.0, 1.0), 0.2); // White core
+    finalEyeColor = mix(finalEyeColor, vec3(0.02, 0.01, 0.0), pupilMask * 0.9); // Dark pupils
+    
+    // Combine body and eyes
     vec3 color = trollColor;
-    color = mix(color, uEyeColor * 2.0, eyes * (1.0 + uGlowIntensity * 0.5));
+    
+    // Ambient occlusion
+    float ao = smoothstep(0.0, 0.15, bodyDist) * 0.3;
+    color *= (1.0 - ao * (1.0 - eyes));
+    
+    // Add eyes
+    color = mix(color, finalEyeColor, eyes);
+    
+    // Extra glow from eyes falling on face
+    float faceGlow = (eyes * 0.5) * (sin(uTime * 5.0) * 0.1 + 0.9);
     
     float alpha = troll;
     if (alpha < 0.1) discard;

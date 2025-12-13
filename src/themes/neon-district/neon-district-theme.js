@@ -191,6 +191,17 @@ export default class NeonDistrictTheme extends BaseTheme {
         // SynthCity Assets Manager
         this.assets = new NeonDistrictAssets();
 
+        // Camera sway parameters (gentle floating drift)
+        // Camera sway parameters (gentle floating drift) - increased movement
+        this.cameraBasePosition = new THREE.Vector3(0, 50, 40);
+        this.cameraBaseLookAt = new THREE.Vector3(0, 80, -400);
+        this.cameraSwayAmplitude = { x: 5.0, y: 3.0, z: 2.0 };
+        this.cameraSwaySpeed = { x: 0.18, y: 0.25, z: 0.15 };
+        this.cameraLookAtSway = { x: 6.0, y: 4.0 };
+
+        // VHS billboards with shader effects
+        this.vhsBillboards = [];
+
         console.log('[NeonDistrict] Theme constructed');
     }
 
@@ -863,6 +874,158 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         building.add(ad);
         this.neonSigns.push(ad); // Add to animation list
+
+        // For large ads, also create a VHS version on a different face
+        if (isLarge && Math.random() < 0.75) {
+            this.createVHSBillboardOnBuilding(building, width, height, depth);
+        }
+    }
+
+    /**
+     * Create a VHS-style billboard with scanlines, chromatic aberration, and glitch effects
+     */
+    createVHSBillboardOnBuilding(building, buildingWidth, buildingHeight, buildingDepth) {
+        // Get two random ad textures for cycling
+        const adIndex1 = Math.floor(Math.random() * 14) + 1;
+        let adIndex2 = Math.floor(Math.random() * 14) + 1;
+        while (adIndex2 === adIndex1) adIndex2 = Math.floor(Math.random() * 14) + 1;
+
+        const padNum = (n) => n.toString().padStart(2, '0');
+        const tex1 = this.assets?.getTexture(`ads_large_${padNum(adIndex1)}`);
+        const tex2 = this.assets?.getTexture(`ads_large_${padNum(adIndex2)}`);
+
+        if (!tex1 || !tex2) return;
+
+        // Billboard dimensions - LARGER for visibility
+        const adWidth = 100 + Math.random() * 60;
+        const adHeight = 70 + Math.random() * 45;
+        const geometry = new THREE.PlaneGeometry(adWidth, adHeight);
+
+        // VHS Billboard Shader
+        const vhsMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRandomOffset: { value: Math.random() * 100.0 }, // Random start time for each ad
+                uTexture1: { value: tex1 },
+                uTexture2: { value: tex2 },
+                uMixFactor: { value: 0.0 },
+                uGlitchIntensity: { value: 0.0 },
+                uScanlineIntensity: { value: 0.35 },
+                uChromaticAberration: { value: 0.008 },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uRandomOffset;
+                uniform sampler2D uTexture1;
+                uniform sampler2D uTexture2;
+                uniform float uMixFactor;
+                uniform float uGlitchIntensity;
+                uniform float uScanlineIntensity;
+                uniform float uChromaticAberration;
+                varying vec2 vUv;
+
+                // Pseudo-random function
+                float rand(vec2 co) {
+                    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+                }
+
+                void main() {
+                    vec2 uv = vUv;
+                    float time = uTime + uRandomOffset; // Use randomized time
+
+                    // === TRACKING GLITCH - Horizontal offset ===
+                    float glitchLine = step(0.99, rand(vec2(floor(time * 3.0), floor(uv.y * 20.0))));
+                    float glitchOffset = glitchLine * uGlitchIntensity * (rand(vec2(time, uv.y)) - 0.5) * 0.1;
+                    uv.x += glitchOffset;
+
+                    // Occasional full-screen horizontal shift during transitions
+                    float transitionGlitch = uGlitchIntensity * sin(time * 50.0) * 0.02;
+                    uv.x += transitionGlitch;
+
+                    // === CHROMATIC ABERRATION ===
+                    float ca = uChromaticAberration * (1.0 + uGlitchIntensity * 3.0);
+                    
+                    // Sample with RGB separation
+                    vec4 tex1Sample, tex2Sample;
+                    tex1Sample.r = texture2D(uTexture1, uv + vec2(ca, 0.0)).a > 0.0 ? texture2D(uTexture1, uv + vec2(ca, 0.0)).r : texture2D(uTexture1, uv).r;
+                    tex1Sample.g = texture2D(uTexture1, uv).g;
+                    tex1Sample.b = texture2D(uTexture1, uv - vec2(ca, 0.0)).b;
+                    tex1Sample.a = 1.0;
+
+                    tex2Sample.r = texture2D(uTexture2, uv + vec2(ca, 0.0)).r;
+                    tex2Sample.g = texture2D(uTexture2, uv).g;
+                    tex2Sample.b = texture2D(uTexture2, uv - vec2(ca, 0.0)).b;
+                    tex2Sample.a = 1.0;
+
+                    // Mix between the two textures
+                    vec4 texColor = mix(tex1Sample, tex2Sample, uMixFactor);
+
+                    // === VHS SCANLINES - more visible ===
+                    float scanline = sin(vUv.y * 300.0 + time * 2.0) * 0.5 + 0.5;
+                    scanline = 1.0 - scanline * uScanlineIntensity;
+                    texColor.rgb *= scanline;
+
+                    // === SCROLLING INTERFERENCE LINE - visible but not overpowering ===
+                    float interferenceY = fract(time * 0.12);
+                    float interference = smoothstep(interferenceY - 0.04, interferenceY, vUv.y) 
+                                       * smoothstep(interferenceY + 0.04, interferenceY, vUv.y);
+                    texColor.rgb += interference * 0.15;
+
+                    // === VISIBLE NOISE ===
+                    float noise = rand(vUv + time) * 0.05;
+                    texColor.rgb += noise;
+
+                    // === BRIGHTNESS FLICKER - more noticeable ===
+                    float flicker = 0.92 + sin(time * 8.0) * 0.05 + sin(time * 23.0) * 0.03;
+                    texColor.rgb *= flicker;
+
+                    // === EDGE VIGNETTE ===
+                    float vignette = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x);
+                    vignette *= smoothstep(0.0, 0.05, vUv.y) * smoothstep(1.0, 0.95, vUv.y);
+
+                    // Reduce brightness to show content clearly
+                    texColor.rgb *= 0.5;
+
+                    gl_FragColor = vec4(texColor.rgb, vignette * 0.95);
+                }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide,
+            blending: THREE.NormalBlending,  // Normal blending to show texture content
+        });
+
+        const billboard = new THREE.Mesh(geometry, vhsMaterial);
+
+        // Position on a different face than main ad (front/back Z faces)
+        // Minimum Y = 150 to avoid overlapping storefronts (height 36)
+        const adY = 150 + Math.random() * Math.min(buildingHeight * 0.4, 200);
+        const faceFront = Math.random() < 0.5;
+
+        if (faceFront) {
+            billboard.position.set(0, adY, buildingDepth / 2 + 1);
+            billboard.rotation.y = 0;
+        } else {
+            billboard.position.set(0, adY, -buildingDepth / 2 - 1);
+            billboard.rotation.y = Math.PI;
+        }
+
+        // Store cycling data
+        billboard.userData.isVHS = true;
+        billboard.userData.cycleTime = 8 + Math.random() * 6; // 8-14 seconds per ad
+        billboard.userData.cycleProgress = Math.random() * billboard.userData.cycleTime;
+        billboard.userData.currentTexture = 0;
+        billboard.userData.transitionDuration = 0.5;
+        billboard.userData.inTransition = false;
+
+        building.add(billboard);
+        this.vhsBillboards.push(billboard);
     }
 
     createStorefront(building, width, depth) {
@@ -3509,6 +3672,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             const delta = this.clock.getDelta();
             this.time += delta;
 
+            // Camera sway - gentle floating drift
+            this.updateCameraSway();
+
             // Update sky shader
             if (this.sky?.material?.uniforms?.uTime) {
                 this.sky.material.uniforms.uTime.value = this.time;
@@ -3531,6 +3697,9 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             // Update blinking lights
             this.updateBlinkingLights();
+
+            // Update VHS billboards (time + texture cycling)
+            this.updateVHSBillboards(delta);
 
             // Update piece lock sparks
             this.updatePieceLockSparks(delta);
@@ -3557,6 +3726,104 @@ export default class NeonDistrictTheme extends BaseTheme {
         };
 
         animate();
+    }
+
+    /**
+     * Updates camera with gentle floating drift motion.
+     * Uses multiple sine waves at different frequencies for organic, non-repetitive movement.
+     */
+    updateCameraSway() {
+        if (!this.camera) return;
+
+        const t = this.time;
+        const amp = this.cameraSwayAmplitude;
+        const spd = this.cameraSwaySpeed;
+
+        // Position sway - multiple frequencies for organic feel
+        const swayX = Math.sin(t * spd.x) * amp.x + Math.sin(t * spd.x * 0.7 + 1.3) * amp.x * 0.4;
+        const swayY = Math.sin(t * spd.y + 0.5) * amp.y + Math.sin(t * spd.y * 0.6 + 2.1) * amp.y * 0.3;
+        const swayZ = Math.sin(t * spd.z + 1.0) * amp.z;
+
+        this.camera.position.set(
+            this.cameraBasePosition.x + swayX,
+            this.cameraBasePosition.y + swayY,
+            this.cameraBasePosition.z + swayZ
+        );
+
+        // LookAt sway - subtle rotation of view target
+        const lookSwayX = Math.sin(t * 0.1 + 0.8) * this.cameraLookAtSway.x;
+        const lookSwayY = Math.sin(t * 0.14 + 1.5) * this.cameraLookAtSway.y;
+
+        this.camera.lookAt(
+            this.cameraBaseLookAt.x + lookSwayX,
+            this.cameraBaseLookAt.y + lookSwayY,
+            this.cameraBaseLookAt.z
+        );
+    }
+
+    /**
+     * Updates VHS billboards - shader time, texture cycling, and glitch effects
+     */
+    updateVHSBillboards(delta) {
+        this.vhsBillboards.forEach(billboard => {
+            if (!billboard.material?.uniforms) return;
+
+            const uniforms = billboard.material.uniforms;
+            const data = billboard.userData;
+
+            // Update shader time
+            uniforms.uTime.value = this.time;
+
+            // Progress cycle timer
+            data.cycleProgress += delta;
+
+            // Check if we should start a transition
+            if (data.cycleProgress >= data.cycleTime && !data.inTransition) {
+                data.inTransition = true;
+                data.transitionStart = data.cycleProgress;
+            }
+
+            // Handle transition
+            if (data.inTransition) {
+                const transitionProgress = (data.cycleProgress - data.transitionStart) / data.transitionDuration;
+
+                if (transitionProgress >= 1.0) {
+                    // Transition complete - swap textures and reset
+                    data.inTransition = false;
+                    data.cycleProgress = 0;
+
+                    // Swap textures
+                    const temp = uniforms.uTexture1.value;
+                    uniforms.uTexture1.value = uniforms.uTexture2.value;
+                    uniforms.uTexture2.value = temp;
+
+                    // Get a new random texture for next cycle
+                    const newIndex = Math.floor(Math.random() * 14) + 1;
+                    const padNum = (n) => n.toString().padStart(2, '0');
+                    const newTex = this.assets?.getTexture(`ads_large_${padNum(newIndex)}`);
+                    if (newTex) {
+                        uniforms.uTexture2.value = newTex;
+                    }
+
+                    uniforms.uMixFactor.value = 0.0;
+                    uniforms.uGlitchIntensity.value = 0.0;
+                } else {
+                    // During transition - animate mix and glitch
+                    uniforms.uMixFactor.value = transitionProgress;
+
+                    // Glitch peaks in the middle of transition
+                    const glitchCurve = Math.sin(transitionProgress * Math.PI);
+                    uniforms.uGlitchIntensity.value = glitchCurve * 1.5;
+                }
+            } else {
+                // Occasional random glitch even when not transitioning
+                if (Math.random() < 0.002) {
+                    uniforms.uGlitchIntensity.value = 0.3 + Math.random() * 0.5;
+                } else {
+                    uniforms.uGlitchIntensity.value *= 0.9; // Quick decay
+                }
+            }
+        });
     }
 
     updateNeonSigns() {
