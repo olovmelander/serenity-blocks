@@ -1,9 +1,21 @@
 /**
  * SERENITY BLOCKS - Epic Intro Animation
- * A stunning reveal animation for the game title
+ * Premium chromadelic reveal animation
  */
 
-/* Intro Container - Full screen overlay */
+/* ===== CHROMADELIC COLOR PALETTE ===== */
+:root {
+    --intro-pink: #FF3366;
+    --intro-cyan: #00FFFF;
+    --intro-yellow: #FFFF00;
+    --intro-purple: #9933FF;
+    --intro-blue: #3399FF;
+    --intro-magenta: #FF0099;
+    --intro-orange: #FF6600;
+    --intro-mint: #00FF66;
+}
+
+/* Intro Container - Full screen overlay with nebula background */
 #intro-animation {
     position: fixed;
     top: 0;
@@ -11,7 +23,12 @@
     width: 100vw;
     height: 100vh;
     z-index: 10000;
-    background: radial-gradient(ellipse at center, #0a0520 0%, #000000 100%);
+    /* Multi-layer nebula background */
+    background:
+        radial-gradient(ellipse at 20% 30%, rgba(153, 51, 255, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 70%, rgba(255, 51, 102, 0.12) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 50%, rgba(51, 153, 255, 0.1) 0%, transparent 60%),
+        radial-gradient(ellipse at center, #0d0025 0%, #050010 40%, #000005 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -20,6 +37,49 @@
     cursor: pointer;
     opacity: 1;
     transition: opacity 1s ease-out;
+}
+
+/* Vignette overlay */
+#intro-animation::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.6) 100%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Subtle scanline overlay for holographic effect */
+#intro-animation::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(0deg,
+            transparent 0px,
+            transparent 2px,
+            rgba(255, 255, 255, 0.015) 2px,
+            rgba(255, 255, 255, 0.015) 4px);
+    pointer-events: none;
+    z-index: 25;
+    animation: scanlineFlicker 0.1s infinite;
+}
+
+@keyframes scanlineFlicker {
+
+    0%,
+    100% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 /* Phaser canvas for cosmic particles */
@@ -53,7 +113,8 @@
 /* Background-only mode: lower z-index so start modal can appear on top */
 #intro-animation.background-only {
     z-index: 1;
-    pointer-events: none; /* Allow clicks to pass through to modal */
+    pointer-events: none;
+    /* Allow clicks to pass through to modal */
 }
 
 /* Animated background particles */
@@ -71,18 +132,20 @@
 }
 
 @keyframes fadeInParticles {
-    to { opacity: 1; }
+    to {
+        opacity: 1;
+    }
 }
 
 .intro-particle {
     position: absolute;
-    background: radial-gradient(circle, var(--particle-color, rgba(100, 200, 255, 0.8)) 0%, transparent 70%);
+    background: radial-gradient(circle, var(--particle-color, rgba(0, 255, 255, 0.7)) 0%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     animation: floatParticle linear infinite;
-    box-shadow: 0 0 8px var(--particle-color, rgba(100, 200, 255, 0.6)),
-                0 0 16px var(--particle-color, rgba(100, 200, 255, 0.3));
-    filter: blur(0.5px);
+    box-shadow: 0 0 10px var(--particle-color, rgba(0, 255, 255, 0.5)),
+        0 0 20px var(--particle-color, rgba(0, 255, 255, 0.25));
+    filter: blur(0.3px);
 }
 
 @keyframes floatParticle {
@@ -90,12 +153,15 @@
         transform: translateY(100vh) translateX(0) scale(0);
         opacity: 0;
     }
-    10% {
-        opacity: 1;
+
+    15% {
+        opacity: 0.8;
     }
-    90% {
-        opacity: 1;
+
+    85% {
+        opacity: 0.8;
     }
+
     100% {
         transform: translateY(-100px) translateX(var(--drift)) scale(1);
         opacity: 0;
@@ -110,7 +176,53 @@
     z-index: 10;
 }
 
-/* Main Title */
+/* Title Reflection - DISABLED */
+.intro-title-container::after {
+    display: none;
+}
+
+@keyframes reflectionReveal {
+    0% {
+        opacity: 0;
+    }
+
+    70% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 0.3;
+    }
+}
+
+/* Glitch animation keyframes (combined with titleReveal below) */
+
+@keyframes glitchShift {
+
+    0%,
+    95%,
+    100% {
+        transform: scale(1) rotateX(0deg) translateZ(0);
+        filter: blur(0px);
+    }
+
+    96% {
+        transform: scale(1) rotateX(0deg) translateZ(0) translateX(-2px);
+        filter: blur(0px) hue-rotate(30deg);
+    }
+
+    97% {
+        transform: scale(1) rotateX(0deg) translateZ(0) translateX(2px) skewX(1deg);
+        filter: blur(0.5px) hue-rotate(-20deg);
+    }
+
+    98% {
+        transform: scale(1) rotateX(0deg) translateZ(0) translateX(-1px);
+        filter: blur(0px) hue-rotate(15deg);
+    }
+}
+
+/* Main Title - with glitch effect */
 .intro-title {
     font-family: 'Orbitron', sans-serif;
     font-size: clamp(2rem, 7vw, 5.5rem);
@@ -120,10 +232,44 @@
     position: relative;
     margin: 0;
     padding: 0;
-    animation: titleReveal 3s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+    animation: titleReveal 2.5s cubic-bezier(0.23, 1, 0.32, 1) forwards,
+        glitchShift 8s ease-in-out 3s infinite;
     transform-origin: center;
     transform-style: preserve-3d;
     white-space: nowrap;
+}
+
+/* Pulsing glow behind title */
+.intro-title-container::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 120%;
+    height: 200%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at center,
+            rgba(153, 51, 255, 0.3) 0%,
+            rgba(255, 51, 102, 0.15) 30%,
+            transparent 70%);
+    filter: blur(30px);
+    animation: titleGlowPulse 4s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes titleGlowPulse {
+
+    0%,
+    100% {
+        opacity: 0.5;
+        transform: translate(-50%, -50%) scale(1);
+    }
+
+    50% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1.1);
+    }
 }
 
 @keyframes titleReveal {
@@ -132,11 +278,13 @@
         transform: scale(0.5) rotateX(90deg) translateZ(-200px);
         filter: blur(20px);
     }
-    50% {
-        opacity: 0.5;
-        transform: scale(1.1) rotateX(0deg) translateZ(50px);
-        filter: blur(5px);
+
+    60% {
+        opacity: 0.7;
+        transform: scale(1.05) rotateX(0deg) translateZ(30px);
+        filter: blur(3px);
     }
+
     100% {
         opacity: 1;
         transform: scale(1) rotateX(0deg) translateZ(0);
@@ -144,29 +292,43 @@
     }
 }
 
-/* Individual letter styling with stagger */
+/* Individual letter styling - ENHANCED CYAN */
 .intro-letter {
     display: inline-block;
     position: relative;
     opacity: 0;
     transform: translateY(100px) rotateX(-90deg);
-    animation: letterDrop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    animation: letterDrop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    /* Enhanced multi-layer cyan glow */
     text-shadow:
-        0 0 10px rgba(100, 200, 255, 0.8),
-        0 0 20px rgba(100, 200, 255, 0.6),
-        0 0 30px rgba(100, 200, 255, 0.4),
-        0 0 40px rgba(100, 200, 255, 0.2),
-        0 5px 15px rgba(0, 0, 0, 0.5);
-    background: linear-gradient(
-        180deg,
-        #ffffff 0%,
-        #64c8ff 50%,
-        #3b82f6 100%
-    );
+        0 0 10px rgba(100, 200, 255, 0.9),
+        0 0 20px rgba(100, 200, 255, 0.7),
+        0 0 35px rgba(59, 130, 246, 0.6),
+        0 0 50px rgba(100, 200, 255, 0.4),
+        0 0 70px rgba(59, 130, 246, 0.3),
+        0 8px 20px rgba(0, 0, 0, 0.6);
+    /* Original cyan gradient - enhanced */
+    background: linear-gradient(180deg,
+            #ffffff 0%,
+            #64c8ff 40%,
+            #3b82f6 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 0 20px rgba(100, 200, 255, 0.5));
+    filter: drop-shadow(0 0 25px rgba(100, 200, 255, 0.6));
+}
+
+/* Subtle glow pulse on letters */
+@keyframes letterGlowPulse {
+
+    0%,
+    100% {
+        filter: drop-shadow(0 0 25px rgba(100, 200, 255, 0.5));
+    }
+
+    50% {
+        filter: drop-shadow(0 0 35px rgba(100, 200, 255, 0.7));
+    }
 }
 
 @keyframes letterDrop {
@@ -174,9 +336,11 @@
         opacity: 0;
         transform: translateY(100px) rotateX(-90deg) scale(0.5);
     }
+
     60% {
         transform: translateY(-10px) rotateX(5deg) scale(1.1);
     }
+
     100% {
         opacity: 1;
         transform: translateY(0) rotateX(0deg) scale(1);
@@ -184,21 +348,65 @@
 }
 
 /* Stagger the letter animations */
-.intro-letter:nth-child(1) { animation-delay: 0.1s; }
-.intro-letter:nth-child(2) { animation-delay: 0.15s; }
-.intro-letter:nth-child(3) { animation-delay: 0.2s; }
-.intro-letter:nth-child(4) { animation-delay: 0.25s; }
-.intro-letter:nth-child(5) { animation-delay: 0.3s; }
-.intro-letter:nth-child(6) { animation-delay: 0.35s; }
-.intro-letter:nth-child(7) { animation-delay: 0.4s; }
-.intro-letter:nth-child(8) { animation-delay: 0.45s; }
-.intro-letter:nth-child(9) { animation-delay: 0.5s; }
-.intro-letter:nth-child(10) { animation-delay: 0.55s; }
-.intro-letter:nth-child(11) { animation-delay: 0.6s; }
-.intro-letter:nth-child(12) { animation-delay: 0.65s; }
-.intro-letter:nth-child(13) { animation-delay: 0.7s; }
-.intro-letter:nth-child(14) { animation-delay: 0.75s; }
-.intro-letter:nth-child(15) { animation-delay: 0.8s; }
+.intro-letter:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.intro-letter:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+.intro-letter:nth-child(3) {
+    animation-delay: 0.2s;
+}
+
+.intro-letter:nth-child(4) {
+    animation-delay: 0.25s;
+}
+
+.intro-letter:nth-child(5) {
+    animation-delay: 0.3s;
+}
+
+.intro-letter:nth-child(6) {
+    animation-delay: 0.35s;
+}
+
+.intro-letter:nth-child(7) {
+    animation-delay: 0.4s;
+}
+
+.intro-letter:nth-child(8) {
+    animation-delay: 0.45s;
+}
+
+.intro-letter:nth-child(9) {
+    animation-delay: 0.5s;
+}
+
+.intro-letter:nth-child(10) {
+    animation-delay: 0.55s;
+}
+
+.intro-letter:nth-child(11) {
+    animation-delay: 0.6s;
+}
+
+.intro-letter:nth-child(12) {
+    animation-delay: 0.65s;
+}
+
+.intro-letter:nth-child(13) {
+    animation-delay: 0.7s;
+}
+
+.intro-letter:nth-child(14) {
+    animation-delay: 0.75s;
+}
+
+.intro-letter:nth-child(15) {
+    animation-delay: 0.8s;
+}
 
 /* Space between words */
 .intro-space {
@@ -221,7 +429,9 @@
 }
 
 @keyframes raysAppear {
-    to { opacity: 0.6; }
+    to {
+        opacity: 0.6;
+    }
 }
 
 .intro-ray {
@@ -238,8 +448,13 @@
 }
 
 @keyframes rotateRay {
-    from { transform: translate(-50%, 0) rotate(0deg); }
-    to { transform: translate(-50%, 0) rotate(360deg); }
+    from {
+        transform: translate(-50%, 0) rotate(0deg);
+    }
+
+    to {
+        transform: translate(-50%, 0) rotate(360deg);
+    }
 }
 
 /* Chromatic aberration effect */
@@ -256,36 +471,43 @@
 }
 
 @keyframes chromaticPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 0;
         transform: scale(1);
     }
+
     50% {
         opacity: 0.3;
         transform: scale(1.02);
     }
 }
 
-/* Glowing orbs in background */
+/* Glowing orbs in background - chromadelic colors */
 .intro-orb {
     position: absolute;
     border-radius: 50%;
-    background: radial-gradient(circle, var(--orb-color) 0%, transparent 70%);
-    filter: blur(40px);
+    background: radial-gradient(circle, var(--orb-color) 0%, transparent 60%);
+    filter: blur(50px);
     opacity: 0;
-    animation: orbFloat 8s ease-in-out infinite;
+    animation: orbFloat 10s ease-in-out infinite;
     z-index: 2;
     pointer-events: none;
+    mix-blend-mode: screen;
 }
 
 @keyframes orbFloat {
-    0%, 100% {
-        opacity: 0.2;
+
+    0%,
+    100% {
+        opacity: 0.25;
         transform: translate(0, 0) scale(1);
     }
+
     50% {
-        opacity: 0.6;
-        transform: translate(var(--float-x), var(--float-y)) scale(1.5);
+        opacity: 0.5;
+        transform: translate(var(--float-x), var(--float-y)) scale(1.3);
     }
 }
 
@@ -307,10 +529,13 @@
 }
 
 @keyframes promptPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 0.4;
         transform: translateX(-50%) translateY(0);
     }
+
     50% {
         opacity: 1;
         transform: translateX(-50%) translateY(-10px);
@@ -332,6 +557,7 @@
         height: 0;
         opacity: 1;
     }
+
     100% {
         width: 800px;
         height: 800px;
@@ -355,6 +581,7 @@
         transform: translate(0, 0) scale(1);
         opacity: 1;
     }
+
     100% {
         transform: translate(var(--burst-x), var(--burst-y)) scale(0);
         opacity: 0;
@@ -368,12 +595,10 @@
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.1) 50%,
-        transparent 100%
-    );
+    background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.1) 50%,
+            transparent 100%);
     animation: shimmerSweep 3s ease-in-out 2s infinite;
     pointer-events: none;
 }
@@ -382,6 +607,7 @@
     0% {
         left: -100%;
     }
+
     100% {
         left: 200%;
     }
@@ -404,10 +630,13 @@
 }
 
 @keyframes energyPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 0;
         transform: translate(-50%, -50%) scale(0.8);
     }
+
     50% {
         opacity: 0.5;
         transform: translate(-50%, -50%) scale(1.2);
@@ -437,6 +666,7 @@
 
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
+
     .intro-letter,
     .intro-title,
     .intro-particles,
@@ -484,6 +714,7 @@
         top: 50%;
         transform: translate(-50%, -50%) perspective(1000px);
     }
+
     to {
         top: 35px;
         transform: translate(-50%, 0) perspective(1000px) scale(0.4);
@@ -495,6 +726,7 @@
         font-size: clamp(2rem, 7vw, 5.5rem);
         letter-spacing: 0.3em;
     }
+
     to {
         font-size: clamp(1rem, 3vw, 2rem);
         letter-spacing: 0.15em;
@@ -505,6 +737,7 @@
     from {
         opacity: 1;
     }
+
     to {
         opacity: 0.6;
     }
@@ -538,21 +771,65 @@
     animation: letterReverse 0.6s cubic-bezier(0.64, 0, 0.78, 0) forwards !important;
 }
 
-.fade-out-text .intro-letter:nth-child(1) { animation-delay: 0s !important; }
-.fade-out-text .intro-letter:nth-child(2) { animation-delay: 0.03s !important; }
-.fade-out-text .intro-letter:nth-child(3) { animation-delay: 0.06s !important; }
-.fade-out-text .intro-letter:nth-child(4) { animation-delay: 0.09s !important; }
-.fade-out-text .intro-letter:nth-child(5) { animation-delay: 0.12s !important; }
-.fade-out-text .intro-letter:nth-child(6) { animation-delay: 0.15s !important; }
-.fade-out-text .intro-letter:nth-child(7) { animation-delay: 0.18s !important; }
-.fade-out-text .intro-letter:nth-child(8) { animation-delay: 0.21s !important; }
-.fade-out-text .intro-letter:nth-child(9) { animation-delay: 0.24s !important; }
-.fade-out-text .intro-letter:nth-child(10) { animation-delay: 0.27s !important; }
-.fade-out-text .intro-letter:nth-child(11) { animation-delay: 0.3s !important; }
-.fade-out-text .intro-letter:nth-child(12) { animation-delay: 0.33s !important; }
-.fade-out-text .intro-letter:nth-child(13) { animation-delay: 0.36s !important; }
-.fade-out-text .intro-letter:nth-child(14) { animation-delay: 0.39s !important; }
-.fade-out-text .intro-letter:nth-child(15) { animation-delay: 0.42s !important; }
+.fade-out-text .intro-letter:nth-child(1) {
+    animation-delay: 0s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(2) {
+    animation-delay: 0.03s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(3) {
+    animation-delay: 0.06s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(4) {
+    animation-delay: 0.09s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(5) {
+    animation-delay: 0.12s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(6) {
+    animation-delay: 0.15s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(7) {
+    animation-delay: 0.18s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(8) {
+    animation-delay: 0.21s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(9) {
+    animation-delay: 0.24s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(10) {
+    animation-delay: 0.27s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(11) {
+    animation-delay: 0.3s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(12) {
+    animation-delay: 0.33s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(13) {
+    animation-delay: 0.36s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(14) {
+    animation-delay: 0.39s !important;
+}
+
+.fade-out-text .intro-letter:nth-child(15) {
+    animation-delay: 0.42s !important;
+}
 
 @keyframes fadeOutText {
     to {
@@ -565,6 +842,7 @@
         opacity: 1;
         transform: translateY(0) rotateX(0deg);
     }
+
     to {
         opacity: 0;
         transform: translateY(-100px) rotateX(90deg);
