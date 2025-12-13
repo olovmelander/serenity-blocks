@@ -1,161 +1,231 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * NIMBUS VEIL THEME - Three.js 3D Implementation
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 
+ * A serene, atmospheric 3D theme featuring ethereal clouds drifting through
+ * a mysterious void with spiritual, heavenly feeling.
+ * 
+ * Visual elements:
+ * - Volumetric 3D clouds with soft fbm noise textures
+ * - Floating dust particles in 3D space
+ * - Background starfield for infinite depth
+ * - Dynamic lighting with subtle god rays
+ * - Bloom post-processing for ethereal glow
+ * - Lock effect: Heavenly light burst
+ * - Combo effect: Ethereal pulse waves
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { NIMBUS_VEIL_TETROMINOS } from './nimbus-veil-tetrominos.js';
+import {
+    cloudVertexShader,
+    cloudFragmentShader,
+    dustVertexShader,
+    dustFragmentShader,
+    starsVertexShader,
+    starsFragmentShader,
+    pulseVertexShader,
+    pulseFragmentShader,
+    mistVertexShader,
+    mistFragmentShader,
+    lightBurstVertexShader,
+    lightBurstFragmentShader,
+    sparkleVertexShader,
+    sparkleFragmentShader
+} from './nimbus-veil-shaders.js';
 
-/**
- * Nimbus Veil Theme
- *
- * A serene, atmospheric theme featuring ethereal white clouds drifting across
- * a dark, transparent sky. Inspired by isolated cloud formations suspended in
- * a mysterious void.
- *
- * Visual elements:
- * - Multiple cloud layers with different drift speeds (parallax effect)
- * - Soft, wispy cloud particles on canvas
- * - Gentle pulsing glow on game events
- * - Subtle mist/fog overlay for depth
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUALITY_PRESETS = {
+    Minimal: {
+        cloudCount: 4,
+        dustCount: 200,
+        starCount: 300,
+        mistCount: 2,
+        enableBloom: false,
+        bloomStrength: 0.4,
+        maxPulseWaves: 2,
+        maxSparkles: 20
+    },
+    Low: {
+        cloudCount: 6,
+        dustCount: 350,
+        starCount: 500,
+        mistCount: 3,
+        enableBloom: true,
+        bloomStrength: 0.5,
+        maxPulseWaves: 3,
+        maxSparkles: 35
+    },
+    Medium: {
+        cloudCount: 8,
+        dustCount: 500,
+        starCount: 800,
+        mistCount: 4,
+        enableBloom: true,
+        bloomStrength: 0.6,
+        maxPulseWaves: 4,
+        maxSparkles: 50
+    },
+    High: {
+        cloudCount: 10,
+        dustCount: 700,
+        starCount: 1200,
+        mistCount: 5,
+        enableBloom: true,
+        bloomStrength: 0.7,
+        maxPulseWaves: 5,
+        maxSparkles: 70
+    },
+    Ultra: {
+        cloudCount: 12,
+        dustCount: 1000,
+        starCount: 1800,
+        mistCount: 6,
+        enableBloom: true,
+        bloomStrength: 0.8,
+        maxPulseWaves: 6,
+        maxSparkles: 100
+    },
+    Extreme: {
+        cloudCount: 15,
+        dustCount: 1500,
+        starCount: 2500,
+        mistCount: 8,
+        enableBloom: true,
+        bloomStrength: 0.9,
+        maxPulseWaves: 8,
+        maxSparkles: 150
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default class NimbusVeilTheme extends BaseTheme {
     constructor() {
         super('nimbus-veil');
 
+        // Three.js components
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+
+        // Scene elements
+        this.clouds = [];
+        this.cloudMaterials = [];
+        this.dustParticles = null;
+        this.dustMaterial = null;
+        this.stars = null;
+        this.starsMaterial = null;
+        this.mistSprites = [];
+        this.mistMaterials = [];
+        this.pulseWaves = [];
+        this.lightBurst = null;
+        this.lightBurstMaterial = null;
+        this.sparkles = null;
+        this.sparkleData = [];
+
         // Animation state
-        this.lastFrameTime = 0;
-        this.targetFrameTime = 1000 / 60; // 60 FPS for smooth animation
-        this.animationFrame = null;
-        this.elapsedTime = 0; // Accumulated time instead of Date.now()
+        this.clock = new THREE.Clock();
+        this.time = 0;
+        this.animationFrameId = null;
 
-        // Cloud particles
-        this.cloudParticles = [];
-        this.mistParticles = [];
-        this.movingParticles = []; // Small moving particles
-        this.lightningFlashes = []; // Lightning flash effects
-        this.comboRings = []; // Expanding rings for combo effects
-        this.sparkles = []; // Sparkle particles for combos
+        // Effect state
+        this.cloudGlowIntensity = 0;
+        this.targetCloudGlow = 0;
+        this.lightBurstProgress = -1;
+        this.bloomBoost = 0;
+        this.particleBurstIntensity = 0; // For particle movement on events
+        this.particleBurstDecay = 0.95;
 
-        // Canvas elements
-        this.canvas = null;
-        this.ctx = null;
-
-        // Performance optimizations
-        this.colorCache = new Map();
-        this.offscreenCanvas = null; // For pre-rendering clouds
-        this.offscreenCtx = null;
-        this.mistCanvas = null; // Separate canvas for mist (pre-rendered once)
-        this.mistCtx = null;
-        this.needsRedraw = true; // Flag to track if clouds need re-rendering
-        this.frameSkip = 0; // Skip frames for performance
-        this.updateCounter = 0; // Counter for selective updates
-        this.cachedSinCos = { sin: 0, cos: 0 }; // Cache trig values
-
-        // Layer caching for performance
-        this.cloudLayerCanvas = null;
-        this.cloudLayerCtx = null;
-        this.mistLayerCanvas = null;
-        this.mistLayerCtx = null;
-        this.layersNeedUpdate = true;
-
-        // Cache frequently used values
-        this.cachedWidth = 0;
-        this.cachedHeight = 0;
-        this.cachedWindX = 0;
-        this.cachedWindY = 0;
-
-        // Ambient effects
-        this.windIntensity = 0.5; // 0-1 scale
-        this.windDirection = 0; // Radians
+        // Wind simulation
+        this.windDirection = new THREE.Vector2(1, 0.2);
+        this.windStrength = 0.3;
         this.windChangeTimer = 0;
 
-        // Event state
+        // Event handlers
         this.eventUnsubscribers = [];
 
-        // Combo/effect limits
-        this.MAX_COMBO_RINGS = 6;
-        this.MAX_SPARKLES = 50;
-        this.MAX_LIGHTNING_FLASHES = 3;
-        this.lightningChance = 0.0005;
+        // Quality
+        this.qualityPreset = QUALITY_PRESETS.High;
 
-        // Graphics quality presets
-        this.qualityChangeHandler = null;
-        this.qualityPresets = {
-            Minimal: {
-                cloudParticles: 2,
-                mistParticles: 1,
-                movingParticles: 4,
-                maxComboRings: 3,
-                maxSparkles: 15,
-                maxLightning: 0,
-                lightningChance: 0.0001,
-            },
-            Low: {
-                cloudParticles: 3,
-                mistParticles: 2,
-                movingParticles: 6,
-                maxComboRings: 4,
-                maxSparkles: 25,
-                maxLightning: 1,
-                lightningChance: 0.0002,
-            },
-            Medium: {
-                cloudParticles: 4,
-                mistParticles: 3,
-                movingParticles: 8,
-                maxComboRings: 5,
-                maxSparkles: 40,
-                maxLightning: 2,
-                lightningChance: 0.00035,
-            },
-            High: {
-                cloudParticles: 5,
-                mistParticles: 4,
-                movingParticles: 12,
-                maxComboRings: 6,
-                maxSparkles: 50,
-                maxLightning: 3,
-                lightningChance: 0.0005,
-            },
-            Ultra: {
-                cloudParticles: 6,
-                mistParticles: 5,
-                movingParticles: 16,
-                maxComboRings: 8,
-                maxSparkles: 70,
-                maxLightning: 4,
-                lightningChance: 0.0008,
-            },
-            Extreme: {
-                cloudParticles: 8,
-                mistParticles: 7,
-                movingParticles: 24,
-                maxComboRings: 12,
-                maxSparkles: 100,
-                maxLightning: 6,
-                lightningChance: 0.0012,
-            },
-        };
-
-        this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets.High;
+        console.log('[NimbusVeil] Theme constructed');
     }
 
-    applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Nimbus Veil: Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async createScene() {
+        console.log('[NimbusVeil] Creating 3D scene...');
+
+        // Apply quality preset
+        const quality = this.getGraphicsQuality();
+        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+
+        // Create container
+        let container = document.getElementById('nimbus-veil-theme');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'nimbus-veil-theme';
+            container.className = 'theme-container';
+            Object.assign(container.style, {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                zIndex: '-1',
+                pointerEvents: 'none',
+                opacity: '0'
+            });
+            document.body.insertBefore(container, document.body.firstChild);
+        }
+        this.container = container;
+
+        // Initialize Three.js
+        this.initRenderer();
+        this.initScene();
+        this.initCamera();
+
+        // Create scene elements
+        this.createBackgroundStars();
+        this.createClouds();
+        this.createDustParticles();
+        this.createMistSprites();
+        this.createLightBurst();
+        this.setupLighting();
+
+        // Post-processing
+        if (this.qualityPreset.enableBloom) {
+            this.setupPostProcessing();
         }
 
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
+        // Event listeners
+        this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
 
-        const preset = this.activePreset;
-        this.MAX_COMBO_RINGS = preset.maxComboRings;
-        this.MAX_SPARKLES = preset.maxSparkles;
-        this.MAX_LIGHTNING_FLASHES = preset.maxLightning;
-        this.lightningChance = preset.lightningChance;
+        // Start animation
+        this.animate();
 
-        this.trimEffectCollections();
+        // Fade in
+        container.style.transition = 'opacity 1s ease-in';
+        container.style.opacity = '1';
 
-        console.log(`☁️ Nimbus Veil: Applying ${quality} quality preset`);
+        console.log('[NimbusVeil] Scene created successfully');
     }
 
     getGraphicsQuality() {
@@ -163,636 +233,580 @@ export default class NimbusVeilTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-        }
-
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            this.applyQualityPreset(newQuality);
-            this.refreshQualityDependentElements();
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
-    refreshQualityDependentElements() {
-        this.createCloudParticles(true);
-        this.createMistParticles(true);
-        this.trimEffectCollections();
-        this.forceLayerPrerender();
-    }
-
-    trimEffectCollections() {
-        this.trimCollection(this.comboRings, this.MAX_COMBO_RINGS);
-        this.trimCollection(this.sparkles, this.MAX_SPARKLES);
-        this.trimCollection(this.lightningFlashes, this.MAX_LIGHTNING_FLASHES);
-    }
-
-    trimCollection(collection, limit) {
-        if (!collection || typeof limit !== 'number') return;
-        if (limit <= 0) {
-            collection.length = 0;
-            return;
-        }
-        if (collection.length > limit) {
-            collection.splice(0, collection.length - limit);
-        }
-    }
-
-    forceLayerPrerender() {
-        if (this.mistLayerCtx && this.mistLayerCanvas) {
-            this.prerenderMistLayer();
-        }
-        if (this.cloudLayerCtx && this.cloudLayerCanvas) {
-            this.prerenderCloudLayer();
-        }
-    }
-
-    /**
-     * Cloud colors - soft whites and light grays
-     */
-    getCloudColors() {
-        return [
-            'rgba(255, 255, 255, 0.9)', // Pure white
-            'rgba(245, 245, 250, 0.85)', // Slight blue-white
-            'rgba(240, 240, 245, 0.8)', // Light gray-white
-            'rgba(235, 235, 240, 0.75)', // Softer white
-            'rgba(230, 230, 235, 0.7)', // Dim white
-        ];
-    }
-
-    /**
-     * Initialize the theme
-     * Note: super.start() already calls createScene(), so we don't call it again
-     */
-    async start(webglRenderer, resources) {
-        await super.start(webglRenderer, resources);
-
-        // Start animation after scene is created
-        this.startAnimation();
-    }
-
-    /**
-     * Create the cloud scene
-     */
-    async createScene() {
-        console.log('[Nimbus Veil] Creating scene...');
-
-        try {
-            const quality = this.getGraphicsQuality();
-            this.applyQualityPreset(quality);
-
-            // Create floating cloud particles
-            this.createCloudParticles(true);
-
-            // Create mist overlay
-            this.createMistParticles(true);
-
-            // Setup canvas for particle effects
-            this.createCloudCanvas();
-            this.forceLayerPrerender();
-
-            // Setup event listeners for reactive effects
-            this.setupEventListeners();
-            this.setupQualityListener();
-
-            console.log('[Nimbus Veil] Scene created successfully!');
-            console.log(`[Nimbus Veil] Performance mode: ${this.cloudParticles.length} clouds, ${this.mistParticles.length} mist, ${this.movingParticles.length} particles`);
-        } catch (error) {
-            console.error('[Nimbus Veil] Error in createScene():', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Create background cloud particles
-     */
-    createCloudParticles(force = false) {
-        const colors = this.getCloudColors();
-
-        if (force) {
-            this.cloudParticles = [];
-        }
-
-        const targetCount = this.activePreset?.cloudParticles ?? 4;
-        this.cloudParticles = [];
-
-        // Create cloud particles - large, dynamic, visually stunning (heavily optimized)
-        for (let i = 0; i < targetCount; i++) {
-            const baseSize = Math.random() * 140 + 70; // Larger clouds to compensate (70-210px)
-            this.cloudParticles.push({
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight,
-                size: baseSize,
-                baseSize, // Store original size
-                targetSize: baseSize, // Target size for morphing
-                opacity: Math.random() * 0.45 + 0.3, // 0.3-0.75 (very visible)
-                color: colors[Math.floor(Math.random() * colors.length)],
-                speedX: Math.random() * 0.6 + 0.2, // Faster, more dynamic horizontal drift
-                speedY: (Math.random() - 0.5) * 0.25, // More vertical drift
-                blur: Math.random() * 35 + 25, // 25-60px blur
-                pulseSpeed: Math.random() * 0.025 + 0.015, // Faster pulsing
-                pulseOffset: Math.random() * Math.PI * 2,
-                swayAmplitude: Math.random() * 0.35 + 0.2, // Much more sway
-                swaySpeed: Math.random() * 0.02 + 0.015, // Faster sway
-                // REMOVED morphing for performance - clouds stay constant size
-            });
-        }
-    }
-
-    /**
-     * Create mist/fog particles for depth
-     */
-    createMistParticles(force = false) {
-        if (force) {
-            this.mistParticles = [];
-            this.movingParticles = [];
-        }
-
-        const mistCount = this.activePreset?.mistParticles ?? 3;
-        const movingCount = this.activePreset?.movingParticles ?? 10;
-
-        this.mistParticles = [];
-        // Create 3 larger mist particles for enhanced background depth (heavily optimized)
-        for (let i = 0; i < mistCount; i++) {
-            const baseSize = Math.random() * 250 + 150; // Bigger mist to compensate (150-400px)
-            this.mistParticles.push({
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight,
-                size: baseSize,
-                baseSize,
-                targetSize: baseSize,
-                opacity: Math.random() * 0.15 + 0.06, // 0.06-0.21 (more visible)
-                speedX: Math.random() * 0.35 + 0.15, // Faster horizontal drift
-                speedY: (Math.random() - 0.5) * 0.15, // More vertical drift
-                blur: Math.random() * 65 + 55, // 55-120px heavy blur
-                pulseSpeed: Math.random() * 0.02 + 0.01, // Faster pulsing
-                pulseOffset: Math.random() * Math.PI * 2,
-                swayAmplitude: Math.random() * 0.25 + 0.12, // More sway
-                swaySpeed: Math.random() * 0.015 + 0.008, // Faster sway
-                // REMOVED morphing for performance - mist stays constant size
-            });
-        }
-
-        this.movingParticles = [];
-        // Create 10 small moving particles (heavily optimized for max performance)
-        for (let i = 0; i < movingCount; i++) {
-            this.movingParticles.push({
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight,
-                size: Math.random() * 2 + 0.5, // 0.5-2.5px tiny particles
-                opacity: Math.random() * 0.6 + 0.3, // 0.3-0.9
-                speedX: (Math.random() - 0.5) * 1.5, // Faster movement in both directions
-                speedY: (Math.random() - 0.5) * 1.5,
-                twinkleSpeed: Math.random() * 0.03 + 0.01,
-                twinkleOffset: Math.random() * Math.PI * 2,
-            });
-        }
-    }
-
-    /**
-     * Setup HTML5 canvas for cloud rendering
-     */
-    createCloudCanvas() {
-        this.canvas = document.getElementById('nimbus-veil-cloud-canvas');
-        if (!this.canvas) {
-            console.warn('[Nimbus Veil] Cloud canvas not found!');
-            return;
-        }
-
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-
-        this.ctx = this.canvas.getContext('2d', {
+    initRenderer() {
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
             alpha: true,
-            desynchronized: true, // Performance optimization
-            willReadFrequently: false,
+            powerPreference: 'high-performance'
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setClearColor(0x0a0a12, 1);
+        this.container.appendChild(this.renderer.domElement);
+    }
+
+    initScene() {
+        this.scene = new THREE.Scene();
+        // Deep atmospheric fog
+        this.scene.fog = new THREE.FogExp2(0x0a0a12, 0.015);
+    }
+
+    initCamera() {
+        this.camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            500
+        );
+        this.camera.position.set(0, 0, 30);
+        this.camera.lookAt(0, 0, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scene Elements
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBackgroundStars() {
+        const count = this.qualityPreset.starCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const randoms = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            // Sphere distribution far back
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const radius = 100 + Math.random() * 150;
+
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = -50 - Math.random() * 200; // Behind camera
+
+            randoms[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+
+        this.starsMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSize: { value: 3.0 }
+            },
+            vertexShader: starsVertexShader,
+            fragmentShader: starsFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
         });
 
-        // Create offscreen canvases for layer caching (MASSIVE performance boost)
-        this.createLayerCanvases();
-
-        console.log('[Nimbus Veil] Canvas initialized:', this.canvas.width, 'x', this.canvas.height);
+        this.stars = new THREE.Points(geometry, this.starsMaterial);
+        this.scene.add(this.stars);
     }
 
-    /**
-     * Create offscreen canvases for pre-rendering blurred layers
-     * This is the key performance optimization - render blur ONCE, composite every frame
-     */
-    createLayerCanvases() {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+    createClouds() {
+        const count = this.qualityPreset.cloudCount;
 
-        // Cloud layer canvas (pre-rendered with blur)
-        this.cloudLayerCanvas = document.createElement('canvas');
-        this.cloudLayerCanvas.width = width;
-        this.cloudLayerCanvas.height = height;
-        this.cloudLayerCtx = this.cloudLayerCanvas.getContext('2d', {
-            alpha: true,
-            willReadFrequently: false,
-        });
+        for (let i = 0; i < count; i++) {
+            // Cloud billboard plane
+            const size = 15 + Math.random() * 20;
+            const geometry = new THREE.PlaneGeometry(size, size);
 
-        // Mist layer canvas (pre-rendered with heavy blur)
-        this.mistLayerCanvas = document.createElement('canvas');
-        this.mistLayerCanvas.width = width;
-        this.mistLayerCanvas.height = height;
-        this.mistLayerCtx = this.mistLayerCanvas.getContext('2d', {
-            alpha: true,
-            willReadFrequently: false,
-        });
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 0.4 + Math.random() * 0.3 },
+                    uColor: { value: new THREE.Color(0.95, 0.97, 1.0) },
+                    uNoiseScale: { value: 2.0 + Math.random() * 1.5 },
+                    uSoftness: { value: 0.3 + Math.random() * 0.4 }
+                },
+                vertexShader: cloudVertexShader,
+                fragmentShader: cloudFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                blending: THREE.NormalBlending
+            });
 
-        console.log('[Nimbus Veil] Layer canvases created for pre-rendering');
-    }
+            const cloud = new THREE.Mesh(geometry, material);
 
-    /**
-     * Main animation loop (optimized for 60 FPS)
-     */
-    startAnimation() {
-        const animate = (currentTime) => {
-            if (!this.isActive) return;
+            // Position clouds in 3D space
+            cloud.position.set(
+                (Math.random() - 0.5) * 80,
+                (Math.random() - 0.5) * 40,
+                -10 - Math.random() * 40
+            );
 
-            // Calculate delta time
-            const deltaTime = currentTime - this.lastFrameTime;
-            this.lastFrameTime = currentTime;
+            // Random rotation
+            cloud.rotation.z = Math.random() * Math.PI;
 
-            // Accumulate elapsed time (smoother than Date.now())
-            this.elapsedTime += deltaTime * 0.001; // Convert to seconds
+            // Store animation data
+            cloud.userData = {
+                baseX: cloud.position.x,
+                baseY: cloud.position.y,
+                speedX: 0.2 + Math.random() * 0.4,
+                speedY: (Math.random() - 0.5) * 0.1,
+                swaySpeed: 0.1 + Math.random() * 0.2,
+                swayAmplitude: 2 + Math.random() * 3,
+                baseOpacity: material.uniforms.uOpacity.value
+            };
 
-            // Update particle positions every frame
-            this.updateParticles(deltaTime);
-
-            // Render at full 60 FPS (no frame skipping!)
-            this.renderCanvas();
-
-            this.animationFrame = requestAnimationFrame(animate);
-        };
-
-        this.lastFrameTime = performance.now();
-        this.animationFrame = requestAnimationFrame(animate);
-    }
-
-    /**
-     * Update particle positions and states (ultra-optimized)
-     */
-    updateParticles(deltaTime) {
-        this.updateCounter++;
-        const time = this.elapsedTime;
-
-        // Cache dimensions (only update if changed)
-        const currentWidth = window.innerWidth;
-        const currentHeight = window.innerHeight;
-        if (this.cachedWidth !== currentWidth || this.cachedHeight !== currentHeight) {
-            this.cachedWidth = currentWidth;
-            this.cachedHeight = currentHeight;
+            this.clouds.push(cloud);
+            this.cloudMaterials.push(material);
+            this.scene.add(cloud);
         }
-        const width = this.cachedWidth;
-        const height = this.cachedHeight;
+    }
 
-        // Update wind only every 10 frames (heavily reduced for performance)
-        if (this.updateCounter % 10 === 0) {
-            this.windChangeTimer += deltaTime * 0.003;
-            if (this.windChangeTimer > 10) {
-                this.windChangeTimer = 0;
-                this.windIntensity = Math.random() * 0.6 + 0.2;
-                this.windDirection = Math.random() * Math.PI * 2;
+    createDustParticles() {
+        const count = this.qualityPreset.dustCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const randoms = new Float32Array(count);
+        const phases = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            positions[i3] = (Math.random() - 0.5) * 100;
+            positions[i3 + 1] = (Math.random() - 0.5) * 60;
+            positions[i3 + 2] = (Math.random() - 0.5) * 60 - 10;
+
+            randoms[i] = Math.random();
+            phases[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+        this.dustMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSize: { value: 4.0 },
+                uIntensity: { value: 1.0 }
+            },
+            vertexShader: dustVertexShader,
+            fragmentShader: dustFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.dustParticles = new THREE.Points(geometry, this.dustMaterial);
+        this.scene.add(this.dustParticles);
+    }
+
+    createMistSprites() {
+        const count = this.qualityPreset.mistCount;
+
+        for (let i = 0; i < count; i++) {
+            const size = 30 + Math.random() * 40;
+            const geometry = new THREE.PlaneGeometry(size, size);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 0.08 + Math.random() * 0.08 }
+                },
+                vertexShader: mistVertexShader,
+                fragmentShader: mistFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
+            });
+
+            const mist = new THREE.Mesh(geometry, material);
+
+            mist.position.set(
+                (Math.random() - 0.5) * 60,
+                (Math.random() - 0.5) * 30,
+                -5 - Math.random() * 25
+            );
+
+            mist.userData = {
+                baseX: mist.position.x,
+                speedX: 0.1 + Math.random() * 0.2
+            };
+
+            this.mistSprites.push(mist);
+            this.mistMaterials.push(material);
+            this.scene.add(mist);
+        }
+    }
+
+    createLightBurst() {
+        const geometry = new THREE.PlaneGeometry(60, 60);
+
+        this.lightBurstMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uProgress: { value: 0 },
+                uIntensity: { value: 1.0 }
+            },
+            vertexShader: lightBurstVertexShader,
+            fragmentShader: lightBurstFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.lightBurst = new THREE.Mesh(geometry, this.lightBurstMaterial);
+        this.lightBurst.position.z = 10;
+        this.lightBurst.visible = false;
+        this.scene.add(this.lightBurst);
+    }
+
+    setupLighting() {
+        // Subtle ambient light
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+        this.scene.add(ambientLight);
+
+        // Main directional light (moon-like)
+        const directionalLight = new THREE.DirectionalLight(0xeeeeff, 0.3);
+        directionalLight.position.set(10, 20, 30);
+        this.scene.add(directionalLight);
+
+        // Subtle point light for center glow
+        this.centerLight = new THREE.PointLight(0xffffff, 0.2, 50);
+        this.centerLight.position.set(0, 0, 10);
+        this.scene.add(this.centerLight);
+    }
+
+    setupPostProcessing() {
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.qualityPreset.bloomStrength,
+            0.4,
+            0.85
+        );
+        this.bloomPass = bloomPass;
+        this.composer.addPass(bloomPass);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    animate() {
+        if (!this.isActive) return;
+
+        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+
+        const delta = this.clock.getDelta();
+        this.time += delta;
+
+        // Update shader uniforms
+        this.updateUniforms();
+
+        // Animate clouds
+        this.animateClouds(delta);
+
+        // Animate dust particles
+        this.animateDustParticles(delta);
+
+        // Animate mist
+        this.animateMist(delta);
+
+        // Update wind
+        this.updateWind(delta);
+
+        // Animate effects
+        this.animateEffects(delta);
+
+        // Update camera subtle movement
+        this.animateCamera(delta);
+
+        // Render
+        if (this.composer && this.qualityPreset.enableBloom) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
+    }
+
+    updateUniforms() {
+        // Stars
+        if (this.starsMaterial) {
+            this.starsMaterial.uniforms.uTime.value = this.time;
+        }
+
+        // Dust
+        if (this.dustMaterial) {
+            this.dustMaterial.uniforms.uTime.value = this.time;
+            this.dustMaterial.uniforms.uIntensity.value = 1.0 + this.cloudGlowIntensity * 0.5;
+        }
+
+        // Clouds - only update time, opacity is handled in animateClouds with edge fade
+        this.cloudMaterials.forEach((mat, i) => {
+            mat.uniforms.uTime.value = this.time + i * 10;
+        });
+
+        // Mist
+        this.mistMaterials.forEach(mat => {
+            mat.uniforms.uTime.value = this.time;
+        });
+    }
+
+    animateClouds(delta) {
+        const windX = this.windDirection.x * this.windStrength;
+        const windY = this.windDirection.y * this.windStrength;
+
+        // Edge boundaries for wrap-around
+        const edgeX = 60;
+        const edgeY = 30;
+        const fadeZone = 15; // Start fading this far from edge
+
+        this.clouds.forEach((cloud, i) => {
+            const data = cloud.userData;
+            const material = this.cloudMaterials[i];
+
+            // Drift with wind
+            cloud.position.x += (data.speedX + windX) * delta * 2;
+            cloud.position.y += (data.speedY + windY) * delta;
+
+            // Gentle sway
+            cloud.position.y += Math.sin(this.time * data.swaySpeed) * data.swayAmplitude * delta * 0.5;
+
+            // Wrap around with seamless repositioning
+            if (cloud.position.x > edgeX) {
+                cloud.position.x = -edgeX;
             }
-            // Cache wind calculations
-            this.cachedWindX = Math.cos(this.windDirection) * this.windIntensity * 0.15;
-            this.cachedWindY = Math.sin(this.windDirection) * this.windIntensity * 0.15;
-        }
-        const windX = this.cachedWindX;
-        const windY = this.cachedWindY;
-
-        // Lightning (ultra rare) - check less frequently for performance
-        if (this.updateCounter % 60 === 0 && Math.random() < (this.lightningChance || 0.0005)) {
-            this.createLightningFlash();
-        }
-
-        // Update lightning flashes (only if they exist)
-        if (this.lightningFlashes.length > 0) {
-            const dt = deltaTime * 0.001;
-            for (let i = this.lightningFlashes.length - 1; i >= 0; i--) {
-                const flash = this.lightningFlashes[i];
-                flash.age += dt;
-                flash.opacity = 1 - (flash.age / flash.duration);
-                if (flash.age >= flash.duration) {
-                    this.lightningFlashes.splice(i, 1);
-                }
+            if (cloud.position.y > edgeY) {
+                cloud.position.y = -edgeY;
+            } else if (cloud.position.y < -edgeY) {
+                cloud.position.y = edgeY;
             }
-        }
 
-        // Update trig cache only every 5 frames (heavily reduced for performance)
-        if (this.updateCounter % 5 === 0) {
-            this.cachedSinCos.sin = Math.sin(time * 0.5);
-            this.cachedSinCos.cos = Math.cos(time * 0.5);
-        }
-        const sinTime = this.cachedSinCos.sin;
-        const cosTime = this.cachedSinCos.cos;
+            // Edge fade - clouds fade near edges to prevent popping
+            let edgeFade = 1.0;
 
-        // Pre-calculate lightning state once
-        const hasLightning = this.lightningFlashes.length > 0;
-        const lightningBoost = hasLightning ? 0.3 : 0;
-        const lightningDim = hasLightning ? -0.1 : 0;
-        const lightningBrightness = hasLightning ? 0.4 : 0;
+            // Horizontal edge fade
+            const absX = Math.abs(cloud.position.x);
+            if (absX > edgeX - fadeZone) {
+                edgeFade *= 1.0 - (absX - (edgeX - fadeZone)) / fadeZone;
+            }
 
-        // Update cloud particles (optimized loop)
-        const windX12 = windX * 1.2;
-        const windY12 = windY * 1.2;
+            // Vertical edge fade
+            const absY = Math.abs(cloud.position.y);
+            if (absY > edgeY - fadeZone) {
+                edgeFade *= 1.0 - (absY - (edgeY - fadeZone)) / fadeZone;
+            }
 
-        for (let i = 0, len = this.cloudParticles.length; i < len; i++) {
-            const particle = this.cloudParticles[i];
+            // Clamp fade value
+            edgeFade = Math.max(0, Math.min(1, edgeFade));
 
-            // Movement (REMOVED morphing calculations for performance)
-            particle.x += particle.speedX + sinTime * particle.swayAmplitude + windX12;
-            particle.y += particle.speedY + cosTime * particle.swayAmplitude * 0.5 + windY12;
+            // Apply edge fade to opacity (combined with glow effect)
+            material.uniforms.uOpacity.value = (data.baseOpacity + this.cloudGlowIntensity * 0.3) * edgeFade;
+
+            // Subtle rotation
+            cloud.rotation.z += delta * 0.02;
+
+            // Billboard toward camera
+            cloud.lookAt(this.camera.position);
+        });
+    }
+
+    animateDustParticles(delta) {
+        if (!this.dustParticles) return;
+
+        const positions = this.dustParticles.geometry.attributes.position.array;
+        const count = positions.length / 3;
+
+        // Particle burst effect - scatter particles outward from center
+        const burstStrength = this.particleBurstIntensity;
+        const hasBurst = burstStrength > 0.01;
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            const x = positions[i3];
+            const y = positions[i3 + 1];
+
+            // Drift with wind
+            positions[i3] += this.windDirection.x * this.windStrength * delta * 0.5;
+            positions[i3 + 1] += this.windDirection.y * this.windStrength * delta * 0.3;
+
+            // Gentle wander
+            positions[i3] += Math.sin(this.time * 0.5 + i * 0.1) * delta * 0.3;
+            positions[i3 + 1] += Math.cos(this.time * 0.4 + i * 0.15) * delta * 0.2;
+
+            // Burst effect - particles scatter outward from center
+            if (hasBurst) {
+                const dist = Math.sqrt(x * x + y * y) + 0.1; // Avoid division by zero
+                const normalX = x / dist;
+                const normalY = y / dist;
+
+                // Particles further from center move faster
+                const burstSpeed = burstStrength * (5 + dist * 0.1) * delta;
+                positions[i3] += normalX * burstSpeed;
+                positions[i3 + 1] += normalY * burstSpeed * 0.6;
+            }
 
             // Wrap around
-            if (particle.x > width + particle.size) particle.x = -particle.size;
-            else if (particle.y > height + particle.size) particle.y = -particle.size;
-            else if (particle.y < -particle.size) particle.y = height + particle.size;
-
-            // Opacity (minimal pulsing)
-            particle.currentOpacity = particle.opacity * (0.95 + Math.sin(time * particle.pulseSpeed + particle.pulseOffset) * 0.05 + lightningBoost);
+            if (positions[i3] > 50) positions[i3] = -50;
+            if (positions[i3] < -50) positions[i3] = 50;
+            if (positions[i3 + 1] > 30) positions[i3 + 1] = -30;
+            if (positions[i3 + 1] < -30) positions[i3 + 1] = 30;
         }
 
-        // Update mist particles (optimized loop)
-        const windX08 = windX * 0.8;
-        const windY08 = windY * 0.8;
-        const sinTime08 = sinTime * 0.8;
-        const cosTime06 = cosTime * 0.6;
+        // Decay burst intensity
+        this.particleBurstIntensity *= this.particleBurstDecay;
 
-        for (let i = 0, len = this.mistParticles.length; i < len; i++) {
-            const particle = this.mistParticles[i];
+        this.dustParticles.geometry.attributes.position.needsUpdate = true;
+    }
 
-            // Movement (REMOVED morphing calculations for performance)
-            particle.x += particle.speedX + sinTime08 * particle.swayAmplitude + windX08;
-            particle.y += particle.speedY + cosTime06 * particle.swayAmplitude + windY08;
+    animateMist(delta) {
+        this.mistSprites.forEach(mist => {
+            const data = mist.userData;
 
-            if (particle.x > width + particle.size) particle.x = -particle.size;
-            else if (particle.y > height + particle.size) particle.y = -particle.size;
-            else if (particle.y < -particle.size) particle.y = height + particle.size;
+            mist.position.x += data.speedX * delta;
 
-            particle.currentOpacity = particle.opacity * (0.92 + Math.sin(time * particle.pulseSpeed + particle.pulseOffset) * 0.08 + lightningDim);
-        }
-
-        // Update moving particles (optimized loop)
-        const windX25 = windX * 2.5;
-        const windY25 = windY * 2.5;
-
-        for (let i = 0, len = this.movingParticles.length; i < len; i++) {
-            const particle = this.movingParticles[i];
-
-            particle.x += particle.speedX + windX25;
-            particle.y += particle.speedY + windY25;
-
-            if (particle.x > width) particle.x = 0;
-            else if (particle.x < 0) particle.x = width;
-            if (particle.y > height) particle.y = 0;
-            else if (particle.y < 0) particle.y = height;
-
-            particle.currentOpacity = particle.opacity * (0.5 + Math.sin(time * particle.twinkleSpeed + particle.twinkleOffset) * 0.5 + lightningBrightness);
-        }
-
-        // Update combo rings (expand and fade out)
-        const dt = deltaTime * 0.001;
-        for (let i = this.comboRings.length - 1; i >= 0; i--) {
-            const ring = this.comboRings[i];
-            ring.age += dt;
-            ring.radius += ring.expansionSpeed * deltaTime;
-            ring.opacity = (1 - (ring.age / ring.lifetime)) * ring.maxOpacity;
-
-            if (ring.age >= ring.lifetime) {
-                this.comboRings.splice(i, 1);
+            if (mist.position.x > 40) {
+                mist.position.x = -40;
             }
-        }
 
-        // Update sparkles (move and fade out)
-        for (let i = this.sparkles.length - 1; i >= 0; i--) {
-            const sparkle = this.sparkles[i];
-            sparkle.age += dt;
-            sparkle.x += sparkle.vx * deltaTime;
-            sparkle.y += sparkle.vy * deltaTime;
-            sparkle.vy += sparkle.gravity * deltaTime; // Apply gravity
-            sparkle.opacity = (1 - (sparkle.age / sparkle.lifetime)) * sparkle.maxOpacity;
+            // Billboard
+            mist.lookAt(this.camera.position);
+        });
+    }
 
-            if (sparkle.age >= sparkle.lifetime) {
-                this.sparkles.splice(i, 1);
-            }
+    updateWind(delta) {
+        this.windChangeTimer += delta;
+
+        if (this.windChangeTimer > 8) {
+            this.windChangeTimer = 0;
+            // Gradually shift wind direction
+            this.windDirection.x = 0.8 + Math.random() * 0.4;
+            this.windDirection.y = (Math.random() - 0.5) * 0.4;
+            this.windStrength = 0.2 + Math.random() * 0.3;
         }
     }
 
-    /**
-     * Pre-render mist layer with blur (called once or when particles change significantly)
-     */
-    prerenderMistLayer() {
-        if (!this.mistLayerCtx) return;
+    animateEffects(delta) {
+        // Cloud glow decay
+        this.cloudGlowIntensity = THREE.MathUtils.lerp(
+            this.cloudGlowIntensity,
+            this.targetCloudGlow,
+            delta * 3
+        );
+        this.targetCloudGlow *= 0.95;
 
-        const ctx = this.mistLayerCtx;
+        // Light burst animation
+        if (this.lightBurstProgress >= 0) {
+            this.lightBurstProgress += delta * 2;
+            this.lightBurstMaterial.uniforms.uProgress.value = this.lightBurstProgress;
 
-        // Clear the layer
-        ctx.clearRect(0, 0, this.mistLayerCanvas.width, this.mistLayerCanvas.height);
-
-        // Apply blur filter ONCE for all mist (reduced blur for performance)
-        ctx.save();
-        ctx.filter = 'blur(40px)'; // Reduced from 50px for performance
-        ctx.fillStyle = '#ffffff';
-
-        // Draw all mist particles with their BASE opacity
-        for (let i = 0; i < this.mistParticles.length; i++) {
-            const particle = this.mistParticles[i];
-            ctx.globalAlpha = particle.opacity;
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318);
-            ctx.fill();
-        }
-        ctx.restore();
-    }
-
-    /**
-     * Pre-render cloud layer with blur (called once or when particles change significantly)
-     */
-    prerenderCloudLayer() {
-        if (!this.cloudLayerCtx) return;
-
-        const ctx = this.cloudLayerCtx;
-
-        // Clear the layer
-        ctx.clearRect(0, 0, this.cloudLayerCanvas.width, this.cloudLayerCanvas.height);
-
-        // Apply blur filter ONCE for all clouds (slightly reduced for performance)
-        ctx.save();
-        ctx.filter = 'blur(30px)'; // Reduced from 35px for performance
-        ctx.fillStyle = '#ffffff';
-
-        // Draw all cloud particles with their BASE opacity
-        for (let i = 0; i < this.cloudParticles.length; i++) {
-            const particle = this.cloudParticles[i];
-            ctx.globalAlpha = particle.opacity;
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318);
-            ctx.fill();
-        }
-        ctx.restore();
-    }
-
-    /**
-     * Render particles to canvas (ULTRA-OPTIMIZED - 60 FPS capable)
-     * Key optimization: Composite pre-rendered blurred layers instead of applying blur every frame
-     */
-    renderCanvas() {
-        if (!this.ctx) return;
-
-        // Pre-render layers every 10 frames (particles move slowly, don't need to re-blur constantly)
-        // This is a MAJOR performance boost - blur is expensive!
-        this.frameSkip++;
-        if (this.frameSkip % 10 === 0) {
-            this.prerenderMistLayer();
-            this.prerenderCloudLayer();
-        }
-
-        // Clear main canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Draw lightning flashes (behind everything)
-        if (this.lightningFlashes.length > 0) {
-            this.ctx.save();
-            this.ctx.globalAlpha = this.lightningFlashes[0].opacity * 0.15;
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.restore();
-        }
-
-        // Composite pre-rendered mist layer (NO BLUR FILTER - instant!)
-        this.ctx.save();
-        this.ctx.globalAlpha = 1.0;
-        this.ctx.drawImage(this.mistLayerCanvas, 0, 0);
-        this.ctx.restore();
-
-        // Composite pre-rendered cloud layer (NO BLUR FILTER - instant!)
-        this.ctx.save();
-        this.ctx.globalAlpha = 1.0;
-        this.ctx.drawImage(this.cloudLayerCanvas, 0, 0);
-        this.ctx.restore();
-
-        // Draw moving particles (no blur, ultra-fast batch render)
-        this.ctx.save();
-        this.ctx.fillStyle = '#ffffff';
-
-        // Single path for all particles (maximum performance)
-        this.ctx.beginPath();
-        for (let i = 0; i < this.movingParticles.length; i++) {
-            const particle = this.movingParticles[i];
-            if (particle.currentOpacity < 0.05) continue;
-
-            this.ctx.moveTo(particle.x + particle.size, particle.y);
-            this.ctx.arc(particle.x, particle.y, particle.size, 0, 6.28318);
-        }
-
-        // Fill all at once
-        this.ctx.globalAlpha = 0.6; // Fixed alpha for all
-        this.ctx.fill();
-        this.ctx.restore();
-
-        // Draw combo rings
-        if (this.comboRings.length > 0) {
-            this.ctx.save();
-            for (let i = 0; i < this.comboRings.length; i++) {
-                const ring = this.comboRings[i];
-                this.ctx.globalAlpha = ring.opacity;
-                this.ctx.strokeStyle = ring.color;
-                this.ctx.lineWidth = ring.thickness;
-                this.ctx.beginPath();
-                this.ctx.arc(ring.x, ring.y, ring.radius, 0, 6.28318);
-                this.ctx.stroke();
+            if (this.lightBurstProgress >= 1) {
+                this.lightBurstProgress = -1;
+                this.lightBurst.visible = false;
             }
-            this.ctx.restore();
         }
 
-        // Draw sparkles
-        if (this.sparkles.length > 0) {
-            this.ctx.save();
-            for (let i = 0; i < this.sparkles.length; i++) {
-                const sparkle = this.sparkles[i];
-                this.ctx.globalAlpha = sparkle.opacity;
-
-                // Draw sparkle as a small cross/star
-                this.ctx.strokeStyle = sparkle.color;
-                this.ctx.lineWidth = 2;
-                this.ctx.lineCap = 'round';
-
-                // Horizontal line
-                this.ctx.beginPath();
-                this.ctx.moveTo(sparkle.x - sparkle.size, sparkle.y);
-                this.ctx.lineTo(sparkle.x + sparkle.size, sparkle.y);
-                this.ctx.stroke();
-
-                // Vertical line
-                this.ctx.beginPath();
-                this.ctx.moveTo(sparkle.x, sparkle.y - sparkle.size);
-                this.ctx.lineTo(sparkle.x, sparkle.y + sparkle.size);
-                this.ctx.stroke();
-            }
-            this.ctx.restore();
+        // Bloom boost decay
+        if (this.bloomPass && this.bloomBoost > 0) {
+            this.bloomPass.strength = this.qualityPreset.bloomStrength + this.bloomBoost;
+            this.bloomBoost *= 0.95;
+        } else if (this.bloomPass) {
+            this.bloomPass.strength = this.qualityPreset.bloomStrength;
         }
+
+        // Center light from effects
+        if (this.centerLight) {
+            this.centerLight.intensity = 0.2 + this.cloudGlowIntensity * 0.5;
+        }
+
+        // Update pulse waves
+        this.updatePulseWaves(delta);
     }
 
-    /**
-     * Create a lightning flash effect
-     */
-    createLightningFlash() {
-        if (this.MAX_LIGHTNING_FLASHES > 0 && this.lightningFlashes.length >= this.MAX_LIGHTNING_FLASHES) {
-            this.lightningFlashes.splice(0, this.lightningFlashes.length - this.MAX_LIGHTNING_FLASHES + 1);
+    animateCamera(delta) {
+        // Subtle camera drift for atmosphere
+        const driftX = Math.sin(this.time * 0.1) * 0.5;
+        const driftY = Math.cos(this.time * 0.08) * 0.3;
+
+        this.camera.position.x = driftX;
+        this.camera.position.y = driftY;
+        this.camera.lookAt(0, 0, -10);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pulse Wave Effects
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createPulseWave(intensity = 1.0) {
+        if (this.pulseWaves.length >= this.qualityPreset.maxPulseWaves) {
+            // Remove oldest
+            const oldest = this.pulseWaves.shift();
+            this.scene.remove(oldest);
+            oldest.geometry.dispose();
+            oldest.material.dispose();
         }
-        this.lightningFlashes.push({
-            age: 0,
-            duration: 0.15 + Math.random() * 0.1, // 0.15-0.25 seconds
-            opacity: 1,
+
+        const geometry = new THREE.PlaneGeometry(80, 80);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uProgress: { value: 0 },
+                uOpacity: { value: 0.6 * intensity },
+                uColor: { value: new THREE.Color(0.9, 0.95, 1.0) }
+            },
+            vertexShader: pulseVertexShader,
+            fragmentShader: pulseFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
         });
 
-        console.log('[Nimbus Veil] Lightning flash!');
+        const wave = new THREE.Mesh(geometry, material);
+        wave.position.z = 5;
+        wave.userData = { progress: 0, lifetime: 1.5 };
 
-        // Sometimes create a double flash
-        if (Math.random() < 0.3) {
-            setTimeout(() => {
-                if (this.MAX_LIGHTNING_FLASHES > 0 && this.lightningFlashes.length >= this.MAX_LIGHTNING_FLASHES) {
-                    this.lightningFlashes.splice(0, this.lightningFlashes.length - this.MAX_LIGHTNING_FLASHES + 1);
-                }
-                this.lightningFlashes.push({
-                    age: 0,
-                    duration: 0.1 + Math.random() * 0.05,
-                    opacity: 1,
-                });
-            }, 100 + Math.random() * 100);
+        this.pulseWaves.push(wave);
+        this.scene.add(wave);
+    }
+
+    updatePulseWaves(delta) {
+        for (let i = this.pulseWaves.length - 1; i >= 0; i--) {
+            const wave = this.pulseWaves[i];
+            wave.userData.progress += delta / wave.userData.lifetime;
+            wave.material.uniforms.uProgress.value = wave.userData.progress;
+
+            if (wave.userData.progress >= 1) {
+                this.scene.remove(wave);
+                wave.geometry.dispose();
+                wave.material.dispose();
+                this.pulseWaves.splice(i, 1);
+            }
         }
     }
 
-    /**
-     * Setup game event listeners
-     */
-    setupEventListeners() {
-        const settings = this.resources?.settings || {};
+    // ─────────────────────────────────────────────────────────────────────────
+    // Game Event Effects
+    // ─────────────────────────────────────────────────────────────────────────
 
-        // Line clear effect
+    setupEventListeners() {
+        const settings = window.settings || {};
+
+        // Line Clear
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.onLineClear(data.lineCount);
             }
         });
 
-        // Combo effect
+        // Combo
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.onCombo(data.comboCount);
             }
         });
 
-        // Piece lock effect
+        // Piece Lock
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
             if (this.isActive && settings?.backgroundComboEffects !== false) {
                 this.onPieceLock(data.piece);
@@ -802,275 +816,148 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
-    /**
-     * React to line clear events
-     */
     onLineClear(lineCount) {
-        // Create expanding cloud ripple
-        this.createCloudRipple(lineCount);
+        console.log(`[NimbusVeil] Line clear: ${lineCount}`);
 
-        // Brighten random clouds temporarily
-        const brightenCount = Math.min(lineCount * 5, 20);
-        const randomClouds = this.getRandomParticles(this.cloudParticles, brightenCount);
+        // Subtle cloud glow (reduced brightness)
+        this.targetCloudGlow = Math.min(lineCount * 0.2, 0.7);
 
-        randomClouds.forEach((cloud) => {
-            const originalOpacity = cloud.opacity;
-            cloud.opacity = Math.min(cloud.opacity * 1.5, 0.9);
+        // Create pulse waves (reduced opacity)
+        const waveCount = Math.min(lineCount, 3);
+        for (let i = 0; i < waveCount; i++) {
+            setTimeout(() => this.createPulseWave(0.35), i * 150);
+        }
 
-            // Fade back to normal
-            setTimeout(() => {
-                cloud.opacity = originalOpacity;
-            }, 800);
-        });
+        // Bloom boost (reduced)
+        this.bloomBoost = Math.min(lineCount * 0.08, 0.25);
     }
 
-    /**
-     * React to combo events - Enhanced with rings and sparkles!
-     */
     onCombo(comboCount) {
-        // Create expanding rings around random clouds
-        const ringCount = Math.min(Math.floor(comboCount / 2), 5); // 1 ring per 2 combos, max 5
-        for (let i = 0; i < ringCount; i++) {
-            // Pick a random cloud to center the ring on
-            if (this.cloudParticles.length > 0) {
-                const cloud = this.cloudParticles[Math.floor(Math.random() * this.cloudParticles.length)];
+        if (comboCount < 2) return;
 
-                this.comboRings.push({
-                    x: cloud.x,
-                    y: cloud.y,
-                    radius: 20 + (i * 10), // Stagger initial sizes
-                    expansionSpeed: 0.3 + (comboCount * 0.02), // Faster for higher combos
-                    thickness: 3 + Math.min(comboCount * 0.5, 5), // Thicker for higher combos
-                    opacity: 1,
-                    maxOpacity: 0.7,
-                    color: `rgba(200, 220, 255, ${0.8})`, // Soft blue-white
-                    age: 0,
-                    lifetime: 1.5 + (comboCount * 0.1), // Longer for higher combos
-                });
-                this.trimCollection(this.comboRings, this.MAX_COMBO_RINGS);
-            }
-        }
+        console.log(`[NimbusVeil] Combo: ${comboCount}`);
 
-        // Create sparkles bursting from clouds
-        const sparkleCount = Math.min(comboCount * 3, 30); // 3 sparkles per combo, max 30
-        for (let i = 0; i < sparkleCount; i++) {
-            // Pick a random cloud as sparkle source
-            if (this.cloudParticles.length > 0) {
-                const cloud = this.cloudParticles[Math.floor(Math.random() * this.cloudParticles.length)];
+        // Progressive cloud intensity (reduced brightness)
+        this.targetCloudGlow = Math.min(0.15 + comboCount * 0.1, 0.6);
 
-                // Random burst direction
-                const angle = Math.random() * Math.PI * 2;
-                const speed = Math.random() * 0.3 + 0.1;
-
-                this.sparkles.push({
-                    x: cloud.x + (Math.random() - 0.5) * cloud.size,
-                    y: cloud.y + (Math.random() - 0.5) * cloud.size,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    gravity: 0.0002, // Slight downward pull
-                    size: Math.random() * 4 + 2, // 2-6px
-                    opacity: 1,
-                    maxOpacity: 0.9,
-                    color: Math.random() > 0.5 ? 'rgba(255, 255, 255, 1)' : 'rgba(200, 220, 255, 1)',
-                    age: 0,
-                    lifetime: 0.8 + Math.random() * 0.4, // 0.8-1.2 seconds
-                });
-                this.trimCollection(this.sparkles, this.MAX_SPARKLES);
-            }
-        }
-
-        // Add color tint to clouds during high combos
-        if (comboCount >= 5) {
-            this.cloudParticles.forEach((particle) => {
-                const originalColor = particle.color;
-                particle.color = 'rgba(200, 220, 255, 0.85)'; // Blue tint
-
-                // Restore after 500ms
-                setTimeout(() => {
-                    particle.color = originalColor;
-                }, 500);
-            });
-        }
-
-        // Speed up drift temporarily (existing effect, kept)
-        const speedMultiplier = 1 + (comboCount * 0.1);
-        this.cloudParticles.forEach((particle) => {
-            particle.speedX *= speedMultiplier;
-        });
-
-        // Restore speed after 1 second
-        setTimeout(() => {
-            this.cloudParticles.forEach((particle) => {
-                particle.speedX /= speedMultiplier;
-            });
-        }, 1000);
-
-        // Push clouds outward from center for dramatic combos (10+)
-        if (comboCount >= 10) {
-            const centerX = window.innerWidth / 2;
-            const centerY = window.innerHeight / 2;
-
-            this.cloudParticles.forEach((particle) => {
-                const dx = particle.x - centerX;
-                const dy = particle.y - centerY;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance > 0) {
-                    const pushStrength = 5;
-                    particle.x += (dx / distance) * pushStrength;
-                    particle.y += (dy / distance) * pushStrength;
-                }
-            });
-        }
-    }
-
-    /**
-     * React to piece lock events
-     */
-    onPieceLock(piece) {
-        // DISABLED for performance - cloud puffs on every piece create too many particles
-        // Just brighten a random cloud instead
-        if (Math.random() < 0.15 && this.cloudParticles.length > 0) {
-            const cloud = this.cloudParticles[Math.floor(Math.random() * this.cloudParticles.length)];
-            const originalOpacity = cloud.opacity;
-            cloud.opacity = Math.min(cloud.opacity * 1.2, 0.8);
+        // Multiple ethereal pulse waves (reduced opacity)
+        const waveCount = Math.min(Math.floor(comboCount / 2) + 1, 4);
+        for (let i = 0; i < waveCount; i++) {
             setTimeout(() => {
-                cloud.opacity = originalOpacity;
-            }, 300);
+                this.createPulseWave(0.25 + comboCount * 0.05);
+            }, i * 100);
+        }
+
+        // Bloom intensifies with combos (reduced)
+        this.bloomBoost = Math.min(comboCount * 0.04, 0.2);
+
+        // Particle burst - stronger with higher combos
+        this.particleBurstIntensity = Math.min(2.0 + comboCount * 0.5, 5.0);
+    }
+
+    onPieceLock(piece) {
+        // Heavenly light burst effect (reduced intensity)
+        this.lightBurst.visible = true;
+        this.lightBurstProgress = 0;
+        this.lightBurstMaterial.uniforms.uIntensity.value = 0.25;
+
+        // Subtle cloud glow (reduced)
+        this.targetCloudGlow = Math.max(this.targetCloudGlow, 0.08);
+
+        // Small bloom pulse (reduced)
+        this.bloomBoost = Math.max(this.bloomBoost, 0.05);
+
+        // Particle burst on piece lock
+        this.particleBurstIntensity = Math.max(this.particleBurstIntensity, 1.5);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Resize & Cleanup
+    // ─────────────────────────────────────────────────────────────────────────
+
+    onWindowResize() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+
+        this.renderer.setSize(width, height);
+
+        if (this.composer) {
+            this.composer.setSize(width, height);
         }
     }
 
-    /**
-     * Create expanding cloud ripple effect
-     */
-    createCloudRipple(intensity = 1) {
-        const pulsesContainer = document.getElementById('nimbus-veil-pulses');
-        if (!pulsesContainer) return;
-
-        const pulse = document.createElement('div');
-        pulse.className = 'nimbus-veil-pulse';
-        pulse.style.width = '100px';
-        pulse.style.height = '100px';
-
-        pulsesContainer.appendChild(pulse);
-
-        // Remove after animation
-        setTimeout(() => {
-            pulse.remove();
-        }, 2500);
-    }
-
-    /**
-     * Create cloud wave effect for combos
-     * REMOVED: Now using canvas-based rings instead of DOM elements
-     */
-    createCloudWave() {
-        // No longer needed - combo effects now use canvas rings and sparkles
-        // See onCombo() method for new implementation
-    }
-
-    /**
-     * Create small cloud puff effect
-     */
-    createCloudPuff() {
-        // Add a temporary cloud particle
-        const colors = this.getCloudColors();
-        const puff = {
-            x: window.innerWidth / 2 + (Math.random() - 0.5) * 200,
-            y: window.innerHeight / 2 + (Math.random() - 0.5) * 200,
-            size: Math.random() * 40 + 20,
-            opacity: 0.6,
-            color: colors[0],
-            speedX: (Math.random() - 0.5) * 0.5,
-            speedY: -Math.random() * 0.3 - 0.2, // Float upward
-            blur: 25,
-            pulseSpeed: 0.02,
-            pulseOffset: 0,
-            currentOpacity: 0.6,
-            lifetime: 2000, // 2 seconds
-            createdAt: Date.now(),
-        };
-
-        this.cloudParticles.push(puff);
-
-        // Remove after lifetime
-        setTimeout(() => {
-            const index = this.cloudParticles.indexOf(puff);
-            if (index > -1) {
-                this.cloudParticles.splice(index, 1);
-            }
-        }, puff.lifetime);
-    }
-
-    /**
-     * Get random particles from array
-     */
-    getRandomParticles(array, count) {
-        const shuffled = [...array].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, count);
-    }
-
-    /**
-     * Cleanup theme resources
-     */
     stop() {
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-
         super.stop();
 
-        // Cancel animation
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
+
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
         }
 
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        // Unsubscribe events
+        this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Clear particles
-        this.cloudParticles = [];
-        this.mistParticles = [];
-        this.movingParticles = [];
-        this.lightningFlashes = [];
-        this.comboRings = [];
-        this.sparkles = [];
+        // Dispose pulse waves
+        this.pulseWaves.forEach(wave => {
+            this.scene.remove(wave);
+            wave.geometry.dispose();
+            wave.material.dispose();
+        });
+        this.pulseWaves = [];
 
-        // Reset ambient effects
-        this.windIntensity = 0.5;
-        this.windDirection = 0;
-        this.windChangeTimer = 0;
-
-        // Clear canvas
-        if (this.ctx) {
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Dispose Three.js resources
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
         }
-        this.canvas = null;
-        this.ctx = null;
 
-        // Clear layer canvases
-        if (this.cloudLayerCtx) {
-            this.cloudLayerCtx.clearRect(0, 0, this.cloudLayerCanvas.width, this.cloudLayerCanvas.height);
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (this.container && this.renderer.domElement.parentNode === this.container) {
+                this.container.removeChild(this.renderer.domElement);
+            }
+            this.renderer = null;
         }
-        if (this.mistLayerCtx) {
-            this.mistLayerCtx.clearRect(0, 0, this.mistLayerCanvas.width, this.mistLayerCanvas.height);
-        }
-        this.cloudLayerCanvas = null;
-        this.cloudLayerCtx = null;
-        this.mistLayerCanvas = null;
-        this.mistLayerCtx = null;
 
-        // Clear cache
-        this.colorCache.clear();
+        if (this.scene) {
+            this.scene.traverse(object => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+            this.scene = null;
+        }
+
+        this.camera = null;
+        this.clouds = [];
+        this.cloudMaterials = [];
+        this.dustParticles = null;
+        this.dustMaterial = null;
+        this.stars = null;
+        this.starsMaterial = null;
+        this.mistSprites = [];
+        this.mistMaterials = [];
+        this.lightBurst = null;
+        this.lightBurstMaterial = null;
+
+        console.log('[NimbusVeil] Theme stopped and cleaned up');
     }
 
-    /**
-     * Provide Nimbus Veil themed tetromino styling (soft cloud palette)
-     * @returns {Object} Nimbus Veil tetromino configuration
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tetromino Config
+    // ─────────────────────────────────────────────────────────────────────────
+
     getTetrominoConfig() {
         return NIMBUS_VEIL_TETROMINOS;
     }

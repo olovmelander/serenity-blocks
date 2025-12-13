@@ -1,0 +1,822 @@
+/**
+ * Three.js Intro Renderer
+ * Renders the 3D intro animation with drifting tetrominos, particles, and atmosphere
+ */
+
+import * as THREE from 'three';
+
+export default class ThreeJSIntroRenderer {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+
+        // Scene elements
+        this.starSystem = null;
+        this.particles = null;
+        this.tetrominos = [];
+        this.activeTetrominos = [];
+        this.activeParticles = [];
+
+        // Animation state
+        this.clock = new THREE.Clock();
+        this.lastSpawnTime = 0;
+        this.raycaster = new THREE.Raycaster();
+
+        // Constants
+        this.COLORS = {
+            I: 0x00ff00, // Green
+            O: 0xff9900, // Orange
+            T: 0x0000ff, // Blue
+            S: 0x00ffff, // Cyan
+            Z: 0xff0000, // Red
+            J: 0xffff00, // Yellow
+            L: 0xcc00cc, // Purple
+        };
+
+        // Tetromino shapes based on constants.js but optimized for 3D construction
+        // relative coordinates from center
+        this.SHAPES = {
+            I: [[-1.5, 0], [-0.5, 0], [0.5, 0], [1.5, 0]],
+            O: [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]],
+            T: [[-0.5, 0], [0.5, 0], [0, 0], [0, 1]], // Adjusted for center
+            S: [[0, 0], [1, 0], [-1, 1], [0, 1]],
+            Z: [[-1, 0], [0, 0], [0, 1], [1, 1]],
+            J: [[-1, 1], [-1, 0], [0, 0], [1, 0]],
+            L: [[1, 1], [1, 0], [0, 0], [-1, 0]]
+        };
+
+        // Vibrant Chromadelic Palette
+        this.GALAXY_COLORS = [
+            0xFF3366, // Hot Pink
+            0x00FFFF, // Cyan
+            0xFFFF00, // Yellow
+            0xFF6600, // Orange
+            0x9933FF, // Purple
+            0x00FF66, // Mint Green
+            0xFF0099, // Magenta
+            0x3399FF, // Electric Blue
+        ];
+    }
+
+    /**
+     * Initialize Three.js scene
+     */
+    init() {
+        if (!this.canvas) return false;
+
+        try {
+            // Setup Renderer
+            this.renderer = new THREE.WebGLRenderer({
+                canvas: this.canvas,
+                alpha: true,
+                antialias: true,
+                powerPreference: "high-performance"
+            });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Setup Scene
+            this.scene = new THREE.Scene();
+            // Deep space atmosphere fog - slightly purple tinted for Chromadelic feel
+            this.scene.fog = new THREE.FogExp2(0x0a001a, 0.012);
+
+            // Setup Camera
+            this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            this.camera.position.z = 40;
+
+            // Setup Lighting
+            this.setupLighting();
+
+            // Create Objects
+            this.createStarField();
+            this.createNebulaParticles();
+
+            // Start spawning tetrominos
+            this.initCachedResources();
+            this.spawnInitialTetrominos();
+
+            window.addEventListener('resize', this.onResize.bind(this));
+
+            return true;
+        } catch (e) {
+            console.error('[ThreeJSIntroRenderer] Initialization failed:', e);
+            return false;
+        }
+    }
+
+    setupLighting() {
+        // Ambient light (deep purple/blue base) - Increased intensity
+        const ambientLight = new THREE.AmbientLight(0x402060, 2.0);
+        this.scene.add(ambientLight);
+
+        // Dynamic colored lights for depth - Brighter and more colorful
+        const light1 = new THREE.PointLight(0x00ffff, 2.0, 100);
+        light1.position.set(20, 20, 20);
+        this.scene.add(light1);
+
+        const light2 = new THREE.PointLight(0xff00ff, 2.0, 100);
+        light2.position.set(-20, -10, 10);
+        this.scene.add(light2);
+
+        const light3 = new THREE.PointLight(0x3399ff, 1.5, 100);
+        light3.position.set(0, -30, 0);
+        this.scene.add(light3);
+    }
+
+    createStarField() {
+        const starCount = 3000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
+        const colors = new Float32Array(starCount * 3);
+
+        const colorPalette = this.GALAXY_COLORS.map(c => new THREE.Color(c));
+
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+            // Distribute in a large volume
+            positions[i3] = (Math.random() - 0.5) * 300;
+            positions[i3 + 1] = (Math.random() - 0.5) * 300;
+            positions[i3 + 2] = (Math.random() - 0.5) * 200 - 50;
+
+            sizes[i] = Math.random() * 0.5 + 0.1;
+
+            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+            // Mix with white for stars
+            colors[i3] = color.r * 0.7 + 0.3;
+            colors[i3 + 1] = color.g * 0.7 + 0.3;
+            colors[i3 + 2] = color.b * 0.7 + 0.3;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.5,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+        });
+
+        this.starSystem = new THREE.Points(geometry, material);
+        this.scene.add(this.starSystem);
+    }
+
+    createNebulaParticles() {
+        // High quality glowing particles using custom shader
+        const particleCount = 200;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        const randoms = new Float32Array(particleCount); // For phase offset
+
+        const colorPalette = this.GALAXY_COLORS.map(c => new THREE.Color(c));
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+
+            // Spiral/Galaxy distribution
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 10 + Math.random() * 50;
+            const spread = 5;
+
+            positions[i3] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
+            positions[i3 + 1] = (Math.random() - 0.5) * 40;
+            positions[i3 + 2] = Math.sin(angle) * radius - 20 + (Math.random() - 0.5) * spread;
+
+            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 1.0 + Math.random() * 2.0;
+            randoms[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+
+        // Custom Shader Material for Soft Glow
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPulse: { value: 1.0 },
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uPulse;
+                attribute float aRandom;
+                attribute float size;
+                attribute vec3 color;
+                varying vec3 vColor;
+
+                void main() {
+                    vColor = color;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+
+                    // Pulsing size
+                    float pulse = 1.0 + sin(uTime * 2.0 + aRandom * 10.0) * 0.2;
+                    
+                    // Size attenuation
+                    gl_PointSize = size * pulse * (300.0 / -mvPosition.z);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+
+                void main() {
+                    // Soft circular glow
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center);
+                    
+                    // Alpha falloff
+                    float alpha = smoothstep(0.5, 0.0, dist);
+                    
+                    // Bright core
+                    float core = smoothstep(0.2, 0.0, dist);
+                    
+                    vec3 finalColor = vColor + core * 0.5; // Add white core mix
+                    
+                    gl_FragColor = vec4(finalColor, alpha * 0.8);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.scene.add(this.particles);
+    }
+
+    createGlowTexture() {
+        // Deprecated - replaced by Shader
+        return null;
+    }
+
+    /**
+     * Pre-calculate all geometries and materials to avoid per-frame creation.
+     */
+    initCachedResources() {
+        this.cachedResources = {};
+
+        const shapeKeys = Object.keys(this.SHAPES);
+
+        // Common Extrude Settings
+        const extrudeSettings = {
+            depth: 1.8,
+            bevelEnabled: true,
+            bevelThickness: 0.1,
+            bevelSize: 0.1,
+            bevelSegments: 2
+        };
+
+        shapeKeys.forEach(type => {
+            const color = this.COLORS[type];
+            const threeShape = this.createTetrominoShape(type);
+
+            // 1. Geometry
+            const geometry = new THREE.ExtrudeGeometry(threeShape, extrudeSettings);
+            geometry.computeBoundingBox();
+            const centerOffset = new THREE.Vector3();
+            geometry.boundingBox.getCenter(centerOffset).negate();
+            geometry.translate(centerOffset.x, centerOffset.y, centerOffset.z);
+
+            // 2. Material
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.8, // Increased for neon look
+                roughness: 0.6, // Slightly smoother for sheen
+                metalness: 0.2, // Slight reflection
+                flatShading: false
+            });
+
+            // 3. Edges (Glow Outline)
+            const edgesGeometry = new THREE.EdgesGeometry(geometry, 25);
+            const edgeMaterial = new THREE.LineBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.8, // Brighter outline
+                linewidth: 3
+            });
+
+            this.cachedResources[type] = {
+                geometry,
+                material,
+                edgesGeometry,
+                edgeMaterial
+            };
+        });
+
+        console.log('[ThreeJSIntroRenderer] Resources cached.');
+    }
+
+    spawnInitialTetrominos() {
+        // "Pre-warm" the scene.
+        // Instead of spawning pieces randomly on screen (which looks like popping),
+        // we spawn them at the edges and run the physics simulation for a while
+        // to let them drift naturally into place.
+
+        // Spawn more pieces initially for a denser start
+        for (let i = 0; i < 20; i++) {
+            this.spawnTetromino();
+        }
+
+        // Fast-forward physics by ~10 seconds (600 steps of 16ms)
+        // This moves the edge-spawned pieces into the center
+        for (let i = 0; i < 600; i++) {
+            this.updateTetrominos(0.016);
+        }
+    }
+
+    getVisibleBoundsAtDepth(depth) {
+        if (!this.camera) return { width: 60, height: 40 }; // Fallback
+
+        const dist = this.camera.position.z - depth;
+        // foV is vertical field of view
+        const vFOV = THREE.MathUtils.degToRad(this.camera.fov);
+        const height = 2 * Math.tan(vFOV / 2) * dist;
+        const width = height * this.camera.aspect;
+
+        return { width, height };
+    }
+
+    spawnTetromino() {
+        // Always spawn outside the view
+        const shapeKeys = Object.keys(this.SHAPES);
+        const type = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
+
+        // Use Cached Resources
+        const resources = this.cachedResources[type];
+        if (!resources) {
+            console.warn('Missing cached resources for type:', type);
+            return;
+        }
+
+        const mesh = new THREE.Mesh(resources.geometry, resources.material);
+
+        // Scale down the tetrominos slightly as requested
+        const scale = 0.75;
+        mesh.scale.set(scale, scale, scale);
+
+        const glowOutline = new THREE.LineSegments(resources.edgesGeometry, resources.edgeMaterial);
+        mesh.add(glowOutline);
+
+        // Store some metadata for physics
+        // Radius rough estimation: 4 (original max extent) * scale
+        mesh.userData = {
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.1,
+                (Math.random() - 0.5) * 0.1,
+                (Math.random() - 0.5) * 0.05
+            ),
+            rotationSpeed: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02
+            ),
+            radius: 4 * scale,
+            type: type
+        };
+
+        // Determine Spawn Position (Outside Frustum)
+        const z = (Math.random() - 0.5) * 20 - 10; // Z range: -20 to 0
+        const bounds = this.getVisibleBoundsAtDepth(z);
+        const halfW = bounds.width / 2;
+        const halfH = bounds.height / 2;
+
+        // Spawn Margin (ensure fully offscreen)
+        const margin = 10;
+
+        const side = Math.floor(Math.random() * 4);
+        switch (side) {
+            case 0: // Top
+                mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
+                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.05; // Force Down
+                break;
+            case 1: // Bottom
+                mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
+                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.05; // Force Up
+                break;
+            case 2: // Left
+                mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
+                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.05; // Force Right
+                break;
+            case 3: // Right
+                mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
+                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.05; // Force Left
+                break;
+        }
+
+        this.scene.add(mesh);
+        this.activeTetrominos.push(mesh);
+    }
+
+
+    /**
+     * Creates a THREE.Shape representing the 2D contour of the tetromino.
+     * Hardcoded paths to ensure perfect shapes every time.
+     */
+    /**
+     * Creates a THREE.Shape representing the 2D contour of the tetromino.
+     * Hardcoded paths using explicit centered coordinates for perfect alignment.
+     * Block size = 2.0.
+     */
+    createTetrominoShape(type) {
+        const shape = new THREE.Shape();
+
+        switch (type) {
+            case 'I':
+                // [- - 0 +] (4 blocks long)
+                // Width 8 (-4 to 4), Height 2 (-1 to 1)
+                shape.moveTo(-4, -1);
+                shape.lineTo(4, -1);
+                shape.lineTo(4, 1);
+                shape.lineTo(-4, 1);
+                shape.lineTo(-4, -1);
+                break;
+
+            case 'O':
+                // 2x2 Square
+                // Width 4 (-2 to 2), Height 4 (-2 to 2)
+                shape.moveTo(-2, -2);
+                shape.lineTo(2, -2);
+                shape.lineTo(2, 2);
+                shape.lineTo(-2, 2);
+                shape.lineTo(-2, -2);
+                break;
+
+            case 'T':
+                //      []
+                //    [][][]
+                // Bottom: -3 to 3, y=-1 to 1.
+                // Top: -1 to 1, y=1 to 3.
+                shape.moveTo(-3, -1);
+                shape.lineTo(3, -1);
+                shape.lineTo(3, 1);
+                shape.lineTo(1, 1);
+                shape.lineTo(1, 3);
+                shape.lineTo(-1, 3);
+                shape.lineTo(-1, 1);
+                shape.lineTo(-3, 1);
+                shape.lineTo(-3, -1);
+                break;
+
+            case 'S':
+                //      [][]  (Top Right)
+                //    [][]    (Bottom Left)
+                // Top: x=-1 to 3, y=0 to 2
+                // Bottom: x=-3 to 1, y=-2 to 0
+                shape.moveTo(-3, -2);
+                shape.lineTo(1, -2);
+                shape.lineTo(1, 0); // Inner corner
+                shape.lineTo(3, 0);
+                shape.lineTo(3, 2);
+                shape.lineTo(-1, 2);
+                shape.lineTo(-1, 0); // Inner corner
+                shape.lineTo(-3, 0);
+                shape.lineTo(-3, -2);
+                break;
+
+            case 'Z':
+                //    [][]  (Top Left)
+                //      [][]  (Bottom Right)
+                // Top: x=-3 to 1, y=0 to 2
+                // Bottom: x=-1 to 3, y=-2 to 0
+                shape.moveTo(-1, -2);
+                shape.lineTo(3, -2);
+                shape.lineTo(3, 0);
+                shape.lineTo(1, 0); // Inner corner
+                shape.lineTo(1, 2);
+                shape.lineTo(-3, 2);
+                shape.lineTo(-3, 0);
+                shape.lineTo(-1, 0); // Inner corner
+                shape.lineTo(-1, -2);
+                break;
+
+            case 'J':
+                //    []      (Top Left relative to stick?) No, J has tail left
+                //    []
+                //  [][]
+                // Stick: x=0 to 2, y=-3 to 3
+                // Tail: x=-2 to 0, y=-3 to -1
+                shape.moveTo(-2, -3);
+                shape.lineTo(2, -3);
+                shape.lineTo(2, 3);
+                shape.lineTo(0, 3);
+                shape.lineTo(0, -1); // Inner corner
+                shape.lineTo(-2, -1);
+                shape.lineTo(-2, -3);
+                break;
+
+            case 'L':
+                //      []
+                //      []
+                //  [][]
+                // Stick: x=-2 to 0, y=-3 to 3
+                // Tail: x=0 to 2, y=-3 to -1
+                shape.moveTo(-2, -3);
+                shape.lineTo(2, -3);
+                shape.lineTo(2, -1);
+                shape.lineTo(0, -1); // Inner corner
+                shape.lineTo(0, 3);
+                shape.lineTo(-2, 3);
+                shape.lineTo(-2, -3);
+                break;
+
+            default:
+                // Default box
+                shape.moveTo(-2, -2);
+                shape.lineTo(2, -2);
+                shape.lineTo(2, 2);
+                shape.lineTo(-2, 2);
+                shape.lineTo(-2, -2);
+                break;
+        }
+
+        return shape;
+    }
+
+    update(time) {
+        if (!this.scene || !this.camera) return;
+
+        const delta = this.clock.getDelta();
+
+        // 1. Camera Drift
+        const t = time * 0.2;
+        this.camera.position.x = Math.sin(t * 0.5) * 5;
+        this.camera.position.y = Math.cos(t * 0.3) * 3;
+        this.camera.lookAt(0, 0, 0);
+
+        // 2. Star field rotation
+        if (this.starSystem) {
+            this.starSystem.rotation.y = time * 0.02;
+            this.starSystem.rotation.x = time * 0.01;
+        }
+
+        // 3. Nebula particles (Shader update)
+        if (this.particles) {
+            this.particles.rotation.y = -time * 0.03;
+            // Update shader uniform
+            if (this.particles.material.uniforms) {
+                this.particles.material.uniforms.uTime.value = time;
+            }
+        }
+
+        // 4. Update Tetrominos
+        this.updateTetrominos(delta);
+
+        // 5. Spawn new tetrominos
+        if (time - this.lastSpawnTime > 1.5 && this.activeTetrominos.length < 25) {
+            this.spawnTetromino();
+            this.lastSpawnTime = time;
+        }
+
+        // 6. Update visual effects
+        this.updateEffects(delta);
+
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    updateTetrominos(delta) {
+        // Simple physics step with collision detection
+
+        // Settings
+        const MAX_SPEED = 0.2;
+        const DAMPING = 0.999; // Very slight air resistance
+        const RESTITUTION = 0.8; // Bounciness (1 = perfectly elastic, < 1 = loses energy)
+
+        for (let i = this.activeTetrominos.length - 1; i >= 0; i--) {
+            const t1 = this.activeTetrominos[i];
+
+            // 1. Move
+            t1.position.add(t1.userData.velocity);
+
+            // 2. Rotate
+            t1.rotation.x += t1.userData.rotationSpeed.x;
+            t1.rotation.y += t1.userData.rotationSpeed.y;
+            t1.rotation.z += t1.userData.rotationSpeed.z;
+
+            // 3. Apply Damping (Air Resistance)
+            t1.userData.velocity.multiplyScalar(DAMPING);
+
+            // 4. Bounds Check - Soft bounce off "walls" or wrap/remove
+            // We'll keep the remove logic for simplicity as they drift in from outside
+            // Increased bounds to match new spawn logic (wider screen support)
+            if (Math.abs(t1.position.x) > 90 || Math.abs(t1.position.y) > 60 || Math.abs(t1.position.z) > 50) {
+                this.scene.remove(t1);
+                this.activeTetrominos.splice(i, 1);
+                continue;
+            }
+
+            // 5. Collision Detection & Response
+            for (let j = i + 1; j < this.activeTetrominos.length; j++) {
+                const t2 = this.activeTetrominos[j];
+
+                const dx = t1.position.x - t2.position.x;
+                const dy = t1.position.y - t2.position.y;
+                const dz = t1.position.z - t2.position.z;
+
+                const distSq = dx * dx + dy * dy + dz * dz;
+
+                // Use a slightly tighter radius for the unified meshes
+                // (Geometry radius is approx 2.0-3.0 depending on shape)
+                const radiussum = 3.5 + 3.5;
+
+                if (distSq < radiussum * radiussum) {
+                    const dist = Math.sqrt(distSq);
+
+                    if (dist < 0.001) continue; // Prevent div by zero
+
+                    // Normal vector pointing from t2 to t1
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    const nz = dz / dist;
+
+                    // Relative velocity
+                    const v1 = t1.userData.velocity;
+                    const v2 = t2.userData.velocity;
+
+                    const rvx = v1.x - v2.x;
+                    const rvy = v1.y - v2.y;
+                    const rvz = v1.z - v2.z;
+
+                    // Velocity along normal
+                    const velAlongNormal = rvx * nx + rvy * ny + rvz * nz;
+
+                    // Do not resolve if velocities are separating
+                    if (velAlongNormal > 0) continue;
+
+                    // Calculate impulse scalar
+                    // Assuming equal mass for all tetrominos for stable "billiards" feel
+                    let jVal = -(1 + RESTITUTION) * velAlongNormal;
+                    jVal /= 2; // (1/m1 + 1/m2) where m1=m2=1 => 2
+
+                    // Apply impulse
+                    const impulseX = jVal * nx;
+                    const impulseY = jVal * ny;
+                    const impulseZ = jVal * nz;
+
+                    v1.x += impulseX;
+                    v1.y += impulseY;
+                    v1.z += impulseZ;
+
+                    v2.x -= impulseX;
+                    v2.y -= impulseY;
+                    v2.z -= impulseZ;
+
+                    // Add random rotation change on impact for "chaos"
+                    this.perturbRotation(t1);
+                    this.perturbRotation(t2);
+
+                    // Positional Correction (prevention of sinking)
+                    // Push them apart so they are not intersecting
+                    const percent = 0.8; // generally 20% to 80%
+                    const slop = 0.01;
+                    const penetration = radiussum - dist;
+                    if (penetration > slop) {
+                        const correction = penetration / 2 * percent;
+                        const cx = nx * correction;
+                        const cy = ny * correction;
+                        const cz = nz * correction;
+
+                        t1.position.x += cx;
+                        t1.position.y += cy;
+                        t1.position.z += cz;
+
+                        t2.position.x -= cx;
+                        t2.position.y -= cy;
+                        t2.position.z -= cz;
+                    }
+
+                    // Collision Effect
+                    this.createCollisionEffect(
+                        (t1.position.x + t2.position.x) * 0.5,
+                        (t1.position.y + t2.position.y) * 0.5,
+                        (t1.position.z + t2.position.z) * 0.5
+                    );
+                }
+            }
+
+            // 6. Hard Speed Limit
+            // Ensure they never "fly away" at crazy speeds
+            const speedSq = t1.userData.velocity.lengthSq();
+            if (speedSq > MAX_SPEED * MAX_SPEED) {
+                t1.userData.velocity.setLength(MAX_SPEED);
+            }
+        }
+    }
+
+    perturbRotation(mesh) {
+        mesh.userData.rotationSpeed.x += (Math.random() - 0.5) * 0.01;
+        mesh.userData.rotationSpeed.y += (Math.random() - 0.5) * 0.01;
+        mesh.userData.rotationSpeed.z += (Math.random() - 0.5) * 0.01;
+
+        // Clamp rotation speed too
+        const maxRot = 0.05;
+        mesh.userData.rotationSpeed.x = Math.max(-maxRot, Math.min(maxRot, mesh.userData.rotationSpeed.x));
+        mesh.userData.rotationSpeed.y = Math.max(-maxRot, Math.min(maxRot, mesh.userData.rotationSpeed.y));
+        mesh.userData.rotationSpeed.z = Math.max(-maxRot, Math.min(maxRot, mesh.userData.rotationSpeed.z));
+    }
+
+    createCollisionEffect(x, y, z) {
+        // Create a quick burst of particles
+        const count = 8;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const velocities = [];
+
+        for (let i = 0; i < count; i++) {
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+
+            velocities.push({
+                x: (Math.random() - 0.5) * 0.5,
+                y: (Math.random() - 0.5) * 0.5,
+                z: (Math.random() - 0.5) * 0.5
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.5,
+            transparent: true,
+            opacity: 1,
+            blending: THREE.AdditiveBlending
+        });
+
+        const points = new THREE.Points(geometry, material);
+        points.userData = {
+            velocities: velocities,
+            life: 1.0
+        };
+
+        this.scene.add(points);
+        this.activeParticles.push(points);
+    }
+
+    updateEffects(delta) {
+        for (let i = this.activeParticles.length - 1; i >= 0; i--) {
+            const p = this.activeParticles[i];
+            p.userData.life -= delta * 2; // Fade out quickly
+
+            if (p.userData.life <= 0) {
+                this.scene.remove(p);
+                this.activeParticles.splice(i, 1);
+                continue;
+            }
+
+            p.material.opacity = p.userData.life;
+
+            const positions = p.geometry.attributes.position.array;
+            const vels = p.userData.velocities;
+
+            for (let j = 0; j < vels.length; j++) {
+                positions[j * 3] += vels[j].x;
+                positions[j * 3 + 1] += vels[j].y;
+                positions[j * 3 + 2] += vels[j].z;
+            }
+
+            p.geometry.attributes.position.needsUpdate = true;
+        }
+    }
+
+    onResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    destroy() {
+        window.removeEventListener('resize', this.onResize.bind(this));
+
+        // Clean up geometries and materials
+        // (Simplified cleanup for intro duration)
+        if (this.scene) {
+            this.scene.clear();
+        }
+
+        if (this.renderer) {
+            this.renderer.dispose();
+        }
+
+        this.activeTetrominos = [];
+        this.activeParticles = [];
+    }
+}
