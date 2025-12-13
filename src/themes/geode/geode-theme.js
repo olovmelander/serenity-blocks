@@ -1,817 +1,922 @@
 /**
- * @fileoverview Geode Theme - Luminous Fiber-Optic Starfield
- * 
- * An immersive cosmic cavern featuring:
- * - Dense starfield spanning the entire screen
- * - Fiber-optic strands hanging and floating throughout
- * - Dynamic sparkle bursts on gameplay events
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * GEODE THEME - Three.js 3D Implementation
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * An immersive experience INSIDE a giant geode crystal cavity featuring:
+ * - Faceted crystals with chromatic dispersion (rainbow refraction)
+ * - Dense starfield of embedded sparkles (15K-90K particles)
+ * - Crystal filaments connecting formations
  * - Warm cosmic color palette (oranges, reds, magentas)
+ * - Dynamic camera with gentle drift
+ * - Gameplay-reactive effects (shooting stars, nova flashes, etc.)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { GEODE_TETROMINOS } from './geode-tetrominos.js';
-import WebGLStarRenderer from './webgl-star-renderer.js';
+import {
+    crystalVertexShader,
+    crystalFragmentShader,
+    crystalSimpleFragmentShader,
+    backgroundVertexShader,
+    backgroundFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+    shootingStarVertexShader,
+    shootingStarFragmentShader,
+    filamentVertexShader,
+    filamentFragmentShader,
+    novaVertexShader,
+    novaFragmentShader,
+    energyPulseVertexShader,
+    energyPulseFragmentShader,
+    ambientParticleVertexShader,
+    ambientParticleFragmentShader,
+    chromaticAberrationShader,
+} from './geode-shaders.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+const QUALITY_PRESETS = {
+    Minimal: {
+        starCount: 15000,
+        crystalClusterCount: 12,
+        crystalsPerCluster: 5,
+        filamentCount: 0,
+        ambientParticleCount: 30,
+        maxSparkles: 30,
+        maxShootingStars: 4,
+        maxNovaFlashes: 2,
+        maxEnergyPulses: 3,
+        enableBloom: false,
+        enableChromaticAberration: false,
+        enableDispersion: false,
+        bloomStrength: 0.3,
+    },
+    Low: {
+        starCount: 25000,
+        crystalClusterCount: 20,
+        crystalsPerCluster: 7,
+        filamentCount: 15,
+        ambientParticleCount: 50,
+        maxSparkles: 50,
+        maxShootingStars: 6,
+        maxNovaFlashes: 3,
+        maxEnergyPulses: 5,
+        enableBloom: false,
+        enableChromaticAberration: false,
+        enableDispersion: true,
+        bloomStrength: 0.35,
+    },
+    Medium: {
+        starCount: 40000,
+        crystalClusterCount: 30,
+        crystalsPerCluster: 9,
+        filamentCount: 30,
+        ambientParticleCount: 70,
+        maxSparkles: 80,
+        maxShootingStars: 10,
+        maxNovaFlashes: 4,
+        maxEnergyPulses: 8,
+        enableBloom: true,
+        enableChromaticAberration: true,
+        enableDispersion: true,
+        bloomStrength: 0.45,
+    },
+    High: {
+        starCount: 55000,
+        crystalClusterCount: 45,
+        crystalsPerCluster: 11,
+        filamentCount: 45,
+        ambientParticleCount: 90,
+        maxSparkles: 120,
+        maxShootingStars: 15,
+        maxNovaFlashes: 5,
+        maxEnergyPulses: 12,
+        enableBloom: true,
+        enableChromaticAberration: true,
+        enableDispersion: true,
+        bloomStrength: 0.5,
+    },
+    Ultra: {
+        starCount: 70000,
+        crystalClusterCount: 60,
+        crystalsPerCluster: 13,
+        filamentCount: 60,
+        ambientParticleCount: 110,
+        maxSparkles: 160,
+        maxShootingStars: 20,
+        maxNovaFlashes: 6,
+        maxEnergyPulses: 16,
+        enableBloom: true,
+        enableChromaticAberration: true,
+        enableDispersion: true,
+        bloomStrength: 0.55,
+    },
+    Extreme: {
+        starCount: 90000,
+        crystalClusterCount: 80,
+        crystalsPerCluster: 15,
+        filamentCount: 80,
+        ambientParticleCount: 130,
+        maxSparkles: 200,
+        maxShootingStars: 25,
+        maxNovaFlashes: 8,
+        maxEnergyPulses: 20,
+        enableBloom: true,
+        enableChromaticAberration: true,
+        enableDispersion: true,
+        bloomStrength: 0.6,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Color Palettes - Warm Cosmic Spectrum
+// ─────────────────────────────────────────────────────────────────────────────
+const CRYSTAL_PALETTES = [
+    { main: new THREE.Color(0xff6030), glow: new THREE.Color(0xff8040) }, // Orange
+    { main: new THREE.Color(0xff5040), glow: new THREE.Color(0xff3060) }, // Red
+    { main: new THREE.Color(0xffd060), glow: new THREE.Color(0xffe080) }, // Yellow/Gold
+    { main: new THREE.Color(0xff70ff), glow: new THREE.Color(0xe060ff) }, // Magenta
+    { main: new THREE.Color(0xc060ff), glow: new THREE.Color(0xa050ff) }, // Purple
+    { main: new THREE.Color(0x60ffff), glow: new THREE.Color(0x50e0ff) }, // Teal (accent)
+];
+
+const STAR_COLORS = [
+    '#ff6030', '#ff8040', '#ffa050', '#ffb060', '#ffc070', // Oranges
+    '#ff5040', '#ff4050', '#ff3060', '#ff2070',             // Reds
+    '#ffd060', '#ffe080', '#fff0a0',                         // Yellows
+    '#ff70ff', '#ff60e0', '#e060ff', '#c060ff', '#a050ff', // Magentas/Purples
+    '#60ffff', '#50e0ff', '#40c0ff',                         // Teals
+    '#60ff90', '#50ffa0',                                    // Greens
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default class GeodeTheme extends BaseTheme {
     constructor() {
         super('geode');
-        this.canvas = null;
-        this.ctx = null;
-        this.animationTime = 0;
-        this.frameCount = 0;
-        this.lastFrameTime = 0;
+        this.eventUnsubscribers = [];
+
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.mainGroup = null;
+        this.clock = new THREE.Clock();
+        this.animationFrame = null;
 
         // Scene elements
-        this.stars = [];
-        this.strands = [];
-        this.ambientParticles = [];
+        this.backgroundSphere = null;
+        this.crystalClusters = [];
+        this.stars = null;
+        this.starPositions = null;
+        this.starBrightnesses = null;
+        this.starRippleBoosts = null;
+        this.filaments = [];
+        this.ambientParticles = null;
+        this.envMap = null;
 
-        // Gameplay reactive elements
-        this.energyPulses = [];
-        this.sparkles = [];
+        // Effect elements
         this.shootingStars = [];
         this.novaFlashes = [];
+        this.energyPulses = [];
+        this.sparkles = [];
         this.starRipples = [];
 
-        // Visual state
-        this.comboMultiplier = 1.0;
-        this.pulseIntensity = 0.0;
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-        this.chromaticAberration = 0;
-        this.ambientPulse = 0;
-
-        // Cached gradients
-        this.cachedGradients = {};
-        this.spriteCache = {};
-        
-        // Performance: Spatial grid for star ripple checks
-        this.starGrid = null;
-        this.gridCellSize = 80;
-        this.gridCols = 0;
-        this.gridRows = 0;
-        
-        // Performance: Pre-computed sin/cos lookup table
-        this.sinTable = new Float32Array(360);
-        this.cosTable = new Float32Array(360);
-        for (let i = 0; i < 360; i++) {
-            const rad = (i / 360) * Math.PI * 2;
-            this.sinTable[i] = Math.sin(rad);
-            this.cosTable[i] = Math.cos(rad);
-        }
-        
-        // Performance: Reusable typed arrays for batch operations
-        this.tempVec2 = new Float32Array(2);
-        
-        // Performance: Offscreen canvas for static star layer
-        this.starCanvas = null;
-        this.starCtx = null;
-        this.starLayerDirty = true; // Flag to trigger star canvas redraw
-        this.lastStarRedrawTime = 0;
-        this.starRedrawInterval = 50; // Redraw stars every 50ms max (20 fps for star twinkle)
-        this.starCanvasScale = 0.6;   // Render stars at reduced resolution (0.4-1.0)
-        this.useSimpleComposite = false; // Skip 'screen' blend mode for perf
-        
-        // Performance: Track active ripple regions for partial redraws
-        this.activeRippleRegions = [];
-        
-        // Performance: Frame skip counters
-        this.particleUpdateFrame = 0;
-        
-        // Performance: Pre-rendered brightness sprites (avoids globalAlpha changes)
-        this.brightnessSpriteCache = {};
-        
-        // Performance: WebGL star renderer (GPU-accelerated)
-        this.webglCanvas = null;
-        this.webglRenderer = null;
-        this.useWebGL = true; // Try to use WebGL, fall back to Canvas2D
-
-        // Event tracking
-        this.eventUnsubscribers = [];
-        this.pendingComboCount = 0;
-
-        // Color palette - warm cosmic spectrum
-        this.starColors = [
-            '#ff6030', '#ff8040', '#ffa050', '#ffb060', '#ffc070', // oranges
-            '#ff5040', '#ff4050', '#ff3060', '#ff2070', // reds
-            '#ffd060', '#ffe080', '#fff0a0', // yellows
-            '#ff70ff', '#ff60e0', '#e060ff', '#c060ff', '#a050ff', // magentas/purples
-            '#60ffff', '#50e0ff', '#40c0ff', // teals (accent)
-            '#60ff90', '#50ffa0', // greens (accent)
-        ];
-
-        this.qualityPresets = {
-            Minimal: {
-                // Element counts
-                starCount: 20000,
-                strandCount: 0,
-                ambientParticleCount: 30,
-                maxEnergyPulses: 3,
-                maxSparkles: 30,
-                maxShootingStars: 4,
-                maxNovaFlashes: 2,
-                maxStarRipples: 2,
-                // Rendering quality
-                enableStarGlow: false,
-                starGlowSizeThreshold: 3,
-                starBrightnessThreshold: 0.1,
-                enableSparkleCore: false,
-                maxTrailLength: 8,
-                trailBatchCount: 2,
-                // Performance: Star layer settings
-                starRedrawInterval: 100,  // 10 fps for star layer
-                particleFrameSkip: 2,     // Update particles every 2nd frame
-                starCanvasScale: 0.4,     // Render stars at 40% resolution (huge perf gain!)
-                useSimpleComposite: true, // Skip expensive 'screen' blend mode
-                useWebGL: true,           // WebGL is beneficial even at low star counts
-                // Effect toggles
-                enableChromaticAberration: false,
-                enableScreenShake: true,
-                enableVignette: false,
-                enableNovaRays: false,
-                enableAmbientPulseGlow: false,
-                // Burst counts
-                shootingStarsPerLock: 2,
-                sparklesPerLock: 2,
-                sparklesPerLineClear: 3,
-                burstPointsPerLineClear: 4,
-            },
-            Low: {
-                // Element counts
-                starCount: 40000,
-                strandCount: 0,
-                ambientParticleCount: 50,
-                maxEnergyPulses: 5,
-                maxSparkles: 50,
-                maxShootingStars: 6,
-                maxNovaFlashes: 3,
-                maxStarRipples: 3,
-                // Rendering quality
-                enableStarGlow: false,
-                starGlowSizeThreshold: 2.5,
-                starBrightnessThreshold: 0.08,
-                enableSparkleCore: true,
-                maxTrailLength: 10,
-                trailBatchCount: 2,
-                // Performance
-                starRedrawInterval: 80,   // 12.5 fps for star layer
-                particleFrameSkip: 2,
-                starCanvasScale: 0.5,     // Render stars at 50% resolution
-                useSimpleComposite: true,
-                useWebGL: true,
-                // Effect toggles
-                enableChromaticAberration: false,
-                enableScreenShake: true,
-                enableVignette: true,
-                enableNovaRays: false,
-                enableAmbientPulseGlow: true,
-                // Burst counts
-                shootingStarsPerLock: 2,
-                sparklesPerLock: 3,
-                sparklesPerLineClear: 4,
-                burstPointsPerLineClear: 6,
-            },
-            Medium: {
-                // Element counts
-                starCount: 50000,
-                strandCount: 0,
-                ambientParticleCount: 60,
-                maxEnergyPulses: 8,
-                maxSparkles: 80,
-                maxShootingStars: 10,
-                maxNovaFlashes: 4,
-                maxStarRipples: 4,
-                // Rendering quality
-                enableStarGlow: true,
-                starGlowSizeThreshold: 2.5,
-                starBrightnessThreshold: 0.05,
-                enableSparkleCore: true,
-                maxTrailLength: 12,
-                trailBatchCount: 3,
-                // Performance
-                starRedrawInterval: 50,   // 20 fps for star layer
-                particleFrameSkip: 1,     // Update every frame
-                starCanvasScale: 0.6,     // Render stars at 60% resolution
-                useSimpleComposite: false,
-                useWebGL: true,
-                // Effect toggles
-                enableChromaticAberration: true,
-                enableScreenShake: true,
-                enableVignette: true,
-                enableNovaRays: true,
-                enableAmbientPulseGlow: true,
-                // Burst counts
-                shootingStarsPerLock: 3,
-                sparklesPerLock: 4,
-                sparklesPerLineClear: 5,
-                burstPointsPerLineClear: 8,
-            },
-            High: {
-                // Element counts
-                starCount: 70000,
-                strandCount: 0,
-                ambientParticleCount: 70,
-                maxEnergyPulses: 12,
-                maxSparkles: 120,
-                maxShootingStars: 15,
-                maxNovaFlashes: 5,
-                maxStarRipples: 5,
-                // Rendering quality
-                enableStarGlow: true,
-                starGlowSizeThreshold: 2,
-                starBrightnessThreshold: 0.05,
-                enableSparkleCore: true,
-                maxTrailLength: 15,
-                trailBatchCount: 3,
-                // Performance
-                starRedrawInterval: 40,   // 25 fps for star layer
-                particleFrameSkip: 1,
-                starCanvasScale: 0.75,    // Render stars at 75% resolution
-                useSimpleComposite: false,
-                useWebGL: true,
-                // Effect toggles
-                enableChromaticAberration: true,
-                enableScreenShake: true,
-                enableVignette: true,
-                enableNovaRays: true,
-                enableAmbientPulseGlow: true,
-                // Burst counts
-                shootingStarsPerLock: 3,
-                sparklesPerLock: 5,
-                sparklesPerLineClear: 6,
-                burstPointsPerLineClear: 10,
-            },
-            Ultra: {
-                // Element counts
-                starCount: 80000,
-                strandCount: 0,
-                ambientParticleCount: 80,
-                maxEnergyPulses: 16,
-                maxSparkles: 160,
-                maxShootingStars: 20,
-                maxNovaFlashes: 6,
-                maxStarRipples: 6,
-                // Rendering quality
-                enableStarGlow: true,
-                starGlowSizeThreshold: 1.8,
-                starBrightnessThreshold: 0.04,
-                enableSparkleCore: true,
-                maxTrailLength: 18,
-                trailBatchCount: 3,
-                // Performance
-                starRedrawInterval: 33,   // 30 fps for star layer
-                particleFrameSkip: 1,
-                starCanvasScale: 0.85,    // Render stars at 85% resolution
-                useSimpleComposite: false,
-                useWebGL: true,
-                // Effect toggles
-                enableChromaticAberration: true,
-                enableScreenShake: true,
-                enableVignette: true,
-                enableNovaRays: true,
-                enableAmbientPulseGlow: true,
-                // Burst counts
-                shootingStarsPerLock: 4,
-                sparklesPerLock: 6,
-                sparklesPerLineClear: 7,
-                burstPointsPerLineClear: 12,
-            },
-            Extreme: {
-                // Element counts
-                starCount: 100000,
-                strandCount: 0,
-                ambientParticleCount: 100,
-                maxEnergyPulses: 20,
-                maxSparkles: 200,
-                maxShootingStars: 25,
-                maxNovaFlashes: 8,
-                maxStarRipples: 8,
-                // Rendering quality
-                enableStarGlow: true,
-                starGlowSizeThreshold: 1.5,
-                starBrightnessThreshold: 0.03,
-                enableSparkleCore: true,
-                maxTrailLength: 20,
-                trailBatchCount: 4,
-                // Performance
-                starRedrawInterval: 25,   // 40 fps for star layer
-                particleFrameSkip: 1,
-                starCanvasScale: 1.0,     // Full resolution for Extreme quality
-                useSimpleComposite: false,
-                useWebGL: true,
-                // Effect toggles
-                enableChromaticAberration: true,
-                enableScreenShake: true,
-                enableVignette: true,
-                enableNovaRays: true,
-                enableAmbientPulseGlow: true,
-                // Burst counts
-                shootingStarsPerLock: 4,
-                sparklesPerLock: 7,
-                sparklesPerLineClear: 8,
-                burstPointsPerLineClear: 14,
-            },
+        // Animation state
+        this.uniforms = {
+            time: { value: 0 },
+            pulseIntensity: { value: 0 },
+            ambientPulse: { value: 1 },
         };
 
-        this.currentQuality = 'Medium';
-        this.activePreset = this.qualityPresets.Medium;
-    }
+        // Camera state
+        this.baseCameraPos = new THREE.Vector3(0, 0, 60);
+        this.cameraShake = { intensity: 0, x: 0, y: 0 };
+        this.chromaticAberration = 0;
 
-    applyQualityPreset(quality) {
-        const preset = this.qualityPresets[quality] ?? this.qualityPresets.Medium;
-        this.currentQuality = quality in this.qualityPresets ? quality : 'Medium';
-        this.activePreset = preset;
-        // Apply performance settings from preset
-        this.starRedrawInterval = preset.starRedrawInterval || 50;
-        this.starCanvasScale = preset.starCanvasScale || 0.6;
-        this.useSimpleComposite = preset.useSimpleComposite || false;
-        // Note: useWebGL is checked in initWebGLRenderer and respected there
-        console.log(`💎 Geode: Applied ${this.currentQuality} quality`);
-    }
-    
-    /**
-     * Initialize WebGL star renderer for GPU-accelerated star rendering
-     * Falls back to Canvas2D if WebGL is not available or disabled in preset
-     */
-    initWebGLRenderer() {
-        if (!this.canvas) return;
-        
-        // Check if preset allows WebGL
-        if (this.activePreset.useWebGL === false) {
-            this.useWebGL = false;
-            console.log('💎 Geode: WebGL disabled by quality preset, using Canvas2D');
-            return;
-        }
-        
-        try {
-            // Create a separate canvas for WebGL stars (layered on top of background)
-            this.webglCanvas = document.createElement('canvas');
-            this.webglCanvas.width = this.canvas.width;
-            this.webglCanvas.height = this.canvas.height;
-            
-            // Initialize WebGL renderer
-            this.webglRenderer = new WebGLStarRenderer(this.webglCanvas);
-            
-            if (this.webglRenderer.init()) {
-                // Set color palette
-                this.webglRenderer.setColorPalette(this.starColors);
-                // Allocate space for stars
-                this.webglRenderer.allocateStars(this.activePreset.starCount);
-                this.useWebGL = true;
-                console.log(`💎 Geode: WebGL star renderer active (${this.activePreset.starCount} stars in 1 draw call!)`);
-            } else {
-                this.useWebGL = false;
-                this.webglRenderer = null;
-                this.webglCanvas = null;
-                console.log('💎 Geode: Falling back to Canvas2D star rendering');
-            }
-        } catch (e) {
-            console.warn('💎 Geode: WebGL init failed, using Canvas2D:', e);
-            this.useWebGL = false;
-            this.webglRenderer = null;
-            this.webglCanvas = null;
-        }
-    }
-    
-    // Performance: Fast sin/cos using lookup table
-    fastSin(phase) {
-        const index = ((phase * 57.2957795) % 360 + 360) % 360 | 0; // radians to degrees, ensure positive
-        return this.sinTable[index];
-    }
-    
-    fastCos(phase) {
-        const index = ((phase * 57.2957795) % 360 + 360) % 360 | 0;
-        return this.cosTable[index];
-    }
-    
-    // Performance: Build spatial grid for efficient star lookups
-    buildStarGrid() {
-        if (!this.canvas) return;
-        
-        this.gridCols = Math.ceil(this.canvas.width / this.gridCellSize);
-        this.gridRows = Math.ceil(this.canvas.height / this.gridCellSize);
-        this.starGrid = new Array(this.gridCols * this.gridRows);
-        
-        for (let i = 0; i < this.starGrid.length; i++) {
-            this.starGrid[i] = [];
-        }
-        
-        // Assign stars to grid cells
-        for (let i = 0; i < this.stars.length; i++) {
-            const star = this.stars[i];
-            const cellX = Math.floor(star.x / this.gridCellSize);
-            const cellY = Math.floor(star.y / this.gridCellSize);
-            if (cellX >= 0 && cellX < this.gridCols && cellY >= 0 && cellY < this.gridRows) {
-                this.starGrid[cellY * this.gridCols + cellX].push(star);
-            }
-        }
-    }
-    
-    // Performance: Get stars in cells that intersect a circle
-    getStarsInRadius(x, y, radius) {
-        if (!this.starGrid) return this.stars;
-        
-        const minCellX = Math.max(0, Math.floor((x - radius) / this.gridCellSize));
-        const maxCellX = Math.min(this.gridCols - 1, Math.floor((x + radius) / this.gridCellSize));
-        const minCellY = Math.max(0, Math.floor((y - radius) / this.gridCellSize));
-        const maxCellY = Math.min(this.gridRows - 1, Math.floor((y + radius) / this.gridCellSize));
-        
-        const result = [];
-        for (let cy = minCellY; cy <= maxCellY; cy++) {
-            for (let cx = minCellX; cx <= maxCellX; cx++) {
-                const cell = this.starGrid[cy * this.gridCols + cx];
-                if (cell) {
-                    for (let i = 0; i < cell.length; i++) {
-                        result.push(cell[i]);
-                    }
-                }
-            }
-        }
-        return result;
+        // Combo state
+        this.comboMultiplier = 1.0;
+        this.pendingComboCount = 0;
+
+        // Quality
+        this.currentQuality = 'High';
+        this.activePreset = QUALITY_PRESETS.High;
+        this.qualityChangeHandler = null;
+
+        // Post-processing
+        this.bloomPass = null;
+        this.chromaticPass = null;
     }
 
     getGraphicsQuality() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'Medium';
+        return settings?.effectQuality || 'High';
     }
+
+    applyQualityPreset(quality) {
+        if (!QUALITY_PRESETS[quality]) quality = 'High';
+        this.currentQuality = quality;
+        this.activePreset = QUALITY_PRESETS[quality];
+        console.log(`💎 Geode 3D: Applied ${quality} quality preset`);
+
+        if (this.isActive && this.scene) {
+            this.rebuildQualityDependentElements();
+        }
+    }
+
+    rebuildQualityDependentElements() {
+        // Rebuild stars
+        if (this.stars) {
+            this.mainGroup.remove(this.stars);
+            this.stars.geometry.dispose();
+            this.stars.material.dispose();
+        }
+        this.createStars();
+
+        // Rebuild ambient particles
+        if (this.ambientParticles) {
+            this.mainGroup.remove(this.ambientParticles);
+            this.ambientParticles.geometry.dispose();
+            this.ambientParticles.material.dispose();
+        }
+        this.createAmbientParticles();
+
+        // Update bloom
+        if (this.bloomPass) {
+            this.bloomPass.enabled = this.activePreset.enableBloom;
+            this.bloomPass.strength = this.activePreset.bloomStrength;
+        }
+    }
+
+    setupQualityListener() {
+        this.teardownQualityListener();
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (newQuality && newQuality !== this.currentQuality) {
+                this.applyQualityPreset(newQuality);
+            }
+        };
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scene Creation
+    // ─────────────────────────────────────────────────────────────────────────
 
     async createScene() {
-        const quality = this.getGraphicsQuality();
-        this.applyQualityPreset(quality);
+        console.log('💎 Geode 3D: Initializing Three.js scene...');
 
-        const themeContainer = document.getElementById('geode-theme');
-        this.canvas = document.getElementById('geode-canvas');
-
-        if (!this.canvas && themeContainer) {
-            this.canvas = document.createElement('canvas');
-            this.canvas.id = 'geode-canvas';
-            Object.assign(this.canvas.style, {
-                position: 'absolute',
-                top: '0',
-                left: '0',
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-                zIndex: '1',
-                // Performance: GPU acceleration hints
-                willChange: 'contents',
-                transform: 'translateZ(0)',
-                backfaceVisibility: 'hidden',
-            });
-            themeContainer.appendChild(this.canvas);
+        const container = document.getElementById('geode-theme');
+        if (!container) {
+            console.error('💎 Geode 3D: Container not found');
+            return;
         }
+        container.innerHTML = '';
 
-        if (!this.canvas) return;
+        // Apply quality preset
+        this.applyQualityPreset(this.getGraphicsQuality());
+        this.setupQualityListener();
 
-        this.ctx = this.canvas.getContext('2d', { alpha: false });
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        
-        // Performance: Try to initialize WebGL star renderer (GPU-accelerated)
-        this.initWebGLRenderer();
-        
-        // Fallback: Create offscreen canvas for star layer at reduced resolution
-        if (!this.useWebGL) {
-            const scale = this.starCanvasScale;
-            this.starCanvas = document.createElement('canvas');
-            this.starCanvas.width = Math.ceil(this.canvas.width * scale);
-            this.starCanvas.height = Math.ceil(this.canvas.height * scale);
-            this.starCtx = this.starCanvas.getContext('2d', { alpha: true });
-        }
-        
-        // Enable image smoothing for nice upscaling
-        this.ctx.imageSmoothingEnabled = true;
-        this.ctx.imageSmoothingQuality = 'low'; // 'low' is faster than 'high'
-        this.starLayerDirty = true;
+        // Scene
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x0a0408, 0.003);
 
-        this.clearAllElements();
-        this.cacheGradients();
-        this.cacheStarSprites();
+        // Camera - positioned at center of geode cavity
+        this.camera = new THREE.PerspectiveCamera(
+            70,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            2000
+        );
+        this.camera.position.copy(this.baseCameraPos);
+        this.camera.lookAt(0, 0, 0);
 
-        // Initialize scene elements
+        // Renderer
+        this.renderer = new THREE.WebGLRenderer({
+            alpha: true,
+            antialias: true,
+            powerPreference: 'high-performance',
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.3;
+        container.appendChild(this.renderer.domElement);
+
+        // Main group for scene drift
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        // Create environment map FIRST (needed for crystals)
+        this.createEnvironmentMap();
+
+        // Create scene elements
+        this.createBackground();
+        this.createCrystalClusters();
         this.createStars();
-        this.createStrands();
+        this.createFilaments();
         this.createAmbientParticles();
-        
-        // Performance: Build spatial grid for star ripple lookups
-        this.buildStarGrid();
-        
-        // Upload stars to WebGL if available
-        if (this.useWebGL && this.webglRenderer) {
-            this.webglRenderer.uploadStars(this.stars);
-        }
+        this.setupLighting();
+        this.setupPostProcessing();
 
+        // Event listeners
         this.setupEventListeners();
-        this.lastFrameTime = performance.now();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // Start animation
+        this.clock.start();
         this.animate();
+
+        console.log(`💎 Geode 3D: Scene initialized with ${this.crystalClusters.length} crystal clusters`);
     }
 
-    clearAllElements() {
-        this.stars = [];
-        this.strands = [];
-        this.ambientParticles = [];
-        this.energyPulses = [];
-        this.sparkles = [];
-        this.shootingStars = [];
-        this.novaFlashes = [];
-        this.starRipples = [];
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Environment Map - Custom Warm Cubemap for Reflections
+    // ─────────────────────────────────────────────────────────────────────────
 
-    cacheGradients() {
-        if (!this.ctx || !this.canvas) return;
+    createEnvironmentMap() {
+        const size = 256;
 
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-
-        // Deep space background with warm undertones
-        const bgGradient = this.ctx.createRadialGradient(w * 0.5, h * 0.3, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.9);
-        bgGradient.addColorStop(0, '#0c0408');
-        bgGradient.addColorStop(0.3, '#080306');
-        bgGradient.addColorStop(0.6, '#050204');
-        bgGradient.addColorStop(1, '#020102');
-        this.cachedGradients.background = bgGradient;
-
-        // Vignette
-        const vignette = this.ctx.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w * 0.9);
-        vignette.addColorStop(0, 'transparent');
-        vignette.addColorStop(0.6, 'rgba(0, 0, 0, 0.15)');
-        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
-        this.cachedGradients.vignette = vignette;
-    }
-
-    cacheStarSprites() {
-        this.spriteCache = {};
-        // Create a sprite for each color
-        // Base size 32x32 to allow for scaling up without blur
-        const size = 32;
-        const center = size / 2;
-        const radius = size / 2 - 2;
-
-        // Cache colored stars
-        this.starColors.forEach(color => {
+        // Create a procedural cubemap texture
+        const faces = [];
+        for (let i = 0; i < 6; i++) {
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
             const ctx = canvas.getContext('2d');
 
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(center, center, radius, 0, Math.PI * 2);
-            ctx.fill();
+            // Base gradient - warm cosmic void
+            const gradient = ctx.createRadialGradient(
+                size / 2, size / 2, 0,
+                size / 2, size / 2, size * 0.7
+            );
+            gradient.addColorStop(0, '#1a0808');
+            gradient.addColorStop(0.3, '#0c0406');
+            gradient.addColorStop(0.6, '#080204');
+            gradient.addColorStop(1, '#030102');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
 
-            this.spriteCache[color] = canvas;
+            // Add glowing spots (simulating other crystals)
+            const spotCount = 30 + Math.floor(Math.random() * 20);
+            for (let j = 0; j < spotCount; j++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = 3 + Math.random() * 15;
+                const color = STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)];
+
+                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
+                spotGrad.addColorStop(0, color);
+                spotGrad.addColorStop(0.5, color + '80');
+                spotGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = spotGrad;
+                ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            }
+
+            faces.push(canvas);
+        }
+
+        // Create cube texture from canvases
+        this.envMap = new THREE.CubeTexture(faces);
+        this.envMap.needsUpdate = true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Background - Cosmic Void Sphere
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBackground() {
+        const geometry = new THREE.SphereGeometry(800, 64, 48);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uPulseIntensity: this.uniforms.pulseIntensity,
+            },
+            vertexShader: backgroundVertexShader,
+            fragmentShader: backgroundFragmentShader,
+            side: THREE.BackSide,
+            fog: false,
         });
 
-        // Cache white star for cores/intense effects
-        const whiteCanvas = document.createElement('canvas');
-        whiteCanvas.width = size;
-        whiteCanvas.height = size;
-        const wCtx = whiteCanvas.getContext('2d');
-        wCtx.fillStyle = '#ffffff';
-        wCtx.beginPath();
-        wCtx.arc(center, center, radius, 0, Math.PI * 2);
-        wCtx.fill();
-        this.spriteCache['#ffffff'] = whiteCanvas;
+        this.backgroundSphere = new THREE.Mesh(geometry, material);
+        this.scene.add(this.backgroundSphere);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Crystal Geometry & Clusters
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createCrystalGeometry(height, radius) {
+        // Hexagonal crystal with pointed ends
+        const geometry = new THREE.BufferGeometry();
+        const sides = 6;
+        const topPoint = height * 0.85;
+        const midPoint = height * 0.4;
+        const bottomPoint = -height * 0.15;
+
+        const vertices = [];
+
+        // Create hexagonal cross-section
+        const points = [];
+        for (let i = 0; i < sides; i++) {
+            const angle = (i / sides) * Math.PI * 2;
+            points.push({
+                x: Math.cos(angle) * radius,
+                z: Math.sin(angle) * radius
+            });
+        }
+
+        // Top pyramid
+        for (let i = 0; i < sides; i++) {
+            const next = (i + 1) % sides;
+            vertices.push(
+                0, topPoint, 0,
+                points[i].x, midPoint, points[i].z,
+                points[next].x, midPoint, points[next].z
+            );
+        }
+
+        // Middle body
+        for (let i = 0; i < sides; i++) {
+            const next = (i + 1) % sides;
+            // Upper quad
+            vertices.push(
+                points[i].x, midPoint, points[i].z,
+                points[i].x * 0.95, 0, points[i].z * 0.95,
+                points[next].x, midPoint, points[next].z
+            );
+            vertices.push(
+                points[next].x, midPoint, points[next].z,
+                points[i].x * 0.95, 0, points[i].z * 0.95,
+                points[next].x * 0.95, 0, points[next].z * 0.95
+            );
+        }
+
+        // Bottom pyramid
+        for (let i = 0; i < sides; i++) {
+            const next = (i + 1) % sides;
+            vertices.push(
+                points[i].x * 0.95, 0, points[i].z * 0.95,
+                0, bottomPoint, 0,
+                points[next].x * 0.95, 0, points[next].z * 0.95
+            );
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.computeVertexNormals();
+
+        return geometry;
+    }
+
+    createCrystalCluster(position, direction) {
+        const group = new THREE.Group();
+        const palette = CRYSTAL_PALETTES[Math.floor(Math.random() * CRYSTAL_PALETTES.length)];
+        const crystalCount = Math.floor(
+            this.activePreset.crystalsPerCluster * (0.7 + Math.random() * 0.6)
+        );
+
+        for (let i = 0; i < crystalCount; i++) {
+            const height = 12 + Math.random() * 35;
+            const radius = 1.5 + Math.random() * 3.5;
+            const geometry = this.createCrystalGeometry(height, radius);
+
+            // Choose shader based on quality preset
+            const useDispersion = this.activePreset.enableDispersion && this.envMap;
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uPulseIntensity: { value: 0 },
+                    uCrystalColor: { value: palette.main.clone() },
+                    uGlowColor: { value: palette.glow.clone() },
+                    uEnvMap: { value: this.envMap },
+                    uEnvMapIntensity: { value: useDispersion ? 0.6 : 0 },
+                },
+                vertexShader: crystalVertexShader,
+                fragmentShader: useDispersion ? crystalFragmentShader : crystalSimpleFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: true,
+            });
+
+            const crystal = new THREE.Mesh(geometry, material);
+
+            // Position within cluster
+            const offsetAngle = (i / crystalCount) * Math.PI * 2 + Math.random() * 0.5;
+            const offsetDist = Math.random() * 10;
+            crystal.position.set(
+                Math.cos(offsetAngle) * offsetDist,
+                0,
+                Math.sin(offsetAngle) * offsetDist
+            );
+
+            // Random rotation
+            crystal.rotation.y = Math.random() * Math.PI * 2;
+            crystal.rotation.x = (Math.random() - 0.5) * 0.3;
+            crystal.rotation.z = (Math.random() - 0.5) * 0.3;
+
+            group.add(crystal);
+        }
+
+        group.position.copy(position);
+
+        // Orient cluster to point inward (toward camera)
+        group.lookAt(0, 0, 0);
+        group.rotateX(Math.PI / 2); // Crystals point inward
+
+        group.userData = {
+            palette,
+            phase: Math.random() * Math.PI * 2,
+        };
+
+        this.mainGroup.add(group);
+        this.crystalClusters.push(group);
+    }
+
+    createCrystalClusters() {
+        const count = this.activePreset.crystalClusterCount;
+        const radius = 150; // Distance from center (geode wall)
+
+        // Distribute clusters on a sphere around camera
+        for (let i = 0; i < count; i++) {
+            // Use fibonacci sphere distribution for even spacing
+            const phi = Math.acos(1 - 2 * (i + 0.5) / count);
+            const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+
+            // Add some randomness
+            const r = radius * (0.85 + Math.random() * 0.3);
+            const position = new THREE.Vector3(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.cos(phi),
+                r * Math.sin(phi) * Math.sin(theta)
+            );
+
+            this.createCrystalCluster(position, position.clone().negate());
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Star/Sparkle Particle System
+    // ─────────────────────────────────────────────────────────────────────────
 
     createStars() {
-        const preset = this.activePreset;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        const count = this.activePreset.starCount;
+        const geometry = new THREE.BufferGeometry();
 
-        // Dense starfield across entire screen
-        // More density at top, gradually thinning toward bottom
-        for (let i = 0; i < preset.starCount; i++) {
-            // Bias toward top but cover whole screen
-            const yBias = Math.pow(Math.random(), 1.8);
-            const y = yBias * h;
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const twinklePhases = new Float32Array(count);
+        const twinkleSpeeds = new Float32Array(count);
+        const brightnesses = new Float32Array(count);
+        const rippleBoosts = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
 
-            // Size varies - smaller stars more common
+        // Distribute stars throughout the geode cavity
+        for (let i = 0; i < count; i++) {
+            // Random position within cavity (not too close to center)
+            const r = 30 + Math.random() * 120;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.cos(phi);
+            positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+            // Size - smaller stars more common
             const sizeBias = Math.pow(Math.random(), 2);
-            const size = 0.3 + sizeBias * 3;
+            sizes[i] = 0.3 + sizeBias * 3;
 
-            this.stars.push({
-                x: Math.random() * w,
-                y: y,
-                size: size,
-                color: this.starColors[(Math.random() * this.starColors.length) | 0],
-                brightness: 0.2 + Math.random() * 0.8,
-                twinklePhase: Math.random() * Math.PI * 2,
-                twinkleSpeed: 0.015 + Math.random() * 0.045,
-                // Slight drift for parallax feel
-                driftX: (Math.random() - 0.5) * 0.05,
-                driftY: (Math.random() - 0.5) * 0.02,
-                rippleBoost: 0, // Initialize to 0 for faster checks
+            // Twinkle
+            twinklePhases[i] = Math.random() * Math.PI * 2;
+            twinkleSpeeds[i] = 1.5 + Math.random() * 4.5;
+
+            // Brightness
+            brightnesses[i] = 0.2 + Math.random() * 0.8;
+            rippleBoosts[i] = 0;
+
+            // Color from palette
+            const color = new THREE.Color(
+                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+            );
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aTwinklePhase', new THREE.BufferAttribute(twinklePhases, 1));
+        geometry.setAttribute('aTwinkleSpeed', new THREE.BufferAttribute(twinkleSpeeds, 1));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightnesses, 1));
+        geometry.setAttribute('aRippleBoost', new THREE.BufferAttribute(rippleBoosts, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        // Store references for ripple updates
+        this.starPositions = positions;
+        this.starBrightnesses = brightnesses;
+        this.starRippleBoosts = rippleBoosts;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uPulseIntensity: this.uniforms.pulseIntensity,
+                uAmbientPulse: this.uniforms.ambientPulse,
+                uBrightnessThreshold: { value: 0.05 },
+                uEnableGlow: { value: true },
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.stars = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.stars);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Crystal Filaments - Glowing Threads Between Clusters
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createFilaments() {
+        const count = this.activePreset.filamentCount;
+        if (count === 0 || this.crystalClusters.length < 2) return;
+
+        for (let i = 0; i < count; i++) {
+            // Pick two random clusters to connect
+            const idx1 = Math.floor(Math.random() * this.crystalClusters.length);
+            let idx2 = Math.floor(Math.random() * this.crystalClusters.length);
+            if (idx2 === idx1) idx2 = (idx2 + 1) % this.crystalClusters.length;
+
+            const start = this.crystalClusters[idx1].position.clone();
+            const end = this.crystalClusters[idx2].position.clone();
+
+            // Create curved path between clusters
+            const mid = start.clone().lerp(end, 0.5);
+            // Add some curve toward center
+            mid.multiplyScalar(0.7 + Math.random() * 0.2);
+
+            const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+            const points = curve.getPoints(20);
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+            // Add progress attribute
+            const progress = new Float32Array(points.length);
+            for (let j = 0; j < points.length; j++) {
+                progress[j] = j / (points.length - 1);
+            }
+            geometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
+
+            const palette = CRYSTAL_PALETTES[Math.floor(Math.random() * CRYSTAL_PALETTES.length)];
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uPulseIntensity: this.uniforms.pulseIntensity,
+                    uColor: { value: palette.glow.clone() },
+                    uOpacity: { value: 0.4 + Math.random() * 0.3 },
+                },
+                vertexShader: filamentVertexShader,
+                fragmentShader: filamentFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
             });
+
+            const line = new THREE.Line(geometry, material);
+            this.mainGroup.add(line);
+            this.filaments.push(line);
         }
     }
 
-    createStrands() {
-        const preset = this.activePreset;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-
-        // Fiber-optic strands distributed across screen
-        for (let i = 0; i < preset.strandCount; i++) {
-            const x = Math.random() * w;
-            // Start from various heights, mostly from top half
-            const startY = Math.random() * h * 0.6;
-            // Longer strands
-            const length = 80 + Math.random() * 350;
-            const color = this.starColors[Math.floor(Math.random() * this.starColors.length)];
-
-            this.strands.push({
-                x: x,
-                baseX: x,
-                startY: startY,
-                length: length,
-                width: 0.4 + Math.random() * 1.8,
-                color: color,
-                swayPhase: Math.random() * Math.PI * 2,
-                swaySpeed: 0.0008 + Math.random() * 0.002,
-                swayAmount: 3 + Math.random() * 12,
-                brightness: 0.3 + Math.random() * 0.7,
-                pulsePhase: Math.random() * Math.PI * 2,
-                pulseSpeed: 0.008 + Math.random() * 0.02,
-                // Tip properties
-                tipSize: 1 + Math.random() * 2.5,
-                tipBrightness: 0.6 + Math.random() * 0.4,
-            });
-        }
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ambient Floating Particles
+    // ─────────────────────────────────────────────────────────────────────────
 
     createAmbientParticles() {
-        const preset = this.activePreset;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        const count = this.activePreset.ambientParticleCount;
+        const geometry = new THREE.BufferGeometry();
 
-        // Floating particles drifting slowly
-        for (let i = 0; i < preset.ambientParticleCount; i++) {
-            this.ambientParticles.push({
-                x: Math.random() * w,
-                y: Math.random() * h,
-                vx: (Math.random() - 0.5) * 0.4,
-                vy: -0.15 - Math.random() * 0.3,
-                size: 0.8 + Math.random() * 2.5,
-                color: this.starColors[Math.floor(Math.random() * this.starColors.length)],
-                opacity: 0.3 + Math.random() * 0.5,
-                twinklePhase: Math.random() * Math.PI * 2,
-                twinkleSpeed: 0.02 + Math.random() * 0.04,
-            });
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        for (let i = 0; i < count; i++) {
+            // Random position
+            positions[i * 3] = (Math.random() - 0.5) * 200;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 200;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 200;
+
+            sizes[i] = 1.5 + Math.random() * 4;
+            phases[i] = Math.random();
+
+            const color = new THREE.Color(
+                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+            );
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
         }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+            },
+            vertexShader: ambientParticleVertexShader,
+            fragmentShader: ambientParticleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.ambientParticles = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.ambientParticles);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lighting
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupLighting() {
+        // Warm ambient
+        const ambient = new THREE.AmbientLight(0x201010, 0.5);
+        this.scene.add(ambient);
+
+        // Hemisphere - warm above, cool below
+        const hemi = new THREE.HemisphereLight(0xff6040, 0x4060ff, 0.4);
+        this.scene.add(hemi);
+
+        // Point lights at various crystal positions
+        const lightColors = [0xff6030, 0xff70ff, 0xffd060, 0x60ffff];
+        for (let i = 0; i < 4; i++) {
+            const light = new THREE.PointLight(lightColors[i], 1.5, 300, 0);
+            const angle = (i / 4) * Math.PI * 2;
+            light.position.set(
+                Math.cos(angle) * 80,
+                (Math.random() - 0.5) * 60,
+                Math.sin(angle) * 80
+            );
+            this.mainGroup.add(light);
+        }
+
+        // Central subtle light
+        const centerLight = new THREE.PointLight(0xffa080, 0.8, 200, 0);
+        centerLight.position.set(0, 0, 0);
+        this.mainGroup.add(centerLight);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Post-Processing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupPostProcessing() {
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        // Bloom
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.activePreset.bloomStrength,
+            0.5,
+            0.7
+        );
+        this.bloomPass.enabled = this.activePreset.enableBloom;
+        this.composer.addPass(this.bloomPass);
+
+        // Chromatic aberration
+        this.chromaticPass = new ShaderPass(chromaticAberrationShader);
+        this.chromaticPass.uniforms.uStrength.value = 0;
+        this.chromaticPass.enabled = this.activePreset.enableChromaticAberration;
+        this.composer.addPass(this.chromaticPass);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Event Handling
+    // ─────────────────────────────────────────────────────────────────────────
+
     setupEventListeners() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.handleLineClear(data);
+                this.onLineClear(data);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.handleCombo(data);
+                this.onCombo(data);
             }
         });
 
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.handlePieceLock();
+                this.onPieceLock();
             }
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-
-        window.addEventListener('resize', () => {
-            if (!this.canvas) return;
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
-            
-            // Resize WebGL canvas if using WebGL
-            if (this.useWebGL && this.webglRenderer) {
-                this.webglRenderer.resize(this.canvas.width, this.canvas.height);
-            } else if (this.starCanvas) {
-                // Resize Canvas2D star canvas at scaled resolution
-                const scale = this.starCanvasScale;
-                this.starCanvas.width = Math.ceil(this.canvas.width * scale);
-                this.starCanvas.height = Math.ceil(this.canvas.height * scale);
-                this.starLayerDirty = true;
-            }
-            this.cacheGradients();
-            // Rebuild spatial grid for new dimensions
-            this.buildStarGrid();
-        });
     }
 
-    handlePieceLock() {
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.1, 0.4);
+    onPieceLock() {
+        this.uniforms.pulseIntensity.value = Math.min(
+            this.uniforms.pulseIntensity.value + 0.1,
+            0.4
+        );
 
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        const preset = this.activePreset;
-
-        // === SHOOTING STARS ===
-        // Spawn shooting stars streaking across the screen (uses preset count)
-        const shootingCount = preset.shootingStarsPerLock + Math.floor(Math.random() * 2);
-        const maxTrailLen = preset.maxTrailLength;
-        for (let i = 0; i < shootingCount && this.shootingStars.length < preset.maxShootingStars; i++) {
-            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
-            // Random direction - mostly diagonal
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 8 + Math.random() * 12;
-
-            // Start from edges or random positions
-            let startX, startY;
-            if (Math.random() > 0.5) {
-                // Start from top/sides
-                startX = Math.random() * w;
-                startY = Math.random() * h * 0.4;
-            } else {
-                // Start from random position
-                startX = Math.random() * w;
-                startY = Math.random() * h * 0.6;
-            }
-
-            this.shootingStars.push({
-                x: startX,
-                y: startY,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                size: 2 + Math.random() * 3,
-                color: color,
-                life: 1.0,
-                decay: 0.025 + Math.random() * 0.015,
-                trail: [], // Store trail positions
-                maxTrailLength: maxTrailLen + ((Math.random() * 4) | 0), // Uses preset with small variance
-            });
+        // Shooting stars
+        const shootingCount = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < shootingCount && this.shootingStars.length < this.activePreset.maxShootingStars; i++) {
+            this.createShootingStar();
         }
 
-        // === NOVA FLASH ===
-        // Create a bright flash that illuminates nearby stars
-        if (Math.random() > 0.3 && this.novaFlashes.length < preset.maxNovaFlashes) {
-            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
-            this.novaFlashes.push({
-                x: w * 0.2 + Math.random() * w * 0.6,
-                y: h * 0.1 + Math.random() * h * 0.5,
-                radius: 0,
-                maxRadius: 80 + Math.random() * 60,
-                brightness: 1.0,
-                decay: 0.04 + Math.random() * 0.02,
-                color: color,
-            });
+        // Nova flash (30% chance)
+        if (Math.random() > 0.7 && this.novaFlashes.length < this.activePreset.maxNovaFlashes) {
+            this.createNovaFlash();
         }
 
-        // === STAR RIPPLE ===
-        // A wave that makes stars pulse brighter as it passes
-        if (Math.random() > 0.5 && this.starRipples.length < preset.maxStarRipples) {
-            this.starRipples.push({
-                x: w * 0.2 + Math.random() * w * 0.6,
-                y: h * 0.1 + Math.random() * h * 0.5,
-                radius: 0,
-                speed: 6 + Math.random() * 4,
-                width: 40 + Math.random() * 30, // Width of the ripple ring
-                life: 1.0,
-                decay: 0.012,
-            });
+        // Star ripple (50% chance)
+        if (Math.random() > 0.5 && this.starRipples.length < 4) {
+            this.createStarRipple();
         }
 
-        // Spawn some sparkles too (uses preset count)
-        const sparkleCount = preset.sparklesPerLock + ((Math.random() * 2) | 0);
-        for (let i = 0; i < sparkleCount; i++) {
-            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 1 + Math.random() * 2;
+        // Small sparkle burst
+        this.createSparkleBurst(3, null, 0.5);
 
-            this.sparkles.push({
-                x: w * 0.3 + Math.random() * w * 0.4,
-                y: h * 0.2 + Math.random() * h * 0.4,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                size: 1.5 + Math.random() * 2,
-                color: color,
-                life: 1.0,
-                decay: 0.02 + Math.random() * 0.015,
-            });
-        }
+        // Camera shake
+        this.cameraShake.intensity = Math.max(this.cameraShake.intensity, 0.8);
     }
 
-    handleLineClear(eventPayload) {
+    onLineClear(eventPayload) {
         const detail = eventPayload?.detail || eventPayload || {};
         const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
-        let comboCount = detail.comboCount ?? detail.combo ?? detail.comboLevel ?? 0;
 
-        if (!comboCount && this.pendingComboCount > 0) {
-            comboCount = this.pendingComboCount;
-            this.pendingComboCount = 0;
+        this.uniforms.pulseIntensity.value = Math.min(
+            this.uniforms.pulseIntensity.value + 0.3 * lineCount,
+            2.0
+        );
+
+        // Multiple sparkle bursts
+        const burstCount = Math.min(lineCount * 2 + 2, 8);
+        for (let i = 0; i < burstCount; i++) {
+            const position = new THREE.Vector3(
+                (Math.random() - 0.5) * 100,
+                (Math.random() - 0.5) * 100,
+                (Math.random() - 0.5) * 100
+            );
+            this.createSparkleBurst(5 + lineCount, position);
         }
 
-        this.onLineClear(lineCount, comboCount);
+        // Energy pulses
+        const pulseCount = Math.min(lineCount, 3);
+        for (let i = 0; i < pulseCount && this.energyPulses.length < this.activePreset.maxEnergyPulses; i++) {
+            this.createEnergyPulse();
+        }
+
+        // Flash crystals
+        const flashCount = Math.min(lineCount * 3, 10);
+        for (let i = 0; i < flashCount && i < this.crystalClusters.length; i++) {
+            const cluster = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
+            cluster.children.forEach(crystal => {
+                if (crystal.material?.uniforms?.uPulseIntensity) {
+                    crystal.material.uniforms.uPulseIntensity.value = 0.8 + lineCount * 0.15;
+                }
+            });
+        }
+
+        // Camera shake
+        this.cameraShake.intensity = Math.max(this.cameraShake.intensity, 1.5 + lineCount * 0.5);
     }
 
-    handleCombo(eventPayload) {
+    onCombo(eventPayload) {
         const detail = eventPayload?.detail || eventPayload || {};
         const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;
 
@@ -819,887 +924,637 @@ export default class GeodeTheme extends BaseTheme {
             this.pendingComboCount = comboCount;
         }
 
-        this.onCombo(comboCount);
-    }
-
-    onLineClear(lineCount, comboCount = 0) {
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.3 * lineCount, 2.0);
-
-        const preset = this.activePreset;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-
-        // Spawn sparkle bursts from multiple points (uses preset counts)
-        const burstCount = Math.min(lineCount * 2 + 2, preset.burstPointsPerLineClear);
-        const sparklesPerBurst = preset.sparklesPerLineClear + lineCount;
-        
-        for (let c = 0; c < burstCount; c++) {
-            const x = Math.random() * w;
-            const y = Math.random() * h * 0.7;
-            const color = this.starColors[(Math.random() * this.starColors.length) | 0];
-
-            for (let i = 0; i < sparklesPerBurst; i++) {
-                const angle = (i / sparklesPerBurst) * Math.PI * 2 + Math.random() * 0.3;
-                const speed = 1.5 + Math.random() * 3;
-
-                this.sparkles.push({
-                    x: x + (Math.random() - 0.5) * 30,
-                    y: y + (Math.random() - 0.5) * 30,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    size: 2 + Math.random() * 2.5,
-                    color: color,
-                    life: 1.0,
-                    decay: 0.015 + Math.random() * 0.01,
-                });
-            }
-        }
-
-        // Energy pulses
-        const pulseCount = Math.min(lineCount, 3);
-        for (let p = 0; p < pulseCount; p++) {
-            if (this.energyPulses.length < preset.maxEnergyPulses) {
-                const color = this.starColors[(Math.random() * this.starColors.length) | 0];
-                this.energyPulses.push({
-                    x: Math.random() * w,
-                    y: Math.random() * h * 0.6,
-                    radius: 10,
-                    maxRadius: 100 + lineCount * 40,
-                    opacity: 0.5,
-                    color: color,
-                    growthRate: 3 + lineCount * 0.5,
-                });
-            }
-        }
-    }
-
-    onCombo(comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
-        this.pulseIntensity = Math.min(this.pulseIntensity + 0.4 * comboCount, 2.0);
+        this.uniforms.pulseIntensity.value = Math.min(
+            this.uniforms.pulseIntensity.value + 0.4 * comboCount,
+            2.0
+        );
 
-        const preset = this.activePreset;
-
-        // Screen shake for high combos (uses preset toggle)
-        if (preset.enableScreenShake) {
-            if (comboCount >= 5) {
-                this.screenShake.intensity = Math.min(5 + (comboCount - 5) * 1.8, 12);
-                // Chromatic aberration for very high combos (uses preset toggle)
-                if (preset.enableChromaticAberration && comboCount >= 7) {
-                    this.chromaticAberration = Math.min(3 + (comboCount - 7) * 1, 8);
-                }
-            } else if (comboCount >= 3) {
-                this.screenShake.intensity = Math.min(2 + comboCount * 0.6, 5);
-            }
+        // Camera shake scales with combo
+        if (comboCount >= 3) {
+            this.cameraShake.intensity = Math.max(
+                this.cameraShake.intensity,
+                2 + (comboCount - 3) * 0.6
+            );
         }
 
-        // Big sparkle burst for combos
+        // Chromatic aberration at high combos
+        if (this.activePreset.enableChromaticAberration && comboCount >= 7) {
+            this.chromaticAberration = Math.min(3 + (comboCount - 7) * 1, 8);
+        }
+
+        // Big sparkle burst
         if (comboCount >= 2) {
-            const burstCount = Math.min(comboCount * 4, 30);
-            const cx = this.canvas.width / 2;
-            const cy = this.canvas.height / 2;
+            this.createSparkleBurst(comboCount * 4, null, 1.5);
+        }
 
-            for (let i = 0; i < burstCount; i++) {
-                const angle = (i / burstCount) * Math.PI * 2;
-                const speed = 2 + Math.random() * 4;
-                const color = this.starColors[(Math.random() * this.starColors.length) | 0];
+        // All crystals pulse
+        this.crystalClusters.forEach(cluster => {
+            cluster.children.forEach(crystal => {
+                if (crystal.material?.uniforms?.uPulseIntensity) {
+                    crystal.material.uniforms.uPulseIntensity.value = 1.2 + comboCount * 0.3;
+                }
+            });
+        });
+    }
 
-                this.sparkles.push({
-                    x: cx + (Math.random() - 0.5) * 50,
-                    y: cy + (Math.random() - 0.5) * 50,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    size: 2 + Math.random() * 3,
-                    color: color,
-                    life: 1.0,
-                    decay: 0.012,
-                });
-            }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Effect Creation Methods
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createShootingStar() {
+        const trailLength = 15;
+        const geometry = new THREE.BufferGeometry();
+
+        // Random start position and direction
+        const start = new THREE.Vector3(
+            (Math.random() - 0.5) * 100,
+            (Math.random() - 0.5) * 100,
+            (Math.random() - 0.5) * 100
+        );
+
+        const direction = new THREE.Vector3(
+            (Math.random() - 0.5),
+            (Math.random() - 0.5),
+            (Math.random() - 0.5)
+        ).normalize();
+
+        const speed = 8 + Math.random() * 12;
+        const color = new THREE.Color(
+            STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+        );
+
+        // Create trail points
+        const positions = new Float32Array(trailLength * 3);
+        const progress = new Float32Array(trailLength);
+        const sizes = new Float32Array(trailLength);
+        const colors = new Float32Array(trailLength * 3);
+
+        for (let i = 0; i < trailLength; i++) {
+            positions[i * 3] = start.x;
+            positions[i * 3 + 1] = start.y;
+            positions[i * 3 + 2] = start.z;
+            progress[i] = i / (trailLength - 1);
+            sizes[i] = 3 + Math.random() * 2;
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uLife: { value: 1.0 },
+            },
+            vertexShader: shootingStarVertexShader,
+            fragmentShader: shootingStarFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const points = new THREE.Points(geometry, material);
+        points.userData = {
+            positions: positions,
+            direction: direction,
+            speed: speed,
+            life: 1.0,
+            decay: 0.025 + Math.random() * 0.015,
+            trailLength: trailLength,
+        };
+
+        this.mainGroup.add(points);
+        this.shootingStars.push(points);
+    }
+
+    createNovaFlash() {
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const palette = CRYSTAL_PALETTES[Math.floor(Math.random() * CRYSTAL_PALETTES.length)];
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uOpacity: { value: 1.0 },
+                uColor: { value: palette.glow.clone() },
+                uTime: this.uniforms.time,
+            },
+            vertexShader: novaVertexShader,
+            fragmentShader: novaFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
+
+        const nova = new THREE.Mesh(geometry, material);
+
+        // Random position
+        nova.position.set(
+            (Math.random() - 0.5) * 80,
+            (Math.random() - 0.5) * 80,
+            (Math.random() - 0.5) * 80
+        );
+
+        // Face camera
+        nova.lookAt(this.camera.position);
+
+        nova.userData = {
+            life: 1.0,
+            maxLife: 1.0,
+            maxScale: 60 + Math.random() * 40,
+            decay: 0.04 + Math.random() * 0.02,
+        };
+
+        this.mainGroup.add(nova);
+        this.novaFlashes.push(nova);
+    }
+
+    createEnergyPulse() {
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const palette = CRYSTAL_PALETTES[Math.floor(Math.random() * CRYSTAL_PALETTES.length)];
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uOpacity: { value: 0.6 },
+                uColor: { value: palette.glow.clone() },
+                uProgress: { value: 0 },
+            },
+            vertexShader: energyPulseVertexShader,
+            fragmentShader: energyPulseFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
+
+        const pulse = new THREE.Mesh(geometry, material);
+
+        // Random position
+        pulse.position.set(
+            (Math.random() - 0.5) * 60,
+            (Math.random() - 0.5) * 60,
+            (Math.random() - 0.5) * 60
+        );
+
+        pulse.lookAt(this.camera.position);
+
+        pulse.userData = {
+            life: 1.0,
+            progress: 0,
+            maxScale: 80 + Math.random() * 40,
+            growthRate: 0.02,
+        };
+
+        this.mainGroup.add(pulse);
+        this.energyPulses.push(pulse);
+    }
+
+    createStarRipple() {
+        const position = new THREE.Vector3(
+            (Math.random() - 0.5) * 80,
+            (Math.random() - 0.5) * 80,
+            (Math.random() - 0.5) * 80
+        );
+
+        this.starRipples.push({
+            position: position,
+            radius: 0,
+            speed: 6 + Math.random() * 4,
+            width: 30 + Math.random() * 20,
+            life: 1.0,
+            decay: 0.012,
+        });
+    }
+
+    createSparkleBurst(count, position, speedMultiplier = 1) {
+        if (!position) {
+            position = new THREE.Vector3(
+                (Math.random() - 0.5) * 60,
+                (Math.random() - 0.5) * 60,
+                (Math.random() - 0.5) * 60
+            );
+        }
+
+        for (let i = 0; i < count && this.sparkles.length < this.activePreset.maxSparkles; i++) {
+            const color = new THREE.Color(
+                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+            );
+
+            // Random direction
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5),
+                (Math.random() - 0.5),
+                (Math.random() - 0.5)
+            ).normalize().multiplyScalar((1 + Math.random() * 2) * speedMultiplier);
+
+            this.sparkles.push({
+                position: position.clone().add(
+                    new THREE.Vector3(
+                        (Math.random() - 0.5) * 10,
+                        (Math.random() - 0.5) * 10,
+                        (Math.random() - 0.5) * 10
+                    )
+                ),
+                velocity: velocity,
+                color: color,
+                size: 1.5 + Math.random() * 2,
+                life: 1.0,
+                decay: 0.015 + Math.random() * 0.01,
+            });
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation Loop
+    // ─────────────────────────────────────────────────────────────────────────
 
     animate() {
-        if (!this.isActive || !this.ctx || !this.canvas) return;
+        if (!this.isActive) return;
 
-        // Use delta time for frame-rate independent animation
-        const now = performance.now();
-        const deltaTime = Math.min((now - this.lastFrameTime) / 16.667, 2); // Cap at 2x to prevent huge jumps
-        this.lastFrameTime = now;
-        this.frameCount++;
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
-        this.animationTime += 0.016 * deltaTime;
-        this.ambientPulse = this.fastSin(this.animationTime * 0.4) * 0.1 + 0.9;
+        const delta = this.clock.getDelta();
+        const elapsed = this.clock.getElapsedTime();
+        this.uniforms.time.value = elapsed;
 
-        // Decay effects (frame-rate independent)
-        const decayFactor = Math.pow(0.97, deltaTime);
-        this.pulseIntensity *= decayFactor;
-        if (this.pulseIntensity < 0.01) this.pulseIntensity = 0;
+        // Ambient pulse
+        this.uniforms.ambientPulse.value = Math.sin(elapsed * 0.4) * 0.1 + 0.95;
 
-        this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.005 * deltaTime);
+        // Decay effects
+        this.uniforms.pulseIntensity.value *= 0.97;
+        if (this.uniforms.pulseIntensity.value < 0.01) {
+            this.uniforms.pulseIntensity.value = 0;
+        }
 
-        const shakeDecay = Math.pow(0.9, deltaTime);
-        this.screenShake.intensity *= shakeDecay;
-        if (this.screenShake.intensity < 0.1) this.screenShake.intensity = 0;
+        this.comboMultiplier = Math.max(1, this.comboMultiplier - 0.005);
 
-        const chromaDecay = Math.pow(0.92, deltaTime);
-        this.chromaticAberration *= chromaDecay;
-        if (this.chromaticAberration < 0.1) this.chromaticAberration = 0;
+        // Camera shake decay
+        this.cameraShake.intensity *= 0.9;
+        if (this.cameraShake.intensity < 0.1) {
+            this.cameraShake.intensity = 0;
+        }
 
-        // Screen shake
-        if (this.screenShake.intensity > 0) {
-            this.screenShake.x = (Math.random() - 0.5) * this.screenShake.intensity * 2;
-            this.screenShake.y = (Math.random() - 0.5) * this.screenShake.intensity * 2;
+        // Chromatic aberration decay
+        this.chromaticAberration *= 0.92;
+        if (this.chromaticAberration < 0.1) {
+            this.chromaticAberration = 0;
+        }
+
+        // Update camera
+        this.updateCamera(elapsed);
+
+        // Update crystal pulse decay
+        this.updateCrystals(delta);
+
+        // Update effects
+        this.updateShootingStars(delta);
+        this.updateNovaFlashes(delta);
+        this.updateEnergyPulses(delta);
+        this.updateStarRipples(delta);
+        this.updateSparkles(delta);
+
+        // Update chromatic aberration
+        if (this.chromaticPass) {
+            this.chromaticPass.uniforms.uStrength.value = this.chromaticAberration;
+            this.chromaticPass.uniforms.uTime.value = elapsed;
+        }
+
+        // Render
+        if (this.composer && (this.activePreset.enableBloom || this.chromaticAberration > 0)) {
+            this.composer.render();
         } else {
-            this.screenShake.x = 0;
-            this.screenShake.y = 0;
-        }
-
-        const ctx = this.ctx;
-        
-        // Draw
-        ctx.save();
-        if (this.screenShake.intensity > 0) {
-            ctx.translate(this.screenShake.x, this.screenShake.y);
-        }
-
-        this.drawBackground();
-        this.updateStarRipples(); // Update star brightness from ripples
-        this.drawStars();
-        this.drawStrands();
-        this.drawAmbientParticles();
-        this.drawEnergyPulses();
-        this.drawNovaFlashes();
-        this.drawShootingStars();
-        this.drawSparkles();
-        this.drawVignette();
-
-        ctx.restore();
-
-        if (this.chromaticAberration > 0) {
-            this.drawChromaticAberration();
-        }
-
-        this.registerAnimation(requestAnimationFrame(() => this.animate()));
-    }
-
-    drawBackground() {
-        const ctx = this.ctx;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        
-        if (this.cachedGradients.background) {
-            ctx.fillStyle = this.cachedGradients.background;
-        } else {
-            ctx.fillStyle = '#030204';
-        }
-        ctx.fillRect(0, 0, w, h);
-
-        // Ambient pulse glow during combos (uses preset toggle)
-        if (this.activePreset.enableAmbientPulseGlow && this.pulseIntensity > 0.05) {
-            const cx = w / 2;
-            const cy = h * 0.4;
-            const glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.6);
-            glowGrad.addColorStop(0, `rgba(255, 120, 80, ${this.pulseIntensity * 0.06})`);
-            glowGrad.addColorStop(0.4, `rgba(200, 80, 150, ${this.pulseIntensity * 0.03})`);
-            glowGrad.addColorStop(1, 'transparent');
-            ctx.fillStyle = glowGrad;
-            ctx.fillRect(0, 0, w, h);
+            this.renderer.render(this.scene, this.camera);
         }
     }
 
-    // Performance: Update star positions without drawing (called every frame)
-    updateStarPositions() {
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        const stars = this.stars;
-        const starCount = stars.length;
-        const useWebGL = this.useWebGL; // WebGL handles twinkle in shader
-        
-        for (let i = 0; i < starCount; i++) {
-            const star = stars[i];
-            
-            // Update position with slight drift
-            star.x += star.driftX;
-            star.y += star.driftY;
+    updateCamera(elapsed) {
+        // Organic drift motion
+        let camX = this.baseCameraPos.x
+            + Math.sin(elapsed * 0.08) * 12
+            + Math.sin(elapsed * 0.23) * 4;
+        let camY = this.baseCameraPos.y
+            + Math.cos(elapsed * 0.05) * 8
+            + Math.sin(elapsed * 0.17) * 3;
+        let camZ = this.baseCameraPos.z
+            + Math.sin(elapsed * 0.11) * 10
+            + Math.cos(elapsed * 0.31) * 3;
 
-            // Wrap around
-            if (star.x < -5) star.x = w + 5;
-            else if (star.x > w + 5) star.x = -5;
-            if (star.y < -5) star.y = h + 5;
-            else if (star.y > h + 5) star.y = -5;
-
-            // Update twinkle phase (only needed for Canvas2D - WebGL uses shader)
-            if (!useWebGL) {
-                star.twinklePhase += star.twinkleSpeed;
-            }
+        // Apply shake
+        if (this.cameraShake.intensity > 0) {
+            camX += (Math.random() - 0.5) * this.cameraShake.intensity * 2;
+            camY += (Math.random() - 0.5) * this.cameraShake.intensity * 1.5;
+            camZ += (Math.random() - 0.5) * this.cameraShake.intensity;
         }
+
+        this.camera.position.set(camX, camY, camZ);
+
+        // Subtle look target drift
+        const lookX = Math.sin(elapsed * 0.06) * 8;
+        const lookY = Math.cos(elapsed * 0.04) * 4;
+        this.camera.lookAt(lookX, lookY, 0);
     }
-    
-    // Performance: Render stars to offscreen canvas at reduced resolution
-    renderStarsToOffscreen() {
-        if (!this.starCanvas || !this.starCtx) return;
-        
-        const w = this.starCanvas.width;
-        const h = this.starCanvas.height;
-        const ctx = this.starCtx;
-        const preset = this.activePreset;
-        const scale = this.starCanvasScale; // Scale factor for positions
-        const pulseIntensityFactor = 1 + this.pulseIntensity * 0.4;
-        const ambientPulse = this.ambientPulse;
-        const stars = this.stars;
-        const starCount = stars.length;
-        const spriteCache = this.spriteCache;
-        const whiteSprite = spriteCache['#ffffff'];
-        
-        // Quality settings
-        const brightnessThreshold = preset.starBrightnessThreshold;
-        const enableGlow = preset.enableStarGlow;
-        const glowSizeThreshold = preset.starGlowSizeThreshold;
-        
-        // Clear the offscreen canvas
-        ctx.clearRect(0, 0, w, h);
-        
-        // Draw all stars to offscreen canvas (positions scaled down)
-        for (let i = 0; i < starCount; i++) {
-            const star = stars[i];
-            
-            // Scale star position to match reduced canvas size
-            const scaledX = star.x * scale;
-            const scaledY = star.y * scale;
-            
-            // Twinkle using fast lookup
-            const twinkle = this.fastSin(star.twinklePhase) * 0.4 + 0.6;
 
-            // Include ripple boost in brightness calculation
-            const rippleBoost = star.rippleBoost;
-            const baseBrightness = star.brightness * twinkle * pulseIntensityFactor * ambientPulse;
-            const brightness = baseBrightness + rippleBoost;
-            
-            // Skip nearly invisible stars
-            if (brightness < brightnessThreshold) continue;
-            
-            const clampedBrightness = brightness > 1 ? 1 : brightness;
-
-            // Size boost from ripple (also scale the size)
-            const baseSize = rippleBoost > 0 ? star.size * (1 + rippleBoost * 0.8) : star.size;
-            const effectiveSize = baseSize * scale;
-
-            // Draw star using sprite
-            const sprite = spriteCache[star.color];
-            if (sprite) {
-                ctx.globalAlpha = clampedBrightness;
-                const diameter = effectiveSize * 2.3;
-                const offset = diameter * 0.5;
-                ctx.drawImage(sprite, scaledX - offset, scaledY - offset, diameter, diameter);
-            }
-
-            // Extra glow only for larger/brighter stars
-            if (enableGlow && ((star.size > glowSizeThreshold && brightness > 0.6) || rippleBoost > 0.4)) {
-                ctx.globalAlpha = clampedBrightness * 0.4;
-                const glowDiameter = effectiveSize * 5.06;
-                const glowOffset = glowDiameter * 0.5;
-
-                if (sprite) {
-                    ctx.drawImage(sprite, scaledX - glowOffset, scaledY - glowOffset, glowDiameter, glowDiameter);
+    updateCrystals(delta) {
+        this.crystalClusters.forEach(cluster => {
+            cluster.children.forEach(crystal => {
+                if (crystal.material?.uniforms?.uPulseIntensity) {
+                    if (crystal.material.uniforms.uPulseIntensity.value > 0) {
+                        crystal.material.uniforms.uPulseIntensity.value *= 0.96;
+                    }
                 }
-
-                // White core only for intense ripple effect
-                if (rippleBoost > 0.5 && whiteSprite) {
-                    ctx.globalAlpha = rippleBoost * 0.7;
-                    const coreDiameter = effectiveSize * 1.38;
-                    const coreOffset = coreDiameter * 0.5;
-                    ctx.drawImage(whiteSprite, scaledX - coreOffset, scaledY - coreOffset, coreDiameter, coreDiameter);
-                }
-            }
-        }
-        ctx.globalAlpha = 1;
-        this.starLayerDirty = false;
+            });
+        });
     }
 
-    drawStars() {
-        const now = performance.now();
-        const hasActiveRipples = this.starRipples.length > 0;
-        
-        // Always update star positions (cheap operation)
-        this.updateStarPositions();
-        
-        // Use WebGL renderer if available (MUCH faster - single GPU draw call!)
-        if (this.useWebGL && this.webglRenderer) {
-            this.drawStarsWebGL(hasActiveRipples);
-            return;
-        }
-        
-        // Fallback: Canvas2D rendering
-        // Determine if we need to redraw the star layer
-        // Redraw if: dirty flag set, enough time passed, or active ripples
-        const timeSinceRedraw = now - this.lastStarRedrawTime;
-        const shouldRedraw = this.starLayerDirty || 
-                            timeSinceRedraw > this.starRedrawInterval ||
-                            hasActiveRipples;
-        
-        if (shouldRedraw) {
-            this.renderStarsToOffscreen();
-            this.lastStarRedrawTime = now;
-        }
-        
-        // Composite the offscreen star canvas to main canvas (scaled up to full size)
-        if (this.starCanvas) {
-            // Draw scaled star canvas to full size - GPU handles the upscaling efficiently
-            this.ctx.drawImage(this.starCanvas, 0, 0, this.canvas.width, this.canvas.height);
-        }
-    }
-    
-    /**
-     * GPU-accelerated star rendering using WebGL point sprites
-     * Renders ALL stars in a single draw call!
-     */
-    drawStarsWebGL(hasActiveRipples) {
-        const renderer = this.webglRenderer;
-        const preset = this.activePreset;
-        
-        // Update star positions in GPU buffer
-        renderer.updatePositions(this.stars);
-        
-        // Update brightness/ripple if ripples are active
-        if (hasActiveRipples || this.pulseIntensity > 0.01) {
-            renderer.updateBrightness(this.stars);
-        }
-        
-        // Render all stars in ONE GPU draw call!
-        renderer.render(
-            this.animationTime,
-            this.pulseIntensity,
-            this.ambientPulse,
-            preset.starBrightnessThreshold,
-            preset.enableStarGlow
-        );
-        
-        // Composite WebGL canvas onto main canvas
-        this.ctx.drawImage(this.webglCanvas, 0, 0);
-    }
+    updateShootingStars(delta) {
+        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+            const star = this.shootingStars[i];
+            const data = star.userData;
 
-    drawStrands() {
-        const ctx = this.ctx;
-        const strands = this.strands;
-        const strandCount = strands.length;
-        const spriteCache = this.spriteCache;
-        const whiteSprite = spriteCache['#ffffff'];
-        const pulseIntensityFactor = 1 + this.pulseIntensity * 0.5;
-        const ambientPulse = this.ambientPulse;
-        
-        ctx.lineCap = 'round';
-        
-        for (let i = 0; i < strandCount; i++) {
-            const strand = strands[i];
-            
-            // Sway animation using fast lookup
-            strand.swayPhase += strand.swaySpeed;
-            strand.pulsePhase += strand.pulseSpeed;
+            data.life -= data.decay;
 
-            const swayX = this.fastSin(strand.swayPhase) * strand.swayAmount;
-            const pulse = this.fastSin(strand.pulsePhase) * 0.3 + 0.7;
-            const brightness = strand.brightness * pulse * pulseIntensityFactor * ambientPulse;
-            
-            // Performance: Skip dim strands
-            if (brightness < 0.08) continue;
+            // Move trail points
+            const positions = data.positions;
+            const trailLength = data.trailLength;
 
-            // End position with sway
-            const endX = strand.x + swayX;
-            const endY = strand.startY + strand.length;
-
-            // Performance: Use solid color with alpha fade instead of gradient for most strands
-            ctx.strokeStyle = strand.color;
-            ctx.globalAlpha = brightness;
-            ctx.lineWidth = strand.width;
-
-            ctx.beginPath();
-            ctx.moveTo(strand.x, strand.startY);
-
-            // Simplified curve with one control point for better performance
-            const midY = strand.startY + strand.length * 0.5;
-            const midX = strand.x + swayX * 0.5;
-
-            ctx.quadraticCurveTo(midX, midY, endX, endY);
-            ctx.stroke();
-
-            // Bright glowing tip - simplified to 2 draws instead of 3
-            const tipPulse = this.fastSin(strand.pulsePhase * 1.5) * 0.3 + 0.7;
-            const tipBright = strand.tipBrightness * tipPulse * brightness;
-            
-            if (tipBright < 0.1) continue;
-
-            const sprite = spriteCache[strand.color];
-
-            if (sprite) {
-                // Combined glow (skip outer, keep inner)
-                ctx.globalAlpha = tipBright * 0.6;
-                const innerDiameter = strand.tipSize * 4.14; // 1.8 * 2.3
-                const innerOffset = innerDiameter * 0.5;
-                ctx.drawImage(sprite, endX - innerOffset, endY - innerOffset, innerDiameter, innerDiameter);
+            // Shift trail positions backward
+            for (let j = trailLength - 1; j > 0; j--) {
+                positions[j * 3] = positions[(j - 1) * 3];
+                positions[j * 3 + 1] = positions[(j - 1) * 3 + 1];
+                positions[j * 3 + 2] = positions[(j - 1) * 3 + 2];
             }
 
-            if (whiteSprite) {
-                // Bright core
-                ctx.globalAlpha = tipBright * 0.9;
-                const coreDiameter = strand.tipSize * 2.3;
-                const coreOffset = coreDiameter * 0.5;
-                ctx.drawImage(whiteSprite, endX - coreOffset, endY - coreOffset, coreDiameter, coreDiameter);
-            }
-        }
-        ctx.globalAlpha = 1;
-        ctx.lineCap = 'butt';
-    }
+            // Move head
+            positions[0] += data.direction.x * data.speed;
+            positions[1] += data.direction.y * data.speed;
+            positions[2] += data.direction.z * data.speed;
 
-    drawAmbientParticles() {
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        const ctx = this.ctx;
-        const particles = this.ambientParticles;
-        const particleCount = particles.length;
-        const spriteCache = this.spriteCache;
-        const comboFactor = 1 + this.comboMultiplier * 0.25;
-        const ambientPulse = this.ambientPulse;
-
-        for (let i = 0; i < particleCount; i++) {
-            const p = particles[i];
-            
-            // Update position
-            p.x += p.vx;
-            p.y += p.vy;
-            p.twinklePhase += p.twinkleSpeed;
-
-            // Wrap around
-            if (p.y < -10) {
-                p.y = h + 10;
-                p.x = Math.random() * w;
-            }
-            if (p.x < -10) p.x = w + 10;
-            else if (p.x > w + 10) p.x = -10;
-
-            const twinkle = this.fastSin(p.twinklePhase) * 0.35 + 0.65;
-            const brightness = p.opacity * twinkle * comboFactor * ambientPulse;
-            
-            // Performance: Skip dim particles
-            if (brightness < 0.08) continue;
-
-            // Single draw with combined glow (skip outer for performance)
-            const sprite = spriteCache[p.color];
-            if (sprite) {
-                ctx.globalAlpha = brightness;
-                const coreDiameter = p.size * 2.3;
-                const coreOffset = coreDiameter * 0.5;
-                ctx.drawImage(sprite, p.x - coreOffset, p.y - coreOffset, coreDiameter, coreDiameter);
-            }
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    drawEnergyPulses() {
-        const ctx = this.ctx;
-        const pulses = this.energyPulses;
-        const PI2 = Math.PI * 2;
-        
-        for (let i = pulses.length - 1; i >= 0; i--) {
-            const pulse = pulses[i];
-
-            pulse.radius += pulse.growthRate;
-            pulse.opacity *= 0.94;
-
-            if (pulse.radius >= pulse.maxRadius || pulse.opacity < 0.03) {
-                pulses.splice(i, 1);
-                continue;
-            }
-
-            const safeRadius = pulse.radius > 1 ? pulse.radius : 1;
-
-            // Outer ring
-            ctx.strokeStyle = pulse.color;
-            ctx.globalAlpha = pulse.opacity;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(pulse.x, pulse.y, safeRadius, 0, PI2);
-            ctx.stroke();
-
-            // Inner ring - only draw if opacity is visible
-            if (pulse.opacity > 0.1) {
-                ctx.strokeStyle = '#ffffff';
-                ctx.globalAlpha = pulse.opacity * 0.5;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.arc(pulse.x, pulse.y, safeRadius * 0.6, 0, PI2);
-                ctx.stroke();
-            }
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    drawSparkles() {
-        const ctx = this.ctx;
-        const sparkles = this.sparkles;
-        const preset = this.activePreset;
-        const maxSparkles = preset.maxSparkles * 1.5;
-        const spriteCache = this.spriteCache;
-        const whiteSprite = spriteCache['#ffffff'];
-        const animTime = this.animationTime * 18;
-        const enableCore = preset.enableSparkleCore;
-        
-        // Performance: Skip expensive 'screen' blend on low quality
-        if (!this.useSimpleComposite) {
-            ctx.globalCompositeOperation = 'screen';
-        }
-
-        for (let i = sparkles.length - 1; i >= 0; i--) {
-            const s = sparkles[i];
-
-            // Update
-            s.x += s.vx;
-            s.y += s.vy;
-            s.vy += 0.03; // Light gravity
-            s.vx *= 0.98;
-            s.vy *= 0.98;
-            s.life -= s.decay;
-
-            if (s.life <= 0 || sparkles.length > maxSparkles) {
-                sparkles.splice(i, 1);
-                continue;
-            }
-
-            const sparkleSize = s.size * s.life;
-            if (sparkleSize < 0.3) continue; // Performance: skip tiny sparkles
-            
-            const twinkle = this.fastSin(animTime + i) * 0.3 + 0.7;
-            const lifeAlpha = s.life * twinkle;
-            
-            // Performance: Skip very dim sparkles
-            if (lifeAlpha < 0.1) continue;
-
-            // Simplified: single main sparkle draw instead of 3
-            const sprite = spriteCache[s.color];
-            if (sprite) {
-                ctx.globalAlpha = lifeAlpha;
-                const mainDiameter = sparkleSize * 2.3;
-                const mainOffset = mainDiameter * 0.5;
-                ctx.drawImage(sprite, s.x - mainOffset, s.y - mainOffset, mainDiameter, mainDiameter);
-            }
-
-            // Bright core only for larger sparkles (uses preset setting)
-            if (enableCore && sparkleSize > 1 && whiteSprite) {
-                ctx.globalAlpha = lifeAlpha * 0.9;
-                const coreDiameter = sparkleSize * 0.92; // 0.4 * 2.3
-                const coreOffset = coreDiameter * 0.5;
-                ctx.drawImage(whiteSprite, s.x - coreOffset, s.y - coreOffset, coreDiameter, coreDiameter);
-            }
-        }
-
-        if (!this.useSimpleComposite) {
-            ctx.globalCompositeOperation = 'source-over';
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    drawShootingStars() {
-        const ctx = this.ctx;
-        const shootingStars = this.shootingStars;
-        const preset = this.activePreset;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        const spriteCache = this.spriteCache;
-        const whiteSprite = spriteCache['#ffffff'];
-        const trailBatchCount = preset.trailBatchCount;
-        
-        // Performance: Skip expensive 'screen' blend on low quality
-        if (!this.useSimpleComposite) {
-            ctx.globalCompositeOperation = 'screen';
-        }
-        ctx.lineCap = 'round';
-
-        for (let i = shootingStars.length - 1; i >= 0; i--) {
-            const star = shootingStars[i];
-
-            // Store current position in trail
-            star.trail.unshift({ x: star.x, y: star.y });
-            if (star.trail.length > star.maxTrailLength) {
-                star.trail.pop();
-            }
-
-            // Update position
-            star.x += star.vx;
-            star.y += star.vy;
-            star.life -= star.decay;
+            star.geometry.attributes.position.needsUpdate = true;
+            star.material.uniforms.uLife.value = data.life;
 
             // Slight deceleration
-            star.vx *= 0.98;
-            star.vy *= 0.98;
+            data.speed *= 0.98;
 
-            // Remove if dead or off-screen
-            if (star.life <= 0 ||
-                star.x < -50 || star.x > w + 50 ||
-                star.y < -50 || star.y > h + 50) {
-                shootingStars.splice(i, 1);
-                continue;
-            }
-
-            // Performance: Draw trail as batched path instead of many segments
-            const trail = star.trail;
-            const trailLen = trail.length;
-            if (trailLen > 1) {
-                // Draw in batches based on preset (uses trailBatchCount)
-                const batchCount = Math.min(trailBatchCount, trailLen - 1);
-                const segPerBatch = Math.ceil((trailLen - 1) / batchCount);
-                
-                ctx.strokeStyle = star.color;
-                
-                for (let b = 0; b < batchCount; b++) {
-                    const startIdx = b * segPerBatch;
-                    const endIdx = Math.min(startIdx + segPerBatch, trailLen - 1);
-                    if (startIdx >= trailLen - 1) break;
-                    
-                    const avgT = (startIdx + endIdx) * 0.5 / trailLen;
-                    const trailAlpha = (1 - avgT) * star.life * 0.8;
-                    const trailWidth = star.size * (1 - avgT * 0.7);
-                    
-                    ctx.globalAlpha = trailAlpha;
-                    ctx.lineWidth = trailWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(trail[startIdx].x, trail[startIdx].y);
-                    
-                    for (let t = startIdx + 1; t <= endIdx; t++) {
-                        ctx.lineTo(trail[t].x, trail[t].y);
-                    }
-                    ctx.stroke();
-                }
-            }
-
-            // Draw head glow - combined into single sprite draw
-            const sprite = spriteCache[star.color];
-            if (sprite) {
-                ctx.globalAlpha = star.life * 0.8;
-                const headDiameter = star.size * 3.45; // 1.5 * 2.3
-                const headOffset = headDiameter * 0.5;
-                ctx.drawImage(sprite, star.x - headOffset, star.y - headOffset, headDiameter, headDiameter);
-            }
-
-            // White core
-            if (whiteSprite) {
-                ctx.globalAlpha = star.life * 0.95;
-                const coreDiameter = star.size * 1.61; // 0.7 * 2.3
-                const coreOffset = coreDiameter * 0.5;
-                ctx.drawImage(whiteSprite, star.x - coreOffset, star.y - coreOffset, coreDiameter, coreDiameter);
+            // Remove if dead or out of bounds
+            if (data.life <= 0 || Math.abs(positions[0]) > 200) {
+                this.mainGroup.remove(star);
+                star.geometry.dispose();
+                star.material.dispose();
+                this.shootingStars.splice(i, 1);
             }
         }
-
-        if (!this.useSimpleComposite) {
-            ctx.globalCompositeOperation = 'source-over';
-        }
-        ctx.globalAlpha = 1;
-        ctx.lineCap = 'butt';
     }
 
-    drawNovaFlashes() {
-        const ctx = this.ctx;
-        const novas = this.novaFlashes;
-        const enableRays = this.activePreset.enableNovaRays;
-        
-        // Performance: Skip expensive 'screen' blend on low quality
-        if (!this.useSimpleComposite) {
-            ctx.globalCompositeOperation = 'screen';
-        }
+    updateNovaFlashes(delta) {
+        for (let i = this.novaFlashes.length - 1; i >= 0; i--) {
+            const nova = this.novaFlashes[i];
+            const data = nova.userData;
 
-        for (let i = novas.length - 1; i >= 0; i--) {
-            const nova = novas[i];
+            data.life -= data.decay;
 
-            // Expand radius quickly at first, then slow
-            nova.radius += (nova.maxRadius - nova.radius) * 0.15;
-            nova.brightness -= nova.decay;
+            // Expand
+            const progress = 1 - (data.life / data.maxLife);
+            const scale = progress * data.maxScale;
+            nova.scale.set(scale, scale, 1);
 
-            if (nova.brightness <= 0) {
-                novas.splice(i, 1);
-                continue;
-            }
+            nova.material.uniforms.uOpacity.value = data.life;
 
-            // Performance: Use sprite-based glow instead of gradient when possible
-            const sprite = this.spriteCache[nova.color];
-            const whiteSprite = this.spriteCache['#ffffff'];
-            
-            if (sprite) {
-                // Outer glow using sprite
-                ctx.globalAlpha = nova.brightness * 0.5;
-                const glowDiameter = nova.radius * 2;
-                const glowOffset = glowDiameter * 0.5;
-                ctx.drawImage(sprite, nova.x - glowOffset, nova.y - glowOffset, glowDiameter, glowDiameter);
-            }
+            // Face camera
+            nova.lookAt(this.camera.position);
 
-            if (whiteSprite) {
-                // Bright center using white sprite
-                ctx.globalAlpha = nova.brightness * 0.8;
-                const coreDiameter = nova.radius * 0.6;
-                const coreOffset = coreDiameter * 0.5;
-                ctx.drawImage(whiteSprite, nova.x - coreOffset, nova.y - coreOffset, coreDiameter, coreDiameter);
-            }
-
-            // Star-like rays - only for bright flashes (uses preset toggle)
-            if (enableRays && nova.brightness > 0.4) {
-                ctx.strokeStyle = '#ffffff';
-                ctx.globalAlpha = nova.brightness * 0.6;
-                ctx.lineWidth = 2;
-
-                const rayLength = nova.radius * 0.8;
-                // Pre-calculated angles for 4 rays at 45° intervals
-                const cos45 = 0.7071;
-                
-                ctx.beginPath();
-                // Draw all 4 rays in a single path
-                ctx.moveTo(nova.x, nova.y);
-                ctx.lineTo(nova.x + cos45 * rayLength, nova.y + cos45 * rayLength);
-                ctx.moveTo(nova.x, nova.y);
-                ctx.lineTo(nova.x - cos45 * rayLength, nova.y + cos45 * rayLength);
-                ctx.moveTo(nova.x, nova.y);
-                ctx.lineTo(nova.x - cos45 * rayLength, nova.y - cos45 * rayLength);
-                ctx.moveTo(nova.x, nova.y);
-                ctx.lineTo(nova.x + cos45 * rayLength, nova.y - cos45 * rayLength);
-                ctx.stroke();
+            if (data.life <= 0) {
+                this.mainGroup.remove(nova);
+                nova.geometry.dispose();
+                nova.material.dispose();
+                this.novaFlashes.splice(i, 1);
             }
         }
-
-        if (!this.useSimpleComposite) {
-            ctx.globalCompositeOperation = 'source-over';
-        }
-        ctx.globalAlpha = 1;
     }
 
-    updateStarRipples() {
-        const ctx = this.ctx;
-        const ripples = this.starRipples;
-        const maxDim = Math.max(this.canvas.width, this.canvas.height);
-        
-        // Process ripples and boost star brightness
-        for (let i = ripples.length - 1; i >= 0; i--) {
-            const ripple = ripples[i];
+    updateEnergyPulses(delta) {
+        for (let i = this.energyPulses.length - 1; i >= 0; i--) {
+            const pulse = this.energyPulses[i];
+            const data = pulse.userData;
+
+            data.progress += data.growthRate;
+            data.life -= 0.02;
+
+            const scale = data.progress * data.maxScale;
+            pulse.scale.set(scale, scale, 1);
+
+            pulse.material.uniforms.uProgress.value = Math.min(data.progress, 1);
+            pulse.material.uniforms.uOpacity.value = data.life * 0.6;
+
+            pulse.lookAt(this.camera.position);
+
+            if (data.life <= 0 || data.progress > 1) {
+                this.mainGroup.remove(pulse);
+                pulse.geometry.dispose();
+                pulse.material.dispose();
+                this.energyPulses.splice(i, 1);
+            }
+        }
+    }
+
+    updateStarRipples(delta) {
+        if (!this.stars || !this.starRippleBoosts) return;
+
+        const rippleBoosts = this.starRippleBoosts;
+        const starCount = rippleBoosts.length;
+
+        // Decay existing boosts
+        for (let i = 0; i < starCount; i++) {
+            if (rippleBoosts[i] > 0) {
+                rippleBoosts[i] *= 0.92;
+                if (rippleBoosts[i] < 0.01) rippleBoosts[i] = 0;
+            }
+        }
+
+        // Process ripples
+        for (let i = this.starRipples.length - 1; i >= 0; i--) {
+            const ripple = this.starRipples[i];
 
             ripple.radius += ripple.speed;
             ripple.life -= ripple.decay;
 
-            if (ripple.life <= 0 || ripple.radius > maxDim) {
-                ripples.splice(i, 1);
+            if (ripple.life <= 0 || ripple.radius > 300) {
+                this.starRipples.splice(i, 1);
                 continue;
             }
 
-            // Boost brightness of stars within the ripple ring
-            const halfWidth = ripple.width * 0.5;
-            const innerRadius = ripple.radius - halfWidth;
-            const outerRadius = ripple.radius + halfWidth;
-            const outerRadiusSq = outerRadius * outerRadius;
-            const innerRadiusSq = innerRadius * innerRadius;
-            const ringCenter = ripple.radius;
-            const lifeFactor = ripple.life * 1.5;
-            const invHalfWidth = 1 / halfWidth;
+            // Boost nearby stars
+            const innerRadius = ripple.radius - ripple.width * 0.5;
+            const outerRadius = ripple.radius + ripple.width * 0.5;
+            const positions = this.starPositions;
 
-            // Performance: Use spatial grid to only check nearby stars
-            const nearbyStars = this.getStarsInRadius(ripple.x, ripple.y, outerRadius);
-            const nearbyCount = nearbyStars.length;
-            
-            for (let j = 0; j < nearbyCount; j++) {
-                const star = nearbyStars[j];
-                const dx = star.x - ripple.x;
-                const dy = star.y - ripple.y;
-                const distSq = dx * dx + dy * dy;
+            for (let j = 0; j < starCount; j++) {
+                const dx = positions[j * 3] - ripple.position.x;
+                const dy = positions[j * 3 + 1] - ripple.position.y;
+                const dz = positions[j * 3 + 2] - ripple.position.z;
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-                // Quick squared distance check (avoids sqrt for most stars)
-                if (distSq < innerRadiusSq || distSq > outerRadiusSq) continue;
-                
-                const dist = Math.sqrt(distSq);
+                if (dist >= innerRadius && dist <= outerRadius) {
+                    const distFromCenter = Math.abs(dist - ripple.radius);
+                    const intensity = 1 - (distFromCenter / (ripple.width * 0.5));
+                    const boost = intensity * ripple.life * 1.5;
 
-                // Calculate how centered the star is in the ring
-                const distFromCenter = dist - ringCenter;
-                const absDistFromCenter = distFromCenter < 0 ? -distFromCenter : distFromCenter;
-                const intensity = 1 - (absDistFromCenter * invHalfWidth);
-                const boost = intensity * lifeFactor;
-
-                // Temporarily boost the star's brightness
-                if (boost > star.rippleBoost) {
-                    star.rippleBoost = boost;
+                    if (boost > rippleBoosts[j]) {
+                        rippleBoosts[j] = boost;
+                    }
                 }
             }
-
-            // Draw the ripple ring itself (subtle)
-            ctx.strokeStyle = `rgba(255, 200, 150, ${ripple.life * 0.15})`;
-            ctx.lineWidth = ripple.width * 0.3;
-            ctx.beginPath();
-            ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
-            ctx.stroke();
         }
 
-        // Performance: Decay ripple boost on stars using for loop
-        const stars = this.stars;
-        const starCount = stars.length;
-        for (let i = 0; i < starCount; i++) {
-            const star = stars[i];
-            if (star.rippleBoost > 0) {
-                star.rippleBoost *= 0.92;
-                if (star.rippleBoost < 0.01) star.rippleBoost = 0;
+        // Update star geometry attribute
+        this.stars.geometry.attributes.aRippleBoost.array.set(rippleBoosts);
+        this.stars.geometry.attributes.aRippleBoost.needsUpdate = true;
+    }
+
+    updateSparkles(delta) {
+        // Sparkles are rendered as part of star system, just update data
+        // For simplicity, we'll manage sparkle lifecycle but they share star rendering
+        for (let i = this.sparkles.length - 1; i >= 0; i--) {
+            const sparkle = this.sparkles[i];
+
+            sparkle.life -= sparkle.decay;
+            sparkle.velocity.multiplyScalar(0.98);
+            sparkle.velocity.y -= 0.03; // Light gravity
+            sparkle.position.add(sparkle.velocity);
+
+            if (sparkle.life <= 0) {
+                this.sparkles.splice(i, 1);
             }
         }
     }
 
-    drawVignette() {
-        // Uses preset toggle for vignette effect
-        if (this.activePreset.enableVignette && this.cachedGradients.vignette) {
-            this.ctx.fillStyle = this.cachedGradients.vignette;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // ─────────────────────────────────────────────────────────────────────────
+    // Resize Handler
+    // ─────────────────────────────────────────────────────────────────────────
+
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        if (this.bloomPass) {
+            this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
         }
     }
 
-    drawChromaticAberration() {
-        if (this.chromaticAberration <= 0) return;
-
-        const offset = this.chromaticAberration * 0.8;
-        const intensity = Math.min(this.chromaticAberration / 10, 0.12);
-
-        this.ctx.save();
-        this.ctx.globalCompositeOperation = 'screen';
-        this.ctx.fillStyle = `rgba(255, 80, 50, ${intensity})`;
-        this.ctx.fillRect(-offset, 0, this.canvas.width, this.canvas.height);
-        this.ctx.fillStyle = `rgba(80, 50, 255, ${intensity})`;
-        this.ctx.fillRect(offset, 0, this.canvas.width, this.canvas.height);
-
-        if (this.chromaticAberration > 4) {
-            this.ctx.globalCompositeOperation = 'lighten';
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${(this.chromaticAberration - 4) * 0.025})`;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-
-        this.ctx.restore();
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Cleanup
+    // ─────────────────────────────────────────────────────────────────────────
 
     stop() {
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+
+        this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
+
+        this.teardownQualityListener();
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
+
+        // Clean up effects
+        this.shootingStars.forEach(star => {
+            this.mainGroup?.remove(star);
+            star.geometry?.dispose();
+            star.material?.dispose();
+        });
+        this.shootingStars = [];
+
+        this.novaFlashes.forEach(nova => {
+            this.mainGroup?.remove(nova);
+            nova.geometry?.dispose();
+            nova.material?.dispose();
+        });
+        this.novaFlashes = [];
+
+        this.energyPulses.forEach(pulse => {
+            this.mainGroup?.remove(pulse);
+            pulse.geometry?.dispose();
+            pulse.material?.dispose();
+        });
+        this.energyPulses = [];
+
+        this.starRipples = [];
+        this.sparkles = [];
+
+        // Clean up filaments
+        this.filaments.forEach(line => {
+            this.mainGroup?.remove(line);
+            line.geometry?.dispose();
+            line.material?.dispose();
+        });
+        this.filaments = [];
+
+        // Clean up crystal clusters
+        this.crystalClusters.forEach(cluster => {
+            cluster.children.forEach(crystal => {
+                crystal.geometry?.dispose();
+                crystal.material?.dispose();
+            });
+            this.mainGroup?.remove(cluster);
+        });
+        this.crystalClusters = [];
+
+        // Clean up composer
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
+        }
+
+        // Clean up renderer
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('geode-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
+        }
+
+        // Dispose scene objects
+        if (this.scene) {
+            this.scene.traverse(object => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(m => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.stars = null;
+        this.ambientParticles = null;
+        this.backgroundSphere = null;
+        this.envMap = null;
+
+        // Reset state
+        this.uniforms.pulseIntensity.value = 0;
+        this.comboMultiplier = 1.0;
         this.pendingComboCount = 0;
+        this.cameraShake = { intensity: 0, x: 0, y: 0 };
+        this.chromaticAberration = 0;
 
         super.stop();
-        this.animationTime = 0;
-        this.pulseIntensity = 0;
-        this.comboMultiplier = 1.0;
-        this.clearAllElements();
-        this.screenShake = { x: 0, y: 0, intensity: 0 };
-        this.chromaticAberration = 0;
-        
-        // Clean up WebGL resources
-        if (this.webglRenderer) {
-            this.webglRenderer.destroy();
-            this.webglRenderer = null;
-        }
-        this.webglCanvas = null;
-        
-        // Clear offscreen canvas
-        if (this.starCtx && this.starCanvas) {
-            this.starCtx.clearRect(0, 0, this.starCanvas.width, this.starCanvas.height);
-        }
-        this.starLayerDirty = true;
-
-        // Reset any ripple boost on stars
-        this.stars.forEach((star) => {
-            star.rippleBoost = 0;
-        });
     }
 
     getTetrominoConfig() {
