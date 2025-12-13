@@ -22,25 +22,25 @@ export const MISTY_LAKE_TETROMINOS = {
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 9,
-        glowIntensity: 0.65,
+        glowRadius: 15,
+        glowIntensity: 0.85,
         glowColor: 'auto',
 
         outline: true,
-        outlineWidth: 1.6,
+        outlineWidth: 2.0,
         outlineColor: 'lighten',
 
         pulse: true,
-        pulseSpeed: 0.03,
-        pulseAmplitude: 0.18,
+        pulseSpeed: 0.04,
+        pulseAmplitude: 0.25,
 
         shimmer: true,
-        shimmerSpeed: 0.045,
-        shimmerIntensity: 0.15,
+        shimmerSpeed: 0.06,
+        shimmerIntensity: 0.3,
 
         trails: true,
-        trailLength: 0.12,
-        trailOpacity: 0.25,
+        trailLength: 0.25,
+        trailOpacity: 0.4,
     },
 
     rendererOverrides: {
@@ -50,9 +50,9 @@ export const MISTY_LAKE_TETROMINOS = {
             outlineWidth: 1.4,
         },
         phaser: {
-            glowRadius: 11,
-            glowIntensity: 0.7,
-            outlineWidth: 1.8,
+            glowRadius: 18,
+            glowIntensity: 0.9,
+            outlineWidth: 2.5,
         },
     },
 };

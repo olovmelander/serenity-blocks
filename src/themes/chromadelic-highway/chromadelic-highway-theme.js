@@ -145,12 +145,20 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.tunnelRings = [];
         this.starfield = null;
         this.speedParticles = null;
+        this.ambientParticles = null; // Colorful floating particles in space
 
         // Effect intensities
         this.pulseIntensity = 0;
         this.bloomBoost = 0;
         this.particleGlow = 0; // Extra glow for particles on piece lock
         this.ringGlow = 0; // Extra glow for rings on combo
+        this.ambientSpeedBoost = 0; // Current speed boost (smoothly interpolates to target)
+        this.ambientSpeedTarget = 0; // Target speed boost (set by events, decays slowly)
+
+        // Play pace tracking - highway speed matches how fast you play
+        this.pieceLockTimes = []; // Timestamps of recent piece locks
+        this.playPaceMultiplier = 1.0; // Current driving speed (1.0 = base, higher = faster)
+        this.targetPaceMultiplier = 1.0; // Target pace (smoothly interpolated)
 
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
@@ -191,6 +199,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.createTunnelRings();
         this.createStarfield();
         this.createSpeedParticles();
+        this.createAmbientParticles();
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -354,35 +363,97 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Tunnel Rings - Large rings visible on screen edges during gameplay
+    // Tunnel Rings - Neon glow rings with rotation and pulsing
     // ─────────────────────────────────────────────────────────────────────────
 
     createTunnelRings() {
         const ringCount = this.qualityPreset.ringCount;
 
+        // Neon glow shader for rings
+        const neonRingShader = {
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+
+                void main() {
+                    vUv = uv;
+                    vNormal = normalize(normalMatrix * normal);
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor;
+                uniform float uTime;
+                uniform float uPulse;
+                uniform float uGlow;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+
+                void main() {
+                    // Fresnel effect for edge glow
+                    vec3 viewDir = normalize(vViewPosition);
+                    float fresnel = 1.0 - abs(dot(viewDir, vNormal));
+                    fresnel = pow(fresnel, 2.0);
+
+                    // Pulsing core brightness
+                    float pulse = 1.0 + sin(uTime * 3.0) * 0.15 * uPulse;
+
+                    // Neon core (bright center)
+                    vec3 coreColor = uColor * (1.5 + uGlow * 0.5) * pulse;
+
+                    // Outer glow (softer, wider)
+                    vec3 glowColor = uColor * (0.6 + fresnel * 0.8);
+
+                    // Combine core and glow
+                    vec3 finalColor = mix(coreColor, glowColor, fresnel * 0.5);
+
+                    // Add extra bloom on edges
+                    finalColor += uColor * fresnel * 0.4 * (1.0 + uGlow);
+
+                    // Alpha with pulse
+                    float alpha = (0.7 + fresnel * 0.3) * (0.8 + uPulse * 0.2);
+
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `
+        };
+
         for (let i = 0; i < ringCount; i++) {
             // Larger rings that will be visible around the game canvas
-            const geometry = new THREE.TorusGeometry(220, 4, 8, 64);
+            const geometry = new THREE.TorusGeometry(220, 5, 16, 80);
 
             const hue = i / ringCount;
             const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
 
-            const material = new THREE.MeshBasicMaterial({
-                color: color,
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: color },
+                    uTime: { value: 0 },
+                    uPulse: { value: 0 },
+                    uGlow: { value: 0 },
+                },
+                vertexShader: neonRingShader.vertexShader,
+                fragmentShader: neonRingShader.fragmentShader,
                 transparent: true,
-                opacity: 0.65,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
+                side: THREE.DoubleSide,
             });
 
             const ring = new THREE.Mesh(geometry, material);
 
             // Spread evenly into the distance, lower position
             const z = 150 - (i / ringCount) * 2400;
-            ring.position.set(0, 25, z); // Lower, centered on road
+            ring.position.set(0, 25, z);
             ring.userData.baseZ = z;
             ring.userData.hue = hue;
-            ring.userData.speed = 3 + Math.random() * 1.5; // Slower
+            ring.userData.speed = 3 + Math.random() * 1.5;
+            // Rotation speed - each ring spins at a different rate (Z axis only - no clipping)
+            ring.userData.rotationSpeed = (0.3 + Math.random() * 0.4) * (Math.random() > 0.5 ? 1 : -1);
 
             this.tunnelRings.push(ring);
             this.scene.add(ring);
@@ -391,7 +462,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         // Add edge glow strips - visible on left/right sides of screen
         this.createEdgeGlowStrips();
 
-        console.log(`[ChromadelicHighway] ${ringCount} tunnel rings + edge glows created`);
+        console.log(`[ChromadelicHighway] ${ringCount} neon tunnel rings + edge glows created`);
     }
 
     createEdgeGlowStrips() {
@@ -543,6 +614,18 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const colors = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
 
+        // Same vibrant psychedelic palette as ambient particles
+        const palette = [
+            new THREE.Color(0xFF3366), // Hot Pink
+            new THREE.Color(0x00FFFF), // Cyan
+            new THREE.Color(0xFFFF00), // Yellow
+            new THREE.Color(0xFF6600), // Orange
+            new THREE.Color(0x9933FF), // Purple
+            new THREE.Color(0x00FF66), // Mint Green
+            new THREE.Color(0xFF0099), // Magenta
+            new THREE.Color(0x3399FF), // Electric Blue
+        ];
+
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
 
@@ -552,33 +635,219 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             positions[i3 + 1] = Math.random() * 60 + 5;
             positions[i3 + 2] = -Math.random() * 2200;
 
-            // Rainbow colors with varied saturation
-            const hue = Math.random();
-            const color = new THREE.Color().setHSL(hue, 0.7 + Math.random() * 0.3, 0.5 + Math.random() * 0.2);
+            // Pick from the same palette as ambient particles
+            const color = palette[Math.floor(Math.random() * palette.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 2 + Math.random() * 3;
+            sizes[i] = 4 + Math.random() * 5;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-        const material = new THREE.PointsMaterial({
-            size: 3,
-            vertexColors: true,
+        // Custom shader material with glow effect (same as ambient particles)
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uPulse: { value: 0 },
+            },
+            vertexShader: `
+                uniform float uPulse;
+                attribute float size;
+                attribute vec3 color;
+                varying vec3 vColor;
+
+                void main() {
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+
+                    // Size with distance attenuation and pulse response
+                    float baseSize = size * (1.0 + uPulse * 0.5);
+                    gl_PointSize = baseSize * (300.0 / -mvPosition.z);
+                    gl_PointSize = clamp(gl_PointSize, 1.0, 25.0);
+
+                    vColor = color;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+
+                void main() {
+                    // Soft circular particle with glow (same as ambient)
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center);
+
+                    // Soft edge falloff
+                    float alpha = smoothstep(0.5, 0.1, dist) * 0.7;
+
+                    // Add a brighter glowing core
+                    float core = smoothstep(0.3, 0.0, dist) * 0.6;
+                    vec3 finalColor = vColor + core;
+
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `,
             transparent: true,
-            opacity: 0.5,
+            depthWrite: false,
             blending: THREE.AdditiveBlending,
-            sizeAttenuation: true,
         });
 
         this.speedParticles = new THREE.Points(geometry, material);
         this.scene.add(this.speedParticles);
 
         console.log(`[ChromadelicHighway] ${particleCount} speed particles created`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ambient Particles - Colorful floating particles in space (Supernova-inspired)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createAmbientParticles() {
+        const particleCount = Math.floor(this.qualityPreset.starCount * 0.5); // Scale with quality
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const randoms = new Float32Array(particleCount); // For phase offset
+        const sizes = new Float32Array(particleCount);
+
+        // Vibrant psychedelic palette
+        const palette = [
+            new THREE.Color(0xFF3366), // Hot Pink
+            new THREE.Color(0x00FFFF), // Cyan
+            new THREE.Color(0xFFFF00), // Yellow
+            new THREE.Color(0xFF6600), // Orange
+            new THREE.Color(0x9933FF), // Purple
+            new THREE.Color(0x00FF66), // Mint Green
+            new THREE.Color(0xFF0099), // Magenta
+            new THREE.Color(0x3399FF), // Electric Blue
+        ];
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+
+            // Distribute in a wide volume around and above the road
+            // Some orbiting near camera, some far in the distance
+            const distribution = Math.random();
+
+            if (distribution < 0.4) {
+                // Orbiting disc around the road (closer)
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 150 + Math.random() * 200;
+                positions[i3] = Math.cos(angle) * radius;
+                positions[i3 + 1] = 50 + Math.random() * 150; // Above road
+                positions[i3 + 2] = Math.sin(angle) * radius - 400;
+            } else if (distribution < 0.7) {
+                // Scattered in the sky dome
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI * 0.5; // Upper hemisphere
+                const radius = 300 + Math.random() * 400;
+                positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i3 + 1] = radius * Math.cos(phi) + 100;
+                positions[i3 + 2] = -radius * Math.sin(phi) * Math.sin(theta) - 600;
+            } else {
+                // Trailing particles along the road corridor
+                const side = Math.random() > 0.5 ? 1 : -1;
+                positions[i3] = side * (150 + Math.random() * 150);
+                positions[i3 + 1] = 30 + Math.random() * 100;
+                positions[i3 + 2] = -Math.random() * 1800 - 200;
+            }
+
+            // Pick a random vibrant color
+            const color = palette[Math.floor(Math.random() * palette.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            randoms[i] = Math.random();
+            sizes[i] = 3 + Math.random() * 5;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        // Custom shader material for animated floating particles
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPulse: { value: 0 },
+                uSpeedMultiplier: { value: 1.0 }, // Base speed, increases on combo
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uPulse;
+                uniform float uSpeedMultiplier;
+                attribute float aRandom;
+                attribute float size;
+                attribute vec3 color;
+                varying vec3 vColor;
+                varying float vAlpha;
+
+                void main() {
+                    vec3 pos = position;
+
+                    // Gentle orbit rotation (different speeds per particle)
+                    // Speed multiplier only affects orbit speed - particles swirl faster
+                    float orbitSpeed = (0.05 + aRandom * 0.05) * uSpeedMultiplier;
+                    float angle = uTime * orbitSpeed;
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    vec3 rotatedPos = vec3(
+                        pos.x * c - pos.z * s,
+                        pos.y,
+                        pos.x * s + pos.z * c
+                    );
+
+                    // Floating motion (up/down drift) - constant gentle speed, no bouncing
+                    rotatedPos.y += sin(uTime * 0.3 + aRandom * 10.0) * 15.0;
+
+                    // Gentle side sway - constant speed
+                    rotatedPos.x += sin(uTime * 0.2 + aRandom * 5.0) * 10.0;
+
+                    vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+
+                    // Size with distance attenuation and pulse response
+                    float baseSize = size * (1.0 + uPulse * 0.5);
+                    gl_PointSize = baseSize * (300.0 / -mvPosition.z);
+                    gl_PointSize = clamp(gl_PointSize, 1.0, 20.0);
+
+                    // Pulsing alpha - constant speed for smooth effect
+                    vAlpha = 0.4 + 0.4 * sin(uTime * 1.5 + aRandom * 10.0) + uPulse * 0.3;
+                    vColor = color;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vAlpha;
+
+                void main() {
+                    // Soft circular particle with glow
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center);
+
+                    // Soft edge falloff
+                    float alpha = smoothstep(0.5, 0.1, dist) * vAlpha;
+
+                    // Add a brighter core
+                    float core = smoothstep(0.3, 0.0, dist) * 0.5;
+                    vec3 finalColor = vColor + core;
+
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.ambientParticles = new THREE.Points(geometry, material);
+        this.scene.add(this.ambientParticles);
+
+        console.log(`[ChromadelicHighway] ${particleCount} ambient particles created`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -609,15 +878,57 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Play Pace Tracking - Highway speed matches your play speed
+    // ─────────────────────────────────────────────────────────────────────────
+
+    updatePlayPace() {
+        if (this.pieceLockTimes.length < 2) return;
+
+        // Calculate average time between recent piece locks
+        const times = this.pieceLockTimes;
+        let totalInterval = 0;
+        for (let i = 1; i < times.length; i++) {
+            totalInterval += times[i] - times[i - 1];
+        }
+        const avgInterval = totalInterval / (times.length - 1);
+
+        // Convert to pieces per minute (PPM)
+        // avgInterval is in ms, so PPM = 60000 / avgInterval
+        const ppm = 60000 / avgInterval;
+
+        // Map PPM to speed multiplier:
+        // ~20 PPM (slow/casual) = 1.0x speed
+        // ~40 PPM (medium) = 1.5x speed
+        // ~60 PPM (fast) = 2.0x speed
+        // ~90+ PPM (very fast) = 2.5x speed
+        const targetSpeed = Math.min(Math.max(ppm / 40, 0.5), 2.5);
+        this.targetPaceMultiplier = targetSpeed;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Event Listeners
     // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
         const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (this.isActive && window.settings?.backgroundComboEffects !== false) {
-                this.pulseIntensity = Math.max(this.pulseIntensity, 0.4);
-                // Additive glow build-up (Astral Weave style)
-                this.particleGlow = Math.min(this.particleGlow + 0.5, 1.5);
+            if (this.isActive) {
+                // Track piece lock timing for play pace
+                const now = performance.now();
+                this.pieceLockTimes.push(now);
+                // Keep only last 10 locks for averaging
+                if (this.pieceLockTimes.length > 10) {
+                    this.pieceLockTimes.shift();
+                }
+                // Calculate play pace from recent locks
+                this.updatePlayPace();
+
+                if (window.settings?.backgroundComboEffects !== false) {
+                    this.pulseIntensity = Math.max(this.pulseIntensity, 0.4);
+                    // Additive glow build-up (Astral Weave style)
+                    this.particleGlow = Math.min(this.particleGlow + 0.5, 1.5);
+                    // Gradually increase target speed on each piece lock
+                    this.ambientSpeedTarget = Math.min(this.ambientSpeedTarget + 0.1, 2.5);
+                }
             }
         });
 
@@ -627,6 +938,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 this.pulseIntensity = Math.max(this.pulseIntensity, 0.6 + intensity * 0.4);
                 this.bloomBoost = intensity * 0.3;
                 this.ringGlow = 0.5 + intensity * 0.5; // Ring glow on combo
+                // Bigger target speed boost on combo
+                this.ambientSpeedTarget = Math.min(this.ambientSpeedTarget + 0.3 + intensity * 0.5, 2.5);
             }
         });
 
@@ -653,13 +966,23 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             const delta = this.clock.getDelta();
             this.time += delta;
-            this.roadProgress += delta * 0.3; // Even slower, more meditative speed
+
+            // Play pace: smoothly interpolate towards target, decay target towards 1.0 when idle
+            this.targetPaceMultiplier += (1.0 - this.targetPaceMultiplier) * 0.002; // Slowly decay towards base speed
+            this.playPaceMultiplier += (this.targetPaceMultiplier - this.playPaceMultiplier) * 0.03; // Smooth transition
+
+            // Road progress speed scales with play pace
+            this.roadProgress += delta * 0.3 * this.playPaceMultiplier;
 
             // Decay effects
             this.pulseIntensity *= 0.92;
             this.bloomBoost *= 0.95;
             this.particleGlow *= 0.985; // Much smoother/slower fade for glow build-up effect
             this.ringGlow *= 0.98; // Very slow ring glow fade for much longer effect
+
+            // Ambient speed: target decays very slowly, actual speed smoothly follows target
+            this.ambientSpeedTarget *= 0.9995; // Very slow decay - speed stays elevated much longer after combos
+            this.ambientSpeedBoost += (this.ambientSpeedTarget - this.ambientSpeedBoost) * 0.02; // Smooth lerp towards target
 
             // Update road curve dynamically
             this.updateRoadCurve();
@@ -671,15 +994,14 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 this.roadMaterial.uniforms.uPulse.value = this.pulseIntensity;
             }
 
-            // Animate rings - fly toward camera, follow road curve
+            // Animate rings - fly toward camera, follow road curve, rotate and pulse
             this.tunnelRings.forEach((ring) => {
-                ring.position.z += ring.userData.speed * 0.35; // Slower ring movement
+                ring.position.z += ring.userData.speed * 0.35 * this.playPaceMultiplier; // Speed scales with play pace
 
                 // Wrap around when past camera
                 if (ring.position.z > 300) {
                     ring.position.z = -2100;
                     ring.userData.hue = (ring.userData.hue + 0.1) % 1.0;
-                    ring.material.color.setHSL(ring.userData.hue, 0.9, 0.6);
                 }
 
                 // Follow the same curve as the road (Mario Kart style - more curve in distance)
@@ -690,14 +1012,23 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 ring.position.x = curve1 + curve2;
                 ring.position.y = 25 + Math.sin(t * 1.5 + this.time * 0.06) * 20 * curveStrength;
 
+                // Rotation - rings spin on Z axis (facing camera, no clipping through road)
+                const rotSpeed = ring.userData.rotationSpeed * this.playPaceMultiplier;
+                ring.rotation.z += rotSpeed * 0.015;
+
                 // Scale based on distance (smooth glow, minimal bounce)
                 const scale = 0.5 + (1 - t) * 0.8 + this.ringGlow * 0.10;
                 ring.scale.set(scale, scale, 1);
-                ring.material.opacity = 0.25 + (1 - t) * 0.5 + this.pulseIntensity * 0.25 + this.ringGlow * 0.4;
 
-                // Boost ring brightness on combo
-                const lightness = 0.6 + this.ringGlow * 0.3;
-                ring.material.color.setHSL(ring.userData.hue, 0.9, lightness);
+                // Update shader uniforms for neon glow effect
+                if (ring.material.uniforms) {
+                    ring.material.uniforms.uTime.value = this.time;
+                    ring.material.uniforms.uPulse.value = this.pulseIntensity + this.ringGlow;
+                    ring.material.uniforms.uGlow.value = this.ringGlow;
+                    // Update color with new hue
+                    const color = new THREE.Color().setHSL(ring.userData.hue, 0.95, 0.55 + this.ringGlow * 0.2);
+                    ring.material.uniforms.uColor.value = color;
+                }
             });
 
             // Animate edge glow lines - subtle color cycling and pulse response
@@ -713,8 +1044,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Animate speed particles - follow road corridor with glow effect
             if (this.speedParticles) {
                 const positions = this.speedParticles.geometry.attributes.position.array;
+                const particleSpeed = (3 + this.pulseIntensity * 5) * this.playPaceMultiplier; // Scale with play pace
                 for (let i = 0; i < positions.length; i += 3) {
-                    positions[i + 2] += 3 + this.pulseIntensity * 5; // Even slower particles
+                    positions[i + 2] += particleSpeed;
 
                     if (positions[i + 2] > 300) {
                         const side = Math.random() > 0.5 ? 1 : -1;
@@ -725,9 +1057,18 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
                 this.speedParticles.geometry.attributes.position.needsUpdate = true;
 
-                // Particle glow boost on piece lock
-                this.speedParticles.material.opacity = 0.3 + this.particleGlow * 0.5; // Lower base opacity for more contrast
-                this.speedParticles.material.size = 3 + this.particleGlow * 6; // Dramatic size increase
+                // Particle glow boost on piece lock (via shader uniform)
+                if (this.speedParticles.material.uniforms) {
+                    this.speedParticles.material.uniforms.uPulse.value = this.pulseIntensity + this.particleGlow * 0.8;
+                }
+            }
+
+            // Animate ambient particles - update shader uniforms
+            if (this.ambientParticles && this.ambientParticles.material.uniforms) {
+                this.ambientParticles.material.uniforms.uTime.value = this.time;
+                this.ambientParticles.material.uniforms.uPulse.value = this.pulseIntensity + this.particleGlow * 0.5;
+                // Speed multiplier: base 1.0 + boost (max ~4x speed during intense combos)
+                this.ambientParticles.material.uniforms.uSpeedMultiplier.value = 1.0 + this.ambientSpeedBoost;
             }
 
             // Subtle camera sway (small movements, stays close to road)
@@ -805,6 +1146,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.tunnelRings = [];
         this.starfield = null;
         this.speedParticles = null;
+        this.ambientParticles = null;
 
         super.cleanup();
     }
