@@ -4,12 +4,14 @@ export const THEME_REGISTRY = [
         displayName: 'Forest',
         module: './forest/forest-theme.js',
         group: 'biomes',
+        icon: './forest/forest-theme-icon.png',
     },
     {
         id: 'himalayan-peak',
         displayName: 'Himalayan Peak',
         module: './himalayan-peak/himalayan-peak-theme.js',
         group: 'biomes',
+        icon: './himalayan-peak/himalayan-peak-theme-icon.png',
     },
     {
         id: 'ice-temple',
@@ -23,6 +25,7 @@ export const THEME_REGISTRY = [
         displayName: 'Moonlit Forest',
         module: './moonlit-forest/moonlit-forest-theme.js',
         group: 'biomes',
+        icon: './moonlit-forest/moonlit-forest-theme-icon.png',
     },
     {
         id: 'wolfhour',
@@ -36,18 +39,21 @@ export const THEME_REGISTRY = [
         displayName: 'Ocean',
         module: './ocean/ocean-theme.js',
         group: 'biomes',
+        icon: './ocean/ocean-theme-icon.png',
     },
     {
         id: 'sunset',
         displayName: 'Sunset',
         module: './sunset/sunset-theme.js',
         group: 'biomes',
+        icon: './sunset/sunset-theme-icon.png',
     },
     {
         id: 'mountain',
         displayName: 'Mountain',
         module: './mountain/mountain-theme.js',
         group: 'biomes',
+        icon: './mountain/mountain-theme-icon.png',
     },
     {
         id: 'winter',
@@ -61,24 +67,28 @@ export const THEME_REGISTRY = [
         displayName: 'Fall',
         module: './fall/fall-theme.js',
         group: 'biomes',
+        icon: './fall/fall-theme-icon.png',
     },
     {
         id: 'summer',
         displayName: 'Summer',
         module: './summer/summer-theme.js',
         group: 'biomes',
+        icon: './summer/summer-theme-icon.png',
     },
     {
         id: 'spring',
         displayName: 'Spring',
         module: './spring/spring-theme.js',
         group: 'biomes',
+        icon: './spring/spring-theme-icon.png',
     },
     {
         id: 'sakura-twilight',
         displayName: 'Sakura Twilight',
         module: './sakura-twilight/sakura-twilight-theme.js',
         group: 'biomes',
+        icon: './sakura-twilight/sakura-twilight-theme-icon.png',
     },
     {
         id: 'aurora',
@@ -92,6 +102,7 @@ export const THEME_REGISTRY = [
         displayName: 'Galaxy',
         module: './galaxy/galaxy-theme.js',
         group: 'cosmic',
+        icon: './galaxy/galaxy-theme-icon.png',
     },
     {
         id: 'aether-tides',
@@ -117,12 +128,14 @@ export const THEME_REGISTRY = [
         displayName: 'Meadow',
         module: './meadow/meadow-theme.js',
         group: 'biomes',
+        icon: './meadow/meadow-theme-icon.png',
     },
     {
         id: 'verdant-hills',
         displayName: 'Verdant Hills',
         module: './verdant-hills/verdant-hills-theme.js',
         group: 'biomes',
+        icon: './verdant-hills/verdant-hills-theme-icon.png',
     },
     {
         id: 'cosmic-chimes',
@@ -147,6 +160,7 @@ export const THEME_REGISTRY = [
         displayName: 'Swedish Forest',
         module: './swedish-forest/swedish-forest-theme.js',
         group: 'biomes',
+        icon: './swedish-forest/swedish-forest-theme-icon.png',
     },
     {
         id: 'geode',
@@ -166,24 +180,28 @@ export const THEME_REGISTRY = [
         displayName: 'Shifting Sands',
         module: './shifting-sands/shifting-sands-theme.js',
         group: 'biomes',
+        icon: './shifting-sands/shifting-sands-theme-icon.png',
     },
     {
         id: 'misty-lake',
         displayName: 'Misty Lake',
         module: './misty-lake/misty-lake-theme.js',
         group: 'biomes',
+        icon: './misty-lake/misty-lake-theme-icon.png',
     },
     {
         id: 'waves',
         displayName: 'Waves',
         module: './waves/waves-theme.js',
         group: 'biomes',
+        icon: './waves/waves-theme-icon.png',
     },
     {
         id: 'luminous-tides',
         displayName: 'Luminous Tides',
         module: './luminous-tides/luminous-tides-theme.js',
         group: 'biomes',
+        icon: './luminous-tides/luminous-tides-theme-icon.png',
     },
     {
         id: 'fluid-dreams',
@@ -202,6 +220,7 @@ export const THEME_REGISTRY = [
         displayName: 'Moonlit Greenhouse',
         module: './moonlit-greenhouse/moonlit-greenhouse-theme.js',
         group: 'biomes',
+        icon: './moonlit-greenhouse/moonlit-greenhouse-theme-icon.png',
     },
     {
         id: 'electric-dreams',
@@ -245,6 +264,7 @@ export const THEME_REGISTRY = [
         displayName: 'Moonrise Summit',
         module: './moonrise-summit/moonrise-summit-theme.js',
         group: 'biomes',
+        icon: './moonrise-summit/moonrise-summit-theme-icon.png',
     },
     {
         id: 'black-hole',
@@ -314,6 +334,7 @@ export const THEME_REGISTRY = [
         displayName: 'Stillwater',
         module: './stillwater/stillwater-theme.js',
         group: 'biomes',
+        icon: './stillwater/stillwater-theme-icon.png',
     },
     {
         id: 'blood-moon',

@@ -203,29 +203,27 @@ export class IntroAnimation {
     }
 
     /**
-     * Create floating particle background with vibrant colors (CSS layer)
+     * Create floating particle background with chromadelic colors (CSS layer)
      * @returns {HTMLElement}
      */
     createParticles() {
         const particlesContainer = document.createElement('div');
         particlesContainer.className = 'intro-particles';
 
-        // Vibrant color palette matching the theme
+        // Unified chromadelic color palette
         const colors = [
-            'rgba(100, 200, 255, 0.8)', // Cyan/Blue
-            'rgba(147, 51, 234, 0.8)', // Purple
-            'rgba(59, 130, 246, 0.8)', // Blue
-            'rgba(236, 72, 153, 0.8)', // Pink
-            'rgba(16, 185, 129, 0.8)', // Emerald/Green
-            'rgba(139, 92, 246, 0.8)', // Violet
-            'rgba(20, 184, 166, 0.8)', // Teal
-            'rgba(255, 153, 0, 0.8)', // Orange
-            'rgba(255, 255, 0, 0.8)', // Yellow
-            'rgba(0, 255, 255, 0.8)', // Cyan
+            'rgba(255, 51, 102, 0.75)', // Hot Pink
+            'rgba(0, 255, 255, 0.75)',  // Cyan
+            'rgba(153, 51, 255, 0.75)', // Purple
+            'rgba(51, 153, 255, 0.75)', // Electric Blue
+            'rgba(255, 0, 153, 0.7)',   // Magenta
+            'rgba(0, 255, 102, 0.7)',   // Mint
+            'rgba(255, 255, 0, 0.7)',   // Yellow
+            'rgba(255, 102, 0, 0.7)',   // Orange
         ];
 
-        // Create fewer CSS particles since we have 3D ones now
-        for (let i = 0; i < 40; i++) {
+        // Minimal particles for clean look
+        for (let i = 0; i < 12; i++) {
             const particle = document.createElement('div');
             particle.className = 'intro-particle';
 
@@ -264,19 +262,19 @@ export class IntroAnimation {
     createOrbs() {
         const orbsContainer = document.createElement('div');
         orbsContainer.className = 'intro-orbs';
-        // ... (existing orb logic) ...
+        // Chromadelic orb configurations
         const orbConfigs = [
             {
-                color: 'rgba(100, 200, 255, 0.3)', size: 300, x: '10%', y: '20%', floatX: 50, floatY: -30, delay: 0,
+                color: 'rgba(255, 51, 102, 0.25)', size: 320, x: '15%', y: '25%', floatX: 40, floatY: -25, delay: 0,
             },
             {
-                color: 'rgba(147, 51, 234, 0.2)', size: 400, x: '80%', y: '70%', floatX: -60, floatY: 40, delay: 2,
+                color: 'rgba(153, 51, 255, 0.2)', size: 380, x: '75%', y: '65%', floatX: -50, floatY: 35, delay: 2,
             },
             {
-                color: 'rgba(59, 130, 246, 0.25)', size: 250, x: '50%', y: '10%', floatX: 30, floatY: 50, delay: 4,
+                color: 'rgba(0, 255, 255, 0.2)', size: 280, x: '50%', y: '15%', floatX: 25, floatY: 40, delay: 3,
             },
             {
-                color: 'rgba(16, 185, 129, 0.2)', size: 350, x: '20%', y: '80%', floatX: -40, floatY: -50, delay: 1,
+                color: 'rgba(51, 153, 255, 0.18)', size: 340, x: '25%', y: '75%', floatX: -35, floatY: -40, delay: 1,
             },
         ];
 
@@ -313,19 +311,20 @@ export class IntroAnimation {
         container.style.zIndex = '20'; // Above text
         container.style.overflow = 'hidden';
 
+        // Chromadelic foreground palette
         const colors = [
-            'rgba(255, 51, 102, 0.6)',  // Hot Pink
-            'rgba(0, 255, 255, 0.6)',   // Cyan
-            'rgba(51, 153, 255, 0.6)',  // Blue
-            'rgba(255, 255, 0, 0.6)',   // Yellow
+            'rgba(255, 51, 102, 0.45)',  // Hot Pink
+            'rgba(0, 255, 255, 0.45)',   // Cyan
+            'rgba(153, 51, 255, 0.4)',   // Purple
+            'rgba(51, 153, 255, 0.4)',   // Electric Blue
         ];
 
-        // Fewer particles, but larger and faster
-        for (let i = 0; i < 15; i++) {
+        // Minimal foreground particles
+        for (let i = 0; i < 4; i++) {
             const p = document.createElement('div');
 
-            // Large size for "close up" bokeh effect
-            const size = Math.random() * 20 + 10; // 10px to 30px
+            // Smaller bokeh particles
+            const size = Math.random() * 12 + 6; // 6px to 18px
             p.style.width = `${size}px`;
             p.style.height = `${size}px`;
             p.style.borderRadius = '50%';
@@ -333,12 +332,12 @@ export class IntroAnimation {
             p.style.left = `${Math.random() * 100}%`;
             p.style.top = `${Math.random() * 120 - 10}%`; // Extend slightly offscreen vert
 
-            // Blur for Depth of Field
-            p.style.filter = `blur(${Math.random() * 4 + 2}px)`;
+            // Stronger blur for softer bokeh
+            p.style.filter = `blur(${Math.random() * 5 + 3}px)`;
 
-            // Color
+            // Color with subtle glow
             p.style.background = colors[Math.floor(Math.random() * colors.length)];
-            p.style.boxShadow = `0 0 15px ${p.style.background}`;
+            p.style.boxShadow = `0 0 12px ${p.style.background}`;
 
             // Faster animation for parallax (closer things move faster)
             const duration = Math.random() * 7 + 8; // 8-15s (vs 15-25s for bg)
