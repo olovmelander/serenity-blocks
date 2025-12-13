@@ -848,31 +848,21 @@ export default class GeodeTheme extends BaseTheme {
 
     onPieceLock() {
         this.uniforms.pulseIntensity.value = Math.min(
-            this.uniforms.pulseIntensity.value + 0.1,
-            0.4
+            this.uniforms.pulseIntensity.value + 0.05,
+            0.2
         );
 
-        // Shooting stars
-        const shootingCount = 2 + Math.floor(Math.random() * 2);
+        // Shooting stars - reduced
+        const shootingCount = 1;
         for (let i = 0; i < shootingCount && this.shootingStars.length < this.activePreset.maxShootingStars; i++) {
             this.createShootingStar();
         }
 
-        // Nova flash (30% chance)
-        if (Math.random() > 0.7 && this.novaFlashes.length < this.activePreset.maxNovaFlashes) {
-            this.createNovaFlash();
-        }
+        // Small sparkle burst - reduced
+        this.createSparkleBurst(2, null, 0.5);
 
-        // Star ripple (50% chance)
-        if (Math.random() > 0.5 && this.starRipples.length < 4) {
-            this.createStarRipple();
-        }
-
-        // Small sparkle burst
-        this.createSparkleBurst(3, null, 0.5);
-
-        // Camera shake
-        this.cameraShake.intensity = Math.max(this.cameraShake.intensity, 0.8);
+        // Camera shake - reduced
+        this.cameraShake.intensity = Math.max(this.cameraShake.intensity, 0.3);
     }
 
     onLineClear(eventPayload) {
@@ -880,40 +870,40 @@ export default class GeodeTheme extends BaseTheme {
         const lineCount = detail.lineCount ?? detail.count ?? detail.lines ?? 1;
 
         this.uniforms.pulseIntensity.value = Math.min(
-            this.uniforms.pulseIntensity.value + 0.3 * lineCount,
-            2.0
+            this.uniforms.pulseIntensity.value + 0.1 * lineCount,
+            0.6
         );
 
-        // Multiple sparkle bursts
-        const burstCount = Math.min(lineCount * 2 + 2, 8);
+        // Multiple sparkle bursts - reduced
+        const burstCount = Math.min(lineCount + 1, 4);
         for (let i = 0; i < burstCount; i++) {
             const position = new THREE.Vector3(
-                (Math.random() - 0.5) * 100,
-                (Math.random() - 0.5) * 100,
-                (Math.random() - 0.5) * 100
+                (Math.random() - 0.5) * 80,
+                (Math.random() - 0.5) * 80,
+                (Math.random() - 0.5) * 80
             );
-            this.createSparkleBurst(5 + lineCount, position);
+            this.createSparkleBurst(3 + lineCount, position);
         }
 
-        // Energy pulses
-        const pulseCount = Math.min(lineCount, 3);
+        // Energy pulses - reduced
+        const pulseCount = Math.min(lineCount, 2);
         for (let i = 0; i < pulseCount && this.energyPulses.length < this.activePreset.maxEnergyPulses; i++) {
             this.createEnergyPulse();
         }
 
-        // Flash crystals
-        const flashCount = Math.min(lineCount * 3, 10);
+        // Flash crystals - reduced intensity
+        const flashCount = Math.min(lineCount * 2, 6);
         for (let i = 0; i < flashCount && i < this.crystalClusters.length; i++) {
             const cluster = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
             cluster.children.forEach(crystal => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
-                    crystal.material.uniforms.uPulseIntensity.value = 0.8 + lineCount * 0.15;
+                    crystal.material.uniforms.uPulseIntensity.value = 0.4 + lineCount * 0.1;
                 }
             });
         }
 
         // Camera shake
-        this.cameraShake.intensity = Math.max(this.cameraShake.intensity, 1.5 + lineCount * 0.5);
+        this.cameraShake.intensity = Math.max(this.cameraShake.intensity, 0.5 + lineCount * 0.2);
     }
 
     onCombo(eventPayload) {
@@ -926,33 +916,33 @@ export default class GeodeTheme extends BaseTheme {
 
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
         this.uniforms.pulseIntensity.value = Math.min(
-            this.uniforms.pulseIntensity.value + 0.4 * comboCount,
-            2.0
+            this.uniforms.pulseIntensity.value + 0.2 * comboCount,
+            1.0
         );
 
-        // Camera shake scales with combo
+        // Camera shake scales with combo - reduced
         if (comboCount >= 3) {
             this.cameraShake.intensity = Math.max(
                 this.cameraShake.intensity,
-                2 + (comboCount - 3) * 0.6
+                1 + (comboCount - 3) * 0.3
             );
         }
 
         // Chromatic aberration at high combos
         if (this.activePreset.enableChromaticAberration && comboCount >= 7) {
-            this.chromaticAberration = Math.min(3 + (comboCount - 7) * 1, 8);
+            this.chromaticAberration = Math.min(2 + (comboCount - 7) * 0.5, 4);
         }
 
         // Big sparkle burst
         if (comboCount >= 2) {
-            this.createSparkleBurst(comboCount * 4, null, 1.5);
+            this.createSparkleBurst(comboCount * 2, null, 1.0);
         }
 
-        // All crystals pulse
+        // All crystals pulse - reduced
         this.crystalClusters.forEach(cluster => {
             cluster.children.forEach(crystal => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
-                    crystal.material.uniforms.uPulseIntensity.value = 1.2 + comboCount * 0.3;
+                    crystal.material.uniforms.uPulseIntensity.value = 0.5 + comboCount * 0.15;
                 }
             });
         });
