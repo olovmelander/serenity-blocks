@@ -545,6 +545,13 @@ export const sandSmokeVertexShader = `
         float currentCycle = floor(time / wormCycleTime);
         float wormHeadZ = mod(time * wormSpeed, wormCycleLength) - 1000.0;
         
+        // HORIZON FADE-IN: Prevent pop-in when resetting to -1000.0
+        float distFromStart = wormHeadZ - (-1000.0);
+        // Fade in extremely slowly over first 1200 units
+        float horizonFade = smoothstep(0.0, 1200.0, distFromStart);
+        horizonFade = pow(horizonFade, 5.0); // Power 5.0 for extremely subtle start 
+
+        
         float cycleHash = hash(vec2(currentCycle, 0.0));
         float cycleHash2 = hash(vec2(currentCycle, 1.0));
         float wormPathBaseX = (cycleHash - 0.5) * 200.0;
@@ -592,6 +599,7 @@ export const sandSmokeVertexShader = `
         }
         
         float wormVisibility = smokeZone * pathMask;
+        wormVisibility *= horizonFade; // Apply smooth entrance
         vWormIntensity = wormVisibility;
         
         // Billowing turbulence on worm trail
