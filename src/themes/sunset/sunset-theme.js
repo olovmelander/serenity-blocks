@@ -1,881 +1,1069 @@
-import { BaseTheme } from '../base-theme.js';
-import { SunsetSolarState } from './solar-state.js';
-import { PhaserSunEmitter } from './phaser-sun-emitter.js';
-import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
-import { eventBus, EVENTS } from '../../events/event-bus.js';
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  ✧ SUNSET THEME - Three.js 3D Edition ✧
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * A stunning 3D sunset/sunrise experience with:
+ * - Dynamic day-night cycle with magical golden hour colors
+ * - Glowing 3D sun with corona effects
+ * - Volumetric god rays
+ * - Twinkling starfield that appears at night
+ * - Floating ambient particles
+ * - Gentle camera drift
+ * - Lock piece and combo effects
+ */
 
-// REMOVED: DUST_STAGE_COLORS - Dust particles permanently removed for performance
+import * as THREE from 'three';
+import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
+import {
+    skyVertexShader,
+    skyFragmentShader,
+    sunVertexShader,
+    sunFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+    godRayVertexShader,
+    godRayFragmentShader,
+    particleVertexShader,
+    particleFragmentShader,
+    shockwaveVertexShader,
+    shockwaveFragmentShader,
+    flareVertexShader,
+    flareFragmentShader,
+    horizonVertexShader,
+    horizonFragmentShader,
+    moonVertexShader,
+    moonFragmentShader,
+} from './sunset-shaders.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUALITY_PRESETS = {
+    Extreme: {
+        starCount: 4000,
+        particleCount: 300,
+        godRaySegments: 64,
+        enablePostEffects: true,
+    },
+    Ultra: {
+        starCount: 3000,
+        particleCount: 200,
+        godRaySegments: 48,
+        enablePostEffects: true,
+    },
+    High: {
+        starCount: 2000,
+        particleCount: 150,
+        godRaySegments: 32,
+        enablePostEffects: true,
+    },
+    Medium: {
+        starCount: 1200,
+        particleCount: 100,
+        godRaySegments: 24,
+        enablePostEffects: true,
+    },
+    Low: {
+        starCount: 600,
+        particleCount: 50,
+        godRaySegments: 16,
+        enablePostEffects: false,
+    },
+    Minimal: {
+        starCount: 300,
+        particleCount: 25,
+        godRaySegments: 12,
+        enablePostEffects: false,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Color Palette - Warm sunset tones
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PALETTE = {
+    // Dawn colors (early morning)
+    dawn: {
+        top: new THREE.Color(0x1a1a3e),    // Deep purple-blue
+        mid: new THREE.Color(0xff6b8a),    // Rose pink
+        bottom: new THREE.Color(0xffb347), // Warm orange
+    },
+    // Day colors (midday)
+    day: {
+        top: new THREE.Color(0x87ceeb),    // Sky blue
+        mid: new THREE.Color(0xffecd2),    // Soft cream
+        bottom: new THREE.Color(0xffd89b), // Golden glow
+    },
+    // Sunset colors (golden hour)
+    sunset: {
+        top: new THREE.Color(0x2d1b4e),    // Deep purple
+        mid: new THREE.Color(0xff4500),    // Orange-red
+        bottom: new THREE.Color(0xffd700), // Golden yellow
+    },
+    // Night colors
+    night: {
+        top: new THREE.Color(0x0a0a1a),    // Deep night blue
+        mid: new THREE.Color(0x1a1a2e),    // Dark purple
+        bottom: new THREE.Color(0x2d1b4e), // Purple horizon
+    },
+    // Sun colors
+    sun: {
+        core: new THREE.Color(0xffffff),     // Bright white core
+        corona: new THREE.Color(0xffdd44),   // Golden corona
+        edge: new THREE.Color(0xff6b1a),     // Orange edge
+    },
+    // God ray color
+    godRays: new THREE.Color(0xffcc66),
+    // Particle colors (embers/dust)
+    particles: [
+        new THREE.Color(0xffd700), // Gold
+        new THREE.Color(0xff8c00), // Dark orange
+        new THREE.Color(0xff6b6b), // Soft red
+        new THREE.Color(0xffb347), // Light orange
+    ],
+    // Horizon
+    horizon: {
+        day: new THREE.Color(0x4a3728),   // Warm brown
+        night: new THREE.Color(0x1a1a2e), // Dark blue
+    },
+    // Moon colors for night
+    moon: {
+        core: new THREE.Color(0xf5f5dc),    // Beige/cream moon
+        glow: new THREE.Color(0xd4c4a8),    // Soft warm glow
+        halo: new THREE.Color(0x6b5b4f),    // Subtle outer halo
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default class SunsetTheme extends BaseTheme {
     constructor() {
         super('sunset');
-        this.solarState = null;
-        this.solarUnsubscribe = null;
-        this.sunEmitter = null;
-        if (this.themeContainerRef) {
-            this.themeContainerRef.classList.remove('sunset-night-only');
-        }
-        this.themeContainerRef = null;
-        this.lensStack = null;
-        this.godRayContainer = null;
-        this.dustContainerRef = null;
-        this.currentSolarStage = null;
-        this.globalFlareFactor = 1;
-        this.settingsListener = null;
-        this.dynamicElements = new Set();
-        // REMOVED: this.flockInstances - Birds permanently removed for performance
-        // REMOVED: this.pendingFlockTimeout - Birds permanently removed for performance
-        // REMOVED: this.shootingStarTimeout - Shooting stars permanently removed for performance
-        this.starContainerRef = null;
-        this.currentStarStage = null;
-        this.currentStarAlpha = 0;
-        // REMOVED: All canvas star properties - using simple CSS stars
-        this.performanceFlags = {
-            minimalAtmosphere: false,
-            solarSampleMs: 200, // Reduced from 100ms (5 FPS updates) - sufficient for slow sunset
-            solarThrottleMs: 200, // Match solar sample rate
-            godRayCount: 16, // Reduced from 24 to 16 for performance
-            sunFlareCount: 3, // Keep multiple sun flares
-            starCount: 150, // Reduced from 200 to 150
-            disablePhaserEmitter: false, // Keep Phaser sun particles
-            disableLensEffects: false, // Keep lens effects
-        };
-        this.lastSolarApply = 0;
         this.eventUnsubscribers = [];
-        this.currentComboLevel = 0;
-    }
 
-    stop() {
-        this.destroyDynamicSystems();
-        super.stop();
-    }
+        // Three.js core components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.clock = new THREE.Clock();
+        this.animationFrame = null;
 
-    cleanup() {
-        super.cleanup();
-    }
+        // Scene elements
+        this.sky = null;
+        this.sun = null;
+        this.sunGlowLayers = [];
+        this.godRays = null;
+        this.stars = null;
+        this.particles = null;
+        this.horizon = null;
+        this.moon = null;
+        this.moonGlowLayers = [];
 
-    destroyDynamicSystems() {
-        if (this.solarState) {
-            this.solarState.stop();
-            this.solarState = null;
-        }
-        if (this.solarUnsubscribe) {
-            this.solarUnsubscribe();
-            this.solarUnsubscribe = null;
-        }
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
-        if (this.sunEmitter) {
-            this.sunEmitter.destroy();
-            this.sunEmitter = null;
-        }
-        if (this.settingsListener && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.settingsListener);
-            this.settingsListener = null;
-        }
-        // REMOVED: pendingFlockTimeout cleanup - Birds permanently removed for performance
-        // REMOVED: shootingStarTimeout cleanup - Shooting stars permanently removed for performance
-        // REMOVED: flockInstances cleanup - Birds permanently removed for performance
-        this.dynamicElements.forEach((node) => {
-            if (node?.parentNode) node.parentNode.removeChild(node);
-        });
-        this.dynamicElements.clear();
-        this.themeContainerRef = null;
-        this.lensStack = null;
-        this.godRayContainer = null;
-        this.dustContainerRef = null;
-        this.currentSolarStage = null;
-        this.starContainerRef = null;
-        this.currentStarAlpha = 0;
-        // REMOVED: Canvas star cleanup - using simple CSS stars
-        this.lastSolarApply = 0;
-    }
+        // Effects
+        this.shockwaves = [];
+        this.solarFlares = [];
 
-    refreshGlobalFlareFactor() {
-        if (typeof window === 'undefined') return;
-        const root = document.documentElement;
-        const computed = getComputedStyle(root).getPropertyValue('--global-sunset-flare-strength');
-        const parsed = Number.parseFloat(computed) || 1;
-        this.globalFlareFactor = parsed;
-        if (this.themeContainerRef) {
-            const currentIntensity = Number.parseFloat(
-                this.themeContainerRef.style.getPropertyValue('--sunset-solar-intensity') || '0.65',
-            ) || 0.65;
-            const strength = parsed * (0.65 + currentIntensity * 0.5);
-            this.themeContainerRef.style.setProperty('--sunset-flare-strength', strength.toFixed(3));
-        }
-    }
+        // Moon position (opposite of sun)
+        this.moonPosition = new THREE.Vector3(0, -30, -50);
 
-    attachSettingsListener() {
-        if (this.settingsListener || typeof window === 'undefined') return;
-        this.settingsListener = (event) => {
-            if (event?.detail?.sunsetFlareIntensity !== undefined) {
-                this.refreshGlobalFlareFactor();
-            }
+        // Day-night cycle state
+        this.dayProgress = 0.55; // Start at golden hour (0.5-0.75 is sunset)
+        this.cycleSpeed = 0.005; // Full cycle takes ~200 seconds
+
+        // Camera animation
+        this.baseCameraPos = new THREE.Vector3(0, 0, 30);
+
+        // Shared uniforms
+        this.uniforms = {
+            time: { value: 0 },
+            dayProgress: { value: 0.55 },
+            sunIntensity: { value: 1.0 },
         };
-        window.addEventListener('settingsChanged', this.settingsListener);
+
+        // Sun position (moves based on day progress)
+        this.sunPosition = new THREE.Vector3(0, 5, -50);
+
+        // Quality settings
+        this.currentQuality = 'High';
+        this.activePreset = QUALITY_PRESETS.High;
+        this.qualityChangeHandler = null;
     }
 
-    ensureSunCore(sunElement) {
-        if (!sunElement) return null;
-        let host = sunElement.querySelector('.sunset-sun-core');
-        if (!host) {
-            host = document.createElement('div');
-            host.className = 'sunset-sun-core';
-            sunElement.appendChild(host);
-            this.dynamicElements.add(host);
-        }
-        return host;
-    }
-
-    ensureLensStack(sunElement) {
-        if (!sunElement) return null;
-        let stack = sunElement.querySelector('.sunset-lens-stack');
-        if (!stack) {
-            stack = document.createElement('div');
-            stack.className = 'sunset-lens-stack';
-
-            const halo = document.createElement('div');
-            halo.className = 'sunset-lens-halo';
-            const hex = document.createElement('div');
-            hex.className = 'sunset-lens-hex';
-            const streak = document.createElement('div');
-            streak.className = 'sunset-lens-streak';
-            const ghost = document.createElement('div');
-            ghost.className = 'sunset-lens-ghost';
-            const spikes = document.createElement('div');
-            spikes.className = 'sunset-lens-spikes';
-            const bokeh = document.createElement('div');
-            bokeh.className = 'sunset-lens-bokeh';
-
-            stack.append(ghost, halo, hex, streak, spikes, bokeh);
-            sunElement.appendChild(stack);
-            this.dynamicElements.add(stack);
-        }
-        return stack;
-    }
-
-    ensureSkyOverlays(skyElement) {
-        if (!skyElement) return;
-        if (!skyElement.querySelector('.sunset-solar-gradient')) {
-            const overlay = document.createElement('div');
-            overlay.className = 'sunset-solar-gradient';
-            skyElement.appendChild(overlay);
-            this.dynamicElements.add(overlay);
-        }
-        if (!skyElement.querySelector('.sunset-noise-layer')) {
-            const noise = document.createElement('div');
-            noise.className = 'sunset-noise-layer';
-            skyElement.appendChild(noise);
-            this.dynamicElements.add(noise);
-        }
-        this.ensureNightVeil(skyElement);
-        this.ensureCirrusLayer(skyElement);
-    }
-
-    ensureNightVeil(skyElement) {
-        if (!skyElement || skyElement.querySelector('.sunset-night-veil')) return;
-        const veil = document.createElement('div');
-        veil.className = 'sunset-night-veil';
-        skyElement.appendChild(veil);
-        this.dynamicElements.add(veil);
-    }
-
-    ensureCirrusLayer(skyElement) {
-        if (!skyElement || skyElement.querySelector('.sunset-cirrus-layer')) return;
-        const cirrus = document.createElement('div');
-        cirrus.className = 'sunset-cirrus-layer';
-        skyElement.appendChild(cirrus);
-        this.dynamicElements.add(cirrus);
-    }
-
-    applyMinimalPresentation() {
-        if (!this.themeContainerRef) return;
-        const minimal = !!this.performanceFlags?.minimalAtmosphere;
-        this.themeContainerRef.classList.toggle('sunset-minimal', minimal);
-        if (!minimal) {
-            this.themeContainerRef.classList.remove('sunset-night-only');
-            return;
-        }
-        // REMOVED: Cloud layers and dust particles permanently for performance
-        ['sunset-sunflares']
-            .forEach((id) => {
-                const el = document.getElementById(id);
-                this.clearElementChildren(el);
-            });
-        const godRays = this.themeContainerRef.querySelector('.sunset-god-rays');
-        this.clearElementChildren(godRays);
-        this.godRayContainer = null;
-        this.dustContainerRef = null;
-        const existingLens = this.themeContainerRef.querySelector('.sunset-lens-stack');
-        if (existingLens?.parentNode) {
-            existingLens.parentNode.removeChild(existingLens);
-        }
-        this.lensStack = null;
-    }
-
-    clearElementChildren(element) {
-        if (!element) return;
-        while (element.firstChild) {
-            element.removeChild(element.firstChild);
-        }
-    }
-
-    initializeSolarSystems(themeContainer, sunElement) {
-        if (!sunElement || !themeContainer) return;
-        if (!this.solarState) {
-            this.solarState = new SunsetSolarState({
-                sunElement,
-                themeContainer,
-                sampleInterval: this.performanceFlags.solarSampleMs || undefined,
-            });
-            this.solarUnsubscribe = this.solarState.onUpdate((state) => this.handleSolarUpdate(state));
-            this.solarState.start();
-        }
-        // EXTREME PERFORMANCE: Disable Phaser emitter completely
-        if (!this.sunEmitter && !this.performanceFlags.disablePhaserEmitter && !this.performanceFlags.minimalAtmosphere) {
-            const coreHost = this.ensureSunCore(sunElement);
-            this.sunEmitter = new PhaserSunEmitter(coreHost);
-            this.sunEmitter.init();
-        } else if (this.sunEmitter && (this.performanceFlags.minimalAtmosphere || this.performanceFlags.disablePhaserEmitter)) {
-            this.sunEmitter.destroy();
-            this.sunEmitter = null;
-        }
-    }
-
-    handleSolarUpdate(state) {
-        if (this.isStartOverlayActive()) {
-            return;
-        }
-        const solar = this.normalizeSolarState(state);
-        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const throttleWindow = this.performanceFlags.minimalAtmosphere
-            ? this.performanceFlags.solarThrottleMs
-            : 40;
-        if (
-            this.lastSolarApply
-            && this.currentSolarStage === solar.stage
-            && now - this.lastSolarApply < throttleWindow
-        ) {
-            return;
-        }
-        this.lastSolarApply = now;
-        const flicker = 0.92 + Math.sin(performance.now() / 700) * 0.08;
-        if (this.themeContainerRef) {
-            const intensitySlope = solar.stage === 'day' ? 0.35 : 0.55;
-            const baseline = solar.stage === 'day' ? 0.5 : 0.65;
-            const flareStrength = this.globalFlareFactor * (baseline + solar.intensity * intensitySlope);
-            this.themeContainerRef.style.setProperty('--sunset-ray-flicker', flicker.toFixed(3));
-            this.themeContainerRef.style.setProperty('--sunset-flare-strength', flareStrength.toFixed(3));
-        }
-        // REMOVED: updateGodRayDynamics(solar) - Using CSS variables directly
-        this.updateLensStack(solar);
-        this.updateStage(solar);
-        this.updateStarField(solar);
-        if (this.sunEmitter) {
-            this.sunEmitter.setSolarState(solar);
-        }
-    }
-
-    // REMOVED: updateGodRayDynamics() - God rays now use CSS variables from solar state directly
-
-    updateLensStack(state) {
-        if (!this.lensStack || this.performanceFlags.minimalAtmosphere) return;
-        this.lensStack.style.setProperty('--sunset-flare-alpha', (0.5 + state.intensity * 0.5).toFixed(3));
-        this.lensStack.style.setProperty('--sunset-flare-scale', (0.85 + state.altitude * 0.45).toFixed(3));
-        this.lensStack.style.setProperty('--sunset-flare-hue', `${state.hue.toFixed(1)}deg`);
-        const ghostScale = 1.05 + state.intensity * 0.55;
-        const ghostAlpha = 0.2 + state.intensity * 0.45;
-        const spikeAlpha = Math.max(0, state.altitude - 0.15) * 0.8 + 0.2;
-        const bokehAlpha = 0.25 + state.intensity * 0.35;
-        const bokehOffset = 30 + state.altitude * 50;
-        this.lensStack.style.setProperty('--sunset-ghost-scale', ghostScale.toFixed(3));
-        this.lensStack.style.setProperty('--sunset-ghost-alpha', Math.min(1, ghostAlpha).toFixed(3));
-        this.lensStack.style.setProperty('--sunset-spike-alpha', Math.min(1, spikeAlpha).toFixed(3));
-        this.lensStack.style.setProperty('--sunset-bokeh-alpha', Math.min(1, bokehAlpha).toFixed(3));
-        this.lensStack.style.setProperty('--sunset-bokeh-offset', `${bokehOffset.toFixed(1)}px`);
-    }
-
-    // REMOVED: updateMountainTint() - No longer needed as mountain-silhouette was removed for performance
-
-    updateStage(state) {
-        if (this.currentSolarStage === state.stage) return;
-        this.currentSolarStage = state.stage;
-        // REMOVED: tuneDustPalette() call - dust particles removed for performance
-        // REMOVED: updateStarBehavior() call - shooting stars removed for performance
-
-        // NIGHT-ONLY MODE: Hide heavy effects during night, show only stars
-        if (this.themeContainerRef) {
-            const isNight = state.stage === 'night';
-            this.themeContainerRef.classList.toggle('sunset-night-only', isNight);
-
-            // Hide/show heavy effects based on night stage
-            if (isNight) {
-                this.hideHeavyEffects();
-            } else {
-                this.showHeavyEffects();
-            }
-        }
-
-        // REMOVED: Bird flock spawning - permanently removed for performance
-    }
-
-    hideHeavyEffects() {
-        // PURE NIGHT MODE: Hide EVERYTHING except stars - clean starry sky only!
-
-        // REMOVED: Dust particles permanently removed for performance
-
-        // Hide god rays
-        if (this.godRayContainer) this.godRayContainer.style.display = 'none';
-
-        // REMOVED: Cloud layers permanently removed for performance
-
-        // Hide sun flares
-        const sunflares = document.getElementById('sunset-sunflares');
-        if (sunflares) sunflares.style.display = 'none';
-
-        // Hide the sun itself completely
-        const sun = this.themeContainerRef?.querySelector('.sun');
-        if (sun) sun.style.opacity = '0';
-
-        // Hide lens stack
-        if (this.lensStack) this.lensStack.style.display = 'none';
-
-        // Hide solar gradient overlay
-        const solarGradient = this.themeContainerRef?.querySelector('.sunset-solar-gradient');
-        if (solarGradient) solarGradient.style.opacity = '0';
-
-        // Hide noise layer
-        const noiseLayer = this.themeContainerRef?.querySelector('.sunset-noise-layer');
-        if (noiseLayer) noiseLayer.style.opacity = '0';
-
-        // Hide cirrus clouds
-        const cirrusLayer = this.themeContainerRef?.querySelector('.sunset-cirrus-layer');
-        if (cirrusLayer) cirrusLayer.style.opacity = '0';
-
-        // NOTE: mountain-silhouette removed permanently for performance
-
-        // Disable Phaser sun emitter
-        if (this.sunEmitter) {
-            this.sunEmitter.setSolarState({ intensity: 0, altitude: 0 });
-        }
-    }
-
-    showHeavyEffects() {
-        // Restore all elements when leaving night mode
-
-        // REMOVED: Dust particles permanently removed for performance
-
-        // Show god rays
-        if (this.godRayContainer) this.godRayContainer.style.display = '';
-
-        // REMOVED: Cloud layers permanently removed for performance
-
-        // Show sun flares
-        const sunflares = document.getElementById('sunset-sunflares');
-        if (sunflares) sunflares.style.display = '';
-
-        // Show the sun
-        const sun = this.themeContainerRef?.querySelector('.sun');
-        if (sun) sun.style.opacity = '';
-
-        // Show lens stack
-        if (this.lensStack) this.lensStack.style.display = '';
-
-        // Show solar gradient
-        const solarGradient = this.themeContainerRef?.querySelector('.sunset-solar-gradient');
-        if (solarGradient) solarGradient.style.opacity = '';
-
-        // Show noise layer
-        const noiseLayer = this.themeContainerRef?.querySelector('.sunset-noise-layer');
-        if (noiseLayer) noiseLayer.style.opacity = '';
-
-        // Show cirrus clouds
-        const cirrusLayer = this.themeContainerRef?.querySelector('.sunset-cirrus-layer');
-        if (cirrusLayer) cirrusLayer.style.opacity = '';
-
-        // NOTE: mountain-silhouette removed permanently for performance
-    }
-
-    // REMOVED: updateStarBehavior() - Shooting stars permanently removed for performance
-
-    updateStarField(state) {
-        if (!this.starContainerRef) {
-            this.starContainerRef = document.getElementById('sunset-stars');
-        }
-        const container = this.starContainerRef;
-        if (!container) return;
-
-        // EXTREME PERFORMANCE: Simplified star opacity calculation - use stage-based presets only
-        const stageOpacityMap = {
-            night: 0.95,
-            'golden-hour': 0.35,
-            dawn: 0.25,
-            day: 0.05,
-        };
-        const targetOpacity = stageOpacityMap[state.stage] ?? 0.05;
-
-        // Skip update if stage hasn't changed (most common case)
-        if (this.currentStarStage === state.stage) {
-            return;
-        }
-
-        this.currentStarAlpha = targetOpacity;
-        this.currentStarStage = state.stage;
-        container.dataset.starStage = state.stage;
-
-        // EXTREME PERFORMANCE: Only update star alpha, remove twinkle speed updates
-        if (this.themeContainerRef) {
-            this.themeContainerRef.style.setProperty('--sunset-star-alpha', targetOpacity.toFixed(2));
-        }
-    }
-
-    // REMOVED: tuneDustPalette() - Dust particles permanently removed for performance
-
-    // REMOVED: spawnBirdFlock() - Bird flocks permanently removed for performance
-
-    // REMOVED: scheduleShootingStar() - Shooting stars permanently removed for performance
-
-    // REMOVED: spawnShootingStar() - Shooting stars permanently removed for performance
-
-    async createScene() {
-        if (this.isStartOverlayActive()) {
-            if (!this.deferredSceneHandle) {
-                this.deferredSceneHandle = setTimeout(() => {
-                    this.deferredSceneHandle = null;
-                    this.createScene();
-                }, 500);
-            }
-            return;
-        }
-
-        const themeContainer = document.getElementById('sunset-theme');
-        if (!themeContainer) return;
-
-        this.themeContainerRef = themeContainer;
-
-        // EXTREME PERFORMANCE: Add CSS containment for better rendering performance
-        themeContainer.style.contain = 'layout style paint';
-        themeContainer.style.contentVisibility = 'auto';
-
-        this.applyMinimalPresentation();
-        this.refreshGlobalFlareFactor();
-        this.attachSettingsListener();
-
-        // Remove mountain-silhouette from DOM if it exists (permanently removed for performance)
-        const mountain = themeContainer.querySelector('.mountain-silhouette');
-        if (mountain && mountain.parentNode) {
-            mountain.parentNode.removeChild(mountain);
-        }
-
-        const sun = themeContainer.querySelector('.sun');
-        if (sun) {
-            this.ensureSunCore(sun);
-            // EXTREME PERFORMANCE: Check both minimalAtmosphere AND disableLensEffects flags
-            if (this.performanceFlags.minimalAtmosphere || this.performanceFlags.disableLensEffects) {
-                // Remove existing lens stack if it exists
-                const existingLens = sun.querySelector('.sunset-lens-stack');
-                if (existingLens && existingLens.parentNode) {
-                    existingLens.parentNode.removeChild(existingLens);
-                }
-                this.lensStack = null;
-            } else {
-                this.lensStack = this.ensureLensStack(sun);
-            }
-        }
-
-        const skyLayer = themeContainer.querySelector('.sun-and-sky');
-        this.ensureSkyOverlays(skyLayer);
-
-        this.initializeSolarSystems(themeContainer, sun);
-
-        if (!this.performanceFlags.minimalAtmosphere) {
-            // REMOVED: this.buildCloudLayers() - Permanently removed for performance
-            this.buildSunFlares();
-            this.buildGodRays();
-            // REMOVED: this.buildDustParticles() - Permanently removed for performance
-            // REMOVED: this.ensureBirds() - Permanently removed for performance
-        }
-        // REMOVED: this.buildMountainSilhouette() - Permanently removed for performance
-        this.ensureStars();
-        this.setupEventListeners();
-    }
-
-    setupEventListeners() {
-        // Listen for line clear events
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (this.isActive) {
-                this.onLineClear(data.lineCount);
-            }
-        });
-
-        // Listen for combo events
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (this.isActive) {
-                this.onCombo(data.comboCount);
-            }
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
-    }
-
-    /**
-     * React to line clears with subtle atmospheric shifts
-     */
-    onLineClear(lineCount) {
-        if (this.performanceFlags.minimalAtmosphere) return;
-
-        // 1. Gentle Sun Pulse
-        this.pulseSun(lineCount * 0.5);
-
-        // 2. Spawn Solar Embers (fewer for just lines)
-        if (lineCount >= 2) {
-            this.spawnSolarEmbers(lineCount * 3);
-        }
-
-        // 3. Horizon Glow for big clears
-        if (lineCount >= 4) {
-            this.triggerHorizonGlow(0.6);
-        }
-    }
-
-    /**
-     * React to combos with integrated theme effects
-     */
-    onCombo(comboCount) {
-        if (this.performanceFlags.minimalAtmosphere) return;
-
-        this.currentComboLevel = comboCount;
-
-        // 1. Intensify Sun Pulse
-        const pulseIntensity = Math.min(comboCount * 0.8, 4);
-        this.pulseSun(pulseIntensity);
-
-        // 2. Solar Embers rising from the horizon
-        const emberCount = Math.min(comboCount * 5, 30);
-        this.spawnSolarEmbers(emberCount);
-
-        // 3. God Ray Shimmer
-        this.shimmerGodRays(comboCount);
-
-        // 4. Horizon Glow
-        if (comboCount >= 3) {
-            this.triggerHorizonGlow(Math.min(0.3 + comboCount * 0.1, 0.8));
-        }
-    }
-
-    /**
-     * Make the sun pulse gently with warmth
-     */
-    pulseSun(intensity) {
-        const sun = this.themeContainerRef?.querySelector('.sun');
-        if (!sun) return;
-
-        // Don't interrupt if already animating intensely
-        if (sun.dataset.pulsing === 'true') return;
-
-        sun.dataset.pulsing = 'true';
-        const originalTransform = sun.style.transform || '';
-
-        // Gentle scale up
-        const scale = 1 + (intensity * 0.02); // Subtle scale
-        sun.style.transition = 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.4s ease-out';
-        sun.style.transform = `${originalTransform} scale(${scale})`;
-        sun.style.filter = `brightness(${1 + intensity * 0.1}) saturate(${1 + intensity * 0.05})`;
-
-        setTimeout(() => {
-            sun.style.transform = originalTransform;
-            sun.style.filter = '';
-            sun.dataset.pulsing = 'false';
-        }, 400);
-    }
-
-    /**
-     * Spawn rising glowing embers from the bottom
-     */
-    spawnSolarEmbers(count) {
-        const theme = this.themeContainerRef;
-        if (!theme) return;
-
-        for (let i = 0; i < count; i++) {
-            setTimeout(() => {
-                const ember = document.createElement('div');
-                ember.className = 'solar-ember';
-                ember.style.position = 'absolute';
-                const size = 2 + Math.random() * 4;
-                ember.style.width = `${size}px`;
-                ember.style.height = `${size}px`;
-                ember.style.borderRadius = '50%';
-
-                // Warm colors: Gold, Orange, Red
-                const colors = ['#ffd700', '#ff8c00', '#ff4500', '#ff6b6b'];
-                const color = colors[Math.floor(Math.random() * colors.length)];
-
-                ember.style.backgroundColor = color;
-                ember.style.boxShadow = `0 0 ${size * 2}px ${color}`;
-                ember.style.left = `${Math.random() * 100}%`;
-                ember.style.bottom = '-10px';
-                ember.style.opacity = '0';
-                ember.style.pointerEvents = 'none';
-                ember.style.zIndex = '10'; // In front of mountains/sky
-
-                // Physics-ish movement
-                const duration = 2 + Math.random() * 3;
-                ember.style.transition = `bottom ${duration}s ease-out, opacity ${duration * 0.2}s ease-in, transform ${duration}s linear`;
-
-                theme.appendChild(ember);
-
-                requestAnimationFrame(() => {
-                    ember.style.opacity = (0.6 + Math.random() * 0.4).toString();
-                    ember.style.bottom = `${20 + Math.random() * 40}%`; // Float up 20-60%
-                    const drift = (Math.random() - 0.5) * 100;
-                    ember.style.transform = `translateX(${drift}px) scale(0)`; // Shrink as they rise
-                });
-
-                setTimeout(() => {
-                    if (ember.parentNode) ember.parentNode.removeChild(ember);
-                }, duration * 1000);
-            }, i * 50);
-        }
-    }
-
-    /**
-     * Make god rays shimmer/brighten momentarily
-     */
-    shimmerGodRays(intensity) {
-        if (!this.godRayContainer) return;
-
-        const rays = Array.from(this.godRayContainer.children);
-        const raysToAffect = Math.min(rays.length, Math.ceil(intensity * 2));
-
-        // Shuffle array to pick random rays
-        const shuffled = rays.sort(() => 0.5 - Math.random());
-
-        for (let i = 0; i < raysToAffect; i++) {
-            const ray = shuffled[i];
-            const originalOpacity = ray.style.getPropertyValue('--ray-opacity');
-
-            ray.style.transition = 'opacity 0.5s ease-in-out';
-            // Boost opacity temporarily
-            ray.style.opacity = '0.8';
-
-            setTimeout(() => {
-                ray.style.opacity = ''; // Revert to CSS variable or default
-            }, 500 + Math.random() * 500);
-        }
-    }
-
-    /**
-     * Create a subtle horizon glow pulse
-     */
-    triggerHorizonGlow(opacity) {
-        const theme = this.themeContainerRef;
-        if (!theme) return;
-
-        let glow = theme.querySelector('.horizon-glow-effect');
-        if (!glow) {
-            glow = document.createElement('div');
-            glow.className = 'horizon-glow-effect';
-            glow.style.position = 'absolute';
-            glow.style.bottom = '0';
-            glow.style.left = '0';
-            glow.style.width = '100%';
-            glow.style.height = '40%';
-            glow.style.background = 'linear-gradient(to top, rgba(255, 200, 100, 0.4), transparent)';
-            glow.style.pointerEvents = 'none';
-            glow.style.zIndex = '5'; // Behind foreground elements if any
-            glow.style.opacity = '0';
-            glow.style.transition = 'opacity 0.5s ease-in-out';
-            theme.appendChild(glow);
-        }
-
-        requestAnimationFrame(() => {
-            glow.style.opacity = opacity.toString();
-            setTimeout(() => {
-                glow.style.opacity = '0';
-            }, 600);
-        });
-    }
-
-    // REMOVED: buildCloudLayers() - Cloud layers permanently removed for performance
-
-    // REMOVED: buildMountainSilhouette() - Permanently removed for performance optimization
-
-    buildSunFlares() {
-        if (this.performanceFlags.minimalAtmosphere) {
-            return;
-        }
-        const sunflareContainer = document.getElementById('sunset-sunflares');
-        if (sunflareContainer && sunflareContainer.children.length === 0) {
-            // EXTREME PERFORMANCE: Only 1 sun flare with simpler gradient (radial gradients are very expensive!)
-            const flareCount = this.performanceFlags.sunFlareCount || 3;
-            for (let i = 0; i < flareCount; i++) {
-                const flareEl = document.createElement('div');
-                flareEl.className = 'sunset-sunflare';
-
-                // Randomize size and position slightly
-                const size = 100 + Math.random() * 200;
-                flareEl.style.width = `${size}px`;
-                flareEl.style.height = `${size}px`;
-
-                // Varied gradients for better look
-                if (i === 0) {
-                    flareEl.style.background = 'radial-gradient(circle, rgba(255, 220, 150, 0.4) 0%, rgba(255, 180, 100, 0.1) 60%, transparent 70%)';
-                } else if (i === 1) {
-                    flareEl.style.background = 'radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 200, 150, 0.1) 50%, transparent 60%)';
-                    flareEl.style.marginLeft = `${(Math.random() - 0.5) * 50}px`;
-                    flareEl.style.marginTop = `${(Math.random() - 0.5) * 50}px`;
-                } else {
-                    flareEl.style.background = 'radial-gradient(circle, rgba(255, 150, 100, 0.2) 0%, transparent 60%)';
-                    flareEl.style.width = `${size * 1.5}px`;
-                    flareEl.style.height = `${size * 1.5}px`;
-                }
-
-                sunflareContainer.appendChild(flareEl);
-            }
-            this.registerContainer(sunflareContainer);
-        }
-    }
-
-    buildGodRays() {
-        if (this.performanceFlags.minimalAtmosphere) {
-            return;
-        }
-        const godRayContainer = document.querySelector('.sunset-god-rays');
-
-        // EXTREME PERFORMANCE: Check if god rays should be disabled (godRayCount: 0)
-        const rayCount = typeof this.performanceFlags.godRayCount === 'number'
-            ? this.performanceFlags.godRayCount
-            : 15;
-
-        // If rayCount is 0, clear any existing rays and skip creation
-        if (rayCount === 0) {
-            if (godRayContainer) {
-                this.clearElementChildren(godRayContainer);
-            }
-            this.godRayContainer = null;
-            return;
-        }
-
-        if (godRayContainer && godRayContainer.children.length === 0) {
-            const angleStep = 360 / rayCount;
-
-            for (let i = 0; i < rayCount; i++) {
-                const ray = document.createElement('div');
-                ray.className = 'sunset-god-ray';
-                const angle = i * angleStep + (Math.random() * 4 - 2);
-                const length = this.random(260, 360);
-                const width = this.random(2, 4.5);
-                const opacity = this.random(0.3, 0.55);
-
-                ray.style.setProperty('--ray-angle', `${angle}deg`);
-                ray.style.setProperty('--ray-length', `${length}px`);
-                ray.style.setProperty('--ray-width', `${width}px`);
-                ray.style.setProperty('--ray-opacity', opacity.toFixed(2));
-                ray.style.willChange = 'transform, opacity'; // GPU acceleration
-
-                godRayContainer.appendChild(ray);
-            }
-            this.registerContainer(godRayContainer);
-        }
-        this.godRayContainer = godRayContainer;
-    }
-
-    // REMOVED: buildDustParticles() - Dust particles permanently removed for performance
-
-    // REMOVED: ensureBirds() - Birds permanently removed for performance
-
-    ensureStars() {
-        // SIMPLIFIED: Clean star rendering like galaxy theme - no canvas, no noise, just pure CSS stars
-        let starsContainer = document.getElementById('sunset-stars');
-        const sunAndSky = this.themeContainerRef?.querySelector('.sun-and-sky');
-
-        if (!starsContainer) {
-            starsContainer = document.createElement('div');
-            starsContainer.id = 'sunset-stars';
-            starsContainer.className = 'sunset-stars';
-            if (sunAndSky) {
-                // Insert before sun if possible, or just append (z-index will handle it)
-                sunAndSky.insertBefore(starsContainer, sunAndSky.firstChild);
-            } else {
-                (this.themeContainerRef || document.getElementById('sunset-theme') || document.body)
-                    .appendChild(starsContainer);
-            }
-        } else if (sunAndSky && starsContainer.parentNode !== sunAndSky) {
-            // Move into sun-and-sky if not already there
-            sunAndSky.insertBefore(starsContainer, sunAndSky.firstChild);
-        }
-
-        // ULTRA PERFORMANCE: Reduced star count for better performance
-        if (!starsContainer.querySelector('.sunset-star')) {
-            const fragment = document.createDocumentFragment();
-            const starCount = this.performanceFlags.starCount || 100; // Reduced to 100 stars
-            for (let i = 0; i < starCount; i++) {
-                const star = document.createElement('div');
-                star.className = 'sunset-star';
-                const size = Math.random() * 2 + 0.5; // Simple size like galaxy theme
-                star.style.width = `${size}px`;
-                star.style.height = `${size}px`;
-                star.style.left = `${Math.random() * 100}%`;
-                star.style.top = `${Math.random() * 100}%`;
-                star.style.animationDelay = `${Math.random() * 3}s`;
-                fragment.appendChild(star);
-            }
-            starsContainer.appendChild(fragment);
-        }
-
-        this.starContainerRef = starsContainer;
-    }
-
-    // REMOVED: All canvas star rendering methods - using simple CSS stars like galaxy theme
-    // - ensureStarCanvas()
-    // - createStarParticles()
-    // - resizeStarCanvas()
-    // - startStarfieldAnimation()
-    // - stopStarfieldAnimation()
-    // - updateStarfieldAnimationState()
-    // - renderStarField()
-    // - teardownStarCanvas()
-
-    normalizeSolarState(state = {}) {
-        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-        const safeNumber = (value, fallback) => (Number.isFinite(value) ? value : fallback);
-        const altitude = clamp(safeNumber(state.altitude, 0.5), 0, 1);
-        const intensity = clamp(safeNumber(state.intensity, 0.65), 0, 1.2);
-        const hue = safeNumber(state.hue, 32);
-        const normalizedX = clamp(safeNumber(state.normalizedX, 0.5), 0, 1);
-        const normalizedY = clamp(safeNumber(state.normalizedY, 0.5), 0, 1);
-        const stage = typeof state.stage === 'string' ? state.stage : 'day';
-        return {
-            ...state,
-            altitude,
-            intensity,
-            hue,
-            normalizedX,
-            normalizedY,
-            stage,
-        };
-    }
-
-    isStartOverlayActive() {
-        if (typeof document === 'undefined') return false;
-        const { body } = document;
-        if (!body) return false;
-        const startModal = document.getElementById('start-modal');
-        const modalVisible = !!(startModal && !startModal.classList.contains('hidden') && startModal.offsetParent !== null);
-        return (
-            body.classList.contains('intro-active')
-            || body.classList.contains('start-modal-open')
-            || body.dataset?.uiState === 'intro'
-            || modalVisible
-        );
-    }
-
-    /**
-     * Provide Sunset themed tetromino styling (warm golden hour radiance)
-     * @returns {Object} Sunset tetromino configuration
-     */
     getTetrominoConfig() {
         return SUNSET_TETROMINOS;
+    }
+
+    getCurrentQualityLevel() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        return settings?.effectQuality || 'High';
+    }
+
+    applyQualityPreset(quality) {
+        if (!QUALITY_PRESETS[quality]) quality = 'High';
+        this.currentQuality = quality;
+        this.activePreset = QUALITY_PRESETS[quality];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scene Creation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async createScene() {
+        console.log('[Sunset3D] Initializing Three.js scene...');
+
+        const container = document.getElementById('sunset-theme');
+        if (!container) {
+            console.error('[Sunset3D] Container not found');
+            return;
+        }
+
+        // Clear any existing content
+        container.innerHTML = '';
+
+        // Apply quality settings
+        const quality = this.getCurrentQualityLevel();
+        this.applyQualityPreset(quality);
+        this.setupQualityListener();
+
+        // Initialize renderer
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,
+            powerPreference: 'high-performance',
+        });
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setClearColor(0x000000, 0);
+        container.appendChild(this.renderer.domElement);
+
+        // Setup scene
+        this.scene = new THREE.Scene();
+
+        // Setup camera
+        this.camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            2000
+        );
+        this.camera.position.copy(this.baseCameraPos);
+        this.camera.lookAt(0, 0, 0);
+
+        // Main group for drifting elements
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        // Create all scene elements
+        this.createSky();
+        this.createSun();
+        this.createGodRays();
+        this.createMoon();  // Beautiful moon for night
+        this.createStars();
+        this.createParticles();
+        this.createHorizon();
+        this.setupLighting();
+
+        // Event listeners
+        this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // Start animation
+        this.clock.start();
+        this.animate();
+
+        console.log('[Sunset3D] Scene initialized with', this.currentQuality, 'quality');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sky Dome
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSky() {
+        const geometry = new THREE.SphereGeometry(500, 32, 32);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uDayProgress: this.uniforms.dayProgress,
+                uSunPosition: { value: this.sunPosition },
+            },
+            vertexShader: skyVertexShader,
+            fragmentShader: skyFragmentShader,
+            side: THREE.BackSide,
+            depthWrite: false,
+        });
+
+        this.sky = new THREE.Mesh(geometry, material);
+        this.scene.add(this.sky);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sun with Glow Layers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSun() {
+        // Main sun sphere
+        const sunGeometry = new THREE.SphereGeometry(8, 32, 32);
+        const sunMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uIntensity: this.uniforms.sunIntensity,
+                uCoreColor: { value: PALETTE.sun.core },
+                uCoronaColor: { value: PALETTE.sun.corona },
+                uEdgeColor: { value: PALETTE.sun.edge },
+            },
+            vertexShader: sunVertexShader,
+            fragmentShader: sunFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        this.sun.position.copy(this.sunPosition);
+        this.mainGroup.add(this.sun);
+
+        // Add glow layers (sprites)
+        const glowTexture = this.createGlowTexture();
+        const glowLayers = [
+            { scale: 30, opacity: 0.6, color: PALETTE.sun.corona },
+            { scale: 50, opacity: 0.35, color: PALETTE.sun.edge },
+            { scale: 80, opacity: 0.15, color: new THREE.Color(0xff6600) },
+        ];
+
+        glowLayers.forEach((layer) => {
+            const spriteMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: layer.color,
+                transparent: true,
+                opacity: layer.opacity,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(layer.scale, layer.scale, 1);
+            sprite.position.copy(this.sunPosition);
+            this.mainGroup.add(sprite);
+            this.sunGlowLayers.push(sprite);
+        });
+    }
+
+    createGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // God Rays
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createGodRays() {
+        const geometry = new THREE.PlaneGeometry(60, 60, 1, 1);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uIntensity: this.uniforms.sunIntensity,
+                uColor: { value: PALETTE.godRays },
+            },
+            vertexShader: godRayVertexShader,
+            fragmentShader: godRayFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        this.godRays = new THREE.Mesh(geometry, material);
+        this.godRays.position.copy(this.sunPosition);
+        this.godRays.position.z += 1; // Slightly in front of sun
+        this.mainGroup.add(this.godRays);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Starfield
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createStars() {
+        const count = this.activePreset.starCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        // Star colors - whites, pale blues, pale yellows
+        const starColors = [
+            new THREE.Color(0xffffff),
+            new THREE.Color(0xffeedd),
+            new THREE.Color(0xddddff),
+            new THREE.Color(0xffffee),
+        ];
+
+        for (let i = 0; i < count; i++) {
+            // Spread stars on a hemisphere above
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(Math.random() * 0.8); // Upper portion
+            const radius = 300 + Math.random() * 100;
+
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.cos(phi) + 50; // Bias upward
+            positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+
+            sizes[i] = 0.5 + Math.random() * 2.0;
+            phases[i] = Math.random() * Math.PI * 2;
+
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uDayProgress: this.uniforms.dayProgress,
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.stars = new THREE.Points(geometry, material);
+        this.scene.add(this.stars); // Stars in background scene
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ambient Particles (dust motes, embers)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createParticles() {
+        const count = this.activePreset.particleCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        for (let i = 0; i < count; i++) {
+            // Spread particles in view
+            positions[i * 3] = (Math.random() - 0.5) * 80;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 60;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 60 - 10;
+
+            sizes[i] = 1 + Math.random() * 3;
+            phases[i] = Math.random();
+
+            const color = PALETTE.particles[Math.floor(Math.random() * PALETTE.particles.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+            },
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.particles);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Horizon
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createHorizon() {
+        const geometry = new THREE.PlaneGeometry(400, 100, 1, 1);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uDayProgress: this.uniforms.dayProgress,
+                uDayColor: { value: PALETTE.horizon.day },
+                uNightColor: { value: PALETTE.horizon.night },
+            },
+            vertexShader: horizonVertexShader,
+            fragmentShader: horizonFragmentShader,
+            transparent: true,
+            depthWrite: false,
+        });
+
+        this.horizon = new THREE.Mesh(geometry, material);
+        this.horizon.position.set(0, -30, -80);
+        this.horizon.rotation.x = -0.1;
+        this.mainGroup.add(this.horizon);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Moon - Beautiful glowing moon for night
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createMoon() {
+        // Create moon sphere with crater shader
+        const moonGeometry = new THREE.SphereGeometry(8, 48, 48);
+        const moonMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uOpacity: { value: 0 },  // Start hidden, fade in at night
+            },
+            vertexShader: moonVertexShader,
+            fragmentShader: moonFragmentShader,
+            transparent: true,
+            depthWrite: false,
+        });
+
+        this.moon = new THREE.Mesh(moonGeometry, moonMaterial);
+        this.moon.position.copy(this.moonPosition);
+        this.mainGroup.add(this.moon);
+
+        // Create glow layers for moon
+        const glowTexture = this.createMoonGlowTexture();
+        const glowLayers = [
+            { scale: 22, opacity: 0.4, color: PALETTE.moon.core },
+            { scale: 38, opacity: 0.2, color: PALETTE.moon.glow },
+            { scale: 60, opacity: 0.08, color: PALETTE.moon.halo },
+        ];
+
+        glowLayers.forEach((layer, index) => {
+            const spriteMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: layer.color,
+                transparent: true,
+                opacity: 0,  // Start hidden
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(layer.scale, layer.scale, 1);
+            sprite.position.copy(this.moonPosition);
+            sprite.userData = { baseOpacity: layer.opacity, index };
+            this.mainGroup.add(sprite);
+            this.moonGlowLayers.push(sprite);
+        });
+    }
+
+    createMoonGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(245, 245, 220, 1)');    // Beige center
+        gradient.addColorStop(0.3, 'rgba(212, 196, 168, 0.6)'); // Soft glow
+        gradient.addColorStop(0.6, 'rgba(107, 91, 79, 0.2)');   // Subtle halo
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lighting
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupLighting() {
+        // Warm ambient light
+        const ambient = new THREE.AmbientLight(0xffd89b, 0.3);
+        this.scene.add(ambient);
+
+        // Sun directional light
+        const sunLight = new THREE.DirectionalLight(0xffcc66, 0.8);
+        sunLight.position.copy(this.sunPosition);
+        this.scene.add(sunLight);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation Loop
+    // ─────────────────────────────────────────────────────────────────────────
+
+    animate() {
+        if (!this.isActive) return;
+
+        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+
+        const delta = this.clock.getDelta();
+        const elapsed = this.clock.getElapsedTime();
+
+        // Update uniforms
+        this.uniforms.time.value = elapsed;
+
+        // Progress day-night cycle
+        this.dayProgress = (this.dayProgress + this.cycleSpeed * delta) % 1.0;
+        this.uniforms.dayProgress.value = this.dayProgress;
+
+        // Update sun position based on day progress
+        this.updateSunPosition();
+
+        // Decay sun intensity back to normal
+        if (this.uniforms.sunIntensity.value > 1.0) {
+            this.uniforms.sunIntensity.value = THREE.MathUtils.lerp(
+                this.uniforms.sunIntensity.value,
+                1.0,
+                delta * 2.0
+            );
+        }
+
+        // Camera drift
+        this.updateCameraDrift(elapsed);
+
+        // Update effects
+        this.updateShockwaves(delta);
+        this.updateSolarFlares(delta);
+
+        // Rotate stars slowly
+        if (this.stars) {
+            this.stars.rotation.y = elapsed * 0.005;
+        }
+
+        // Render
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    updateSunPosition() {
+        // Sun traces a proper arc across the sky and below the horizon
+        // The arc goes from east (dawn) to west (sunset) and dips below at night
+        // dayProgress: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset, 1 = midnight
+
+        const angle = this.dayProgress * Math.PI * 2 - Math.PI * 0.5;
+        const x = Math.cos(angle) * 50;  // Horizontal sweep
+
+        // Y position: peaks at noon (dayProgress=0.5), dips far below at night
+        // Using sin of angle gives us: -1 at midnight, +1 at noon
+        // Scale and offset so: noon = +30, midnight = -60 (well below horizon at -30)
+        const y = Math.sin(angle) * 45 - 10;
+
+        this.sunPosition.set(x, y, -50);
+
+        // Update sun mesh and glow layers
+        if (this.sun) {
+            this.sun.position.copy(this.sunPosition);
+        }
+        this.sunGlowLayers.forEach((sprite) => {
+            sprite.position.copy(this.sunPosition);
+        });
+        if (this.godRays) {
+            this.godRays.position.copy(this.sunPosition);
+            this.godRays.position.z += 1;
+        }
+
+        // Update sky shader uniform
+        if (this.sky?.material?.uniforms?.uSunPosition) {
+            this.sky.material.uniforms.uSunPosition.value.copy(this.sunPosition);
+        }
+
+        // Calculate sun visibility - fades as it approaches horizon
+        // Horizon is around Y = -30, fade starts at Y = 0
+        const sunVisibility = THREE.MathUtils.clamp((y + 30) / 40, 0, 1);
+
+        if (this.sun) {
+            this.sun.material.opacity = sunVisibility;
+            this.sun.visible = sunVisibility > 0.01;
+        }
+        this.sunGlowLayers.forEach((sprite) => {
+            const baseOpacity = sprite.userData?.baseOpacity || 0.5;
+            sprite.material.opacity = baseOpacity * sunVisibility;
+        });
+        if (this.godRays) {
+            this.godRays.material.uniforms.uIntensity.value = sunVisibility;
+            this.godRays.visible = sunVisibility > 0.05;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Moon - rises from bottom during deep night
+        // Moon appears later than sun disappears, peaking around midnight
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Moon angle: offset so it peaks at midnight (dayProgress = 0 or 1)
+        // When dayProgress = 0 (midnight), moonAngle should give max Y
+        const moonAngle = (this.dayProgress + 0.5) * Math.PI * 2 - Math.PI * 0.5;
+        const moonX = Math.cos(moonAngle) * 35;
+
+        // Moon Y: starts much lower (-80), peaks at +25 around midnight
+        // This makes the moon rise from below the screen
+        const moonY = Math.sin(moonAngle) * 50 - 25;
+
+        this.moonPosition.set(moonX, moonY, -70);
+
+        // Moon visibility - only visible when above horizon AND sun is down
+        // Horizon is around Y = -30
+        const moonAboveHorizon = THREE.MathUtils.clamp((moonY + 35) / 50, 0, 1);
+        const sunDown = 1 - sunVisibility;
+        const moonVisibility = sunDown * moonAboveHorizon;
+
+        if (this.moon) {
+            this.moon.position.copy(this.moonPosition);
+            // Update shader uniform for opacity
+            if (this.moon.material.uniforms?.uOpacity) {
+                this.moon.material.uniforms.uOpacity.value = moonVisibility * 0.95;
+            }
+            this.moon.visible = moonVisibility > 0.01;
+        }
+        this.moonGlowLayers.forEach((sprite) => {
+            sprite.position.copy(this.moonPosition);
+            const baseOpacity = sprite.userData?.baseOpacity || 0.3;
+            sprite.material.opacity = baseOpacity * moonVisibility;
+        });
+    }
+
+    updateCameraDrift(elapsed) {
+        if (!this.camera) return;
+
+        const driftTime = elapsed * 0.1;
+
+        this.camera.position.x = this.baseCameraPos.x + Math.sin(driftTime) * 2.0;
+        this.camera.position.y = this.baseCameraPos.y + Math.cos(driftTime * 0.7) * 1.5;
+        this.camera.position.z = this.baseCameraPos.z + Math.sin(driftTime * 0.5) * 1.0;
+
+        // Subtle look-at variation
+        const lookX = Math.sin(driftTime * 0.8) * 1.5;
+        const lookY = Math.cos(driftTime * 0.5) * 1.0;
+        this.camera.lookAt(lookX, lookY, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Effects: Shockwaves (Combo)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createShockwave(intensity) {
+        const geometry = new THREE.RingGeometry(5, 6, 32);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uOpacity: { value: 1.0 },
+                uColor: { value: PALETTE.godRays },
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        const wave = new THREE.Mesh(geometry, material);
+        wave.position.copy(this.sunPosition);
+        wave.position.z += 5;
+        wave.rotation.x = Math.random() * 0.3;
+        wave.rotation.y = Math.random() * 0.3;
+
+        wave.userData = {
+            speed: 15 + intensity * 5,
+            life: 1.0,
+            maxLife: 1.0,
+        };
+
+        this.mainGroup.add(wave);
+        this.shockwaves.push(wave);
+    }
+
+    updateShockwaves(delta) {
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+            const wave = this.shockwaves[i];
+            wave.userData.life -= delta;
+
+            // Expand
+            const expansion = wave.userData.speed * delta;
+            wave.scale.x += expansion;
+            wave.scale.y += expansion;
+
+            // Fade
+            wave.material.uniforms.uOpacity.value = wave.userData.life / wave.userData.maxLife;
+
+            if (wave.userData.life <= 0) {
+                this.mainGroup.remove(wave);
+                wave.geometry.dispose();
+                wave.material.dispose();
+                this.shockwaves.splice(i, 1);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Effects: Solar Flares (Piece Lock)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSolarFlare() {
+        const particleCount = 30;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+        const phases = new Float32Array(particleCount);
+
+        const angle = Math.random() * Math.PI * 2;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+
+        for (let i = 0; i < particleCount; i++) {
+            // Start at sun position
+            positions[i * 3] = this.sunPosition.x + (Math.random() - 0.5) * 4;
+            positions[i * 3 + 1] = this.sunPosition.y + (Math.random() - 0.5) * 4;
+            positions[i * 3 + 2] = this.sunPosition.z + 5;
+
+            phases[i] = Math.random();
+
+            const speed = 10 + Math.random() * 15;
+            const spread = 0.5;
+            velocities.push({
+                x: dirX * speed + (Math.random() - 0.5) * spread * speed,
+                y: dirY * speed + (Math.random() - 0.5) * spread * speed,
+                z: (Math.random() - 0.5) * 5,
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+        const material = new THREE.PointsMaterial({
+            color: PALETTE.particles[0],
+            size: 3,
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const flare = new THREE.Points(geometry, material);
+        flare.userData = {
+            velocities,
+            life: 0.8,
+            maxLife: 0.8,
+        };
+
+        this.mainGroup.add(flare);
+        this.solarFlares.push(flare);
+    }
+
+    updateSolarFlares(delta) {
+        for (let i = this.solarFlares.length - 1; i >= 0; i--) {
+            const flare = this.solarFlares[i];
+            flare.userData.life -= delta;
+
+            const positions = flare.geometry.attributes.position.array;
+            const velocities = flare.userData.velocities;
+
+            for (let j = 0; j < velocities.length; j++) {
+                positions[j * 3] += velocities[j].x * delta;
+                positions[j * 3 + 1] += velocities[j].y * delta;
+                positions[j * 3 + 2] += velocities[j].z * delta;
+            }
+            flare.geometry.attributes.position.needsUpdate = true;
+
+            // Fade
+            flare.material.opacity = flare.userData.life / flare.userData.maxLife;
+
+            if (flare.userData.life <= 0) {
+                this.mainGroup.remove(flare);
+                flare.geometry.dispose();
+                flare.material.dispose();
+                this.solarFlares.splice(i, 1);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Event Listeners
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupEventListeners() {
+        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (!this.isActive) return;
+            this.onLineClear(data.lineCount);
+        });
+
+        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (!this.isActive) return;
+            this.onCombo(data.comboCount);
+        });
+
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            if (!this.isActive) return;
+            this.onPieceLock();
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    }
+
+    onLineClear(lineCount) {
+        // Boost sun intensity
+        this.uniforms.sunIntensity.value += lineCount * 0.3;
+
+        // Create shockwave for multi-line clears
+        if (lineCount >= 2) {
+            this.createShockwave(lineCount);
+        }
+    }
+
+    onCombo(comboCount) {
+        if (comboCount >= 2) {
+            this.uniforms.sunIntensity.value += 0.2;
+            this.createShockwave(comboCount * 0.5);
+        }
+    }
+
+    onPieceLock() {
+        // Small sun pulse
+        this.uniforms.sunIntensity.value += 0.1;
+        // Solar flare burst
+        this.createSolarFlare();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Quality & Resize
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupQualityListener() {
+        this.teardownQualityListener();
+        this.qualityChangeHandler = (event) => {
+            const newQuality = event.detail?.effectQuality;
+            if (newQuality && newQuality !== this.currentQuality) {
+                this.applyQualityPreset(newQuality);
+            }
+        };
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    teardownQualityListener() {
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
+        }
+    }
+
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Cleanup
+    // ─────────────────────────────────────────────────────────────────────────
+
+    stop() {
+        super.stop();
+
+        this.teardownQualityListener();
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
+
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+
+        // Unsubscribe event listeners
+        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers = [];
+
+        // Dispose shockwaves
+        this.shockwaves.forEach((wave) => {
+            this.mainGroup?.remove(wave);
+            wave.geometry?.dispose();
+            wave.material?.dispose();
+        });
+        this.shockwaves = [];
+
+        // Dispose solar flares
+        this.solarFlares.forEach((flare) => {
+            this.mainGroup?.remove(flare);
+            flare.geometry?.dispose();
+            flare.material?.dispose();
+        });
+        this.solarFlares = [];
+
+        // Dispose sun glow layers
+        this.sunGlowLayers.forEach((sprite) => {
+            this.mainGroup?.remove(sprite);
+            sprite.material?.dispose();
+        });
+        this.sunGlowLayers = [];
+
+        // Dispose moon glow layers
+        this.moonGlowLayers.forEach((sprite) => {
+            this.mainGroup?.remove(sprite);
+            sprite.material?.dispose();
+        });
+        this.moonGlowLayers = [];
+
+        // Dispose renderer
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('sunset-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
+        }
+
+        // Dispose all scene objects
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach((m) => m.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+        }
+
+        // Null references
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.mainGroup = null;
+        this.sky = null;
+        this.sun = null;
+        this.moon = null;
+        this.godRays = null;
+        this.stars = null;
+        this.particles = null;
+        this.horizon = null;
+
+        console.log('[Sunset3D] Theme stopped and cleaned up');
     }
 }
