@@ -168,7 +168,7 @@ export default class SunsetTheme extends BaseTheme {
 
         // Effects
         this.shockwaves = [];
-        this.solarFlares = [];
+        this.celestialFlares = [];
 
         // Moon position (opposite of sun)
         this.moonPosition = new THREE.Vector3(0, -30, -50);
@@ -649,7 +649,7 @@ export default class SunsetTheme extends BaseTheme {
 
         // Update effects
         this.updateShockwaves(delta);
-        this.updateSolarFlares(delta);
+        this.updateCelestialFlares(delta);
 
         // Rotate stars slowly
         if (this.stars) {
@@ -749,29 +749,49 @@ export default class SunsetTheme extends BaseTheme {
     updateCameraDrift(elapsed) {
         if (!this.camera) return;
 
-        const driftTime = elapsed * 0.1;
+        // "Smart" organic floating motion using Sum of Sines
+        // Combines multiple non-harmonic frequencies to avoid obvious repetition
+        const t = elapsed * 0.15; // Global speed factor
 
-        this.camera.position.x = this.baseCameraPos.x + Math.sin(driftTime) * 2.0;
-        this.camera.position.y = this.baseCameraPos.y + Math.cos(driftTime * 0.7) * 1.5;
-        this.camera.position.z = this.baseCameraPos.z + Math.sin(driftTime * 0.5) * 1.0;
+        // X Axis: Wide gentle drift + subtle variation
+        const floatX =
+            Math.sin(t * 1.0) * 1.5 +      // Primary sway (was 2.5)
+            Math.cos(t * 0.42) * 0.8 +     // Secondary drift (was 1.5)
+            Math.sin(t * 2.3) * 0.2;       // Subtle jitter (was 0.3)
 
-        // Subtle look-at variation
-        const lookX = Math.sin(driftTime * 0.8) * 1.5;
-        const lookY = Math.cos(driftTime * 0.5) * 1.0;
-        this.camera.lookAt(lookX, lookY, 0);
+        // Y Axis: Breathing vertical motion
+        const floatY =
+            Math.cos(t * 0.85) * 0.8 +     // Primary breathe (was 1.5)
+            Math.sin(t * 0.31) * 0.5 +     // Secondary drift (was 1.0)
+            Math.cos(t * 1.7) * 0.1;       // Subtle bob (was 0.2)
+
+        // Z Axis: Depth breathing
+        const floatZ =
+            Math.sin(t * 0.55) * 0.8 +     // Primary push/pull (was 1.5)
+            Math.cos(t * 1.3) * 0.3;       // Secondary variation (was 0.5)
+
+        this.camera.position.x = this.baseCameraPos.x + floatX;
+        this.camera.position.y = this.baseCameraPos.y + floatY;
+        this.camera.position.z = this.baseCameraPos.z + floatZ;
+
+        // Smart LookAt: Target moves slightly out of phase to create "stabilized" feel
+        const targetX = Math.sin(t * 0.7 + 1.0) * 1.5 + Math.cos(t * 0.2) * 1.0;
+        const targetY = Math.cos(t * 0.6 + 0.5) * 1.0 + Math.sin(t * 0.3) * 0.8;
+
+        this.camera.lookAt(targetX, targetY, 0);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Effects: Shockwaves (Combo)
     // ─────────────────────────────────────────────────────────────────────────
 
-    createShockwave(intensity) {
-        const geometry = new THREE.RingGeometry(5, 6, 32);
+    createShockwave(intensity, position = this.sunPosition, color = PALETTE.particles[0]) {
+        const geometry = new THREE.RingGeometry(0.5, 1.0, 32);
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
                 uOpacity: { value: 1.0 },
-                uColor: { value: PALETTE.godRays },
+                uColor: { value: new THREE.Color(color) },
             },
             vertexShader: shockwaveVertexShader,
             fragmentShader: shockwaveFragmentShader,
@@ -782,7 +802,7 @@ export default class SunsetTheme extends BaseTheme {
         });
 
         const wave = new THREE.Mesh(geometry, material);
-        wave.position.copy(this.sunPosition);
+        wave.position.copy(position);
         wave.position.z += 5;
         wave.rotation.x = Math.random() * 0.3;
         wave.rotation.y = Math.random() * 0.3;
@@ -820,10 +840,10 @@ export default class SunsetTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Effects: Solar Flares (Piece Lock)
+    // Effects: Celestial Flares (Piece Lock)
     // ─────────────────────────────────────────────────────────────────────────
 
-    createSolarFlare() {
+    createCelestialFlare(position = this.sunPosition, color = PALETTE.particles[0]) {
         const particleCount = 30;
         const geometry = new THREE.BufferGeometry();
 
@@ -836,10 +856,10 @@ export default class SunsetTheme extends BaseTheme {
         const dirY = Math.sin(angle);
 
         for (let i = 0; i < particleCount; i++) {
-            // Start at sun position
-            positions[i * 3] = this.sunPosition.x + (Math.random() - 0.5) * 4;
-            positions[i * 3 + 1] = this.sunPosition.y + (Math.random() - 0.5) * 4;
-            positions[i * 3 + 2] = this.sunPosition.z + 5;
+            // Start at source position
+            positions[i * 3] = position.x + (Math.random() - 0.5) * 4;
+            positions[i * 3 + 1] = position.y + (Math.random() - 0.5) * 4;
+            positions[i * 3 + 2] = position.z + 5;
 
             phases[i] = Math.random();
 
@@ -856,7 +876,7 @@ export default class SunsetTheme extends BaseTheme {
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
 
         const material = new THREE.PointsMaterial({
-            color: PALETTE.particles[0],
+            color: new THREE.Color(color),
             size: 3,
             transparent: true,
             opacity: 1.0,
@@ -872,12 +892,12 @@ export default class SunsetTheme extends BaseTheme {
         };
 
         this.mainGroup.add(flare);
-        this.solarFlares.push(flare);
+        this.celestialFlares.push(flare);
     }
 
-    updateSolarFlares(delta) {
-        for (let i = this.solarFlares.length - 1; i >= 0; i--) {
-            const flare = this.solarFlares[i];
+    updateCelestialFlares(delta) {
+        for (let i = this.celestialFlares.length - 1; i >= 0; i--) {
+            const flare = this.celestialFlares[i];
             flare.userData.life -= delta;
 
             const positions = flare.geometry.attributes.position.array;
@@ -897,7 +917,7 @@ export default class SunsetTheme extends BaseTheme {
                 this.mainGroup.remove(flare);
                 flare.geometry.dispose();
                 flare.material.dispose();
-                this.solarFlares.splice(i, 1);
+                this.celestialFlares.splice(i, 1);
             }
         }
     }
@@ -926,27 +946,69 @@ export default class SunsetTheme extends BaseTheme {
     }
 
     onLineClear(lineCount) {
-        // Boost sun intensity
-        this.uniforms.sunIntensity.value += lineCount * 0.3;
+        const { isSun, position, color } = this.getActiveCelestialBody();
+
+        // Boost intensity
+        if (isSun) {
+            this.uniforms.sunIntensity.value += lineCount * 0.3;
+        } else if (this.moon && this.moon.material.uniforms?.uOpacity) {
+            // Pulse moon opacity
+            this.moon.material.uniforms.uOpacity.value += 0.3;
+        }
 
         // Create shockwave for multi-line clears
         if (lineCount >= 2) {
-            this.createShockwave(lineCount);
+            this.createShockwave(lineCount, position, color);
         }
     }
 
     onCombo(comboCount) {
         if (comboCount >= 2) {
-            this.uniforms.sunIntensity.value += 0.2;
-            this.createShockwave(comboCount * 0.5);
+            const { isSun, position, color } = this.getActiveCelestialBody();
+
+            if (isSun) {
+                this.uniforms.sunIntensity.value += 0.2;
+            } else if (this.moon && this.moon.material.uniforms?.uOpacity) {
+                this.moon.material.uniforms.uOpacity.value += 0.2;
+            }
+
+            this.createShockwave(comboCount * 0.5, position, color);
         }
     }
 
     onPieceLock() {
-        // Small sun pulse
-        this.uniforms.sunIntensity.value += 0.1;
-        // Solar flare burst
-        this.createSolarFlare();
+        const { isSun, position, color } = this.getActiveCelestialBody();
+
+        // Small pulse
+        if (isSun) {
+            this.uniforms.sunIntensity.value += 0.1;
+        } else if (this.moon && this.moon.material.uniforms?.uOpacity) {
+            this.moon.material.uniforms.uOpacity.value += 0.1;
+        }
+
+        // Celestial flare burst
+        this.createCelestialFlare(position, color);
+    }
+
+    // Helper to determine whether effects should happen on Sun or Moon
+    getActiveCelestialBody() {
+        // Sun is dominant during day (0.2 - 0.8)
+        // Moon is dominant at night
+        const isSun = this.dayProgress > 0.2 && this.dayProgress < 0.8;
+
+        if (isSun) {
+            return {
+                isSun: true,
+                position: this.sunPosition,
+                color: PALETTE.particles[0], // Gold/Orange
+            };
+        } else {
+            return {
+                isSun: false,
+                position: this.moonPosition,
+                color: 0xd4c4a8, // Moon glow color
+            };
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1007,12 +1069,12 @@ export default class SunsetTheme extends BaseTheme {
         this.shockwaves = [];
 
         // Dispose solar flares
-        this.solarFlares.forEach((flare) => {
+        this.celestialFlares.forEach((flare) => {
             this.mainGroup?.remove(flare);
             flare.geometry?.dispose();
             flare.material?.dispose();
         });
-        this.solarFlares = [];
+        this.celestialFlares = [];
 
         // Dispose sun glow layers
         this.sunGlowLayers.forEach((sprite) => {

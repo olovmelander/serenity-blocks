@@ -4,6 +4,9 @@
  */
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 export default class ThreeJSIntroRenderer {
     constructor(canvas) {
@@ -11,6 +14,8 @@ export default class ThreeJSIntroRenderer {
         this.renderer = null;
         this.scene = null;
         this.camera = null;
+        this.composer = null;
+        this.envMap = null;
 
         // Scene elements
         this.starSystem = null;
@@ -18,6 +23,14 @@ export default class ThreeJSIntroRenderer {
         this.tetrominos = [];
         this.activeTetrominos = [];
         this.activeParticles = [];
+
+        // New visual effects
+        this.shootingStars = [];
+        this.lensFlare = null;
+        this.sparkleLayer = null;
+        this.nebulaClouds = [];
+        this.tetrominoTrails = [];
+        this.lastShootingStarTime = 0;
 
         // Animation state
         this.clock = new THREE.Clock();
@@ -76,15 +89,20 @@ export default class ThreeJSIntroRenderer {
             });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.2;
 
             // Setup Scene
             this.scene = new THREE.Scene();
-            // Deep space atmosphere fog - slightly purple tinted for Chromadelic feel
-            this.scene.fog = new THREE.FogExp2(0x0a001a, 0.012);
+            // Deep cosmic nebula fog - purple-magenta tinted for chromadelic feel
+            this.scene.fog = new THREE.FogExp2(0x0d0020, 0.007);
 
             // Setup Camera
             this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.camera.position.z = 40;
+
+            // Create environment map for crystal reflections
+            this.createEnvironmentMap();
 
             // Setup Lighting
             this.setupLighting();
@@ -92,10 +110,16 @@ export default class ThreeJSIntroRenderer {
             // Create Objects
             this.createStarField();
             this.createNebulaParticles();
+            this.createSparkleLayer();
+            this.createNebulaClouds();
+            // this.createLensFlare(); // Disabled - removed pulsing rings
 
             // Start spawning tetrominos
             this.initCachedResources();
             this.spawnInitialTetrominos();
+
+            // Setup post-processing (bloom for crystal glow)
+            this.setupPostProcessing();
 
             window.addEventListener('resize', this.onResize.bind(this));
 
@@ -168,8 +192,8 @@ export default class ThreeJSIntroRenderer {
     }
 
     createNebulaParticles() {
-        // High quality glowing particles using custom shader
-        const particleCount = 200;
+        // Reduced particle count for cleaner look
+        const particleCount = 80;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
@@ -258,13 +282,319 @@ export default class ThreeJSIntroRenderer {
         this.scene.add(this.particles);
     }
 
+    /**
+     * Create twinkling diamond dust sparkle layer
+     */
+    createSparkleLayer() {
+        // Reduced sparkle count for subtler effect
+        const sparkleCount = 100;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(sparkleCount * 3);
+        const sizes = new Float32Array(sparkleCount);
+        const phases = new Float32Array(sparkleCount);
+
+        for (let i = 0; i < sparkleCount; i++) {
+            const i3 = i * 3;
+            positions[i3] = (Math.random() - 0.5) * 150;
+            positions[i3 + 1] = (Math.random() - 0.5) * 100;
+            positions[i3 + 2] = (Math.random() - 0.5) * 100 - 30;
+            sizes[i] = Math.random() * 0.3 + 0.1;
+            phases[i] = Math.random() * Math.PI * 2;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                uniform float uTime;
+                attribute float size;
+                attribute float phase;
+                varying float vAlpha;
+                void main() {
+                    vAlpha = abs(sin(uTime * 3.0 + phase)) * 0.8 + 0.2;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = size * vAlpha * (200.0 / -mvPosition.z);
+                }
+            `,
+            fragmentShader: `
+                varying float vAlpha;
+                void main() {
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center);
+                    if (dist > 0.5) discard;
+                    float alpha = smoothstep(0.5, 0.0, dist) * vAlpha;
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.sparkleLayer = new THREE.Points(geometry, material);
+        this.scene.add(this.sparkleLayer);
+    }
+
+    /**
+     * Create animated nebula clouds (soft flowing shapes)
+     */
+    createNebulaClouds() {
+        const cloudCount = 5;
+        const cloudColors = [0xFF3366, 0x9933FF, 0x3399FF, 0x00FFFF, 0xFF0099];
+
+        for (let i = 0; i < cloudCount; i++) {
+            const geometry = new THREE.PlaneGeometry(50 + Math.random() * 30, 30 + Math.random() * 20);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor: { value: new THREE.Color(cloudColors[i % cloudColors.length]) },
+                    uSeed: { value: Math.random() * 100 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float uTime;
+                    uniform vec3 uColor;
+                    uniform float uSeed;
+                    varying vec2 vUv;
+                    
+                    float noise(vec2 p) {
+                        return fract(sin(dot(p, vec2(12.9898, 78.233) + uSeed)) * 43758.5453);
+                    }
+                    
+                    void main() {
+                        vec2 center = vUv - vec2(0.5);
+                        float dist = length(center);
+                        
+                        float n = noise(vUv * 3.0 + uTime * 0.1);
+                        float flow = sin(uTime * 0.5 + vUv.x * 4.0 + n * 2.0) * 0.5 + 0.5;
+                        
+                        float alpha = smoothstep(0.5, 0.0, dist) * flow * 0.15;
+                        gl_FragColor = vec4(uColor, alpha);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+
+            const cloud = new THREE.Mesh(geometry, material);
+            // Position clouds firmly in upper left corner
+            cloud.position.set(
+                -45 - Math.random() * 20,  // Far left (-45 to -65)
+                25 + Math.random() * 15,   // High up (25 to 40)
+                -40 - Math.random() * 30
+            );
+            cloud.rotation.z = Math.random() * Math.PI;
+            cloud.userData = { driftSpeed: 0.02 + Math.random() * 0.03 };
+
+            this.nebulaClouds.push(cloud);
+            this.scene.add(cloud);
+        }
+    }
+
+    /**
+     * Create lens flare effect behind the center (title area)
+     */
+    createLensFlare() {
+        const geometry = new THREE.PlaneGeometry(80, 80);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec2 center = vUv - vec2(0.5);
+                    float dist = length(center);
+                    
+                    // Main glow
+                    float glow = smoothstep(0.5, 0.0, dist) * 0.3;
+                    
+                    // Animated rings
+                    float ring1 = smoothstep(0.02, 0.0, abs(dist - 0.15 - sin(uTime) * 0.05)) * 0.2;
+                    float ring2 = smoothstep(0.015, 0.0, abs(dist - 0.25 - cos(uTime * 0.7) * 0.03)) * 0.15;
+                    
+                    // Color gradient (cyan to pink)
+                    vec3 color = mix(vec3(0.0, 1.0, 1.0), vec3(1.0, 0.2, 0.6), dist * 2.0);
+                    
+                    float alpha = glow + ring1 + ring2;
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.lensFlare = new THREE.Mesh(geometry, material);
+        this.lensFlare.position.set(0, 0, -20);
+        this.scene.add(this.lensFlare);
+    }
+
+    /**
+     * Spawn a shooting star with trail
+     */
+    spawnShootingStar() {
+        const startX = (Math.random() - 0.5) * 100 + 30;
+        const startY = 40 + Math.random() * 20;
+        const startZ = -20 - Math.random() * 30;
+
+        const velocity = new THREE.Vector3(
+            -0.8 - Math.random() * 0.5,
+            -0.5 - Math.random() * 0.3,
+            0
+        );
+
+        // Trail geometry
+        const trailLength = 15;
+        const positions = new Float32Array(trailLength * 3);
+        const alphas = new Float32Array(trailLength);
+
+        for (let i = 0; i < trailLength; i++) {
+            positions[i * 3] = startX;
+            positions[i * 3 + 1] = startY;
+            positions[i * 3 + 2] = startZ;
+            alphas[i] = 1.0 - (i / trailLength);
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader: `
+                attribute float alpha;
+                varying float vAlpha;
+                void main() {
+                    vAlpha = alpha;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    gl_PointSize = 3.0 * alpha;
+                }
+            `,
+            fragmentShader: `
+                varying float vAlpha;
+                void main() {
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center);
+                    if (dist > 0.5) discard;
+                    float a = smoothstep(0.5, 0.0, dist) * vAlpha;
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        const trail = new THREE.Points(geometry, material);
+        trail.userData = { velocity, life: 2.0, trailLength };
+
+        this.scene.add(trail);
+        this.shootingStars.push(trail);
+    }
+
     createGlowTexture() {
         // Deprecated - replaced by Shader
         return null;
     }
 
     /**
+     * Create procedural environment map for crystal reflections
+     * Similar to geode-theme approach
+     */
+    createEnvironmentMap() {
+        const size = 128;
+        const faces = [];
+
+        // Chromadelic color palette for glowing spots
+        const spotColors = [
+            '#FF3366', '#00FFFF', '#FFFF00', '#FF6600',
+            '#9933FF', '#00FF66', '#FF0099', '#3399FF'
+        ];
+
+        for (let i = 0; i < 6; i++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Base gradient - deep purple cosmic void
+            const gradient = ctx.createRadialGradient(
+                size / 2, size / 2, 0,
+                size / 2, size / 2, size * 0.7
+            );
+            gradient.addColorStop(0, '#1a0033');
+            gradient.addColorStop(0.3, '#0d001a');
+            gradient.addColorStop(0.6, '#080010');
+            gradient.addColorStop(1, '#030005');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add glowing chromatic spots
+            const spotCount = 20 + Math.floor(Math.random() * 15);
+            for (let j = 0; j < spotCount; j++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = 2 + Math.random() * 10;
+                const color = spotColors[Math.floor(Math.random() * spotColors.length)];
+
+                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
+                spotGrad.addColorStop(0, color);
+                spotGrad.addColorStop(0.5, color + '80');
+                spotGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = spotGrad;
+                ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            }
+
+            faces.push(canvas);
+        }
+
+        this.envMap = new THREE.CubeTexture(faces);
+        this.envMap.needsUpdate = true;
+    }
+
+    /**
+     * Setup post-processing with bloom for crystal glow effect
+     */
+    setupPostProcessing() {
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        // UnrealBloomPass for glowing crystals - enhanced for premium feel
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.9,   // strength - slightly brighter crystals
+            0.5,   // radius - wider glow spread
+            0.8    // threshold - more elements get bloom
+        );
+        this.composer.addPass(bloomPass);
+        this.bloomPass = bloomPass;
+    }
+
+    /**
      * Pre-calculate all geometries and materials to avoid per-frame creation.
+     * Using MeshPhysicalMaterial for crystal-like glass appearance
      */
     initCachedResources() {
         this.cachedResources = {};
@@ -275,13 +605,14 @@ export default class ThreeJSIntroRenderer {
         const extrudeSettings = {
             depth: 1.8,
             bevelEnabled: true,
-            bevelThickness: 0.1,
-            bevelSize: 0.1,
-            bevelSegments: 2
+            bevelThickness: 0.15,
+            bevelSize: 0.15,
+            bevelSegments: 3
         };
 
         shapeKeys.forEach(type => {
             const color = this.COLORS[type];
+            const threeColor = new THREE.Color(color);
             const threeShape = this.createTetrominoShape(type);
 
             // 1. Geometry
@@ -291,22 +622,31 @@ export default class ThreeJSIntroRenderer {
             geometry.boundingBox.getCenter(centerOffset).negate();
             geometry.translate(centerOffset.x, centerOffset.y, centerOffset.z);
 
-            // 2. Material
-            const material = new THREE.MeshStandardMaterial({
-                color: color,
-                emissive: color,
-                emissiveIntensity: 0.8, // Increased for neon look
-                roughness: 0.6, // Slightly smoother for sheen
-                metalness: 0.2, // Slight reflection
-                flatShading: false
+            // 2. Crystal Material - MeshPhysicalMaterial for glass-like crystals
+            const material = new THREE.MeshPhysicalMaterial({
+                color: threeColor.clone().multiplyScalar(0.6), // Slightly darker base
+                emissive: threeColor,
+                emissiveIntensity: 1.2, // Strong glow
+                roughness: 0.05, // Very smooth like glass
+                metalness: 0.0, // Non-metallic for crystal
+                transmission: 0.4, // Slight transparency
+                thickness: 1.5, // Refraction depth
+                ior: 1.8, // Index of refraction (crystal-like)
+                clearcoat: 1.0, // Shiny surface coating
+                clearcoatRoughness: 0.05,
+                envMap: this.envMap,
+                envMapIntensity: 0.8,
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide
             });
 
-            // 3. Edges (Glow Outline)
+            // 3. Edges (Glow Outline) - Brighter for crystal effect
             const edgesGeometry = new THREE.EdgesGeometry(geometry, 25);
             const edgeMaterial = new THREE.LineBasicMaterial({
-                color: color,
+                color: new THREE.Color(color).multiplyScalar(1.5), // Brighter edges
                 transparent: true,
-                opacity: 0.8, // Brighter outline
+                opacity: 0.9,
                 linewidth: 3
             });
 
@@ -318,7 +658,7 @@ export default class ThreeJSIntroRenderer {
             };
         });
 
-        console.log('[ThreeJSIntroRenderer] Resources cached.');
+        console.log('[ThreeJSIntroRenderer] Crystal resources cached.');
     }
 
     spawnInitialTetrominos() {
@@ -585,7 +925,42 @@ export default class ThreeJSIntroRenderer {
         // 6. Update visual effects
         this.updateEffects(delta);
 
-        this.renderer.render(this.scene, this.camera);
+        // 7. Update sparkle layer
+        if (this.sparkleLayer && this.sparkleLayer.material.uniforms) {
+            this.sparkleLayer.material.uniforms.uTime.value = time;
+        }
+
+        // 8. Update nebula clouds
+        for (const cloud of this.nebulaClouds) {
+            if (cloud.material.uniforms) {
+                cloud.material.uniforms.uTime.value = time;
+            }
+            cloud.rotation.z += cloud.userData.driftSpeed * delta;
+        }
+
+        // 9. Update lens flare
+        if (this.lensFlare && this.lensFlare.material.uniforms) {
+            this.lensFlare.material.uniforms.uTime.value = time;
+        }
+
+        // 10. Spawn shooting stars occasionally
+        if (time - this.lastShootingStarTime > 2 + Math.random() * 3) {
+            this.spawnShootingStar();
+            this.lastShootingStarTime = time;
+        }
+
+        // 11. Update shooting stars
+        this.updateShootingStars(delta);
+
+        // 12. Update tetromino trails
+        // this.updateTetrominoTrails(delta, time); // Disabled for cleaner look
+
+        // Render with post-processing (bloom)
+        if (this.composer) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     updateTetrominos(delta) {
@@ -794,6 +1169,100 @@ export default class ThreeJSIntroRenderer {
         }
     }
 
+    /**
+     * Update shooting stars and their trails
+     */
+    updateShootingStars(delta) {
+        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+            const star = this.shootingStars[i];
+            star.userData.life -= delta;
+
+            if (star.userData.life <= 0) {
+                this.scene.remove(star);
+                star.geometry.dispose();
+                star.material.dispose();
+                this.shootingStars.splice(i, 1);
+                continue;
+            }
+
+            // Update trail positions (shift each point, add new head position)
+            const positions = star.geometry.attributes.position.array;
+            const vel = star.userData.velocity;
+            const trailLength = star.userData.trailLength;
+
+            // Shift trail points backward
+            for (let j = trailLength - 1; j > 0; j--) {
+                positions[j * 3] = positions[(j - 1) * 3];
+                positions[j * 3 + 1] = positions[(j - 1) * 3 + 1];
+                positions[j * 3 + 2] = positions[(j - 1) * 3 + 2];
+            }
+
+            // Move head position
+            positions[0] += vel.x;
+            positions[1] += vel.y;
+            positions[2] += vel.z;
+
+            star.geometry.attributes.position.needsUpdate = true;
+        }
+    }
+
+    /**
+     * Create and update tetromino glow trails
+     */
+    updateTetrominoTrails(delta, time) {
+        // Occasionally spawn trail particles behind moving tetrominos
+        if (Math.random() < 0.1) {
+            for (const tetromino of this.activeTetrominos) {
+                if (tetromino.userData.velocity.length() > 0.05) {
+                    this.spawnTrailParticle(
+                        tetromino.position.x,
+                        tetromino.position.y,
+                        tetromino.position.z,
+                        tetromino.userData.type
+                    );
+                }
+            }
+        }
+
+        // Update existing trail particles
+        for (let i = this.tetrominoTrails.length - 1; i >= 0; i--) {
+            const trail = this.tetrominoTrails[i];
+            trail.userData.life -= delta * 1.5;
+
+            if (trail.userData.life <= 0) {
+                this.scene.remove(trail);
+                trail.geometry.dispose();
+                trail.material.dispose();
+                this.tetrominoTrails.splice(i, 1);
+                continue;
+            }
+
+            trail.material.opacity = trail.userData.life * 0.5;
+            trail.scale.multiplyScalar(0.98);
+        }
+    }
+
+    /**
+     * Spawn a glow particle behind a tetromino
+     */
+    spawnTrailParticle(x, y, z, type) {
+        const color = this.COLORS[type] || 0x00ffff;
+        const geometry = new THREE.SphereGeometry(0.3, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.set(x, y, z);
+        particle.userData = { life: 1.0 };
+
+        this.scene.add(particle);
+        this.tetrominoTrails.push(particle);
+    }
+
     onResize() {
         if (!this.camera || !this.renderer) return;
 
@@ -801,6 +1270,14 @@ export default class ThreeJSIntroRenderer {
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Resize post-processing composer
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+        if (this.bloomPass) {
+            this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+        }
     }
 
     destroy() {
@@ -810,6 +1287,11 @@ export default class ThreeJSIntroRenderer {
         // (Simplified cleanup for intro duration)
         if (this.scene) {
             this.scene.clear();
+        }
+
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
         }
 
         if (this.renderer) {
