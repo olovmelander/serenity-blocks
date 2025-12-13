@@ -112,8 +112,8 @@ export default class IceTempleTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.scene = new THREE.Scene();
-        // Denser fog for atmospheric depth and edge hiding
-        this.scene.fog = new THREE.FogExp2(0x040c14, 0.022);
+        // Reduced fog density for better crystal visibility
+        this.scene.fog = new THREE.FogExp2(0x040c14, 0.015);
         this.scene.background = new THREE.Color(0x040c14);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -154,9 +154,9 @@ export default class IceTempleTheme extends BaseTheme {
         // UnrealBloomPass for ethereal ice glow
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            0.8,   // strength - intensity of bloom
-            0.4,   // radius - spread of bloom
-            0.3    // threshold - brightness cutoff
+            0.5,   // strength - reduced for balanced glow
+            0.3,   // radius - spread of bloom
+            0.4    // threshold - raised to reduce over-bloom
         );
         this.composer.addPass(bloomPass);
         this.bloomPass = bloomPass;
@@ -381,9 +381,9 @@ export default class IceTempleTheme extends BaseTheme {
             normalMap: iceNormalTexture,
             normalScale: new THREE.Vector2(0.5, 0.5), // Deeper cracks
 
-            // 5. Glow and Edges
-            emissive: 0x001133,           // Deep blue inner glow
-            emissiveIntensity: 0.4,       // Visible glow
+            // 5. Glow and Edges - Enhanced for crystal effect
+            emissive: 0x0a2266,           // Subtle blue inner glow
+            emissiveIntensity: 0.3,       // Reduced glow
 
             transparent: true,
             alphaMap: alphaTexture,
@@ -629,12 +629,16 @@ export default class IceTempleTheme extends BaseTheme {
 
         const shardCount = 8 + Math.floor(Math.random() * 4);
         const shardMaterial = new THREE.MeshPhysicalMaterial({
-            color: 0xccffff,       // White/Blue ice
-            roughness: 0.3,        // Rough fracture
-            metalness: 0.1,
-            transmission: 0.4,     // Semi-opaque (looks like floor ice)
+            color: 0xaaffff,        // Slightly blue-white crystal
+            emissive: 0x3388bb,     // Softer blue glow
+            emissiveIntensity: 0.4, // Reduced glow
+            roughness: 0.1,         // Smooth fracture
+            metalness: 0.0,
+            transmission: 0.3,      // Semi-transparent crystal
             thickness: 1.0,
+            ior: 1.6,               // Crystal refraction
             clearcoat: 1.0,
+            clearcoatRoughness: 0.1,
             side: THREE.DoubleSide
         });
 
@@ -680,25 +684,26 @@ export default class IceTempleTheme extends BaseTheme {
 
         const material = new THREE.MeshPhysicalMaterial({
             color: 0xccEeff,              // Very pale blue-white
-            emissive: 0x114488,           // Deep subtle glow
-            emissiveIntensity: 0.2,
+            emissive: 0x225588,           // Balanced blue glow
+            emissiveIntensity: 0.6,       // Reduced glow for balance
 
-            metalness: 0.1,               // Slight metallic reflection
-            roughness: 0.05,              // very smooth but not perfect for base blending
+            metalness: 0.0,               // Non-metallic for crystal
+            roughness: 0.05,              // Very smooth like glass
 
-            transmission: 1.0,            // Fully transparent
+            transmission: 0.4,            // Glass-like transparency (like geode)
             thickness: config.radius * 4, // Deep volume
-            ior: 1.5,                     // Glass IOR (higher refraction)
+            ior: 1.8,                     // Crystal-like refraction index
 
             clearcoat: 1.0,               // High polish
-            clearcoatRoughness: 0.0,
+            clearcoatRoughness: 0.05,
 
-            attenuationColor: new THREE.Color(0xeeffff), // Clear volume with slight tint
-            attenuationDistance: 2.0,
+            attenuationColor: new THREE.Color(0x88ddff), // Ice blue volume tint
+            attenuationDistance: 1.5,
 
-            envMapIntensity: 2.0,         // Strong environment reflections
+            envMapIntensity: 0.8,         // Strong environment reflections
             side: THREE.DoubleSide,
             transparent: true,
+            opacity: 0.9,
         });
 
         const mesh = new THREE.Mesh(geometry, material);
@@ -707,8 +712,8 @@ export default class IceTempleTheme extends BaseTheme {
         mesh.receiveShadow = true;
         group.add(mesh);
 
-        // Internal glow point light (brighter for transmission to show through)
-        const light = new THREE.PointLight(0x66ddff, 1.0, config.height * 2.5);
+        // Internal glow point light (balanced for crystal glow)
+        const light = new THREE.PointLight(0x66ddff, 0.8, config.height * 2.5);
         light.position.y = config.height * 0.5;
         group.add(light);
 
@@ -846,8 +851,28 @@ export default class IceTempleTheme extends BaseTheme {
         skyCtx.fillStyle = gradient;
         skyCtx.fillRect(0, 0, 512, 256);
 
-        // Add some stars/sparkles
-        skyCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        // Add chromatic glowing spots for crystal reflections (like geode theme)
+        const spotColors = [
+            '#74b9ff', '#55efc4', '#a29bfe', '#81ecec', // Aurora palette
+            '#00cec9', '#6c5ce7', '#dfe6e9', '#b2bec3'  // Ice/crystal palette
+        ];
+
+        for (let i = 0; i < 60; i++) {
+            const x = Math.random() * 512;
+            const y = Math.random() * 200; // Upper 3/4 only
+            const r = 2 + Math.random() * 12;
+            const color = spotColors[Math.floor(Math.random() * spotColors.length)];
+
+            const spotGrad = skyCtx.createRadialGradient(x, y, 0, x, y, r);
+            spotGrad.addColorStop(0, color);
+            spotGrad.addColorStop(0.5, color + '80');
+            spotGrad.addColorStop(1, 'transparent');
+            skyCtx.fillStyle = spotGrad;
+            skyCtx.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+
+        // Add bright stars/sparkles
+        skyCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         for (let i = 0; i < 100; i++) {
             const x = Math.random() * 512;
             const y = Math.random() * 128; // Upper half only

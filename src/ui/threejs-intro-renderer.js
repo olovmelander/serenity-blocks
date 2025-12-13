@@ -4,6 +4,9 @@
  */
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 export default class ThreeJSIntroRenderer {
     constructor(canvas) {
@@ -11,6 +14,8 @@ export default class ThreeJSIntroRenderer {
         this.renderer = null;
         this.scene = null;
         this.camera = null;
+        this.composer = null;
+        this.envMap = null;
 
         // Scene elements
         this.starSystem = null;
@@ -76,15 +81,20 @@ export default class ThreeJSIntroRenderer {
             });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.2;
 
             // Setup Scene
             this.scene = new THREE.Scene();
             // Deep space atmosphere fog - slightly purple tinted for Chromadelic feel
-            this.scene.fog = new THREE.FogExp2(0x0a001a, 0.012);
+            this.scene.fog = new THREE.FogExp2(0x0a001a, 0.008);
 
             // Setup Camera
             this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.camera.position.z = 40;
+
+            // Create environment map for crystal reflections
+            this.createEnvironmentMap();
 
             // Setup Lighting
             this.setupLighting();
@@ -96,6 +106,9 @@ export default class ThreeJSIntroRenderer {
             // Start spawning tetrominos
             this.initCachedResources();
             this.spawnInitialTetrominos();
+
+            // Setup post-processing (bloom for crystal glow)
+            this.setupPostProcessing();
 
             window.addEventListener('resize', this.onResize.bind(this));
 
@@ -264,7 +277,81 @@ export default class ThreeJSIntroRenderer {
     }
 
     /**
+     * Create procedural environment map for crystal reflections
+     * Similar to geode-theme approach
+     */
+    createEnvironmentMap() {
+        const size = 128;
+        const faces = [];
+
+        // Chromadelic color palette for glowing spots
+        const spotColors = [
+            '#FF3366', '#00FFFF', '#FFFF00', '#FF6600',
+            '#9933FF', '#00FF66', '#FF0099', '#3399FF'
+        ];
+
+        for (let i = 0; i < 6; i++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Base gradient - deep purple cosmic void
+            const gradient = ctx.createRadialGradient(
+                size / 2, size / 2, 0,
+                size / 2, size / 2, size * 0.7
+            );
+            gradient.addColorStop(0, '#1a0033');
+            gradient.addColorStop(0.3, '#0d001a');
+            gradient.addColorStop(0.6, '#080010');
+            gradient.addColorStop(1, '#030005');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add glowing chromatic spots
+            const spotCount = 20 + Math.floor(Math.random() * 15);
+            for (let j = 0; j < spotCount; j++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = 2 + Math.random() * 10;
+                const color = spotColors[Math.floor(Math.random() * spotColors.length)];
+
+                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
+                spotGrad.addColorStop(0, color);
+                spotGrad.addColorStop(0.5, color + '80');
+                spotGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = spotGrad;
+                ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            }
+
+            faces.push(canvas);
+        }
+
+        this.envMap = new THREE.CubeTexture(faces);
+        this.envMap.needsUpdate = true;
+    }
+
+    /**
+     * Setup post-processing with bloom for crystal glow effect
+     */
+    setupPostProcessing() {
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        // UnrealBloomPass for glowing crystals
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.8,   // strength - bright crystals
+            0.4,   // radius - glow spread
+            0.85   // threshold - only bright elements bloom
+        );
+        this.composer.addPass(bloomPass);
+        this.bloomPass = bloomPass;
+    }
+
+    /**
      * Pre-calculate all geometries and materials to avoid per-frame creation.
+     * Using MeshPhysicalMaterial for crystal-like glass appearance
      */
     initCachedResources() {
         this.cachedResources = {};
@@ -275,13 +362,14 @@ export default class ThreeJSIntroRenderer {
         const extrudeSettings = {
             depth: 1.8,
             bevelEnabled: true,
-            bevelThickness: 0.1,
-            bevelSize: 0.1,
-            bevelSegments: 2
+            bevelThickness: 0.15,
+            bevelSize: 0.15,
+            bevelSegments: 3
         };
 
         shapeKeys.forEach(type => {
             const color = this.COLORS[type];
+            const threeColor = new THREE.Color(color);
             const threeShape = this.createTetrominoShape(type);
 
             // 1. Geometry
@@ -291,22 +379,31 @@ export default class ThreeJSIntroRenderer {
             geometry.boundingBox.getCenter(centerOffset).negate();
             geometry.translate(centerOffset.x, centerOffset.y, centerOffset.z);
 
-            // 2. Material
-            const material = new THREE.MeshStandardMaterial({
-                color: color,
-                emissive: color,
-                emissiveIntensity: 0.8, // Increased for neon look
-                roughness: 0.6, // Slightly smoother for sheen
-                metalness: 0.2, // Slight reflection
-                flatShading: false
+            // 2. Crystal Material - MeshPhysicalMaterial for glass-like crystals
+            const material = new THREE.MeshPhysicalMaterial({
+                color: threeColor.clone().multiplyScalar(0.6), // Slightly darker base
+                emissive: threeColor,
+                emissiveIntensity: 1.2, // Strong glow
+                roughness: 0.05, // Very smooth like glass
+                metalness: 0.0, // Non-metallic for crystal
+                transmission: 0.4, // Slight transparency
+                thickness: 1.5, // Refraction depth
+                ior: 1.8, // Index of refraction (crystal-like)
+                clearcoat: 1.0, // Shiny surface coating
+                clearcoatRoughness: 0.05,
+                envMap: this.envMap,
+                envMapIntensity: 0.8,
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide
             });
 
-            // 3. Edges (Glow Outline)
+            // 3. Edges (Glow Outline) - Brighter for crystal effect
             const edgesGeometry = new THREE.EdgesGeometry(geometry, 25);
             const edgeMaterial = new THREE.LineBasicMaterial({
-                color: color,
+                color: new THREE.Color(color).multiplyScalar(1.5), // Brighter edges
                 transparent: true,
-                opacity: 0.8, // Brighter outline
+                opacity: 0.9,
                 linewidth: 3
             });
 
@@ -318,7 +415,7 @@ export default class ThreeJSIntroRenderer {
             };
         });
 
-        console.log('[ThreeJSIntroRenderer] Resources cached.');
+        console.log('[ThreeJSIntroRenderer] Crystal resources cached.');
     }
 
     spawnInitialTetrominos() {
@@ -585,7 +682,12 @@ export default class ThreeJSIntroRenderer {
         // 6. Update visual effects
         this.updateEffects(delta);
 
-        this.renderer.render(this.scene, this.camera);
+        // Render with post-processing (bloom)
+        if (this.composer) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     updateTetrominos(delta) {
@@ -801,6 +903,14 @@ export default class ThreeJSIntroRenderer {
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Resize post-processing composer
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+        if (this.bloomPass) {
+            this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+        }
     }
 
     destroy() {
@@ -810,6 +920,11 @@ export default class ThreeJSIntroRenderer {
         // (Simplified cleanup for intro duration)
         if (this.scene) {
             this.scene.clear();
+        }
+
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
         }
 
         if (this.renderer) {
