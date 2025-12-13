@@ -1076,7 +1076,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
     }
 
     dispose() {
-        super.dispose();
+        // super.dispose(); // BaseTheme does not have dispose
         window.removeEventListener('resize', this.onWindowResize);
         this.teardownQualityListener();
         if (this.animationFrame) cancelAnimationFrame(this.animationFrame);

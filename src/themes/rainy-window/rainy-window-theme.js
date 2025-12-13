@@ -31,7 +31,12 @@ export default class RainyWindowTheme extends BaseTheme {
         this.targetFogIntensity = 0;
         this.nextFogTime = 0;
         this.fogDuration = 0;
+        this.nextFogTime = 0;
+        this.fogDuration = 0;
         this.isFogActive = false;
+
+        // Animation
+        this.animationFrameId = null;
 
         // State
         this.time = 0;
@@ -941,7 +946,9 @@ export default class RainyWindowTheme extends BaseTheme {
             this.renderer.render(this.scene, this.camera);
         }
 
-        requestAnimationFrame(() => this.animate());
+        if (this.isActive) {
+            this.animationFrameId = requestAnimationFrame(() => this.animate());
+        }
     }
 
     resize() {
@@ -955,7 +962,13 @@ export default class RainyWindowTheme extends BaseTheme {
         this.renderer.setSize(width, height);
     }
 
-    cleanup() {
+    stop() {
+        // Stop animation loop
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
         if (this.renderer) {
             this.renderer.dispose();
             if (this.renderer.domElement && this.renderer.domElement.parentNode) {
@@ -993,8 +1006,21 @@ export default class RainyWindowTheme extends BaseTheme {
             this.horizonHaze.material.dispose();
         }
 
+        // Dispose water
+        if (this.water) {
+            // Water from examples might have specific disposal needs, but usually geometry/material is enough
+            // The Water object creates its own mesh internally
+            // We'll rely on traversing standard disposal if needed, but explicitly:
+            if (this.water.geometry) this.water.geometry.dispose();
+            if (this.water.material) this.water.material.dispose();
+        }
+
         window.removeEventListener('resize', this.resizeHandler);
         this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers = [];
+
+        // Important: Call super.stop() to update base state (isActive = false)
+        super.stop();
     }
 
     // Required by BaseTheme
