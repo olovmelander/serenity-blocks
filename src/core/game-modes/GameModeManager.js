@@ -3,6 +3,7 @@ import { LocalMultiplayerMode } from './LocalMultiplayerMode.js';
 import { OnlineMultiplayerMode } from './OnlineMultiplayerMode.js';
 import { SerenityMode } from './SerenityMode.js';
 import { InfinityMode } from './InfinityMode.js';
+import { JourneyMode } from './JourneyMode.js';
 import { GAME_MODES } from '../constants.js';
 
 /**
@@ -61,6 +62,7 @@ export class GameModeManager {
         this.registerMode(new OnlineMultiplayerMode(this.deps));
         this.registerMode(new SerenityMode(this.deps));
         this.registerMode(new InfinityMode(this.deps));
+        this.registerMode(new JourneyMode(this.deps));
     }
 
     /**

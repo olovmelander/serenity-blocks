@@ -581,12 +581,12 @@ export default class ThreeJSIntroRenderer {
         this.composer = new EffectComposer(this.renderer);
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-        // UnrealBloomPass for glowing crystals - enhanced for premium feel
+        // UnrealBloomPass for glowing crystals - tuned for balanced glow
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            0.9,   // strength - slightly brighter crystals
-            0.5,   // radius - wider glow spread
-            0.8    // threshold - more elements get bloom
+            0.6,   // strength - toned down to prevent over-shine
+            0.4,   // radius - moderate glow spread
+            0.85   // threshold - higher threshold = fewer bright spots bloom
         );
         this.composer.addPass(bloomPass);
         this.bloomPass = bloomPass;
@@ -626,7 +626,7 @@ export default class ThreeJSIntroRenderer {
             const material = new THREE.MeshPhysicalMaterial({
                 color: threeColor.clone().multiplyScalar(0.6), // Slightly darker base
                 emissive: threeColor,
-                emissiveIntensity: 1.2, // Strong glow
+                emissiveIntensity: 0.5, // Reduced glow to prevent over-shine
                 roughness: 0.05, // Very smooth like glass
                 metalness: 0.0, // Non-metallic for crystal
                 transmission: 0.4, // Slight transparency
@@ -635,7 +635,7 @@ export default class ThreeJSIntroRenderer {
                 clearcoat: 1.0, // Shiny surface coating
                 clearcoatRoughness: 0.05,
                 envMap: this.envMap,
-                envMapIntensity: 0.8,
+                envMapIntensity: 0.4, // Reduced reflection intensity
                 transparent: true,
                 opacity: 0.9,
                 side: THREE.DoubleSide
@@ -662,21 +662,8 @@ export default class ThreeJSIntroRenderer {
     }
 
     spawnInitialTetrominos() {
-        // "Pre-warm" the scene.
-        // Instead of spawning pieces randomly on screen (which looks like popping),
-        // we spawn them at the edges and run the physics simulation for a while
-        // to let them drift naturally into place.
-
-        // Spawn more pieces initially for a denser start
-        for (let i = 0; i < 20; i++) {
-            this.spawnTetromino();
-        }
-
-        // Fast-forward physics by ~10 seconds (600 steps of 16ms)
-        // This moves the edge-spawned pieces into the center
-        for (let i = 0; i < 600; i++) {
-            this.updateTetrominos(0.016);
-        }
+        // Start with 0 tetrominos - they will drift in naturally from off-screen
+        // via the regular spawn timer in the update loop
     }
 
     getVisibleBoundsAtDepth(depth) {
@@ -716,14 +703,14 @@ export default class ThreeJSIntroRenderer {
         // Radius rough estimation: 4 (original max extent) * scale
         mesh.userData = {
             velocity: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.1,
-                (Math.random() - 0.5) * 0.1,
-                (Math.random() - 0.5) * 0.05
+                (Math.random() - 0.5) * 0.05,  // Slower drift
+                (Math.random() - 0.5) * 0.05,
+                (Math.random() - 0.5) * 0.025
             ),
             rotationSpeed: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.02,
-                (Math.random() - 0.5) * 0.02,
-                (Math.random() - 0.5) * 0.02
+                (Math.random() - 0.5) * 0.01,  // Slower rotation too
+                (Math.random() - 0.5) * 0.01,
+                (Math.random() - 0.5) * 0.01
             ),
             radius: 4 * scale,
             type: type
@@ -742,19 +729,19 @@ export default class ThreeJSIntroRenderer {
         switch (side) {
             case 0: // Top
                 mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
-                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.05; // Force Down
+                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
                 break;
             case 1: // Bottom
                 mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
-                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.05; // Force Up
+                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
                 break;
             case 2: // Left
                 mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
-                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.05; // Force Right
+                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
                 break;
             case 3: // Right
                 mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
-                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.05; // Force Left
+                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
                 break;
         }
 
@@ -968,7 +955,6 @@ export default class ThreeJSIntroRenderer {
 
         // Settings
         const MAX_SPEED = 0.2;
-        const DAMPING = 0.999; // Very slight air resistance
         const RESTITUTION = 0.8; // Bounciness (1 = perfectly elastic, < 1 = loses energy)
 
         for (let i = this.activeTetrominos.length - 1; i >= 0; i--) {
@@ -982,8 +968,7 @@ export default class ThreeJSIntroRenderer {
             t1.rotation.y += t1.userData.rotationSpeed.y;
             t1.rotation.z += t1.userData.rotationSpeed.z;
 
-            // 3. Apply Damping (Air Resistance)
-            t1.userData.velocity.multiplyScalar(DAMPING);
+            // 3. No damping - let tetrominos drift at constant speed off-screen
 
             // 4. Bounds Check - Soft bounce off "walls" or wrap/remove
             // We'll keep the remove logic for simplicity as they drift in from outside

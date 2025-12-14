@@ -8,6 +8,7 @@ import {
     COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS,
 } from './constants.js';
 import { cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid } from './board.js';
+import { markBoardDirty } from './game.js';
 
 const PHYSICS_DEBUG = false;
 const physicsLog = (...args) => {
@@ -610,13 +611,18 @@ export async function processPhysics(gameState, callbacks) {
 
     // QUADRA CRITICAL: moved[row][col] tracks piece placement positions
     // Initial state: mark where the piece was just placed
-    const movedArray = Array.from({ length: ROWS + HIDDEN_ROWS }, () => Array(COLS).fill(false));
+    // FIX: Use actual board length for tall boards (100+ rows)
+    const boardHeight = gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
+    const movedArray = Array.from({ length: boardHeight }, () => Array(COLS).fill(false));
 
     // Step 1: Mark initial piece placement (from lockFootprint)
     if (comboState.lockFootprint && comboState.lockFootprint.length > 0) {
         comboState.lockFootprint.forEach(({ x, y }) => {
-            if (y >= 0 && y < movedArray.length && x >= 0 && x < COLS) {
-                movedArray[y][x] = true;
+            // Floor coordinates to ensure integer indexing
+            const floorY = Math.floor(y);
+            const floorX = Math.floor(x);
+            if (floorY >= 0 && floorY < movedArray.length && floorX >= 0 && floorX < COLS) {
+                movedArray[floorY][floorX] = true;
             }
         });
         physicsLog(
@@ -889,4 +895,7 @@ export async function processPhysics(gameState, callbacks) {
     }
 
     rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+
+    // CRITICAL: Invalidate board cache so collision detection uses fresh data
+    markBoardDirty(gameState);
 }
