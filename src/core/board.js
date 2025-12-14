@@ -32,9 +32,15 @@ export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid(
             row.forEach((cell, x) => {
                 if (cell > 0) {
                     const boardX = piece.x + x;
-                    const boardY = piece.y + y;
+                    // CRITICAL: Floor the Y position to ensure integer indexing
+                    const boardY = Math.floor(piece.y + y);
 
                     if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
+                        // Defensive check: ensure row exists
+                        if (!targetGrid[boardY]) {
+                            console.warn(`[Board] Row ${boardY} is undefined in targetGrid (length=${targetGrid.length}). Creating row.`);
+                            targetGrid[boardY] = Array(COLS).fill(null);
+                        }
                         targetGrid[boardY][boardX] = {
                             color,
                             id: pieceId,
@@ -184,8 +190,9 @@ export function isValidPosition(piece, checkX, checkY, lockedPieces) {
     for (let y = 0; y < piece.shape.length; y++) {
         for (let x = 0; x < piece.shape[y].length; x++) {
             if (piece.shape[y][x] > 0) {
-                const boardX = checkX + x;
-                const boardY = checkY + y;
+                const boardX = Math.floor(checkX + x);
+                // CRITICAL: Floor Y position for proper collision detection
+                const boardY = Math.floor(checkY + y);
 
                 // Check boundaries
                 if (boardX < 0 || boardX >= COLS || boardY >= boardData.length) {
