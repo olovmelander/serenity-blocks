@@ -54,9 +54,11 @@ function ensureBoardCache(gameState) {
     if (!gameState) return null;
 
     if (!gameState.boardCache || gameState.boardCacheDirty) {
+        console.log(`[BoardCache] Rebuilding cache. boardGrid.length=${gameState.boardGrid?.length}, lockedPieces=${gameState.lockedPieces?.length}`);
         gameState.boardCache = generateBoard(gameState.lockedPieces, {
             boardGrid: gameState.boardGrid,
         });
+        console.log(`[BoardCache] Cache rebuilt. boardCache.length=${gameState.boardCache?.length}`);
         gameState.boardCacheDirty = false;
     }
 
@@ -542,6 +544,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     // We track ALL columns where the piece has blocks for accurate garbage holes
     const occupiedColumns = new Set();
     const lockFootprint = [];
+    const boardHeight = gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
     gameState.currentPiece.shape.forEach((row, localY) => {
         row.forEach((cell, localX) => {
             if (cell > 0) {
@@ -550,7 +553,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
                 if (boardX >= 0 && boardX < COLS) {
                     occupiedColumns.add(boardX);
                 }
-                if (boardY >= 0 && boardY < ROWS + HIDDEN_ROWS && boardX >= 0 && boardX < COLS) {
+                if (boardY >= 0 && boardY < boardHeight && boardX >= 0 && boardX < COLS) {
                     lockFootprint.push({ x: boardX, y: boardY });
                 }
             }
