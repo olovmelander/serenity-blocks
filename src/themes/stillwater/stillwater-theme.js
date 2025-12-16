@@ -840,6 +840,8 @@ export default class StillwaterTheme extends BaseTheme {
                 fragmentShader: trollFragmentShader,
                 transparent: true,
                 side: THREE.DoubleSide,
+                depthWrite: false,  // Prevent z-fighting with other transparent objects
+                depthTest: true,    // Still respect depth buffer for proper occlusion
             });
 
             const troll = new THREE.Mesh(geometry, material);
@@ -849,6 +851,10 @@ export default class StillwaterTheme extends BaseTheme {
             // Apply initial position with peek offset (use peekInitial from above)
             const initialPeekOffset = -pos.hideX * peekInitial;
             troll.position.set(pos.x + initialPeekOffset, baseY, pos.z);
+
+            // Set renderOrder based on z-position so trolls render in correct order
+            // More negative z (further back) should render first (lower renderOrder)
+            troll.renderOrder = Math.round(100 + pos.z * 2);
 
             // Store animation data for this troll - with natural behavior states
 
@@ -1575,12 +1581,21 @@ export default class StillwaterTheme extends BaseTheme {
                         break;
 
                     case 'dozing':
-                        // Wake up naturally
-                        trollData.behaviorState = 'yawning';
-                        trollData.animationPhase = 0;
-                        trollData.stateTimer = 4.0;
-                        trollData.targetPeek = 0.5;
-                        trollData.isBlinking = true; // Eyes closed for yawn start
+                        // Wake up naturally - yawn or stretch
+                        if (Math.random() < 0.4) {
+                            // STRETCHING - wake up stretch
+                            trollData.behaviorState = 'stretching';
+                            trollData.animationPhase = 0;
+                            trollData.stateTimer = 3.0;
+                            trollData.targetPeek = 0.6;
+                            trollData.targetExpression = 0.3;
+                        } else {
+                            trollData.behaviorState = 'yawning';
+                            trollData.animationPhase = 0;
+                            trollData.stateTimer = 4.0;
+                            trollData.targetPeek = 0.5;
+                            trollData.isBlinking = true; // Eyes closed for yawn start
+                        }
                         break;
 
                     case 'yawning':
@@ -1596,9 +1611,6 @@ export default class StillwaterTheme extends BaseTheme {
                         trollData.behaviorState = 'watching';
                         trollData.stateTimer = 1.5;
                         trollData.targetPeek = 0.4;
-                        trollData.targetExpression = -0.5; // Scrunchy face
-                        break;
-
                         trollData.targetExpression = -0.5; // Scrunchy face
                         break;
 
@@ -1621,6 +1633,61 @@ export default class StillwaterTheme extends BaseTheme {
                         trollData.behaviorState = 'watching';
                         trollData.stateTimer = 2.0;
                         trollData.targetExpression = 0.0;
+                        break;
+
+                    // === NEW PLAYFUL ANIMATION STATE TRANSITIONS ===
+                    case 'dancing':
+                    case 'waving':
+                    case 'bouncing':
+                    case 'giggling':
+                    case 'peekaboo':
+                    case 'curious_lean':
+                    case 'shimmying':
+                    case 'scratching':
+                    case 'yodeling':
+                    case 'shivering':
+                    case 'pondering':
+                    case 'listening':
+                    case 'sniffing':
+                    case 'croaking':
+                    case 'moongazing':
+                    case 'huddling':
+                    case 'mischief':
+                        // All transition back to watching
+                        trollData.behaviorState = 'watching';
+                        trollData.stateTimer = 1.5 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.5;
+                        trollData.targetExpression = 0.0;
+                        break;
+
+                    case 'stretching':
+                        // After stretch, feel awake and watch
+                        trollData.behaviorState = 'watching';
+                        trollData.stateTimer = 2.0;
+                        trollData.targetPeek = 0.6;
+                        trollData.targetExpression = 0.3;
+                        break;
+
+                    case 'tiptoeing':
+                        // After tiptoeing, either retreat nervously or watch
+                        if (Math.random() < 0.5) {
+                            trollData.behaviorState = 'retreating';
+                            trollData.targetPeek = 0;
+                            trollData.stateTimer = 1.0;
+                        } else {
+                            trollData.behaviorState = 'watching';
+                            trollData.stateTimer = 2.0;
+                            trollData.targetPeek = 0.4;
+                        }
+                        trollData.targetExpression = 0.0;
+                        break;
+
+                    case 'celebrating':
+                        // After celebrating, happy watching
+                        trollData.behaviorState = 'watching';
+                        trollData.stateTimer = 2.0;
+                        trollData.targetPeek = 0.6;
+                        trollData.targetExpression = 0.5;
                         break;
 
                     case 'peeking':
@@ -1666,6 +1733,132 @@ export default class StillwaterTheme extends BaseTheme {
                             trollData.behaviorState = 'sneaking';
                             trollData.targetPeek = 0.4;
                             trollData.stateTimer = 2.5;
+                        }
+                        // === NEW PLAYFUL ANIMATIONS ===
+                        else if (playfulness > 0.6 && Math.random() < 0.15) {
+                            // DANCING - rhythmic sway
+                            trollData.behaviorState = 'dancing';
+                            trollData.stateTimer = 3.0 + Math.random() * 2.0;
+                            trollData.targetPeek = 0.7;
+                            trollData.targetExpression = 0.8;
+                            trollData.animationPhase = 0;
+                        } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.1) {
+                            // WAVING - friendly wave
+                            trollData.behaviorState = 'waving';
+                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.9;
+                            trollData.targetExpression = 0.6;
+                        } else if (playfulness > 0.7 && Math.random() < 0.12) {
+                            // BOUNCING - excited hops
+                            trollData.behaviorState = 'bouncing';
+                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.6;
+                            trollData.targetExpression = 0.7;
+                            trollData.animationPhase = 0;
+                        } else if (playfulness > 0.6 && Math.random() < 0.1) {
+                            // GIGGLING - energetic laughter
+                            trollData.behaviorState = 'giggling';
+                            trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                            trollData.targetPeek = 0.5;
+                            trollData.targetExpression = 0.8;
+                        } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.08) {
+                            // PEEKABOO - playful peek in/out
+                            trollData.behaviorState = 'peekaboo';
+                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                            trollData.animationPhase = 0;
+                            trollData.targetExpression = 0.6;
+                        } else if (curiosity > 0.7 && spiritVisible && Math.random() < 0.12) {
+                            // CURIOUS_LEAN - lean far out to investigate
+                            trollData.behaviorState = 'curious_lean';
+                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.95;
+                            trollData.targetExpression = 0.5;
+                        } else if (playfulness > 0.7 && Math.random() < 0.08) {
+                            // CELEBRATING - excited celebration
+                            trollData.behaviorState = 'celebrating';
+                            trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.8;
+                            trollData.targetExpression = 1.0;
+                        } else if (playfulness > 0.6 && Math.random() < 0.1) {
+                            // SHIMMYING - quick shake
+                            trollData.behaviorState = 'shimmying';
+                            trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                            trollData.targetPeek = 0.6;
+                            trollData.targetExpression = 0.5;
+                        } else if (nervousness > 0.4 && curiosity > 0.5 && spiritVisible && Math.random() < 0.08) {
+                            // TIPTOEING - sneaky tiny hops toward spirit
+                            trollData.behaviorState = 'tiptoeing';
+                            trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.4;
+                            trollData.targetExpression = -0.3;
+                            trollData.animationPhase = 0;
+                        }
+                        // === 10 NEW ANIMATIONS ===
+                        else if (Math.random() < 0.06) {
+                            // SCRATCHING - itchy troll scratches head/ear
+                            trollData.behaviorState = 'scratching';
+                            trollData.stateTimer = 2.0 + Math.random() * 1.5;
+                            trollData.targetPeek = 0.6;
+                            trollData.targetExpression = 0.3;
+                            trollData.animationPhase = 0;
+                        } else if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.04) {
+                            // YODELING - troll throws head back and "yodels" silently
+                            trollData.behaviorState = 'yodeling';
+                            trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.85;
+                            trollData.targetExpression = 1.0;
+                            trollData.animationPhase = 0;
+                        } else if (nervousness > 0.6 && spiritVeryClose && Math.random() < 0.15) {
+                            // SHIVERING - nervous shaking from fear
+                            trollData.behaviorState = 'shivering';
+                            trollData.stateTimer = 2.5 + Math.random() * 1.5;
+                            trollData.targetPeek = 0.3;
+                            trollData.targetExpression = -0.6;
+                        } else if (curiosity > 0.7 && !spiritVisible && Math.random() < 0.05) {
+                            // PONDERING - deep thought pose with chin resting
+                            trollData.behaviorState = 'pondering';
+                            trollData.stateTimer = 4.0 + Math.random() * 2.0;
+                            trollData.targetPeek = 0.55;
+                            trollData.targetExpression = 0.2;
+                        } else if (nervousness > 0.3 && spiritVisible && Math.random() < 0.07) {
+                            // LISTENING - ears perked, frozen, listening intently
+                            trollData.behaviorState = 'listening';
+                            trollData.stateTimer = 2.5 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.45;
+                            trollData.targetExpression = 0.4;
+                        } else if (curiosity > 0.5 && Math.random() < 0.05) {
+                            // SNIFFING - sniffing the air curiously
+                            trollData.behaviorState = 'sniffing';
+                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.7;
+                            trollData.targetExpression = 0.3;
+                            trollData.animationPhase = 0;
+                        } else if (playfulness > 0.5 && Math.random() < 0.04) {
+                            // CROAKING - frog-like croak/call (mouth wide)
+                            trollData.behaviorState = 'croaking';
+                            trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                            trollData.targetPeek = 0.65;
+                            trollData.targetExpression = 0.9;
+                            trollData.animationPhase = 0;
+                        } else if (!spiritVisible && patience > 3 && Math.random() < 0.03) {
+                            // MOONGAZING - looking up at sky/aurora dreamily
+                            trollData.behaviorState = 'moongazing';
+                            trollData.stateTimer = 5.0 + Math.random() * 3.0;
+                            trollData.targetPeek = 0.75;
+                            trollData.targetExpression = 0.1;
+                        } else if (nervousness > 0.5 && spiritVeryClose && Math.random() < 0.1) {
+                            // HUDDLING - curling into protective ball
+                            trollData.behaviorState = 'huddling';
+                            trollData.stateTimer = 3.0 + Math.random() * 2.0;
+                            trollData.targetPeek = 0.2;
+                            trollData.targetExpression = -0.5;
+                        } else if (playfulness > 0.7 && !spiritVisible && Math.random() < 0.04) {
+                            // MISCHIEF - plotting something naughty, rubbing hands
+                            trollData.behaviorState = 'mischief';
+                            trollData.stateTimer = 2.5 + Math.random() * 1.0;
+                            trollData.targetPeek = 0.6;
+                            trollData.targetExpression = -0.3;
+                            trollData.animationPhase = 0;
                         } else {
                             // Continue watching
                             trollData.targetPeek = 0.3 + Math.random() * 0.5;
@@ -1857,6 +2050,363 @@ export default class StillwaterTheme extends BaseTheme {
                 }
             }
 
+            // ═══════════════════════════════════════════════════════════════════
+            // NEW PLAYFUL ANIMATION LOGIC
+            // ═══════════════════════════════════════════════════════════════════
+
+            // DANCING LOGIC - Rhythmic side-to-side sway with bouncing
+            if (trollData.behaviorState === 'dancing') {
+                const danceSpeed = 8.0;
+                const time = this.uniforms.time.value;
+                // Rhythmic sway
+                wiggleOffset = Math.sin(time * danceSpeed) * 0.15 * scale;
+                // Bouncy squish
+                trollData.squish = 1.0 + Math.abs(Math.sin(time * danceSpeed * 2.0)) * 0.12;
+                // Head bobs opposite to body
+                trollData.headTilt = Math.sin(time * danceSpeed) * 0.15;
+                // Happy expression
+                trollData.targetExpression = 0.8;
+            }
+
+            // WAVING LOGIC - Friendly wave with head tilt oscillation
+            if (trollData.behaviorState === 'waving') {
+                const waveSpeed = 6.0;
+                const time = this.uniforms.time.value;
+                // Oscillating head tilt (like waving)
+                trollData.headTilt = Math.sin(time * waveSpeed) * 0.3;
+                // Slight body sway
+                trollData.squish = 1.0 + Math.sin(time * waveSpeed * 0.5) * 0.05;
+                // Keep peeking high
+                trollData.targetPeek = 0.9;
+                // Friendly expression
+                trollData.targetExpression = 0.6;
+            }
+
+            // STRETCHING LOGIC - Wake-up stretch animation
+            if (trollData.behaviorState === 'stretching') {
+                const progress = 1.0 - (trollData.stateTimer / 3.0); // 0 to 1
+                if (progress < 0.4) {
+                    // Stretch up tall
+                    trollData.squish = 1.0 + progress * 1.0; // Up to 1.4
+                    trollData.headTilt = -0.3; // Head back
+                    trollData.targetExpression = 0.3;
+                } else if (progress < 0.7) {
+                    // Hold stretch
+                    trollData.squish = 1.4;
+                    trollData.headTilt = -0.25 + Math.sin(this.uniforms.time.value * 4.0) * 0.05;
+                } else {
+                    // Relax back down
+                    const relaxProgress = (progress - 0.7) / 0.3;
+                    trollData.squish = 1.4 - relaxProgress * 0.4;
+                    trollData.headTilt = -0.25 + relaxProgress * 0.25;
+                    trollData.targetExpression = 0.0;
+                }
+            }
+
+            // TIPTOEING LOGIC - Sneaky tiny hops toward spirit
+            if (trollData.behaviorState === 'tiptoeing') {
+                const time = this.uniforms.time.value;
+                // Small hops - trigger hop if on ground
+                if (!trollData.isHopping && Math.sin(time * 4.0) > 0.9) {
+                    trollData.isHopping = true;
+                    trollData.verticalVelocity = 3.0 * scale;
+                }
+                // Slow movement toward spirit (or away if too close)
+                const spiritDir = Math.sign(this.spiritCurrentPos.x - baseX);
+                if (spiritDist > 15) {
+                    trollData.currentOffset += spiritDir * 0.5 * delta;
+                }
+                // Nervous expression and darting eyes
+                trollData.targetExpression = -0.3;
+                if (Math.random() < 0.05) {
+                    trollData.lookTarget.x = (Math.random() - 0.5) * 1.5;
+                }
+                trollData.squish = 0.9 + Math.abs(Math.sin(time * 8.0)) * 0.1;
+            }
+
+            // BOUNCING LOGIC - Rapid excited hops
+            if (trollData.behaviorState === 'bouncing') {
+                // Continuous hopping
+                if (!trollData.isHopping) {
+                    trollData.isHopping = true;
+                    trollData.verticalVelocity = 4.0 * scale;
+                    trollData.squish = 0.7; // Compress before jump
+                }
+                // Excited expression
+                trollData.targetExpression = 0.7;
+                // Small head wobble
+                trollData.headTilt = Math.sin(this.uniforms.time.value * 15.0) * 0.1;
+            }
+
+            // GIGGLING LOGIC - Energetic laughter with body shake
+            if (trollData.behaviorState === 'giggling') {
+                const giggleSpeed = 25.0;
+                const time = this.uniforms.time.value;
+                // Fast squish oscillation
+                trollData.squish = 1.0 + Math.sin(time * giggleSpeed) * 0.08;
+                // Rapid head shake
+                trollData.headTilt = Math.sin(time * giggleSpeed) * 0.1;
+                // Tiny side shake
+                wiggleOffset = Math.sin(time * giggleSpeed * 1.2) * 0.03 * scale;
+                // Happy expression
+                trollData.targetExpression = 0.8;
+            }
+
+            // PEEKABOO LOGIC - Playful peek in/out
+            if (trollData.behaviorState === 'peekaboo') {
+                const peekabooSpeed = 3.0;
+                const cycle = Math.sin(this.uniforms.time.value * peekabooSpeed);
+                // Oscillate peek amount
+                if (cycle > 0) {
+                    trollData.targetPeek = 0.8;
+                    trollData.isBlinking = false;
+                    trollData.targetExpression = 0.6;
+                } else {
+                    trollData.targetPeek = 0.1;
+                    trollData.isBlinking = true; // Close eyes when hiding
+                    trollData.targetExpression = 0.0;
+                }
+                // Quick squish on transitions
+                trollData.squish = 1.0 + Math.abs(Math.cos(this.uniforms.time.value * peekabooSpeed * 2.0)) * 0.1;
+            }
+
+            // CURIOUS_LEAN LOGIC - Lean far out to investigate
+            if (trollData.behaviorState === 'curious_lean') {
+                // Maximum peek
+                trollData.targetPeek = 0.95;
+                // Forward lean (body rotation)
+                trollData.bodyLean = 0.25 * Math.sign(-hideX);
+                // Look toward spirit
+                trollData.lookTarget.x = (this.spiritCurrentPos.x - baseX) * 0.15;
+                trollData.lookTarget.y = (this.spiritCurrentPos.y - baseY) * 0.1;
+                // Interested expression with slight head tilt
+                trollData.targetExpression = 0.5;
+                trollData.headTilt = Math.sin(this.uniforms.time.value * 2.0) * 0.1;
+                // Slight stretch
+                trollData.squish = 1.1;
+            }
+
+            // CELEBRATING LOGIC - Excited celebration with multiple jumps
+            if (trollData.behaviorState === 'celebrating') {
+                // Multiple high jumps
+                if (!trollData.isHopping && trollData.stateTimer > 0.3) {
+                    trollData.isHopping = true;
+                    trollData.verticalVelocity = 8.0 * scale;
+                    trollData.squish = 0.7;
+                }
+                // Wide happy expression
+                trollData.targetExpression = 1.0;
+                // Head bob
+                trollData.headTilt = Math.sin(this.uniforms.time.value * 10.0) * 0.15;
+                // Slight sway
+                wiggleOffset = Math.sin(this.uniforms.time.value * 6.0) * 0.05 * scale;
+            }
+
+            // SHIMMYING LOGIC - Quick shake/shimmy
+            if (trollData.behaviorState === 'shimmying') {
+                const shimSpeed = 20.0;
+                const time = this.uniforms.time.value;
+                // Fast X oscillation
+                wiggleOffset = Math.sin(time * shimSpeed) * 0.08 * scale;
+                // Slight rotation wobble
+                trollData.headTilt = Math.sin(time * shimSpeed * 1.25) * 0.08;
+                // Squish pulse
+                trollData.squish = 1.0 + Math.sin(time * shimSpeed * 1.5) * 0.05;
+                // Medium expression
+                trollData.targetExpression = 0.5;
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            // 10 NEW ANIMATION LOGIC
+            // ═══════════════════════════════════════════════════════════════════
+
+            // SCRATCHING LOGIC - Itchy troll scratches behind ear/head
+            if (trollData.behaviorState === 'scratching') {
+                const scratchSpeed = 12.0;
+                const time = this.uniforms.time.value;
+                // Rhythmic head tilt toward scratch
+                trollData.headTilt = 0.25 + Math.sin(time * scratchSpeed) * 0.15;
+                // Body sways slightly
+                wiggleOffset = Math.sin(time * scratchSpeed * 0.5) * 0.03 * scale;
+                // Eyes half-closed from satisfaction
+                trollData.targetExpression = 0.3;
+                // Slight squish from effort
+                trollData.squish = 1.0 + Math.sin(time * scratchSpeed * 2.0) * 0.03;
+            }
+
+            // YODELING LOGIC - Dramatic head throw and "call"
+            if (trollData.behaviorState === 'yodeling') {
+                const yodelDuration = trollData.stateTimer / 4.0;
+                const progress = 1.0 - yodelDuration;
+                const time = this.uniforms.time.value;
+
+                if (progress < 0.3) {
+                    // Build up - inhale
+                    trollData.squish = 1.0 + progress * 0.4;
+                    trollData.headTilt = -0.1;
+                    trollData.targetPeek = 0.7;
+                } else if (progress < 0.7) {
+                    // YODEL! - head back, mouth wide
+                    trollData.headTilt = -0.4 + Math.sin(time * 8.0) * 0.1;
+                    trollData.squish = 1.3 + Math.sin(time * 15.0) * 0.05;
+                    trollData.targetPeek = 0.9;
+                    trollData.targetExpression = 1.0;
+                    // Body vibrates
+                    wiggleOffset = Math.sin(time * 20.0) * 0.02 * scale;
+                } else {
+                    // Finish - relax
+                    trollData.headTilt = 0;
+                    trollData.squish = 1.0;
+                    trollData.targetExpression = 0.5;
+                }
+            }
+
+            // SHIVERING LOGIC - Nervous trembling
+            if (trollData.behaviorState === 'shivering') {
+                const shiverSpeed = 30.0;
+                const time = this.uniforms.time.value;
+                // Rapid tiny shakes
+                wiggleOffset = Math.sin(time * shiverSpeed) * 0.04 * scale;
+                // Vertical shudder
+                trollData.squish = 1.0 + Math.sin(time * shiverSpeed * 1.3) * 0.04;
+                // Head wobble
+                trollData.headTilt = Math.sin(time * shiverSpeed * 0.9) * 0.08;
+                // Wide scared eyes
+                trollData.targetExpression = -0.6;
+                // Stay low
+                trollData.targetPeek = 0.3;
+            }
+
+            // PONDERING LOGIC - Deep thought, slow movements
+            if (trollData.behaviorState === 'pondering') {
+                const time = this.uniforms.time.value;
+                // Slow head tilt as if thinking
+                trollData.headTilt = Math.sin(time * 0.5) * 0.2;
+                // Eyes look up occasionally
+                if (Math.sin(time * 0.3) > 0.7) {
+                    trollData.lookTarget.y = 0.3;
+                } else {
+                    trollData.lookTarget.y = -0.1;
+                }
+                // Slight squish (settled posture)
+                trollData.squish = 0.95;
+                // Thoughtful expression
+                trollData.targetExpression = 0.2;
+            }
+
+            // LISTENING LOGIC - Frozen, ears perked
+            if (trollData.behaviorState === 'listening') {
+                const time = this.uniforms.time.value;
+                // Almost completely still
+                trollData.squish = 1.0;
+                // Occasional tiny ear twitch (head movement)
+                if (Math.sin(time * 2.0) > 0.9) {
+                    trollData.headTilt = 0.1;
+                } else {
+                    trollData.headTilt = 0;
+                }
+                // Eyes dart around
+                trollData.lookTarget.x = Math.sin(time * 3.0) * 0.5;
+                trollData.lookTarget.y = Math.sin(time * 2.0) * 0.2;
+                // Alert expression
+                trollData.targetExpression = 0.4;
+            }
+
+            // SNIFFING LOGIC - Nose twitching, head bobbing
+            if (trollData.behaviorState === 'sniffing') {
+                const sniffSpeed = 5.0;
+                const time = this.uniforms.time.value;
+                // Nose bob (head up/down)
+                const sniffCycle = Math.sin(time * sniffSpeed);
+                trollData.targetPeek = 0.65 + sniffCycle * 0.08;
+                // Head tilts following scent
+                trollData.headTilt = Math.sin(time * 1.5) * 0.15;
+                // Squish with each sniff
+                trollData.squish = 1.0 + Math.abs(sniffCycle) * 0.06;
+                // Curious expression
+                trollData.targetExpression = 0.3;
+            }
+
+            // CROAKING LOGIC - Frog-like call with body pulse
+            if (trollData.behaviorState === 'croaking') {
+                const croakDuration = trollData.stateTimer / 2.0;
+                const progress = 1.0 - croakDuration;
+                const time = this.uniforms.time.value;
+
+                if (progress < 0.2) {
+                    // Inhale - puff up
+                    trollData.squish = 1.0 + progress * 1.5;
+                    trollData.headTilt = -0.1;
+                } else if (progress < 0.5) {
+                    // CROAK! - deflate rapidly with shake
+                    const croakProgress = (progress - 0.2) / 0.3;
+                    trollData.squish = 1.3 - croakProgress * 0.4;
+                    trollData.headTilt = 0.2;
+                    wiggleOffset = Math.sin(time * 25.0) * 0.03 * scale;
+                    trollData.targetExpression = 0.9; // Wide mouth
+                } else {
+                    // Recover
+                    trollData.squish = 0.9 + (progress - 0.5) * 0.2;
+                    trollData.headTilt = 0;
+                    trollData.targetExpression = 0.3;
+                }
+            }
+
+            // MOONGAZING LOGIC - Looking up dreamily at aurora/sky
+            if (trollData.behaviorState === 'moongazing') {
+                const time = this.uniforms.time.value;
+                // Head tilted back looking up
+                trollData.headTilt = -0.3;
+                // Eyes look up
+                trollData.lookTarget.y = 0.5;
+                trollData.lookTarget.x = Math.sin(time * 0.2) * 0.2; // Slow drift
+                // Dreamy, relaxed expression
+                trollData.targetExpression = 0.1;
+                // Very slow breathing/sway
+                trollData.squish = 1.0 + Math.sin(time * 0.5) * 0.03;
+                // Slight body sway
+                wiggleOffset = Math.sin(time * 0.3) * 0.02 * scale;
+            }
+
+            // HUDDLING LOGIC - Curled up protectively
+            if (trollData.behaviorState === 'huddling') {
+                const time = this.uniforms.time.value;
+                // Compressed, curled up
+                trollData.squish = 0.7;
+                trollData.targetPeek = 0.2;
+                // Head tucked
+                trollData.headTilt = 0.3;
+                // Occasional frightened shudder
+                if (Math.sin(time * 2.0) > 0.8) {
+                    wiggleOffset = Math.sin(time * 20.0) * 0.02 * scale;
+                }
+                // Scared squinting
+                trollData.targetExpression = -0.5;
+                // Eyes dart nervously
+                trollData.lookTarget.x = Math.sin(time * 4.0) * 0.3;
+            }
+
+            // MISCHIEF LOGIC - Plotting something naughty
+            if (trollData.behaviorState === 'mischief') {
+                const time = this.uniforms.time.value;
+                // Devious head tilt
+                trollData.headTilt = 0.2 + Math.sin(time * 2.0) * 0.1;
+                // Rubbing hands motion (body squish)
+                trollData.squish = 1.0 + Math.sin(time * 8.0) * 0.05;
+                // Shifty eyes
+                trollData.lookTarget.x = Math.sin(time * 3.0) * 0.4;
+                // Mischievous squint
+                trollData.targetExpression = -0.3;
+                // Slight sneaky sway
+                wiggleOffset = Math.sin(time * 4.0) * 0.02 * scale;
+                // Occasionally peek higher to check if coast is clear
+                if (Math.sin(time * 1.0) > 0.7) {
+                    trollData.targetPeek = 0.8;
+                    trollData.lookTarget.y = 0.2;
+                } else {
+                    trollData.targetPeek = 0.55;
+                }
+            }
 
             // ─────────────────────────────────────────────────────────────────
             // PHYSICS & ANIMATION
@@ -1933,10 +2483,10 @@ export default class StillwaterTheme extends BaseTheme {
             }
             trollData.fidgetOffset.lerp(trollData.targetFidget, delta * 2.0);
 
-            // Position: base + peek offset + fidget + breathing
+            // Position: base + movement offset + peek offset + fidget + breathing
             const peekOffset = -hideX * trollData.currentPeek;
-            // Add wiggle offset here
-            let finalX = baseX + peekOffset + trollData.fidgetOffset.x + (trollData.behaviorState === 'wiggling' ? wiggleOffset : 0);
+            // Add wiggle offset and currentOffset (for fleeing/returning movement)
+            let finalX = baseX + trollData.currentOffset + peekOffset + trollData.fidgetOffset.x + (trollData.behaviorState === 'wiggling' ? wiggleOffset : 0);
 
             mesh.position.x = finalX; // Use computed X including wiggle
             mesh.position.y = baseY + breathAmount + trollData.fidgetOffset.y;

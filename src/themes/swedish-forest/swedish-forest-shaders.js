@@ -639,3 +639,99 @@ void main() {
     gl_FragColor = vec4(vColor, leaf * vAlpha);
 }
 `;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INSTANCED TREE FOLIAGE SHADER - For InstancedMesh optimization
+// Uses per-instance attributes for color and sway variation
+// ─────────────────────────────────────────────────────────────────────────────
+export const instancedFoliageVertexShader = `
+uniform float uTime;
+uniform float uGlowIntensity;
+
+// Per-instance attributes
+attribute vec3 aInstanceColor;    // Tree layer color (darker front, lighter back)
+attribute float aInstanceSway;    // Sway amount based on layer depth
+attribute float aInstancePhase;   // Random phase offset for wind variation
+
+varying vec2 vUv;
+varying float vHeight;
+varying vec3 vInstanceColor;
+varying float vGlowIntensity;
+
+void main() {
+    vUv = uv;
+    vHeight = position.y;
+    vInstanceColor = aInstanceColor;
+    vGlowIntensity = uGlowIntensity;
+    
+    // Apply instance transform first
+    vec4 instancePosition = instanceMatrix * vec4(position, 1.0);
+    
+    // Gentle wind sway based on height and instance-specific parameters
+    float heightFactor = smoothstep(0.0, 1.0, (position.y + 1.0) * 0.5);
+    float sway = sin(uTime * 0.5 + instancePosition.x * 0.1 + aInstancePhase) * aInstanceSway * heightFactor;
+    
+    instancePosition.x += sway;
+    
+    gl_Position = projectionMatrix * modelViewMatrix * instancePosition;
+}
+`;
+
+export const instancedFoliageFragmentShader = `
+varying vec2 vUv;
+varying float vHeight;
+varying vec3 vInstanceColor;
+varying float vGlowIntensity;
+
+void main() {
+    vec3 color = vInstanceColor;
+    
+    // Edge highlight for depth
+    float edge = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
+    vec3 highlight = color * 1.15;
+    color = mix(color, highlight, (1.0 - edge) * 0.3);
+    
+    // Magic glow during events
+    vec3 glowColor = vec3(0.3, 0.9, 0.7);
+    color += glowColor * vGlowIntensity * 0.2;
+    
+    gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INSTANCED TRUNK SHADER - For InstancedMesh optimization
+// ─────────────────────────────────────────────────────────────────────────────
+export const instancedTrunkVertexShader = `
+attribute vec3 aInstanceColor;  // Trunk color per instance
+
+varying vec2 vUv;
+varying vec3 vInstanceColor;
+
+void main() {
+    vUv = uv;
+    vInstanceColor = aInstanceColor;
+    
+    vec4 instancePosition = instanceMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * instancePosition;
+}
+`;
+
+export const instancedTrunkFragmentShader = `
+uniform float uGlowIntensity;
+
+varying vec2 vUv;
+varying vec3 vInstanceColor;
+
+void main() {
+    vec3 color = vInstanceColor;
+    color *= 0.9 + vUv.y * 0.1;
+    
+    // Rune glow during events
+    float runeGlow = smoothstep(0.3, 0.5, vUv.y) * smoothstep(0.7, 0.5, vUv.y);
+    runeGlow *= smoothstep(0.3, 0.5, vUv.x) * smoothstep(0.7, 0.5, vUv.x);
+    color += vec3(0.4, 1.0, 0.8) * runeGlow * uGlowIntensity * 0.4;
+    
+    gl_FragColor = vec4(color, 1.0);
+}
+`;
