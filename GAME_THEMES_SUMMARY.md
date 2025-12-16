@@ -1,6 +1,6 @@
 # 🎮 Serenity Blocks - Complete Theme Guide
 
-A comprehensive summary of all **56 visual themes** available in Serenity Blocks. Each theme creates a unique atmospheric backdrop that transforms your gameplay experience.
+A comprehensive summary of all **55 visual themes** available in Serenity Blocks. Each theme creates a unique atmospheric backdrop that transforms your gameplay experience.
 
 ---
 

@@ -12,11 +12,8 @@ import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-    treeFoliageVertexShader,
-    treeFoliageFragmentShader,
-    trunkVertexShader,
-    trunkFragmentShader,
     groundVertexShader,
     groundFragmentShader,
     mistVertexShader,
@@ -35,6 +32,10 @@ import {
     spiritWindFragmentShader,
     leafVertexShader,
     leafFragmentShader,
+    instancedFoliageVertexShader,
+    instancedFoliageFragmentShader,
+    instancedTrunkVertexShader,
+    instancedTrunkFragmentShader,
 } from './swedish-forest-shaders.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -105,8 +106,8 @@ export default class SwedishForestTheme extends BaseTheme {
         this.animationFrame = null;
 
         // Scene elements
-        this.treeMeshes = [];
-        this.trunkMeshes = [];
+        this.foliageInstancedMesh = null;  // Single InstancedMesh for all tree foliage
+        this.trunkInstancedMesh = null;    // Single InstancedMesh for all tree trunks
         this.groundPlane = null;
         this.starfield = null;
         this.mistPlanes = [];
@@ -326,11 +327,11 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // LAYERED SPRUCE TREES - Triangular foliage with minimal sway
+    // LAYERED SPRUCE TREES - InstancedMesh Optimization (2 draw calls vs 400+)
     // ═══════════════════════════════════════════════════════════════════════════
 
     createTrees() {
-        // Layer configurations - more depth separation
+        // Layer configurations - trees arranged by depth
         const layers = [
             { count: 20, z: -2, height: 16, spacing: 8, colorIdx: 0, sway: 0.35 },   // Front
             { count: 22, z: -12, height: 22, spacing: 9, colorIdx: 1, sway: 0.30 },  // Mid-front
@@ -338,75 +339,152 @@ export default class SwedishForestTheme extends BaseTheme {
             { count: 18, z: -45, height: 42, spacing: 14, colorIdx: 3, sway: 0.20 }, // Back
         ];
 
-        layers.forEach((layer, layerIdx) => {
-            for (let i = 0; i < layer.count; i++) {
-                const x = (i - layer.count / 2) * layer.spacing + (Math.random() - 0.5) * 5;
-                const height = layer.height * (0.75 + Math.random() * 0.4);
-                const numLayers = 5 + Math.floor(Math.random() * 3);
+        // Calculate total tree count
+        const totalTreeCount = layers.reduce((sum, layer) => sum + layer.count, 0);
+        console.log(`[SwedishForest] Creating ${totalTreeCount} trees with InstancedMesh optimization`);
 
-                this.createSpruceTree(x, layer.z, height, numLayers, layerIdx, layer.sway);
-            }
-        });
-    }
+        // Generate ONE merged spruce geometry (foliage + trunk will be separate)
+        const { foliageGeometry, trunkGeometry } = this.createMergedSpruceGeometry();
 
-    createSpruceTree(x, z, height, numLayers, layerIdx, swayAmount) {
-        const treeColor = COLORS.treeLayers[layerIdx];
-        const trunkColor = COLORS.trunkLayers[layerIdx];
-        const trunkHeight = height * 0.12;
-        const baseWidth = height * 0.35;
+        // Create per-instance attribute arrays
+        const instanceColors = new Float32Array(totalTreeCount * 3);
+        const instanceSways = new Float32Array(totalTreeCount);
+        const instancePhases = new Float32Array(totalTreeCount);
+        const trunkColors = new Float32Array(totalTreeCount * 3);
 
-        // Create trunk
-        const trunkGeometry = new THREE.CylinderGeometry(
-            0.15, 0.35, trunkHeight, 6
-        );
-        const trunkMaterial = new THREE.ShaderMaterial({
+        // Create instanced meshes
+        const foliageMaterial = new THREE.ShaderMaterial({
             uniforms: {
-                uTrunkColor: { value: trunkColor },
+                uTime: this.uniforms.time,
                 uGlowIntensity: this.uniforms.glowIntensity,
             },
-            vertexShader: trunkVertexShader,
-            fragmentShader: trunkFragmentShader,
+            vertexShader: instancedFoliageVertexShader,
+            fragmentShader: instancedFoliageFragmentShader,
+            side: THREE.DoubleSide,
         });
-        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        trunk.position.set(x, trunkHeight / 2, z);
-        this.trunkMeshes.push(trunk);
-        this.mainGroup.add(trunk);
 
-        // Create foliage layers
-        const layerHeight = (height - trunkHeight) / numLayers;
+        const trunkMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uGlowIntensity: this.uniforms.glowIntensity,
+            },
+            vertexShader: instancedTrunkVertexShader,
+            fragmentShader: instancedTrunkFragmentShader,
+        });
 
+        this.foliageInstancedMesh = new THREE.InstancedMesh(foliageGeometry, foliageMaterial, totalTreeCount);
+        this.trunkInstancedMesh = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, totalTreeCount);
+
+        // Set up transforms and per-instance data
+        const matrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+
+        let instanceIdx = 0;
+
+        layers.forEach((layer, layerIdx) => {
+            const treeColor = COLORS.treeLayers[layerIdx];
+            const trunkColor = COLORS.trunkLayers[layerIdx];
+
+            for (let i = 0; i < layer.count; i++) {
+                const x = (i - layer.count / 2) * layer.spacing + (Math.random() - 0.5) * 5;
+                const z = layer.z + (Math.random() - 0.5) * 3;
+                const y = 0;
+
+                // Random scale variation
+                const scaleVal = 0.7 + Math.random() * 0.5;
+                const heightScale = layer.height / 20; // Normalize to base height of 20
+
+                position.set(x, y, z);
+                quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - 0.5) * 0.2);
+                scale.set(scaleVal, scaleVal * heightScale, scaleVal);
+
+                matrix.compose(position, quaternion, scale);
+                this.foliageInstancedMesh.setMatrixAt(instanceIdx, matrix);
+                this.trunkInstancedMesh.setMatrixAt(instanceIdx, matrix);
+
+                // Per-instance color (foliage)
+                instanceColors[instanceIdx * 3] = treeColor.r;
+                instanceColors[instanceIdx * 3 + 1] = treeColor.g;
+                instanceColors[instanceIdx * 3 + 2] = treeColor.b;
+
+                // Per-instance trunk color
+                trunkColors[instanceIdx * 3] = trunkColor.r;
+                trunkColors[instanceIdx * 3 + 1] = trunkColor.g;
+                trunkColors[instanceIdx * 3 + 2] = trunkColor.b;
+
+                // Per-instance sway amount
+                instanceSways[instanceIdx] = layer.sway;
+
+                // Per-instance random phase for wind variation
+                instancePhases[instanceIdx] = Math.random() * Math.PI * 2;
+
+                instanceIdx++;
+            }
+        });
+
+        // Set up instanced buffer attributes
+        foliageGeometry.setAttribute('aInstanceColor',
+            new THREE.InstancedBufferAttribute(instanceColors, 3));
+        foliageGeometry.setAttribute('aInstanceSway',
+            new THREE.InstancedBufferAttribute(instanceSways, 1));
+        foliageGeometry.setAttribute('aInstancePhase',
+            new THREE.InstancedBufferAttribute(instancePhases, 1));
+
+        trunkGeometry.setAttribute('aInstanceColor',
+            new THREE.InstancedBufferAttribute(trunkColors, 3));
+
+        this.foliageInstancedMesh.instanceMatrix.needsUpdate = true;
+        this.trunkInstancedMesh.instanceMatrix.needsUpdate = true;
+
+        this.mainGroup.add(this.trunkInstancedMesh);
+        this.mainGroup.add(this.foliageInstancedMesh);
+
+        console.log(`[SwedishForest] Trees created: ${totalTreeCount} instances (2 draw calls)`);
+    }
+
+    /**
+     * Create a merged spruce tree geometry with all foliage layers combined
+     * This geometry is shared across all instances
+     */
+    createMergedSpruceGeometry() {
+        const foliageLayers = [];
+        const numLayers = 6;  // Standard number of foliage tiers
+        const baseHeight = 20; // Normalized base height
+        const trunkHeight = baseHeight * 0.12;
+        const baseWidth = baseHeight * 0.35;
+        const layerHeight = (baseHeight - trunkHeight) / numLayers;
+
+        // Create foliage layers (triangular shapes)
         for (let j = 0; j < numLayers; j++) {
             const widthScale = (numLayers - j) / numLayers;
             const layerWidth = baseWidth * widthScale;
             const y = trunkHeight + j * layerHeight;
 
+            // Create triangle shape for this layer
             const shape = new THREE.Shape();
             shape.moveTo(0, layerHeight);
             shape.lineTo(-layerWidth / 2, 0);
             shape.lineTo(layerWidth / 2, 0);
             shape.closePath();
 
-            const geometry = new THREE.ShapeGeometry(shape);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uSwayAmount: { value: swayAmount },
-                    uLayer: { value: layerIdx + j * 0.1 },
-                    uTreeColor: { value: treeColor },
-                    uGlowIntensity: this.uniforms.glowIntensity,
-                },
-                vertexShader: treeFoliageVertexShader,
-                fragmentShader: treeFoliageFragmentShader,
-                side: THREE.DoubleSide,
-            });
-
-            const foliage = new THREE.Mesh(geometry, material);
-            foliage.position.set(x, y, z);
-
-            this.treeMeshes.push(foliage);
-            this.mainGroup.add(foliage);
+            const layerGeo = new THREE.ShapeGeometry(shape);
+            // Translate to correct Y position
+            layerGeo.translate(0, y, 0);
+            foliageLayers.push(layerGeo);
         }
+
+        // Merge all foliage layers into one geometry
+        const foliageGeometry = BufferGeometryUtils.mergeGeometries(foliageLayers, false);
+
+        // Create trunk geometry (cylinder)
+        const trunkGeometry = new THREE.CylinderGeometry(0.15, 0.35, trunkHeight, 6);
+        trunkGeometry.translate(0, trunkHeight / 2, 0);
+
+        // Clean up individual layer geometries
+        foliageLayers.forEach(geo => geo.dispose());
+
+        return { foliageGeometry, trunkGeometry };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1064,8 +1142,8 @@ export default class SwedishForestTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.mainGroup = null;
-        this.treeMeshes = [];
-        this.trunkMeshes = [];
+        this.foliageInstancedMesh = null;
+        this.trunkInstancedMesh = null;
         this.groundPlane = null;
         this.starfield = null;
         this.mistPlanes = [];
