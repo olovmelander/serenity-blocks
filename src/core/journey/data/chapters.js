@@ -1,8 +1,8 @@
 /**
  * @fileoverview Journey Mode Chapter Configurations
  *
- * Defines the seven chapters of Journey Mode, each representing a stage
- * of cosmic ascent from Earth's core to abstract transcendence.
+ * Defines the eight chapters of Journey Mode, each representing a stage
+ * of cosmic ascent from Earth's core to abstract transcendence and urban dreams.
  */
 
 export const CHAPTER_CONFIGS = [
@@ -10,11 +10,11 @@ export const CHAPTER_CONFIGS = [
         id: 1,
         name: 'Earth Core & Subterranean Origins',
         subtitle: 'Begin your ascent',
-        levelRange: [1, 8],
+        levelRange: [1, 7],
 
         themes: {
-            primary: ['crystal-cave', 'geode', 'cinder-drift', 'pyrestorm'],
-            supporting: ['bioluminescence', 'cosmic-noir'],
+            primary: ['crystal-cave', 'cinder-drift', 'geode', 'pyrestorm', 'shifting-sands', 'cosmic-noir', 'bioluminescence'],
+            supporting: [],
         },
 
         environment: {
@@ -42,11 +42,11 @@ export const CHAPTER_CONFIGS = [
         id: 2,
         name: 'Deep Ocean & Liquid Worlds',
         subtitle: 'Descend into the deep',
-        levelRange: [9, 16],
+        levelRange: [8, 14],
 
         themes: {
-            primary: ['ocean', 'bioluminescence', 'luminous-tides', 'stillwater'],
-            supporting: ['waves', 'koi-pond'],
+            primary: ['ocean', 'luminous-tides', 'stillwater', 'koi-pond', 'waves', 'moonlit-forest', 'forest'],
+            supporting: [],
         },
 
         environment: {
@@ -77,11 +77,11 @@ export const CHAPTER_CONFIGS = [
         id: 3,
         name: 'Surface World & Living Landscapes',
         subtitle: 'Embrace the light',
-        levelRange: [17, 24],
+        levelRange: [15, 22],
 
         themes: {
-            primary: ['forest', 'meadow', 'spring', 'summer', 'fall', 'verdant-hills'],
-            supporting: ['sakura-twilight', 'swedish-forest', 'misty-lake', 'moonlit-greenhouse', 'sunset'],
+            primary: ['misty-lake', 'moonlit-greenhouse', 'spring', 'summer', 'meadow', 'sakura-twilight', 'ice-temple', 'nimbus-veil'],
+            supporting: [],
         },
 
         environment: {
@@ -112,11 +112,11 @@ export const CHAPTER_CONFIGS = [
         id: 4,
         name: 'Mountains & Thin-Air Ascension',
         subtitle: 'Scale the heights',
-        levelRange: [25, 32],
+        levelRange: [23, 30],
 
         themes: {
-            primary: ['mountain', 'himalayan-peak', 'ice-temple', 'winter', 'moonrise-summit'],
-            supporting: ['moonlit-forest', 'wolfhour'],
+            primary: ['aurora', 'wolfhour', 'himalayan-peak', 'starlight', 'mountain', 'winter', 'moonrise-summit', 'sunset'],
+            supporting: [],
         },
 
         environment: {
@@ -147,11 +147,11 @@ export const CHAPTER_CONFIGS = [
         id: 5,
         name: 'Sky & Atmospheric Drift',
         subtitle: 'Float among clouds',
-        levelRange: [33, 40],
+        levelRange: [31, 36],
 
         themes: {
-            primary: ['nimbus-veil', 'aurora'],
-            supporting: ['starlight', 'wolfhour'],
+            primary: ['aether-tides', 'rainy-window', 'galaxy', 'solar-eclipse', 'verdant-hills', 'fall'],
+            supporting: [],
         },
 
         environment: {
@@ -182,11 +182,11 @@ export const CHAPTER_CONFIGS = [
         id: 6,
         name: 'Space & Cosmic Expanse',
         subtitle: 'Journey through stars',
-        levelRange: [41, 48],
+        levelRange: [37, 44],
 
         themes: {
-            primary: ['galaxy', 'stellar-drift', 'astral-weave', 'solar-eclipse', 'supernova'],
-            supporting: ['lunara', 'blood-moon', 'aether-tides', 'cosmic-chimes', 'stellar-velocity'],
+            primary: ['supernova', 'astral-weave', 'blood-moon', 'lunara', 'stellar-drift', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
+            supporting: [],
         },
 
         environment: {
@@ -217,11 +217,11 @@ export const CHAPTER_CONFIGS = [
         id: 7,
         name: 'Black Hole & Abstract Transcendence',
         subtitle: 'Beyond reality',
-        levelRange: [49, 56],
+        levelRange: [45, 51],
 
         themes: {
-            primary: ['black-hole', 'nebula-flow', 'fluid-dreams'],
-            supporting: ['chromadelic-highway', 'chromatic-impasto', 'electric-dreams', 'voltage-storm', 'singing-bowl'],
+            primary: ['fluid-dreams', 'nebula-flow', 'chromadelic-highway', 'voltage-storm', 'chromatic-impasto', 'electric-dreams', 'singing-bowl'],
+            supporting: [],
         },
 
         environment: {
@@ -252,10 +252,10 @@ export const CHAPTER_CONFIGS = [
         id: 8,
         name: 'Urban Dreams',
         subtitle: 'Neon reflections',
-        levelRange: [57, 60],
+        levelRange: [52, 55],
 
         themes: {
-            primary: ['rainy-window', 'neon-dusk', 'neon-district', 'synthwave-sunset'],
+            primary: ['swedish-forest', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
             supporting: [],
         },
 

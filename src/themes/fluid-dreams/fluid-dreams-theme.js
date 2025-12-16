@@ -1,1145 +1,1074 @@
 /**
- * @fileoverview Fluid Dreams Theme - Dreamy flowing scene with morphing blobs, iridescent bubbles, and flowing ribbons
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * FLUID DREAMS THEME - Three.js 3D Implementation
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * A dreamy, flowing underwater-like experience featuring:
+ * - Morphing 3D blobs with realistic reflective materials (MeshPhysicalMaterial)
+ * - Iridescent soap bubbles with rainbow Fresnel effects
+ * - Flowing ribbon streams with gradient shaders
+ * - Ambient shimmer particles
+ * - Gameplay-reactive effects (pulses, bursts, shockwaves)
+ *
+ * Inspired by: https://redstapler.co/three-js-realistic-material-reflection-tutorial/
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { FLUID_DREAMS_TETROMINOS } from './fluid-dreams-tetrominos.js';
+import {
+    backgroundVertexShader,
+    backgroundFragmentShader,
+    bubbleVertexShader,
+    bubbleFragmentShader,
+    blobVertexShader,
+    blobFragmentShader,
+    ribbonVertexShader,
+    ribbonFragmentShader,
+    particleVertexShader,
+    particleFragmentShader,
+    shockwaveVertexShader,
+    shockwaveFragmentShader,
+} from './fluid-dreams-shaders.js';
 
-/**
- * Fluid Dreams Theme
- * Features:
- * - Morphing blobs with gooey effects
- * - Iridescent bubbles floating upward
- * - Flowing ribbon streams
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Presets
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUALITY_PRESETS = {
+    Minimal: {
+        blobCount: 3,
+        bubbleCount: 12,
+        ribbonCount: 2,
+        particleCount: 200,
+        blobSegments: 24,
+        enableBloom: false,
+        bloomStrength: 0.15,
+    },
+    Low: {
+        blobCount: 4,
+        bubbleCount: 18,
+        ribbonCount: 3,
+        particleCount: 400,
+        blobSegments: 32,
+        enableBloom: true,
+        bloomStrength: 0.2,
+    },
+    Medium: {
+        blobCount: 5,
+        bubbleCount: 25,
+        ribbonCount: 4,
+        particleCount: 600,
+        blobSegments: 48,
+        enableBloom: true,
+        bloomStrength: 0.22,
+    },
+    High: {
+        blobCount: 6,
+        bubbleCount: 32,
+        ribbonCount: 5,
+        particleCount: 800,
+        blobSegments: 64,
+        enableBloom: true,
+        bloomStrength: 0.25,
+    },
+    Ultra: {
+        blobCount: 8,
+        bubbleCount: 40,
+        ribbonCount: 6,
+        particleCount: 1000,
+        blobSegments: 80,
+        enableBloom: true,
+        bloomStrength: 0.28,
+    },
+    Extreme: {
+        blobCount: 10,
+        bubbleCount: 50,
+        ribbonCount: 8,
+        particleCount: 1500,
+        blobSegments: 96,
+        enableBloom: true,
+        bloomStrength: 0.3,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Color Palettes - Dreamy Iridescent
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BLOB_COLORS = [
+    {
+        color1: new THREE.Color(0x79faff), // Aqua glow
+        color2: new THREE.Color(0xff7cf0), // Magenta shine
+        color3: new THREE.Color(0xa1ffcf), // Mint wave
+    },
+    {
+        color1: new THREE.Color(0xff7cf0), // Magenta
+        color2: new THREE.Color(0x8c9bff), // Indigo
+        color3: new THREE.Color(0xffe066), // Golden
+    },
+    {
+        color1: new THREE.Color(0xa1ffcf), // Mint
+        color2: new THREE.Color(0x79faff), // Aqua
+        color3: new THREE.Color(0xff8ba0), // Coral
+    },
+    {
+        color1: new THREE.Color(0x8c9bff), // Indigo
+        color2: new THREE.Color(0xffe066), // Golden
+        color3: new THREE.Color(0xff7cf0), // Magenta
+    },
+];
+
+const BUBBLE_COLORS = [
+    new THREE.Color(0x79faff),
+    new THREE.Color(0xff7cf0),
+    new THREE.Color(0xa1ffcf),
+    new THREE.Color(0xff8ba0),
+    new THREE.Color(0x8c9bff),
+];
+
+const RIBBON_COLORS = [
+    { color1: new THREE.Color(0x79faff), color2: new THREE.Color(0xff7cf0), color3: new THREE.Color(0xa1ffcf) },
+    { color1: new THREE.Color(0xff8ba0), color2: new THREE.Color(0x8c9bff), color3: new THREE.Color(0xffe066) },
+    { color1: new THREE.Color(0xa1ffcf), color2: new THREE.Color(0x79faff), color3: new THREE.Color(0xff8ba0) },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme Class
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default class FluidDreamsTheme extends BaseTheme {
     constructor() {
         super('fluid-dreams');
-
-        // Gameplay effects
-        this.liquidSplashes = [];
-        this.iridescenceWaves = [];
-        this.dreamRipples = [];
-        this.fluidStreams = [];
-        this.prismBursts = [];
-        this.morphBlobs = [];
-        this.comboMultiplier = 1.0;
-        this.effectsAnimationFrame = null;
-        this.lastEffectsFrameTime = 0;
         this.eventUnsubscribers = [];
 
-        // Store references to DOM blobs
-        this.domBlobs = [];
-        this.blobPulses = new Map();
+        // Three.js components
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.mainGroup = null;
+        this.clock = new THREE.Clock();
+        this.animationFrame = null;
 
-        // Performance limits - more aggressive
-        this.MAX_PARTICLES = 80;
-        this.MAX_WAVES = 4;
-        this.MAX_RIPPLES = 6;
-        this.MAX_STREAMS = 3;
-        this.MAX_BURSTS = 1;
-        this.MAX_BLOBS = 1;
-        this.qualityChangeHandler = null;
-        this.qualityPresets = {
-            Minimal: {
-                blobCount: 4,
-                bubbleCount: 8,
-                ribbonCount: 2,
-                maxParticles: 35,
-                maxWaves: 2,
-                maxRipples: 2,
-                maxStreams: 1,
-                maxBursts: 1,
-                maxBlobs: 1,
-            },
-            Low: {
-                blobCount: 6,
-                bubbleCount: 14,
-                ribbonCount: 3,
-                maxParticles: 55,
-                maxWaves: 3,
-                maxRipples: 4,
-                maxStreams: 2,
-                maxBursts: 1,
-                maxBlobs: 1,
-            },
-            Medium: {
-                blobCount: 7,
-                bubbleCount: 18,
-                ribbonCount: 4,
-                maxParticles: 70,
-                maxWaves: 4,
-                maxRipples: 5,
-                maxStreams: 3,
-                maxBursts: 1,
-                maxBlobs: 1,
-            },
-            High: {
-                blobCount: 8,
-                bubbleCount: 22,
-                ribbonCount: 5,
-                maxParticles: 90,
-                maxWaves: 5,
-                maxRipples: 6,
-                maxStreams: 4,
-                maxBursts: 2,
-                maxBlobs: 2,
-            },
-            Ultra: {
-                blobCount: 10,
-                bubbleCount: 26,
-                ribbonCount: 6,
-                maxParticles: 110,
-                maxWaves: 6,
-                maxRipples: 8,
-                maxStreams: 5,
-                maxBursts: 2,
-                maxBlobs: 2,
-            },
-            Extreme: {
-                blobCount: 14,
-                bubbleCount: 35,
-                ribbonCount: 8,
-                maxParticles: 150,
-                maxWaves: 8,
-                maxRipples: 11,
-                maxStreams: 7,
-                maxBursts: 3,
-                maxBlobs: 3,
-            },
+        // Bind resize handler to keep reference for removal
+        this.onWindowResize = this.onWindowResize.bind(this);
+
+        // Scene elements
+        this.backgroundSphere = null;
+        this.blobs = [];
+        this.bubbles = [];
+        this.ribbons = [];
+        this.particles = null;
+        this.envMap = null;
+
+        // Effect state
+        this.shockwaves = [];
+        this.uniforms = {
+            time: { value: 0 },
+            pulseIntensity: { value: 0 },
         };
-        this.currentQuality = 'Ultra';
-        this.activePreset = this.qualityPresets.Ultra;
+
+        // Camera state
+        this.baseCameraPos = new THREE.Vector3(0, 0, 50);
+        this.cameraTarget = new THREE.Vector3(0, 0, 0);
+
+        // Combo state
+        this.comboMultiplier = 1.0;
+        this.targetPulseIntensity = 0;
+
+        // Quality
+        this.currentQuality = 'High';
+        this.activePreset = QUALITY_PRESETS.High;
+        this.qualityChangeHandler = null;
+
+        // Post-processing
+        this.bloomPass = null;
     }
 
-    applyQualityPreset(quality, { skipRefresh = false } = {}) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Fluid Dreams: Unknown quality preset "${quality}", defaulting to Ultra`);
-            quality = 'Ultra';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        this.MAX_PARTICLES = this.activePreset.maxParticles;
-        this.MAX_WAVES = this.activePreset.maxWaves;
-        this.MAX_RIPPLES = this.activePreset.maxRipples;
-        this.MAX_STREAMS = this.activePreset.maxStreams;
-        this.MAX_BURSTS = this.activePreset.maxBursts;
-        this.MAX_BLOBS = this.activePreset.maxBlobs;
-
-        if (!skipRefresh) {
-            this.refreshQualityDependentElements();
-        }
-
-        console.log(`💧 Fluid Dreams: Applying ${quality} quality preset`);
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Quality Management
+    // ─────────────────────────────────────────────────────────────────────────
 
     getGraphicsQuality() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'Ultra';
+        return settings?.effectQuality || 'High';
+    }
+
+    applyQualityPreset(quality) {
+        if (!QUALITY_PRESETS[quality]) quality = 'High';
+        this.currentQuality = quality;
+        this.activePreset = QUALITY_PRESETS[quality];
+        console.log(`💧 Fluid Dreams 3D: Applied ${quality} quality preset`);
+
+        if (this.isActive && this.scene) {
+            this.rebuildQualityDependentElements();
+        }
+    }
+
+    rebuildQualityDependentElements() {
+        // Rebuild particles
+        if (this.particles) {
+            this.mainGroup.remove(this.particles);
+            this.particles.geometry.dispose();
+            this.particles.material.dispose();
+        }
+        this.createParticles();
+
+        // Update bloom
+        if (this.bloomPass) {
+            this.bloomPass.enabled = this.activePreset.enableBloom;
+            this.bloomPass.strength = this.activePreset.bloomStrength;
+        }
     }
 
     setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-        }
-
+        this.teardownQualityListener();
         this.qualityChangeHandler = (event) => {
             const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            this.applyQualityPreset(newQuality);
+            if (newQuality && newQuality !== this.currentQuality) {
+                this.applyQualityPreset(newQuality);
+            }
         };
-
         window.addEventListener('settingsChanged', this.qualityChangeHandler);
     }
 
-    refreshQualityDependentElements() {
-        this.createMorphingBlobs(true);
-        this.createBubbles(true);
-        this.createRibbons(true);
-        this.trimEffectCollections();
-    }
-
-    trimEffectCollections() {
-        this.trimArray(this.liquidSplashes, this.MAX_PARTICLES);
-        this.trimArray(this.iridescenceWaves, this.MAX_WAVES);
-        this.trimArray(this.dreamRipples, this.MAX_RIPPLES);
-        this.trimArray(this.fluidStreams, this.MAX_STREAMS);
-        this.trimArray(this.prismBursts, this.MAX_BURSTS);
-        this.trimArray(this.morphBlobs, this.MAX_BLOBS);
-    }
-
-    trimArray(collection, limit) {
-        if (!collection || typeof limit !== 'number') return;
-        if (collection.length > limit) {
-            collection.splice(0, collection.length - limit);
+    teardownQualityListener() {
+        if (this.qualityChangeHandler) {
+            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+            this.qualityChangeHandler = null;
         }
     }
 
-    async init() {
-        // Theme resources are created on-demand in createScene()
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tetromino Config
+    // ─────────────────────────────────────────────────────────────────────────
+
+    getTetrominoConfig() {
+        return FLUID_DREAMS_TETROMINOS;
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scene Creation
+    // ─────────────────────────────────────────────────────────────────────────
 
     async createScene() {
-        const quality = this.getGraphicsQuality();
-        this.applyQualityPreset(quality, { skipRefresh: true });
+        console.log('💧 Fluid Dreams 3D: Initializing Three.js scene...');
 
-        // 1. Morphing Blobs for Gooey Effect
-        this.createMorphingBlobs(true);
+        const container = document.getElementById('fluid-dreams-theme');
+        if (!container) {
+            console.error('💧 Fluid Dreams 3D: Container not found');
+            return;
+        }
+        container.innerHTML = '';
 
-        // 2. Iridescent Bubbles
-        this.createBubbles(true);
-
-        // 3. Flowing Ribbons
-        this.createRibbons(true);
-
-        // Setup gameplay effects
-        this.setupGameplayEffects();
+        // Apply quality preset
+        this.applyQualityPreset(this.getGraphicsQuality());
         this.setupQualityListener();
-    }
 
-    createMorphingBlobs(force = false) {
-        const blobContainer = this.getContainer('morphing-blobs');
-        if (!blobContainer) return;
-        if (!force && blobContainer.children.length > 0) return;
+        // Scene
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x0a0515, 0.008);
 
-        blobContainer.textContent = '';
-        this.domBlobs = [];
-        this.blobPulses.clear();
+        // Camera
+        this.camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            500
+        );
+        this.camera.position.copy(this.baseCameraPos);
+        this.camera.lookAt(this.cameraTarget);
 
-        const numBlobs = this.activePreset?.blobCount ?? 8;
-        for (let i = 0; i < numBlobs; i++) {
-            const blob = document.createElement('div');
-            blob.className = 'morph-blob';
-            const size = Math.random() * 150 + 100;
-            blob.style.width = `${size}px`;
-            blob.style.height = `${size}px`;
+        // Renderer - Following Red Stapler tutorial approach
+        this.renderer = new THREE.WebGLRenderer({
+            alpha: true,
+            antialias: true,
+            powerPreference: 'high-performance',
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-            blob.style.setProperty('--x-start', `${Math.random() * 80 + 10}vw`);
-            blob.style.setProperty('--y-start', `${Math.random() * 80 + 10}vh`);
-            blob.style.setProperty('--x-end', `${Math.random() * 80 + 10}vw`);
-            blob.style.setProperty('--y-end', `${Math.random() * 80 + 10}vh`);
-            blob.style.setProperty('--scale-start', `${Math.random() * 0.5 + 0.8}`);
-            blob.style.setProperty('--scale-end', `${Math.random() * 0.5 + 0.8}`);
+        // ACES Filmic tone mapping (from tutorial)
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 0.6;
 
-            blob.style.animationDelay = `-${Math.random() * 10}s, -${Math.random() * 15}s, -${Math.random() * 20}s`;
-            blobContainer.appendChild(blob);
+        // sRGB encoding (from tutorial)
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-            this.domBlobs.push(blob);
-            this.blobPulses.set(blob, { intensity: 0, lastPulse: 0 });
-        }
-    }
+        container.appendChild(this.renderer.domElement);
 
-    createBubbles(force = false) {
-        const bubbleContainer = this.getContainer('iridescent-bubbles');
-        if (!bubbleContainer) return;
-        if (!force && bubbleContainer.children.length > 0) return;
+        // Main group for scene organization
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
 
-        bubbleContainer.textContent = '';
-        const numBubbles = this.activePreset?.bubbleCount ?? 20;
-        for (let i = 0; i < numBubbles; i++) {
-            const bubble = document.createElement('div');
-            bubble.className = 'iridescent-bubble';
-            const size = Math.random() * 80 + 20;
-            bubble.style.width = `${size}px`;
-            bubble.style.height = `${size}px`;
+        // Create environment map FIRST (needed for materials)
+        this.createEnvironmentMap();
 
-            bubble.style.setProperty('--x-start', `${Math.random() * 100}vw`);
-            bubble.style.setProperty('--y-start', `${110}vh`);
-            bubble.style.setProperty('--x-end', `${Math.random() * 100}vw`);
-            bubble.style.setProperty('--y-end', `${-10}vh`);
-            bubble.style.setProperty('--scale', `${Math.random() * 0.4 + 0.8}`);
+        // Create scene elements
+        this.createBackground();
+        this.createBlobs();
+        this.createBubbles();
+        this.createRibbons();
+        this.createParticles();
+        this.setupLighting();
+        this.setupPostProcessing();
 
-            const duration = Math.random() * 15 + 20;
-            bubble.style.animationDuration = `${duration}s`;
-            bubble.style.animationDelay = `-${Math.random() * duration}s`;
-            bubbleContainer.appendChild(bubble);
-        }
-    }
-
-    createRibbons(force = false) {
-        const ribbonContainer = this.getContainer('ribbon-streams');
-        if (!ribbonContainer) return;
-        if (!force && ribbonContainer.children.length > 0) return;
-
-        ribbonContainer.textContent = '';
-        const numRibbons = this.activePreset?.ribbonCount ?? 5;
-        for (let i = 0; i < numRibbons; i++) {
-            const ribbon = document.createElement('div');
-            ribbon.className = 'ribbon-stream';
-
-            ribbon.style.setProperty('--x-start', `${Math.random() * 120 - 10}vw`);
-            ribbon.style.setProperty('--y-start', `${Math.random() * 120 - 10}vh`);
-            ribbon.style.setProperty('--x-end', `${Math.random() * 120 - 10}vw`);
-            ribbon.style.setProperty('--y-end', `${Math.random() * 120 - 10}vh`);
-            ribbon.style.setProperty('--r-start', `${Math.random() * 720 - 360}deg`);
-            ribbon.style.setProperty('--r-end', `${Math.random() * 720 - 360}deg`);
-
-            const duration = Math.random() * 20 + 30;
-            ribbon.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * 10}s`;
-            ribbonContainer.appendChild(ribbon);
-        }
-    }
-
-    setupGameplayEffects() {
-        // Create canvas for gameplay effects
-        const themeContainer = document.getElementById('fluid-dreams-theme');
-        if (!themeContainer) return;
-
-        let canvas = document.getElementById('fluid-dreams-effects-canvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.id = 'fluid-dreams-effects-canvas';
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.pointerEvents = 'none';
-            canvas.style.zIndex = '100';
-            themeContainer.appendChild(canvas);
-        }
-
-        this.effectsCanvas = canvas;
-        this.effectsCtx = canvas.getContext('2d', { alpha: true, desynchronized: true });
-
-        // Size canvas
-        const resizeCanvas = () => {
-            if (!this.effectsCanvas) return;
-            const rect = themeContainer.getBoundingClientRect();
-            this.effectsCanvas.width = rect.width;
-            this.effectsCanvas.height = rect.height;
-        };
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
-        // Setup event listeners
+        // Event listeners
         this.setupEventListeners();
+        window.addEventListener('resize', this.onWindowResize);
 
-        // Start effects animation loop
-        this.startEffectsLoop();
+        // Start animation
+        this.clock.start();
+        this.animate();
+
+        console.log(`💧 Fluid Dreams 3D: Scene initialized with ${this.blobs.length} blobs, ${this.bubbles.length} bubbles`);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Environment Map - For realistic reflections (per Red Stapler tutorial)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createEnvironmentMap() {
+        const size = 128;
+        const faces = [];
+
+        for (let i = 0; i < 6; i++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Base gradient - dreamy void (Darker)
+            const gradient = ctx.createRadialGradient(
+                size / 2, size / 2, 0,
+                size / 2, size / 2, size * 0.7
+            );
+            gradient.addColorStop(0, '#0d0414');
+            gradient.addColorStop(0.4, '#06020a');
+            gradient.addColorStop(0.7, '#040106');
+            gradient.addColorStop(1, '#000000');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add iridescent spots for reflection (More subtle)
+            const spotCount = 20 + Math.floor(Math.random() * 15);
+            const colors = ['#79faff', '#ff7cf0', '#a1ffcf', '#8c9bff', '#ff8ba0', '#ffe066'];
+
+            for (let j = 0; j < spotCount; j++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = 3 + Math.random() * 12;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+
+                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
+                spotGrad.addColorStop(0, color);
+                spotGrad.addColorStop(0.5, color + '40'); // Lower alpha
+                spotGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = spotGrad;
+                ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            }
+
+            faces.push(canvas);
+        }
+
+        this.envMap = new THREE.CubeTexture(faces);
+        this.envMap.needsUpdate = true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Background - Dreamy cosmic void
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBackground() {
+        const geometry = new THREE.SphereGeometry(200, 64, 48);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uPulseIntensity: this.uniforms.pulseIntensity,
+            },
+            vertexShader: backgroundVertexShader,
+            fragmentShader: backgroundFragmentShader,
+            side: THREE.BackSide,
+            fog: false,
+        });
+
+        this.backgroundSphere = new THREE.Mesh(geometry, material);
+        this.scene.add(this.backgroundSphere);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Morphing Blobs - Core visual element with realistic materials
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBlobs() {
+        const count = this.activePreset.blobCount;
+        const segments = this.activePreset.blobSegments;
+
+        for (let i = 0; i < count; i++) {
+            const palette = BLOB_COLORS[i % BLOB_COLORS.length];
+            const size = 4 + Math.random() * 6;
+
+            // Icosahedron for organic blob shape
+            const geometry = new THREE.IcosahedronGeometry(size, 4);
+
+            // Create custom shader material with morphing
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uMorphSpeed: { value: 0.3 + Math.random() * 0.3 },
+                    uMorphAmount: { value: 0.8 + Math.random() * 0.6 },
+                    uPulseIntensity: this.uniforms.pulseIntensity,
+                    uMorphSeed: {
+                        value: new THREE.Vector3(
+                            Math.random() * 100,
+                            Math.random() * 100,
+                            Math.random() * 100
+                        )
+                    },
+                    uColor1: { value: palette.color1 },
+                    uColor2: { value: palette.color2 },
+                    uColor3: { value: palette.color3 },
+                    uEnvMap: { value: this.envMap },
+                    uEnvMapIntensity: { value: 0.25 },
+                    uClearcoat: { value: 0.6 },
+                    uRoughness: { value: 0.2 },
+                    uMetalness: { value: 0.8 },
+                },
+                vertexShader: blobVertexShader,
+                fragmentShader: blobFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+            });
+
+            const blob = new THREE.Mesh(geometry, material);
+
+            // Position blobs in a loose arrangement
+            const angle = (i / count) * Math.PI * 2;
+            const radius = 15 + Math.random() * 10;
+            const height = (Math.random() - 0.5) * 20;
+
+            blob.position.set(
+                Math.cos(angle) * radius,
+                height,
+                Math.sin(angle) * radius
+            );
+
+            // Store animation data
+            blob.userData = {
+                basePosition: blob.position.clone(),
+                floatPhase: Math.random() * Math.PI * 2,
+                floatSpeed: 0.3 + Math.random() * 0.3,
+                floatAmplitude: 1 + Math.random() * 2,
+                orbitSpeed: 0.05 + Math.random() * 0.05,
+                orbitRadius: radius,
+            };
+
+            this.mainGroup.add(blob);
+            this.blobs.push(blob);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Iridescent Bubbles - Floating upward with rainbow Fresnel
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBubbles() {
+        const count = this.activePreset.bubbleCount;
+
+        for (let i = 0; i < count; i++) {
+            const size = 0.5 + Math.random() * 1.5;
+            const geometry = new THREE.SphereGeometry(size, 24, 24);
+
+            const baseColor = BUBBLE_COLORS[Math.floor(Math.random() * BUBBLE_COLORS.length)];
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uOpacity: { value: 0.6 + Math.random() * 0.3 },
+                    uBaseColor: { value: baseColor },
+                    uEnvMap: { value: this.envMap },
+                    uEnvMapIntensity: { value: 0.3 },
+                    uPulseIntensity: this.uniforms.pulseIntensity,
+                },
+                vertexShader: bubbleVertexShader,
+                fragmentShader: bubbleFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const bubble = new THREE.Mesh(geometry, material);
+
+            // Random starting position
+            bubble.position.set(
+                (Math.random() - 0.5) * 60,
+                -30 + Math.random() * 60,
+                (Math.random() - 0.5) * 40
+            );
+
+            // Animation data
+            bubble.userData = {
+                speed: 1 + Math.random() * 2,
+                wobblePhase: Math.random() * Math.PI * 2,
+                wobbleSpeed: 1 + Math.random() * 2,
+                wobbleAmount: 0.5 + Math.random() * 1,
+                startY: bubble.position.y,
+            };
+
+            this.mainGroup.add(bubble);
+            this.bubbles.push(bubble);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Flowing Ribbons - Gradient streams
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createRibbons() {
+        const count = this.activePreset.ribbonCount;
+
+        for (let i = 0; i < count; i++) {
+            // Create curved path
+            const points = [];
+            const segments = 50;
+            const startAngle = Math.random() * Math.PI * 2;
+            const length = 30 + Math.random() * 20;
+
+            for (let j = 0; j <= segments; j++) {
+                const t = j / segments;
+                const angle = startAngle + t * Math.PI * (0.5 + Math.random() * 1);
+                const radius = 20 + Math.sin(t * Math.PI * 3) * 10;
+                const height = (t - 0.5) * 30 + Math.sin(t * Math.PI * 4) * 5;
+
+                points.push(new THREE.Vector3(
+                    Math.cos(angle) * radius,
+                    height,
+                    Math.sin(angle) * radius
+                ));
+            }
+
+            const curve = new THREE.CatmullRomCurve3(points);
+            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 0.3 + Math.random() * 0.4, 8, false);
+
+            // Add progress attribute for flowing effect
+            const positionAttr = tubeGeometry.attributes.position;
+            const progress = new Float32Array(positionAttr.count);
+
+            for (let j = 0; j < positionAttr.count; j++) {
+                // Approximate progress along tube
+                const pos = new THREE.Vector3().fromBufferAttribute(positionAttr, j);
+                let minDist = Infinity;
+                let bestT = 0;
+
+                for (let t = 0; t <= 1; t += 0.02) {
+                    const curvePoint = curve.getPointAt(t);
+                    const dist = pos.distanceTo(curvePoint);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestT = t;
+                    }
+                }
+                progress[j] = bestT;
+            }
+            tubeGeometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
+
+            const colors = RIBBON_COLORS[i % RIBBON_COLORS.length];
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uColor1: { value: colors.color1 },
+                    uColor2: { value: colors.color2 },
+                    uColor3: { value: colors.color3 },
+                    uOpacity: { value: 0.08 + Math.random() * 0.05 },
+                    uPulseIntensity: this.uniforms.pulseIntensity,
+                },
+                vertexShader: ribbonVertexShader,
+                fragmentShader: ribbonFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const ribbon = new THREE.Mesh(tubeGeometry, material);
+
+            // Rotation offset
+            ribbon.rotation.y = Math.random() * Math.PI * 2;
+            ribbon.rotation.x = (Math.random() - 0.5) * 0.3;
+
+            ribbon.userData = {
+                rotationSpeed: (Math.random() - 0.5) * 0.02,
+            };
+
+            this.mainGroup.add(ribbon);
+            this.ribbons.push(ribbon);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ambient Particles - Shimmer effect
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createParticles() {
+        const count = this.activePreset.particleCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const phases = new Float32Array(count);
+        const sizes = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        const colorOptions = [
+            new THREE.Color(0x79faff),
+            new THREE.Color(0xff7cf0),
+            new THREE.Color(0xa1ffcf),
+            new THREE.Color(0x8c9bff),
+            new THREE.Color(0xffe066),
+        ];
+
+        for (let i = 0; i < count; i++) {
+            // Distribute in sphere
+            const r = 10 + Math.random() * 60;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.cos(phi);
+            positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+            phases[i] = Math.random();
+            sizes[i] = 0.3 + Math.random() * 1.5;
+
+            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uSize: { value: 3.0 },
+                uPulseIntensity: this.uniforms.pulseIntensity,
+            },
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.particles);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lighting
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupLighting() {
+        // Ambient light - soft purple tint
+        const ambient = new THREE.AmbientLight(0x1a0828, 0.2);
+        this.scene.add(ambient);
+
+        // Hemisphere light - gradient from above/below
+        const hemi = new THREE.HemisphereLight(0x79faff, 0xff7cf0, 0.2);
+        this.scene.add(hemi);
+
+        // Point lights near blobs
+        const lightColors = [0x79faff, 0xff7cf0, 0xa1ffcf, 0x8c9bff];
+        for (let i = 0; i < 4; i++) {
+            const light = new THREE.PointLight(lightColors[i], 0.5, 50);
+            const angle = (i / 4) * Math.PI * 2;
+            light.position.set(
+                Math.cos(angle) * 20,
+                (Math.random() - 0.5) * 15,
+                Math.sin(angle) * 20
+            );
+            this.mainGroup.add(light);
+        }
+
+        // Central glow was removed to prevent whiteout
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Post-Processing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupPostProcessing() {
+        this.composer = new EffectComposer(this.renderer);
+
+        // Render pass
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        // Bloom for dreamy glow
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.activePreset.bloomStrength,
+            0.2,  // radius
+            0.85   // threshold
+        );
+        this.bloomPass.enabled = this.activePreset.enableBloom;
+        this.composer.addPass(this.bloomPass);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Event Listeners
+    // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleLineClear(data);
+                this.onLineClear(data.lineCount);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handleCombo(data);
+                this.onCombo(data.comboCount);
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.onPieceLock();
+            }
+        });
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
-    handleLineClear(data) {
-        const { lineCount } = data;
-        this.createLiquidSplash(lineCount);
+    // ─────────────────────────────────────────────────────────────────────────
+    // Gameplay Effects
+    // ─────────────────────────────────────────────────────────────────────────
 
-        if (lineCount >= 2) {
-            this.createDreamRipples(lineCount);
-        }
+    onLineClear(lineCount) {
+        // Pulse intensity boost
+        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + lineCount * 0.3, 1.5);
 
-        if (lineCount >= 3) {
-            this.createFluidStreams(lineCount);
-        }
+        // Create shockwave
+        this.createShockwave(lineCount * 0.3);
 
-        // Pulse DOM blobs on line clear
-        this.pulseDOMBlobs(lineCount * 0.3);
+        // Burst bubbles outward
+        this.burstBubbles(lineCount);
     }
 
-    handleCombo(data) {
-        const { comboCount } = data;
-        this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.5);
+    onCombo(comboCount) {
+        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.0);
 
-        if (comboCount >= 2) {
-            this.createIridescenceWave(comboCount);
+        // Strong pulse
+        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + comboCount * 0.2, 2.0);
+
+        // Boost bloom temporarily
+        if (this.bloomPass && this.activePreset.enableBloom) {
+            this.bloomPass.strength = this.activePreset.bloomStrength + comboCount * 0.1;
         }
 
-        if (comboCount >= 4) {
-            this.createPrismBurst(comboCount);
-        }
-
-        if (comboCount >= 6) {
-            this.createMorphBlob(comboCount);
-        }
-
-        // Strong pulse on combos
-        this.pulseDOMBlobs(comboCount * 0.4 + 0.5);
-
-        // Connect effects to blobs
+        // Multiple shockwaves for high combos
         if (comboCount >= 3) {
-            this.createBlobConnectionEffects(comboCount);
+            for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
+                setTimeout(() => {
+                    this.createShockwave(0.5 + comboCount * 0.1);
+                }, i * 100);
+            }
         }
     }
 
-    pulseDOMBlobs(intensity) {
-        // Pulse all DOM blobs
-        this.domBlobs.forEach((blob) => {
-            const pulseData = this.blobPulses.get(blob);
-            if (pulseData) {
-                pulseData.intensity = Math.min(pulseData.intensity + intensity, 2.0);
-                pulseData.lastPulse = Date.now();
+    onPieceLock() {
+        // Stronger pulse for visibility
+        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + 0.5, 1.0);
+    }
 
-                // Apply transform scale pulse
-                const currentScale = 1 + pulseData.intensity * 0.3;
-                blob.style.transform = `scale(${currentScale})`;
-                blob.style.filter = `brightness(${1 + pulseData.intensity * 0.4}) saturate(${1 + pulseData.intensity * 0.5})`;
-            }
+    createShockwave(intensity) {
+        const geometry = new THREE.PlaneGeometry(100, 100);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRadius: { value: 0 },
+                uMaxRadius: { value: 1.0 },
+                uColor: { value: new THREE.Color(0x79faff) },
+                uIntensity: { value: intensity },
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
         });
-    }
 
-    createBlobConnectionEffects(comboCount) {
-        if (!this.effectsCanvas || this.domBlobs.length < 2 || this.fluidStreams.length >= this.MAX_STREAMS) return;
+        const shockwave = new THREE.Mesh(geometry, material);
+        shockwave.position.copy(this.camera.position);
+        shockwave.position.z -= 30;
+        shockwave.lookAt(this.camera.position);
 
-        // Reduced connection count
-        const connectionCount = Math.min(Math.floor(comboCount / 2), this.MAX_STREAMS - this.fluidStreams.length);
-        for (let i = 0; i < connectionCount; i++) {
-            const blob1 = this.domBlobs[Math.floor(Math.random() * this.domBlobs.length)];
-            const blob2 = this.domBlobs[Math.floor(Math.random() * this.domBlobs.length)];
-
-            if (blob1 === blob2) continue;
-
-            // Get blob positions
-            const rect1 = blob1.getBoundingClientRect();
-            const rect2 = blob2.getBoundingClientRect();
-            const canvasRect = this.effectsCanvas.getBoundingClientRect();
-
-            const x1 = rect1.left + rect1.width / 2 - canvasRect.left;
-            const y1 = rect1.top + rect1.height / 2 - canvasRect.top;
-            const x2 = rect2.left + rect2.width / 2 - canvasRect.left;
-            const y2 = rect2.top + rect2.height / 2 - canvasRect.top;
-
-            // Create flowing stream between blobs - reduced segments
-            const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-            const points = [];
-            const segments = Math.min(Math.floor(distance / 30), 15); // Fewer segments
-
-            for (let j = 0; j <= segments; j++) {
-                const t = j / segments;
-                const perpAngle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
-                const waveOffset = Math.sin(t * Math.PI * 3) * 30;
-
-                points.push({
-                    x: x1 + (x2 - x1) * t + Math.cos(perpAngle) * waveOffset,
-                    y: y1 + (y2 - y1) * t + Math.sin(perpAngle) * waveOffset,
-                });
-            }
-
-            this.fluidStreams.push({
-                points,
-                life: 1.0,
-                maxLife: 1.5 + Math.random() * 0.5,
-                hue: Math.random() * 360,
-                width: Math.random() * 10 + 6,
-                flowOffset: 0,
-                flowSpeed: Math.random() * 0.15 + 0.1,
-                particleEmit: true,
-            });
-        }
-    }
-
-    createLiquidSplash(lineCount) {
-        if (!this.effectsCanvas) return;
-
-        // Enforce particle limit
-        if (this.liquidSplashes.length >= this.MAX_PARTICLES) {
-            // Remove oldest particles
-            this.liquidSplashes.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
-        }
-
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
-        const colors = [
-            { h: 280, s: 70, l: 65 }, // Purple
-            { h: 200, s: 80, l: 60 }, // Cyan
-            { h: 320, s: 75, l: 70 }, // Pink
-            { h: 180, s: 70, l: 65 }, // Aqua
-        ];
-
-        // Reduced particle count for performance
-        const particleCount = Math.min(lineCount * 12 + this.comboMultiplier * 8, this.MAX_PARTICLES);
-
-        // Spawn some particles from center
-        const centerParticles = Math.floor(particleCount * 0.6);
-        for (let i = 0; i < centerParticles; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = (Math.random() * 4 + 3) * this.comboMultiplier;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            this.liquidSplashes.push({
-                x: centerX,
-                y: centerY,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                life: 1.0,
-                maxLife: Math.random() * 0.9 + 0.7,
-                size: Math.random() * 8 + 3,
-                color,
-                viscosity: Math.random() * 0.15 + 0.85,
-                shimmer: Math.random() * Math.PI * 2,
-                trail: [],
-            });
-        }
-
-        // Spawn remaining particles from blob positions
-        const blobParticles = particleCount - centerParticles;
-        if (this.domBlobs.length > 0 && blobParticles > 0) {
-            const particlesPerBlob = Math.ceil(blobParticles / this.domBlobs.length);
-
-            this.domBlobs.forEach((blob) => {
-                const rect = blob.getBoundingClientRect();
-                const canvasRect = this.effectsCanvas.getBoundingClientRect();
-                const blobX = rect.left + rect.width / 2 - canvasRect.left;
-                const blobY = rect.top + rect.height / 2 - canvasRect.top;
-
-                for (let i = 0; i < particlesPerBlob; i++) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const speed = (Math.random() * 3 + 2) * this.comboMultiplier;
-                    const color = colors[Math.floor(Math.random() * colors.length)];
-
-                    this.liquidSplashes.push({
-                        x: blobX,
-                        y: blobY,
-                        vx: Math.cos(angle) * speed,
-                        vy: Math.sin(angle) * speed,
-                        life: 1.0,
-                        maxLife: Math.random() * 0.9 + 0.7,
-                        size: Math.random() * 8 + 3,
-                        color,
-                        viscosity: Math.random() * 0.15 + 0.85,
-                        shimmer: Math.random() * Math.PI * 2,
-                        trail: [],
-                    });
-                }
-            });
-        }
-    }
-
-    createIridescenceWave(comboCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit waves
-        if (this.iridescenceWaves.length >= this.MAX_WAVES) return;
-
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-        const waveCount = Math.min(comboCount, this.MAX_WAVES - this.iridescenceWaves.length);
-
-        // Half waves from random positions
-        const randomWaves = Math.floor(waveCount / 2);
-        for (let i = 0; i < randomWaves; i++) {
-            this.iridescenceWaves.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                radius: 0,
-                maxRadius: Math.random() * 400 + 300,
-                life: 1.0,
-                maxLife: 1.5 + Math.random() * 0.8,
-                hueOffset: Math.random() * 360,
-                rotationSpeed: (Math.random() - 0.5) * 0.05,
-                rotation: 0,
-            });
-        }
-
-        // Half waves from blob positions
-        const blobWaves = waveCount - randomWaves;
-        if (this.domBlobs.length > 0) {
-            for (let i = 0; i < blobWaves; i++) {
-                const blob = this.domBlobs[Math.floor(Math.random() * this.domBlobs.length)];
-                const rect = blob.getBoundingClientRect();
-                const canvasRect = this.effectsCanvas.getBoundingClientRect();
-                const blobX = rect.left + rect.width / 2 - canvasRect.left;
-                const blobY = rect.top + rect.height / 2 - canvasRect.top;
-
-                this.iridescenceWaves.push({
-                    x: blobX,
-                    y: blobY,
-                    radius: 0,
-                    maxRadius: Math.random() * 400 + 300,
-                    life: 1.0,
-                    maxLife: 1.5 + Math.random() * 0.8,
-                    hueOffset: Math.random() * 360,
-                    rotationSpeed: (Math.random() - 0.5) * 0.05,
-                    rotation: 0,
-                });
-            }
-        }
-    }
-
-    createDreamRipples(lineCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit ripples
-        if (this.dreamRipples.length >= this.MAX_RIPPLES) return;
-
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
-
-        const rippleCount = Math.min(lineCount * 2, this.MAX_RIPPLES - this.dreamRipples.length);
-        for (let i = 0; i < rippleCount; i++) {
-            this.dreamRipples.push({
-                x: centerX + (Math.random() - 0.5) * 200,
-                y: centerY + (Math.random() - 0.5) * 200,
-                radius: 0,
-                maxRadius: Math.random() * 250 + 200,
-                life: 1.0,
-                maxLife: 1.2 + Math.random() * 0.6,
-                hue: Math.random() * 360,
-                frequency: Math.random() * 8 + 6,
-                amplitude: Math.random() * 15 + 10,
-                phase: Math.random() * Math.PI * 2,
-            });
-        }
-    }
-
-    createFluidStreams(lineCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit streams
-        if (this.fluidStreams.length >= this.MAX_STREAMS) return;
-
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-
-        const streamCount = Math.min(lineCount, this.MAX_STREAMS - this.fluidStreams.length);
-        for (let i = 0; i < streamCount; i++) {
-            const startX = Math.random() * width;
-            const startY = Math.random() * height;
-            const angle = Math.random() * Math.PI * 2;
-            const length = Math.random() * 300 + 200;
-
-            const points = [];
-            const segments = 20;
-            for (let j = 0; j <= segments; j++) {
-                const t = j / segments;
-                const deviation = Math.sin(t * Math.PI * 4) * 50;
-                points.push({
-                    x: startX + Math.cos(angle) * length * t + Math.cos(angle + Math.PI / 2) * deviation,
-                    y: startY + Math.sin(angle) * length * t + Math.sin(angle + Math.PI / 2) * deviation,
-                });
-            }
-
-            this.fluidStreams.push({
-                points,
-                life: 1.0,
-                maxLife: 1.0 + Math.random() * 0.5,
-                hue: Math.random() * 360,
-                width: Math.random() * 8 + 4,
-                flowOffset: 0,
-                flowSpeed: Math.random() * 0.1 + 0.05,
-            });
-        }
-    }
-
-    createPrismBurst(comboCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit prism bursts
-        if (this.prismBursts.length >= this.MAX_BURSTS) return;
-
-        const centerX = this.effectsCanvas.width / 2;
-        const centerY = this.effectsCanvas.height / 2;
-
-        const rayCount = Math.min(comboCount * 2, 12); // Reduced from *3, 18 to *2, 12
-        const rays = [];
-
-        for (let i = 0; i < rayCount; i++) {
-            const angle = (Math.PI * 2 / rayCount) * i;
-            const length = Math.random() * 200 + 150;
-            rays.push({
-                angle,
-                length,
-                hue: (360 / rayCount) * i,
-                width: Math.random() * 6 + 3,
-            });
-        }
-
-        this.prismBursts.push({
-            x: centerX,
-            y: centerY,
-            rays,
-            life: 1.0,
-            maxLife: 1.2 + Math.random() * 0.5,
-            rotation: 0,
-            rotationSpeed: (Math.random() - 0.5) * 0.08,
-            expansion: 0,
-        });
-    }
-
-    createMorphBlob(comboCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit morph blobs
-        if (this.morphBlobs.length >= this.MAX_BLOBS) return;
-
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-
-        const blobCount = Math.min(Math.floor(comboCount / 4), this.MAX_BLOBS - this.morphBlobs.length);
-        for (let i = 0; i < blobCount; i++) {
-            const points = [];
-            const numPoints = 8;
-            const baseRadius = Math.random() * 80 + 60;
-
-            for (let j = 0; j < numPoints; j++) {
-                const angle = (Math.PI * 2 / numPoints) * j;
-                const radius = baseRadius + (Math.random() - 0.5) * 40;
-                points.push({
-                    angle,
-                    radius,
-                    targetRadius: baseRadius + (Math.random() - 0.5) * 40,
-                    morphSpeed: Math.random() * 0.02 + 0.01,
-                });
-            }
-
-            this.morphBlobs.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                points,
-                life: 1.0,
-                maxLife: 2.5 + Math.random() * 1.0,
-                hue: Math.random() * 360,
-                hueShift: (Math.random() - 0.5) * 2,
-                rotation: 0,
-                rotationSpeed: (Math.random() - 0.5) * 0.03,
-                vx: (Math.random() - 0.5) * 2,
-                vy: (Math.random() - 0.5) * 2,
-            });
-        }
-    }
-
-    startEffectsLoop() {
-        if (this.effectsAnimationFrame) return;
-
-        const tick = (timestamp) => {
-            if (!this.effectsAnimationFrame || !this.isActive) {
-                return;
-            }
-
-            if (!this.lastEffectsFrameTime) {
-                this.lastEffectsFrameTime = timestamp;
-            }
-
-            const delta = Math.min((timestamp - this.lastEffectsFrameTime) / 1000, 0.1);
-            this.lastEffectsFrameTime = timestamp;
-
-            this.updateEffects(delta);
-            this.renderEffects();
-
-            this.effectsAnimationFrame = requestAnimationFrame(tick);
+        shockwave.userData = {
+            startTime: this.clock.getElapsedTime(),
+            duration: 1.0,
         };
 
-        this.lastEffectsFrameTime = 0;
-        this.effectsAnimationFrame = requestAnimationFrame(tick);
+        this.scene.add(shockwave);
+        this.shockwaves.push(shockwave);
     }
 
-    stopEffectsLoop() {
-        if (this.effectsAnimationFrame) {
-            cancelAnimationFrame(this.effectsAnimationFrame);
-            this.effectsAnimationFrame = null;
+    burstBubbles(intensity) {
+        // Push bubbles outward briefly
+        this.bubbles.forEach((bubble) => {
+            const direction = bubble.position.clone().normalize();
+            bubble.userData.burstVelocity = direction.multiplyScalar(intensity * 2);
+            bubble.userData.burstDecay = 0.95;
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation Loop
+    // ─────────────────────────────────────────────────────────────────────────
+
+    animate() {
+        if (!this.isActive) return;
+
+        this.animationFrame = requestAnimationFrame(() => this.animate());
+
+        const elapsed = this.clock.getElapsedTime();
+        const delta = this.clock.getDelta();
+
+        // Update uniforms
+        this.uniforms.time.value = elapsed;
+
+        // Decay pulse intensity - SNAPPIER RESPONSE
+        // Faster lerp to catch up (0.4 vs 0.1), slightly slower decay (0.92 vs 0.95)
+        this.uniforms.pulseIntensity.value += (this.targetPulseIntensity - this.uniforms.pulseIntensity.value) * 0.4;
+        this.targetPulseIntensity *= 0.92;
+
+        // Reset bloom to base strength gradually
+        if (this.bloomPass && this.activePreset.enableBloom) {
+            this.bloomPass.strength += (this.activePreset.bloomStrength - this.bloomPass.strength) * 0.05;
         }
-        this.lastEffectsFrameTime = 0;
-    }
 
-    updateEffects(delta) {
-        // Update blob pulses
-        const now = Date.now();
-        this.domBlobs.forEach((blob) => {
-            const pulseData = this.blobPulses.get(blob);
-            if (pulseData && pulseData.intensity > 0) {
-                // Decay intensity over time
-                const timeSincePulse = (now - pulseData.lastPulse) / 1000;
-                pulseData.intensity = Math.max(0, pulseData.intensity - delta * 0.8);
+        // Animate blobs
+        this.blobs.forEach((blob) => {
+            const data = blob.userData;
 
-                // Update blob visual
-                const currentScale = 1 + pulseData.intensity * 0.3;
-                blob.style.transform = `scale(${currentScale})`;
-                blob.style.filter = `brightness(${1 + pulseData.intensity * 0.4}) saturate(${1 + pulseData.intensity * 0.5})`;
+            // Floating motion
+            const floatY = Math.sin(elapsed * data.floatSpeed + data.floatPhase) * data.floatAmplitude;
 
-                // Create ripples from pulsing blobs - reduced rate
-                if (pulseData.intensity > 0.8 && Math.random() > 0.95 && this.dreamRipples.length < this.MAX_RIPPLES) {
-                    const rect = blob.getBoundingClientRect();
-                    const canvasRect = this.effectsCanvas?.getBoundingClientRect();
-                    if (canvasRect) {
-                        const blobX = rect.left + rect.width / 2 - canvasRect.left;
-                        const blobY = rect.top + rect.height / 2 - canvasRect.top;
+            // Slow orbit
+            const orbitAngle = elapsed * data.orbitSpeed;
+            const baseAngle = Math.atan2(data.basePosition.z, data.basePosition.x);
 
-                        this.dreamRipples.push({
-                            x: blobX,
-                            y: blobY,
-                            radius: 0,
-                            maxRadius: Math.random() * 150 + 100,
-                            life: 1.0,
-                            maxLife: 0.8 + Math.random() * 0.4,
-                            hue: Math.random() * 360,
-                            frequency: Math.random() * 6 + 4,
-                            amplitude: Math.random() * 10 + 5,
-                            phase: Math.random() * Math.PI * 2,
-                        });
-                    }
+            blob.position.x = Math.cos(baseAngle + orbitAngle) * data.orbitRadius;
+            blob.position.y = data.basePosition.y + floatY;
+            blob.position.z = Math.sin(baseAngle + orbitAngle) * data.orbitRadius;
+
+            // Slow rotation
+            blob.rotation.y += 0.002;
+            blob.rotation.x += 0.001;
+        });
+
+        // Animate bubbles
+        this.bubbles.forEach((bubble) => {
+            const data = bubble.userData;
+
+            // Upward float
+            bubble.position.y += data.speed * delta * 3;
+
+            // Horizontal wobble
+            const wobble = Math.sin(elapsed * data.wobbleSpeed + data.wobblePhase) * data.wobbleAmount;
+            bubble.position.x += Math.sin(elapsed * 0.5) * 0.02;
+
+            // Burst velocity decay
+            if (data.burstVelocity) {
+                bubble.position.add(data.burstVelocity.clone().multiplyScalar(delta));
+                data.burstVelocity.multiplyScalar(data.burstDecay);
+                if (data.burstVelocity.length() < 0.01) {
+                    data.burstVelocity = null;
                 }
+            }
+
+            // Reset when off screen
+            if (bubble.position.y > 40) {
+                bubble.position.y = -35;
+                bubble.position.x = (Math.random() - 0.5) * 60;
+                bubble.position.z = (Math.random() - 0.5) * 40;
             }
         });
 
-        // Update liquid splashes
-        for (let i = this.liquidSplashes.length - 1; i >= 0; i--) {
-            const p = this.liquidSplashes[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vy += 0.1; // Gentle gravity
-            p.vx *= p.viscosity;
-            p.vy *= p.viscosity;
-            p.life -= delta / p.maxLife;
-            p.shimmer += 0.15;
+        // Animate ribbons
+        this.ribbons.forEach((ribbon) => {
+            ribbon.rotation.y += ribbon.userData.rotationSpeed;
+        });
 
-            if (p.life <= 0) {
-                this.liquidSplashes.splice(i, 1);
+        // Update shockwaves
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+            const shockwave = this.shockwaves[i];
+            const age = elapsed - shockwave.userData.startTime;
+            const progress = age / shockwave.userData.duration;
+
+            if (progress >= 1) {
+                this.scene.remove(shockwave);
+                shockwave.geometry.dispose();
+                shockwave.material.dispose();
+                this.shockwaves.splice(i, 1);
+            } else {
+                shockwave.material.uniforms.uRadius.value = progress;
             }
         }
 
-        // Update iridescence waves
-        for (let i = this.iridescenceWaves.length - 1; i >= 0; i--) {
-            const wave = this.iridescenceWaves[i];
-            wave.radius += (wave.maxRadius / wave.maxLife) * delta;
-            wave.life -= delta / wave.maxLife;
-            wave.rotation += wave.rotationSpeed;
+        // Gentle camera drift
+        const cameraWobbleX = Math.sin(elapsed * 0.1) * 2;
+        const cameraWobbleY = Math.cos(elapsed * 0.08) * 1.5;
+        this.camera.position.x = this.baseCameraPos.x + cameraWobbleX;
+        this.camera.position.y = this.baseCameraPos.y + cameraWobbleY;
+        this.camera.lookAt(this.cameraTarget);
 
-            if (wave.life <= 0) {
-                this.iridescenceWaves.splice(i, 1);
-            }
-        }
-
-        // Update dream ripples
-        for (let i = this.dreamRipples.length - 1; i >= 0; i--) {
-            const ripple = this.dreamRipples[i];
-            ripple.radius += (ripple.maxRadius / ripple.maxLife) * delta;
-            ripple.life -= delta / ripple.maxLife;
-            ripple.phase += 0.1;
-
-            if (ripple.life <= 0) {
-                this.dreamRipples.splice(i, 1);
-            }
-        }
-
-        // Update fluid streams
-        for (let i = this.fluidStreams.length - 1; i >= 0; i--) {
-            const stream = this.fluidStreams[i];
-            stream.life -= delta / stream.maxLife;
-            stream.flowOffset += stream.flowSpeed;
-
-            if (stream.life <= 0) {
-                this.fluidStreams.splice(i, 1);
-            }
-        }
-
-        // Update prism bursts
-        for (let i = this.prismBursts.length - 1; i >= 0; i--) {
-            const burst = this.prismBursts[i];
-            burst.life -= delta / burst.maxLife;
-            burst.rotation += burst.rotationSpeed;
-            burst.expansion += delta * 100;
-
-            if (burst.life <= 0) {
-                this.prismBursts.splice(i, 1);
-            }
-        }
-
-        // Update morph blobs
-        for (let i = this.morphBlobs.length - 1; i >= 0; i--) {
-            const blob = this.morphBlobs[i];
-            blob.life -= delta / blob.maxLife;
-            blob.x += blob.vx;
-            blob.y += blob.vy;
-            blob.rotation += blob.rotationSpeed;
-            blob.hue += blob.hueShift;
-
-            // Morph blob points
-            blob.points.forEach((point) => {
-                const diff = point.targetRadius - point.radius;
-                point.radius += diff * point.morphSpeed;
-
-                // Set new target occasionally
-                if (Math.abs(diff) < 5) {
-                    point.targetRadius = blob.points[0].radius * 0.7 + (Math.random() - 0.5) * 60;
-                }
-            });
-
-            if (blob.life <= 0) {
-                this.morphBlobs.splice(i, 1);
-            }
+        // Render
+        if (this.composer && this.activePreset.enableBloom) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
         }
     }
 
-    renderEffects() {
-        if (!this.effectsCanvas || !this.effectsCtx) return;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Window Resize
+    // ─────────────────────────────────────────────────────────────────────────
 
-        const ctx = this.effectsCtx;
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
+    onWindowResize() {
+        if (!this.camera || !this.renderer) return;
 
-        // Clear canvas
-        ctx.clearRect(0, 0, width, height);
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // Render dream ripples - optimized with fewer points
-        this.dreamRipples.forEach((ripple) => {
-            const alpha = ripple.life * 0.6;
-            ctx.strokeStyle = `hsla(${ripple.hue}, 70%, 65%, ${alpha})`;
-            ctx.lineWidth = 3;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = `hsl(${ripple.hue}, 70%, 65%)`;
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
 
-            // Draw wavy ripple - reduced angle step from 0.1 to 0.15 for better performance
-            ctx.beginPath();
-            for (let angle = 0; angle <= Math.PI * 2; angle += 0.15) {
-                const wave = Math.sin(angle * ripple.frequency + ripple.phase) * ripple.amplitude;
-                const r = ripple.radius + wave;
-                const x = ripple.x + Math.cos(angle) * r;
-                const y = ripple.y + Math.sin(angle) * r;
-                if (angle === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-            ctx.closePath();
-            ctx.stroke();
-        });
-
-        // Render iridescence waves - reduced from 4 to 3 rings for performance
-        this.iridescenceWaves.forEach((wave) => {
-            const alpha = wave.life * 0.5;
-            ctx.save();
-            ctx.translate(wave.x, wave.y);
-            ctx.rotate(wave.rotation);
-
-            // Multiple colored rings - reduced to 3 rings
-            for (let ring = 0; ring < 3; ring++) {
-                const hue = (wave.hueOffset + ring * 120) % 360;
-                const radius = wave.radius + ring * 20;
-                ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${alpha * (1 - ring * 0.25)})`;
-                ctx.lineWidth = 4;
-                ctx.shadowBlur = 20; // Reduced from 25
-                ctx.shadowColor = `hsl(${hue}, 80%, 70%)`;
-                ctx.beginPath();
-                ctx.arc(0, 0, radius, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            ctx.restore();
-        });
-
-        // Render fluid streams - optimized gradient
-        this.fluidStreams.forEach((stream) => {
-            const alpha = stream.life * 0.7;
-
-            // Create gradient along path - reduced color stops from 6 to 3
-            const gradient = ctx.createLinearGradient(
-                stream.points[0].x,
-                stream.points[0].y,
-                stream.points[stream.points.length - 1].x,
-                stream.points[stream.points.length - 1].y,
-            );
-
-            for (let i = 0; i <= 2; i++) {
-                const hue = (stream.hue + i * 120) % 360;
-                gradient.addColorStop(i / 2, `hsl(${hue}, 75%, 65%)`);
-            }
-
-            ctx.strokeStyle = gradient;
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth = stream.width;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.shadowBlur = 15; // Reduced from 20
-            ctx.shadowColor = `hsl(${stream.hue}, 75%, 65%)`;
-
-            ctx.beginPath();
-            ctx.moveTo(stream.points[0].x, stream.points[0].y);
-            for (let i = 1; i < stream.points.length; i++) {
-                ctx.lineTo(stream.points[i].x, stream.points[i].y);
-            }
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-        });
-
-        // Render liquid splashes
-        this.liquidSplashes.forEach((p) => {
-            const alpha = p.life;
-            const shimmer = Math.sin(p.shimmer) * 0.3 + 0.7;
-            const { h, s, l } = p.color;
-
-            // Outer glow
-            const glowGradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
-            glowGradient.addColorStop(0, `hsla(${h}, ${s}%, ${l}%, ${alpha * shimmer * 0.6})`);
-            glowGradient.addColorStop(0.5, `hsla(${h}, ${s}%, ${l}%, ${alpha * shimmer * 0.3})`);
-            glowGradient.addColorStop(1, `hsla(${h}, ${s}%, ${l}%, 0)`);
-
-            ctx.fillStyle = glowGradient;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Core
-            const coreGradient = ctx.createRadialGradient(
-                p.x - p.size * 0.3,
-                p.y - p.size * 0.3,
-                0,
-                p.x,
-                p.y,
-                p.size,
-            );
-            coreGradient.addColorStop(0, `hsla(${h}, ${s}%, ${Math.min(l + 20, 95)}%, ${alpha * shimmer})`);
-            coreGradient.addColorStop(0.6, `hsla(${h}, ${s}%, ${l}%, ${alpha * shimmer * 0.8})`);
-            coreGradient.addColorStop(1, `hsla(${h}, ${s}%, ${l - 10}%, ${alpha * shimmer * 0.5})`);
-
-            ctx.fillStyle = coreGradient;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = `hsl(${h}, ${s}%, ${l}%)`;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        // Render prism bursts
-        this.prismBursts.forEach((burst) => {
-            const alpha = burst.life;
-            ctx.save();
-            ctx.translate(burst.x, burst.y);
-            ctx.rotate(burst.rotation);
-
-            burst.rays.forEach((ray) => {
-                const length = ray.length + burst.expansion;
-                ctx.strokeStyle = `hsla(${ray.hue}, 85%, 70%, ${alpha})`;
-                ctx.lineWidth = ray.width;
-                ctx.shadowBlur = 25;
-                ctx.shadowColor = `hsl(${ray.hue}, 85%, 70%)`;
-                ctx.lineCap = 'round';
-
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.lineTo(Math.cos(ray.angle) * length, Math.sin(ray.angle) * length);
-                ctx.stroke();
-            });
-
-            ctx.restore();
-        });
-
-        // Render morph blobs
-        this.morphBlobs.forEach((blob) => {
-            const alpha = blob.life * 0.6;
-            ctx.save();
-            ctx.translate(blob.x, blob.y);
-            ctx.rotate(blob.rotation);
-
-            // Create blob path
-            ctx.beginPath();
-            for (let i = 0; i < blob.points.length; i++) {
-                const point = blob.points[i];
-                const nextPoint = blob.points[(i + 1) % blob.points.length];
-
-                const x1 = Math.cos(point.angle) * point.radius;
-                const y1 = Math.sin(point.angle) * point.radius;
-                const x2 = Math.cos(nextPoint.angle) * nextPoint.radius;
-                const y2 = Math.sin(nextPoint.angle) * nextPoint.radius;
-
-                const cpAngle = point.angle + (nextPoint.angle - point.angle) / 2;
-                const cpRadius = (point.radius + nextPoint.radius) / 2;
-                const cpX = Math.cos(cpAngle) * cpRadius;
-                const cpY = Math.sin(cpAngle) * cpRadius;
-
-                if (i === 0) {
-                    ctx.moveTo(x1, y1);
-                }
-                ctx.quadraticCurveTo(cpX, cpY, x2, y2);
-            }
-            ctx.closePath();
-
-            // Fill with gradient
-            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, blob.points[0].radius * 1.5);
-            gradient.addColorStop(0, `hsla(${blob.hue}, 75%, 75%, ${alpha})`);
-            gradient.addColorStop(0.5, `hsla(${(blob.hue + 60) % 360}, 70%, 65%, ${alpha * 0.7})`);
-            gradient.addColorStop(1, `hsla(${(blob.hue + 120) % 360}, 65%, 55%, ${alpha * 0.4})`);
-
-            ctx.fillStyle = gradient;
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = `hsl(${blob.hue}, 75%, 70%)`;
-            ctx.fill();
-
-            // Outline
-            ctx.strokeStyle = `hsla(${blob.hue}, 80%, 85%, ${alpha * 0.8})`;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            ctx.restore();
-        });
-
-        // Reset shadow
-        ctx.shadowBlur = 0;
+        if (this.bloomPass) {
+            this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+        }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Cleanup
+    // ─────────────────────────────────────────────────────────────────────────
 
     stop() {
-        this.stopEffectsLoop();
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
+        console.log('💧 Fluid Dreams 3D: Stopping...');
+
+        // Cancel animation
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
         }
-        super.stop();
-    }
 
-    cleanup() {
-        this.cleanupEffects();
-        super.cleanup();
-    }
-
-    cleanupEffects() {
-        // Unsubscribe from events
+        // Unsubscribe events
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
-        // Clear effect arrays
-        this.liquidSplashes = [];
-        this.iridescenceWaves = [];
-        this.dreamRipples = [];
-        this.fluidStreams = [];
-        this.prismBursts = [];
-        this.morphBlobs = [];
+        // Teardown quality listener
+        this.teardownQualityListener();
 
-        // Reset blob styles
-        this.domBlobs.forEach((blob) => {
-            blob.style.transform = '';
-            blob.style.filter = '';
-        });
-        this.domBlobs = [];
-        this.blobPulses.clear();
+        // Remove resize listener
+        window.removeEventListener('resize', this.onWindowResize);
 
-        // Stop animation loop
-        this.stopEffectsLoop();
+        // Dispose Three.js resources
+        if (this.scene) {
+            // Dispose blobs
+            this.blobs.forEach((blob) => {
+                blob.geometry.dispose();
+                blob.material.dispose();
+                this.mainGroup.remove(blob);
+            });
+            this.blobs = [];
 
-        // Remove canvas
-        if (this.effectsCanvas) {
-            this.effectsCanvas.remove();
-            this.effectsCanvas = null;
-            this.effectsCtx = null;
+            // Dispose bubbles
+            this.bubbles.forEach((bubble) => {
+                bubble.geometry.dispose();
+                bubble.material.dispose();
+                this.mainGroup.remove(bubble);
+            });
+            this.bubbles = [];
+
+            // Dispose ribbons
+            this.ribbons.forEach((ribbon) => {
+                ribbon.geometry.dispose();
+                ribbon.material.dispose();
+                this.mainGroup.remove(ribbon);
+            });
+            this.ribbons = [];
+
+            // Dispose particles
+            if (this.particles) {
+                this.particles.geometry.dispose();
+                this.particles.material.dispose();
+                this.mainGroup.remove(this.particles);
+                this.particles = null;
+            }
+
+            // Dispose shockwaves
+            this.shockwaves.forEach((sw) => {
+                sw.geometry.dispose();
+                sw.material.dispose();
+                this.scene.remove(sw);
+            });
+            this.shockwaves = [];
+
+            // Dispose background
+            if (this.backgroundSphere) {
+                this.backgroundSphere.geometry.dispose();
+                this.backgroundSphere.material.dispose();
+                this.scene.remove(this.backgroundSphere);
+                this.backgroundSphere = null;
+            }
+
+            // Dispose env map
+            if (this.envMap) {
+                this.envMap.dispose();
+                this.envMap = null;
+            }
+
+            // Dispose composer
+            if (this.composer) {
+                this.composer.dispose();
+                this.composer = null;
+            }
+
+            // Dispose renderer
+            if (this.renderer) {
+                this.renderer.dispose();
+                this.renderer.domElement.remove();
+                this.renderer = null;
+            }
+
+            // Clear scene
+            this.scene.clear();
+            this.scene = null;
+            this.mainGroup = null;
         }
-    }
 
-    /**
-     * Provide Fluid Dreams themed tetromino styling (liquid neon palette)
-     * @returns {Object} Fluid Dreams tetromino configuration
-     */
-    getTetrominoConfig() {
-        return FLUID_DREAMS_TETROMINOS;
+        this.camera = null;
+        this.clock = new THREE.Clock();
+
+        super.stop();
+
+        console.log('💧 Fluid Dreams 3D: Stopped.');
     }
 }
