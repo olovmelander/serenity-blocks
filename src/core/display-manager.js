@@ -19,8 +19,8 @@ export class DisplayManager {
     detectElectron() {
         // Check for Electron renderer process
         return typeof window !== 'undefined'
-               && typeof window.process !== 'undefined'
-               && window.process.type === 'renderer';
+            && typeof window.process !== 'undefined'
+            && window.process.type === 'renderer';
     }
 
     /**
@@ -69,12 +69,19 @@ export class DisplayManager {
      */
     getCommonResolutions(maxWidth, maxHeight) {
         const commonResolutions = [
+            { width: 1024, height: 768, label: '1024×768 (XGA)' },
             { width: 1280, height: 720, label: '1280×720 (HD)' },
-            { width: 1366, height: 768, label: '1366×768' },
+            { width: 1280, height: 800, label: '1280×800 (WXGA)' },
+            { width: 1366, height: 768, label: '1366×768 (HD)' },
+            { width: 1440, height: 900, label: '1440×900 (WXGA+)' },
             { width: 1600, height: 900, label: '1600×900 (HD+)' },
-            { width: 1920, height: 1080, label: '1920×1080 (Full HD)' },
-            { width: 2560, height: 1440, label: '2560×1440 (2K)' },
-            { width: 3840, height: 2160, label: '3840×2160 (4K)' },
+            { width: 1680, height: 1050, label: '1680×1050 (WSXGA+)' },
+            { width: 1920, height: 1080, label: '1920×1080 (FHD)' },
+            { width: 1920, height: 1200, label: '1920×1200 (WUXGA)' },
+            { width: 2560, height: 1080, label: '2560×1080 (UW-FHD)' },
+            { width: 2560, height: 1440, label: '2560×1440 (QHD)' },
+            { width: 3440, height: 1440, label: '3440×1440 (UW-QHD)' },
+            { width: 3840, height: 2160, label: '3840×2160 (4K UHD)' },
         ];
 
         return commonResolutions.filter(
@@ -103,18 +110,18 @@ export class DisplayManager {
             const { ipcRenderer } = window.require('electron');
 
             switch (mode) {
-            case 'fullscreen':
-                await ipcRenderer.invoke('set-fullscreen', true);
-                break;
+                case 'fullscreen':
+                    await ipcRenderer.invoke('set-fullscreen', true);
+                    break;
 
-            case 'borderless':
-                await ipcRenderer.invoke('set-borderless', resolution);
-                break;
+                case 'borderless':
+                    await ipcRenderer.invoke('set-borderless', resolution);
+                    break;
 
-            case 'windowed':
-            default:
-                await ipcRenderer.invoke('set-windowed', resolution);
-                break;
+                case 'windowed':
+                default:
+                    await ipcRenderer.invoke('set-windowed', resolution);
+                    break;
             }
 
             console.log(`[DisplayManager] Display mode set to: ${mode}`);

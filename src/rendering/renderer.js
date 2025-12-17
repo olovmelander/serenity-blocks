@@ -486,18 +486,18 @@ class ParticleSystem {
                 this.blinkInfo[blinkOffset + 1] = timer;
 
                 switch (blinkState) {
-                case 0: // FADE_IN
-                    this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
-                    break;
-                case 1: // GLOW
-                    this.alphas[i] = maxAlpha;
-                    break;
-                case 2: // FADE_OUT
-                    this.alphas[i] = maxAlpha * (timer / fadeOutTime);
-                    break;
-                case 3: // DARK
-                    this.alphas[i] = 0;
-                    break;
+                    case 0: // FADE_IN
+                        this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
+                        break;
+                    case 1: // GLOW
+                        this.alphas[i] = maxAlpha;
+                        break;
+                    case 2: // FADE_OUT
+                        this.alphas[i] = maxAlpha * (timer / fadeOutTime);
+                        break;
+                    case 3: // DARK
+                        this.alphas[i] = 0;
+                        break;
                 }
             } else if (this.behavior === 'ambient') {
                 this.positions[i * 2] += this.velocities[i * 2];
@@ -750,18 +750,62 @@ export class WebGLRenderer {
         this.textureManager = new TextureManager(this.gl, { maxTextures: 20 });
         this.bufferManager = new BufferManager(this.gl);
         console.log('[WebGLRenderer] GPU resource managers initialized');
+
+        // Log GPU Info for debugging
+        const info = this.getRendererInfo();
+        console.log('%c[GPU] Active Renderer:', 'color: #00ff00; font-weight: bold;', info.full);
+        window.activeGPURenderer = info.full; // Expose global for easy check
+    }
+
+    /**
+     * Get debug info about the GPU renderer
+     */
+    getRendererInfo() {
+        if (!this.gl) return { full: 'WebGL not initialized' };
+
+        const debugInfo = this.gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+            const vendor = this.gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+            const renderer = this.gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+            return { vendor, renderer, full: `${vendor} - ${renderer}` };
+        }
+        return {
+            vendor: 'Unknown',
+            renderer: this.gl.getParameter(this.gl.RENDERER),
+            full: this.gl.getParameter(this.gl.RENDERER)
+        };
     }
 
     resize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        if (this.resolutionMode === 'fixed' && this.targetResolution) {
+            this.canvas.width = this.targetResolution.width;
+            this.canvas.height = this.targetResolution.height;
+        } else {
+            this.canvas.width = window.innerWidth;
+            this.canvas.height = window.innerHeight;
+        }
+
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         console.log(
             '[WebGLRenderer] Canvas resized to:',
             this.canvas.width,
             'x',
             this.canvas.height,
+            this.resolutionMode === 'fixed' ? '(Fixed)' : '(Auto)',
         );
+    }
+
+    /**
+     * Set internal rendering resolution
+     * @param {number} width
+     * @param {number} height
+     * @param {string} mode - 'auto' | 'fixed'
+     */
+    setInternalResolution(width, height, mode = 'auto') {
+        console.log(`[WebGLRenderer] Setting internal resolution: ${width}x${height} (${mode})`);
+        this.targetResolution = { width, height };
+        this.resolutionMode = mode;
+        this.resize();
     }
 
     addLayer(sourceCanvas, zIndex) {

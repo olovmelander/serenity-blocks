@@ -669,6 +669,13 @@ class SerenityBlocks {
                 height = 720;
             }
 
+            // Apply internal render resolution (independently of window size)
+            // This allows for performance improvements (e.g. rendering 1080p on 4K screen)
+            if (this.webglRenderer) {
+                const mode = resolution === 'auto' ? 'auto' : 'fixed';
+                this.webglRenderer.setInternalResolution(width, height, mode);
+            }
+
             // Apply display mode
             await this.displayManager.setDisplayMode(displayMode, { width, height });
 
@@ -774,8 +781,26 @@ class SerenityBlocks {
             const displayFPS = Number.isFinite(this.fpsCounter.fps) && this.fpsCounter.fps > 0
                 ? Math.round(this.fpsCounter.fps)
                 : '--';
-            this.fpsCounter.element.textContent = `${displayFPS} FPS`;
+
+            let gpuText = '';
+            if (window.activeGPURenderer) {
+                // Shorten renderer string for display
+                // remove ANGLE (...) wrapper if present
+                let simpleName = window.activeGPURenderer;
+                const angleMatch = simpleName.match(/ANGLE \((.+)\)/);
+                if (angleMatch) simpleName = angleMatch[1];
+
+                // take first part if comma separated (often "Vendor, Card")
+                const parts = simpleName.split(',');
+                if (parts.length > 1) simpleName = parts[1].trim(); // Usually the card name is second
+                else simpleName = parts[0];
+
+                gpuText = ` | ${simpleName}`;
+            }
+
+            this.fpsCounter.element.textContent = `${displayFPS} FPS${gpuText}`;
         }
+
     }
 
     startFPSMonitor() {
