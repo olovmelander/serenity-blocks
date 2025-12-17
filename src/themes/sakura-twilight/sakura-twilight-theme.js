@@ -74,6 +74,13 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.moonMesh = null;
         this.moonGlowLayers = [];
         this.starfield = null;
+        this.starPositions = []; // Store star positions for constellation lines
+
+        // Constellation effect
+        this.constellationLines = null;
+        this.constellationMaterial = null;
+        this.constellationOpacity = 0;
+        this.constellationTargetOpacity = 0;
 
         // Lanterns
         this.lanterns = [];
@@ -606,10 +613,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     float glow3 = sin(worldPos.x * 0.25) * sin(worldPos.z * 0.22 + 1.0) * 0.5 + 0.5;
                     float combinedGlow = max(max(glow1, glow2), glow3);
                     
-                    // Dynamic pulse expands the glow radius effectively by lowering the threshold
-                    // and boosting intensity - UNMISSABLE FLASH
-                    float pulseBoost = 1.0 + uPulseIntensity * 3.0; // 4x brightness at peak
-                    float threshold = 0.4 - uPulseIntensity * 0.35; // Almost 0.05 threshold at peak (glow everywhere)
+                    // Dynamic pulse expands the glow radius - subtle effect
+                    float pulseBoost = 1.0 + uPulseIntensity * 0.8; // Subtle 1.8x brightness at peak
+                    float threshold = 0.4 - uPulseIntensity * 0.15; // Slight widening
                     
                     // Threshold to create distinct pools, boost intensity, apply to tips
                     vLanternGlow = smoothstep(threshold, 0.8, combinedGlow) * 0.8 * (0.3 + heightFactor * 0.7) * pulseBoost;
@@ -1076,13 +1082,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
                      vec3 lPos = uLanternPositions[i];
                      float dist = distance(vWorldPos.xyz, lPos);
                      
-                     // Light falloff - increased radius and linear falloff for maximum visibility
-                     // Pulse expands radius MASSIVELY
-                     float radius = 25.0 + uPulseIntensity * 30.0;
+                     // Light falloff - subtle pulse effect
+                     float radius = 25.0 + uPulseIntensity * 8.0;
                      if (dist < radius) {
                          float atten = 1.0 - smoothstep(0.0, radius, dist);
-                         // Boost intensity significantly during pulse
-                         float intensity = 5.0 * (1.0 + uPulseIntensity * 4.0); 
+                         // Subtle boost during pulse
+                         float intensity = 5.0 * (1.0 + uPulseIntensity * 0.8); 
                          lightAccumulation += vec3(1.0, 0.7, 0.3) * atten * intensity; 
                      }
                 }
@@ -1142,6 +1147,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 uniform float uGradientEnd;
                 uniform float uHighlightStart;
                 uniform float uHighlightEnd;
+                uniform float uPulseIntensity; // Pulse for piece lock/combo
                 
                 varying vec3 vSakuraWorldPos;
                 varying vec3 vInstanceCenterWorld;
@@ -1175,7 +1181,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
             diffuseColor.rgb *= gradientColor;
             
             // Add lantern glow
-            diffuseColor.rgb += vLanternLight * 0.8; 
+            diffuseColor.rgb += vLanternLight * 0.8;
+            
+            // Add global pulse effect (subtle warm orange flash during piece lock/combo)
+            vec3 pulseColor = vec3(1.0, 0.6, 0.2); // Warm lantern color
+            diffuseColor.rgb += pulseColor * uPulseIntensity * 0.25;
             `
             );
         };
@@ -1566,7 +1576,114 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
 
+        // Store star positions for constellation effect
+        this.starPositions = [];
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+            this.starPositions.push(new THREE.Vector3(
+                positions[i3],
+                positions[i3 + 1],
+                positions[i3 + 2]
+            ));
+        }
+
+        // Create constellation lines (initially invisible)
+        this.createConstellationLines();
+
         console.log('[SakuraTheme] Starfield created with', starCount, 'stars');
+    }
+
+    /**
+     * Create constellation lines connecting nearby stars
+     * Lines fade in during combos to create a magical star sign effect
+     */
+    createConstellationLines() {
+        if (!this.starPositions || this.starPositions.length === 0) return;
+
+        // Build line segments connecting nearby stars
+        const linePositions = [];
+        // Stars are at radius 800-2300, so max distance needs to be much larger
+        const maxDistance = 400; // Increased significantly for actual star positions
+        const minDistance = 100; // Minimum to avoid clustering
+        const maxLinesPerStar = 2; // Keep constellations simple
+
+        // Pick a subset of stars for constellation (every 8th for cleaner look)
+        const stride = 8;
+        const constellationStars = this.starPositions.filter((_, i) => i % stride === 0);
+
+        console.log('[SakuraTheme] Constellation candidate stars:', constellationStars.length);
+
+        // Track connections per star
+        const connections = new Map();
+
+        for (let i = 0; i < constellationStars.length; i++) {
+            const star1 = constellationStars[i];
+            const star1Connections = connections.get(i) || 0;
+            if (star1Connections >= maxLinesPerStar) continue;
+
+            // Find nearby stars to connect
+            for (let j = i + 1; j < constellationStars.length; j++) {
+                const star2 = constellationStars[j];
+                const star2Connections = connections.get(j) || 0;
+
+                if (star2Connections >= maxLinesPerStar) continue;
+
+                const dist = star1.distanceTo(star2);
+                if (dist < maxDistance && dist > minDistance) {
+                    // Add line segment
+                    linePositions.push(star1.x, star1.y, star1.z);
+                    linePositions.push(star2.x, star2.y, star2.z);
+
+                    connections.set(i, (connections.get(i) || 0) + 1);
+                    connections.set(j, (connections.get(j) || 0) + 1);
+                }
+            }
+        }
+
+        if (linePositions.length === 0) {
+            console.warn('[SakuraTheme] No constellation lines generated - trying larger distance');
+            // Fallback: try much larger distance
+            for (let i = 0; i < Math.min(20, constellationStars.length); i++) {
+                const star1 = constellationStars[i];
+                for (let j = i + 1; j < Math.min(20, constellationStars.length); j++) {
+                    const star2 = constellationStars[j];
+                    const dist = star1.distanceTo(star2);
+                    if (dist < 800) {
+                        linePositions.push(star1.x, star1.y, star1.z);
+                        linePositions.push(star2.x, star2.y, star2.z);
+                        if (linePositions.length > 60) break; // Limit lines
+                    }
+                }
+                if (linePositions.length > 60) break;
+            }
+        }
+
+        if (linePositions.length === 0) {
+            console.warn('[SakuraTheme] Still no constellation lines - using first 10 stars');
+            // Last resort: connect first 10 stars
+            for (let i = 0; i < Math.min(10, constellationStars.length - 1); i++) {
+                const star1 = constellationStars[i];
+                const star2 = constellationStars[i + 1];
+                linePositions.push(star1.x, star1.y, star1.z);
+                linePositions.push(star2.x, star2.y, star2.z);
+            }
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+
+        this.constellationMaterial = new THREE.LineBasicMaterial({
+            color: 0xffffff, // Bright white for visibility
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.constellationLines = new THREE.LineSegments(geometry, this.constellationMaterial);
+        this.scene.add(this.constellationLines);
+
+        console.log('[SakuraTheme] Constellation lines created:', linePositions.length / 6, 'segments');
     }
 
     createLanterns() {
@@ -1595,7 +1712,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // Reduced radial segments from 8 to 6
         const bodyGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.25, 6);
         const capGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.05, 6); // Shared for top/bottom
-        const stringGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.6, 3); // Very simple string
+        // Longer string to reach up into canopy (1.2 units instead of 0.6)
+        const stringGeo = new THREE.CylinderGeometry(0.01, 0.01, 1.2, 3);
 
         // --- Materials ---
         // Emissive Body (Self-lit look without real light cost)
@@ -1634,25 +1752,25 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             for (let i = 0; i < count; i++) {
                 // Procedural Offset logic
-                // Lanterns hang from branches, so we need offsets from center based on tree scale
+                // Lanterns hang from branches - keep closer to trunk for realistic look
                 const angle = Math.random() * Math.PI * 2;
-                // Branch radius varies by tree scale. Approx 1.0 to 2.5 units out
-                const branchRadius = (1.0 + Math.random() * 1.5) * treeScale;
+                // Reduced branch radius - keep closer to trunk (0.5 to 1.5 units out)
+                const branchRadius = (0.5 + Math.random() * 1.0) * treeScale;
 
                 const offsetX = Math.cos(angle) * branchRadius;
                 const offsetZ = Math.sin(angle) * branchRadius;
 
-                // Height: Lower branches are usually reachable
-                // Base canopy starts around 2.0-3.0. We want lanterns hanging down.
-                // Hang height: 1.6 to 2.2 base
-                const baseHangY = 1.6 + Math.random() * 0.6;
+                // Height: Position lanterns within the canopy area (higher up)
+                // Tree canopies are around Y=3.0-5.0, lanterns hang from lower branches
+                // Base height: 2.5 to 3.5 (within canopy)
+                const baseHangY = 2.5 + Math.random() * 1.0;
 
                 // Boost height for lanterns closer to camera (so they're more visible)
-                const heightBoost = Math.max(0, 1.2 * (1 - distToCamera / 35)); // +1.2 at distance 0, fades to 0 at 35
+                const heightBoost = Math.max(0, 0.8 * (1 - distToCamera / 35)); // Reduced boost
                 const hangY = baseHangY + heightBoost;
 
                 const posX = tree.pos.x + offsetX;
-                const posY = hangY; // Absolute height with boost
+                const posY = hangY;
                 const posZ = tree.pos.z + offsetZ;
 
                 // Random rotation for natural look
@@ -1707,9 +1825,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
             matBottom.multiply(new THREE.Matrix4().makeTranslation(0, -0.15, 0)); // Move local down
             meshBottom.setMatrixAt(i, matBottom);
 
-            // String
+            // String - longer (1.2 units), centered above body to reach into canopy
             matString.copy(baseMatrix);
-            matString.multiply(new THREE.Matrix4().makeTranslation(0, 0.425, 0)); // Move local up
+            matString.multiply(new THREE.Matrix4().makeTranslation(0, 0.725, 0)); // Move up (0.6 + 0.125)
             meshString.setMatrixAt(i, matString);
         }
 
@@ -2330,12 +2448,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             if (this.pulseIntensity < 0.01) this.pulseIntensity = 0;
 
-            // Animate Lantern Points (The glowing orbs themselves)
+            // Animate Lantern Points (The glowing orbs themselves) - subtle growth
             if (this.lanternGlowMaterial) {
-                // Base size 2.5, pulse up to 8.0
-                this.lanternGlowMaterial.size = 2.5 + this.pulseIntensity * 6.0;
-                // Base opacity 0.8, pulse up to 1.0 (clamped)
-                this.lanternGlowMaterial.opacity = 0.8 + this.pulseIntensity * 0.5;
+                // Base size 2.5, pulse up to 4.0 (was 8.5)
+                this.lanternGlowMaterial.size = 2.5 + this.pulseIntensity * 1.5;
+                // Base opacity 0.8, pulse up to 0.95
+                this.lanternGlowMaterial.opacity = 0.8 + this.pulseIntensity * 0.15;
             }
         } else if (this.lanternGlowMaterial && this.lanternGlowMaterial.size > 2.51) {
             // Reset to base
@@ -2360,6 +2478,20 @@ export default class SakuraTwilightTheme extends BaseTheme {
         }
         if (this.grassMaterial?.uniforms?.uPulseIntensity) {
             this.grassMaterial.uniforms.uPulseIntensity.value = this.pulseIntensity;
+        }
+
+        // Animate constellation lines (fade in/out on combo)
+        if (this.constellationMaterial) {
+            // Smoothly interpolate opacity towards target
+            const lerpSpeed = deltaTime * 3.0; // Smooth transition
+            this.constellationOpacity += (this.constellationTargetOpacity - this.constellationOpacity) * lerpSpeed;
+
+            // Decay target opacity over time (auto-fade out)
+            this.constellationTargetOpacity *= 0.985; // Slow decay
+            if (this.constellationTargetOpacity < 0.02) this.constellationTargetOpacity = 0;
+
+            // Apply to material
+            this.constellationMaterial.opacity = this.constellationOpacity;
         }
 
         // Starfield is now static (no twinkling)
@@ -2472,12 +2604,16 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
     /**
      * Called on combo
-     * Triggers a visual pulse effect
+     * Triggers a visual pulse effect and constellation lines
      */
     onCombo() {
         // Trigger pulse
         this.pulseIntensity = 1.0;
-        console.log('[SakuraTheme] Combo Pulse!');
+
+        // Trigger constellation lines to fade in (full opacity for visibility)
+        this.constellationTargetOpacity = 1.0;
+
+        console.log('[SakuraTheme] Combo Pulse + Constellation!');
     }
 
     setupEventListeners() {
