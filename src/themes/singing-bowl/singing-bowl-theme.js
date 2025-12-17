@@ -1,16 +1,15 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- * SINGING BOWL THEME - Three.js 3D Implementation
+ * SINGING BOWL THEME - Recursive Tree Cubes with Reflection
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * A deeply calming, meditative 3D experience featuring:
- * - Beautiful brass/bronze singing bowl with realistic metallic shading
- * - Gently undulating water surface inside the bowl
- * - 3D sound ripples emanating outward from the bowl
- * - Floating luminous motes rising like incense smoke
- * - Soft atmospheric lighting with bloom
- * - Subtle camera breathing movement
- * - Resonant lock piece and combo effects
+ * Based on oosmoxiecode's Recursive Tree Cubes and Three.js webgpu_reflection
+ * Features:
+ * - Instanced cubes for performance
+ * - Time-based color cycling shader
+ * - Transformative animation with spreading/rotating cubes
+ * - Reflective ground plane
+ * - Atmospheric bloom
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
@@ -19,6 +18,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SINGING_BOWL_TETROMINOS } from './singing-bowl-tetrominos.js';
@@ -27,315 +27,80 @@ import { SINGING_BOWL_TETROMINOS } from './singing-bowl-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { particleCount: 200, bloomStrength: 0.7, bloomRadius: 0.6, enablePost: true, rippleDetail: 64 },
-    Ultra: { particleCount: 160, bloomStrength: 0.65, bloomRadius: 0.55, enablePost: true, rippleDetail: 48 },
-    High: { particleCount: 120, bloomStrength: 0.6, bloomRadius: 0.5, enablePost: true, rippleDetail: 32 },
-    Medium: { particleCount: 80, bloomStrength: 0.5, bloomRadius: 0.4, enablePost: true, rippleDetail: 24 },
-    Low: { particleCount: 50, bloomStrength: 0.4, bloomRadius: 0.35, enablePost: false, rippleDetail: 16 },
-    Minimal: { particleCount: 30, bloomStrength: 0.3, bloomRadius: 0.3, enablePost: false, rippleDetail: 12 },
+    Extreme: { maxCubes: 8000, treeDepth: 8, bloomStrength: 0.4, bloomRadius: 0.5, enablePost: true, reflectorRes: 1024 },
+    Ultra: { maxCubes: 6000, treeDepth: 7, bloomStrength: 0.35, bloomRadius: 0.4, enablePost: true, reflectorRes: 1024 },
+    High: { maxCubes: 4000, treeDepth: 7, bloomStrength: 0.3, bloomRadius: 0.3, enablePost: true, reflectorRes: 512 },
+    Medium: { maxCubes: 2000, treeDepth: 6, bloomStrength: 0.25, bloomRadius: 0.25, enablePost: true, reflectorRes: 512 },
+    Low: { maxCubes: 1000, treeDepth: 5, bloomStrength: 0.2, bloomRadius: 0.2, enablePost: false, reflectorRes: 256 },
+    Minimal: { maxCubes: 500, treeDepth: 4, bloomStrength: 0.15, bloomRadius: 0.15, enablePost: false, reflectorRes: 256 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Color Palette - Tranquil, warm brass and soft lavender tones
+// Cube Shader with Blue/Teal Palette (matching screenshot)
 // ─────────────────────────────────────────────────────────────────────────────
-const PALETTE = {
-    bowlBrass: new THREE.Color(0xb8956d),
-    bowlBrassLight: new THREE.Color(0xd4b896),
-    bowlBrassDark: new THREE.Color(0x6b5344),
-    waterDeep: new THREE.Color(0x1a1225),
-    waterSurface: new THREE.Color(0x2d2040),
-    rippleGlow: new THREE.Color(0xc8b4dc),
-    moteColor: new THREE.Color(0xdcc8f0),
-    ambientPurple: new THREE.Color(0x2a1a35),
-    glowLavender: new THREE.Color(0xb4a0c8),
-    glowTeal: new THREE.Color(0xa0dcc8),
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Shaders
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Singing Bowl Metallic Shader - Warm brass with subtle reflections
-const BowlShader = {
+const CubeShader = {
     vertexShader: `
+        attribute vec3 instanceColor;
+        attribute float instanceDepth;
+        
+        varying vec3 vColor;
         varying vec3 vNormal;
-        varying vec3 vWorldPosition;
-        varying vec3 vViewDir;
-        varying vec2 vUv;
-        varying float vFresnel;
-
+        varying vec3 vWorldPos;
+        varying float vDepth;
+        
         void main() {
-            vNormal = normalize(normalMatrix * normal);
-            vec4 worldPos = modelMatrix * vec4(position, 1.0);
-            vWorldPosition = worldPos.xyz;
-            vViewDir = normalize(cameraPosition - worldPos.xyz);
-            vUv = uv;
-
-            // Fresnel for rim lighting
-            float fresnel = 1.0 - max(0.0, dot(vNormal, vViewDir));
-            vFresnel = pow(fresnel, 2.5);
-
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vColor = instanceColor;
+            vNormal = normalMatrix * normal;
+            vDepth = instanceDepth;
+            
+            vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+            vWorldPos = worldPos.xyz;
+            
+            gl_Position = projectionMatrix * viewMatrix * worldPos;
         }
     `,
     fragmentShader: `
         uniform float uTime;
         uniform float uPulseIntensity;
-        uniform vec3 uBrassColor;
-        uniform vec3 uBrassLight;
-        uniform vec3 uBrassDark;
-
-        varying vec3 vNormal;
-        varying vec3 vWorldPosition;
-        varying vec3 vViewDir;
-        varying vec2 vUv;
-        varying float vFresnel;
-
-        void main() {
-            // Base brass color with height variation
-            float heightFactor = smoothstep(-1.0, 1.5, vWorldPosition.y);
-            vec3 baseColor = mix(uBrassDark, uBrassColor, heightFactor);
-
-            // Subtle surface variation (hammered texture feel)
-            float variation = sin(vUv.x * 60.0) * sin(vUv.y * 40.0 + vWorldPosition.y * 5.0) * 0.08;
-            baseColor += vec3(variation);
-
-            // Soft directional lighting
-            vec3 lightDir1 = normalize(vec3(0.5, 1.0, 0.3));
-            vec3 lightDir2 = normalize(vec3(-0.3, 0.5, -0.5));
-
-            float diff1 = max(0.0, dot(vNormal, lightDir1));
-            float diff2 = max(0.0, dot(vNormal, lightDir2)) * 0.4;
-
-            // Specular highlights
-            vec3 halfDir1 = normalize(lightDir1 + vViewDir);
-            float spec1 = pow(max(0.0, dot(vNormal, halfDir1)), 32.0) * 0.6;
-
-            vec3 halfDir2 = normalize(lightDir2 + vViewDir);
-            float spec2 = pow(max(0.0, dot(vNormal, halfDir2)), 24.0) * 0.3;
-
-            // Combine lighting
-            vec3 color = baseColor * (0.3 + diff1 * 0.5 + diff2 * 0.2);
-            color += uBrassLight * (spec1 + spec2);
-
-            // Warm rim glow
-            color += uBrassLight * vFresnel * 0.4;
-
-            // Pulse effect from gameplay
-            float pulse = 1.0 + uPulseIntensity * 0.5 * sin(uTime * 8.0);
-            color *= pulse;
-
-            // Subtle glow on pulse
-            color += vec3(0.8, 0.6, 0.4) * uPulseIntensity * 0.3;
-
-            gl_FragColor = vec4(color, 1.0);
-        }
-    `
-};
-
-// Water Surface Shader - Gentle undulations with reflections
-const WaterShader = {
-    vertexShader: `
-        uniform float uTime;
-        uniform float uRippleIntensity;
-
-        varying vec2 vUv;
-        varying vec3 vWorldPosition;
-        varying vec3 vNormal;
-        varying float vDistFromCenter;
-
-        void main() {
-            vUv = uv;
-
-            vec3 pos = position;
-            vDistFromCenter = length(pos.xz);
-
-            // Gentle waves
-            float wave1 = sin(pos.x * 3.0 + uTime * 1.2) * cos(pos.z * 2.5 + uTime * 0.8) * 0.015;
-            float wave2 = sin(pos.x * 5.0 - uTime * 1.5) * sin(pos.z * 4.0 + uTime * 1.0) * 0.008;
-
-            // Ripple waves from center
-            float rippleDist = length(pos.xz);
-            float ripple = sin(rippleDist * 8.0 - uTime * 4.0) * 0.02 * uRippleIntensity;
-            ripple *= smoothstep(2.0, 0.0, rippleDist);
-
-            pos.y += wave1 + wave2 + ripple;
-
-            vec4 worldPos = modelMatrix * vec4(pos, 1.0);
-            vWorldPosition = worldPos.xyz;
-            vNormal = normalMatrix * normal;
-
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform float uTime;
-        uniform vec3 uDeepColor;
-        uniform vec3 uSurfaceColor;
-        uniform float uReflectionStrength;
-
-        varying vec2 vUv;
-        varying vec3 vWorldPosition;
-        varying vec3 vNormal;
-        varying float vDistFromCenter;
-
-        void main() {
-            // Depth-based color
-            float depth = smoothstep(0.0, 1.5, vDistFromCenter);
-            vec3 color = mix(uSurfaceColor, uDeepColor, depth);
-
-            // Shimmer highlights
-            float shimmer = sin(vUv.x * 30.0 + uTime * 2.0) * sin(vUv.y * 25.0 - uTime * 1.5);
-            shimmer = max(0.0, shimmer) * 0.15;
-
-            // Center glow
-            float centerGlow = smoothstep(1.5, 0.0, vDistFromCenter) * 0.3;
-
-            // Reflection simulation
-            float refl = pow(1.0 - max(0.0, dot(normalize(vNormal), vec3(0.0, 1.0, 0.0))), 3.0);
-            refl *= uReflectionStrength;
-
-            color += vec3(0.7, 0.6, 0.9) * shimmer;
-            color += vec3(0.6, 0.5, 0.8) * centerGlow;
-            color += vec3(0.8, 0.7, 0.9) * refl * 0.2;
-
-            // Subtle pulsing
-            float pulse = 0.95 + 0.05 * sin(uTime * 0.5);
-
-            gl_FragColor = vec4(color * pulse, 0.92);
-        }
-    `
-};
-
-// 3D Ripple Ring Shader
-const RippleShader = {
-    vertexShader: `
-        varying vec2 vUv;
-        varying float vRadius;
-
-        void main() {
-            vUv = uv;
-            vRadius = length(position.xz);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform float uOpacity;
-        uniform float uProgress;
-        uniform vec3 uColor;
-
-        varying vec2 vUv;
-        varying float vRadius;
-
-        void main() {
-            // Ring shape
-            float ringWidth = 0.15;
-            float targetRadius = uProgress;
-            float dist = abs(vRadius - targetRadius);
-            float ring = smoothstep(ringWidth, 0.0, dist);
-
-            // Fade with progress
-            float fade = 1.0 - uProgress;
-
-            // Inner glow
-            float glow = smoothstep(targetRadius, 0.0, vRadius) * 0.3 * fade;
-
-            float alpha = (ring + glow) * uOpacity * fade;
-
-            gl_FragColor = vec4(uColor, alpha);
-        }
-    `
-};
-
-// Floating Mote Particle Shader
-const MoteShader = {
-    vertexShader: `
-        attribute float aSize;
-        attribute float aPhase;
-        attribute float aSpeed;
-        attribute vec3 aColor;
-
-        uniform float uTime;
-
-        varying float vAlpha;
+        
         varying vec3 vColor;
-
-        void main() {
-            vec3 pos = position;
-
-            // Gentle rising motion with drift
-            float time = uTime * aSpeed * 0.3;
-            pos.y += mod(time + aPhase * 50.0, 40.0) - 5.0;
-            pos.x += sin(time * 0.8 + aPhase * 6.28) * 0.8;
-            pos.z += cos(time * 0.6 + aPhase * 4.0) * 0.6;
-
-            // Lifecycle - fade in/out based on height
-            float normalizedY = (pos.y + 5.0) / 40.0;
-            vAlpha = sin(normalizedY * 3.14159) * 0.8;
-            vAlpha *= 0.6 + 0.4 * sin(uTime * 2.0 + aPhase * 6.28);
-
-            vColor = aColor;
-
-            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-            gl_PointSize = aSize * (180.0 / -mvPosition.z);
-            gl_Position = projectionMatrix * mvPosition;
-        }
-    `,
-    fragmentShader: `
-        varying float vAlpha;
-        varying vec3 vColor;
-
-        void main() {
-            vec2 coord = gl_PointCoord - 0.5;
-            float dist = length(coord);
-            if (dist > 0.5) discard;
-
-            // Soft glow
-            float glow = 1.0 - smoothstep(0.0, 0.5, dist);
-            glow = pow(glow, 1.5);
-
-            gl_FragColor = vec4(vColor * glow * 1.5, vAlpha * glow);
-        }
-    `
-};
-
-// Background Gradient Shader
-const BackgroundShader = {
-    vertexShader: `
+        varying vec3 vNormal;
         varying vec3 vWorldPos;
-        void main() {
-            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        varying float vDepth;
+        
+        // HSV to RGB conversion
+        vec3 hsv2rgb(vec3 c) {
+            vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+            vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+            return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
         }
-    `,
-    fragmentShader: `
-        uniform float uTime;
-        varying vec3 vWorldPos;
-
+        
         void main() {
-            float y = normalize(vWorldPos).y;
-
-            // Deep purple gradient
-            vec3 topColor = vec3(0.05, 0.03, 0.08);
-            vec3 midColor = vec3(0.1, 0.06, 0.14);
-            vec3 bottomColor = vec3(0.06, 0.04, 0.1);
-
-            vec3 color;
-            if (y > 0.0) {
-                color = mix(midColor, topColor, smoothstep(0.0, 0.8, y));
-            } else {
-                color = mix(midColor, bottomColor, smoothstep(0.0, -0.6, y));
-            }
-
-            // Subtle aurora-like wisps
-            float angle = atan(vWorldPos.x, vWorldPos.z);
-            float wisp = sin(angle * 3.0 + y * 5.0 + uTime * 0.1);
-            wisp = pow(max(0.0, wisp), 4.0) * 0.04;
-            wisp *= smoothstep(-0.3, 0.2, y) * smoothstep(0.7, 0.3, y);
-
-            color += vec3(0.3, 0.2, 0.5) * wisp;
-
-            gl_FragColor = vec4(color, 1.0);
+            // RAINBOW COLOR CYCLING (oosmoxiecode style)
+            // Cycle hue continuously based on time and vertical position/depth
+            float hue = fract(uTime * 0.15 + vDepth * 0.1 + vWorldPos.y * 0.05);
+            
+            // Saturation increases with pulse
+            float sat = 0.6 + uPulseIntensity * 0.4;
+            
+            // Value (brightness) pulses
+            float val = 0.8 + uPulseIntensity * 0.5;
+            
+            vec3 rainbowColor = hsv2rgb(vec3(hue, sat, val));
+            
+            // Simple lighting
+            vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
+            float diff = max(dot(vNormal, lightDir), 0.0) * 0.6 + 0.4;
+            
+            // Fresnel edge glow
+            vec3 viewDir = normalize(cameraPosition - vWorldPos);
+            float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 3.0);
+            
+            vec3 finalColor = rainbowColor * diff;
+            finalColor += rainbowColor * fresnel * 0.5; // Glowing edges
+            // Removed extra emissive/white flash to prevent washout
+            
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
@@ -354,26 +119,23 @@ export default class SingingBowlTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.composer = null;
-        this.mainGroup = null;
-        this.bowl = null;
-        this.bowlInner = null;
-        this.waterSurface = null;
-        this.motes = null;
-        this.backgroundSphere = null;
-        this.ripples = [];
+        this.treeGroup = null;
+        this.reflector = null;
+        this.instancedMesh = null;
+        this.cubeMaterial = null;
+
+        // Cube data for animation
+        this.cubeData = [];
+        this.instanceCount = 0;
 
         // Animation
         this.animationFrame = null;
         this.clock = new THREE.Clock();
-        this.cameraBasePosition = new THREE.Vector3(0, 3, 8);
-        this.cameraLookAt = new THREE.Vector3(0, 0.5, 0);
 
         // State
         this.uniforms = {
-            time: { value: 0 },
-            pulseIntensity: { value: 0 },
-            rippleIntensity: { value: 0 },
-            reflectionStrength: { value: 0.5 },
+            uTime: { value: 0 },
+            uPulseIntensity: { value: 0 },
         };
 
         this.currentQuality = 'High';
@@ -386,7 +148,7 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     async createScene() {
-        console.log('[SingingBowl] Initializing Three.js scene...');
+        console.log('[SingingBowl] Initializing Recursive Tree Cubes...');
 
         const container = document.getElementById('singing-bowl-theme');
         if (!container) {
@@ -402,25 +164,25 @@ export default class SingingBowlTheme extends BaseTheme {
         // Clean up existing content
         container.innerHTML = '';
 
-        // Scene setup
+        // Scene setup - Deep Teal/Blue atmosphere
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x0a0612, 0.04);
+        this.scene.background = new THREE.Color(0x001018); // Deep teal dark
+        this.scene.fog = new THREE.FogExp2(0x001525, 0.015); // Matching fog
 
-        // Camera - positioned to view the bowl from a gentle angle
-        this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-        this.camera.position.copy(this.cameraBasePosition);
-        this.camera.lookAt(this.cameraLookAt);
+        // Camera
+        this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+        this.camera.position.set(0, 5, 15);
+        this.camera.lookAt(0, 3, 0);
 
         // Renderer
         this.renderer = new THREE.WebGLRenderer({
-            alpha: true,
             antialias: true,
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.1;
+        this.renderer.toneMappingExposure = 0.7; // Lower exposure to prevent white washout
         container.appendChild(this.renderer.domElement);
 
         // Post-processing with bloom
@@ -438,15 +200,9 @@ export default class SingingBowlTheme extends BaseTheme {
             this.bloomPass = bloomPass;
         }
 
-        // Main group for subtle movement
-        this.mainGroup = new THREE.Group();
-        this.scene.add(this.mainGroup);
-
-        // Create all scene elements
-        this.createBackground();
-        this.createSingingBowl();
-        this.createWaterSurface();
-        this.createMotes();
+        // Create scene elements
+        this.createReflectorGround();
+        this.createInstancedTree();
         this.setupLighting();
 
         // Event listeners
@@ -457,294 +213,242 @@ export default class SingingBowlTheme extends BaseTheme {
         // Start animation
         this.animate();
 
-        console.log('[SingingBowl] 3D Scene initialized');
+        console.log('[SingingBowl] Recursive Tree Cubes initialized with', this.instanceCount, 'cubes');
     }
 
-    createBackground() {
-        const bgGeo = new THREE.SphereGeometry(50, 32, 24);
-        const bgMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-            },
-            vertexShader: BackgroundShader.vertexShader,
-            fragmentShader: BackgroundShader.fragmentShader,
-            side: THREE.BackSide,
-            fog: false,
+    createReflectorGround() {
+        // 1. Base Reflector (Mirror)
+        const groundGeo = new THREE.PlaneGeometry(80, 80);
+        this.reflector = new Reflector(groundGeo, {
+            clipBias: 0.003,
+            textureWidth: this.activePreset.reflectorRes * window.devicePixelRatio,
+            textureHeight: this.activePreset.reflectorRes * window.devicePixelRatio,
+            color: 0x050510, // Dark blueish mirror
         });
-        this.backgroundSphere = new THREE.Mesh(bgGeo, bgMat);
-        this.scene.add(this.backgroundSphere);
-    }
+        this.reflector.rotation.x = -Math.PI / 2;
+        this.reflector.position.y = -0.01;
+        this.scene.add(this.reflector);
 
-    createSingingBowl() {
-        // Create bowl using lathe geometry for authentic shape
-        const bowlProfile = [];
-        const segments = 32;
-
-        // Bowl profile curve - wider at top, curved sides, flat bottom
-        for (let i = 0; i <= segments; i++) {
-            const t = i / segments;
-            let x, y;
-
-            if (t < 0.1) {
-                // Flat bottom
-                x = t * 12;
-                y = 0;
-            } else if (t < 0.85) {
-                // Curved sides
-                const curveT = (t - 0.1) / 0.75;
-                const angle = curveT * Math.PI * 0.5;
-                x = 1.2 + Math.sin(angle) * 0.8;
-                y = curveT * 1.4;
-            } else {
-                // Rim flare
-                const rimT = (t - 0.85) / 0.15;
-                x = 2.0 + rimT * 0.15;
-                y = 1.4 + rimT * 0.08;
+        // 2. Checkerboard Overlay
+        // Create a checkerboard texture
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#000000'; // Dark squares
+        context.fillRect(0, 0, 512, 512);
+        context.fillStyle = '#303040'; // Lighter squares (reflectve-ish look)
+        // Draw checkerboard
+        const size = 64;
+        for (let y = 0; y < 512; y += size) {
+            for (let x = 0; x < 512; x += size) {
+                if ((x / size + y / size) % 2 === 0) {
+                    context.fillRect(x, y, size, size);
+                }
             }
-
-            bowlProfile.push(new THREE.Vector2(x, y));
         }
 
-        const bowlGeo = new THREE.LatheGeometry(bowlProfile, 64);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(10, 10);
 
-        const bowlMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uPulseIntensity: this.uniforms.pulseIntensity,
-                uBrassColor: { value: PALETTE.bowlBrass },
-                uBrassLight: { value: PALETTE.bowlBrassLight },
-                uBrassDark: { value: PALETTE.bowlBrassDark },
-            },
-            vertexShader: BowlShader.vertexShader,
-            fragmentShader: BowlShader.fragmentShader,
-            side: THREE.DoubleSide,
-        });
-
-        this.bowl = new THREE.Mesh(bowlGeo, bowlMat);
-        this.bowl.position.y = -0.5;
-        this.mainGroup.add(this.bowl);
-
-        // Create inner bowl surface (darker, for depth)
-        const innerProfile = bowlProfile.map(p => new THREE.Vector2(p.x * 0.95, p.y));
-        const innerGeo = new THREE.LatheGeometry(innerProfile, 64);
-
-        const innerMat = new THREE.MeshStandardMaterial({
-            color: PALETTE.bowlBrassDark,
-            roughness: 0.6,
-            metalness: 0.8,
-            side: THREE.BackSide,
-        });
-
-        this.bowlInner = new THREE.Mesh(innerGeo, innerMat);
-        this.bowlInner.position.y = -0.5;
-        this.mainGroup.add(this.bowlInner);
-
-        // Add decorative ring around rim
-        const rimGeo = new THREE.TorusGeometry(2.1, 0.05, 8, 64);
-        const rimMat = new THREE.MeshStandardMaterial({
-            color: PALETTE.bowlBrassLight,
-            roughness: 0.3,
-            metalness: 0.9,
-            emissive: PALETTE.bowlBrass,
-            emissiveIntensity: 0.1,
-        });
-        const rim = new THREE.Mesh(rimGeo, rimMat);
-        rim.rotation.x = Math.PI / 2;
-        rim.position.y = 0.98;
-        this.mainGroup.add(rim);
-    }
-
-    createWaterSurface() {
-        const waterGeo = new THREE.CircleGeometry(1.9, 64);
-
-        const waterMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uRippleIntensity: this.uniforms.rippleIntensity,
-                uDeepColor: { value: PALETTE.waterDeep },
-                uSurfaceColor: { value: PALETTE.waterSurface },
-                uReflectionStrength: this.uniforms.reflectionStrength,
-            },
-            vertexShader: WaterShader.vertexShader,
-            fragmentShader: WaterShader.fragmentShader,
+        const overlayGeo = new THREE.PlaneGeometry(80, 80);
+        const overlayMat = new THREE.MeshBasicMaterial({
+            map: texture,
             transparent: true,
-            side: THREE.DoubleSide,
-        });
-
-        this.waterSurface = new THREE.Mesh(waterGeo, waterMat);
-        this.waterSurface.rotation.x = -Math.PI / 2;
-        this.waterSurface.position.y = 0.6;
-        this.mainGroup.add(this.waterSurface);
-    }
-
-    createMotes() {
-        const count = this.activePreset.particleCount;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-        const speeds = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
-
-        // Mote colors - soft lavenders, teals, and warm whites
-        const moteColors = [
-            PALETTE.moteColor,
-            PALETTE.glowLavender,
-            PALETTE.glowTeal,
-            new THREE.Color(0xfff8e8), // Warm white
-        ];
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-
-            // Distribute around and above the bowl
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 0.5 + Math.random() * 3;
-
-            positions[i3] = Math.cos(angle) * radius;
-            positions[i3 + 1] = Math.random() * 5 - 1;
-            positions[i3 + 2] = Math.sin(angle) * radius;
-
-            sizes[i] = 3 + Math.random() * 6;
-            phases[i] = Math.random();
-            speeds[i] = 0.3 + Math.random() * 0.8;
-
-            const color = moteColors[Math.floor(Math.random() * moteColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-            },
-            vertexShader: MoteShader.vertexShader,
-            fragmentShader: MoteShader.fragmentShader,
-            transparent: true,
-            depthWrite: false,
+            opacity: 0.25, // Let reflection show through
             blending: THREE.AdditiveBlending,
         });
 
-        this.motes = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.motes);
+        const overlay = new THREE.Mesh(overlayGeo, overlayMat);
+        overlay.rotation.x = -Math.PI / 2;
+        overlay.position.y = 0; // Just on top
+        this.scene.add(overlay);
+    }
+
+    createInstancedTree() {
+        this.cubeData = [];
+
+        // 1. Center Tree (Main)
+        this.generateTreeData(
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Quaternion(),
+            3.0, 0, this.activePreset.treeDepth
+        );
+
+        // 2. Left Tree (Smaller, rotated)
+        const leftRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+        this.generateTreeData(
+            new THREE.Vector3(-12, -1, -8),
+            leftRot,
+            2.5, 0, this.activePreset.treeDepth - 1
+        );
+
+        // 3. Right Tree (Smaller, rotated opposite)
+        const rightRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 3);
+        this.generateTreeData(
+            new THREE.Vector3(12, -1, -8),
+            rightRot,
+            2.5, 0, this.activePreset.treeDepth - 1
+        );
+
+        this.instanceCount = Math.min(this.cubeData.length, this.activePreset.maxCubes * 2); // Allow more cubes
+        console.log('[SingingBowl] Generated', this.cubeData.length, 'cubes, using', this.instanceCount);
+
+        // Create instanced mesh
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+        // Create shader material with color cycling
+        this.cubeMaterial = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            vertexShader: CubeShader.vertexShader,
+            fragmentShader: CubeShader.fragmentShader,
+        });
+
+        this.instancedMesh = new THREE.InstancedMesh(geometry, this.cubeMaterial, this.instanceCount);
+        this.instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        // Add instance attributes for depth
+        const instanceDepths = new Float32Array(this.instanceCount);
+        const instanceColors = new Float32Array(this.instanceCount * 3);
+
+        for (let i = 0; i < this.instanceCount; i++) {
+            const data = this.cubeData[i];
+            instanceDepths[i] = data.depth;
+            // Initial colors (will be overridden by shader)
+            instanceColors[i * 3] = 0.3;
+            instanceColors[i * 3 + 1] = 0.5;
+            instanceColors[i * 3 + 2] = 1.0;
+        }
+
+        geometry.setAttribute('instanceDepth', new THREE.InstancedBufferAttribute(instanceDepths, 1));
+        geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(instanceColors, 3));
+
+        // Set initial matrices
+        this.updateInstanceMatrices(0);
+
+        this.scene.add(this.instancedMesh);
+    }
+
+    generateTreeData(position, rotation, size, depth, maxDepth) {
+        if (depth >= maxDepth || size < 0.05) return;
+
+        // Store cube data with full orientation
+        this.cubeData.push({
+            basePosition: position.clone(),
+            baseRotation: rotation.clone(), // Store quaternion
+            size: size,
+            depth: depth,
+            animPhase: Math.random() * Math.PI * 2,
+        });
+
+        // Generate children - true 3D branching
+        const numBranches = 3;
+        const childSize = size * 0.75; // Slower decay for bigger structure
+
+        // Calculate "Up" vector in current orientation (where this branch points)
+        const localUp = new THREE.Vector3(0, 1, 0).applyQuaternion(rotation);
+
+        // End of current branch (start of next)
+        const branchEnd = position.clone().add(localUp.multiplyScalar(size));
+
+        for (let i = 0; i < numBranches; i++) {
+            // distribute branches around the up axis
+            const angleAround = (i / numBranches) * Math.PI * 2;
+            // angle OUT from the main axis (spreading)
+            const spreadAngle = 0.5 + Math.random() * 0.3; // 0.5-0.8 rads spread
+
+            // Create rotations
+            const rotSpread = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), spreadAngle);
+            const rotSpin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angleAround);
+
+            // Combine: Spin then Spread relative to local frame? 
+            // Actually: We want to rotate the current frame geometry.
+
+            // Child orientation: ParentRot * Spin * Spread
+            const childRotation = rotation.clone().multiply(rotSpin).multiply(rotSpread);
+
+            this.generateTreeData(branchEnd, childRotation, childSize, depth + 1, maxDepth);
+        }
+    }
+
+    updateInstanceMatrices(time) {
+        const matrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+
+        for (let i = 0; i < this.instanceCount; i++) {
+            const data = this.cubeData[i];
+
+            // Animated transformation
+            // 1. Position: Base position (static in fractal structure)
+            // But we can add "breathing" or "sway" to the whole tree data structure or here.
+
+            // Note: Since basePosition is absolute world coord from generation, 
+            // simple shader animation is safest to avoid breaking the tree connectivity.
+            // But for "Recursive Tree Cubes" effect, the cubes usually rotate in place AND carry children.
+            // Since we pre-calculated positions, we can't easily rotate parents and have children follow 
+            // unless we re-calculate positions every frame (expensive for JS).
+
+            // For this technique (InstancedMesh), we usually just animate individual cubes 
+            // in place, like pulsing, or minor local rotations. 
+            // The Oosmoxiecode demo DOES re-calculate hierarchy or uses a shader to propagate transforms.
+            // Given JS performance limits, let's Stick to the static structure we just built
+            // and animate local "spin" and "pulse" and "sway".
+
+            position.copy(data.basePosition);
+
+            // Sway effect based on height/depth
+            const sway = Math.sin(time * 0.5 + data.basePosition.y * 0.2) * (data.basePosition.y * 0.05);
+            position.x += sway; // Simple wind sway
+
+            // Visual Orientation
+            // Combine base structural rotation with animation
+            quaternion.copy(data.baseRotation);
+
+            // Add local spin?
+            const localSpin = new THREE.Quaternion();
+            // Rotate around its own local Y axis
+            localSpin.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.sin(time + data.depth) * 0.1);
+            quaternion.multiply(localSpin);
+
+            // Pulse Scale
+            // Cubes near tips pulse faster?
+            const pulsePhase = time * 2.0 + data.depth * 0.5 + data.animPhase;
+            const pulseAmount = 1.0 + Math.sin(pulsePhase) * 0.1;
+            const gameplayPulse = 1.0 + this.uniforms.uPulseIntensity.value * 0.3;
+
+            scale.setScalar(data.size * pulseAmount * gameplayPulse);
+
+            matrix.compose(position, quaternion, scale);
+            this.instancedMesh.setMatrixAt(i, matrix);
+        }
+
+        this.instancedMesh.instanceMatrix.needsUpdate = true;
     }
 
     setupLighting() {
-        // Soft purple ambient
-        const ambient = new THREE.AmbientLight(0x2a1a3a, 0.6);
+        // Ambient light
+        const ambient = new THREE.AmbientLight(0x101020, 0.4);
         this.scene.add(ambient);
 
-        // Main warm light from above-front
-        const mainLight = new THREE.DirectionalLight(0xffeedd, 0.8);
-        mainLight.position.set(2, 5, 3);
+        // Main directional light
+        const mainLight = new THREE.DirectionalLight(0xffffff, 0.5); // Reduced from 0.8
+        mainLight.position.set(5, 10, 5);
         this.scene.add(mainLight);
 
-        // Fill light from the side with lavender tint
-        const fillLight = new THREE.DirectionalLight(0xc8b4dc, 0.4);
-        fillLight.position.set(-3, 2, -1);
+        // Secondary light for depth
+        const fillLight = new THREE.DirectionalLight(0x4060ff, 0.3); // Reduced from 0.4
+        fillLight.position.set(-5, 5, -5);
         this.scene.add(fillLight);
 
-        // Soft glow from below (reflecting off water)
-        const bottomLight = new THREE.PointLight(0x8060a0, 0.5, 10);
-        bottomLight.position.set(0, 0.5, 0);
-        this.mainGroup.add(bottomLight);
-
-        // Rim light for bowl edge definition
-        const rimLight = new THREE.SpotLight(0xffd4aa, 0.6, 15, Math.PI / 4, 0.5);
-        rimLight.position.set(-2, 3, -2);
-        rimLight.target.position.set(0, 0.5, 0);
-        this.scene.add(rimLight);
-        this.scene.add(rimLight.target);
-    }
-
-    createRipple(intensity = 1) {
-        const rippleGeo = new THREE.RingGeometry(0.1, 3, this.activePreset.rippleDetail);
-
-        const rippleMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uOpacity: { value: 0.8 * intensity },
-                uProgress: { value: 0 },
-                uColor: { value: PALETTE.rippleGlow.clone() },
-            },
-            vertexShader: RippleShader.vertexShader,
-            fragmentShader: RippleShader.fragmentShader,
-            transparent: true,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const ripple = new THREE.Mesh(rippleGeo, rippleMat);
-        ripple.rotation.x = -Math.PI / 2;
-        ripple.position.y = 0.65;
-        ripple.userData = {
-            progress: 0,
-            speed: 0.8 + intensity * 0.3,
-            maxProgress: 1.0,
-        };
-
-        this.mainGroup.add(ripple);
-        this.ripples.push(ripple);
-    }
-
-    createBurstParticles(count, intensity) {
-        const geometry = new THREE.BufferGeometry();
-        const positions = [];
-        const velocities = [];
-        const colors = [];
-
-        const burstColors = [PALETTE.moteColor, PALETTE.glowLavender, PALETTE.glowTeal];
-
-        for (let i = 0; i < count; i++) {
-            // Start from bowl center
-            positions.push(0, 0.8, 0);
-
-            // Burst outward and upward
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 2 + Math.random() * 3 * intensity;
-            const upward = 1 + Math.random() * 2;
-
-            velocities.push(
-                Math.cos(angle) * speed,
-                upward * speed * 0.5,
-                Math.sin(angle) * speed
-            );
-
-            const color = burstColors[Math.floor(Math.random() * burstColors.length)];
-            colors.push(color.r, color.g, color.b);
-        }
-
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-        const material = new THREE.PointsMaterial({
-            size: 0.08 + intensity * 0.02,
-            vertexColors: true,
-            transparent: true,
-            opacity: 1,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const burst = new THREE.Points(geometry, material);
-        burst.userData = {
-            velocities,
-            life: 1.0,
-            decay: 0.015,
-        };
-
-        this.mainGroup.add(burst);
-
-        if (!this.bursts) this.bursts = [];
-        this.bursts.push(burst);
+        // Point light near tree center
+        const centerLight = new THREE.PointLight(0x4080ff, 0.5, 20); // Reduced from 0.8
+        centerLight.position.set(0, 4, 0);
+        this.scene.add(centerLight);
+        this.centerLight = centerLight;
     }
 
     setupEventListeners() {
@@ -772,51 +476,23 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     onPieceLock() {
-        // Gentle bowl resonance
-        this.uniforms.pulseIntensity.value = 0.3;
-        this.uniforms.rippleIntensity.value = 0.5;
-
-        // Small ripple
-        this.createRipple(0.4);
+        this.uniforms.uPulseIntensity.value = 0.3;
     }
 
     onLineClear(lineCount) {
-        // Stronger resonance based on lines cleared
-        const intensity = 0.4 + lineCount * 0.2;
-        this.uniforms.pulseIntensity.value = intensity;
-        this.uniforms.rippleIntensity.value = 0.7 + lineCount * 0.1;
-        this.uniforms.reflectionStrength.value = 0.6 + lineCount * 0.1;
-
-        // Create ripples
-        for (let i = 0; i < lineCount; i++) {
-            setTimeout(() => this.createRipple(intensity), i * 150);
-        }
-
-        // Particle burst for multi-line clears
-        if (lineCount >= 2) {
-            this.createBurstParticles(15 + lineCount * 8, lineCount * 0.5);
+        this.uniforms.uPulseIntensity.value = 0.5 + lineCount * 0.15;
+        if (this.bloomPass && lineCount >= 2) {
+            this.bloomPass.strength = this.activePreset.bloomStrength + lineCount * 0.1;
         }
     }
 
     onCombo(comboCount) {
-        // Intense bowl resonance
-        const intensity = Math.min(1.0, 0.5 + comboCount * 0.15);
-        this.uniforms.pulseIntensity.value = intensity;
-        this.uniforms.rippleIntensity.value = 1.0;
-        this.uniforms.reflectionStrength.value = 0.8;
-
-        // Multiple ripples
-        const rippleCount = Math.min(comboCount + 1, 5);
-        for (let i = 0; i < rippleCount; i++) {
-            setTimeout(() => this.createRipple(intensity), i * 100);
+        this.uniforms.uPulseIntensity.value = Math.min(1.0, 0.6 + comboCount * 0.15);
+        if (this.centerLight) {
+            this.centerLight.intensity = 0.8 + comboCount * 0.3;
         }
-
-        // Particle burst
-        this.createBurstParticles(20 + comboCount * 10, intensity);
-
-        // Bloom pulse for high combos
-        if (this.bloomPass && comboCount >= 3) {
-            this.bloomPass.strength = this.activePreset.bloomStrength + comboCount * 0.1;
+        if (this.bloomPass) {
+            this.bloomPass.strength = this.activePreset.bloomStrength + comboCount * 0.08;
         }
     }
 
@@ -825,115 +501,46 @@ export default class SingingBowlTheme extends BaseTheme {
 
         this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
-        const delta = this.clock.getDelta();
         const elapsed = this.clock.getElapsedTime();
-        this.uniforms.time.value = elapsed;
+        this.uniforms.uTime.value = elapsed;
 
-        // Subtle camera breathing movement
-        const breatheSpeed = 0.15;
-        const breatheAmount = 0.3;
-        this.camera.position.x = this.cameraBasePosition.x + Math.sin(elapsed * breatheSpeed) * breatheAmount;
-        this.camera.position.y = this.cameraBasePosition.y + Math.cos(elapsed * breatheSpeed * 0.7) * breatheAmount * 0.5;
-        this.camera.position.z = this.cameraBasePosition.z + Math.sin(elapsed * breatheSpeed * 0.5) * breatheAmount * 0.3;
-        this.camera.lookAt(this.cameraLookAt);
-
-        // Gentle main group sway
-        if (this.mainGroup) {
-            this.mainGroup.rotation.y = Math.sin(elapsed * 0.1) * 0.02;
+        // Update all cube positions and rotations
+        if (this.instancedMesh) {
+            this.updateInstanceMatrices(elapsed);
         }
+
+        // ORBITAL camera movement - circles around the tree
+        const cameraRadius = 25;  // Further back to see all trees
+        const cameraHeight = 10 + Math.sin(elapsed * 0.2) * 3;
+        const cameraAngle = elapsed * 0.12;  // Slow orbit
+
+        this.camera.position.x = Math.sin(cameraAngle) * cameraRadius;
+        this.camera.position.z = Math.cos(cameraAngle) * cameraRadius;
+        this.camera.position.y = cameraHeight;
+
+        // Look at center of MAIN tree, higher up
+        this.camera.lookAt(0, 6, 0);
 
         // Decay effects
-        if (this.uniforms.pulseIntensity.value > 0) {
-            this.uniforms.pulseIntensity.value *= 0.95;
-            if (this.uniforms.pulseIntensity.value < 0.01) {
-                this.uniforms.pulseIntensity.value = 0;
-            }
+        if (this.uniforms.uPulseIntensity.value > 0) {
+            this.uniforms.uPulseIntensity.value *= 0.95;
         }
 
-        if (this.uniforms.rippleIntensity.value > 0) {
-            this.uniforms.rippleIntensity.value *= 0.97;
+        // Decay center light
+        if (this.centerLight && this.centerLight.intensity > 0.8) {
+            this.centerLight.intensity *= 0.97;
         }
 
-        if (this.uniforms.reflectionStrength.value > 0.5) {
-            this.uniforms.reflectionStrength.value = 0.5 + (this.uniforms.reflectionStrength.value - 0.5) * 0.98;
-        }
-
-        // Decay bloom back to normal
+        // Decay bloom
         if (this.bloomPass && this.bloomPass.strength > this.activePreset.bloomStrength) {
             this.bloomPass.strength *= 0.98;
-            if (this.bloomPass.strength < this.activePreset.bloomStrength + 0.01) {
-                this.bloomPass.strength = this.activePreset.bloomStrength;
-            }
         }
-
-        // Update ripples
-        this.updateRipples(delta);
-
-        // Update burst particles
-        this.updateBursts(delta);
 
         // Render
         if (this.composer) {
             this.composer.render();
         } else {
             this.renderer.render(this.scene, this.camera);
-        }
-    }
-
-    updateRipples(delta) {
-        for (let i = this.ripples.length - 1; i >= 0; i--) {
-            const ripple = this.ripples[i];
-            ripple.userData.progress += delta * ripple.userData.speed;
-
-            if (ripple.material.uniforms) {
-                ripple.material.uniforms.uProgress.value = ripple.userData.progress;
-            }
-
-            // Scale the ripple outward
-            const scale = 1 + ripple.userData.progress * 2;
-            ripple.scale.set(scale, scale, 1);
-
-            if (ripple.userData.progress >= ripple.userData.maxProgress) {
-                this.mainGroup.remove(ripple);
-                ripple.geometry.dispose();
-                ripple.material.dispose();
-                this.ripples.splice(i, 1);
-            }
-        }
-    }
-
-    updateBursts(delta) {
-        if (!this.bursts) return;
-
-        for (let i = this.bursts.length - 1; i >= 0; i--) {
-            const burst = this.bursts[i];
-            const positions = burst.geometry.attributes.position.array;
-            const velocities = burst.userData.velocities;
-
-            burst.userData.life -= burst.userData.decay;
-
-            // Move particles
-            for (let j = 0; j < positions.length / 3; j++) {
-                positions[j * 3] += velocities[j * 3] * delta;
-                positions[j * 3 + 1] += velocities[j * 3 + 1] * delta;
-                positions[j * 3 + 2] += velocities[j * 3 + 2] * delta;
-
-                // Gravity and drag
-                velocities[j * 3 + 1] -= 2 * delta;
-                velocities[j * 3] *= 0.98;
-                velocities[j * 3 + 2] *= 0.98;
-            }
-            burst.geometry.attributes.position.needsUpdate = true;
-
-            // Fade out
-            burst.material.opacity = burst.userData.life;
-
-            if (burst.userData.life <= 0) {
-                this.mainGroup.remove(burst);
-                burst.geometry.dispose();
-                burst.material.dispose();
-                this.bursts.splice(i, 1);
-            }
         }
     }
 
@@ -992,18 +599,15 @@ export default class SingingBowlTheme extends BaseTheme {
         }
 
         // Clear references
-        this.ripples = [];
-        this.bursts = [];
+        this.cubeData = [];
         this.scene = null;
         this.camera = null;
         this.renderer = null;
         this.composer = null;
-        this.mainGroup = null;
-        this.bowl = null;
-        this.bowlInner = null;
-        this.waterSurface = null;
-        this.motes = null;
-        this.backgroundSphere = null;
+        this.treeGroup = null;
+        this.reflector = null;
+        this.instancedMesh = null;
+        this.cubeMaterial = null;
         this.bloomPass = null;
 
         super.stop();

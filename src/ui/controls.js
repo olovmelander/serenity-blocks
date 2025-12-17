@@ -155,11 +155,17 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
         move, rotate, softDrop, hardDrop, togglePause, startGame, initSound,
     } = gameActions;
 
+    // Helper function to get current settings (reads from window.settings for live updates)
+    const getCurrentSettings = () => window.settings || settings;
+
     // Keydown handler
     document.addEventListener('keydown', (e) => {
         try {
             // Performance monitoring: Record input timestamp
             performanceMonitor.recordInput();
+
+            // Get current settings dynamically to pick up keybinding changes
+            const currentSettings = getCurrentSettings();
 
             // Check if settings modal is open - block ALL input if it is
             const settingsModal = document.getElementById('settings-modal');
@@ -197,12 +203,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
             // Get action from key binding (check this before auto-starting game)
             const key = e.key === ' ' ? 'Space' : e.key;
-            const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
+            const action = Object.keys(currentSettings.keyBindings).find((k) => currentSettings.keyBindings[k] === key);
 
             // Also check player 2 bindings (for local multiplayer)
             let actionP2 = null;
-            if (settings.player2KeyBindings) {
-                actionP2 = Object.keys(settings.player2KeyBindings).find((k) => settings.player2KeyBindings[k] === key);
+            if (currentSettings.player2KeyBindings) {
+                actionP2 = Object.keys(currentSettings.player2KeyBindings).find((k) => currentSettings.player2KeyBindings[k] === key);
             }
 
             // Allow global actions (fullscreen, high scores) to work even on start modal
@@ -227,7 +233,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // Handle player 2 input first (if applicable)
             if (actionP2 && !inputController.keyMap[`p2-${actionP2}`]) {
                 inputController.keyMap[`p2-${actionP2}`] = true;
-                handlePlayer2Action(actionP2, gameActions, inputController, settings);
+                handlePlayer2Action(actionP2, gameActions, inputController, currentSettings);
             }
 
             // Then handle player 1 input
@@ -274,9 +280,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                         inputController.dasTimer = setTimeout(() => {
                             inputController.dasIntervalTimer = setInterval(
                                 () => move(-1),
-                                settings.dasInterval,
+                                currentSettings.dasInterval,
                             );
-                        }, settings.dasDelay);
+                        }, currentSettings.dasDelay);
                     }
                     break;
 
@@ -287,9 +293,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                         inputController.dasTimer = setTimeout(() => {
                             inputController.dasIntervalTimer = setInterval(
                                 () => move(1),
-                                settings.dasInterval,
+                                currentSettings.dasInterval,
                             );
-                        }, settings.dasDelay);
+                        }, currentSettings.dasDelay);
                     }
                     break;
 
@@ -378,13 +384,16 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 return;
             }
 
+            // Get current settings dynamically to pick up keybinding changes
+            const currentSettings = getCurrentSettings();
+
             const key = e.key === ' ' ? 'Space' : e.key;
-            const action = Object.keys(settings.keyBindings).find((k) => settings.keyBindings[k] === key);
+            const action = Object.keys(currentSettings.keyBindings).find((k) => currentSettings.keyBindings[k] === key);
 
             // Also check player 2 bindings (for local multiplayer)
             let actionP2 = null;
-            if (settings.player2KeyBindings) {
-                actionP2 = Object.keys(settings.player2KeyBindings).find((k) => settings.player2KeyBindings[k] === key);
+            if (currentSettings.player2KeyBindings) {
+                actionP2 = Object.keys(currentSettings.player2KeyBindings).find((k) => currentSettings.player2KeyBindings[k] === key);
             }
 
             if (action) {
