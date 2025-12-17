@@ -1523,18 +1523,26 @@ export default class SakuraTwilightTheme extends BaseTheme {
         }
 
         // 2. Create Active Moving Stars (for constellations)
-        const skyCenter = new THREE.Vector3(0, 300, -500);
-        const skyRadius = 600;
+        // Use SPHERICAL distribution to cover the entire visible sky dome
+        // Camera is at (20, 4, 30) looking toward (0, 4, 0) - so mostly looking at negative Z
 
         for (let i = backgroundStarCount; i < totalStars; i++) {
             const i3 = i * 3;
 
-            // Generate position within a "constellation volume" BEHIND the moon (-800)
+            // Use spherical coordinates for even sky coverage
+            // theta: azimuth angle (0 to 2*PI for full circle around sky)
+            // phi: elevation angle (biased toward upper hemisphere)
+            const theta = Math.random() * Math.PI * 2; // Full 360 degrees
+            const phi = Math.acos(1 - Math.random() * 0.6); // 0 to ~53 degrees from zenith
+
+            // Larger radius so stars appear behind moon and trees
+            const radius = 1000 + Math.random() * 500;
+
+            // Convert to Cartesian - spread across the entire visible sky
             const pos = new THREE.Vector3(
-                (Math.random() - 0.5) * skyRadius * 2.5, // Wider X
-                (Math.random() - 0.5) * skyRadius * 0.8 + 350, // Higher up
-                // Moon is at -800. Push stars to -900 to -1400
-                -900 - Math.random() * 500
+                radius * Math.sin(phi) * Math.cos(theta),
+                radius * Math.cos(phi) + 100, // Bias upward, +100 to stay above horizon
+                radius * Math.sin(phi) * Math.sin(theta) - 600 // Shift back so visible from camera
             );
 
             positions[i3] = pos.x;
@@ -1554,9 +1562,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 index: i, // Index in the main buffer
                 position: pos.clone(),
                 velocity: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.2, // VERY slow drift (Peaceful)
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.2
+                    (Math.random() - 0.5) * 0.3, // Slightly faster drift
+                    (Math.random() - 0.5) * 0.15,
+                    (Math.random() - 0.5) * 0.3
                 )
             });
         }
@@ -1695,15 +1703,14 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // 1. Move Active Stars
         const positions = this.starfield.geometry.attributes.position.array;
 
-        // Boundaries for simple wrapping - aligned with new Z depth
-        const boundX = 1200; // Wider
-        const boundZ_Min = -1400; // Far boundary
-        const boundZ_Max = -900;  // Near boundary (still behind moon at -800)
+        // Boundaries for wrapping - match spherical distribution (wider area)
+        const boundX = 1500;
+        const boundZ_Min = -1600;
+        const boundZ_Max = 200;   // Can be behind camera too
         const boundY_Min = 100;
-        const boundY_Max = 800;
+        const boundY_Max = 1000;
 
-        // Animate Velocity - ALWAYS SLOW (Peaceful)
-        // No speed multiplier on combo, just let them exist peacefully
+        // Animate Velocity
         const speedMult = 1.0;
 
         this.activeStarData.forEach(star => {
@@ -1733,9 +1740,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // 2. Rebuild Lines
         // Calculate dynamic connection distance
-        // Normal: 150, Combo: 250 (connects more stars)
+        // MUCH larger during combo for dramatic full-sky effect
         const isCombo = this.constellationTargetOpacity > 0.1;
-        const connectDist = isCombo ? 250 : 120;
+        const connectDist = isCombo ? 400 : 150; // Increased from 250 to 400
         const connectDistSq = connectDist * connectDist;
 
         const linePos = this.constellationGeom.attributes.position.array;
