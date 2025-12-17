@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
+import { DisplayManager } from '../core/display-manager.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -931,6 +932,17 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Resolution selector
     const resolutionSelect = document.getElementById('resolution-select');
     if (resolutionSelect) {
+        // Populate with common resolutions
+        const displayMgr = new DisplayManager();
+        // Allow up to 4K options regardless of current screen (downscaling or windowed mode)
+        const resolutions = displayMgr.getCommonResolutions(4096, 4096);
+
+        let optionsHtml = '<option value="auto">Auto (Native)</option>';
+        resolutions.forEach((res) => {
+            optionsHtml += `<option value="${res.width}x${res.height}">${res.label}</option>`;
+        });
+        resolutionSelect.innerHTML = optionsHtml;
+
         resolutionSelect.value = settings.resolution || 'auto';
 
         resolutionSelect.addEventListener('change', (e) => {

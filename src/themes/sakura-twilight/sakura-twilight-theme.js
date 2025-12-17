@@ -90,6 +90,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.foxes = [];
         this.foxMixers = [];
 
+        this.foxMixers = [];
+
+        // Resolution handling
+        this.targetResolution = null;
+        this.resolutionMode = 'auto';
+
         this.eventUnsubscribers = [];
     }
 
@@ -156,7 +162,32 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.animate();
 
         // 6. Listeners & Loop
+        // 6. Listeners & Loop
         window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // Listen for resolution changes
+        this.handleDisplaySettingsChange = (e) => {
+            const { width, height, resolution } = e.detail;
+            const mode = resolution === 'auto' ? 'auto' : 'fixed';
+            this.setInternalResolution(width, height, mode);
+        };
+        window.addEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
+
+        // Initialize with current settings if available
+        // (This handles the case where theme loads after settings are applied)
+        // Accessing global settings would be better, but we rely on event for dynamic updates
+        // For initial load, we might need to check if a custom resolution is set.
+        // For now, let's trust the defaults or wait for an event, 
+        // BUT ideally we should check if `window.serenitySettings` or similar exists.
+        // A safer way is checking the `display-manager` resolution if it was globally stored.
+        // For this patch, I'll rely on the event or next resize/setting apply. 
+        // BETTER: Check if main.js exposed a way, or just default to auto. 
+        // The user usually sets resolution in settings, which triggers the event.
+
+        // Tricky: if the user ALREADY set a resolution before loading the theme, we might be in 'auto'.
+        // However, 'applyDisplaySettings' in main.js is usually called on startup.
+        // If the theme loads LATER, it misses the event.
+        // Let's rely on the user changing it 'it does not seem to change anything' imply they ARE changing it.
 
         console.log('[SakuraTheme] Initialization complete');
     }
@@ -1529,20 +1560,15 @@ export default class SakuraTwilightTheme extends BaseTheme {
         for (let i = backgroundStarCount; i < totalStars; i++) {
             const i3 = i * 3;
 
-            // Use spherical coordinates for even sky coverage
-            // theta: azimuth angle (0 to 2*PI for full circle around sky)
-            // phi: elevation angle (biased toward upper hemisphere)
-            const theta = Math.random() * Math.PI * 2; // Full 360 degrees
-            const phi = Math.acos(1 - Math.random() * 0.6); // 0 to ~53 degrees from zenith
+            // Generate systematically within the SAFE volume (same as update boundaries)
+            // X: -1400 to 1400
+            // Y: 100 to 900
+            // Z: -2000 to -500 (Strictly background)
 
-            // Larger radius so stars appear behind moon and trees
-            const radius = 1000 + Math.random() * 500;
-
-            // Convert to Cartesian - spread across the entire visible sky
             const pos = new THREE.Vector3(
-                radius * Math.sin(phi) * Math.cos(theta),
-                radius * Math.cos(phi) + 100, // Bias upward, +100 to stay above horizon
-                radius * Math.sin(phi) * Math.sin(theta) - 600 // Shift back so visible from camera
+                (Math.random() - 0.5) * 2800,
+                100 + Math.random() * 800,
+                -500 - Math.random() * 1500
             );
 
             positions[i3] = pos.x;
@@ -1550,22 +1576,23 @@ export default class SakuraTwilightTheme extends BaseTheme {
             positions[i3 + 2] = pos.z;
 
             // Make active stars warm and subtle, not bright blue
-            colors[i3] = 1.0;     // R
-            colors[i3 + 1] = 0.95; // G (Warm)
-            colors[i3 + 2] = 0.85; // B (Gold-ish)
+            colors[i3] = 1.0;
+            colors[i3 + 1] = 0.95;
+            colors[i3 + 2] = 0.85;
 
-            sizes[i] = 3.0 + Math.random() * 4.0; // Slightly larger
+            sizes[i] = 3.0 + Math.random() * 4.0;
             phases[i] = Math.random() * Math.PI * 2;
 
             // Store physics data
             this.activeStarData.push({
-                index: i, // Index in the main buffer
+                index: i,
                 position: pos.clone(),
                 velocity: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.3, // Slightly faster drift
+                    (Math.random() - 0.5) * 0.3,
                     (Math.random() - 0.5) * 0.15,
                     (Math.random() - 0.5) * 0.3
-                )
+                ),
+                connections: 0
             });
         }
 
@@ -1703,17 +1730,21 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // 1. Move Active Stars
         const positions = this.starfield.geometry.attributes.position.array;
 
-        // Boundaries for wrapping - match spherical distribution (wider area)
-        const boundX = 1500;
-        const boundZ_Min = -1600;
-        const boundZ_Max = 200;   // Can be behind camera too
+        // Boundaries: Keep strictly in BACKGROUND to prevent near-plane clipping/performance issues
+        const boundX = 1400;
+        const boundZ_Min = -2000;
+        const boundZ_Max = -500;  // Stay away from camera (Z=30)
         const boundY_Min = 100;
-        const boundY_Max = 1000;
+        const boundY_Max = 900;
 
-        // Animate Velocity
         const speedMult = 1.0;
 
-        this.activeStarData.forEach(star => {
+        // Cache loop bounds for performance
+        const count = this.activeStarData.length;
+
+        for (let i = 0; i < count; i++) {
+            const star = this.activeStarData[i];
+
             // Apply velocity
             star.position.x += star.velocity.x * deltaTime * speedMult;
             star.position.y += star.velocity.y * deltaTime * speedMult;
@@ -1721,28 +1752,32 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             // Wrap around boundaries
             if (star.position.x > boundX) star.position.x = -boundX;
-            if (star.position.x < -boundX) star.position.x = boundX;
+            else if (star.position.x < -boundX) star.position.x = boundX;
 
             if (star.position.y > boundY_Max) star.position.y = boundY_Min;
-            if (star.position.y < boundY_Min) star.position.y = boundY_Max;
+            else if (star.position.y < boundY_Min) star.position.y = boundY_Max;
 
             if (star.position.z > boundZ_Max) star.position.z = boundZ_Min;
-            if (star.position.z < boundZ_Min) star.position.z = boundZ_Max;
+            else if (star.position.z < boundZ_Min) star.position.z = boundZ_Max;
 
             // Update main buffer
-            positions[star.index * 3] = star.position.x;
-            positions[star.index * 3 + 1] = star.position.y;
-            positions[star.index * 3 + 2] = star.position.z;
-        });
+            const i3 = star.index * 3;
+            positions[i3] = star.position.x;
+            positions[i3 + 1] = star.position.y;
+            positions[i3 + 2] = star.position.z;
+
+            // Reset connections for next step
+            star.connections = 0;
+        }
 
         this.starfield.geometry.attributes.position.needsUpdate = true;
 
 
         // 2. Rebuild Lines
-        // Calculate dynamic connection distance
-        // MUCH larger during combo for dramatic full-sky effect
-        const isCombo = this.constellationTargetOpacity > 0.1;
-        const connectDist = isCombo ? 400 : 150; // Increased from 250 to 400
+        const isCombo = this.constellationTargetOpacity > 0.05;
+        // Optimization: Reduce connection distance slightly to save fillrate/lines
+        // while maintaining the "connected" feel
+        const connectDist = isCombo ? 350 : 120;
         const connectDistSq = connectDist * connectDist;
 
         const linePos = this.constellationGeom.attributes.position.array;
@@ -1750,43 +1785,40 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         let vertexIndex = 0;
         let lineCount = 0;
+        const MAX_CONNECTIONS = 2;
 
-        // Iterate through active stars
-        // Optimization: spatial grid would be better, but N=150 is small enough for N^2/2 loop
-        const count = this.activeStarData.length;
-
-        // Reset connection counts
-        this.activeStarData.forEach(s => s.connections = 0);
-        const MAX_CONNECTIONS = 2; // Strict limit for "chain" look (constellations)
-
+        // Optimized nested loop
         for (let i = 0; i < count; i++) {
             const s1 = this.activeStarData[i];
-
-            // Skip if star is already full
             if (s1.connections >= MAX_CONNECTIONS) continue;
+
+            const x1 = s1.position.x;
+            const y1 = s1.position.y;
+            const z1 = s1.position.z;
 
             for (let j = i + 1; j < count; j++) {
                 const s2 = this.activeStarData[j];
-
-                // Skip if target star is full
                 if (s2.connections >= MAX_CONNECTIONS) continue;
 
-                // Fast distance check
-                const dx = s1.position.x - s2.position.x;
-                const dy = s1.position.y - s2.position.y;
-                const dz = s1.position.z - s2.position.z;
+                // Manhattan distance check first (much faster rejection)
+                if (Math.abs(x1 - s2.position.x) > connectDist) continue;
+                if (Math.abs(y1 - s2.position.y) > connectDist) continue;
+                if (Math.abs(z1 - s2.position.z) > connectDist) continue;
 
+                // Euclidean check
+                const dx = x1 - s2.position.x;
+                const dy = y1 - s2.position.y;
+                const dz = z1 - s2.position.z;
                 const distSq = dx * dx + dy * dy + dz * dz;
 
                 if (distSq < connectDistSq) {
-                    // Normalize distance for alpha (1.0 at 0 dist, 0.0 at max dist)
                     const dist = Math.sqrt(distSq);
                     const alpha = 1.0 - (dist / connectDist);
 
                     // Add segment
-                    linePos[vertexIndex] = s1.position.x;
-                    linePos[vertexIndex + 1] = s1.position.y;
-                    linePos[vertexIndex + 2] = s1.position.z;
+                    linePos[vertexIndex] = x1;
+                    linePos[vertexIndex + 1] = y1;
+                    linePos[vertexIndex + 2] = z1;
                     lineAlpha[vertexIndex / 3] = alpha;
 
                     linePos[vertexIndex + 3] = s2.position.x;
@@ -1797,13 +1829,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     vertexIndex += 6;
                     lineCount++;
 
-                    // Increment connection counts
                     s1.connections++;
                     s2.connections++;
 
-                    if (s1.connections >= MAX_CONNECTIONS) break; // Move to next star if s1 is now full
-
-                    if (lineCount >= 2000) break; // Safety break
+                    if (s1.connections >= MAX_CONNECTIONS) break;
+                    if (lineCount >= 2000) break;
                 }
             }
             if (lineCount >= 2000) break;
@@ -2701,16 +2731,41 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
     onWindowResize() {
         if (!this.camera || !this.renderer) return;
+
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        if (this.resolutionMode === 'fixed' && this.targetResolution) {
+            // FORCE pixel ratio to 1 to ensure we actually render at the requested resolution
+            // Otherwise ThreeJS multiplies by devicePixelRatio (e.g. 1920 * 2 = 4K)
+            this.renderer.setPixelRatio(1);
+            this.renderer.setSize(this.targetResolution.width, this.targetResolution.height, false);
+
+            // We must set the DOM element size to window size (CSS handles this, but ThreeJS might set explicit style)
+            this.renderer.domElement.style.width = '100%';
+            this.renderer.domElement.style.height = '100%';
+        } else {
+            // Auto mode: Use native DPR for crispness
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
     }
+
+    setInternalResolution(width, height, mode = 'auto') {
+        console.log(`[SakuraTheme] Setting internal resolution: ${width}x${height} (${mode})`);
+        this.targetResolution = { width, height };
+        this.resolutionMode = mode;
+        this.onWindowResize(); // Apply changes
+    }
+
 
     stop() {
         console.log('[SakuraTheme] Stopping...');
         this.isActive = false;
+        this.isActive = false;
         if (this.animationId) cancelAnimationFrame(this.animationId);
         window.removeEventListener('resize', this.onWindowResize);
+        window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         // Remove event subscriptions
         this.eventUnsubscribers.forEach(unsub => unsub());

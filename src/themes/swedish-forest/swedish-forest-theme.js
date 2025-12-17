@@ -104,6 +104,10 @@ export default class SwedishForestTheme extends BaseTheme {
         // Event handling
         this.eventUnsubscribers = [];
 
+        // Resolution handling
+        this.targetResolution = null;
+        this.resolutionMode = 'auto';
+
         // Three.js components
         this.scene = null;
         this.camera = null;
@@ -228,7 +232,16 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.setupEventListeners();
+        this.setupEventListeners();
         window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // Listen for resolution changes
+        this.handleDisplaySettingsChange = (e) => {
+            const { width, height, resolution } = e.detail;
+            const mode = resolution === 'auto' ? 'auto' : 'fixed';
+            this.setInternalResolution(width, height, mode);
+        };
+        window.addEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         // ─────────────────────────────────────────────────────────────────────
         // START ANIMATION
@@ -1554,7 +1567,27 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        if (this.resolutionMode === 'fixed' && this.targetResolution) {
+            // FORCE pixel ratio to 1 to ensure we actually render at the requested resolution
+            this.renderer.setPixelRatio(1);
+            this.renderer.setSize(this.targetResolution.width, this.targetResolution.height, false);
+
+            // We must set the DOM element size to window size (CSS handles this, but ThreeJS might set explicit style)
+            this.renderer.domElement.style.width = '100%';
+            this.renderer.domElement.style.height = '100%';
+        } else {
+            // Auto mode: Use native DPR for crispness
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    }
+
+    setInternalResolution(width, height, mode = 'auto') {
+        console.log(`[SwedishForest] Setting internal resolution: ${width}x${height} (${mode})`);
+        this.targetResolution = { width, height };
+        this.resolutionMode = mode;
+        this.onWindowResize(); // Apply changes
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1568,6 +1601,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.eventUnsubscribers = [];
 
         window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
