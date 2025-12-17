@@ -1480,12 +1480,17 @@ export default class SakuraTwilightTheme extends BaseTheme {
     }
 
     createStarfield() {
-        const starCount = 1500;
+        const backgroundStarCount = 1200;
+        const activeStarCount = 150; // Stars that move and connect
+        const totalStars = backgroundStarCount + activeStarCount;
+
         const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(starCount * 3);
-        const colors = new Float32Array(starCount * 3);
-        const sizes = new Float32Array(starCount);
-        const phases = new Float32Array(starCount);
+        const positions = new Float32Array(totalStars * 3);
+        const colors = new Float32Array(totalStars * 3);
+        const sizes = new Float32Array(totalStars);
+        const phases = new Float32Array(totalStars);
+
+        this.activeStarData = []; // Store physics data for moving stars
 
         // Star colors for twilight sky (whites, blues, pale yellows)
         const starColors = [
@@ -1496,32 +1501,73 @@ export default class SakuraTwilightTheme extends BaseTheme {
             new THREE.Color(0xffffff),  // White
         ];
 
-        for (let i = 0; i < starCount; i++) {
+        // 1. Create Static Background Stars
+        for (let i = 0; i < backgroundStarCount; i++) {
             const i3 = i * 3;
-
             // Spread stars across upper hemisphere
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(Math.random() * 0.7);  // Bias toward top
             const radius = 800 + Math.random() * 1500;
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = Math.abs(radius * Math.cos(phi)) + 100;  // Keep above horizon
+            positions[i3 + 1] = Math.abs(radius * Math.cos(phi)) + 100;
             positions[i3 + 2] = radius * Math.sin(phi) * Math.sin(theta) - 500;
 
-            // Color selection
             const color = starColors[Math.floor(Math.random() * starColors.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 2.0 + Math.random() * 4.0;  // Bigger stars (2-6)
+            sizes[i] = 2.0 + Math.random() * 4.0;
             phases[i] = Math.random() * Math.PI * 2;
+        }
+
+        // 2. Create Active Moving Stars (for constellations)
+        const skyCenter = new THREE.Vector3(0, 300, -500);
+        const skyRadius = 600;
+
+        for (let i = backgroundStarCount; i < totalStars; i++) {
+            const i3 = i * 3;
+
+            // Generate position within a "constellation volume" BEHIND the moon (-800)
+            const pos = new THREE.Vector3(
+                (Math.random() - 0.5) * skyRadius * 2.5, // Wider X
+                (Math.random() - 0.5) * skyRadius * 0.8 + 350, // Higher up
+                // Moon is at -800. Push stars to -900 to -1400
+                -900 - Math.random() * 500
+            );
+
+            positions[i3] = pos.x;
+            positions[i3 + 1] = pos.y;
+            positions[i3 + 2] = pos.z;
+
+            // Make active stars warm and subtle, not bright blue
+            colors[i3] = 1.0;     // R
+            colors[i3 + 1] = 0.95; // G (Warm)
+            colors[i3 + 2] = 0.85; // B (Gold-ish)
+
+            sizes[i] = 3.0 + Math.random() * 4.0; // Slightly larger
+            phases[i] = Math.random() * Math.PI * 2;
+
+            // Store physics data
+            this.activeStarData.push({
+                index: i, // Index in the main buffer
+                position: pos.clone(),
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.2, // VERY slow drift (Peaceful)
+                    (Math.random() - 0.5) * 0.1,
+                    (Math.random() - 0.5) * 0.2
+                )
+            });
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+        // Mark position as dynamic so we can update active stars
+        geometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
@@ -1540,10 +1586,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
                 // Size attenuation
                 gl_PointSize = aSize * (300.0 / -mvPosition.z);
-                gl_PointSize = clamp(gl_PointSize, 2.0, 6.0); // Increase min size to prevent flickering
+                gl_PointSize = clamp(gl_PointSize, 2.0, 8.0);
 
-                // Constant brightness (no twinkle)
-            vAlpha = 1.0;
+                // Twinkle effect
+                float twinkle = sin(uTime * 2.0 + aPhase) * 0.3 + 0.7;
+                vAlpha = twinkle;
 
                 vColor = color;
             }
@@ -1576,114 +1623,188 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
 
-        // Store star positions for constellation effect
-        this.starPositions = [];
-        for (let i = 0; i < starCount; i++) {
-            const i3 = i * 3;
-            this.starPositions.push(new THREE.Vector3(
-                positions[i3],
-                positions[i3 + 1],
-                positions[i3 + 2]
-            ));
-        }
-
-        // Create constellation lines (initially invisible)
+        // Create dynamic line system
         this.createConstellationLines();
 
-        console.log('[SakuraTheme] Starfield created with', starCount, 'stars');
+        console.log('[SakuraTheme] Starfield created with', totalStars, 'stars');
     }
 
     /**
-     * Create constellation lines connecting nearby stars
-     * Lines fade in during combos to create a magical star sign effect
+     * Create dynamic constellation lines connecting moving stars
      */
     createConstellationLines() {
-        if (!this.starPositions || this.starPositions.length === 0) return;
+        if (!this.activeStarData) return;
 
-        // Build line segments connecting nearby stars
-        const linePositions = [];
-        // Stars are at radius 800-2300, so max distance needs to be much larger
-        const maxDistance = 400; // Increased significantly for actual star positions
-        const minDistance = 100; // Minimum to avoid clustering
-        const maxLinesPerStar = 2; // Keep constellations simple
-
-        // Pick a subset of stars for constellation (every 8th for cleaner look)
-        const stride = 8;
-        const constellationStars = this.starPositions.filter((_, i) => i % stride === 0);
-
-        console.log('[SakuraTheme] Constellation candidate stars:', constellationStars.length);
-
-        // Track connections per star
-        const connections = new Map();
-
-        for (let i = 0; i < constellationStars.length; i++) {
-            const star1 = constellationStars[i];
-            const star1Connections = connections.get(i) || 0;
-            if (star1Connections >= maxLinesPerStar) continue;
-
-            // Find nearby stars to connect
-            for (let j = i + 1; j < constellationStars.length; j++) {
-                const star2 = constellationStars[j];
-                const star2Connections = connections.get(j) || 0;
-
-                if (star2Connections >= maxLinesPerStar) continue;
-
-                const dist = star1.distanceTo(star2);
-                if (dist < maxDistance && dist > minDistance) {
-                    // Add line segment
-                    linePositions.push(star1.x, star1.y, star1.z);
-                    linePositions.push(star2.x, star2.y, star2.z);
-
-                    connections.set(i, (connections.get(i) || 0) + 1);
-                    connections.set(j, (connections.get(j) || 0) + 1);
-                }
-            }
-        }
-
-        if (linePositions.length === 0) {
-            console.warn('[SakuraTheme] No constellation lines generated - trying larger distance');
-            // Fallback: try much larger distance
-            for (let i = 0; i < Math.min(20, constellationStars.length); i++) {
-                const star1 = constellationStars[i];
-                for (let j = i + 1; j < Math.min(20, constellationStars.length); j++) {
-                    const star2 = constellationStars[j];
-                    const dist = star1.distanceTo(star2);
-                    if (dist < 800) {
-                        linePositions.push(star1.x, star1.y, star1.z);
-                        linePositions.push(star2.x, star2.y, star2.z);
-                        if (linePositions.length > 60) break; // Limit lines
-                    }
-                }
-                if (linePositions.length > 60) break;
-            }
-        }
-
-        if (linePositions.length === 0) {
-            console.warn('[SakuraTheme] Still no constellation lines - using first 10 stars');
-            // Last resort: connect first 10 stars
-            for (let i = 0; i < Math.min(10, constellationStars.length - 1); i++) {
-                const star1 = constellationStars[i];
-                const star2 = constellationStars[i + 1];
-                linePositions.push(star1.x, star1.y, star1.z);
-                linePositions.push(star2.x, star2.y, star2.z);
-            }
-        }
+        // Max lines is typically (N * (N-1)) / 2, but we limit connections per star
+        // Let's allocate a safe buffer size. 150 stars, maybe 5 connections each? = 750 lines = 1500 vertices
+        const MAX_LINES = 2000;
+        const vertexCount = MAX_LINES * 2;
 
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+        const positions = new Float32Array(vertexCount * 3);
+        const alphas = new Float32Array(vertexCount); // Per-vertex opacity based on distance
 
-        this.constellationMaterial = new THREE.LineBasicMaterial({
-            color: 0xffffff, // Bright white for visibility
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1).setUsage(THREE.DynamicDrawUsage));
+
+        // Use custom shader for gradient fade lines
+        this.constellationMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uColor: { value: new THREE.Color(0xfff5e6) }, // Warm White/Gold (Peaceful)
+                uGlobalOpacity: { value: 0.0 } // Controlled by combo
+            },
+            vertexShader: `
+                attribute float alpha;
+                varying float vAlpha;
+                
+                void main() {
+                    vAlpha = alpha;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor;
+                uniform float uGlobalOpacity;
+                varying float vAlpha;
+
+                void main() {
+                    gl_FragColor = vec4(uColor, vAlpha * uGlobalOpacity);
+                }
+            `,
             transparent: true,
-            opacity: 0,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
+            depthTest: true // Ensure correct Z-sorting
         });
 
         this.constellationLines = new THREE.LineSegments(geometry, this.constellationMaterial);
-        this.scene.add(this.constellationLines);
+        this.constellationLines.renderOrder = -1; // Draw early, as background
+        // Important: set draw range to 0 initially
+        this.constellationLines.geometry.setDrawRange(0, 0);
+        this.constellationGeom = geometry;
 
-        console.log('[SakuraTheme] Constellation lines created:', linePositions.length / 6, 'segments');
+        this.scene.add(this.constellationLines);
+    }
+
+    /**
+     * Update active stars and rebuild constellation lines
+     */
+    updateConstellations(deltaTime) {
+        if (!this.activeStarData || !this.constellationLines) return;
+
+        // 1. Move Active Stars
+        const positions = this.starfield.geometry.attributes.position.array;
+
+        // Boundaries for simple wrapping - aligned with new Z depth
+        const boundX = 1200; // Wider
+        const boundZ_Min = -1400; // Far boundary
+        const boundZ_Max = -900;  // Near boundary (still behind moon at -800)
+        const boundY_Min = 100;
+        const boundY_Max = 800;
+
+        // Animate Velocity - ALWAYS SLOW (Peaceful)
+        // No speed multiplier on combo, just let them exist peacefully
+        const speedMult = 1.0;
+
+        this.activeStarData.forEach(star => {
+            // Apply velocity
+            star.position.x += star.velocity.x * deltaTime * speedMult;
+            star.position.y += star.velocity.y * deltaTime * speedMult;
+            star.position.z += star.velocity.z * deltaTime * speedMult;
+
+            // Wrap around boundaries
+            if (star.position.x > boundX) star.position.x = -boundX;
+            if (star.position.x < -boundX) star.position.x = boundX;
+
+            if (star.position.y > boundY_Max) star.position.y = boundY_Min;
+            if (star.position.y < boundY_Min) star.position.y = boundY_Max;
+
+            if (star.position.z > boundZ_Max) star.position.z = boundZ_Min;
+            if (star.position.z < boundZ_Min) star.position.z = boundZ_Max;
+
+            // Update main buffer
+            positions[star.index * 3] = star.position.x;
+            positions[star.index * 3 + 1] = star.position.y;
+            positions[star.index * 3 + 2] = star.position.z;
+        });
+
+        this.starfield.geometry.attributes.position.needsUpdate = true;
+
+
+        // 2. Rebuild Lines
+        // Calculate dynamic connection distance
+        // Normal: 150, Combo: 250 (connects more stars)
+        const isCombo = this.constellationTargetOpacity > 0.1;
+        const connectDist = isCombo ? 250 : 120;
+        const connectDistSq = connectDist * connectDist;
+
+        const linePos = this.constellationGeom.attributes.position.array;
+        const lineAlpha = this.constellationGeom.attributes.alpha.array;
+
+        let vertexIndex = 0;
+        let lineCount = 0;
+
+        // Iterate through active stars
+        // Optimization: spatial grid would be better, but N=150 is small enough for N^2/2 loop
+        const count = this.activeStarData.length;
+
+        // Reset connection counts
+        this.activeStarData.forEach(s => s.connections = 0);
+        const MAX_CONNECTIONS = 2; // Strict limit for "chain" look (constellations)
+
+        for (let i = 0; i < count; i++) {
+            const s1 = this.activeStarData[i];
+
+            // Skip if star is already full
+            if (s1.connections >= MAX_CONNECTIONS) continue;
+
+            for (let j = i + 1; j < count; j++) {
+                const s2 = this.activeStarData[j];
+
+                // Skip if target star is full
+                if (s2.connections >= MAX_CONNECTIONS) continue;
+
+                // Fast distance check
+                const dx = s1.position.x - s2.position.x;
+                const dy = s1.position.y - s2.position.y;
+                const dz = s1.position.z - s2.position.z;
+
+                const distSq = dx * dx + dy * dy + dz * dz;
+
+                if (distSq < connectDistSq) {
+                    // Normalize distance for alpha (1.0 at 0 dist, 0.0 at max dist)
+                    const dist = Math.sqrt(distSq);
+                    const alpha = 1.0 - (dist / connectDist);
+
+                    // Add segment
+                    linePos[vertexIndex] = s1.position.x;
+                    linePos[vertexIndex + 1] = s1.position.y;
+                    linePos[vertexIndex + 2] = s1.position.z;
+                    lineAlpha[vertexIndex / 3] = alpha;
+
+                    linePos[vertexIndex + 3] = s2.position.x;
+                    linePos[vertexIndex + 4] = s2.position.y;
+                    linePos[vertexIndex + 5] = s2.position.z;
+                    lineAlpha[vertexIndex / 3 + 1] = alpha;
+
+                    vertexIndex += 6;
+                    lineCount++;
+
+                    // Increment connection counts
+                    s1.connections++;
+                    s2.connections++;
+
+                    if (s1.connections >= MAX_CONNECTIONS) break; // Move to next star if s1 is now full
+
+                    if (lineCount >= 2000) break; // Safety break
+                }
+            }
+            if (lineCount >= 2000) break;
+        }
+
+        this.constellationGeom.setDrawRange(0, vertexIndex / 3);
+        this.constellationGeom.attributes.position.needsUpdate = true;
+        this.constellationGeom.attributes.alpha.needsUpdate = true;
     }
 
     createLanterns() {
@@ -2482,16 +2603,32 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Animate constellation lines (fade in/out on combo)
         if (this.constellationMaterial) {
+            // Update Positions & Mesh
+            this.updateConstellations(deltaTime);
+
             // Smoothly interpolate opacity towards target
             const lerpSpeed = deltaTime * 3.0; // Smooth transition
             this.constellationOpacity += (this.constellationTargetOpacity - this.constellationOpacity) * lerpSpeed;
 
             // Decay target opacity over time (auto-fade out)
-            this.constellationTargetOpacity *= 0.985; // Slow decay
-            if (this.constellationTargetOpacity < 0.02) this.constellationTargetOpacity = 0;
+            this.constellationTargetOpacity *= 0.98; // Slow decay (stay visible for ~2s after combo)
+            if (this.constellationTargetOpacity < 0.05) this.constellationTargetOpacity = 0.05; // Keep FAINTLY visible at all times? Or 0? Let's keep faint.
 
             // Apply to material
-            this.constellationMaterial.opacity = this.constellationOpacity;
+            // this.constellationMaterial.opacity = this.constellationOpacity; // OLD
+
+            // NEW: Shader uniform
+            if (this.constellationMaterial.uniforms) {
+                this.constellationMaterial.uniforms.uGlobalOpacity.value = this.constellationOpacity;
+                // Pulsing color shift during combo - Subtle Gold Warmth
+                if (this.constellationTargetOpacity > 0.5) {
+                    const hue = (time * 0.1) % 1.0;
+                    // Very subtle shift around warm gold
+                    this.constellationMaterial.uniforms.uColor.value.setHSL(0.1 + Math.sin(time * 0.5) * 0.02, 0.8, 0.9);
+                } else {
+                    this.constellationMaterial.uniforms.uColor.value.setHex(0xfff5e6); // Default warm white
+                }
+            }
         }
 
         // Starfield is now static (no twinkling)
@@ -2611,9 +2748,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.pulseIntensity = 1.0;
 
         // Trigger constellation lines to fade in (full opacity for visibility)
-        this.constellationTargetOpacity = 1.0;
+        this.constellationTargetOpacity = 0.8; // Slightly lower max opacity for subtlety
 
-        console.log('[SakuraTheme] Combo Pulse + Constellation!');
+        // REMOVED: Velocity explosion - keep it peaceful!
+
+        console.log('[SakuraTheme] Combo Pulse + Constellation (Peaceful)!');
     }
 
     setupEventListeners() {
