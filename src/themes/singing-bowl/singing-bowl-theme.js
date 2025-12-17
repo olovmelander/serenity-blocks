@@ -144,6 +144,10 @@ export default class SingingBowlTheme extends BaseTheme {
 
         this.currentQuality = 'High';
         this.activePreset = QUALITY_PRESETS.High;
+
+        // Resolution handling
+        this.targetResolution = null;
+        this.resolutionMode = 'auto';
     }
 
     getGraphicsQuality() {
@@ -215,8 +219,18 @@ export default class SingingBowlTheme extends BaseTheme {
 
         // Event listeners
         this.setupEventListeners();
+
+        // Use a persistent bound function for resize so we can remove it accurately
         this.boundOnResize = this.onWindowResize.bind(this);
         window.addEventListener('resize', this.boundOnResize);
+
+        // Listen for resolution changes
+        this.handleDisplaySettingsChange = (e) => {
+            const { width, height, resolution } = e.detail;
+            const mode = resolution === 'auto' ? 'auto' : 'fixed';
+            this.setInternalResolution(width, height, mode);
+        };
+        window.addEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         // Start animation
         this.animate();
@@ -1062,11 +1076,36 @@ export default class SingingBowlTheme extends BaseTheme {
 
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
 
-        if (this.composer) {
-            this.composer.setSize(window.innerWidth, window.innerHeight);
+        if (this.resolutionMode === 'fixed' && this.targetResolution) {
+            // FORCE pixel ratio to 1 for fixed resolution performance
+            this.renderer.setPixelRatio(1);
+            this.renderer.setSize(this.targetResolution.width, this.targetResolution.height, false);
+
+            if (this.composer) {
+                this.composer.setPixelRatio(1);
+                this.composer.setSize(this.targetResolution.width, this.targetResolution.height);
+            }
+
+            this.renderer.domElement.style.width = '100%';
+            this.renderer.domElement.style.height = '100%';
+        } else {
+            const dpr = Math.min(window.devicePixelRatio, 2);
+            this.renderer.setPixelRatio(dpr);
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+            if (this.composer) {
+                this.composer.setPixelRatio(dpr);
+                this.composer.setSize(window.innerWidth, window.innerHeight);
+            }
         }
+    }
+
+    setInternalResolution(width, height, mode = 'auto') {
+        console.log(`[SingingBowl] Setting internal resolution: ${width}x${height} (${mode})`);
+        this.targetResolution = { width, height };
+        this.resolutionMode = mode;
+        this.onWindowResize();
     }
 
     stop() {
@@ -1083,6 +1122,7 @@ export default class SingingBowlTheme extends BaseTheme {
         if (this.boundOnResize) {
             window.removeEventListener('resize', this.boundOnResize);
         }
+        window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         // Cleanup Three.js
         if (this.renderer) {
