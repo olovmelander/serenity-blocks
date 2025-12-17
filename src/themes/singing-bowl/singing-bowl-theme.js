@@ -27,12 +27,12 @@ import { SINGING_BOWL_TETROMINOS } from './singing-bowl-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { maxCubes: 8000, treeDepth: 8, bloomStrength: 0.4, bloomRadius: 0.5, enablePost: true, reflectorRes: 1024 },
-    Ultra: { maxCubes: 6000, treeDepth: 7, bloomStrength: 0.35, bloomRadius: 0.4, enablePost: true, reflectorRes: 1024 },
-    High: { maxCubes: 4000, treeDepth: 7, bloomStrength: 0.3, bloomRadius: 0.3, enablePost: true, reflectorRes: 512 },
-    Medium: { maxCubes: 2000, treeDepth: 6, bloomStrength: 0.25, bloomRadius: 0.25, enablePost: true, reflectorRes: 512 },
-    Low: { maxCubes: 1000, treeDepth: 5, bloomStrength: 0.2, bloomRadius: 0.2, enablePost: false, reflectorRes: 256 },
-    Minimal: { maxCubes: 500, treeDepth: 4, bloomStrength: 0.15, bloomRadius: 0.15, enablePost: false, reflectorRes: 256 },
+    Extreme: { maxCubes: 6000, treeDepth: 8, bloomStrength: 0.35, bloomRadius: 0.4, enablePost: true, reflectorRes: 512, skyParticles: 1000 },
+    Ultra: { maxCubes: 5000, treeDepth: 7, bloomStrength: 0.3, bloomRadius: 0.35, enablePost: true, reflectorRes: 512, skyParticles: 900 },
+    High: { maxCubes: 4000, treeDepth: 7, bloomStrength: 0.25, bloomRadius: 0.3, enablePost: true, reflectorRes: 256, skyParticles: 800 },
+    Medium: { maxCubes: 2500, treeDepth: 6, bloomStrength: 0.2, bloomRadius: 0.2, enablePost: false, reflectorRes: 256, skyParticles: 500 },
+    Low: { maxCubes: 1500, treeDepth: 5, bloomStrength: 0.15, bloomRadius: 0.15, enablePost: false, reflectorRes: 128, skyParticles: 300 },
+    Minimal: { maxCubes: 800, treeDepth: 4, bloomStrength: 0.1, bloomRadius: 0.1, enablePost: false, reflectorRes: 128, skyParticles: 150 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,6 +127,10 @@ export default class SingingBowlTheme extends BaseTheme {
         // Cube data for animation
         this.cubeData = [];
         this.instanceCount = 0;
+        this.orbs = [];
+        this.rings = [];
+        this.floorUniforms = null;
+        this.skyParticles = null;
 
         // Animation
         this.animationFrame = null;
@@ -203,6 +207,10 @@ export default class SingingBowlTheme extends BaseTheme {
         // Create scene elements
         this.createReflectorGround();
         this.createInstancedTree();
+        this.createCrystalSpires();
+        this.createRingFormations();
+        this.createBillboardSky();
+        this.createExplosionSystem();
         this.setupLighting();
 
         // Event listeners
@@ -217,54 +225,531 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     createReflectorGround() {
-        // 1. Base Reflector (Mirror)
-        const groundGeo = new THREE.PlaneGeometry(80, 80);
+        // 1. Base Reflector (Mirror) - reduced size for performance
+        const groundGeo = new THREE.PlaneGeometry(60, 60);
         this.reflector = new Reflector(groundGeo, {
             clipBias: 0.003,
-            textureWidth: this.activePreset.reflectorRes * window.devicePixelRatio,
-            textureHeight: this.activePreset.reflectorRes * window.devicePixelRatio,
-            color: 0x050510, // Dark blueish mirror
+            textureWidth: this.activePreset.reflectorRes,
+            textureHeight: this.activePreset.reflectorRes,
+            color: 0x080820,
         });
         this.reflector.rotation.x = -Math.PI / 2;
         this.reflector.position.y = -0.01;
         this.scene.add(this.reflector);
 
-        // 2. Checkerboard Overlay
-        // Create a checkerboard texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const context = canvas.getContext('2d');
-        context.fillStyle = '#000000'; // Dark squares
-        context.fillRect(0, 0, 512, 512);
-        context.fillStyle = '#303040'; // Lighter squares (reflectve-ish look)
-        // Draw checkerboard
-        const size = 64;
-        for (let y = 0; y < 512; y += size) {
-            for (let x = 0; x < 512; x += size) {
-                if ((x / size + y / size) % 2 === 0) {
-                    context.fillRect(x, y, size, size);
+        // 2. Simplified Animated Pixelated Overlay
+        const pixelFloorShader = {
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
-            }
-        }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec2 vUv;
+                
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+                
+                void main() {
+                    // Larger pixels = faster rendering
+                    float pixelSize = 0.04;
+                    vec2 uv = floor(vUv / pixelSize) * pixelSize;
+                    
+                    // Simplified wave
+                    vec2 flowUv = uv + vec2(sin(uv.x * 6.0 + uTime * 0.4), cos(uv.y * 5.0 + uTime * 0.3)) * 0.015;
+                    float dist = length(flowUv - 0.5);
+                    
+                    // Rainbow cycling
+                    float hue = fract(uTime * 0.08 + dist * 0.4 + uv.x * 0.5);
+                    vec3 color = hsv2rgb(vec3(hue, 0.6, 0.25));
+                    
+                    // Radial fade - soft edges that blend to black
+                    float edgeFade = 1.0 - smoothstep(0.3, 0.5, dist);
+                    
+                    gl_FragColor = vec4(color, 0.4 * edgeFade);
+                }
+            `
+        };
 
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(10, 10);
-
-        const overlayGeo = new THREE.PlaneGeometry(80, 80);
-        const overlayMat = new THREE.MeshBasicMaterial({
-            map: texture,
+        this.floorUniforms = { uTime: { value: 0 } };
+        const overlayGeo = new THREE.PlaneGeometry(60, 60);
+        const overlayMat = new THREE.ShaderMaterial({
+            uniforms: this.floorUniforms,
+            vertexShader: pixelFloorShader.vertexShader,
+            fragmentShader: pixelFloorShader.fragmentShader,
             transparent: true,
-            opacity: 0.25, // Let reflection show through
             blending: THREE.AdditiveBlending,
         });
 
         const overlay = new THREE.Mesh(overlayGeo, overlayMat);
         overlay.rotation.x = -Math.PI / 2;
-        overlay.position.y = 0; // Just on top
+        overlay.position.y = 0.01;
         this.scene.add(overlay);
+    }
+
+    createCrystalSpires() {
+        const spireData = [
+            { pos: new THREE.Vector3(-20, 0, -15), height: 8, segments: 6 },
+            { pos: new THREE.Vector3(18, 0, -12), height: 9, segments: 4 },
+            { pos: new THREE.Vector3(-25, 0, 5), height: 8, segments: 4 },
+        ];
+
+        spireData.forEach((spire, idx) => {
+            const geo = new THREE.ConeGeometry(0.8, spire.height, spire.segments);
+            const mat = new THREE.ShaderMaterial({
+                uniforms: this.uniforms,
+                vertexShader: `
+                    varying vec3 vPos; varying vec3 vNormal;
+                    void main() {
+                        vPos = position; vNormal = normalMatrix * normal;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float uTime;
+                    varying vec3 vPos; varying vec3 vNormal;
+                    vec3 hsv2rgb(vec3 c) {
+                        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                    }
+                    void main() {
+                        float hue = fract(uTime * 0.15 + vPos.y * 0.1 + ${idx * 0.15});
+                        vec3 col = hsv2rgb(vec3(hue, 0.7, 0.9));
+                        float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0,0,1))), 2.0);
+                        gl_FragColor = vec4(col + fresnel * 0.3, 1.0);
+                    }
+                `,
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(spire.pos);
+            mesh.position.y = spire.height / 2;
+            this.scene.add(mesh);
+        });
+    }
+
+    createFloatingOrbs() {
+        const orbData = [
+            { pos: new THREE.Vector3(-15, 6, -10), radius: 1.2 },
+            { pos: new THREE.Vector3(15, 8, -8), radius: 1.5 },
+            { pos: new THREE.Vector3(0, 12, -5), radius: 1.0 },
+            { pos: new THREE.Vector3(-22, 5, 0), radius: 0.8 },
+            { pos: new THREE.Vector3(22, 7, -3), radius: 1.1 },
+        ];
+
+        this.orbs = [];
+        orbData.forEach((orb, idx) => {
+            const geo = new THREE.IcosahedronGeometry(orb.radius, 2);
+            const mat = new THREE.ShaderMaterial({
+                uniforms: this.uniforms,
+                vertexShader: `
+                    varying vec3 vPos; varying vec3 vNormal;
+                    void main() {
+                        vPos = position; vNormal = normalMatrix * normal;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float uTime;
+                    varying vec3 vPos; varying vec3 vNormal;
+                    vec3 hsv2rgb(vec3 c) {
+                        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                    }
+                    void main() {
+                        float hue = fract(uTime * 0.2 + length(vPos) * 0.15 + ${idx * 0.2});
+                        vec3 col = hsv2rgb(vec3(hue, 0.6, 0.95));
+                        float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0,0,1))), 3.0);
+                        gl_FragColor = vec4(col + fresnel * 0.5, 1.0);
+                    }
+                `,
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(orb.pos);
+            mesh.userData.baseY = orb.pos.y;
+            mesh.userData.phase = idx * 0.7;
+            this.orbs.push(mesh);
+            this.scene.add(mesh);
+        });
+    }
+
+    createRingFormations() {
+        const ringData = [
+            { pos: new THREE.Vector3(0, 3, 0), radius: 5, tube: 0.15 },
+            { pos: new THREE.Vector3(-12, 2, -8), radius: 3.5, tube: 0.12 },
+            { pos: new THREE.Vector3(12, 2, -8), radius: 3.5, tube: 0.12 },
+        ];
+
+        this.rings = [];
+        ringData.forEach((ring, idx) => {
+            const geo = new THREE.TorusGeometry(ring.radius, ring.tube, 8, 24);
+            const mat = new THREE.ShaderMaterial({
+                uniforms: this.uniforms,
+                vertexShader: `
+                    varying vec3 vPos;
+                    void main() {
+                        vPos = position;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float uTime;
+                    varying vec3 vPos;
+                    vec3 hsv2rgb(vec3 c) {
+                        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                    }
+                    void main() {
+                        float angle = atan(vPos.z, vPos.x);
+                        float hue = fract(uTime * 0.25 + angle * 0.16 + ${idx * 0.33});
+                        vec3 col = hsv2rgb(vec3(hue, 0.7, 0.85));
+                        gl_FragColor = vec4(col, 1.0);
+                    }
+                `,
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(ring.pos);
+            mesh.rotation.x = Math.PI / 2;
+            mesh.userData.rotSpeed = 0.2 + idx * 0.1;
+            this.rings.push(mesh);
+            this.scene.add(mesh);
+        });
+    }
+
+    createBillboardSky() {
+        // Instanced billboard particles for pulsing sky effect
+        const particleCount = this.activePreset.skyParticles || 300;
+
+        // Billboard geometry (simple quad)
+        const geometry = new THREE.InstancedBufferGeometry();
+
+        // Base quad vertices
+        const vertices = new Float32Array([
+            -0.5, -0.5, 0,
+            0.5, -0.5, 0,
+            0.5, 0.5, 0,
+            -0.5, 0.5, 0
+        ]);
+
+        const uvs = new Float32Array([
+            0, 0,
+            1, 0,
+            1, 1,
+            0, 1
+        ]);
+
+        const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+
+        // Instance attributes
+        const offsets = new Float32Array(particleCount * 3);
+        const scales = new Float32Array(particleCount);
+        const colors = new Float32Array(particleCount * 3);
+        const phases = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            // Distribute particles across full sky dome, including lower areas
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.7; // Wider angle - more of the hemisphere
+            const radius = 30 + Math.random() * 40;
+
+            offsets[i * 3] = Math.sin(phi) * Math.cos(theta) * radius;
+            offsets[i * 3 + 1] = Math.cos(phi) * radius * 0.5 + 5; // Lower minimum height
+            offsets[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius;
+
+            scales[i] = 0.5 + Math.random() * 2.0;
+            phases[i] = Math.random() * Math.PI * 2;
+
+            // Initial hue distributed across spectrum
+            const hue = i / particleCount;
+            colors[i * 3] = hue;
+            colors[i * 3 + 1] = 0.7; // saturation
+            colors[i * 3 + 2] = 0.8; // value
+        }
+
+        geometry.setAttribute('offset', new THREE.InstancedBufferAttribute(offsets, 3));
+        geometry.setAttribute('scale', new THREE.InstancedBufferAttribute(scales, 1));
+        geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
+        geometry.setAttribute('phase', new THREE.InstancedBufferAttribute(phases, 1));
+
+        // Billboard shader material
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.uTime,
+                uPulseIntensity: this.uniforms.uPulseIntensity,
+            },
+            vertexShader: `
+                uniform float uPulseIntensity;
+                
+                attribute vec3 offset;
+                attribute float scale;
+                attribute vec3 aColor;
+                attribute float phase;
+                
+                varying vec3 vColor;
+                varying vec2 vUv;
+                varying float vPhase;
+                
+                void main() {
+                    vColor = aColor;
+                    vUv = uv;
+                    vPhase = phase;
+                    
+                    // Billboard: always face camera
+                    vec3 cameraRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+                    vec3 cameraUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+                    
+                    // Pulse scale effect - particles grow on pulse
+                    float pulseScale = scale * (1.0 + uPulseIntensity * 1.5);
+                    
+                    vec3 vertexPosition = offset + 
+                        cameraRight * position.x * pulseScale +
+                        cameraUp * position.y * pulseScale;
+                    
+                    gl_Position = projectionMatrix * viewMatrix * vec4(vertexPosition, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uPulseIntensity;
+                
+                varying vec3 vColor;
+                varying vec2 vUv;
+                varying float vPhase;
+                
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+                
+                void main() {
+                    // Circular soft particle
+                    vec2 center = vUv - 0.5;
+                    float dist = length(center);
+                    float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+                    
+                    // Pulsing hue cycle - faster shift on pulse
+                    float hue = fract(vColor.x + uTime * 0.15 + sin(uTime * 2.0 + vPhase) * 0.1 + uPulseIntensity * 0.3);
+                    float sat = vColor.y + uPulseIntensity * 0.3;
+                    float val = vColor.z + sin(uTime * 3.0 + vPhase) * 0.2 + uPulseIntensity * 0.8;
+                    
+                    vec3 color = hsv2rgb(vec3(hue, sat, val));
+                    
+                    // Glow effect - stronger on pulse
+                    float glow = 1.0 - smoothstep(0.0, 0.5, dist);
+                    color += color * glow * (0.5 + uPulseIntensity * 1.5);
+                    
+                    // Alpha boost on pulse
+                    float pulseAlpha = alpha * (0.6 + uPulseIntensity * 0.8);
+                    
+                    gl_FragColor = vec4(color, pulseAlpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.skyParticles = new THREE.Mesh(geometry, material);
+        this.scene.add(this.skyParticles);
+    }
+
+    createExplosionSystem() {
+        // Explosion particles pool for combo effects
+        const maxParticles = 300;
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(maxParticles * 3);
+        const velocities = new Float32Array(maxParticles * 3);
+        const colors = new Float32Array(maxParticles * 3);
+        const sizes = new Float32Array(maxParticles);
+        const lifetimes = new Float32Array(maxParticles);
+
+        // Initialize all particles as inactive
+        for (let i = 0; i < maxParticles; i++) {
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = -1000; // Hidden below scene
+            positions[i * 3 + 2] = 0;
+            velocities[i * 3] = 0;
+            velocities[i * 3 + 1] = 0;
+            velocities[i * 3 + 2] = 0;
+            colors[i * 3] = 1;
+            colors[i * 3 + 1] = 1;
+            colors[i * 3 + 2] = 1;
+            sizes[i] = 0;
+            lifetimes[i] = 0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.uTime,
+            },
+            vertexShader: `
+                attribute float size;
+                attribute vec3 color;
+                attribute float lifetime;
+                
+                varying vec3 vColor;
+                varying float vLifetime;
+                
+                void main() {
+                    vColor = color;
+                    vLifetime = lifetime;
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_PointSize = size * (300.0 / -mvPosition.z);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vLifetime;
+                
+                void main() {
+                    // Square pixels - no distance check needed
+                    vec2 coord = abs(gl_PointCoord - 0.5);
+                    float edgeDist = max(coord.x, coord.y);
+                    
+                    // Sharp square edge with slight inner fade
+                    float alpha = vLifetime * smoothstep(0.5, 0.4, edgeDist);
+                    gl_FragColor = vec4(vColor, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.explosionParticles = new THREE.Points(geometry, material);
+        this.explosionParticles.frustumCulled = false;
+        this.scene.add(this.explosionParticles);
+
+        this.explosionData = {
+            positions,
+            velocities,
+            colors,
+            sizes,
+            lifetimes,
+            maxParticles,
+            nextParticle: 0,
+        };
+    }
+
+    triggerExplosion(comboCount) {
+        if (!this.explosionData) return;
+
+        const { positions, velocities, colors, sizes, lifetimes, maxParticles } = this.explosionData;
+        const particlesToSpawn = Math.min(50 + comboCount * 30, 150);
+
+        // Tree canopy centers for explosion origins
+        const origins = [
+            new THREE.Vector3(0, 8, 0),      // Main tree top
+            new THREE.Vector3(-12, 6, -8),   // Left tree
+            new THREE.Vector3(12, 6, -8),    // Right tree
+        ];
+
+        for (let i = 0; i < particlesToSpawn; i++) {
+            const idx = (this.explosionData.nextParticle + i) % maxParticles;
+
+            // Random origin from tree canopies
+            const origin = origins[Math.floor(Math.random() * origins.length)];
+
+            // Spread from origin
+            positions[idx * 3] = origin.x + (Math.random() - 0.5) * 4;
+            positions[idx * 3 + 1] = origin.y + Math.random() * 3;
+            positions[idx * 3 + 2] = origin.z + (Math.random() - 0.5) * 4;
+
+            // Explosive velocity - outward and upward
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 15 + Math.random() * 20;
+            velocities[idx * 3] = Math.cos(angle) * speed;
+            velocities[idx * 3 + 1] = 5 + Math.random() * 15;
+            velocities[idx * 3 + 2] = Math.sin(angle) * speed;
+
+            // Rainbow colors
+            const hue = Math.random();
+            const rgb = this.hsvToRgb(hue, 0.8, 1.0);
+            colors[idx * 3] = rgb.r;
+            colors[idx * 3 + 1] = rgb.g;
+            colors[idx * 3 + 2] = rgb.b;
+
+            sizes[idx] = 2 + Math.random() * 4;
+            lifetimes[idx] = 1.0;
+        }
+
+        this.explosionData.nextParticle = (this.explosionData.nextParticle + particlesToSpawn) % maxParticles;
+
+        // Update attributes
+        this.explosionParticles.geometry.attributes.position.needsUpdate = true;
+        this.explosionParticles.geometry.attributes.velocity.needsUpdate = true;
+        this.explosionParticles.geometry.attributes.color.needsUpdate = true;
+        this.explosionParticles.geometry.attributes.size.needsUpdate = true;
+        this.explosionParticles.geometry.attributes.lifetime.needsUpdate = true;
+    }
+
+    hsvToRgb(h, s, v) {
+        let r, g, b;
+        const i = Math.floor(h * 6);
+        const f = h * 6 - i;
+        const p = v * (1 - s);
+        const q = v * (1 - f * s);
+        const t = v * (1 - (1 - f) * s);
+        switch (i % 6) {
+            case 0: r = v; g = t; b = p; break;
+            case 1: r = q; g = v; b = p; break;
+            case 2: r = p; g = v; b = t; break;
+            case 3: r = p; g = q; b = v; break;
+            case 4: r = t; g = p; b = v; break;
+            case 5: r = v; g = p; b = q; break;
+        }
+        return { r, g, b };
+    }
+
+    updateExplosionParticles(deltaTime) {
+        if (!this.explosionData) return;
+
+        const { positions, velocities, lifetimes, maxParticles } = this.explosionData;
+        const gravity = -25;
+
+        for (let i = 0; i < maxParticles; i++) {
+            if (lifetimes[i] > 0) {
+                // Update position
+                positions[i * 3] += velocities[i * 3] * deltaTime;
+                positions[i * 3 + 1] += velocities[i * 3 + 1] * deltaTime;
+                positions[i * 3 + 2] += velocities[i * 3 + 2] * deltaTime;
+
+                // Apply gravity
+                velocities[i * 3 + 1] += gravity * deltaTime;
+
+                // Decay lifetime
+                lifetimes[i] -= deltaTime * 0.8;
+
+                if (lifetimes[i] <= 0) {
+                    positions[i * 3 + 1] = -1000; // Hide
+                }
+            }
+        }
+
+        this.explosionParticles.geometry.attributes.position.needsUpdate = true;
+        this.explosionParticles.geometry.attributes.lifetime.needsUpdate = true;
     }
 
     createInstancedTree() {
@@ -476,7 +961,8 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     onPieceLock() {
-        this.uniforms.uPulseIntensity.value = 0.3;
+        // Subtle pulse on piece lock
+        this.uniforms.uPulseIntensity.value = 0.10;
     }
 
     onLineClear(lineCount) {
@@ -487,13 +973,16 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     onCombo(comboCount) {
-        this.uniforms.uPulseIntensity.value = Math.min(1.0, 0.6 + comboCount * 0.15);
+        // Moderate pulse for trees during combo - balanced brightness
+        this.uniforms.uPulseIntensity.value = Math.min(0.9, 0.5 + comboCount * 0.15);
         if (this.centerLight) {
-            this.centerLight.intensity = 0.8 + comboCount * 0.3;
+            this.centerLight.intensity = 0.7 + comboCount * 0.2;
         }
         if (this.bloomPass) {
-            this.bloomPass.strength = this.activePreset.bloomStrength + comboCount * 0.08;
+            this.bloomPass.strength = this.activePreset.bloomStrength + comboCount * 0.06;
         }
+        // Trigger explosion from tree canopies
+        this.triggerExplosion(comboCount);
     }
 
     animate() {
@@ -501,13 +990,37 @@ export default class SingingBowlTheme extends BaseTheme {
 
         this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
-        const elapsed = this.clock.getElapsedTime();
+        const deltaTime = this.clock.getDelta();
+        const elapsed = this.clock.elapsedTime;
         this.uniforms.uTime.value = elapsed;
 
         // Update all cube positions and rotations
         if (this.instancedMesh) {
             this.updateInstanceMatrices(elapsed);
         }
+
+        // Update floor shader time
+        if (this.floorUniforms) {
+            this.floorUniforms.uTime.value = elapsed;
+        }
+
+        // Animate floating orbs
+        if (this.orbs) {
+            this.orbs.forEach((orb) => {
+                orb.position.y = orb.userData.baseY + Math.sin(elapsed * 0.8 + orb.userData.phase) * 0.5;
+                orb.rotation.y = elapsed * 0.3 + orb.userData.phase;
+            });
+        }
+
+        // Animate rings
+        if (this.rings) {
+            this.rings.forEach((ring) => {
+                ring.rotation.z = elapsed * ring.userData.rotSpeed;
+            });
+        }
+
+        // Update explosion particles
+        this.updateExplosionParticles(deltaTime);
 
         // ORBITAL camera movement - circles around the tree
         const cameraRadius = 25;  // Further back to see all trees

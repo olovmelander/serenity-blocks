@@ -13,6 +13,13 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+// Import mossy ground PBR texture URLs
+import forestFloorAlbedoUrl from './assets/mossy-ground1-albedo.png';
+import forestFloorNormalUrl from './assets/mossy-groundnormal.png';
+import forestFloorRoughnessUrl from './assets/mossy-ground1-roughness.png';
+import forestFloorHeightUrl from './assets/mossy-ground1-height.png';
+import forestFloorAoUrl from './assets/mossy-ground1-ao.png';
 import {
     groundVertexShader,
     groundFragmentShader,
@@ -118,6 +125,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.spiritWinds = [];
         this.fallingLeaves = null;
 
+        // New features - grass and mushrooms
+        this.grassMesh = null;
+        this.grassMaterial = null;
+        this.mushrooms = [];
+        this.mushroomLights = [];
+        this.mushroomPulse = 0;
+
         // Shared uniforms
         this.uniforms = {
             time: { value: 0 },
@@ -200,6 +214,8 @@ export default class SwedishForestTheme extends BaseTheme {
         this.createGodRays();        // Light beams
         this.createTrees();          // Layered trees
         this.createForestFloor();    // Textured ground
+        this.createGrass();          // 3D animated grass
+        this.createGlowingMushrooms(); // Bioluminescent mushrooms
         this.createMistLayers();     // Atmospheric fog
         this.createSpiritWinds();    // Flowing energy
         this.createFireflySystem();  // Glowing particles
@@ -304,26 +320,395 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createForestFloor() {
-        const geometry = new THREE.PlaneGeometry(200, 80, 64, 32);
+        // Higher subdivision for smoother displacement
+        const geometry = new THREE.PlaneGeometry(200, 80, 256, 128);
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uGroundColor: { value: COLORS.groundBase },
-                uMossColor: { value: COLORS.groundMoss },
-                uDirtColor: { value: COLORS.groundDirt },
-                uGlowIntensity: this.uniforms.glowIntensity,
-            },
-            vertexShader: groundVertexShader,
-            fragmentShader: groundFragmentShader,
+        // Load forest floor PBR textures
+        const textureLoader = new THREE.TextureLoader();
+
+        const albedoMap = textureLoader.load(forestFloorAlbedoUrl);
+        const normalMap = textureLoader.load(forestFloorNormalUrl);
+        const roughnessMap = textureLoader.load(forestFloorRoughnessUrl);
+        const heightMap = textureLoader.load(forestFloorHeightUrl);
+        const aoMap = textureLoader.load(forestFloorAoUrl);
+
+        // Configure texture tiling and wrapping for seamless repeat
+        const textureRepeat = 6;
+        [albedoMap, normalMap, roughnessMap, heightMap, aoMap].forEach(texture => {
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(textureRepeat, textureRepeat * 0.4);
+        });
+
+        // Set proper color spaces
+        albedoMap.colorSpace = THREE.SRGBColorSpace;
+        normalMap.colorSpace = THREE.LinearSRGBColorSpace;
+        roughnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+        heightMap.colorSpace = THREE.LinearSRGBColorSpace;
+        aoMap.colorSpace = THREE.LinearSRGBColorSpace;
+
+        // Create brighter procedural environment cubemap for spirit/sky reflections
+        const envMapSize = 64;
+        const envMapData = new Uint8Array(envMapSize * envMapSize * 4 * 6);
+        for (let face = 0; face < 6; face++) {
+            for (let y = 0; y < envMapSize; y++) {
+                for (let x = 0; x < envMapSize; x++) {
+                    const i = (face * envMapSize * envMapSize + y * envMapSize + x) * 4;
+                    // Brighter teal/cyan atmosphere for better reflections
+                    const yFactor = y / envMapSize;
+                    envMapData[i] = Math.floor(30 + yFactor * 50);      // R - brighter
+                    envMapData[i + 1] = Math.floor(80 + yFactor * 80);  // G - much brighter  
+                    envMapData[i + 2] = Math.floor(90 + yFactor * 90);  // B - cyan tint
+                    envMapData[i + 3] = 255;
+                }
+            }
+        }
+        const envCubeTexture = new THREE.DataTexture(envMapData, envMapSize, envMapSize * 6);
+        envCubeTexture.needsUpdate = true;
+
+        // Use MeshPhysicalMaterial for advanced PBR with reflections
+        const material = new THREE.MeshPhysicalMaterial({
+            map: albedoMap,
+            normalMap: normalMap,
+            normalScale: new THREE.Vector2(3.0, 3.0), // Strong normal for maximum depth
+            roughnessMap: roughnessMap,
+            roughness: 0.6, // Lower roughness = more reflective for dew/moisture
+            metalness: 0.05, // Slight metalness for better reflections
+            // Ambient occlusion - reduced to prevent too much darkening
+            aoMap: aoMap,
+            aoMapIntensity: 0.5,
+            // Displacement creates real 3D undulations  
+            displacementMap: heightMap,
+            displacementScale: 2.5, // Stronger displacement for visible terrain
+            displacementBias: -1.0,
+            // Sheen for soft moss-like sheen effect
+            sheen: 0.5, // Stronger sheen
+            sheenColor: new THREE.Color(0x4a8a6a), // Brighter forest green sheen
+            sheenRoughness: 0.6,
+            // Environment reflections - stronger for spirit light pickup
+            envMapIntensity: 0.8,
+            // Emissive for visibility - brighter
+            emissive: new THREE.Color(0x1a3025), // Brighter forest green
+            emissiveMap: albedoMap,
+            emissiveIntensity: 0.35, // Stronger emissive glow
+            // Color tint - brighter to catch more light
+            color: new THREE.Color(0x8aaa9a), // Brighter tint
             side: THREE.DoubleSide,
         });
+
+        // Add UV2 for AO map
+        geometry.setAttribute('uv2', geometry.attributes.uv);
 
         this.groundPlane = new THREE.Mesh(geometry, material);
         this.groundPlane.rotation.x = -Math.PI / 2;
         this.groundPlane.position.set(0, -0.5, -10);
+        this.groundPlane.receiveShadow = true;
 
         this.mainGroup.add(this.groundPlane);
+
+        // Store material reference for potential glow effects
+        this.groundMaterial = material;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 3D ANIMATED GRASS - Billboard clumps with wind animation
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createGrass() {
+        if (!this.scene) return;
+
+        // Generate procedural grass texture
+        const grassTexture = this.createGrassTexture();
+
+        // Billboard geometry - 4 quads at 45° intervals for fluffy look
+        const clumpSize = 2.5;
+        const clumpHeight = 0.8;
+        const numPlanes = 4;
+
+        const positions = [];
+        const uvs = [];
+        const normals = [];
+
+        const uvTop = 0.85;
+
+        for (let i = 0; i < numPlanes; i++) {
+            const angle = (i / numPlanes) * Math.PI;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const halfSize = clumpSize / 2;
+
+            // Two triangles per plane
+            positions.push(-halfSize * cos, 0, -halfSize * sin);
+            positions.push(halfSize * cos, 0, halfSize * sin);
+            positions.push(halfSize * cos, clumpHeight, halfSize * sin);
+            positions.push(-halfSize * cos, 0, -halfSize * sin);
+            positions.push(halfSize * cos, clumpHeight, halfSize * sin);
+            positions.push(-halfSize * cos, clumpHeight, -halfSize * sin);
+
+            uvs.push(0, 0, 1, 0, 1, uvTop);
+            uvs.push(0, 0, 1, uvTop, 0, uvTop);
+
+            for (let j = 0; j < 6; j++) {
+                normals.push(0, 1, 0);
+            }
+        }
+
+        const clumpGeo = new THREE.BufferGeometry();
+        clumpGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+        clumpGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+        clumpGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+
+        // Forest grass shader material - dark mossy colors
+        const grassMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uWindStrength: { value: 0.15 },
+                uGrassTexture: { value: grassTexture },
+                uBaseColor: { value: new THREE.Color(0x0a1a10) },  // Very dark moss
+                uTipColor: { value: new THREE.Color(0x2a4a35) },   // Dark forest green
+                uFogColor: { value: COLORS.fog },
+                uSpiritGlow: { value: 0.0 }, // Reactive to spirits
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uWindStrength;
+                uniform float uSpiritGlow;
+
+                varying vec2 vUv;
+                varying float vFogDepth;
+                varying float vGlow;
+
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+
+                    #ifdef USE_INSTANCING
+                        vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+                    #else
+                        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    #endif
+
+                    // Wind animation
+                    float windPhase = worldPos.x * 0.3 + worldPos.z * 0.25 + uTime * 1.5;
+                    float wind = sin(windPhase) * uWindStrength;
+                    float wind2 = sin(windPhase * 0.6 + 1.5) * uWindStrength * 0.6;
+
+                    float heightFactor = uv.y * uv.y;
+                    pos.x += wind * heightFactor;
+                    pos.z += wind2 * heightFactor;
+
+                    // Spirit glow effect - tips glow when spirits are nearby
+                    float glowPattern = sin(worldPos.x * 0.2) * sin(worldPos.z * 0.15) * 0.5 + 0.5;
+                    vGlow = glowPattern * heightFactor * uSpiritGlow;
+
+                    #ifdef USE_INSTANCING
+                        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+                    #else
+                        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    #endif
+
+                    vFogDepth = -mvPosition.z;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uGrassTexture;
+                uniform vec3 uBaseColor;
+                uniform vec3 uTipColor;
+                uniform vec3 uFogColor;
+
+                varying vec2 vUv;
+                varying float vFogDepth;
+                varying float vGlow;
+
+                void main() {
+                    vec4 texColor = texture2D(uGrassTexture, vUv);
+                    if (texColor.a < 0.5) discard;
+
+                    // Dark base to lighter tips gradient
+                    float gradient = smoothstep(0.0, 0.7, vUv.y);
+                    vec3 grassColor = mix(uBaseColor, uTipColor, gradient);
+
+                    vec3 finalColor = grassColor * texColor.rgb * 1.3;
+
+                    // Add cool moonlight tint at tips
+                    vec3 moonTint = vec3(0.6, 0.8, 0.9);
+                    finalColor = mix(finalColor, finalColor * moonTint, gradient * 0.3);
+
+                    // Add spirit glow (teal)
+                    finalColor += vec3(0.2, 0.8, 0.6) * vGlow * 0.4;
+
+                    // Fog
+                    float fogFactor = smoothstep(15.0, 60.0, vFogDepth);
+                    finalColor = mix(finalColor, uFogColor, fogFactor);
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+            side: THREE.DoubleSide,
+            depthWrite: true,
+            alphaTest: 0.5,
+        });
+
+        this.grassMaterial = grassMat;
+
+        // Create instanced grass mesh
+        const grassCount = 400;
+        const grassMesh = new THREE.InstancedMesh(clumpGeo, grassMat, grassCount);
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < grassCount; i++) {
+            // Distribute in a fan pattern in front of camera
+            const angle = (Math.random() - 0.5) * Math.PI * 0.8;
+            const dist = 3 + Math.random() * 45;
+
+            const x = Math.sin(angle) * dist;
+            const z = -5 - Math.cos(angle) * dist * 0.5;
+
+            dummy.position.set(x, -0.5, z);
+            dummy.rotation.y = Math.random() * Math.PI * 2;
+
+            const scale = 0.6 + Math.random() * 0.6;
+            dummy.scale.set(scale, scale * (0.8 + Math.random() * 0.4), scale);
+
+            dummy.updateMatrix();
+            grassMesh.setMatrixAt(i, dummy.matrix);
+        }
+
+        grassMesh.instanceMatrix.needsUpdate = true;
+        grassMesh.frustumCulled = false;
+
+        this.mainGroup.add(grassMesh);
+        this.grassMesh = grassMesh;
+    }
+
+    createGrassTexture() {
+        const canvas = document.createElement('canvas');
+        const size = 512;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, size, size);
+
+        // Draw multiple grass blades
+        const bladeCount = 20;
+        for (let i = 0; i < bladeCount; i++) {
+            const x = (i / bladeCount) * size + (Math.random() - 0.5) * 30;
+            const height = size * (0.6 + Math.random() * 0.35);
+            const baseWidth = 8 + Math.random() * 6;
+            const lean = (Math.random() - 0.5) * 40;
+
+            // Gradient from dark base to lighter tip
+            const gradient = ctx.createLinearGradient(x, size, x + lean, size - height);
+            gradient.addColorStop(0, '#0a1510');
+            gradient.addColorStop(0.3, '#1a3020');
+            gradient.addColorStop(0.6, '#2a4530');
+            gradient.addColorStop(1.0, '#4a7555');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.moveTo(x - baseWidth / 2, size);
+            ctx.lineTo(x + baseWidth / 2, size);
+
+            // Curved blade with bezier
+            const midX = x + lean * 0.6;
+            const midY = size - height * 0.5;
+            const tipX = x + lean;
+            const tipY = size - height;
+
+            ctx.quadraticCurveTo(midX + baseWidth * 0.3, midY, tipX, tipY);
+            ctx.quadraticCurveTo(midX - baseWidth * 0.3, midY, x - baseWidth / 2, size);
+            ctx.fill();
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        return texture;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GLOWING MUSHROOMS - Bioluminescent fungi
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createGlowingMushrooms() {
+        this.mushrooms = [];
+        this.mushroomLights = [];
+
+        // Mushroom positions - scattered around the forest floor
+        // Hue 0.08-0.12 = warm amber/gold matching fireflies
+        const mushroomData = [
+            { x: -8, z: 2, scale: 0.4, hue: 0.08 },
+            { x: 12, z: -5, scale: 0.5, hue: 0.10 },
+            { x: -15, z: -8, scale: 0.35, hue: 0.09 },
+            { x: 5, z: 5, scale: 0.45, hue: 0.11 },
+            { x: -3, z: -3, scale: 0.3, hue: 0.08 },
+            { x: 18, z: 0, scale: 0.4, hue: 0.12 },
+            { x: -20, z: 3, scale: 0.5, hue: 0.07 },
+            { x: 8, z: 8, scale: 0.35, hue: 0.10 },
+            { x: -12, z: 6, scale: 0.4, hue: 0.11 },
+            { x: 15, z: -10, scale: 0.45, hue: 0.09 },
+        ];
+
+        mushroomData.forEach((data, idx) => {
+            // Create mushroom geometry - cap and stem
+            const capGeo = new THREE.SphereGeometry(1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const stemGeo = new THREE.CylinderGeometry(0.2, 0.3, 0.6, 6);
+
+            // Bioluminescent material with emissive glow
+            const glowColor = new THREE.Color().setHSL(data.hue, 0.8, 0.5);
+            const emissiveColor = new THREE.Color().setHSL(data.hue, 0.9, 0.4);
+
+            const capMat = new THREE.MeshStandardMaterial({
+                color: glowColor,
+                emissive: emissiveColor,
+                emissiveIntensity: 1.5,
+                roughness: 0.3,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.9,
+            });
+
+            const stemMat = new THREE.MeshStandardMaterial({
+                color: 0x3a4a40,
+                emissive: emissiveColor,
+                emissiveIntensity: 0.3,
+                roughness: 0.8,
+            });
+
+            const cap = new THREE.Mesh(capGeo, capMat);
+            cap.scale.y = 0.5; // Flatten the cap
+            cap.position.y = 0.6;
+
+            const stem = new THREE.Mesh(stemGeo, stemMat);
+            stem.position.y = 0.3;
+
+            // Group mushroom parts
+            const mushroom = new THREE.Group();
+            mushroom.add(cap);
+            mushroom.add(stem);
+
+            mushroom.position.set(data.x, -0.5, data.z);
+            mushroom.scale.setScalar(data.scale);
+            mushroom.rotation.y = Math.random() * Math.PI * 2;
+
+            // Store for animation
+            mushroom.userData = {
+                baseEmissive: 1.5,
+                phase: idx * 0.7,
+                capMat: capMat,
+            };
+
+            this.mushrooms.push(mushroom);
+            this.mainGroup.add(mushroom);
+
+            // Add subtle point light for each mushroom
+            const light = new THREE.PointLight(glowColor, 0.3, 8, 2);
+            light.position.set(data.x, 0.5, data.z);
+            this.mushroomLights.push(light);
+            this.mainGroup.add(light);
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -853,6 +1238,13 @@ export default class SwedishForestTheme extends BaseTheme {
         spiritGlow.position.set(0, 10, -15);
         this.mainGroup.add(spiritGlow);
         this.spiritLight = spiritGlow;
+
+        // Floor illumination light - enhances normal map depth on ground
+        const floorLight = new THREE.DirectionalLight(0x3a5a4a, 0.6);
+        floorLight.position.set(0, 30, 10);
+        floorLight.target.position.set(0, 0, -20);
+        this.scene.add(floorLight);
+        this.scene.add(floorLight.target);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -931,6 +1323,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
     onPieceLock(data) {
         this.targetGlowIntensity += 0.1;
+        this.mushroomPulse = 1.5; // Strong pulse on lock
 
         this.spirits.forEach(spirit => {
             spirit.material.uniforms.uOpacity.value += 0.06;
@@ -1104,6 +1497,46 @@ export default class SwedishForestTheme extends BaseTheme {
                 this.fallingLeaves.userData.activeLeaves = 0;
             }
         }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // GRASS ANIMATION
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (this.grassMaterial) {
+            this.grassMaterial.uniforms.uTime.value = elapsed;
+            // Subtle spirit glow triggered by combo effects
+            this.grassMaterial.uniforms.uSpiritGlow.value = THREE.MathUtils.lerp(
+                this.grassMaterial.uniforms.uSpiritGlow.value,
+                this.uniforms.glowIntensity.value,
+                delta * 2
+            );
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // MUSHROOM GLOW ANIMATION
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Decay pulse
+        this.mushroomPulse *= 0.92;
+        if (this.mushroomPulse < 0.01) this.mushroomPulse = 0;
+
+        this.mushrooms.forEach((mushroom, idx) => {
+            if (mushroom.userData.capMat) {
+                // Pulsing glow effect + Piece Lock Pulse
+                const pulse = Math.sin(elapsed * 1.5 + mushroom.userData.phase) * 0.3 + 1.0;
+                const comboBoost = 1 + this.uniforms.glowIntensity.value * 2;
+                const lockBoost = 1 + this.mushroomPulse * 2.0; // Strong boost from lock
+
+                mushroom.userData.capMat.emissiveIntensity = mushroom.userData.baseEmissive * pulse * comboBoost * lockBoost;
+            }
+        });
+
+        // Mushroom lights also pulse
+        this.mushroomLights.forEach((light, idx) => {
+            const pulse = Math.sin(elapsed * 1.5 + idx * 0.7) * 0.15 + 0.3;
+            const lockBoost = 1 + this.mushroomPulse * 3.0;
+            light.intensity = pulse * (1 + this.uniforms.glowIntensity.value * 1.5) * lockBoost;
+        });
 
         // ─────────────────────────────────────────────────────────────────────
         // RENDER
