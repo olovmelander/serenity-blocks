@@ -140,6 +140,8 @@ void main() {
 export const spiralVertexShader = `
 uniform float time;
 uniform float spiralTightness;
+uniform float uPulseTimer; // Controls the expanding pulse wave (-100 = off/finished)
+
 attribute float aAngle;
 attribute float aRadius;
 attribute float aRandom;
@@ -163,11 +165,37 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Size attenuation - larger stars appear bigger
-    float baseSize = 2.0 + aRandom * 4.0;
-    gl_PointSize = baseSize * (15.0 / -mvPosition.z);
+    // Pulse wave calculation
+    // Wave moves from radius 0 outwards.
+    // Asymmetric wave: Sharp leading edge, long trailing tail usually looks better for "following"
+    // diff is positive when wave has PASSED the particle (uPulseTimer > aRadius)
+    float diff = uPulseTimer - aRadius;
+    float pulseIntensity = 0.0;
     
-    vColor = aColor;
+    // Tail length - how long the trail is behind the wave front
+    float tailLength = 8.0;
+
+    if (diff > 0.0 && diff < tailLength) {
+        // Linear fade from 1.0 (at wave front) to 0.0 (at end of tail)
+        pulseIntensity = 1.0 - (diff / tailLength);
+        
+        // Optional: curve the falloff for a "hotter" head
+        pulseIntensity = pow(pulseIntensity, 1.5);
+    }
+    
+    // Size attenuation - larger stars appear bigger
+    // Pulse increases size significantly
+    float baseSize = 2.0 + aRandom * 4.0;
+    // Boost size most at the leading edge
+    float pulseSize = baseSize * (1.0 + pulseIntensity * 3.0);
+    gl_PointSize = pulseSize * (15.0 / -mvPosition.z);
+    
+    // Color modulation
+    // Pulse adds brightness/whiteness
+    // Mix to white at high intensity, then fade back to original color
+    vec3 mixedColor = mix(aColor, vec3(1.0, 1.0, 1.0), pulseIntensity); 
+    vColor = mixedColor * (1.0 + pulseIntensity * 2.0); // Boost emission brightness
+    
     // Stars closer to center are brighter
     vAlpha = 0.4 + 0.6 * (1.0 - aRadius / 15.0);
 }
@@ -389,5 +417,105 @@ void main() {
     float alpha = vAlpha * (1.0 - smoothstep(0.2, 1.0, dist));
     
     gl_FragColor = vec4(vColor, alpha);
+}
+`;
+
+/**
+ * Spiral Spark Vertex Shader
+ * Particles that erupt from the spiral arms when the pulse wave passes
+ */
+export const sparkVertexShader = `
+uniform float time;
+uniform float spiralTightness;
+uniform float uPulseTimer; // Controls the wave position
+
+attribute float aAngle;
+attribute float aRadius;
+attribute float aRandom;
+attribute vec3 aRandomDir; // Unique direction for each spark
+attribute vec3 aColor;
+
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    // Initial Spiral Position (where the spark is born)
+    float paramAngle = aAngle + aRadius * spiralTightness + time * 0.05;
+    
+    vec3 initialPos;
+    initialPos.x = cos(paramAngle) * aRadius;
+    initialPos.y = (aRandom - 0.5) * 0.5;
+    initialPos.z = sin(paramAngle) * aRadius;
+    
+    // Animation Logic
+    // Spark is born when uPulseTimer crosses aRadius
+    // age = positive value representing how long ago the wave passed
+    float age = uPulseTimer - aRadius;
+    
+    vec3 animatedPos = initialPos;
+    float alpha = 0.0;
+    float size = 0.0;
+    
+    // Effect parameters
+    float maxLife = 100.0; // Ultra long life (was 30.0)
+    
+    if (age > 0.0 && age < maxLife) {
+        // Eruption!
+        
+        // Fly outward from center + random spread
+        // Normalized radial direction
+        vec3 radialDir = normalize(initialPos + vec3(0.01)); // avoid 0
+        
+        // Mix radial uniform movement with chaotic random spread
+        // Ultra slow majestic drift (was 7.0)
+        vec3 velocity = mix(radialDir, aRandomDir, 0.7) * 3.5; 
+        
+        // Apply velocity over time (age)
+        animatedPos += velocity * age;
+        
+        // Visuals
+        alpha = 1.0 - (age / maxLife); // Fade out
+        alpha = pow(alpha, 0.5); // Stay visible longer
+        
+        size = (1.0 - (age / maxLife)) * 5.0; // Start larger
+    } else {
+        // Hidden (before wave arrives OR after dead)
+        // Move behind camera or scale to 0
+        size = 0.0;
+    }
+
+    vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    
+    gl_PointSize = size * (20.0 / -mvPosition.z);
+    
+    vColor = aColor; // Use theme colors (maybe mixed with white)
+    vAlpha = alpha;
+}
+`;
+
+/**
+ * Spiral Spark Fragment Shader
+ */
+export const sparkFragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    if (vAlpha <= 0.01) discard;
+
+    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
+    
+    // Bright hot center
+    float core = 1.0 - smoothstep(0.0, 0.4, dist);
+    
+    // Soft outer glow
+    float glow = 1.0 - smoothstep(0.0, 1.0, dist);
+    
+    vec3 finalColor = mix(vColor, vec3(1.0), core * 0.8);
+    
+    gl_FragColor = vec4(finalColor, vAlpha * glow);
 }
 `;

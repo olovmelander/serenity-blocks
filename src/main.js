@@ -2194,9 +2194,6 @@ class SerenityBlocks {
      * Setup Player 2 keyboard controls
      */
     setupPlayer2Controls() {
-        const settings = this.settingsManager.get();
-        const p2Keys = settings.player2KeyBindings;
-
         document.addEventListener('keydown', (e) => {
             // Only process in local multiplayer mode
             const currentGameMode = this.gameModeUI.getMode();
@@ -2209,6 +2206,11 @@ class SerenityBlocks {
                 || multiplayerState.isGameOver
                 || multiplayerState.isPaused
             ) return;
+
+            // Get current player 2 keybindings dynamically
+            const settings = this.settingsManager.get();
+            const p2Keys = settings.player2KeyBindings;
+            if (!p2Keys) return;
 
             const key = e.key === ' ' ? 'Space' : e.key;
 

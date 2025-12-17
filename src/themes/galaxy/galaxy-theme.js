@@ -12,7 +12,9 @@ import {
     dustVertexShader,
     dustFragmentShader,
     starsVertexShader,
-    starsFragmentShader
+    starsFragmentShader,
+    sparkVertexShader,
+    sparkFragmentShader
 } from './galaxy-shaders.js';
 
 /**
@@ -43,7 +45,9 @@ export default class GalaxyTheme extends BaseTheme {
         this.nebulaClouds = [];
         this.cosmicDust = null;
         this.shockwaves = [];
+        this.shockwaves = [];
         this.flares = [];
+        this.spiralSparks = null;
 
         // Animation
         this.animationFrame = null;
@@ -117,6 +121,7 @@ export default class GalaxyTheme extends BaseTheme {
         // -- Create Scene Elements --
         this.createGalaxyCore();
         this.createSpiralArms();
+        this.createSpiralSparks();
         this.createBackgroundStars();
         this.createNebulaClouds();
         this.createCosmicDust();
@@ -302,7 +307,8 @@ export default class GalaxyTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 spiralTightness: { value: 0.5 },
-                coreIntensity: this.uniforms.coreIntensity
+                coreIntensity: this.uniforms.coreIntensity,
+                uPulseTimer: { value: -100.0 }
             },
             vertexShader: spiralVertexShader,
             fragmentShader: spiralFragmentShader,
@@ -313,6 +319,82 @@ export default class GalaxyTheme extends BaseTheme {
 
         this.spiralStars = new THREE.Points(geometry, material);
         this.mainGroup.add(this.spiralStars);
+    }
+
+    createSpiralSparks() {
+        // Less particles than stars, but enough for a good spray
+        const count = 4000;
+        const geometry = new THREE.BufferGeometry();
+
+        const angles = new Float32Array(count);
+        const radii = new Float32Array(count);
+        const randoms = new Float32Array(count);
+        const randomDirs = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const positions = new Float32Array(count * 3);
+
+        for (let i = 0; i < count; i++) {
+            // Similar distribution to stars so they emerge from the arms
+            const arm = i % 2;
+            const baseAngle = arm * Math.PI;
+
+            // Random radius logic
+            const t = Math.random();
+            const radius = 0.5 + Math.pow(t, 0.4) * 16;
+
+            const spiralOffset = radius * 0.35;
+            const spreadAngle = (Math.random() - 0.5) * (0.3 + radius * 0.02);
+
+            angles[i] = baseAngle + spiralOffset + spreadAngle;
+            radii[i] = radius;
+            randoms[i] = Math.random();
+
+            // Random Direction for shooting out
+            // We want mostly outward but with chaos
+            const rTheta = Math.random() * Math.PI * 2;
+            const rPhi = Math.random() * Math.PI;
+            randomDirs[i * 0] = Math.sin(rPhi) * Math.cos(rTheta);
+            randomDirs[i * 1] = Math.sin(rPhi) * Math.sin(rTheta);
+            randomDirs[i * 2] = Math.cos(rPhi);
+
+            // Colors: mix of hot white, cyan, and pink
+            const colorType = Math.random();
+            let c = new THREE.Color(0xFFFFFF); // White hot
+            if (colorType > 0.6) c = new THREE.Color(0x33FFFF); // Cyan
+            else if (colorType > 0.3) c = new THREE.Color(0xFF33CC); // Pink
+
+            colors[i * 3] = c.r;
+            colors[i * 3 + 1] = c.g;
+            colors[i * 3 + 2] = c.b;
+
+            // Zero pos (handled in vertex shader)
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = 0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aAngle', new THREE.BufferAttribute(angles, 1));
+        geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('aRandomDir', new THREE.BufferAttribute(randomDirs, 3));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                spiralTightness: { value: 0.5 },
+                uPulseTimer: { value: -100.0 }
+            },
+            vertexShader: sparkVertexShader,
+            fragmentShader: sparkFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.spiralSparks = new THREE.Points(geometry, material);
+        this.mainGroup.add(this.spiralSparks);
     }
 
     createBackgroundStars() {
@@ -518,6 +600,23 @@ export default class GalaxyTheme extends BaseTheme {
         this.updateShockwaves(delta);
         this.updateFlares(delta);
 
+        // Update Pulse Wave
+        if (this.spiralStars && this.spiralStars.material.uniforms.uPulseTimer.value > -50.0) {
+            // Move wave outwards. Speed: 8 units/sec (Slower = follows spiral better)
+            this.spiralStars.material.uniforms.uPulseTimer.value += delta * 8.0;
+
+            // Turn off when it passes typical max radius (16) + tail (8) + buffer
+            // Increased to 120.0 to allow long-lived sparks (maxLife 100) to finish
+            if (this.spiralStars.material.uniforms.uPulseTimer.value > 120.0) {
+                this.spiralStars.material.uniforms.uPulseTimer.value = -100.0;
+            }
+
+            // Sync Sparks
+            if (this.spiralSparks) {
+                this.spiralSparks.material.uniforms.uPulseTimer.value = this.spiralStars.material.uniforms.uPulseTimer.value;
+            }
+        }
+
         this.renderer.render(this.scene, this.camera);
     }
 
@@ -685,6 +784,11 @@ export default class GalaxyTheme extends BaseTheme {
         if (count > 1) {
             this.uniforms.coreIntensity.value += 0.25;
             this.createShockwave(count * 0.4);
+
+            // Trigger Pulse Wave
+            if (this.spiralStars) {
+                this.spiralStars.material.uniforms.uPulseTimer.value = 0.0;
+            }
         }
         if (count >= 4) {
             this.createSolarFlare();
