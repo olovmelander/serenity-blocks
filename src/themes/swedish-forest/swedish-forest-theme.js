@@ -204,7 +204,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.createSpiritWinds();    // Flowing energy
         this.createFireflySystem();  // Glowing particles
         this.createForestSpirits();  // Ethereal orbs
-        this.createFallingLeavesSystem();
+        // this.createFallingLeavesSystem();  // Disabled - no falling leaves
         this.setupLighting();
 
         // ─────────────────────────────────────────────────────────────────────
@@ -449,37 +449,42 @@ export default class SwedishForestTheme extends BaseTheme {
      */
     createMergedSpruceGeometry() {
         const foliageLayers = [];
-        const numLayers = 6;  // Standard number of foliage tiers
+        const numLayers = 5;  // 5 layers of cones
         const baseHeight = 20; // Normalized base height
-        const trunkHeight = baseHeight * 0.12;
-        const baseWidth = baseHeight * 0.35;
-        const layerHeight = (baseHeight - trunkHeight) / numLayers;
+        const trunkHeight = baseHeight * 0.15;
+        const maxRadius = baseHeight * 0.25; // Base width of the widest cone
 
-        // Create foliage layers (triangular shapes)
+        // Create foliage layers (Cones)
         for (let j = 0; j < numLayers; j++) {
-            const widthScale = (numLayers - j) / numLayers;
-            const layerWidth = baseWidth * widthScale;
-            const y = trunkHeight + j * layerHeight;
+            // Tapering logic: Bottom layer is widest, top is narrowest
+            const layerProgress = j / (numLayers - 1); // 0 at bottom, 1 at top
 
-            // Create triangle shape for this layer
-            const shape = new THREE.Shape();
-            shape.moveTo(0, layerHeight);
-            shape.lineTo(-layerWidth / 2, 0);
-            shape.lineTo(layerWidth / 2, 0);
-            shape.closePath();
+            const bottomRadius = maxRadius * (1.0 - layerProgress * 0.8);
+            const coneHeight = (baseHeight / numLayers) * 1.8; // Overlap layers
 
-            const layerGeo = new THREE.ShapeGeometry(shape);
-            // Translate to correct Y position
-            layerGeo.translate(0, y, 0);
-            foliageLayers.push(layerGeo);
+            // Position: Stack them up
+            const y = trunkHeight + (j * (baseHeight * 0.85 / numLayers));
+
+            // Create 3D Cone for this layer
+            // radialSegments: 7 for a nice low-poly geometric look, or 16 for smooth
+            const geometry = new THREE.ConeGeometry(bottomRadius, coneHeight, 7);
+
+            // Translate to correct position (Cone origin is at center)
+            geometry.translate(0, y + coneHeight / 2, 0);
+
+            foliageLayers.push(geometry);
         }
 
         // Merge all foliage layers into one geometry
         const foliageGeometry = BufferGeometryUtils.mergeGeometries(foliageLayers, false);
 
+        // Compute normals for proper 3D lighting
+        foliageGeometry.computeVertexNormals();
+
         // Create trunk geometry (cylinder)
-        const trunkGeometry = new THREE.CylinderGeometry(0.15, 0.35, trunkHeight, 6);
+        const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.4, trunkHeight, 6);
         trunkGeometry.translate(0, trunkHeight / 2, 0);
+        trunkGeometry.computeVertexNormals();
 
         // Clean up individual layer geometries
         foliageLayers.forEach(geo => geo.dispose());
@@ -1015,6 +1020,25 @@ export default class SwedishForestTheme extends BaseTheme {
         this.mainGroup.position.x = Math.sin(driftTime) * 0.4;
         this.mainGroup.position.y = Math.cos(driftTime * 0.7) * 0.15;
         this.mainGroup.rotation.y = Math.sin(driftTime * 0.5) * 0.005;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CAMERA DREAMY MOVEMENT - slow, atmospheric drift
+        // ─────────────────────────────────────────────────────────────────────
+
+        const camTime = elapsed * 0.07;  // Slightly faster dreamy movement
+        const baseX = 0;
+        const baseY = 8;
+        const baseZ = 30;
+
+        // Slow atmospheric sway
+        this.camera.position.x = baseX + Math.sin(camTime) * 4.0 + Math.sin(camTime * 0.6) * 2.0;
+        this.camera.position.y = baseY + Math.sin(camTime * 0.5 + 1.0) * 1.5;
+        this.camera.position.z = baseZ + Math.cos(camTime * 0.4) * 2.5;
+
+        // Gentle look-around for dreamy atmosphere
+        const lookX = Math.sin(camTime * 0.7) * 3.0;
+        const lookY = 10 + Math.cos(camTime * 0.35) * 1.0;
+        this.camera.lookAt(lookX, lookY, -30);
 
         // ─────────────────────────────────────────────────────────────────────
         // GOD RAY SWAY
