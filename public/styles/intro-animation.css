@@ -53,6 +53,7 @@
 }
 
 /* Subtle scanline overlay for holographic effect */
+/* PERFORMANCE: Static opacity instead of 0.1s animation (reduces repaints) */
 #intro-animation::after {
     content: '';
     position: absolute;
@@ -67,20 +68,10 @@
             rgba(255, 255, 255, 0.015) 4px);
     pointer-events: none;
     z-index: 25;
-    animation: scanlineFlicker 0.1s infinite;
+    opacity: 0.9; /* Static opacity instead of animation */
 }
 
-@keyframes scanlineFlicker {
-
-    0%,
-    100% {
-        opacity: 0.8;
-    }
-
-    50% {
-        opacity: 1;
-    }
-}
+/* Removed scanlineFlicker animation - caused constant repaints */
 
 /* Phaser canvas for cosmic particles */
 #intro-phaser-canvas {

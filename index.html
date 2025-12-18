@@ -1094,18 +1094,6 @@
                             </select>
                         </div>
                         <div class="setting">
-                            <label for="resolution-select">Resolution:</label>
-                            <select id="resolution-select" class="setting-select">
-                                <option value="auto">Auto (Native)</option>
-                                <option value="1280x720">1280 × 720 (HD)</option>
-                                <option value="1366x768">1366 × 768</option>
-                                <option value="1600x900">1600 × 900 (HD+)</option>
-                                <option value="1920x1080">1920 × 1080 (Full HD)</option>
-                                <option value="2560x1440">2560 × 1440 (2K)</option>
-                                <option value="3840x2160">3840 × 2160 (4K)</option>
-                            </select>
-                        </div>
-                        <div class="setting">
                             <label for="graphics-quality">Graphics Quality:</label>
                             <select id="graphics-quality" class="setting-select">
                                 <option value="Minimal">Minimal (Lowest)</option>
@@ -1117,13 +1105,15 @@
                             </select>
                         </div>
                         <div class="setting">
-                            <label for="render-scale">Render Scale: <span id="render-scale-value">100%</span></label>
-                            <input type="range" id="render-scale" min="50" max="100" value="100" step="25"
-                                class="slider" style="width: 100%;">
+                            <label for="render-quality">Render Quality:</label>
+                            <div class="slider-container">
+                                <input type="range" id="render-quality" min="50" max="150" value="100" step="5">
+                                <span id="render-quality-value">100% (Native)</span>
+                            </div>
                             <small
                                 style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                Lower values improve performance on high-DPI displays (2K/4K). Reduces background theme
-                                resolution.
+                                Lower = faster<br>
+                                Higher = sharper
                             </small>
                         </div>
                         <div class="setting">
