@@ -292,9 +292,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.setupQualityListener();
 
         // Renderer
-        this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
+        this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: this.getAntialiasEnabled(), powerPreference: 'high-performance' });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setClearColor(this.palette.skyTop);
         container.appendChild(this.renderer.domElement);
 

@@ -4,6 +4,7 @@ import {
     spawnPiece,
     fillBag,
     gameLoop,
+    updateGame,
     move as coreMove,
     rotate as coreRotate,
     hardDrop as coreHardDrop,
@@ -67,6 +68,9 @@ export class SinglePlayerMode extends BaseGameMode {
 
         // Input overrides
         this.originalInputs = {};
+
+        // Hybrid loop state (for high FPS targets)
+        this.usingHybridLoop = false;
     }
 
     getModeId() {
@@ -305,6 +309,11 @@ export class SinglePlayerMode extends BaseGameMode {
             this.gameState.isPaused = true;
         }
 
+        // Pause hybrid loop (stops setTimeout scheduling but keeps RAF for render)
+        if (this.usingHybridLoop) {
+            this.deps.frameRateController?.pauseHybridLoop();
+        }
+
         if (this.isPlayingDemo) {
             this.demoPlayer.pausePlayback();
         }
@@ -321,6 +330,11 @@ export class SinglePlayerMode extends BaseGameMode {
             this.gameState.lastTime = performance.now();
         }
 
+        // Resume hybrid loop
+        if (this.usingHybridLoop) {
+            this.deps.frameRateController?.resumeHybridLoop();
+        }
+
         if (this.isPlayingDemo) {
             this.demoPlayer.resumePlayback();
         }
@@ -334,11 +348,8 @@ export class SinglePlayerMode extends BaseGameMode {
 
         console.log('[SinglePlayer] Stopping game...');
 
-        // Stop game loop
-        if (this.gameState?.animationId) {
-            cancelAnimationFrame(this.gameState.animationId);
-            this.gameState.animationId = null;
-        }
+        // Stop game loop (handles both hybrid and standard loops)
+        this._stopGameLoop();
 
         if (this.isPlayingDemo) {
             this.demoPlayer.stopPlayback();
@@ -546,6 +557,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
     /**
      * Start the game loop
+     * Uses hybrid loop (setTimeout for logic, RAF for render) when target FPS exceeds monitor refresh rate
      * @private
      */
     _startGameLoop() {
@@ -558,6 +570,12 @@ export class SinglePlayerMode extends BaseGameMode {
         if (this.gameState.animationId) {
             cancelAnimationFrame(this.gameState.animationId);
             this.gameState.animationId = null;
+        }
+
+        // Stop any existing hybrid loop
+        const frameRateController = this.deps.frameRateController;
+        if (frameRateController?.isRunning) {
+            frameRateController.stopHybridLoop();
         }
 
         // Ensure stats throttling starts fresh for this session
@@ -588,14 +606,68 @@ export class SinglePlayerMode extends BaseGameMode {
             }
         };
 
-        gameLoop(
-            performance.now(),
-            this.gameState,
-            drawCallback,
-            statsCallback,
-            () => this.deps.soundManager.sfxPlayer.playDrop(),
-            this._getPhysicsCallbacks(),
-        );
+        const physicsCallbacks = this._getPhysicsCallbacks();
+        const playDropCallback = () => this.deps.soundManager.sfxPlayer.playDrop();
+
+        // Check if we need hybrid mode (target FPS > monitor refresh rate)
+        if (frameRateController?.needsHybridMode()) {
+            console.log('[SinglePlayer] Using hybrid loop for high FPS target');
+            this.usingHybridLoop = true;
+
+            // Logic update function (runs at target FPS)
+            const logicUpdate = (time, delta) => {
+                if (this.gameState.isGameOver || this.gameState.isPaused) return;
+
+                updateGame(time, this.gameState, {
+                    drawCallback: null, // Don't draw in logic update
+                    updateStatsCallback: null,
+                    playDropCallback,
+                    physicsCallbacks,
+                });
+            };
+
+            // Render function (runs at monitor refresh rate)
+            const renderUpdate = (time, alpha) => {
+                // Always render, even when paused (for pause screen)
+                drawCallback();
+                statsCallback();
+            };
+
+            frameRateController.startHybridLoop(logicUpdate, renderUpdate);
+        } else {
+            console.log('[SinglePlayer] Using standard RAF loop');
+            this.usingHybridLoop = false;
+
+            // Use standard requestAnimationFrame loop
+            gameLoop(
+                performance.now(),
+                this.gameState,
+                drawCallback,
+                statsCallback,
+                playDropCallback,
+                physicsCallbacks,
+            );
+        }
+    }
+
+    /**
+     * Stop the game loop (both hybrid and standard)
+     * @private
+     */
+    _stopGameLoop() {
+        // Stop hybrid loop if active
+        const frameRateController = this.deps.frameRateController;
+        if (frameRateController?.isRunning) {
+            frameRateController.stopHybridLoop();
+        }
+
+        // Cancel standard RAF loop
+        if (this.gameState?.animationId) {
+            cancelAnimationFrame(this.gameState.animationId);
+            this.gameState.animationId = null;
+        }
+
+        this.usingHybridLoop = false;
     }
 
     /**

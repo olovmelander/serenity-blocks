@@ -358,4 +358,39 @@ export class DisplayManager {
 
         return isValid;
     }
+
+    /**
+     * Get the effective pixel ratio for rendering, applying render scale
+     * @param {number} renderScale - Scale factor (0.5 to 1.0)
+     * @returns {number} Effective pixel ratio
+     */
+    getEffectivePixelRatio(renderScale = 1.0) {
+        const baseRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+        const clampedScale = Math.max(0.25, Math.min(1.0, renderScale));
+        const effectiveRatio = baseRatio * clampedScale;
+        return Math.round(effectiveRatio * 100) / 100; // Round to 2 decimal places
+    }
+
+    /**
+     * Get recommended render scale based on screen resolution
+     * @returns {number} Recommended render scale (0.5, 0.75, or 1.0)
+     */
+    getRecommendedRenderScale() {
+        if (typeof window === 'undefined') return 1.0;
+
+        const width = window.screen.width * (window.devicePixelRatio || 1);
+        const height = window.screen.height * (window.devicePixelRatio || 1);
+        const totalPixels = width * height;
+
+        // Thresholds for different render scales
+        // > 8M pixels (4K+): recommend 0.5
+        // > 4M pixels (2K+): recommend 0.75
+        // Otherwise: recommend 1.0
+        if (totalPixels > 8_000_000) {
+            return 0.5;
+        } else if (totalPixels > 4_000_000) {
+            return 0.75;
+        }
+        return 1.0;
+    }
 }

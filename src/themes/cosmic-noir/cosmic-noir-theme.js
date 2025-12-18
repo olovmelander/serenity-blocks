@@ -235,9 +235,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setClearColor(0x000000, 1); // Pure black background
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
         this.renderer.sortObjects = true;
         this.renderer.autoClear = false;
