@@ -1117,6 +1117,16 @@
                             </select>
                         </div>
                         <div class="setting">
+                            <label for="render-scale">Render Scale: <span id="render-scale-value">100%</span></label>
+                            <input type="range" id="render-scale" min="50" max="100" value="100" step="25"
+                                class="slider" style="width: 100%;">
+                            <small
+                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                Lower values improve performance on high-DPI displays (2K/4K). Reduces background theme
+                                resolution.
+                            </small>
+                        </div>
+                        <div class="setting">
                             <label for="fps-target">Frame Rate Target:</label>
                             <select id="fps-target" class="setting-select">
                                 <option value="30">30 FPS (Battery Saver)</option>
@@ -1135,11 +1145,34 @@
                             </select>
                         </div>
                         <div class="setting">
+                            <label for="antialiasing-toggle">Anti-Aliasing:</label>
+                            <select id="antialiasing-toggle" class="setting-select">
+                                <option value="true">On (Smoother edges)</option>
+                                <option value="false">Off (Better performance)</option>
+                            </select>
+                            <small
+                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                Disabling improves performance on high-DPI displays. Requires theme reload.
+                            </small>
+                        </div>
+                        <div class="setting">
                             <label for="show-fps-counter">Show FPS Counter:</label>
                             <select id="show-fps-counter" class="setting-select">
                                 <option value="false">Off</option>
                                 <option value="true">On</option>
                             </select>
+                        </div>
+                        <div class="setting">
+                            <label for="background-tab-behavior">Background Tab Behavior:</label>
+                            <select id="background-tab-behavior" class="setting-select">
+                                <option value="pause">Pause (Maximum Battery Savings)</option>
+                                <option value="reduce">Reduce to 10 FPS (Balanced)</option>
+                                <option value="continue">Continue (No Change)</option>
+                            </select>
+                            <small
+                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                Controls rendering when browser tab is hidden. "Pause" saves the most battery/CPU.
+                            </small>
                         </div>
                     </div>
                     <div
