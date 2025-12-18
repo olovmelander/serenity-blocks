@@ -235,12 +235,12 @@ export default class NimbusVeilTheme extends BaseTheme {
 
     initRenderer() {
         this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
+            antialias: this.getAntialiasEnabled(),
             alpha: true,
             powerPreference: 'high-performance'
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setClearColor(0x0a0a12, 1);
         this.container.appendChild(this.renderer.domElement);
     }

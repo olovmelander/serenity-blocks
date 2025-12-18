@@ -110,11 +110,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // 1. Setup Renderer
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
-            antialias: true,
+            antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);

@@ -3,6 +3,46 @@
  * Provides common interface and lifecycle methods for theme implementations
  */
 
+// Global render scale (set by settings system)
+let globalRenderScale = 1.0;
+
+// Global antialiasing setting (set by settings system)
+let globalAntialiasEnabled = true;
+
+/**
+ * Set the global render scale for all themes
+ * @param {number} scale - Render scale (0.25 to 1.0)
+ */
+export function setGlobalRenderScale(scale) {
+    globalRenderScale = Math.max(0.25, Math.min(1.0, scale));
+    console.log(`[BaseTheme] Global render scale set to: ${globalRenderScale}`);
+}
+
+/**
+ * Get the current global render scale
+ * @returns {number}
+ */
+export function getGlobalRenderScale() {
+    return globalRenderScale;
+}
+
+/**
+ * Set the global antialiasing setting for all themes
+ * @param {boolean} enabled - Whether antialiasing is enabled
+ */
+export function setGlobalAntialias(enabled) {
+    globalAntialiasEnabled = !!enabled;
+    console.log(`[BaseTheme] Global antialiasing set to: ${globalAntialiasEnabled}`);
+}
+
+/**
+ * Get the current global antialiasing setting
+ * @returns {boolean}
+ */
+export function getGlobalAntialias() {
+    return globalAntialiasEnabled;
+}
+
 /**
  * Abstract base class for all themes
  * Each theme should extend this class and implement its methods
@@ -292,6 +332,44 @@ export class BaseTheme {
     }
 
     /**
+     * Get the effective pixel ratio for Three.js rendering
+     * Applies the global render scale to reduce GPU load on high-DPI displays
+     * @param {number} maxRatio - Maximum pixel ratio cap (default 2)
+     * @returns {number} Effective pixel ratio for setPixelRatio()
+     */
+    static getEffectivePixelRatio(maxRatio = 2) {
+        const baseRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+        const cappedRatio = Math.min(baseRatio, maxRatio);
+        const effectiveRatio = cappedRatio * globalRenderScale;
+        return Math.round(effectiveRatio * 100) / 100; // Round to 2 decimal places
+    }
+
+    /**
+     * Instance method to get effective pixel ratio
+     * @param {number} maxRatio - Maximum pixel ratio cap (default 2)
+     * @returns {number} Effective pixel ratio
+     */
+    getEffectivePixelRatio(maxRatio = 2) {
+        return BaseTheme.getEffectivePixelRatio(maxRatio);
+    }
+
+    /**
+     * Get the global antialiasing setting
+     * @returns {boolean} Whether antialiasing is enabled
+     */
+    static getAntialiasEnabled() {
+        return globalAntialiasEnabled;
+    }
+
+    /**
+     * Instance method to get antialiasing setting
+     * @returns {boolean} Whether antialiasing is enabled
+     */
+    getAntialiasEnabled() {
+        return BaseTheme.getAntialiasEnabled();
+    }
+
+    /**
      * Get custom tetromino visual configuration for this theme
      * Themes can override this to provide theme-specific tetromino styles
      *
@@ -308,5 +386,48 @@ export class BaseTheme {
      */
     getTetrominoConfig() {
         return null; // Default: no custom styling
+    }
+
+    /**
+     * Check if the theme should render the current frame
+     * Used for background tab throttling
+     * @returns {boolean} True if frame should be rendered
+     */
+    shouldRenderFrame() {
+        // Check global pause flag
+        if (window.isRenderingPaused) {
+            return false;
+        }
+
+        // Check global reduced flag
+        if (window.isRenderingReduced) {
+            const now = performance.now();
+            const interval = window.reducedFrameInterval || 100; // 10 FPS default
+
+            // Initialize last frame time if not set
+            if (!this._lastReducedFrameTime) {
+                this._lastReducedFrameTime = 0;
+            }
+
+            if (now - this._lastReducedFrameTime >= interval) {
+                this._lastReducedFrameTime = now;
+                return true;
+            }
+            return false;
+        }
+
+        // Normal rendering
+        return true;
+    }
+
+    /**
+     * Pause theme animations (called when tab is hidden with 'pause' mode)
+     */
+    pause() {
+        console.log(`[BaseTheme] Pausing theme: ${this.name}`);
+        // Cancel all animation frames to stop GPU work
+        this.animationIds.forEach((id) => cancelAnimationFrame(id));
+        // Keep the IDs so we know we need to restart when resume is called
+        this._wasPaused = true;
     }
 }

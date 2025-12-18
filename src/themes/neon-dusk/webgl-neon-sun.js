@@ -1,3 +1,4 @@
+import { getGlobalAntialias } from '../base-theme.js';
 
 export default class WebGLNeonSun {
     constructor(canvas) {
@@ -10,14 +11,15 @@ export default class WebGLNeonSun {
     }
 
     init() {
+        const antialias = getGlobalAntialias();
         const gl = this.canvas.getContext('webgl2', {
             alpha: true,
             premultipliedAlpha: false,
-            antialias: true
+            antialias
         }) || this.canvas.getContext('webgl', {
             alpha: true,
             premultipliedAlpha: false,
-            antialias: true
+            antialias
         });
 
         if (!gl) return false;

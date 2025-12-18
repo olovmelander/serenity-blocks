@@ -503,9 +503,9 @@ export default class WinterTheme extends BaseTheme {
     initRenderer(container) {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setClearColor(0x020408, 1); // Darker base
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
         this.renderer.sortObjects = true;
         this.renderer.autoClear = true;

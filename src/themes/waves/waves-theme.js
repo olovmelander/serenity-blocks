@@ -487,12 +487,12 @@ export default class WavesTheme extends BaseTheme {
         const height = window.innerHeight;
 
         this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
+            antialias: this.getAntialiasEnabled(),
             alpha: false,
             powerPreference: 'high-performance',
         });
         this.renderer.setClearColor(0x001015, 1);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.15;

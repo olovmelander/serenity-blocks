@@ -652,9 +652,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setClearColor(0x150820, 1); // Deep Cyberpunk Purple-Black
-        this.renderer.setPixelRatio(1);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.0;

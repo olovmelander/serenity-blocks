@@ -97,10 +97,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Setup Renderer
         this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
+            antialias: this.getAntialiasEnabled(),
             alpha: true
         });
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.domElement.id = 'rainy-window-3d-canvas';
         this.renderer.domElement.style.position = 'fixed';

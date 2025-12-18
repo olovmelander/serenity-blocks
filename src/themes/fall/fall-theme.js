@@ -644,9 +644,9 @@ export default class FallTheme extends BaseTheme {
     initRenderer(container) {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setSize(w, h);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         container.innerHTML = '';
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);

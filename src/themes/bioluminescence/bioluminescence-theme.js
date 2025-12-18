@@ -987,9 +987,9 @@ export default class BioluminescenceTheme extends BaseTheme {
         const w = window.innerWidth;
         const h = window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setSize(w, h);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.0; // Reduced from 1.5 to prevent washout
         container.innerHTML = '';
