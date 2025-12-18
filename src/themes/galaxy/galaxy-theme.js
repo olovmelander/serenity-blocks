@@ -107,11 +107,11 @@ export default class GalaxyTheme extends BaseTheme {
         // -- Setup Renderer --
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
-            antialias: true,
+            antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance'
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         container.appendChild(this.renderer.domElement);
 
         // -- Create Main Group for Drifting --

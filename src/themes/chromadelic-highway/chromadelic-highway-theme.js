@@ -215,9 +215,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setClearColor(0x020008, 1); // Very dark purple
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio(1.5));
         this.renderer.setSize(width, height);
 
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';

@@ -163,12 +163,12 @@ export default class VerdantHillsTheme extends BaseTheme {
 
         // Create Three.js renderer
         this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
+            antialias: this.getAntialiasEnabled(),
             alpha: false,
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setClearColor(0x87ceeb); // Sky blue fallback
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 

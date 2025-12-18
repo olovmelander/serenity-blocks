@@ -59,6 +59,7 @@ import { eventBus, EVENTS } from './events/event-bus.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
 import { FrameRateController } from './core/frame-rate-controller.js';
+import { setGlobalRenderScale, setGlobalAntialias } from './themes/base-theme.js';
 
 // UI imports
 import {
@@ -239,6 +240,12 @@ class SerenityBlocks {
             fps: 0,
             rafId: null,
         };
+
+        // Background Tab Throttling
+        this.isTabVisible = true;
+        this.backgroundTabBehavior = 'reduce'; // 'pause' | 'reduce' | 'continue'
+        this.reducedFrameInterval = 100; // 10 FPS when reduced (1000ms / 10)
+        this.lastReducedFrameTime = 0;
     }
 
     /**
@@ -298,6 +305,9 @@ class SerenityBlocks {
             // 14. Initialize enhanced breathing indicator (for Serenity Mode)
             window.breathingIndicator = initEnhancedBreathingIndicator();
 
+            // 15. Setup background tab throttling for performance
+            this.setupVisibilityThrottling();
+
             this.isInitialized = true;
             console.log('✅ Serenity Blocks initialized successfully!');
 
@@ -351,6 +361,152 @@ class SerenityBlocks {
         } catch (error) {
             console.error('[FrameRate] Failed to apply frame settings:', error);
         }
+    }
+
+    /**
+     * Setup visibility change detection for background tab throttling
+     */
+    setupVisibilityThrottling() {
+        // Load behavior from settings
+        const settings = this.settingsManager.get();
+        this.backgroundTabBehavior = settings.backgroundTabBehavior || 'reduce';
+
+        // Setup visibility change listener
+        const handleVisibilityChange = () => {
+            this.isTabVisible = !document.hidden;
+            this.handleVisibilityChange(this.isTabVisible);
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Add to cleanup
+        this.cleanupHandlers.push(() => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        });
+
+        console.log('[Visibility] Background tab throttling initialized:', this.backgroundTabBehavior);
+    }
+
+    /**
+     * Update background tab behavior setting
+     * @param {string} behavior - 'pause' | 'reduce' | 'continue'
+     */
+    updateBackgroundTabBehavior(behavior) {
+        this.backgroundTabBehavior = behavior;
+        console.log('[Visibility] Background tab behavior updated to:', behavior);
+
+        // If tab is currently hidden, apply the new behavior immediately
+        if (!this.isTabVisible) {
+            this.handleVisibilityChange(false);
+        }
+    }
+
+    /**
+     * Handle tab visibility change
+     * @param {boolean} isVisible - Whether tab is visible
+     */
+    handleVisibilityChange(isVisible) {
+        console.log(`[Visibility] Tab ${isVisible ? 'visible' : 'hidden'}, behavior: ${this.backgroundTabBehavior}`);
+
+        if (isVisible) {
+            // Tab became visible - resume full rendering
+            this.resumeFullRendering();
+        } else {
+            // Tab became hidden - apply throttling based on behavior
+            switch (this.backgroundTabBehavior) {
+                case 'pause':
+                    this.pauseAllRendering();
+                    break;
+                case 'reduce':
+                    this.reduceRenderingFrameRate();
+                    break;
+                case 'continue':
+                default:
+                    // Do nothing - continue as normal
+                    break;
+            }
+        }
+
+        // Emit event for other systems to respond
+        window.dispatchEvent(new CustomEvent('tabVisibilityChanged', {
+            detail: { isVisible, behavior: this.backgroundTabBehavior },
+        }));
+    }
+
+    /**
+     * Pause all rendering when tab is hidden (maximum battery savings)
+     */
+    pauseAllRendering() {
+        console.log('[Visibility] Pausing all rendering');
+
+        // Pause theme animations
+        if (this.themeManager?.currentTheme?.pause) {
+            this.themeManager.currentTheme.pause();
+        }
+
+        // Pause any active game loops
+        const currentMode = this.gameModeManager?.getCurrentMode();
+        if (currentMode?.pauseRendering) {
+            currentMode.pauseRendering();
+        }
+
+        // Set a flag that will be checked by animation loops
+        window.isRenderingPaused = true;
+    }
+
+    /**
+     * Reduce rendering to 10 FPS when tab is hidden (balanced approach)
+     */
+    reduceRenderingFrameRate() {
+        console.log('[Visibility] Reducing rendering to 10 FPS');
+
+        // Set a flag that animation loops can check
+        window.isRenderingReduced = true;
+        window.reducedFrameInterval = this.reducedFrameInterval;
+        window.isRenderingPaused = false;
+    }
+
+    /**
+     * Resume full rendering when tab becomes visible
+     */
+    resumeFullRendering() {
+        console.log('[Visibility] Resuming full rendering');
+
+        // Clear throttling flags
+        window.isRenderingPaused = false;
+        window.isRenderingReduced = false;
+
+        // Resume theme animations
+        if (this.themeManager?.currentTheme?.resume) {
+            this.themeManager.currentTheme.resume();
+        }
+
+        // Resume any paused game loops
+        const currentMode = this.gameModeManager?.getCurrentMode();
+        if (currentMode?.resumeRendering) {
+            currentMode.resumeRendering();
+        }
+    }
+
+    /**
+     * Check if current frame should be rendered (for use in animation loops)
+     * @returns {boolean} True if frame should be rendered
+     */
+    shouldRenderFrame() {
+        // Always render if tab is visible
+        if (this.isTabVisible) return true;
+
+        // Check behavior
+        if (this.backgroundTabBehavior === 'continue') return true;
+        if (this.backgroundTabBehavior === 'pause') return false;
+
+        // For 'reduce' mode, check if enough time has passed
+        const now = performance.now();
+        if (now - this.lastReducedFrameTime >= this.reducedFrameInterval) {
+            this.lastReducedFrameTime = now;
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -627,8 +783,20 @@ class SerenityBlocks {
         console.log('[Display] Applying display settings:', settings);
 
         const {
-            displayMode, resolution, customResolution, showFPSCounter,
+            displayMode, resolution, customResolution, showFPSCounter, renderScale, enableAntialiasing,
         } = settings;
+
+        // Apply render scale for Three.js themes (affects GPU load significantly)
+        if (renderScale !== undefined) {
+            setGlobalRenderScale(renderScale);
+            console.log(`[Display] Render scale set to: ${renderScale} (effective DPR: ${this.displayManager.getEffectivePixelRatio(renderScale)})`);
+        }
+
+        // Apply antialiasing setting for Three.js themes
+        if (enableAntialiasing !== undefined) {
+            setGlobalAntialias(enableAntialiasing);
+            console.log(`[Display] Antialiasing set to: ${enableAntialiasing}`);
+        }
 
         try {
             // Parse resolution
@@ -1261,6 +1429,7 @@ class SerenityBlocks {
             highScoreManager: this.highScoreManager,
             modalManager: this.modalManager,
             gamepadController: this.gamepadController,
+            frameRateController: this.frameRateController,
             BoardSceneClass: this.BoardSceneClass || null,
             MultiplayerBoardSceneClass: this.MultiplayerBoardSceneClass || null,
             getMultiplayerPhysicsCallbacks: (playerNum) => this.getMultiplayerPhysicsCallbacks(playerNum),
@@ -1672,6 +1841,11 @@ class SerenityBlocks {
             onFrameRateSettingsApply: async (settings) => {
                 console.log('[Settings] Applying frame rate settings:', settings);
                 await this.applyFrameRateSettings(settings);
+            },
+            onBackgroundTabBehaviorChange: (behavior) => {
+                console.log('[Settings] Background tab behavior changed to:', behavior);
+                // Update the visibility manager with new behavior
+                this.updateBackgroundTabBehavior(behavior);
             },
         });
 

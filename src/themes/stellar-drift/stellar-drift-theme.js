@@ -200,9 +200,9 @@ export default class StellarDriftTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
         this.renderer.setClearColor(0x000000, 1);
-        this.renderer.setPixelRatio(1);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
         this.renderer.sortObjects = true;
         this.renderer.autoClear = false;

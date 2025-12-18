@@ -34,6 +34,7 @@ const DEFAULT_CONFIG = {
     displayMode: 'windowed', // 'windowed' | 'fullscreen' | 'borderless'
     resolution: 'auto', // 'auto' | '1280x720' | '1920x1080' | etc.
     customResolution: null, // { width: number, height: number } or null
+    renderScale: 1.0, // 0.5 | 0.75 | 1.0 - scales render resolution for performance
     vsyncEnabled: true,
     targetFrameRate: 60, // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
     effectQuality: 'High', // 'Minimal' | 'Low' | 'Medium' | 'High' | 'Ultra' | 'Extreme' | 'Custom'
@@ -45,6 +46,8 @@ const DEFAULT_CONFIG = {
     particleQuality: 'high', // 'low' | 'medium' | 'high' | 'ultra'
     textureQuality: 'high', // 'low' | 'medium' | 'high' | 'ultra'
     showFPSCounter: false,
+    // Background Tab Behavior - throttle rendering when tab is hidden
+    backgroundTabBehavior: 'reduce', // 'pause' | 'reduce' | 'continue'
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -1031,6 +1034,25 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
+    // Anti-aliasing toggle
+    const antialiasToggle = document.getElementById('antialiasing-toggle');
+    if (antialiasToggle) {
+        antialiasToggle.value = String(settings.enableAntialiasing ?? true);
+
+        antialiasToggle.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ enableAntialiasing: enabled });
+            settingsManager.save();
+
+            console.log(`[Settings] Anti-aliasing ${enabled ? 'enabled' : 'disabled'}`);
+
+            // Apply immediately - affects newly created theme renderers
+            if (callbacks.onDisplaySettingsApply) {
+                callbacks.onDisplaySettingsApply(settingsManager.get());
+            }
+        });
+    }
+
     // FPS counter toggle
     const showFPSCounter = document.getElementById('show-fps-counter');
     if (showFPSCounter) {
@@ -1046,6 +1068,48 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             // Apply immediately
             if (callbacks.onDisplaySettingsApply) {
                 callbacks.onDisplaySettingsApply(settingsManager.get());
+            }
+        });
+    }
+
+    // Render scale slider (for performance on high-DPI displays)
+    const renderScaleSlider = document.getElementById('render-scale');
+    const renderScaleValue = document.getElementById('render-scale-value');
+    if (renderScaleSlider && renderScaleValue) {
+        const currentScale = settings.renderScale ?? 1.0;
+        renderScaleSlider.value = Math.round(currentScale * 100);
+        renderScaleValue.textContent = `${Math.round(currentScale * 100)}%`;
+
+        renderScaleSlider.addEventListener('input', (e) => {
+            const scale = parseInt(e.target.value) / 100;
+            settingsManager.update({ renderScale: scale });
+            renderScaleValue.textContent = `${e.target.value}%`;
+            settingsManager.save();
+
+            console.log(`[Settings] Render scale changed to: ${scale} (${e.target.value}%)`);
+
+            // Apply immediately - will affect newly created theme renderers
+            if (callbacks.onDisplaySettingsApply) {
+                callbacks.onDisplaySettingsApply(settingsManager.get());
+            }
+        });
+    }
+
+    // Background Tab Behavior (throttling when tab is hidden)
+    const backgroundTabBehaviorSelect = document.getElementById('background-tab-behavior');
+    if (backgroundTabBehaviorSelect) {
+        backgroundTabBehaviorSelect.value = settings.backgroundTabBehavior || 'reduce';
+
+        backgroundTabBehaviorSelect.addEventListener('change', (e) => {
+            const behavior = e.target.value;
+            settingsManager.update({ backgroundTabBehavior: behavior });
+            settingsManager.save();
+
+            console.log(`[Settings] Background tab behavior changed to: ${behavior}`);
+
+            // Apply immediately
+            if (callbacks.onBackgroundTabBehaviorChange) {
+                callbacks.onBackgroundTabBehaviorChange(behavior);
             }
         });
     }
