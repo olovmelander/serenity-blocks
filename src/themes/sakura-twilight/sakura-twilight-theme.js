@@ -16,6 +16,7 @@ import { BaseTheme } from '../base-theme.js';
 import modelUrl from '/src/themes/sakura-twilight/assets/landscape-glb.glb?url';
 import foxModelUrl from '/src/themes/sakura-twilight/assets/Fox.glb?url';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
 
 
 
@@ -2996,5 +2997,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, () => this.onPieceLock()),
             eventBus.on(EVENTS.COMBO, () => this.onCombo())
         );
+    }
+
+    getTetrominoConfig() {
+        return SAKURA_TWILIGHT_TETROMINOS;
     }
 }

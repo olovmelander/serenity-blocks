@@ -1,47 +1,48 @@
 /**
  * @fileoverview Sakura Twilight Tetromino Configuration
- * Sunset-inspired colors with warm pinks, oranges, and purples
+ * Mystical twilight palette: soft sakura pinks, deep purples,
+ * cool moonlight blues, and warm lantern amber accents
  */
 
 export const SAKURA_TWILIGHT_TETROMINOS = {
     version: 1,
     colors: {
-        I: '#FF85C1', // Soft sakura pink
-        O: '#FFB347', // Warm sunset orange
-        T: '#DA70D6', // Twilight orchid
-        S: '#FFA6C9', // Cherry blossom pink
-        Z: '#FF6B9D', // Deep pink
-        J: '#C77DFF', // Lavender twilight
-        L: '#FF9A8B', // Peach sunset
-        GARBAGE: '#8B6B8B', // Muted purple-gray
+        I: '#A8C8E8', // Moonlight blue - cool ethereal glow
+        O: '#FFCF8B', // Lantern amber - warm floating light
+        T: '#7B5B9A', // Deep twilight purple - matches fog
+        S: '#FFB7C5', // Soft sakura pink - cherry blossom lit
+        Z: '#DB7093', // Rose pink - sakura shadow tone
+        J: '#9B7BB8', // Lavender mist - evening sky
+        L: '#E8B4C8', // Pale cherry blossom - delicate pink
+        GARBAGE: '#4A3B5C', // Muted twilight - dark purple-gray
     },
     renderMode: 'glow',
     effects: {
-        glowRadius: 18,
-        glowIntensity: 1.0,
+        glowRadius: 16,
+        glowIntensity: 0.85,
         glowColor: 'auto',
         outline: true,
-        outlineWidth: 2,
-        outlineColor: '#FFF5F7',
+        outlineWidth: 1.5,
+        outlineColor: '#FFF0F5', // Lavender blush - soft highlight
         pulse: true,
-        pulseSpeed: 0.04,
-        pulseAmplitude: 0.35,
+        pulseSpeed: 0.03,
+        pulseAmplitude: 0.25,
         shimmer: true,
-        shimmerSpeed: 0.07,
-        shimmerIntensity: 0.28,
+        shimmerSpeed: 0.05,
+        shimmerIntensity: 0.22,
         trails: true,
-        trailLength: 0.3,
-        trailOpacity: 0.4,
+        trailLength: 0.35,
+        trailOpacity: 0.35,
     },
     rendererOverrides: {
         canvas: {
-            glowRadius: 16,
-            glowIntensity: 0.9,
+            glowRadius: 14,
+            glowIntensity: 0.75,
         },
         phaser: {
-            glowRadius: 20,
-            glowIntensity: 1.1,
-            shimmerIntensity: 0.32,
+            glowRadius: 18,
+            glowIntensity: 0.9,
+            shimmerIntensity: 0.26,
         },
     },
 };

@@ -33,6 +33,8 @@ import {
     particleFragmentShader,
     starVertexShader,
     starFragmentShader,
+    bloodSparkVertexShader,
+    bloodSparkFragmentShader,
 } from './blood-moon-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,6 +45,7 @@ const QUALITY_PRESETS = {
         starCount: 6000,
         nebulaCount: 25,
         ambientParticles: 400,
+        bloodSparks: 3000,
         bloomStrength: 0.6,
         bloomRadius: 0.5,
         enablePostProcessing: true,
@@ -53,6 +56,7 @@ const QUALITY_PRESETS = {
         starCount: 5000,
         nebulaCount: 20,
         ambientParticles: 300,
+        bloodSparks: 2500,
         bloomStrength: 0.55,
         bloomRadius: 0.45,
         enablePostProcessing: true,
@@ -63,6 +67,7 @@ const QUALITY_PRESETS = {
         starCount: 4000,
         nebulaCount: 15,
         ambientParticles: 200,
+        bloodSparks: 2000,
         bloomStrength: 0.5,
         bloomRadius: 0.4,
         enablePostProcessing: true,
@@ -73,6 +78,7 @@ const QUALITY_PRESETS = {
         starCount: 2500,
         nebulaCount: 10,
         ambientParticles: 120,
+        bloodSparks: 1500,
         bloomStrength: 0.4,
         bloomRadius: 0.35,
         enablePostProcessing: true,
@@ -83,6 +89,7 @@ const QUALITY_PRESETS = {
         starCount: 1500,
         nebulaCount: 6,
         ambientParticles: 60,
+        bloodSparks: 1000,
         bloomStrength: 0.3,
         bloomRadius: 0.3,
         enablePostProcessing: false,
@@ -93,6 +100,7 @@ const QUALITY_PRESETS = {
         starCount: 800,
         nebulaCount: 4,
         ambientParticles: 30,
+        bloodSparks: 600,
         bloomStrength: 0.25,
         bloomRadius: 0.25,
         enablePostProcessing: false,
@@ -155,6 +163,8 @@ export default class BloodMoonTheme extends BaseTheme {
         this.moonGlowLayers = [];
         this.bloodWaves = [];
         this.soulOrbs = [];
+        this.bloodSparks = []; // Array of particle systems for overlapping bursts
+        this.bloodSparkIndex = 0; // Cycle through available systems
 
         // Effect states
         this.moonPulseIntensity = 0;
@@ -214,6 +224,7 @@ export default class BloodMoonTheme extends BaseTheme {
         this.createNebulaClouds();
         this.createMoon();
         this.createAmbientParticles();
+        this.createBloodSparks();
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -535,6 +546,89 @@ export default class BloodMoonTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Blood Sparks - Explosive burst from moon surface outward
+    // Creates a pool of particle systems to allow overlapping bursts
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBloodSparks() {
+        const poolSize = 8; // Number of overlapping bursts allowed
+        const countPerSystem = Math.floor(this.qualityPreset.bloodSparks / 2); // Split particles across pool
+
+        const moonRadius = 180; // Start at moon surface
+
+        // Color palette for blood sparks - deep reds
+        const colorOptions = [
+            new THREE.Color(0xff2020), // Bright pure red
+            new THREE.Color(0xcc1a1a), // Deep crimson red
+            new THREE.Color(0xff3030), // Vivid red
+            new THREE.Color(0xdd2222), // Blood red
+        ];
+
+        for (let p = 0; p < poolSize; p++) {
+            const geometry = new THREE.BufferGeometry();
+
+            const thetas = new Float32Array(countPerSystem);
+            const phis = new Float32Array(countPerSystem);
+            const radii = new Float32Array(countPerSystem);
+            const randoms = new Float32Array(countPerSystem);
+            const colors = new Float32Array(countPerSystem * 3);
+            const positions = new Float32Array(countPerSystem * 3);
+
+            for (let i = 0; i < countPerSystem; i++) {
+                // Distribute particles evenly on moon surface
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                thetas[i] = theta;
+                phis[i] = phi;
+                radii[i] = moonRadius;
+                randoms[i] = Math.random();
+
+                // Color selection - weighted toward hot colors
+                const colorType = Math.random();
+                let c;
+                if (colorType > 0.6) c = colorOptions[0];
+                else if (colorType > 0.3) c = colorOptions[1];
+                else if (colorType > 0.1) c = colorOptions[2];
+                else c = colorOptions[3];
+
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+
+                positions[i * 3] = 0;
+                positions[i * 3 + 1] = 0;
+                positions[i * 3 + 2] = 0;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
+            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
+            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    uPulseTimer: { value: -100.0 },
+                },
+                vertexShader: bloodSparkVertexShader,
+                fragmentShader: bloodSparkFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const sparks = new THREE.Points(geometry, material);
+            this.moonGroup.add(sparks);
+            this.bloodSparks.push(sparks);
+        }
+
+        console.log('[BloodMoon] Blood sparks pool created with', poolSize, 'systems,', countPerSystem, 'particles each');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Post Processing
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -593,6 +687,24 @@ export default class BloodMoonTheme extends BaseTheme {
 
         if (this.ambientParticles && this.ambientParticles.material.uniforms) {
             this.ambientParticles.material.uniforms.uTime.value = this.time;
+        }
+
+        // Update all blood spark systems in the pool
+        for (const sparks of this.bloodSparks) {
+            if (sparks && sparks.material.uniforms) {
+                sparks.material.uniforms.time.value = this.time;
+
+                // Update pulse wave
+                if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
+                    // Move wave outwards at 15 units/sec for punchy explosion
+                    sparks.material.uniforms.uPulseTimer.value += delta * 15.0;
+
+                    // Turn off when wave completes (maxLife 70 + stagger 3 + buffer)
+                    if (sparks.material.uniforms.uPulseTimer.value > 85.0) {
+                        sparks.material.uniforms.uPulseTimer.value = -100.0;
+                    }
+                }
+            }
         }
 
         // Slow drift moon across scene
@@ -815,6 +927,16 @@ export default class BloodMoonTheme extends BaseTheme {
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.moonPulseIntensity = Math.min(0.6 + comboCount * 0.2, 1.5);
 
+        // Trigger blood spark burst on combos - cycle through pool for overlapping
+        if (comboCount >= 2 && this.bloodSparks.length > 0) {
+            const sparks = this.bloodSparks[this.bloodSparkIndex];
+            if (sparks && sparks.material.uniforms) {
+                sparks.material.uniforms.uPulseTimer.value = 0.0;
+            }
+            // Cycle to next system in pool
+            this.bloodSparkIndex = (this.bloodSparkIndex + 1) % this.bloodSparks.length;
+        }
+
         // Create blood waves
         const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
         for (let i = 0; i < waveCount; i++) {
@@ -892,6 +1014,8 @@ export default class BloodMoonTheme extends BaseTheme {
         this.bloodWaves = [];
         this.soulOrbs = [];
         this.ambientParticles = null;
+        this.bloodSparks = [];
+        this.bloodSparkIndex = 0;
 
         super.stop();
     }
