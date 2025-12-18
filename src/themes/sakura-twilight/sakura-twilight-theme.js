@@ -115,8 +115,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.enabled = false; // PERF: Disabled for +5-15 FPS
+        // this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);
 
         // 2. Setup Scene
@@ -292,7 +292,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             this.createGroundLayer();
 
             // --- InstancedMesh Creation ---
-            const count = 100; // Reduced from 200 for performance (fog hides distant areas)
+            const count = 45; // PERF: Reduced from 100 - strategic placement instead of scatter
             const matrix = new THREE.Matrix4();
             const position = new THREE.Vector3();
             const rotation = new THREE.Euler();
@@ -369,68 +369,90 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // Store tree data for procedural lantern placement
             this.treeData = [];
 
-            // Hero Tree - placed at origin (adjusted for terrain)
-            const heroY = this.getTerrainHeight(0, -5) + treeHeightOffset;
-            const heroPos = new THREE.Vector3(0, heroY, -5);
-            setInstance(0, heroPos, 0, 1.3);
-            this.treeData.push({ pos: heroPos.clone(), scale: 1.3 });
-
-            // Foreground trees - framing the view on left and right
+            // --- STRATEGIC TREE PLACEMENT ---
             // Camera is at (20, 4, 30), looking at (0, 4, 0)
-            const foregroundTrees = [
-                // Very close to camera - framing edges
-                { x: 32, z: 42, scale: 1.2 },  // Right edge, very close
-                { x: 6, z: 40, scale: 1.1 },   // Left edge, very close
-                { x: 28, z: 36, scale: 0.95 }, // Right mid-close
-                { x: 12, z: 38, scale: 1.0 },  // Left mid-close
-                // Mid-distance framing
-                { x: 30, z: 32, scale: 1.1 },  // Right side
-                { x: 8, z: 35, scale: 0.9 },   // Left side
-                { x: 35, z: 25, scale: 1.0 },  // Right side, mid
-                { x: 5, z: 28, scale: 1.2 },   // Left side, mid
-                // Center-front trees to fill the gap
-                { x: 18, z: 22, scale: 0.95 }, // Center-left 
-                { x: 12, z: 18, scale: 1.0 },  // Center 
-                { x: 6, z: 12, scale: 0.9 },   // Left-center front
-                { x: -5, z: 10, scale: 1.1 },  // Far left front
-                { x: 25, z: 18, scale: 0.85 }, // Center-right
+            // All trees are manually placed to fill the view optimally
+
+            const strategicTrees = [
+                // === HERO TREE (center focal point) ===
+                { x: 0, z: -5, scale: 1.3 },
+
+                // === FOREGROUND FRAMING (very close to camera) ===
+                // Right edge
+                { x: 32, z: 42, scale: 1.2 },
+                { x: 35, z: 38, scale: 1.0 },
+                // Left edge
+                { x: 6, z: 40, scale: 1.1 },
+                { x: 3, z: 36, scale: 0.95 },
+
+                // === MID-FOREGROUND (framing the view) ===
+                // Right side - pushed back to avoid camera clip
+                { x: 30, z: 29, scale: 1.0 }, // Closer
+                { x: 32, z: 26, scale: 0.9 }, // Closer
+                // Left side - pushed back
+                { x: 10, z: 29, scale: 1.1 }, // Closer
+                { x: 6, z: 26, scale: 0.95 }, // Closer
+                // Center-right (Clearing the camera view at 20,30)
+                { x: 26, z: 24, scale: 0.85 }, // Closer
+                // Center-left
+                { x: 14, z: 24, scale: 0.9 }, // Closer
+
+                // === MID-GROUND (filling the center) ===
+                // Center area - shifted closer (Z=14-18 -> Z=20-23)
+                { x: 15, z: 22, scale: 1.0 },
+                { x: 22, z: 21, scale: 0.95 },
+                { x: 10, z: 19, scale: 0.9 },
+                { x: 28, z: 19, scale: 0.85 },
+                // Behind hero tree
+                { x: -5, z: 10, scale: 1.1 },
+                { x: 8, z: 8, scale: 1.0 },
+                { x: -10, z: 15, scale: 0.95 },
+
+                // === BACKGROUND (depth, partially hidden by fog) ===
+                // Left background
+                { x: -15, z: 0, scale: 1.0 },
+                { x: -8, z: -5, scale: 0.9 },
+                { x: -20, z: 10, scale: 0.85 },
+                // Center background
+                { x: 5, z: -10, scale: 1.1 },
+                { x: 15, z: -5, scale: 0.95 },
+                { x: -3, z: -15, scale: 0.9 },
+                // Right background
+                { x: 25, z: 0, scale: 0.9 },
+                { x: 30, z: 10, scale: 0.85 },
+                { x: 35, z: 15, scale: 0.8 },
+
+                // === FAR SIDES (edge depth) ===
+                // Far left
+                { x: -25, z: 20, scale: 0.9 },
+                { x: -18, z: 25, scale: 0.85 },
+                // Far right
+                { x: 40, z: 25, scale: 0.9 },
+                { x: 38, z: 18, scale: 0.85 },
+
+                // === FILL GAPS (identified empty spots) ===
+                { x: -12, z: 22, scale: 0.95 },  // Left-center gap
+                { x: 0, z: 16, scale: 0.9 },     // Center gap
+                { x: 20, z: 12, scale: 0.85 },    // Right-center gap
+                { x: -5, z: 30, scale: 1.0 },    // Far left foreground
+                { x: 28, z: 28, scale: 0.9 },    // Right mid
+                { x: 12, z: 0, scale: 1.0 },     // Center-back
             ];
 
-            let placedCount = 1; // Already placed hero tree
-            foregroundTrees.forEach(tree => {
-                const y = this.getTerrainHeight(tree.x, tree.z) + treeHeightOffset;
-                const pos = new THREE.Vector3(tree.x, y, tree.z);
+            let placedCount = 0;
+            strategicTrees.forEach(tree => {
+                // Add slight random jitter for natural look (±1.5 units)
+                const jitterX = (Math.random() - 0.5) * 3;
+                const jitterZ = (Math.random() - 0.5) * 3;
+                const x = tree.x + jitterX;
+                const z = tree.z + jitterZ;
+
+                const y = this.getTerrainHeight(x, z) + treeHeightOffset;
+                const pos = new THREE.Vector3(x, y, z);
                 setInstance(placedCount, pos, Math.random() * Math.PI * 2, tree.scale);
                 this.treeData.push({ pos: pos.clone(), scale: tree.scale });
                 placedCount++;
             });
-
-            // Random Trees - avoid spawning near camera (20, 4, 30)
-            const cameraPos = new THREE.Vector2(20, 30); // Camera XZ position
-            const cameraExclusionRadius = 8; // Reduced to allow more trees
-            let attempts = 0;
-            const maxAttempts = count * 3;
-
-            while (placedCount < count && attempts < maxAttempts) {
-                attempts++;
-                const angle = Math.random() * Math.PI * 2;
-                const radius = 15 + Math.random() * 55; // Min 15, max 70 (closer trees)
-                const x = Math.cos(angle) * radius;
-                const z = Math.sin(angle) * radius;
-
-                // Check distance from camera
-                const distFromCamera = Math.sqrt((x - cameraPos.x) ** 2 + (z - cameraPos.y) ** 2);
-
-                if (distFromCamera > cameraExclusionRadius) {
-                    const s = 0.7 + Math.random() * 0.7;
-                    const terrainY = this.getTerrainHeight(x, z);
-                    const treeY = terrainY + treeHeightOffset; // Raised above grass
-                    const pos = new THREE.Vector3(x, treeY, z);
-                    setInstance(placedCount, pos, Math.random() * Math.PI * 2, s);
-                    this.treeData.push({ pos: pos.clone(), scale: s });
-                    placedCount++;
-                }
-            }
 
             // Update instance counts if we placed fewer trees
             trunkMesh.count = placedCount;
@@ -710,9 +732,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // --- INSTANCING ---
         // 1. Calculate total instances needed
-        const baseGrassCount = 500;
+        const baseGrassCount = 300; // PERF: Reduced from 500 for +3-8 FPS
         let treeGrassCount = 0;
-        const clumpsPerTree = 5;
+        const clumpsPerTree = 3; // PERF: Reduced from 5
 
         let treePositions = [];
         if (this.trunkMesh) {
@@ -1222,62 +1244,210 @@ export default class SakuraTwilightTheme extends BaseTheme {
         };
     }
 
+    /**
+     * Create procedural sakura petal texture
+     * Renders a soft, organic petal shape with gradient coloring
+     */
+    createPetalTexture() {
+        const canvas = document.createElement('canvas');
+        const size = 64;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, size, size);
+
+        const cx = size / 2;
+        const cy = size / 2;
+
+        // Outer glow (very soft pink)
+        const glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 0.5);
+        glowGrad.addColorStop(0, 'rgba(255, 200, 210, 0.8)');
+        glowGrad.addColorStop(0.5, 'rgba(255, 180, 200, 0.4)');
+        glowGrad.addColorStop(1, 'rgba(255, 150, 180, 0)');
+        ctx.fillStyle = glowGrad;
+        ctx.fillRect(0, 0, size, size);
+
+        // Main petal body - teardrop shape
+        ctx.save();
+        ctx.translate(cx, cy);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 0.35);
+        ctx.bezierCurveTo(size * 0.25, -size * 0.15, size * 0.3, size * 0.15, 0, size * 0.35);
+        ctx.bezierCurveTo(-size * 0.3, size * 0.15, -size * 0.25, -size * 0.15, 0, -size * 0.35);
+        ctx.closePath();
+
+        const petalGrad = ctx.createLinearGradient(0, -size * 0.35, 0, size * 0.35);
+        petalGrad.addColorStop(0, 'rgba(255, 245, 250, 0.95)');
+        petalGrad.addColorStop(0.3, 'rgba(255, 200, 220, 0.9)');
+        petalGrad.addColorStop(0.7, 'rgba(255, 170, 195, 0.85)');
+        petalGrad.addColorStop(1, 'rgba(240, 150, 175, 0.8)');
+        ctx.fillStyle = petalGrad;
+        ctx.fill();
+
+        // Subtle center vein
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 0.3);
+        ctx.lineTo(0, size * 0.25);
+        ctx.strokeStyle = 'rgba(220, 140, 160, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.restore();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
     createPetals() {
         if (!this.scene) return;
-        const count = 500;
-        const geometry = new THREE.PlaneGeometry(0.15, 0.15);
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xffb7c5, side: THREE.DoubleSide, transparent: true, opacity: 0.8
+
+        // PERFORMANCE: Points are MUCH faster than InstancedMesh
+        const count = 400;
+        const petalTexture = this.createPetalTexture();
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const seeds = new Float32Array(count * 4);
+        const sizes = new Float32Array(count);
+        const alphas = new Float32Array(count);
+
+        // Camera at (20, 4, 30)
+        const camX = 20, camZ = 30;
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            const i4 = i * 4;
+
+            // Distribute petals with bias toward camera view
+            const inFront = Math.random() < 0.7;
+
+            if (inFront) {
+                positions[i3] = camX + (Math.random() - 0.5) * 60;
+                // KEY FIX: Start petals ABOVE visible area (35-50) so they fall INTO view
+                positions[i3 + 1] = 35 + Math.random() * 15;
+                positions[i3 + 2] = camZ + (Math.random() - 0.3) * 40;
+            } else {
+                positions[i3] = (Math.random() - 0.5) * 100;
+                positions[i3 + 1] = 35 + Math.random() * 15;
+                positions[i3 + 2] = (Math.random() - 0.5) * 100;
+            }
+
+            // Random seeds for unique animation
+            seeds[i4] = Math.random() * 100;           // Phase offset
+            seeds[i4 + 1] = 0.3 + Math.random() * 0.7; // Fall speed (0.3-1.0)
+            seeds[i4 + 2] = Math.random() * Math.PI * 2; // Spiral phase
+            seeds[i4 + 3] = 0.5 + Math.random() * 1.0;   // Spiral radius
+
+            sizes[i] = 3 + Math.random() * 5; // Small petals (3-8)
+            alphas[i] = 0.7 + Math.random() * 0.3;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 4));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPetalTexture: { value: petalTexture },
+                uFogColor: { value: this.config.fogColor },
+            },
+            vertexShader: `
+                uniform float uTime;
+                
+                attribute vec4 aSeed;
+                attribute float aSize;
+                attribute float aAlpha;
+                
+                varying float vAlpha;
+                varying float vRotation;
+                
+                void main() {
+                    float phase = aSeed.x;
+                    float fallSpeed = aSeed.y;
+                    float spiralPhase = aSeed.z;
+                    float spiralRadius = aSeed.w;
+                    
+                    vec3 pos = position;
+                    float t = uTime * fallSpeed;
+                    
+                    // Gentle downward fall
+                    float fallY = t * 2.0;
+                    
+                    // Spiral/wobble in XZ plane
+                    float spiralT = t * 1.5 + spiralPhase;
+                    float wobbleX = sin(spiralT) * spiralRadius;
+                    float wobbleZ = cos(spiralT * 0.7 + phase) * spiralRadius * 0.7;
+                    
+                    // Wind drift
+                    float windX = sin(uTime * 0.3 + phase * 0.1) * 3.0;
+                    float windZ = cos(uTime * 0.25 + phase * 0.15) * 2.0;
+                    
+                    pos.x += wobbleX + windX;
+                    pos.z += wobbleZ + windZ;
+                    
+                    // Wrap Y - domain from 50 (above screen) to -5 (below ground)
+                    float domainHeight = 55.0;
+                    float yOffset = mod(pos.y - fallY + 100.0, domainHeight) - 5.0;
+                    pos.y = yOffset;
+                    
+                    // Wrap X/Z
+                    pos.x = mod(pos.x + 60.0, 120.0) - 60.0;
+                    pos.z = mod(pos.z + 60.0, 120.0) - 60.0;
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    
+                    // Size attenuation
+                    float dist = -mvPosition.z;
+                    gl_PointSize = aSize * (80.0 / max(dist, 1.0));
+                    gl_PointSize = clamp(gl_PointSize, 2.0, 20.0);
+                    
+                    vRotation = t * 2.0 + phase;
+                    
+                    // Fog fade
+                    float fogFactor = smoothstep(15.0, 70.0, dist);
+                    vAlpha = aAlpha * (1.0 - fogFactor * 0.8);
+                    
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uPetalTexture;
+                
+                varying float vAlpha;
+                varying float vRotation;
+                
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float c = cos(vRotation);
+                    float s = sin(vRotation);
+                    vec2 rotatedUV = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c) + 0.5;
+                    
+                    vec4 texColor = texture2D(uPetalTexture, rotatedUV);
+                    if (texColor.a < 0.1) discard;
+                    
+                    gl_FragColor = vec4(texColor.rgb, texColor.a * vAlpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.NormalBlending,
         });
 
-        this.petals = new THREE.InstancedMesh(geometry, material, count);
-        this.petalData = [];
-
-        const dummy = new THREE.Object3D();
-        for (let i = 0; i < count; i++) {
-            dummy.position.set((Math.random() - 0.5) * 120, Math.random() * 30 + 5, (Math.random() - 0.5) * 120);
-            dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-            dummy.updateMatrix();
-            this.petals.setMatrixAt(i, dummy.matrix);
-
-            this.petalData.push({
-                velocity: new THREE.Vector3((Math.random() - 0.5) * 0.05, -(Math.random() * 0.05 + 0.02), (Math.random() - 0.5) * 0.05),
-                rotationSpeed: new THREE.Vector3(Math.random() * 0.02, Math.random() * 0.02, Math.random() * 0.02)
-            });
-        }
-        this.petals.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.petals = new THREE.Points(geometry, material);
+        this.petals.frustumCulled = false;
         this.scene.add(this.petals);
+
+        console.log(`[SakuraTheme] Created ${count} petals (optimized Points system)`);
     }
 
     updatePetals() {
-        if (!this.petals) return;
-        const dummy = new THREE.Object3D();
-        const matrix = new THREE.Matrix4();
-        const position = new THREE.Vector3();
-        const quaternion = new THREE.Quaternion();
-        const scale = new THREE.Vector3();
-
-        for (let i = 0; i < this.petals.count; i++) {
-            this.petals.getMatrixAt(i, matrix);
-            matrix.decompose(position, quaternion, scale);
-            position.add(this.petalData[i].velocity);
-
-            if (position.y < -2) {
-                position.y = 30;
-                position.x = (Math.random() - 0.5) * 120;
-                position.z = (Math.random() - 0.5) * 120;
-            }
-
-            dummy.position.copy(position);
-            dummy.quaternion.copy(quaternion);
-            dummy.scale.copy(scale);
-            dummy.rotateX(this.petalData[i].rotationSpeed.x);
-            dummy.rotateY(this.petalData[i].rotationSpeed.y);
-            dummy.rotateZ(this.petalData[i].rotationSpeed.z);
-            dummy.updateMatrix();
-            this.petals.setMatrixAt(i, dummy.matrix);
-        }
-        this.petals.instanceMatrix.needsUpdate = true;
+        if (!this.petals?.material?.uniforms) return;
+        this.petals.material.uniforms.uTime.value = this.clock.getElapsedTime();
     }
 
     createMoon() {
@@ -1511,8 +1681,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
     }
 
     createStarfield() {
-        const backgroundStarCount = 1200;
-        const activeStarCount = 150; // Stars that move and connect
+        const backgroundStarCount = 800; // PERF: Reduced from 1200
+        const activeStarCount = 80; // PERF: Reduced from 150 for +1-2 FPS
         const totalStars = backgroundStarCount + activeStarCount;
 
         const geometry = new THREE.BufferGeometry();
@@ -1727,6 +1897,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
     updateConstellations(deltaTime) {
         if (!this.activeStarData || !this.constellationLines) return;
 
+        // PERF: Throttle to every 5th frame (~12fps) for +1-3 FPS
+        this.constellationFrameCounter = (this.constellationFrameCounter || 0) + 1;
+        if (this.constellationFrameCounter % 5 !== 0) return;
+        const effectiveDelta = deltaTime * 5; // Compensate for skipped frames
+
         // 1. Move Active Stars
         const positions = this.starfield.geometry.attributes.position.array;
 
@@ -1745,10 +1920,10 @@ export default class SakuraTwilightTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             const star = this.activeStarData[i];
 
-            // Apply velocity
-            star.position.x += star.velocity.x * deltaTime * speedMult;
-            star.position.y += star.velocity.y * deltaTime * speedMult;
-            star.position.z += star.velocity.z * deltaTime * speedMult;
+            // Apply velocity (using effectiveDelta for throttled updates)
+            star.position.x += star.velocity.x * effectiveDelta * speedMult;
+            star.position.y += star.velocity.y * effectiveDelta * speedMult;
+            star.position.z += star.velocity.z * effectiveDelta * speedMult;
 
             // Wrap around boundaries
             if (star.position.x > boundX) star.position.x = -boundX;
@@ -1918,14 +2093,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 const offsetX = Math.cos(angle) * branchRadius;
                 const offsetZ = Math.sin(angle) * branchRadius;
 
-                // Height: Position lanterns within the canopy area (higher up)
-                // Tree canopies are around Y=3.0-5.0, lanterns hang from lower branches
-                // Base height: 2.5 to 3.5 (within canopy)
-                const baseHangY = 2.5 + Math.random() * 1.0;
+                // Height: Position lanterns BELOW the canopy so they're visible
+                // FIX: Raised slightly from 1.8 to 2.0 as requested
+                const baseHangY = (2.0 + Math.random() * 0.8) * treeScale;
 
-                // Boost height for lanterns closer to camera (so they're more visible)
-                const heightBoost = Math.max(0, 0.8 * (1 - distToCamera / 35)); // Reduced boost
-                const hangY = baseHangY + heightBoost;
+                // Removed distance boost as it caused floating artifacts
+                const hangY = baseHangY;
 
                 const posX = tree.pos.x + offsetX;
                 const posY = hangY;
