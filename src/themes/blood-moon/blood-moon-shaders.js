@@ -427,14 +427,114 @@ void main() {
     vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
     float dist = length(circCoord);
     if (dist > 1.0) discard;
-    
+
     // Soft glow falloff
     float alpha = (1.0 - dist * dist) * vAlpha;
-    
+
     // Add glow core
     float core = 1.0 - smoothstep(0.0, 0.3, dist);
     vec3 color = vColor + vec3(0.2) * core;
-    
+
     gl_FragColor = vec4(color, alpha);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Blood Spark Shader - Explosive burst from moon surface outward
+// ─────────────────────────────────────────────────────────────────────────────
+export const bloodSparkVertexShader = `
+uniform float time;
+uniform float uPulseTimer;
+
+attribute float aTheta;
+attribute float aPhi;
+attribute float aRadius;
+attribute float aRandom;
+attribute vec3 aColor;
+
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    // Initial position on moon surface (spherical coordinates)
+    vec3 initialPos;
+    initialPos.x = aRadius * sin(aPhi) * cos(aTheta);
+    initialPos.y = aRadius * sin(aPhi) * sin(aTheta);
+    initialPos.z = aRadius * cos(aPhi);
+
+    // Radial direction - outward from moon center
+    vec3 radialDir = normalize(initialPos);
+
+    // Stagger eruption timing based on random value
+    float triggerTime = aRandom * 3.0;
+    float age = uPulseTimer - triggerTime;
+
+    vec3 animatedPos = initialPos;
+    float alpha = 0.0;
+    float size = 0.0;
+
+    // Effect parameters
+    float maxLife = 70.0;
+
+    if (age > 0.0 && age < maxLife) {
+        // EXPLOSION! Burst outward from moon surface
+
+        // Add slight random spread to the radial direction
+        float spreadX = (aRandom - 0.5) * 0.3;
+        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.3;
+        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.3;
+        vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
+
+        // Strong outward velocity - explosive burst
+        float speed = 15.0 + aRandom * 8.0;
+        vec3 velocity = burstDir * speed;
+
+        // Apply velocity over time
+        animatedPos += velocity * age;
+
+        // Fade out over lifetime
+        alpha = 1.0 - (age / maxLife);
+        alpha = pow(alpha, 0.4);
+
+        // Large particles that shrink slightly
+        size = (1.0 - (age / maxLife) * 0.5) * 35.0;
+    }
+
+    vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    // Large point size for dramatic explosion
+    gl_PointSize = size * (300.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 3.0, 100.0);
+
+    vColor = aColor;
+    vAlpha = alpha;
+}
+`;
+
+export const bloodSparkFragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    if (vAlpha <= 0.01) discard;
+
+    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
+
+    // Bright hot center
+    float core = 1.0 - smoothstep(0.0, 0.25, dist);
+
+    // Soft outer glow - stays visible longer
+    float glow = 1.0 - smoothstep(0.0, 0.9, dist);
+
+    // Mix color with bright red-hot center
+    vec3 finalColor = mix(vColor, vec3(1.0, 0.3, 0.2), core * 0.6);
+
+    // Boost overall brightness
+    finalColor *= 1.2;
+
+    gl_FragColor = vec4(finalColor, vAlpha * glow);
 }
 `;
