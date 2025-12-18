@@ -361,12 +361,12 @@ export class DisplayManager {
 
     /**
      * Get the effective pixel ratio for rendering, applying render scale
-     * @param {number} renderScale - Scale factor (0.5 to 1.0)
+     * @param {number} renderScale - Scale factor (0.25 to 2.0, where > 1.0 is supersampling)
      * @returns {number} Effective pixel ratio
      */
     getEffectivePixelRatio(renderScale = 1.0) {
         const baseRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-        const clampedScale = Math.max(0.25, Math.min(1.0, renderScale));
+        const clampedScale = Math.max(0.25, Math.min(2.0, renderScale));
         const effectiveRatio = baseRatio * clampedScale;
         return Math.round(effectiveRatio * 100) / 100; // Round to 2 decimal places
     }

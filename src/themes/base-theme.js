@@ -11,10 +11,10 @@ let globalAntialiasEnabled = true;
 
 /**
  * Set the global render scale for all themes
- * @param {number} scale - Render scale (0.25 to 1.0)
+ * @param {number} scale - Render scale (0.25 to 2.0, where > 1.0 is supersampling)
  */
 export function setGlobalRenderScale(scale) {
-    globalRenderScale = Math.max(0.25, Math.min(1.0, scale));
+    globalRenderScale = Math.max(0.25, Math.min(2.0, scale));
     console.log(`[BaseTheme] Global render scale set to: ${globalRenderScale}`);
 }
 
