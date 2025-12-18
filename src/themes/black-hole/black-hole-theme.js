@@ -33,6 +33,7 @@ const QUALITY_PRESETS = {
         particleCount: 2000,
         nebulaCount: 25,
         diskSegments: 128,
+        burstSparkCount: 3000,
         bloomStrength: 0.6,
         bloomRadius: 0.8,
         enablePostProcessing: true,
@@ -42,6 +43,7 @@ const QUALITY_PRESETS = {
         particleCount: 1500,
         nebulaCount: 20,
         diskSegments: 96,
+        burstSparkCount: 2500,
         bloomStrength: 0.55,
         bloomRadius: 0.7,
         enablePostProcessing: true,
@@ -51,6 +53,7 @@ const QUALITY_PRESETS = {
         particleCount: 1000,
         nebulaCount: 15,
         diskSegments: 64,
+        burstSparkCount: 2000,
         bloomStrength: 0.5,
         bloomRadius: 0.6,
         enablePostProcessing: true,
@@ -60,6 +63,7 @@ const QUALITY_PRESETS = {
         particleCount: 600,
         nebulaCount: 10,
         diskSegments: 48,
+        burstSparkCount: 1500,
         bloomStrength: 0.4,
         bloomRadius: 0.5,
         enablePostProcessing: true,
@@ -69,6 +73,7 @@ const QUALITY_PRESETS = {
         particleCount: 300,
         nebulaCount: 6,
         diskSegments: 32,
+        burstSparkCount: 1000,
         bloomStrength: 0.3,
         bloomRadius: 0.4,
         enablePostProcessing: false,
@@ -78,6 +83,7 @@ const QUALITY_PRESETS = {
         particleCount: 150,
         nebulaCount: 4,
         diskSegments: 24,
+        burstSparkCount: 600,
         bloomStrength: 0.2,
         bloomRadius: 0.3,
         enablePostProcessing: false,
@@ -150,6 +156,96 @@ const ChromaticAberrationShader = {
         }
     `,
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event Horizon Burst Sparks Shader - Explosive particles from black hole
+// ─────────────────────────────────────────────────────────────────────────────
+const BurstSparkVertexShader = `
+    attribute float aTheta;
+    attribute float aPhi;
+    attribute float aRandom;
+    attribute vec3 aColor;
+
+    uniform float uTime;
+    uniform float uPulseTimer;
+    uniform vec2 uBlackHolePos;
+
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    void main() {
+        vColor = aColor;
+
+        // Calculate if this particle should be active
+        float stagger = aRandom * 3.0;
+        float localTime = uPulseTimer - stagger;
+
+        if (localTime < 0.0 || uPulseTimer < -50.0) {
+            // Not yet triggered or inactive
+            gl_Position = vec4(0.0, 0.0, -9999.0, 1.0);
+            gl_PointSize = 0.0;
+            vAlpha = 0.0;
+            return;
+        }
+
+        // Explosion parameters
+        float maxLife = 45.0;
+        float life = clamp(localTime / maxLife, 0.0, 1.0);
+
+        // Burst outward from event horizon
+        float startRadius = 120.0; // Event horizon radius
+        float maxRadius = 900.0 + aRandom * 500.0;
+
+        // Explosive easing - fast start, slow end
+        float easeOut = 1.0 - pow(1.0 - life, 3.0);
+        float radius = startRadius + (maxRadius - startRadius) * easeOut;
+
+        // Spherical to cartesian
+        float x = radius * sin(aPhi) * cos(aTheta);
+        float y = radius * sin(aPhi) * sin(aTheta);
+        float z = radius * cos(aPhi);
+
+        // Add spiral motion for dramatic effect
+        float spiralAngle = aTheta + life * 3.0 * (aRandom - 0.5);
+        x = radius * sin(aPhi) * cos(spiralAngle);
+        y = radius * sin(aPhi) * sin(spiralAngle);
+
+        // Offset by black hole position
+        vec3 pos = vec3(x + uBlackHolePos.x, y + uBlackHolePos.y, z);
+
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+
+        // Size - larger at start, shrinking as they fly out
+        float baseSize = 5.0 + aRandom * 8.0;
+        float sizeLife = 1.0 - life * 0.6;
+        gl_PointSize = baseSize * sizeLife * (300.0 / -mvPosition.z);
+
+        // Alpha - fade out over lifetime
+        vAlpha = (1.0 - life * life) * (0.9 + aRandom * 0.1);
+    }
+`;
+
+const BurstSparkFragmentShader = `
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    void main() {
+        float dist = length(gl_PointCoord - 0.5);
+        if (dist > 0.5) discard;
+
+        // Soft glow with hot core
+        float glow = 1.0 - dist * 2.0;
+        glow = pow(glow, 1.3);
+
+        // Add white-hot center
+        vec3 color = vColor;
+        float core = smoothstep(0.3, 0.0, dist);
+        color = mix(color, vec3(1.0, 1.0, 0.95), core * 0.5);
+
+        gl_FragColor = vec4(color * glow, vAlpha * glow);
+    }
+`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Black Hole Core Shader (with gravitational lensing)
@@ -393,6 +489,9 @@ export default class BlackHoleTheme extends BaseTheme {
         this.nebulaClouds = [];
         this.particles = null;
         this.jetParticles = null;
+        this.burstSparksPool = []; // Pool of burst particle systems for overlapping effects
+        this.burstPoolSize = 8; // Maximum simultaneous bursts
+        this.nextBurstIndex = 0; // Round-robin index for pool allocation
 
         // Effect state
         this.diskIntensity = 1.0;
@@ -407,6 +506,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.bloomPulseIntensity = 0;
         this.chromaticPulse = 0;
         this.gravitySurgeFactor = 0; // State for suction effect
+        this.burstFactor = 0; // State for outward explosion effect
+        this.burstPhase = false; // Track if we're in burst phase
 
         // Animation
         this.clock = new THREE.Clock();
@@ -463,6 +564,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.createBlackHoleCore();
         this.createAccretionDisk();
         this.createParticleSystem();
+        this.createBurstSparks();
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -851,6 +953,89 @@ export default class BlackHoleTheme extends BaseTheme {
         console.log('[BlackHole] Particle system created with', particleCount, 'particles');
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Burst Sparks - Explosive shader-driven particles from event horizon
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBurstSparks() {
+        const count = this.qualityPreset.burstSparkCount;
+        const particlesPerBurst = Math.floor(count / this.burstPoolSize);
+
+        // Color palette - cosmic hot colors
+        const colorOptions = [
+            new THREE.Color(0xffaa44), // Orange
+            new THREE.Color(0xff6622), // Deep orange
+            new THREE.Color(0x44aaff), // Cyan blue
+            new THREE.Color(0xaa66ff), // Purple
+            new THREE.Color(0xffffff), // White hot
+            new THREE.Color(0xff44aa), // Pink
+        ];
+
+        // Create pool of burst particle systems
+        for (let poolIndex = 0; poolIndex < this.burstPoolSize; poolIndex++) {
+            const geometry = new THREE.BufferGeometry();
+
+            const thetas = new Float32Array(particlesPerBurst);
+            const phis = new Float32Array(particlesPerBurst);
+            const randoms = new Float32Array(particlesPerBurst);
+            const colors = new Float32Array(particlesPerBurst * 3);
+            const positions = new Float32Array(particlesPerBurst * 3);
+
+            for (let i = 0; i < particlesPerBurst; i++) {
+                // Distribute particles evenly on sphere surface (event horizon)
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                thetas[i] = theta;
+                phis[i] = phi;
+                randoms[i] = Math.random();
+
+                // Color selection - weighted toward hot colors
+                const colorType = Math.random();
+                let c;
+                if (colorType > 0.5) c = colorOptions[0]; // 50% orange
+                else if (colorType > 0.3) c = colorOptions[1]; // 20% deep orange
+                else if (colorType > 0.15) c = colorOptions[2]; // 15% cyan
+                else if (colorType > 0.05) c = colorOptions[3]; // 10% purple
+                else c = colorOptions[4]; // 5% white hot
+
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+
+                // Zero initial position (handled entirely by vertex shader)
+                positions[i * 3] = 0;
+                positions[i * 3 + 1] = 0;
+                positions[i * 3 + 2] = 0;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
+            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
+            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPulseTimer: { value: -100.0 }, // Inactive by default
+                    uBlackHolePos: { value: new THREE.Vector2(0, 0) },
+                },
+                vertexShader: BurstSparkVertexShader,
+                fragmentShader: BurstSparkFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const burstSparks = new THREE.Points(geometry, material);
+            this.burstSparksPool.push(burstSparks);
+            this.scene.add(burstSparks);
+        }
+
+        console.log('[BlackHole] Burst sparks pool created with', this.burstPoolSize, 'systems,', particlesPerBurst, 'particles each');
+    }
+
     initParticle(index, positions, velocities, colors, sizes, lifetimes, colorPalette) {
         const i3 = index * 3;
 
@@ -1015,20 +1200,120 @@ export default class BlackHoleTheme extends BaseTheme {
         this.starFlashIntensity = Math.min(1.0, 0.2 + comboCount * 0.1);
         this.bloomPulseIntensity = Math.min(0.5, 0.1 + comboCount * 0.05);
 
-        // Stronger suction for higher combos
+        // Phase 1: Strong suction for higher combos
         this.gravitySurgeFactor = 2.0 + comboCount * 1.5;
+        this.burstPhase = false;
 
         // Particle jets for big combos
         if (comboCount > 3) {
-            // this.createJetBurst(); // Implementation ommitted for now to focus on suction
             console.log('[BlackHole] Combo > 3, gravity surge:', this.gravitySurgeFactor);
         }
-        // Gradual return
+
+        // Phase 2: Trigger burst after suction pulls particles in
+        const suctionDuration = 300 + comboCount * 50; // Longer suction for bigger combos
+        setTimeout(() => {
+            if (!this.isActive) return;
+
+            // Stop suction and trigger burst
+            this.gravitySurgeFactor = 0;
+            this.burstPhase = true;
+            this.burstFactor = 3.0 + comboCount * 2.0; // Stronger burst for bigger combos
+
+            // Extra visual punch during burst
+            this.starFlashIntensity = Math.min(1.5, 0.5 + comboCount * 0.2);
+            this.bloomPulseIntensity = Math.min(0.8, 0.3 + comboCount * 0.1);
+            this.chromaticPulse = 0.008 + comboCount * 0.002;
+
+            // Trigger shader-based burst sparks explosion from the pool!
+            // Use round-robin allocation so multiple bursts can overlap
+            if (this.burstSparksPool.length > 0) {
+                const burstSparks = this.burstSparksPool[this.nextBurstIndex];
+                if (burstSparks?.material?.uniforms) {
+                    burstSparks.material.uniforms.uPulseTimer.value = 0.0;
+                }
+                this.nextBurstIndex = (this.nextBurstIndex + 1) % this.burstPoolSize;
+                console.log('[BlackHole] Triggered burst system', this.nextBurstIndex, 'of', this.burstPoolSize);
+            }
+
+            // Spawn burst particles from center for extra impact
+            this.spawnBurstParticles(comboCount);
+
+            console.log('[BlackHole] Burst triggered! Factor:', this.burstFactor);
+        }, suctionDuration);
+
+        // Gradual return to normal
         setTimeout(() => {
             this.diskTargetIntensity = 1.0;
             this.coreTargetIntensity = 1.0;
             this.diskTargetRotationSpeed = 1.0;
         }, 800 + comboCount * 100);
+    }
+
+    /**
+     * Spawn particles from center during burst for explosive effect
+     */
+    spawnBurstParticles(comboCount) {
+        if (!this.particles) return;
+
+        const positions = this.particles.geometry.attributes.position.array;
+        const velocities = this.particleVelocities;
+        const colors = this.particles.geometry.attributes.color.array;
+        const sizes = this.particles.geometry.attributes.size.array;
+        const lifetimes = this.particleLifetimes;
+
+        const bhX = this.driftX || 0;
+        const bhY = this.driftY || 0;
+        const bhZ = 0;
+
+        // Number of particles to spawn from center
+        const burstCount = Math.min(comboCount * 15, 80);
+
+        for (let i = 0; i < burstCount; i++) {
+            // Find a random particle to repurpose
+            const index = Math.floor(Math.random() * (positions.length / 3));
+            const i3 = index * 3;
+
+            // Spawn at black hole center with small random offset
+            positions[i3] = bhX + (Math.random() - 0.5) * 30;
+            positions[i3 + 1] = bhY + (Math.random() - 0.5) * 30;
+            positions[i3 + 2] = bhZ + (Math.random() - 0.5) * 30;
+
+            // Explosive outward velocity in random direction
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const speed = 8 + Math.random() * 12 + comboCount * 2;
+
+            velocities[i3] = Math.sin(phi) * Math.cos(theta) * speed;
+            velocities[i3 + 1] = Math.sin(phi) * Math.sin(theta) * speed;
+            velocities[i3 + 2] = Math.cos(phi) * speed;
+
+            // Bright hot colors for burst particles
+            const colorChoice = Math.random();
+            if (colorChoice < 0.3) {
+                // White-hot
+                colors[i3] = 1.0;
+                colors[i3 + 1] = 1.0;
+                colors[i3 + 2] = 0.9;
+            } else if (colorChoice < 0.6) {
+                // Orange-yellow
+                colors[i3] = 1.0;
+                colors[i3 + 1] = 0.7;
+                colors[i3 + 2] = 0.2;
+            } else {
+                // Cyan-blue
+                colors[i3] = 0.4;
+                colors[i3 + 1] = 0.8;
+                colors[i3 + 2] = 1.0;
+            }
+
+            // Larger, brighter particles for burst
+            sizes[index] = 6 + Math.random() * 8;
+            lifetimes[index] = 1.0;
+        }
+
+        this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.color.needsUpdate = true;
+        this.particles.geometry.attributes.size.needsUpdate = true;
     }
 
     spawnJetParticles(comboCount) {
@@ -1110,6 +1395,13 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.gravitySurgeFactor *= 0.95; // Smooth decay
                 if (this.gravitySurgeFactor < 0.01) this.gravitySurgeFactor = 0;
             }
+            if (this.burstFactor > 0) {
+                this.burstFactor *= 0.96; // Slightly slower decay for visible burst
+                if (this.burstFactor < 0.01) {
+                    this.burstFactor = 0;
+                    this.burstPhase = false;
+                }
+            }
 
             // Update shaders
             if (this.blackHoleCore?.material?.uniforms) {
@@ -1133,6 +1425,24 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.starfield.material.uniforms.uTime.value = this.time;
                 this.starfield.material.uniforms.uFlashIntensity.value = this.starFlashIntensity;
             }
+
+            // Update all burst sparks in the pool
+            this.burstSparksPool.forEach((burstSparks) => {
+                if (burstSparks?.material?.uniforms) {
+                    burstSparks.material.uniforms.uTime.value = this.time;
+
+                    // Advance pulse wave when active
+                    if (burstSparks.material.uniforms.uPulseTimer.value > -50.0) {
+                        // Move wave outwards - speed controls explosion rate
+                        burstSparks.material.uniforms.uPulseTimer.value += delta * 18.0;
+
+                        // Turn off when wave completes (maxLife 45 + stagger 3 + buffer)
+                        if (burstSparks.material.uniforms.uPulseTimer.value > 60.0) {
+                            burstSparks.material.uniforms.uPulseTimer.value = -100.0;
+                        }
+                    }
+                }
+            });
 
             // Black hole floating/drifting motion - Full Screen Wander
             // Use superposition of sine waves for smooth non-repeating random-looking motion
@@ -1161,6 +1471,13 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.innerDisk.position.x = this.driftX;
                 this.innerDisk.position.y = this.driftY;
             }
+
+            // Update burst sparks position to follow black hole (for all pool members)
+            this.burstSparksPool.forEach((burstSparks) => {
+                if (burstSparks?.material?.uniforms) {
+                    burstSparks.material.uniforms.uBlackHolePos.value.set(this.driftX, this.driftY);
+                }
+            });
 
             // Update particles
             this.updateParticles(delta);
@@ -1225,38 +1542,69 @@ export default class BlackHoleTheme extends BaseTheme {
                     velocities[i3 + 2] * velocities[i3 + 2]
                 );
 
-                // Gravity pull - increases closer to center
-                // Reduced from 1200 to 800 for even slower "floating" feel
-                let pullStrength = (800.0 / (dist * dist + 100)) * delta;
+                // BURST PHASE: Push particles outward
+                if (this.burstPhase && this.burstFactor > 0) {
+                    // Normalize direction from black hole center
+                    const nx = -dx / dist;
+                    const ny = -dy / dist;
+                    const nz = -dz / dist;
 
-                // STRONG suction during combos
-                if (this.gravitySurgeFactor > 0) {
-                    pullStrength *= (5.0 + this.gravitySurgeFactor * 2.0);
-                }
+                    // Outward force - stronger when closer to center, scaled by burstFactor
+                    const burstStrength = this.burstFactor * (400.0 / (dist + 50)) * delta;
 
-                velocities[i3] += dx * pullStrength;
-                velocities[i3 + 1] += dy * pullStrength;
-                velocities[i3 + 2] += dz * pullStrength;
+                    velocities[i3] += nx * burstStrength;
+                    velocities[i3 + 1] += ny * burstStrength;
+                    velocities[i3 + 2] += nz * burstStrength;
 
-                // Tangential acceleration REMOVED - rely on natural gravity + drag for organic spiral
-                // This prevents the "off" feeling of forced planar motion
+                    // Less drag during burst to let particles fly out
+                    velocities[i3] *= 0.998;
+                    velocities[i3 + 1] *= 0.998;
+                    velocities[i3 + 2] *= 0.998;
 
-                velocities[i3] *= 0.995; // Less drag to maintain orbit longer
-                velocities[i3 + 1] *= 0.995;
-                velocities[i3 + 2] *= 0.995;
+                    // Higher max speed during burst
+                    const maxSpeed = 15.0 + this.burstFactor * 3.0;
+                    if (speed > maxSpeed) {
+                        const scale = maxSpeed / speed;
+                        velocities[i3] *= scale;
+                        velocities[i3 + 1] *= scale;
+                        velocities[i3 + 2] *= scale;
+                    }
+                } else {
+                    // NORMAL/SUCTION PHASE: Pull particles inward
 
-                // Damping / Speed limit
-                velocities[i3] *= 0.99;
-                velocities[i3 + 1] *= 0.99;
-                velocities[i3 + 2] *= 0.99;
+                    // Gravity pull - increases closer to center
+                    // Reduced from 1200 to 800 for even slower "floating" feel
+                    let pullStrength = (800.0 / (dist * dist + 100)) * delta;
 
-                // Limit max speed so they don't teleport
-                const maxSpeed = 8.0 + this.gravitySurgeFactor * 5.0; // Allow faster speed during surge
-                if (speed > maxSpeed) {
-                    const scale = maxSpeed / speed;
-                    velocities[i3] *= scale;
-                    velocities[i3 + 1] *= scale;
-                    velocities[i3 + 2] *= scale;
+                    // STRONG suction during combos
+                    if (this.gravitySurgeFactor > 0) {
+                        pullStrength *= (5.0 + this.gravitySurgeFactor * 2.0);
+                    }
+
+                    velocities[i3] += dx * pullStrength;
+                    velocities[i3 + 1] += dy * pullStrength;
+                    velocities[i3 + 2] += dz * pullStrength;
+
+                    // Tangential acceleration REMOVED - rely on natural gravity + drag for organic spiral
+                    // This prevents the "off" feeling of forced planar motion
+
+                    velocities[i3] *= 0.995; // Less drag to maintain orbit longer
+                    velocities[i3 + 1] *= 0.995;
+                    velocities[i3 + 2] *= 0.995;
+
+                    // Damping / Speed limit
+                    velocities[i3] *= 0.99;
+                    velocities[i3 + 1] *= 0.99;
+                    velocities[i3 + 2] *= 0.99;
+
+                    // Limit max speed so they don't teleport
+                    const maxSpeed = 8.0 + this.gravitySurgeFactor * 5.0; // Allow faster speed during surge
+                    if (speed > maxSpeed) {
+                        const scale = maxSpeed / speed;
+                        velocities[i3] *= scale;
+                        velocities[i3 + 1] *= scale;
+                        velocities[i3 + 2] *= scale;
+                    }
                 }
             }
 
@@ -1265,8 +1613,9 @@ export default class BlackHoleTheme extends BaseTheme {
             positions[i3 + 1] += velocities[i3 + 1];
             positions[i3 + 2] += velocities[i3 + 2];
 
-            // Reset if too close or too far
-            if (dist < 80 || dist > 1500) {
+            // Reset if too close or too far (allow further travel during burst)
+            const maxDist = this.burstPhase ? 2500 : 1500;
+            if (dist < 80 || dist > maxDist) {
                 this.initParticle(
                     i,
                     positions,
@@ -1346,6 +1695,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.accretionDisk = null;
         this.starfield = null;
         this.particles = null;
+        this.burstSparksPool = [];
+        this.nextBurstIndex = 0;
         this.nebulaClouds = [];
 
         super.cleanup();
