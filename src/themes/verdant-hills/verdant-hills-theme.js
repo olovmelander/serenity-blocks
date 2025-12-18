@@ -1,11 +1,29 @@
 /**
- * Verdant Hills Theme - Elysium-Inspired 3D Stylized World
+ * Verdant Hills Theme - WebGPU + TSL Edition
  * 
  * A peaceful rolling hills landscape with fluffy grass, stylized trees,
- * and atmospheric gradient fog inspired by Elysium.
+ * and atmospheric gradient fog. Now powered by WebGPU with TSL shaders
+ * for improved performance.
+ * 
+ * Features automatic fallback to WebGL2 for browsers without WebGPU support.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import {
+    // Core TSL nodes
+    positionLocal, positionWorld, normalLocal, normalWorld,
+    uv, time, uniform, cameraPosition,
+    // Math functions
+    sin, cos, pow, smoothstep, mix, abs, normalize, dot, max, min, length, fract,
+    // Vector construction
+    vec2, vec3, vec4, float,
+    // Shader utilities
+    varying, attribute, instanceIndex,
+    // Color utilities
+    color,
+    // Matrix access
+    modelWorldMatrix
+} from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 
@@ -30,6 +48,10 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.windStrength = 0.5;
         this.windDirection = new THREE.Vector2(1, 0.3).normalize();
         this.targetWindStrength = 0.5;
+
+        // TSL uniforms (will be set during scene creation)
+        this.uTime = null;
+        this.uWindStrength = null;
 
         // Graphics quality presets
         this.currentQuality = 'High';
@@ -161,12 +183,25 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.applyQualityPreset(this.getGraphicsQuality());
         this.setupQualityListener();
 
-        // Create Three.js renderer
-        this.renderer = new THREE.WebGLRenderer({
+        // Create TSL uniforms for animation
+        this.uTime = uniform(0);
+        this.uWindStrength = uniform(0.5);
+
+        // Create WebGPU renderer with auto WebGL2 fallback
+        this.renderer = new THREE.WebGPURenderer({
             antialias: this.getAntialiasEnabled(),
-            alpha: false,
             powerPreference: 'high-performance',
         });
+
+        // Initialize WebGPU renderer (async - handles fallback automatically)
+        try {
+            await this.renderer.init();
+            console.log(`🏔️ [VerdantHillsTheme] Using ${this.renderer.backend.constructor.name} backend`);
+        } catch (error) {
+            console.error('[VerdantHillsTheme] Renderer initialization failed:', error);
+            return;
+        }
+
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setClearColor(0x87ceeb); // Sky blue fallback
@@ -198,7 +233,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         // Add fog for atmospheric depth
         this.scene.fog = new THREE.Fog(0xb8d4a8, 50, 350);
 
-        // Create scene elements
+        // Create scene elements with TSL materials
         this.createSky();
         this.createTerrain();
         this.createGrass();
@@ -216,60 +251,50 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.clock.start();
         this.startAnimation();
 
-        console.log('🏔️ [VerdantHillsTheme] Scene created successfully');
+        console.log('🏔️ [VerdantHillsTheme] WebGPU scene created successfully');
     }
 
     createSky() {
-        // Create gradient sky using a large sphere
+        // Create gradient sky using a large sphere with TSL material
         const skyGeometry = new THREE.SphereGeometry(400, 32, 32);
-        const skyMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTopColor: { value: new THREE.Color(0x4a90c2) },     // Deep sky blue
-                uMiddleColor: { value: new THREE.Color(0x87ceeb) }, // Light sky blue
-                uBottomColor: { value: new THREE.Color(0xffefd5) }, // Warm horizon
-                uSunColor: { value: new THREE.Color(0xffe4b5) },    // Sun glow
-                uSunPosition: { value: new THREE.Vector3(100, 60, -150) },
-            },
-            vertexShader: `
-                varying vec3 vWorldPosition;
-                void main() {
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPosition.xyz;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 uTopColor;
-                uniform vec3 uMiddleColor;
-                uniform vec3 uBottomColor;
-                uniform vec3 uSunColor;
-                uniform vec3 uSunPosition;
-                varying vec3 vWorldPosition;
-                
-                void main() {
-                    float height = normalize(vWorldPosition).y;
-                    
-                    // Sky gradient
-                    vec3 color;
-                    if (height > 0.0) {
-                        color = mix(uMiddleColor, uTopColor, pow(height, 0.5));
-                    } else {
-                        color = mix(uMiddleColor, uBottomColor, pow(-height, 0.3));
-                    }
-                    
-                    // Sun glow
-                    vec3 sunDir = normalize(uSunPosition);
-                    vec3 viewDir = normalize(vWorldPosition);
-                    float sunFactor = max(0.0, dot(viewDir, sunDir));
-                    sunFactor = pow(sunFactor, 16.0) * 0.5 + pow(sunFactor, 4.0) * 0.3;
-                    color = mix(color, uSunColor, sunFactor);
-                    
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `,
+
+        // TSL-based sky material
+        const skyMaterial = new THREE.MeshBasicNodeMaterial({
             side: THREE.BackSide,
-            depthWrite: false,
+            depthWrite: false
         });
+
+        // Uniforms for sky colors
+        const topColor = uniform(new THREE.Color(0x4a90c2));     // Deep sky blue
+        const middleColor = uniform(new THREE.Color(0x87ceeb)); // Light sky blue
+        const bottomColor = uniform(new THREE.Color(0xffefd5)); // Warm horizon
+        const sunColor = uniform(new THREE.Color(0xffe4b5));    // Sun glow
+        const sunPosition = uniform(new THREE.Vector3(100, 60, -150));
+
+        // Calculate sky gradient using TSL
+        const worldPos = positionWorld;
+        const normalizedPos = normalize(worldPos);
+        const height = normalizedPos.y;
+
+        // Upper sky gradient (height > 0)
+        const upperGradient = mix(middleColor, topColor, pow(max(height, float(0.0)), float(0.5)));
+
+        // Lower sky gradient (height < 0)
+        const lowerGradient = mix(middleColor, bottomColor, pow(max(height.negate(), float(0.0)), float(0.3)));
+
+        // Blend based on height
+        const skyColor = mix(lowerGradient, upperGradient, smoothstep(float(-0.01), float(0.01), height));
+
+        // Sun glow effect
+        const sunDir = normalize(sunPosition);
+        const viewDir = normalizedPos;
+        const sunDot = max(dot(viewDir, sunDir), float(0.0));
+        const sunGlow = pow(sunDot, float(16.0)).mul(float(0.5)).add(pow(sunDot, float(4.0)).mul(float(0.3)));
+
+        // Final color with sun glow
+        const finalColor = mix(skyColor, sunColor, sunGlow);
+
+        skyMaterial.colorNode = finalColor;
 
         const sky = new THREE.Mesh(skyGeometry, skyMaterial);
         this.scene.add(sky);
@@ -295,59 +320,38 @@ export default class VerdantHillsTheme extends BaseTheme {
         // Store for grass placement
         this.terrainHeightData = { positions, size, segments };
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uGrassColor1: { value: new THREE.Color(0x3d5c28) },
-                uGrassColor2: { value: new THREE.Color(0x5a8c3a) },
-                uFogColor: { value: new THREE.Color(0xb8d4a8) },
-                uFogNear: { value: 50 },
-                uFogFar: { value: 350 },
-            },
-            vertexShader: `
-                varying vec3 vNormal;
-                varying vec3 vWorldPosition;
-                varying float vHeight;
-                
-                void main() {
-                    vNormal = normalize(normalMatrix * normal);
-                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPos.xyz;
-                    vHeight = position.y;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 uGrassColor1;
-                uniform vec3 uGrassColor2;
-                uniform vec3 uFogColor;
-                uniform float uFogNear;
-                uniform float uFogFar;
-                
-                varying vec3 vNormal;
-                varying vec3 vWorldPosition;
-                varying float vHeight;
-                
-                void main() {
-                    // Height-based color variation
-                    float heightFactor = smoothstep(-20.0, 25.0, vHeight);
-                    vec3 baseColor = mix(uGrassColor1, uGrassColor2, heightFactor);
-                    
-                    // Simple lighting
-                    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
-                    float lighting = max(0.3, dot(vNormal, lightDir));
-                    vec3 color = baseColor * lighting;
-                    
-                    // Fog
-                    float dist = length(vWorldPosition - cameraPosition);
-                    float fogFactor = smoothstep(uFogNear, uFogFar, dist);
-                    color = mix(color, uFogColor, fogFactor);
-                    
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `,
-        });
+        // TSL-based terrain material
+        const terrainMaterial = new THREE.MeshBasicNodeMaterial();
 
-        this.terrain = new THREE.Mesh(geometry, material);
+        // Uniforms
+        const grassColor1 = uniform(new THREE.Color(0x3d5c28));
+        const grassColor2 = uniform(new THREE.Color(0x5a8c3a));
+        const fogColor = uniform(new THREE.Color(0xb8d4a8));
+        const fogNear = uniform(50);
+        const fogFar = uniform(350);
+
+        // Get normals and height
+        const vNormal = normalWorld;
+        const vHeight = positionLocal.y;
+        const vWorldPos = positionWorld;
+
+        // Height-based color variation
+        const heightFactor = smoothstep(float(-20.0), float(25.0), vHeight);
+        const baseColor = mix(grassColor1, grassColor2, heightFactor);
+
+        // Simple lighting
+        const lightDir = normalize(vec3(0.5, 1.0, 0.3));
+        const lighting = max(float(0.3), dot(vNormal, lightDir));
+        const litColor = baseColor.mul(lighting);
+
+        // Fog
+        const dist = length(vWorldPos.sub(cameraPosition));
+        const fogFactor = smoothstep(fogNear, fogFar, dist);
+        const finalColor = mix(litColor, fogColor, fogFactor);
+
+        terrainMaterial.colorNode = finalColor;
+
+        this.terrain = new THREE.Mesh(geometry, terrainMaterial);
         this.scene.add(this.terrain);
     }
 
@@ -365,11 +369,8 @@ export default class VerdantHillsTheme extends BaseTheme {
         const spread = 180;
 
         // CROSS-BILLBOARD: Two quads at 90° angles for denser look with fewer instances
-        // Each instance = 2 crossed grass blades = 4 triangles (8 vertices)
-        // This looks much fuller than single blades while using fewer instances
-
-        const bladeWidth = 0.25;  // Wider blades
-        const bladeHeight = 2.2;  // Taller blades
+        const bladeWidth = 0.25;
+        const bladeHeight = 2.2;
 
         // Create cross-billboard geometry (2 quads intersecting at 90°)
         const bladeGeometry = new THREE.BufferGeometry();
@@ -415,96 +416,72 @@ export default class VerdantHillsTheme extends BaseTheme {
         bladeGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
         bladeGeometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
-        // Simple, clean grass shader - no procedural patterns
-        const grassMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uWindStrength: { value: 0.5 },
-                uGrassColorBase: { value: new THREE.Color(0x2d5016) },
-                uGrassColorMid: { value: new THREE.Color(0x4a7c2e) },
-                uGrassColorTip: { value: new THREE.Color(0x8bc34a) },
-                uFogColor: { value: new THREE.Color(0xb8d4a8) },
-                uFogNear: { value: 50 },
-                uFogFar: { value: 350 },
-            },
-            vertexShader: `
-                uniform float uTime;
-                uniform float uWindStrength;
-                
-                attribute float aPhase;
-                attribute vec3 aColor;
-                
-                varying float vHeight;
-                varying vec3 vWorldPosition;
-                varying vec3 vColor;
-                
-                void main() {
-                    vec3 transformed = position;
-                    
-                    // Get world position of instance
-                    vec4 instanceWorldPos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-                    
-                    // Wind animation - height factor from UV.y
-                    float heightFactor = uv.y; // UV.y goes from 0 at bottom to 1 at top
-                    
-                    // Multi-frequency wind for natural look
-                    float windTime = uTime * 1.2;
-                    float windPhase = aPhase + instanceWorldPos.x * 0.03 + instanceWorldPos.z * 0.03;
-                    
-                    float wind1 = sin(windTime + windPhase) * 0.6;
-                    float wind2 = sin(windTime * 1.5 + windPhase * 1.2) * 0.25;
-                    float wind3 = cos(windTime * 0.4 + windPhase * 0.8) * 0.15;
-                    
-                    float windOffset = (wind1 + wind2 + wind3) * uWindStrength * heightFactor * heightFactor;
-                    
-                    // Apply wind
-                    transformed.x += windOffset;
-                    transformed.z += windOffset * 0.25;
-                    transformed.y -= abs(windOffset) * 0.1 * heightFactor; // Squash slightly when bent
-                    
-                    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(transformed, 1.0);
-                    
-                    vHeight = heightFactor;
-                    vWorldPosition = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
-                    vColor = aColor;
-                    
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 uGrassColorBase;
-                uniform vec3 uGrassColorMid;
-                uniform vec3 uGrassColorTip;
-                uniform vec3 uFogColor;
-                uniform float uFogNear;
-                uniform float uFogFar;
-                
-                varying float vHeight;
-                varying vec3 vWorldPosition;
-                varying vec3 vColor;
-                
-                void main() {
-                    // Simple smooth gradient based on height - no procedural patterns
-                    vec3 color = mix(uGrassColorBase, uGrassColorMid, smoothstep(0.0, 0.5, vHeight));
-                    color = mix(color, uGrassColorTip, smoothstep(0.4, 1.0, vHeight));
-                    
-                    // Apply per-instance color variation
-                    color *= vColor;
-                    
-                    // Ambient occlusion at base
-                    color *= 0.6 + vHeight * 0.4;
-                    
-                    // Fog
-                    float dist = length(vWorldPosition - cameraPosition);
-                    float fogFactor = smoothstep(uFogNear, uFogFar, dist);
-                    color = mix(color, uFogColor, fogFactor);
-                    
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `,
-            side: THREE.DoubleSide,
+        // TSL-based grass material
+        const grassMaterial = new THREE.MeshBasicNodeMaterial({
+            side: THREE.DoubleSide
         });
 
+        // Color uniforms
+        const grassColorBase = uniform(new THREE.Color(0x2d5016));
+        const grassColorMid = uniform(new THREE.Color(0x4a7c2e));
+        const grassColorTip = uniform(new THREE.Color(0x8bc34a));
+        const fogColor = uniform(new THREE.Color(0xb8d4a8));
+        const fogNear = uniform(50);
+        const fogFar = uniform(350);
+
+        // Access instance attributes
+        const aPhase = attribute('aPhase');
+        const aColor = attribute('aColor');
+
+        // Get instance world position for wind variation
+        const instanceWorldPos = modelWorldMatrix.mul(vec4(0, 0, 0, 1));
+
+        // Height factor from UV.y (0 at bottom, 1 at top)
+        const uvY = uv().y;
+        const heightFactor = uvY;
+
+        // Multi-frequency wind using TSL
+        const windTime = this.uTime.mul(float(1.2));
+        const windPhase = aPhase.add(instanceWorldPos.x.mul(float(0.03))).add(instanceWorldPos.z.mul(float(0.03)));
+
+        const wind1 = sin(windTime.add(windPhase)).mul(float(0.6));
+        const wind2 = sin(windTime.mul(float(1.5)).add(windPhase.mul(float(1.2)))).mul(float(0.25));
+        const wind3 = cos(windTime.mul(float(0.4)).add(windPhase.mul(float(0.8)))).mul(float(0.15));
+
+        const windOffset = wind1.add(wind2).add(wind3)
+            .mul(this.uWindStrength)
+            .mul(heightFactor)
+            .mul(heightFactor);
+
+        // Displace vertex position with wind
+        const displaced = positionLocal.add(vec3(
+            windOffset,
+            abs(windOffset).mul(float(-0.1)).mul(heightFactor),
+            windOffset.mul(float(0.25))
+        ));
+
+        grassMaterial.positionNode = displaced;
+
+        // Grass color gradient (base to tip)
+        const color1 = mix(grassColorBase, grassColorMid, smoothstep(float(0.0), float(0.5), heightFactor));
+        const grassGradient = mix(color1, grassColorTip, smoothstep(float(0.4), float(1.0), heightFactor));
+
+        // Per-instance color variation
+        const instanceColorMod = grassGradient.mul(aColor);
+
+        // Ambient occlusion at base
+        const aoFactor = float(0.6).add(heightFactor.mul(float(0.4)));
+        const aoColor = instanceColorMod.mul(aoFactor);
+
+        // Fog
+        const worldPos = positionWorld;
+        const dist = length(worldPos.sub(cameraPosition));
+        const fogFactor = smoothstep(fogNear, fogFar, dist);
+        const finalColor = mix(aoColor, fogColor, fogFactor);
+
+        grassMaterial.colorNode = finalColor;
+
+        // Create instanced mesh
         const grassMesh = new THREE.InstancedMesh(bladeGeometry, grassMaterial, count);
 
         // Instance attributes
@@ -550,7 +527,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.grassSystem = grassMesh;
         this.scene.add(grassMesh);
 
-        console.log(`🌿 [VerdantHillsTheme] Created ${count} grass blades`);
+        console.log(`🌿 [VerdantHillsTheme] Created ${count} grass blades with TSL shaders`);
     }
 
     createTrees() {
@@ -580,9 +557,9 @@ export default class VerdantHillsTheme extends BaseTheme {
     createTree() {
         const group = new THREE.Group();
 
-        // Trunk
+        // Trunk - using TSL-compatible node material
         const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, 4, 8);
-        const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
+        const trunkMaterial = new THREE.MeshLambertNodeMaterial({ color: 0x5c4033 });
         const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
         trunk.position.y = 2;
         group.add(trunk);
@@ -600,7 +577,7 @@ export default class VerdantHillsTheme extends BaseTheme {
 
         foliagePositions.forEach((pos, idx) => {
             const foliageGeometry = new THREE.SphereGeometry(pos.r, 12, 12);
-            const foliageMaterial = new THREE.MeshLambertMaterial({
+            const foliageMaterial = new THREE.MeshLambertNodeMaterial({
                 color: foliageColors[idx % foliageColors.length],
             });
             const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
@@ -632,14 +609,16 @@ export default class VerdantHillsTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         this.particleVelocities = velocities;
 
-        const material = new THREE.PointsMaterial({
-            color: 0xffffcc,
+        // TSL-based points material
+        const material = new THREE.PointsNodeMaterial({
             size: 0.4,
             transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
             depthWrite: false,
+            blending: THREE.AdditiveBlending
         });
+
+        // Set particle color/opacity via TSL
+        material.colorNode = vec4(1.0, 1.0, 0.8, 0.6);
 
         this.particles = new THREE.Points(geometry, material);
         this.scene.add(this.particles);
@@ -697,7 +676,7 @@ export default class VerdantHillsTheme extends BaseTheme {
     startAnimation() {
         if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
 
-        const loop = () => {
+        const loop = async () => {
             if (!this.isActive) return;
 
             const time = this.clock.getElapsedTime();
@@ -706,10 +685,12 @@ export default class VerdantHillsTheme extends BaseTheme {
             this.windStrength += (this.targetWindStrength - this.windStrength) * 0.02;
             this.targetWindStrength += (0.5 - this.targetWindStrength) * 0.01; // Decay to base
 
-            // Update grass shader
-            if (this.grassSystem && this.grassSystem.material.uniforms) {
-                this.grassSystem.material.uniforms.uTime.value = time;
-                this.grassSystem.material.uniforms.uWindStrength.value = this.windStrength;
+            // Update TSL uniforms
+            if (this.uTime) {
+                this.uTime.value = time;
+            }
+            if (this.uWindStrength) {
+                this.uWindStrength.value = this.windStrength;
             }
 
             // Animate particles
@@ -739,8 +720,12 @@ export default class VerdantHillsTheme extends BaseTheme {
             this.camera.position.x = Math.sin(time * 0.1) * 5;
             this.camera.position.y = 80 + Math.sin(time * 0.15) * 2;
 
-            // Render
-            this.renderer.render(this.scene, this.camera);
+            // Render (async for WebGPU)
+            try {
+                await this.renderer.renderAsync(this.scene, this.camera);
+            } catch (error) {
+                console.error('[VerdantHillsTheme] Render error:', error);
+            }
 
             this.animationFrameId = requestAnimationFrame(loop);
         };
@@ -789,6 +774,8 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.grassSystem = null;
         this.trees = [];
         this.particles = null;
+        this.uTime = null;
+        this.uWindStrength = null;
 
         const container = document.getElementById('verdant-hills-theme');
         if (container) {
