@@ -141,9 +141,7 @@ export class IntroAnimation {
         const orbs = this.createOrbs();
         this.container.appendChild(orbs);
 
-        // Create FOREGROUND particles (High Depth)
-        const foregroundParticles = this.createForegroundParticles();
-        this.container.appendChild(foregroundParticles);
+        // PERFORMANCE: Removed foreground particles - WebGL handles foreground particles
 
         // Create title container
         const titleContainer = document.createElement('div');
@@ -222,8 +220,8 @@ export class IntroAnimation {
             'rgba(255, 102, 0, 0.7)',   // Orange
         ];
 
-        // Minimal particles for clean look
-        for (let i = 0; i < 12; i++) {
+        // PERFORMANCE: Reduced particle count from 12 to 6 for cleaner look
+        for (let i = 0; i < 6; i++) {
             const particle = document.createElement('div');
             particle.className = 'intro-particle';
 
@@ -425,9 +423,10 @@ export class IntroAnimation {
 
     /**
      * Create particle burst effect at position with vibrant colors (CSS)
+     * PERFORMANCE: Reduced burst particles from 30 to 15
      */
     createBurstParticles(x, y) {
-        const particleCount = 30;
+        const particleCount = 15;
 
         // Vibrant color palette for burst particles
         const burstColors = [

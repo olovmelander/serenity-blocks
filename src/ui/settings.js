@@ -4,7 +4,6 @@
  */
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
-import { DisplayManager } from '../core/display-manager.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -32,9 +31,8 @@ const DEFAULT_CONFIG = {
     gamepadDeadzone: 0.25,
     // Display Settings (Phase 1)
     displayMode: 'windowed', // 'windowed' | 'fullscreen' | 'borderless'
-    resolution: 'auto', // 'auto' | '1280x720' | '1920x1080' | etc.
-    customResolution: null, // { width: number, height: number } or null
-    renderScale: 1.0, // 0.5 | 0.75 | 1.0 - scales render resolution for performance
+    // Resolution is always auto - use renderScale for performance tuning
+    renderScale: 1.0, // 0.5 | 0.75 | 1.0 | 1.25 - controls background theme render resolution
     vsyncEnabled: true,
     targetFrameRate: 60, // 30 | 60 | 120 | 144 | 240 | 0 (unlimited)
     effectQuality: 'High', // 'Minimal' | 'Low' | 'Medium' | 'High' | 'Ultra' | 'Extreme' | 'Custom'
@@ -931,34 +929,9 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
+
     // Display Settings (Phase 1)
-    // Resolution selector
-    const resolutionSelect = document.getElementById('resolution-select');
-    if (resolutionSelect) {
-        // Populate with common resolutions
-        const displayMgr = new DisplayManager();
-        // Allow up to 4K options regardless of current screen (downscaling or windowed mode)
-        const resolutions = displayMgr.getCommonResolutions(4096, 4096);
-
-        let optionsHtml = '<option value="auto">Auto (Native)</option>';
-        resolutions.forEach((res) => {
-            optionsHtml += `<option value="${res.width}x${res.height}">${res.label}</option>`;
-        });
-        resolutionSelect.innerHTML = optionsHtml;
-
-        resolutionSelect.value = settings.resolution || 'auto';
-
-        resolutionSelect.addEventListener('change', (e) => {
-            const resolution = e.target.value;
-            settingsManager.update({ resolution });
-            settingsManager.save();
-
-            // Apply settings immediately
-            if (callbacks.onDisplaySettingsApply) {
-                callbacks.onDisplaySettingsApply(settingsManager.get());
-            }
-        });
-    }
+    // Resolution is always auto - use Render Quality for performance tuning
 
     // Display mode selector
     const displayModeSelect = document.getElementById('display-mode');
@@ -1072,21 +1045,36 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-    // Render scale slider (for performance on high-DPI displays)
-    const renderScaleSlider = document.getElementById('render-scale');
-    const renderScaleValue = document.getElementById('render-scale-value');
-    if (renderScaleSlider && renderScaleValue) {
-        const currentScale = settings.renderScale ?? 1.0;
-        renderScaleSlider.value = Math.round(currentScale * 100);
-        renderScaleValue.textContent = `${Math.round(currentScale * 100)}%`;
+    // Render quality slider (controls background theme render resolution)
+    const renderQualitySlider = document.getElementById('render-quality');
+    const renderQualityValue = document.getElementById('render-quality-value');
 
-        renderScaleSlider.addEventListener('input', (e) => {
-            const scale = parseInt(e.target.value) / 100;
+    // Helper function to get descriptive label for render quality
+    const getRenderQualityLabel = (percent) => {
+        if (percent <= 50) return 'Performance';
+        if (percent <= 65) return 'Low';
+        if (percent <= 80) return 'Balanced';
+        if (percent <= 95) return 'High';
+        if (percent <= 105) return 'Native';
+        if (percent <= 125) return 'Quality';
+        return 'Ultra';
+    };
+
+    if (renderQualitySlider && renderQualityValue) {
+        const currentScale = settings.renderScale ?? 1.0;
+        const currentPercent = Math.round(currentScale * 100);
+        renderQualitySlider.value = currentPercent;
+        renderQualityValue.textContent = `${currentPercent}% (${getRenderQualityLabel(currentPercent)})`;
+
+        renderQualitySlider.addEventListener('input', (e) => {
+            const percent = parseInt(e.target.value);
+            const scale = percent / 100;
+            renderQualityValue.textContent = `${percent}% (${getRenderQualityLabel(percent)})`;
+
             settingsManager.update({ renderScale: scale });
-            renderScaleValue.textContent = `${e.target.value}%`;
             settingsManager.save();
 
-            console.log(`[Settings] Render scale changed to: ${scale} (${e.target.value}%)`);
+            console.log(`[Settings] Render quality changed to: ${percent}% (${getRenderQualityLabel(percent)})`);
 
             // Apply immediately - will affect newly created theme renderers
             if (callbacks.onDisplaySettingsApply) {

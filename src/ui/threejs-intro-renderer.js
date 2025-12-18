@@ -37,6 +37,12 @@ export default class ThreeJSIntroRenderer {
         this.lastSpawnTime = 0;
         this.raycaster = new THREE.Raycaster();
 
+        // PERFORMANCE: Object pools for collision effects and shooting stars
+        this.collisionEffectPool = [];
+        this.shootingStarPool = [];
+        this.COLLISION_POOL_SIZE = 10;
+        this.SHOOTING_STAR_POOL_SIZE = 5;
+
         // Constants
         this.COLORS = {
             I: 0x00ff00, // Green
@@ -88,7 +94,8 @@ export default class ThreeJSIntroRenderer {
                 powerPreference: "high-performance"
             });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            // PERFORMANCE: Cap pixel ratio at 1.5 for intro (temporary screen, reduces fill rate)
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             this.renderer.toneMappingExposure = 1.2;
 
@@ -117,6 +124,9 @@ export default class ThreeJSIntroRenderer {
             // Start spawning tetrominos
             this.initCachedResources();
             this.spawnInitialTetrominos();
+
+            // PERFORMANCE: Initialize object pools
+            this.initObjectPools();
 
             // Setup post-processing (bloom for crystal glow)
             this.setupPostProcessing();
@@ -453,65 +463,38 @@ export default class ThreeJSIntroRenderer {
 
     /**
      * Spawn a shooting star with trail
+     * PERFORMANCE: Uses pooled trail geometry instead of creating new
      */
     spawnShootingStar() {
+        // Find an inactive pooled shooting star
+        const pooled = this.shootingStarPool.find(s => !s.userData.active);
+        if (!pooled) return; // All pool items busy, skip
+
         const startX = (Math.random() - 0.5) * 100 + 30;
         const startY = 40 + Math.random() * 20;
         const startZ = -20 - Math.random() * 30;
 
-        const velocity = new THREE.Vector3(
+        // Reset velocity
+        pooled.userData.velocity.set(
             -0.8 - Math.random() * 0.5,
             -0.5 - Math.random() * 0.3,
             0
         );
 
-        // Trail geometry
-        const trailLength = 15;
-        const positions = new Float32Array(trailLength * 3);
-        const alphas = new Float32Array(trailLength);
+        // Reset trail positions
+        const trailLength = pooled.userData.trailLength;
+        const positions = pooled.geometry.attributes.position.array;
 
         for (let i = 0; i < trailLength; i++) {
             positions[i * 3] = startX;
             positions[i * 3 + 1] = startY;
             positions[i * 3 + 2] = startZ;
-            alphas[i] = 1.0 - (i / trailLength);
         }
 
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {},
-            vertexShader: `
-                attribute float alpha;
-                varying float vAlpha;
-                void main() {
-                    vAlpha = alpha;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = 3.0 * alpha;
-                }
-            `,
-            fragmentShader: `
-                varying float vAlpha;
-                void main() {
-                    vec2 center = gl_PointCoord - vec2(0.5);
-                    float dist = length(center);
-                    if (dist > 0.5) discard;
-                    float a = smoothstep(0.5, 0.0, dist) * vAlpha;
-                    gl_FragColor = vec4(1.0, 1.0, 1.0, a);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
-
-        const trail = new THREE.Points(geometry, material);
-        trail.userData = { velocity, life: 2.0, trailLength };
-
-        this.scene.add(trail);
-        this.shootingStars.push(trail);
+        pooled.geometry.attributes.position.needsUpdate = true;
+        pooled.userData.life = 2.0;
+        pooled.userData.active = true;
+        pooled.visible = true;
     }
 
     createGlowTexture() {
@@ -581,9 +564,9 @@ export default class ThreeJSIntroRenderer {
         this.composer = new EffectComposer(this.renderer);
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-        // UnrealBloomPass for glowing crystals - tuned for balanced glow
+        // PERFORMANCE: Half-resolution bloom (imperceptible difference, major perf gain)
         const bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            new THREE.Vector2(Math.floor(window.innerWidth / 2), Math.floor(window.innerHeight / 2)),
             0.6,   // strength - toned down to prevent over-shine
             0.4,   // radius - moderate glow spread
             0.85   // threshold - higher threshold = fewer bright spots bloom
@@ -622,20 +605,16 @@ export default class ThreeJSIntroRenderer {
             geometry.boundingBox.getCenter(centerOffset).negate();
             geometry.translate(centerOffset.x, centerOffset.y, centerOffset.z);
 
-            // 2. Crystal Material - MeshPhysicalMaterial for glass-like crystals
-            const material = new THREE.MeshPhysicalMaterial({
+            // PERFORMANCE: MeshStandardMaterial instead of MeshPhysicalMaterial
+            // Removes expensive transmission/refraction while keeping same visual glow
+            const material = new THREE.MeshStandardMaterial({
                 color: threeColor.clone().multiplyScalar(0.6), // Slightly darker base
                 emissive: threeColor,
                 emissiveIntensity: 0.5, // Reduced glow to prevent over-shine
                 roughness: 0.05, // Very smooth like glass
-                metalness: 0.0, // Non-metallic for crystal
-                transmission: 0.4, // Slight transparency
-                thickness: 1.5, // Refraction depth
-                ior: 1.8, // Index of refraction (crystal-like)
-                clearcoat: 1.0, // Shiny surface coating
-                clearcoatRoughness: 0.05,
+                metalness: 0.1, // Slight metalness for shininess
                 envMap: this.envMap,
-                envMapIntensity: 0.4, // Reduced reflection intensity
+                envMapIntensity: 0.5, // Environment reflections
                 transparent: true,
                 opacity: 0.9,
                 side: THREE.DoubleSide
@@ -664,6 +643,94 @@ export default class ThreeJSIntroRenderer {
     spawnInitialTetrominos() {
         // Start with 0 tetrominos - they will drift in naturally from off-screen
         // via the regular spawn timer in the update loop
+    }
+
+    /**
+     * PERFORMANCE: Initialize object pools for collision effects and shooting stars
+     * Pre-allocates geometry/materials to avoid per-collision GC pressure
+     */
+    initObjectPools() {
+        // Collision effect pool - pre-create particle systems
+        for (let i = 0; i < this.COLLISION_POOL_SIZE; i++) {
+            const count = 8;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.5,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending
+            });
+
+            const points = new THREE.Points(geometry, material);
+            points.visible = false;
+            points.userData = {
+                velocities: Array(count).fill(null).map(() => ({ x: 0, y: 0, z: 0 })),
+                life: 0,
+                active: false
+            };
+
+            this.scene.add(points);
+            this.collisionEffectPool.push(points);
+        }
+
+        // Shooting star pool - pre-create trail geometries
+        for (let i = 0; i < this.SHOOTING_STAR_POOL_SIZE; i++) {
+            const trailLength = 15;
+            const positions = new Float32Array(trailLength * 3);
+            const alphas = new Float32Array(trailLength);
+
+            for (let j = 0; j < trailLength; j++) {
+                alphas[j] = 1.0 - (j / trailLength);
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {},
+                vertexShader: `
+                    attribute float alpha;
+                    varying float vAlpha;
+                    void main() {
+                        vAlpha = alpha;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = 3.0 * alpha;
+                    }
+                `,
+                fragmentShader: `
+                    varying float vAlpha;
+                    void main() {
+                        vec2 center = gl_PointCoord - vec2(0.5);
+                        float dist = length(center);
+                        if (dist > 0.5) discard;
+                        float a = smoothstep(0.5, 0.0, dist) * vAlpha;
+                        gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const trail = new THREE.Points(geometry, material);
+            trail.visible = false;
+            trail.userData = {
+                velocity: new THREE.Vector3(),
+                life: 0,
+                trailLength,
+                active: false
+            };
+
+            this.scene.add(trail);
+            this.shootingStarPool.push(trail);
+        }
+
+        console.log('[ThreeJSIntroRenderer] Object pools initialized.');
     }
 
     getVisibleBoundsAtDepth(depth) {
@@ -1090,52 +1157,42 @@ export default class ThreeJSIntroRenderer {
     }
 
     createCollisionEffect(x, y, z) {
-        // Create a quick burst of particles
+        // PERFORMANCE: Use pooled particle system instead of creating new geometry
+        const pooled = this.collisionEffectPool.find(p => !p.userData.active);
+        if (!pooled) return; // All pool items busy, skip effect
+
         const count = 8;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const velocities = [];
+        const positions = pooled.geometry.attributes.position.array;
+        const velocities = pooled.userData.velocities;
 
         for (let i = 0; i < count; i++) {
             positions[i * 3] = x;
             positions[i * 3 + 1] = y;
             positions[i * 3 + 2] = z;
 
-            velocities.push({
-                x: (Math.random() - 0.5) * 0.5,
-                y: (Math.random() - 0.5) * 0.5,
-                z: (Math.random() - 0.5) * 0.5
-            });
+            velocities[i].x = (Math.random() - 0.5) * 0.5;
+            velocities[i].y = (Math.random() - 0.5) * 0.5;
+            velocities[i].z = (Math.random() - 0.5) * 0.5;
         }
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-        const material = new THREE.PointsMaterial({
-            color: 0xffffff,
-            size: 0.5,
-            transparent: true,
-            opacity: 1,
-            blending: THREE.AdditiveBlending
-        });
-
-        const points = new THREE.Points(geometry, material);
-        points.userData = {
-            velocities: velocities,
-            life: 1.0
-        };
-
-        this.scene.add(points);
-        this.activeParticles.push(points);
+        pooled.geometry.attributes.position.needsUpdate = true;
+        pooled.material.opacity = 1;
+        pooled.userData.life = 1.0;
+        pooled.userData.active = true;
+        pooled.visible = true;
     }
 
     updateEffects(delta) {
-        for (let i = this.activeParticles.length - 1; i >= 0; i--) {
-            const p = this.activeParticles[i];
+        // PERFORMANCE: Update pooled collision effects instead of activeParticles
+        for (const p of this.collisionEffectPool) {
+            if (!p.userData.active) continue;
+
             p.userData.life -= delta * 2; // Fade out quickly
 
             if (p.userData.life <= 0) {
-                this.scene.remove(p);
-                this.activeParticles.splice(i, 1);
+                // Return to pool instead of removing
+                p.userData.active = false;
+                p.visible = false;
                 continue;
             }
 
@@ -1156,17 +1213,18 @@ export default class ThreeJSIntroRenderer {
 
     /**
      * Update shooting stars and their trails
+     * PERFORMANCE: Uses pooled shooting stars
      */
     updateShootingStars(delta) {
-        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
-            const star = this.shootingStars[i];
+        for (const star of this.shootingStarPool) {
+            if (!star.userData.active) continue;
+
             star.userData.life -= delta;
 
             if (star.userData.life <= 0) {
-                this.scene.remove(star);
-                star.geometry.dispose();
-                star.material.dispose();
-                this.shootingStars.splice(i, 1);
+                // Return to pool instead of disposing
+                star.userData.active = false;
+                star.visible = false;
                 continue;
             }
 

@@ -777,13 +777,14 @@ class SerenityBlocks {
 
     /**
      * Apply display settings (Phase 1)
+     * Resolution is always auto (native) - use renderScale for performance tuning
      * @param {Object} settings - Settings object with display configuration
      */
     async applyDisplaySettings(settings) {
         console.log('[Display] Applying display settings:', settings);
 
         const {
-            displayMode, resolution, customResolution, showFPSCounter, renderScale, enableAntialiasing,
+            displayMode, showFPSCounter, renderScale, enableAntialiasing,
         } = settings;
 
         // Apply render scale for Three.js themes (affects GPU load significantly)
@@ -799,49 +800,16 @@ class SerenityBlocks {
         }
 
         try {
-            // Parse resolution
-            let width; let
-                height;
+            // Always use native display resolution (auto mode)
+            const displays = await this.displayManager.getAvailableDisplays();
+            const primary = displays[0];
+            let width = primary?.workArea?.width ?? 1920;
+            let height = primary?.workArea?.height ?? 1080;
 
-            if (resolution === 'auto') {
-                const displays = await this.displayManager.getAvailableDisplays();
-                const primary = displays[0];
-                if (primary) {
-                    width = primary.workArea.width;
-                    height = primary.workArea.height;
-                } else {
-                    width = 1280;
-                    height = 720;
-                }
-            } else if (customResolution) {
-                width = customResolution.width;
-                height = customResolution.height;
-            } else {
-                // Parse resolution string like "1920x1080"
-                const parsed = this.displayManager.parseResolution(resolution);
-                if (parsed) {
-                    width = parsed.width;
-                    height = parsed.height;
-                } else {
-                    console.warn('[Display] Invalid resolution, using defaults');
-                    width = 1280;
-                    height = 720;
-                }
-            }
-
-            // Validate resolution
-            const isValid = await this.displayManager.validateResolution(width, height);
-            if (!isValid) {
-                console.warn('[Display] Resolution validation failed, using safe defaults');
-                width = 1280;
-                height = 720;
-            }
-
-            // Apply internal render resolution (independently of window size)
-            // This allows for performance improvements (e.g. rendering 1080p on 4K screen)
+            // Apply internal render resolution based on renderScale
+            // This allows performance tuning without changing actual display size
             if (this.webglRenderer) {
-                const mode = resolution === 'auto' ? 'auto' : 'fixed';
-                this.webglRenderer.setInternalResolution(width, height, mode);
+                this.webglRenderer.setInternalResolution(width, height, 'auto');
             }
 
             // Apply display mode
