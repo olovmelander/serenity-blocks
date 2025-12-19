@@ -30,60 +30,60 @@ import { BLACK_HOLE_TETROMINOS } from './black-hole-tetrominos.js';
 const QUALITY_PRESETS = {
     Extreme: {
         starCount: 3000,
-        particleCount: 2000,
+        particleCount: 10000,
         nebulaCount: 25,
         diskSegments: 128,
-        burstSparkCount: 3000,
+        burstSparkCount: 8000,
         bloomStrength: 0.6,
         bloomRadius: 0.8,
         enablePostProcessing: true,
     },
     Ultra: {
         starCount: 2500,
-        particleCount: 1500,
+        particleCount: 8000,
         nebulaCount: 20,
         diskSegments: 96,
-        burstSparkCount: 2500,
+        burstSparkCount: 6000,
         bloomStrength: 0.55,
         bloomRadius: 0.7,
         enablePostProcessing: true,
     },
     High: {
         starCount: 2000,
-        particleCount: 1000,
+        particleCount: 6000,
         nebulaCount: 15,
         diskSegments: 64,
-        burstSparkCount: 2000,
+        burstSparkCount: 5000,
         bloomStrength: 0.5,
         bloomRadius: 0.6,
         enablePostProcessing: true,
     },
     Medium: {
         starCount: 1200,
-        particleCount: 600,
+        particleCount: 4000,
         nebulaCount: 10,
         diskSegments: 48,
-        burstSparkCount: 1500,
+        burstSparkCount: 3500,
         bloomStrength: 0.4,
         bloomRadius: 0.5,
         enablePostProcessing: true,
     },
     Low: {
         starCount: 600,
-        particleCount: 300,
+        particleCount: 2000,
         nebulaCount: 6,
         diskSegments: 32,
-        burstSparkCount: 1000,
+        burstSparkCount: 2000,
         bloomStrength: 0.3,
         bloomRadius: 0.4,
         enablePostProcessing: false,
     },
     Minimal: {
         starCount: 300,
-        particleCount: 150,
+        particleCount: 1000,
         nebulaCount: 4,
         diskSegments: 24,
-        burstSparkCount: 600,
+        burstSparkCount: 1200,
         bloomStrength: 0.2,
         bloomRadius: 0.3,
         enablePostProcessing: false,
@@ -1087,7 +1087,7 @@ export default class BlackHoleTheme extends BaseTheme {
         colors[i3 + 1] = color.g;
         colors[i3 + 2] = color.b;
 
-        sizes[index] = 4 + Math.random() * 6;
+        sizes[index] = 6 + Math.random() * 8;
         lifetimes[index] = 0.5 + Math.random() * 0.5;
     }
 
