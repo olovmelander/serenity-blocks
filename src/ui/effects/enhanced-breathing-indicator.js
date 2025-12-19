@@ -676,7 +676,7 @@ export class EnhancedBreathingIndicator {
      * @private
      */
     _animateTechniqueSpecific(progress) {
-        // Deprecated: Handled by WebGLBreathingRenderer
+        // Technique-specific animations are handled by ThreeJSBreathingRenderer
     }
 
 
