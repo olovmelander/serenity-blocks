@@ -10,7 +10,7 @@
  * - Multiple breathing techniques with descriptions
  */
 
-import { WebGLBreathingRenderer } from './webgl-breathing-renderer.js';
+import { ThreeJSBreathingRenderer } from './threejs-breathing-renderer.js';
 
 export class EnhancedBreathingIndicator {
     constructor(container) {
@@ -165,8 +165,8 @@ export class EnhancedBreathingIndicator {
         this.particleCanvas.width = 700;
         this.particleCanvas.height = 700;
 
-        // Initialize WebGL Renderer
-        this.webglRenderer = new WebGLBreathingRenderer(this.particleCanvas);
+        // Initialize Three.js Renderer (replaces old WebGL 2D renderer)
+        this.threeRenderer = new ThreeJSBreathingRenderer(visualContainer);
 
         // Outer glow ring (slowest)
         this.outerRing = document.createElement('div');
@@ -322,9 +322,9 @@ export class EnhancedBreathingIndicator {
     _preloadWebGL() {
         // Delay initialization locally to avoid blocking main thread during app startup
         setTimeout(() => {
-            console.log('[EnhancedBreathingIndicator] Preloading WebGL resources...');
-            if (this.webglRenderer) {
-                this.webglRenderer.init();
+            console.log('[EnhancedBreathingIndicator] Preloading Three.js resources...');
+            if (this.threeRenderer) {
+                this.threeRenderer.init();
             }
         }, 1000);
     }
@@ -341,13 +341,12 @@ export class EnhancedBreathingIndicator {
         console.log('[EnhancedBreathingIndicator] Starting with technique:', this.currentTechnique);
         this.isActive = true;
 
-        // Initialize WebGL if needed
-        if (!this.webglRenderer.gl) {
-            this.webglRenderer.init();
+        // Initialize Three.js if needed
+        if (this.threeRenderer) {
+            this.threeRenderer.init();
+            this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
+            this.threeRenderer.start();
         }
-
-        // Update renderer settings
-        this.webglRenderer.setTechnique(this.currentTechnique, this.technique);
 
         // Show backdrop, indicator, and hover area
         this.backdrop.style.display = 'block';
@@ -392,6 +391,11 @@ export class EnhancedBreathingIndicator {
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = null;
         }
+
+        // Stop Three.js renderer
+        if (this.threeRenderer) {
+            this.threeRenderer.stop();
+        }
     }
 
     /**
@@ -421,9 +425,9 @@ export class EnhancedBreathingIndicator {
             this.techniqueDesc.textContent = this.technique.description;
             this._updateSelectorButtons();
 
-            // Update WebGL Renderer
-            if (this.webglRenderer) {
-                this.webglRenderer.setTechnique(this.currentTechnique, this.technique);
+            // Update Three.js Renderer
+            if (this.threeRenderer) {
+                this.threeRenderer.setTechnique(this.currentTechnique, this.technique);
             }
 
             // Show technique info briefly (selector is now in Serenity Hub)
@@ -601,9 +605,10 @@ export class EnhancedBreathingIndicator {
         // Calculate intensity
         const intensity = this._calculateIntensity(progress, 0.3);
 
-        // Update WebGL Renderer
-        this.webglRenderer.updateIntensity(intensity, this.currentPhase);
-        this.webglRenderer.render();
+        // Update Three.js Renderer
+        if (this.threeRenderer) {
+            this.threeRenderer.updateIntensity(intensity, this.currentPhase);
+        }
 
         // Update DOM rings (keep these for UI consistency)
         this._updateRings(intensity);
