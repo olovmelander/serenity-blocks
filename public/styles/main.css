@@ -25045,6 +25045,8 @@ body.serenity-mode.cursor-hidden * {
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 50%;
+    overflow: hidden;
 }
 
 /* Subtle dark container for better visibility - only around animation */
@@ -25085,7 +25087,7 @@ body.serenity-mode.cursor-hidden * {
     }
 }
 
-/* Particle canvas */
+/* Particle canvas - Three.js renderer */
 .breathing-particles {
     position: absolute;
     top: 50%;
@@ -25095,6 +25097,7 @@ body.serenity-mode.cursor-hidden * {
     height: 700px;
     pointer-events: none;
     z-index: 1;
+    border-radius: 50%;
 }
 
 /* Concentric rings - more pronounced */
