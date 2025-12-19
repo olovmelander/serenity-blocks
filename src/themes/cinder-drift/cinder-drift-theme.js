@@ -328,10 +328,10 @@ export default class CinderDriftTheme extends BaseTheme {
 
         // Slow camera movement
         if (this.camera) {
-            const orbitSpeed = 0.06;
-            this.camera.position.x = Math.sin(elapsedTime * orbitSpeed) * 5;
-            this.camera.position.y = Math.sin(elapsedTime * orbitSpeed * 0.7) * 3;
-            this.camera.position.z = 25 + Math.cos(elapsedTime * orbitSpeed * 0.5) * 3;
+            const orbitSpeed = 0.04;
+            this.camera.position.x = Math.sin(elapsedTime * orbitSpeed) * 8;
+            this.camera.position.y = Math.sin(elapsedTime * orbitSpeed * 0.7) * 5;
+            this.camera.position.z = 60 + Math.cos(elapsedTime * orbitSpeed * 0.5) * 5;
             this.camera.lookAt(0, 0, 0);
         }
 
