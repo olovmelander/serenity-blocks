@@ -35,6 +35,8 @@ import {
     starFragmentShader,
     atmosphereVertexShader,
     atmosphereFragmentShader,
+    voidSparkVertexShader,
+    voidSparkFragmentShader,
     ChromaticAberrationShader,
     FilmGrainShader,
 } from './cosmic-noir-shaders.js';
@@ -47,6 +49,7 @@ const QUALITY_PRESETS = {
         starCount: 8000,
         nebulaCount: 25,
         ambientParticles: 400,
+        voidSparks: 2500,
         bloomStrength: 0.5,
         bloomRadius: 0.45,
         enablePostProcessing: true,
@@ -57,6 +60,7 @@ const QUALITY_PRESETS = {
         starCount: 6000,
         nebulaCount: 20,
         ambientParticles: 300,
+        voidSparks: 2000,
         bloomStrength: 0.45,
         bloomRadius: 0.4,
         enablePostProcessing: true,
@@ -67,6 +71,7 @@ const QUALITY_PRESETS = {
         starCount: 5000,
         nebulaCount: 15,
         ambientParticles: 200,
+        voidSparks: 1500,
         bloomStrength: 0.4,
         bloomRadius: 0.35,
         enablePostProcessing: true,
@@ -77,6 +82,7 @@ const QUALITY_PRESETS = {
         starCount: 3000,
         nebulaCount: 10,
         ambientParticles: 120,
+        voidSparks: 1000,
         bloomStrength: 0.35,
         bloomRadius: 0.3,
         enablePostProcessing: true,
@@ -87,6 +93,7 @@ const QUALITY_PRESETS = {
         starCount: 1800,
         nebulaCount: 6,
         ambientParticles: 60,
+        voidSparks: 600,
         bloomStrength: 0.25,
         bloomRadius: 0.25,
         enablePostProcessing: false,
@@ -97,6 +104,7 @@ const QUALITY_PRESETS = {
         starCount: 1000,
         nebulaCount: 4,
         ambientParticles: 30,
+        voidSparks: 400,
         bloomStrength: 0.2,
         bloomRadius: 0.2,
         enablePostProcessing: false,
@@ -160,11 +168,15 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.atmosphere = null;
         this.cosmicWaves = [];
         this.voidOrbs = [];
+        this.voidSparks = []; // Pool of particle systems for overlapping bursts
+        this.voidSparkIndex = 0; // Cycle through available systems
 
         // Effect states
         this.planetPulseIntensity = 0;
         this.planetGlowIntensity = 1.0;
         this.comboMultiplier = 1.0;
+        this.gasExplosionTimer = -10.0; // Timer for atmosphere gas explosion
+        this.gasExplosionIntensity = 0.0; // Intensity based on combo
 
         // Planet drift animation (Lissajous curves for organic movement)
         this.planetPhaseX = Math.random() * Math.PI * 2;
@@ -220,6 +232,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.createPlanet();
         this.createAtmosphere();
         this.createAmbientParticles();
+        this.createVoidSparks();
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -527,7 +540,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Atmosphere - Volumetric gas shell
+    // Atmosphere - Volumetric gas shell with explosion support
     // ─────────────────────────────────────────────────────────────────────────
 
     createAtmosphere() {
@@ -540,6 +553,8 @@ export default class CosmicNoirTheme extends BaseTheme {
             uniforms: {
                 uTime: { value: 0 },
                 uPulseIntensity: { value: 0 },
+                uExplosionTimer: { value: -10.0 },
+                uExplosionIntensity: { value: 0 },
             },
             vertexShader: atmosphereVertexShader,
             fragmentShader: atmosphereFragmentShader,
@@ -555,6 +570,91 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGroup.add(this.atmosphere);
 
         console.log('[CosmicNoir] Atmosphere shell created');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Void Sparks - Explosive silver/gray burst from planet surface outward
+    // Creates a pool of particle systems to allow overlapping bursts
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createVoidSparks() {
+        const poolSize = 6; // Number of overlapping bursts allowed
+        const countPerSystem = Math.floor(this.qualityPreset.voidSparks / 2);
+
+        const planetRadius = 180; // Start at planet surface
+
+        // Color palette for void sparks - silver/gray noir aesthetic
+        const colorOptions = [
+            new THREE.Color(0xffffff), // Pure white
+            new THREE.Color(0xe0e0e8), // Light silver
+            new THREE.Color(0xc0c0c8), // Medium silver
+            new THREE.Color(0xa0a0b0), // Gray silver
+            new THREE.Color(0x9090a0), // Darker silver
+        ];
+
+        for (let p = 0; p < poolSize; p++) {
+            const geometry = new THREE.BufferGeometry();
+
+            const thetas = new Float32Array(countPerSystem);
+            const phis = new Float32Array(countPerSystem);
+            const radii = new Float32Array(countPerSystem);
+            const randoms = new Float32Array(countPerSystem);
+            const colors = new Float32Array(countPerSystem * 3);
+            const positions = new Float32Array(countPerSystem * 3);
+
+            for (let i = 0; i < countPerSystem; i++) {
+                // Distribute particles evenly on planet surface
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                thetas[i] = theta;
+                phis[i] = phi;
+                radii[i] = planetRadius;
+                randoms[i] = Math.random();
+
+                // Color selection - mostly white/silver with some gray
+                const colorType = Math.random();
+                let c;
+                if (colorType > 0.5) c = colorOptions[0]; // White
+                else if (colorType > 0.3) c = colorOptions[1]; // Light silver
+                else if (colorType > 0.15) c = colorOptions[2]; // Medium silver
+                else if (colorType > 0.05) c = colorOptions[3]; // Gray silver
+                else c = colorOptions[4]; // Darker silver
+
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+
+                positions[i * 3] = 0;
+                positions[i * 3 + 1] = 0;
+                positions[i * 3 + 2] = 0;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
+            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
+            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    uPulseTimer: { value: -100.0 },
+                },
+                vertexShader: voidSparkVertexShader,
+                fragmentShader: voidSparkFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const sparks = new THREE.Points(geometry, material);
+            this.planetGroup.add(sparks);
+            this.voidSparks.push(sparks);
+        }
+
+        console.log('[CosmicNoir] Void sparks pool created with', poolSize, 'systems,', countPerSystem, 'particles each');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -632,6 +732,37 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (this.atmosphere && this.atmosphere.material.uniforms) {
             this.atmosphere.material.uniforms.uTime.value = this.time;
             this.atmosphere.material.uniforms.uPulseIntensity.value = this.planetPulseIntensity;
+
+            // Update gas explosion timer
+            if (this.gasExplosionTimer > -5.0) {
+                this.gasExplosionTimer += delta;
+                this.atmosphere.material.uniforms.uExplosionTimer.value = this.gasExplosionTimer;
+                this.atmosphere.material.uniforms.uExplosionIntensity.value = this.gasExplosionIntensity;
+
+                // Reset after explosion completes
+                if (this.gasExplosionTimer > 5.0) {
+                    this.gasExplosionTimer = -10.0;
+                    this.gasExplosionIntensity = 0;
+                }
+            }
+        }
+
+        // Update all void spark systems in the pool
+        for (const sparks of this.voidSparks) {
+            if (sparks && sparks.material.uniforms) {
+                sparks.material.uniforms.time.value = this.time;
+
+                // Update pulse wave
+                if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
+                    // Move wave outwards
+                    sparks.material.uniforms.uPulseTimer.value += delta * 12.0;
+
+                    // Turn off when wave completes
+                    if (sparks.material.uniforms.uPulseTimer.value > 75.0) {
+                        sparks.material.uniforms.uPulseTimer.value = -100.0;
+                    }
+                }
+            }
         }
 
         // Update film grain time
@@ -860,6 +991,21 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
         this.planetPulseIntensity = Math.min(0.5 + comboCount * 0.18, 1.3);
 
+        // === COMBO EFFECTS: Void Sparks + Gas Explosion ===
+        if (comboCount >= 2 && this.voidSparks.length > 0) {
+            // Trigger void spark burst - cycle through pool
+            const sparks = this.voidSparks[this.voidSparkIndex];
+            if (sparks && sparks.material.uniforms) {
+                sparks.material.uniforms.uPulseTimer.value = 0.0;
+            }
+            // Cycle to next system in pool
+            this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
+
+            // Trigger gas explosion on atmosphere
+            this.gasExplosionTimer = 0.0;
+            this.gasExplosionIntensity = Math.min(0.5 + comboCount * 0.15, 1.2);
+        }
+
         // Create cosmic waves
         const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
         for (let i = 0; i < waveCount; i++) {
@@ -938,6 +1084,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.atmosphere = null;
         this.cosmicWaves = [];
         this.voidOrbs = [];
+        this.voidSparks = [];
+        this.voidSparkIndex = 0;
         this.ambientParticles = null;
 
         super.stop();

@@ -39,6 +39,11 @@ export class ModalManager {
                 if (replaysIcon) {
                     replaysIcon.classList.add('visible');
                 }
+                // Show highscores icon when start modal is open
+                const highscoresIcon = document.getElementById('highscores-icon-btn');
+                if (highscoresIcon) {
+                    highscoresIcon.classList.add('visible');
+                }
             }
             window.dispatchEvent(new CustomEvent('modalShown', { detail: { modalName } }));
 
@@ -63,6 +68,11 @@ export class ModalManager {
                 const replaysIcon = document.getElementById('open-replays-btn');
                 if (replaysIcon) {
                     replaysIcon.classList.remove('visible');
+                }
+                // Hide highscores icon when start modal closes
+                const highscoresIcon = document.getElementById('highscores-icon-btn');
+                if (highscoresIcon) {
+                    highscoresIcon.classList.remove('visible');
                 }
             }
             window.dispatchEvent(new CustomEvent('modalHidden', { detail: { modalName } }));
@@ -554,6 +564,21 @@ export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
     if (highScoresBtn) {
         highScoresBtn.addEventListener('click', () => {
             if (onHighScoresOpen) onHighScoresOpen();
+        });
+    }
+
+    // High scores icon button (start screen)
+    const highScoresIconBtn = document.getElementById('highscores-icon-btn');
+    if (highScoresIconBtn) {
+        highScoresIconBtn.addEventListener('click', () => {
+            if (onHighScoresOpen) onHighScoresOpen();
+        });
+        // Also handle Enter/Space key for accessibility
+        highScoresIconBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (onHighScoresOpen) onHighScoresOpen();
+            }
         });
     }
 
