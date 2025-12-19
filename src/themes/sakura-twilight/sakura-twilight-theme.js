@@ -83,6 +83,10 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.constellationOpacity = 0;
         this.constellationTargetOpacity = 0;
 
+        // Fuji Mountain
+        this.fujiMountain = null;
+        this.fujiMaterial = null;
+
         // Lanterns
         this.lanterns = [];
         this.lanternLights = [];
@@ -154,6 +158,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.createPetals();
         this.createGrass(); // Add animated grass
         this.createMoon();  // Add moon with glow
+        this.createFujiMountain();  // Add 3D Fuji mountain in horizon
         this.createStarfield();  // Add twinkling stars
         this.createLanterns();  // Add glowing lanterns
         await this.loadFoxes();  // Add wandering foxes
@@ -1679,6 +1684,299 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.moonLight = moonLight;
 
         console.log('[SakuraTheme] Moon created with glow layers');
+    }
+
+    /**
+     * Create a 3D Mount Fuji-style mountain in the distant horizon
+     * Uses PlaneGeometry with heightmap displacement for realistic terrain:
+     * - FBM noise for natural mountain shape
+     * - Radial falloff for volcanic cone profile
+     * - Height-based snow/rock texturing
+     * - Atmospheric perspective
+     */
+    createFujiMountain() {
+        // Mountain configuration
+        const config = {
+            size: 800,           // Size of the terrain plane
+            segments: 128,       // Resolution (128x128 = 16,384 vertices)
+            peakHeight: 300,     // Maximum height at the peak
+            position: new THREE.Vector3(-150, -80, -1100),  // Far left, distant horizon
+            snowLine: 0.45,      // Snow starts at 45% height
+        };
+
+        // Create high-resolution plane geometry
+        const geometry = new THREE.PlaneGeometry(
+            config.size,
+            config.size,
+            config.segments,
+            config.segments
+        );
+
+        // Rotate to horizontal and position
+        geometry.rotateX(-Math.PI / 2);
+
+        // --- FBM NOISE FUNCTION FOR HEIGHTMAP ---
+        const noise2D = (x, y) => {
+            // Simple hash-based noise
+            const dot = x * 12.9898 + y * 78.233;
+            return (Math.sin(dot) * 43758.5453) % 1;
+        };
+
+        const smoothNoise = (x, y) => {
+            const ix = Math.floor(x);
+            const iy = Math.floor(y);
+            const fx = x - ix;
+            const fy = y - iy;
+
+            // Smoothstep interpolation
+            const sx = fx * fx * (3 - 2 * fx);
+            const sy = fy * fy * (3 - 2 * fy);
+
+            const n00 = noise2D(ix, iy);
+            const n10 = noise2D(ix + 1, iy);
+            const n01 = noise2D(ix, iy + 1);
+            const n11 = noise2D(ix + 1, iy + 1);
+
+            const nx0 = n00 + sx * (n10 - n00);
+            const nx1 = n01 + sx * (n11 - n01);
+
+            return nx0 + sy * (nx1 - nx0);
+        };
+
+        const fbm = (x, y, octaves = 6) => {
+            let value = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            let maxValue = 0;
+
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * (smoothNoise(x * frequency, y * frequency) * 2 - 1);
+                maxValue += amplitude;
+                amplitude *= 0.5;
+                frequency *= 2;
+            }
+
+            return value / maxValue;
+        };
+
+        // --- APPLY HEIGHTMAP DISPLACEMENT ---
+        const positions = geometry.attributes.position;
+        const vertex = new THREE.Vector3();
+        const center = new THREE.Vector2(0, 0); // Center of the mountain
+
+        // Store heights for normal calculation
+        const heights = [];
+
+        for (let i = 0; i < positions.count; i++) {
+            vertex.fromBufferAttribute(positions, i);
+
+            // Calculate distance from center (for volcanic cone shape)
+            const dx = vertex.x - center.x;
+            const dz = vertex.z - center.y;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            const maxDistance = config.size * 0.48;
+            const normalizedDistance = distance / maxDistance;
+
+            // Base volcanic cone shape - inverse of distance with Fuji-like profile
+            // Fuji has a distinctive concave profile near top, convex at base
+            let coneHeight = 0;
+            if (normalizedDistance < 1.0) {
+                // Fuji profile: steep at top, gentler at base
+                const profile = 1 - Math.pow(normalizedDistance, 1.3);
+                // Add slight concavity near peak (Fuji's crater rim effect)
+                const craterDip = normalizedDistance < 0.08 ? (0.08 - normalizedDistance) * 0.3 : 0;
+                coneHeight = Math.max(0, profile - craterDip) * config.peakHeight;
+            }
+
+            // Add FBM noise for natural terrain detail
+            const noiseScale = 0.008;
+            const ridgeNoise = fbm(vertex.x * noiseScale, vertex.z * noiseScale, 5);
+            const detailNoise = fbm(vertex.x * noiseScale * 3, vertex.z * noiseScale * 3, 4);
+
+            // Noise strength decreases toward peak (smoother snow cap)
+            const noiseStrength = Math.pow(normalizedDistance, 0.7) * 0.15;
+            const terrainDetail = (ridgeNoise * 0.7 + detailNoise * 0.3) * config.peakHeight * noiseStrength;
+
+            // Add radial ridges (lava flow patterns)
+            const angle = Math.atan2(dz, dx);
+            const ridgePattern = Math.sin(angle * 12) * Math.sin(angle * 7) * 0.3;
+            const ridges = ridgePattern * (1 - normalizedDistance) * config.peakHeight * 0.08;
+
+            // Final height
+            const height = coneHeight + terrainDetail + ridges;
+            heights.push(height);
+
+            // Apply height to Y position
+            positions.setY(i, height);
+        }
+
+        // Recompute normals for proper lighting
+        geometry.computeVertexNormals();
+
+        // --- Add height attribute for shader ---
+        const heightAttr = new Float32Array(positions.count);
+        for (let i = 0; i < positions.count; i++) {
+            heightAttr[i] = heights[i] / config.peakHeight; // Normalized 0-1
+        }
+        geometry.setAttribute('aHeight', new THREE.BufferAttribute(heightAttr, 1));
+
+        // --- CUSTOM SHADER MATERIAL ---
+        this.fujiMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSnowColor: { value: new THREE.Color(0xffffff) },
+                uSnowShadow: { value: new THREE.Color(0xd0e0f0) },
+                uRockColorLight: { value: new THREE.Color(0x5a6575) },
+                uRockColorDark: { value: new THREE.Color(0x3a4555) },
+                uFogColor: { value: this.config.fogColor },
+                uSkyColor: { value: new THREE.Color(0x8095b5) },
+                uSnowLine: { value: config.snowLine },
+                uPeakHeight: { value: config.peakHeight },
+                uSunDirection: { value: new THREE.Vector3(0.3, 0.8, 0.5).normalize() },
+            },
+            vertexShader: `
+                attribute float aHeight;
+                
+                varying vec3 vNormal;
+                varying vec3 vWorldPosition;
+                varying float vHeight;
+                varying vec2 vUv;
+                
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vUv = uv;
+                    vHeight = aHeight;
+                    
+                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    vWorldPosition = worldPos.xyz;
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uSnowColor;
+                uniform vec3 uSnowShadow;
+                uniform vec3 uRockColorLight;
+                uniform vec3 uRockColorDark;
+                uniform vec3 uFogColor;
+                uniform vec3 uSkyColor;
+                uniform float uSnowLine;
+                uniform float uPeakHeight;
+                uniform vec3 uSunDirection;
+                
+                varying vec3 vNormal;
+                varying vec3 vWorldPosition;
+                varying float vHeight;
+                varying vec2 vUv;
+                
+                // Hash noise for detail
+                float hash(vec2 p) {
+                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+                }
+                
+                float noise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    
+                    float a = hash(i);
+                    float b = hash(i + vec2(1.0, 0.0));
+                    float c = hash(i + vec2(0.0, 1.0));
+                    float d = hash(i + vec2(1.0, 1.0));
+                    
+                    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                }
+                
+                float fbm(vec2 p) {
+                    float v = 0.0;
+                    float a = 0.5;
+                    for (int i = 0; i < 5; i++) {
+                        v += a * noise(p);
+                        p *= 2.0;
+                        a *= 0.5;
+                    }
+                    return v;
+                }
+                
+                void main() {
+                    // Skip pixels below ground level
+                    if (vHeight < 0.01) discard;
+                    
+                    // === LIGHTING ===
+                    float NdotL = dot(vNormal, uSunDirection);
+                    float lighting = max(0.3, NdotL);
+                    float shadow = smoothstep(-0.2, 0.3, NdotL);
+                    
+                    // Slope detection (steeper = less snow)
+                    float slope = 1.0 - abs(dot(vNormal, vec3(0.0, 1.0, 0.0)));
+                    
+                    // === SNOW COVERAGE ===
+                    // Base snow line with noise variation
+                    float snowNoise = fbm(vWorldPosition.xz * 0.02) * 0.12;
+                    float snowThreshold = uSnowLine + snowNoise;
+                    
+                    // Height-based snow
+                    float snowAmount = smoothstep(snowThreshold - 0.05, snowThreshold + 0.1, vHeight);
+                    
+                    // Reduce snow on steep slopes
+                    snowAmount *= smoothstep(0.8, 0.4, slope);
+                    
+                    // Add snow streaks running down
+                    float streaks = fbm(vec2(atan(vWorldPosition.z, vWorldPosition.x) * 5.0, vHeight * 3.0));
+                    snowAmount += streaks * 0.15 * (1.0 - vHeight) * step(uSnowLine * 0.7, vHeight);
+                    snowAmount = clamp(snowAmount, 0.0, 1.0);
+                    
+                    // === ROCK COLOR ===
+                    vec3 rockColor = mix(uRockColorDark, uRockColorLight, lighting);
+                    
+                    // Add rock texture variation
+                    float rockDetail = fbm(vWorldPosition.xz * 0.05);
+                    rockColor += vec3(rockDetail * 0.08 - 0.04);
+                    
+                    // === SNOW COLOR ===
+                    vec3 snowColorFinal = mix(uSnowShadow, uSnowColor, shadow);
+                    
+                    // Slight blue tint in shadows
+                    snowColorFinal = mix(snowColorFinal, uSnowShadow * 0.9, (1.0 - shadow) * 0.3);
+                    
+                    // === COMBINE ===
+                    vec3 color = mix(rockColor, snowColorFinal, snowAmount);
+                    
+                    // === ATMOSPHERIC FOG ===
+                    float dist = length(vWorldPosition - cameraPosition);
+                    float fogFactor = smoothstep(600.0, 1300.0, dist);
+                    
+                    // Height-aware atmosphere (higher = more sky color)
+                    vec3 atmosphereColor = mix(uFogColor, uSkyColor, vHeight * 0.4);
+                    color = mix(color, atmosphereColor, fogFactor * 0.75);
+                    
+                    // === AMBIENT OCCLUSION (darker at base) ===
+                    float ao = smoothstep(0.0, 0.2, vHeight);
+                    color *= mix(0.6, 1.0, ao);
+                    
+                    // === LOW-LYING FOG/MIST AT BASE ===
+                    // Thick mist that obscures the mountain base
+                    float baseFog = smoothstep(0.25, 0.0, vHeight); // Strongest at bottom
+                    baseFog *= 0.95; // Maximum fog opacity
+                    vec3 mistColor = mix(uFogColor, vec3(0.7, 0.75, 0.85), 0.3); // Slightly blueish mist
+                    color = mix(color, mistColor, baseFog);
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+            side: THREE.DoubleSide,
+        });
+
+        // Create the mountain mesh
+        this.fujiMountain = new THREE.Mesh(geometry, this.fujiMaterial);
+        this.fujiMountain.position.copy(config.position);
+
+        // Render order for proper depth
+        this.fujiMountain.renderOrder = -10;
+
+        this.scene.add(this.fujiMountain);
+
+        console.log('[SakuraTheme] Mount Fuji created with heightmap terrain');
     }
 
     createStarfield() {

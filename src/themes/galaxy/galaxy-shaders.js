@@ -140,7 +140,8 @@ void main() {
 export const spiralVertexShader = `
 uniform float time;
 uniform float spiralTightness;
-uniform float uPulseTimer; // Controls the expanding pulse wave (-100 = off/finished)
+uniform float uPulseTimers[8]; // Array of pulse timers for stacking effects
+uniform int uPulseCount;
 
 attribute float aAngle;
 attribute float aRadius;
@@ -165,22 +166,24 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Pulse wave calculation
-    // Wave moves from radius 0 outwards.
-    // Asymmetric wave: Sharp leading edge, long trailing tail usually looks better for "following"
-    // diff is positive when wave has PASSED the particle (uPulseTimer > aRadius)
-    float diff = uPulseTimer - aRadius;
+    // Find the best active pulse for this particle (closest to its radius)
     float pulseIntensity = 0.0;
-    
-    // Tail length - how long the trail is behind the wave front
     float tailLength = 8.0;
-
-    if (diff > 0.0 && diff < tailLength) {
-        // Linear fade from 1.0 (at wave front) to 0.0 (at end of tail)
-        pulseIntensity = 1.0 - (diff / tailLength);
+    
+    for (int i = 0; i < 8; i++) {
+        if (i >= uPulseCount) break;
+        float diff = uPulseTimers[i] - aRadius;
         
-        // Optional: curve the falloff for a "hotter" head
-        pulseIntensity = pow(pulseIntensity, 1.5);
+        if (diff > 0.0 && diff < tailLength) {
+            // Linear fade from 1.0 (at wave front) to 0.0 (at end of tail)
+            float intensity = 1.0 - (diff / tailLength);
+            
+            // Optional: curve the falloff for a "hotter" head
+            intensity = pow(intensity, 1.5);
+            
+            // Take the strongest pulse affecting this particle
+            pulseIntensity = max(pulseIntensity, intensity);
+        }
     }
     
     // Size attenuation - larger stars appear bigger
@@ -427,7 +430,8 @@ void main() {
 export const sparkVertexShader = `
 uniform float time;
 uniform float spiralTightness;
-uniform float uPulseTimer; // Controls the wave position
+uniform float uPulseTimers[8]; // Array of pulse timers for stacking effects
+uniform int uPulseCount;
 
 attribute float aAngle;
 attribute float aRadius;
@@ -447,19 +451,28 @@ void main() {
     initialPos.y = (aRandom - 0.5) * 0.5;
     initialPos.z = sin(paramAngle) * aRadius;
     
-    // Animation Logic
-    // Spark is born when uPulseTimer crosses aRadius
-    // age = positive value representing how long ago the wave passed
-    float age = uPulseTimer - aRadius;
+    // Find the pulse that this spark should follow
+    // Use the pulse with the largest valid age (i.e., the one that passed most recently)
+    float bestAge = -1.0;
+    float maxLife = 100.0;
+    
+    for (int i = 0; i < 8; i++) {
+        if (i >= uPulseCount) break;
+        float age = uPulseTimers[i] - aRadius;
+        
+        if (age > 0.0 && age < maxLife) {
+            // Pick the pulse with smallest age (most recent trigger for this radius)
+            if (bestAge < 0.0 || age < bestAge) {
+                bestAge = age;
+            }
+        }
+    }
     
     vec3 animatedPos = initialPos;
     float alpha = 0.0;
     float size = 0.0;
     
-    // Effect parameters
-    float maxLife = 100.0; // Ultra long life (was 30.0)
-    
-    if (age > 0.0 && age < maxLife) {
+    if (bestAge > 0.0) {
         // Eruption!
         
         // Fly outward from center + random spread
@@ -471,17 +484,13 @@ void main() {
         vec3 velocity = mix(radialDir, aRandomDir, 0.7) * 3.5; 
         
         // Apply velocity over time (age)
-        animatedPos += velocity * age;
+        animatedPos += velocity * bestAge;
         
         // Visuals
-        alpha = 1.0 - (age / maxLife); // Fade out
+        alpha = 1.0 - (bestAge / maxLife); // Fade out
         alpha = pow(alpha, 0.5); // Stay visible longer
         
-        size = (1.0 - (age / maxLife)) * 5.0; // Start larger
-    } else {
-        // Hidden (before wave arrives OR after dead)
-        // Move behind camera or scale to 0
-        size = 0.0;
+        size = (1.0 - (bestAge / maxLife)) * 5.0; // Start larger
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);

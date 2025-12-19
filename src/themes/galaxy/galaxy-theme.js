@@ -49,6 +49,10 @@ export default class GalaxyTheme extends BaseTheme {
         this.flares = [];
         this.spiralSparks = null;
 
+        // Multiple stacking pulse waves
+        this.MAX_PULSES = 8;
+        this.activePulses = []; // Array of {timer: number}
+
         // Animation
         this.animationFrame = null;
         this.clock = new THREE.Clock();
@@ -303,12 +307,16 @@ export default class GalaxyTheme extends BaseTheme {
         geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
         geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
+        // Create array of pulse timers for stacking effect
+        const pulseTimers = new Array(this.MAX_PULSES).fill(-100.0);
+
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
                 spiralTightness: { value: 0.5 },
                 coreIntensity: this.uniforms.coreIntensity,
-                uPulseTimer: { value: -100.0 }
+                uPulseTimers: { value: pulseTimers },
+                uPulseCount: { value: this.MAX_PULSES }
             },
             vertexShader: spiralVertexShader,
             fragmentShader: spiralFragmentShader,
@@ -380,11 +388,15 @@ export default class GalaxyTheme extends BaseTheme {
         geometry.setAttribute('aRandomDir', new THREE.BufferAttribute(randomDirs, 3));
         geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
+        // Create array of pulse timers for stacking effect
+        const pulseTimers = new Array(this.MAX_PULSES).fill(-100.0);
+
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
                 spiralTightness: { value: 0.5 },
-                uPulseTimer: { value: -100.0 }
+                uPulseTimers: { value: pulseTimers },
+                uPulseCount: { value: this.MAX_PULSES }
             },
             vertexShader: sparkVertexShader,
             fragmentShader: sparkFragmentShader,
@@ -600,20 +612,36 @@ export default class GalaxyTheme extends BaseTheme {
         this.updateShockwaves(delta);
         this.updateFlares(delta);
 
-        // Update Pulse Wave
-        if (this.spiralStars && this.spiralStars.material.uniforms.uPulseTimer.value > -50.0) {
-            // Move wave outwards. Speed: 8 units/sec (Slower = follows spiral better)
-            this.spiralStars.material.uniforms.uPulseTimer.value += delta * 8.0;
+        // Update Multiple Pulse Waves
+        if (this.spiralStars && this.activePulses.length > 0) {
+            const pulseTimers = this.spiralStars.material.uniforms.uPulseTimers.value;
 
-            // Turn off when it passes typical max radius (16) + tail (8) + buffer
-            // Increased to 120.0 to allow long-lived sparks (maxLife 100) to finish
-            if (this.spiralStars.material.uniforms.uPulseTimer.value > 120.0) {
-                this.spiralStars.material.uniforms.uPulseTimer.value = -100.0;
+            // Update each active pulse
+            for (let i = this.activePulses.length - 1; i >= 0; i--) {
+                const pulse = this.activePulses[i];
+                pulse.timer += delta * 8.0; // Move wave outwards
+
+                // Remove expired pulses (after sparks finish)
+                if (pulse.timer > 120.0) {
+                    this.activePulses.splice(i, 1);
+                }
+            }
+
+            // Update shader uniforms with current pulse timers
+            for (let i = 0; i < this.MAX_PULSES; i++) {
+                if (i < this.activePulses.length) {
+                    pulseTimers[i] = this.activePulses[i].timer;
+                } else {
+                    pulseTimers[i] = -100.0; // Inactive
+                }
             }
 
             // Sync Sparks
             if (this.spiralSparks) {
-                this.spiralSparks.material.uniforms.uPulseTimer.value = this.spiralStars.material.uniforms.uPulseTimer.value;
+                const sparkTimers = this.spiralSparks.material.uniforms.uPulseTimers.value;
+                for (let i = 0; i < this.MAX_PULSES; i++) {
+                    sparkTimers[i] = pulseTimers[i];
+                }
             }
         }
 
@@ -785,9 +813,14 @@ export default class GalaxyTheme extends BaseTheme {
             this.uniforms.coreIntensity.value += 0.25;
             this.createShockwave(count * 0.4);
 
-            // Trigger Pulse Wave
+            // Add a new Pulse Wave (stacking, not restarting)
             if (this.spiralStars) {
-                this.spiralStars.material.uniforms.uPulseTimer.value = 0.0;
+                // If at max capacity, remove the oldest pulse
+                if (this.activePulses.length >= this.MAX_PULSES) {
+                    this.activePulses.shift();
+                }
+                // Add new pulse starting at timer = 0
+                this.activePulses.push({ timer: 0.0 });
             }
         }
         if (count >= 4) {

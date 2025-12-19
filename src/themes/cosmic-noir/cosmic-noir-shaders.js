@@ -464,6 +464,8 @@ void main() {
 export const atmosphereFragmentShader = `
 uniform float uTime;
 uniform float uPulseIntensity;
+uniform float uExplosionTimer;
+uniform float uExplosionIntensity;
 
 varying vec3 vNormal;
 varying vec3 vPosition;
@@ -475,36 +477,240 @@ void main() {
     vec3 viewDir = normalize(vViewPosition);
     vec3 pos = normalize(vPosition) * 4.0;
 
-    // View dependency for rim softnes
+    // View dependency for rim softness
     float fresnel = 1.0 - abs(dot(vNormal, viewDir));
     fresnel = pow(fresnel, 2.0);
 
-    // Swirling gas noise
+    // === EPIC GAS EXPLOSION EFFECT ===
+    float explosionAge = uExplosionTimer;
+    float explosionFactor = 0.0;
+    float explosionTurbulence = 0.0;
+    float explosionGlow = 0.0;
+    float shockwaveRing = 0.0;
+    float gasTendrils = 0.0;
+    float energyPulse = 0.0;
+    
+    if (explosionAge > 0.0 && explosionAge < 4.0) {
+        // Explosion phases with smoother transitions
+        float ignition = smoothstep(0.0, 0.15, explosionAge) * smoothstep(0.5, 0.2, explosionAge);
+        float expansion = smoothstep(0.2, 0.8, explosionAge) * smoothstep(2.5, 1.0, explosionAge);
+        float dissipation = smoothstep(2.0, 4.0, explosionAge);
+        
+        explosionFactor = ignition * 1.5 + expansion;
+        explosionTurbulence = (1.0 - dissipation) * uExplosionIntensity * 1.5;
+        explosionGlow = ignition * 3.0 + expansion * 1.5;
+        
+        // === EXPANDING SHOCKWAVE RINGS ===
+        // Multiple concentric rings that expand outward
+        float ringRadius1 = explosionAge * 2.5;
+        float ringRadius2 = max(0.0, explosionAge - 0.3) * 2.8;
+        float ringRadius3 = max(0.0, explosionAge - 0.6) * 3.2;
+        
+        // Distance from center in spherical space
+        float distFromCenter = length(pos.xy); 
+        
+        // Create ring shapes with thickness
+        float ring1 = smoothstep(ringRadius1 - 0.4, ringRadius1, distFromCenter) * 
+                      smoothstep(ringRadius1 + 0.4, ringRadius1, distFromCenter);
+        float ring2 = smoothstep(ringRadius2 - 0.3, ringRadius2, distFromCenter) * 
+                      smoothstep(ringRadius2 + 0.3, ringRadius2, distFromCenter);
+        float ring3 = smoothstep(ringRadius3 - 0.25, ringRadius3, distFromCenter) * 
+                      smoothstep(ringRadius3 + 0.25, ringRadius3, distFromCenter);
+        
+        // Fade rings as they expand
+        ring1 *= smoothstep(8.0, 0.0, ringRadius1);
+        ring2 *= smoothstep(10.0, 0.0, ringRadius2) * 0.7;
+        ring3 *= smoothstep(12.0, 0.0, ringRadius3) * 0.5;
+        
+        shockwaveRing = (ring1 + ring2 + ring3) * uExplosionIntensity;
+        
+        // === GAS TENDRILS SHOOTING OUTWARD ===
+        // Create directional wisps that burst from center
+        float tendrilAngle = atan(pos.y, pos.x);
+        float tendrilNoise = snoise(vec3(tendrilAngle * 4.0, explosionAge * 3.0, 0.0));
+        float tendrilShape = pow(abs(sin(tendrilAngle * 8.0 + tendrilNoise * 2.0)), 4.0);
+        
+        // Tendrils expand outward
+        float tendrilLength = explosionAge * 3.0;
+        float tendrilDist = smoothstep(0.0, tendrilLength, distFromCenter) * 
+                           smoothstep(tendrilLength + 1.0, tendrilLength * 0.5, distFromCenter);
+        
+        gasTendrils = tendrilShape * tendrilDist * (1.0 - dissipation) * uExplosionIntensity;
+        
+        // === PULSATING ENERGY WAVES ===
+        float pulseWave = sin(explosionAge * 15.0 - distFromCenter * 2.0) * 0.5 + 0.5;
+        energyPulse = pulseWave * explosionFactor * 0.4 * (1.0 - dissipation);
+    }
+
+    // Swirling gas noise with EXTREME turbulence during explosion
     float t = uTime * 0.2;
-    float gasDetailed = fbm(pos * 2.5 + vec3(t, t * 0.5, 0.0));
-    float gasLarge = snoise(pos * 1.0 - vec3(0.0, t * 0.2, 0.0));
+    float turbulenceSpeed = 1.0 + explosionTurbulence * 8.0;
+    float turbulenceScale = 1.0 + explosionTurbulence * 0.5;
+    
+    // Multi-octave turbulent gas
+    float gasDetailed = fbm(pos * 2.5 * turbulenceScale + vec3(t * turbulenceSpeed, t * 0.5, explosionAge * 4.0));
+    float gasLarge = snoise(pos * 1.0 - vec3(0.0, t * 0.3 * turbulenceSpeed, explosionAge * 2.0));
+    float gasVeryFine = snoise(pos * 8.0 + vec3(explosionAge * 10.0)) * 0.3;
+    
+    // Explosion shockwave distortion
+    float shockwaveNoise = snoise(pos * 6.0 + vec3(explosionAge * 12.0));
+    float burstNoise = snoise(pos * 3.0 - vec3(explosionAge * 5.0, 0.0, explosionAge * 3.0));
+    gasDetailed += (shockwaveNoise + burstNoise) * explosionFactor * 0.6;
+    gasDetailed += gasVeryFine * explosionTurbulence;
 
     // Combine noise layers
     float gas = gasDetailed * 0.6 + gasLarge * 0.4;
 
-    // Noir aesthetic colors (silver/gray mist)
-    vec3 colorDense = vec3(0.15, 0.15, 0.18);
-    vec3 colorWispy = vec3(0.4, 0.4, 0.45);
+    // === DRAMATIC COLOR PALETTE ===
+    vec3 colorDense = vec3(0.12, 0.12, 0.15);      // Dark noir base
+    vec3 colorWispy = vec3(0.35, 0.35, 0.42);      // Silver mist
+    
+    // Explosion color gradient: hot white → bright silver → cool cyan tint
+    vec3 colorHotCore = vec3(1.0, 1.0, 1.0);       // Pure white (hottest)
+    vec3 colorExplosion = vec3(0.95, 0.95, 1.0);   // Bright silver-white
+    vec3 colorEnergy = vec3(0.7, 0.8, 0.95);       // Cool silver-cyan
+    vec3 colorTendril = vec3(0.5, 0.55, 0.7);      // Blue-gray tendril
+    vec3 colorRing = vec3(0.9, 0.92, 1.0);         // Shockwave ring color
     
     vec3 finalColor = mix(colorDense, colorWispy, gas);
+    
+    // Add explosion glow (hot core)
+    finalColor = mix(finalColor, colorHotCore, explosionGlow * 0.35);
+    finalColor = mix(finalColor, colorExplosion, explosionFactor * 0.4);
+    
+    // Add shockwave rings with bright color
+    finalColor = mix(finalColor, colorRing, shockwaveRing * 0.7);
+    
+    // Add gas tendrils
+    finalColor = mix(finalColor, colorTendril, gasTendrils * 0.5);
+    
+    // Add energy pulse with cyan tint
+    finalColor = mix(finalColor, colorEnergy, energyPulse * 0.3);
+    
+    // Boost brightness during peak explosion
+    finalColor *= 1.0 + explosionGlow * 0.3;
 
     // Pulse effect
     finalColor *= (1.0 + uPulseIntensity * 0.5);
 
     // Opacity logic - transparent in middle, opaque at edges (gas atmosphere feel)
-    // Make sure it's not too solid
     float density = smoothstep(0.2, 0.8, gas);
     float alpha = density * 0.4 + fresnel * 0.5;
+    
+    // Explosion dramatically boosts opacity (atmosphere "ignites")
+    alpha += explosionFactor * 0.65 * uExplosionIntensity;
+    alpha += shockwaveRing * 0.5;  // Shockwave rings are visible
+    alpha += gasTendrils * 0.4;    // Tendrils are visible
+    alpha = min(alpha, 0.98);
 
     // Soften occlusion
     alpha *= smoothstep(0.0, 0.2, fresnel + 0.1);
 
     gl_FragColor = vec4(finalColor, alpha);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Void Spark Shader - Explosive silver/gray burst from planet surface outward
+// ─────────────────────────────────────────────────────────────────────────────
+export const voidSparkVertexShader = `
+uniform float time;
+uniform float uPulseTimer;
+
+attribute float aTheta;
+attribute float aPhi;
+attribute float aRadius;
+attribute float aRandom;
+attribute vec3 aColor;
+
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    // Initial position on planet surface (spherical coordinates)
+    vec3 initialPos;
+    initialPos.x = aRadius * sin(aPhi) * cos(aTheta);
+    initialPos.y = aRadius * sin(aPhi) * sin(aTheta);
+    initialPos.z = aRadius * cos(aPhi);
+
+    // Radial direction - outward from planet center
+    vec3 radialDir = normalize(initialPos);
+
+    // Stagger eruption timing based on random value
+    float triggerTime = aRandom * 2.5;
+    float age = uPulseTimer - triggerTime;
+
+    vec3 animatedPos = initialPos;
+    float alpha = 0.0;
+    float size = 0.0;
+
+    // Effect parameters
+    float maxLife = 60.0;
+
+    if (age > 0.0 && age < maxLife) {
+        // VOID EXPLOSION! Burst outward from planet surface
+
+        // Add slight random spread to the radial direction
+        float spreadX = (aRandom - 0.5) * 0.25;
+        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.25;
+        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.25;
+        vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
+
+        // Strong outward velocity - explosive burst
+        float speed = 12.0 + aRandom * 6.0;
+        vec3 velocity = burstDir * speed;
+
+        // Apply velocity over time with slight deceleration
+        float decel = 1.0 - age * 0.005;
+        animatedPos += velocity * age * max(decel, 0.3);
+
+        // Fade out over lifetime
+        alpha = 1.0 - (age / maxLife);
+        alpha = pow(alpha, 0.5);
+
+        // Large particles that shrink
+        size = (1.0 - (age / maxLife) * 0.6) * 30.0;
+    }
+
+    vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    // Large point size for dramatic explosion
+    gl_PointSize = size * (300.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 2.0, 80.0);
+
+    vColor = aColor;
+    vAlpha = alpha;
+}
+`;
+
+export const voidSparkFragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    if (vAlpha <= 0.01) discard;
+
+    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
+
+    // Bright hot center - white/silver core
+    float core = 1.0 - smoothstep(0.0, 0.2, dist);
+
+    // Soft outer glow - stays visible longer
+    float glow = 1.0 - smoothstep(0.0, 0.85, dist);
+
+    // Mix color with bright white center for hot spark effect
+    vec3 finalColor = mix(vColor, vec3(1.0, 1.0, 1.0), core * 0.7);
+
+    // Add slight blue tint to outer edges for noir effect
+    finalColor = mix(finalColor, vec3(0.7, 0.7, 0.85), (1.0 - core) * 0.2);
+
+    // Boost overall brightness
+    finalColor *= 1.3;
+
+    gl_FragColor = vec4(finalColor, vAlpha * glow);
 }
 `;
 
