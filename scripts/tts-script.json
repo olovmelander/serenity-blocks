@@ -6,6 +6,28 @@
     },
     "sessions": [
         {
+            "id": "session_intros",
+            "description": "Session introduction voiceovers explaining each session",
+            "clips": [
+                {
+                    "filename": "base_intro.wav",
+                    "text": "Welcome to Hale Base. This foundational practice will help you regulate stress and build breath capacity. We'll use rhythmic nose breathing to find balance. Settle in, and let's begin."
+                },
+                {
+                    "filename": "elixir_intro.wav",
+                    "text": "Welcome to Hale Elixir. This is a high-intensity activation practice. We'll use powerful mouth breathing to energize your body and clear your mind. Get ready to push your limits."
+                },
+                {
+                    "filename": "rest_intro.wav",
+                    "text": "Welcome to Hale Rest. This soothing practice uses extended exhales to activate deep relaxation and prepare you for restful sleep. Let your body sink into comfort."
+                },
+                {
+                    "filename": "flow_intro.wav",
+                    "text": "Welcome to Hale Flow. This balanced box breathing practice creates equilibrium and cultivates rhythmic awareness. Find your center, and let the breath guide you."
+                }
+            ]
+        },
+        {
             "id": "base",
             "description": "Base session - screen-synced audio (matches subPrompt exactly)",
             "clips": [
@@ -250,6 +272,30 @@
                 {
                     "filename": "nothing_to_do.wav",
                     "text": "There is nothing to do... nowhere to go... simply be."
+                },
+                {
+                    "filename": "body_scan.wav",
+                    "text": "Scan your body... notice any sensations... accept them fully."
+                },
+                {
+                    "filename": "waves_ocean.wav",
+                    "text": "Like waves in the ocean... rising... falling... endlessly."
+                },
+                {
+                    "filename": "let_go.wav",
+                    "text": "With each exhale... let go a little more."
+                },
+                {
+                    "filename": "inner_light.wav",
+                    "text": "A warm light glows within you... expanding with each breath."
+                },
+                {
+                    "filename": "trust_process.wav",
+                    "text": "Trust the process... trust your body... trust yourself."
+                },
+                {
+                    "filename": "complete_whole.wav",
+                    "text": "You are complete... you are whole... exactly as you are."
                 }
             ]
         },
@@ -287,6 +333,54 @@
                 {
                     "filename": "elixir_power.wav",
                     "text": "Build Power."
+                },
+                {
+                    "filename": "rest_sleep.wav",
+                    "text": "Surrender to Sleep."
+                },
+                {
+                    "filename": "rest_peace.wav",
+                    "text": "Find Inner Peace."
+                },
+                {
+                    "filename": "rest_unwind.wav",
+                    "text": "Unwind and Release."
+                },
+                {
+                    "filename": "rest_restore.wav",
+                    "text": "Restore Your Energy."
+                },
+                {
+                    "filename": "flow_balance.wav",
+                    "text": "Cultivate Balance."
+                },
+                {
+                    "filename": "flow_presence.wav",
+                    "text": "Be Fully Present."
+                },
+                {
+                    "filename": "flow_clarity.wav",
+                    "text": "Gain Clarity."
+                },
+                {
+                    "filename": "flow_rhythm.wav",
+                    "text": "Find Your Rhythm."
+                },
+                {
+                    "filename": "universal_gratitude.wav",
+                    "text": "Embrace Gratitude."
+                },
+                {
+                    "filename": "universal_heal.wav",
+                    "text": "Allow Healing."
+                },
+                {
+                    "filename": "universal_clarity.wav",
+                    "text": "Seek Clarity."
+                },
+                {
+                    "filename": "universal_strength.wav",
+                    "text": "Build Inner Strength."
                 }
             ]
         },
@@ -317,6 +411,22 @@
                 {
                     "filename": "out_power.wav",
                     "text": "Out!"
+                },
+                {
+                    "filename": "deep_inhale.wav",
+                    "text": "Deep breath in..."
+                },
+                {
+                    "filename": "slow_exhale.wav",
+                    "text": "Slow breath out..."
+                },
+                {
+                    "filename": "hold_gently.wav",
+                    "text": "Hold gently..."
+                },
+                {
+                    "filename": "let_it_flow.wav",
+                    "text": "Let it flow..."
                 }
             ]
         }
