@@ -456,6 +456,12 @@ export class SessionsTab {
         const intentions = this.INTENTIONS[sessionId];
         this.selectedIntention = intentions.find(i => i.id === intentionId);
 
+        // Play intention sound
+        if (this.sessionManager && this.sessionManager.audioManager) {
+            const filename = `intentions/${sessionId.toLowerCase()}_${intentionId}.mp3`;
+            this.sessionManager.audioManager.playVoice(filename);
+        }
+
         // Update UI - highlight selected card
         const intentionGrid = this.container.querySelector('.intention-grid');
         if (intentionGrid) {
