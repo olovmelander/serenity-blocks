@@ -7,7 +7,7 @@ export class BreathworkAudioManager {
         this.voiceAudio = new Audio();
         this.cueAudio = new Audio();
 
-        this.basePath = '/assets/audio/breathwork/';
+        this.basePath = import.meta.env.BASE_URL + 'assets/audio/breathwork/';
         this.isEnabled = true;
         this.voiceVolume = 0.8;
         this.cueVolume = 0.6;
