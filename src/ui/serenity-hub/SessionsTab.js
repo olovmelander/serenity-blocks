@@ -458,7 +458,7 @@ export class SessionsTab {
 
         // Play intention sound
         if (this.sessionManager && this.sessionManager.audioManager) {
-            const filename = `intentions/${sessionId.toLowerCase()}_${intentionId}.mp3`;
+            const filename = `intentions/${sessionId.toLowerCase()}_${intentionId}.wav`;
             this.sessionManager.audioManager.playVoice(filename);
         }
 

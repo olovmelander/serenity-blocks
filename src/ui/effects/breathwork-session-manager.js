@@ -60,9 +60,10 @@ export class BreathworkSessionManager {
                         prompt: 'Grounding',
                         subPrompt: 'Close your eyes. Scan your body from head to toe. Release tension with each exhale.',
                         audio: {
+                            sessionIntro: 'session_intros/base_intro.wav',
                             voice: 'base/grounding_intro.wav',
                             cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
-                            intentions: ['intentions/base_calm.wav', 'intentions/base_focus.wav', 'intentions/base_ground.wav', 'intentions/base_breathe.wav']
+                            intentions: ['intentions/base_calm.wav', 'intentions/base_focus.wav', 'intentions/base_ground.wav', 'intentions/base_breathe.wav', 'intentions/universal_gratitude.wav', 'intentions/flow_presence.wav', 'intentions/universal_strength.wav']
                         }
                     },
                     // Round 1
@@ -162,7 +163,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'base/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav']
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav', 'fillers/body_scan.wav', 'fillers/complete_whole.wav']
                         }
                     }
                 ]
@@ -186,9 +187,10 @@ export class BreathworkSessionManager {
                         prompt: 'Grounding',
                         subPrompt: 'Set your intention. What do you seek? Energy or release?',
                         audio: {
+                            sessionIntro: 'session_intros/elixir_intro.wav',
                             voice: 'elixir/grounding_intro.wav',
                             cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
-                            intentions: ['intentions/elixir_energy.wav', 'intentions/elixir_release.wav', 'intentions/elixir_transform.wav', 'intentions/elixir_power.wav']
+                            intentions: ['intentions/elixir_energy.wav', 'intentions/elixir_release.wav', 'intentions/elixir_transform.wav', 'intentions/elixir_power.wav', 'intentions/universal_strength.wav', 'intentions/universal_clarity.wav']
                         }
                     },
                     // Round 1
@@ -291,7 +293,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav']
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav', 'fillers/trust_process.wav', 'fillers/inner_light.wav']
                         }
                     }
                 ]
@@ -313,9 +315,10 @@ export class BreathworkSessionManager {
                         prompt: 'Settling In',
                         subPrompt: 'Let your body sink into wherever you are. Release the weight of the day.',
                         audio: {
+                            sessionIntro: 'session_intros/rest_intro.wav',
                             voice: 'rest/grounding_intro.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
-                            intentions: ['intentions/base_calm.wav', 'intentions/base_ground.wav', 'intentions/elixir_release.wav']
+                            cues: { in: 'voices/cues/deep_inhale.wav', out: 'voices/cues/slow_exhale.wav' },
+                            intentions: ['intentions/rest_sleep.wav', 'intentions/rest_peace.wav', 'intentions/rest_unwind.wav', 'intentions/rest_restore.wav', 'intentions/universal_heal.wav']
                         }
                     },
                     // Round 1
@@ -382,7 +385,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'rest/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav']
+                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav', 'fillers/waves_ocean.wav', 'fillers/let_go.wav']
                         }
                     }
                 ]
@@ -404,9 +407,10 @@ export class BreathworkSessionManager {
                         prompt: 'Finding Center',
                         subPrompt: 'Notice your heartbeat. Let it guide you to presence.',
                         audio: {
+                            sessionIntro: 'session_intros/flow_intro.wav',
                             voice: 'flow/grounding_intro.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
-                            intentions: ['intentions/base_focus.wav', 'intentions/base_breathe.wav', 'intentions/elixir_transform.wav']
+                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/let_it_flow.wav' },
+                            intentions: ['intentions/flow_balance.wav', 'intentions/flow_presence.wav', 'intentions/flow_clarity.wav', 'intentions/flow_rhythm.wav', 'intentions/universal_clarity.wav']
                         }
                     },
                     // Round 1
@@ -497,7 +501,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'flow/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav']
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav', 'fillers/inner_light.wav', 'fillers/complete_whole.wav']
                         }
                     }
                 ]
@@ -714,12 +718,24 @@ export class BreathworkSessionManager {
 
         // TRIGGER AUDIO
         if (this.audioManager && phase.audio) {
-            // Play transition audio first (if exists), then main voice
+            // Play session intro first for grounding phases (if exists)
+            const hasSessionIntro = phase.audio.sessionIntro && phase.type === 'grounding';
+            const sessionIntroDelay = hasSessionIntro ? 8000 : 0; // 8s for session intro
+
+            if (hasSessionIntro) {
+                this.audioManager.playVoice(phase.audio.sessionIntro);
+            }
+
+            // Play transition audio (if exists), then main voice
             const hasTransition = phase.audio.transition;
-            const transitionDelay = hasTransition ? 3000 : 0; // 3s for transition to finish
+            const transitionDelay = sessionIntroDelay + (hasTransition ? 3000 : 0); // 3s for transition to finish
 
             if (hasTransition) {
-                this.audioManager.playVoice(phase.audio.transition);
+                setTimeout(() => {
+                    if (this.activeSession && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)) {
+                        this.audioManager.playVoice(phase.audio.transition);
+                    }
+                }, sessionIntroDelay);
             }
 
             // Play main voice after transition
