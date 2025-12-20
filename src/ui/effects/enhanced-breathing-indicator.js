@@ -593,8 +593,15 @@ export class EnhancedBreathingIndicator {
 
         // Check if phase is complete
         if (elapsed >= phaseDuration) {
+            const previousPhase = this.currentPhase;
             this.currentPhase = nextPhase;
             this.phaseStartTime = now;
+
+            // Fire phase change callback if registered
+            if (this.onPhaseChangeCallback) {
+                this.onPhaseChangeCallback(nextPhase, previousPhase);
+            }
+
             this.animationFrame = requestAnimationFrame(() => this._animate());
             return;
         }
