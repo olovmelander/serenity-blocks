@@ -249,6 +249,9 @@ export class EnhancedBreathingIndicator {
         this.container.appendChild(this.backdrop);
         this.container.appendChild(this.indicator);
 
+        // === SESSION PROGRESS UI ===
+        this._createProgressUI();
+
         console.log('[EnhancedBreathingIndicator] Elements created with stunning design');
     }
 
@@ -857,6 +860,214 @@ export class EnhancedBreathingIndicator {
         if (this.indicator && this.indicator.parentElement) {
             this.indicator.parentElement.removeChild(this.indicator);
         }
+    }
+
+    // =============================================
+    // SESSION PROGRESS UI METHODS
+    // =============================================
+
+    /**
+     * Create session progress UI elements
+     * @private
+     */
+    _createProgressUI() {
+        // Progress container (positioned at very bottom of screen)
+        this.progressContainer = document.createElement('div');
+        this.progressContainer.className = 'session-progress-container';
+        this.progressContainer.style.cssText = `
+            position: fixed;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            z-index: 10001;
+            pointer-events: none;
+        `;
+
+        // Compact round indicator (smaller, less prominent)
+        this.roundIndicator = document.createElement('div');
+        this.roundIndicator.className = 'session-round-indicator';
+        this.roundIndicator.style.cssText = `
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1.5px;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+        `;
+        this.roundIndicator.textContent = '';
+
+        // Breath dots container (compact)
+        this.breathDotsContainer = document.createElement('div');
+        this.breathDotsContainer.className = 'session-breath-dots';
+        this.breathDotsContainer.style.cssText = `
+            display: flex;
+            gap: 3px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 250px;
+        `;
+
+        // Progress bar container (thin and subtle)
+        this.progressBarContainer = document.createElement('div');
+        this.progressBarContainer.className = 'session-progress-bar-container';
+        this.progressBarContainer.style.cssText = `
+            width: 180px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        `;
+
+        // Progress bar fill
+        this.progressBarFill = document.createElement('div');
+        this.progressBarFill.className = 'session-progress-bar-fill';
+        this.progressBarFill.style.cssText = `
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        `;
+        this.progressBarContainer.appendChild(this.progressBarFill);
+
+        // Assemble progress container (simplified - no phase badge to avoid duplication)
+        this.progressContainer.appendChild(this.roundIndicator);
+        this.progressContainer.appendChild(this.breathDotsContainer);
+        this.progressContainer.appendChild(this.progressBarContainer);
+
+        // Add to DOM
+        this.container.appendChild(this.progressContainer);
+
+        // Initialize state
+        this._progressState = {
+            visible: false,
+            totalBreaths: 0,
+            currentBreath: 0
+        };
+    }
+
+    /**
+     * Show/hide session progress UI
+     * @param {boolean} show
+     */
+    showProgress(show) {
+        if (this.progressContainer) {
+            this.progressContainer.style.display = show ? 'flex' : 'none';
+            this._progressState.visible = show;
+        }
+    }
+
+    /**
+     * Update session progress display
+     * @param {object} data - Progress data from session manager
+     * @param {string} data.phase - Current phase type (grounding, active, retention, recovery, integration)
+     * @param {number} data.round - Current round number
+     * @param {number} data.totalRounds - Total rounds in session
+     * @param {number} data.breathCount - Current breath count in phase
+     * @param {number} data.totalBreaths - Total breaths in current phase
+     * @param {number} data.sessionProgress - Overall session progress (0-1)
+     * @param {object} data.sessionColor - Session theme color {r, g, b}
+     */
+    updateProgress(data) {
+        if (!this.progressContainer) return;
+
+        // Update round indicator
+        if (data.round !== undefined && data.totalRounds !== undefined) {
+            if (data.round === 0) {
+                // Don't show text for round 0 phases (grounding/integration) - existing floating text handles it
+                this.roundIndicator.textContent = '';
+            } else {
+                this.roundIndicator.textContent = `ROUND ${data.round}/${data.totalRounds}`;
+            }
+        }
+
+        // Update breath dots
+        if (data.totalBreaths !== undefined && data.totalBreaths !== this._progressState.totalBreaths) {
+            this._createBreathDots(data.totalBreaths);
+            this._progressState.totalBreaths = data.totalBreaths;
+        }
+        if (data.breathCount !== undefined) {
+            this._updateBreathDots(data.breathCount);
+            this._progressState.currentBreath = data.breathCount;
+        }
+
+        // Update progress bar
+        if (data.sessionProgress !== undefined) {
+            this.progressBarFill.style.width = `${Math.min(100, data.sessionProgress * 100)}%`;
+        }
+
+        // Update progress bar color to match session theme
+        if (data.sessionColor) {
+            const { r, g, b } = data.sessionColor;
+            this.progressBarFill.style.background = `linear-gradient(90deg, rgb(${r}, ${g}, ${b}), rgba(${r}, ${g}, ${b}, 0.6))`;
+        }
+    }
+
+    /**
+     * Create breath dots for current phase
+     * @param {number} count - Total number of breaths
+     * @private
+     */
+    _createBreathDots(count) {
+        if (!this.breathDotsContainer) return;
+        this.breathDotsContainer.innerHTML = '';
+
+        // Limit visible dots for high breath counts
+        const maxDots = 20;
+        const displayCount = Math.min(count, maxDots);
+        const groupSize = count > maxDots ? Math.ceil(count / maxDots) : 1;
+
+        for (let i = 0; i < displayCount; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'breath-dot';
+            dot.dataset.index = i;
+            dot.dataset.group = groupSize;
+            dot.style.cssText = `
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                transition: background 0.3s ease, transform 0.2s ease;
+            `;
+            this.breathDotsContainer.appendChild(dot);
+        }
+    }
+
+    /**
+     * Update breath dots to reflect current count
+     * @param {number} currentBreath - Current breath number
+     * @private
+     */
+    _updateBreathDots(currentBreath) {
+        if (!this.breathDotsContainer) return;
+
+        const dots = this.breathDotsContainer.querySelectorAll('.breath-dot');
+        const groupSize = parseInt(dots[0]?.dataset.group) || 1;
+
+        dots.forEach((dot, index) => {
+            const dotThreshold = (index + 1) * groupSize;
+            const isComplete = currentBreath >= dotThreshold;
+            const isActive = currentBreath >= index * groupSize && currentBreath < dotThreshold;
+
+            if (isComplete) {
+                dot.style.background = 'rgba(255, 255, 255, 0.9)';
+                dot.style.transform = 'scale(1)';
+                dot.style.boxShadow = '0 0 8px rgba(255, 255, 255, 0.5)';
+            } else if (isActive) {
+                dot.style.background = 'rgba(255, 255, 255, 0.5)';
+                dot.style.transform = 'scale(1.2)';
+                dot.style.boxShadow = '0 0 12px rgba(255, 255, 255, 0.7)';
+            } else {
+                dot.style.background = 'rgba(255, 255, 255, 0.2)';
+                dot.style.transform = 'scale(1)';
+                dot.style.boxShadow = 'none';
+            }
+        });
     }
 }
 

@@ -574,6 +574,11 @@ export class BreathworkSessionManager {
             };
 
             this.indicator.start();
+
+            // Show session progress UI
+            if (this.indicator.showProgress) {
+                this.indicator.showProgress(true);
+            }
         }
 
         this._runPhase();
@@ -596,6 +601,11 @@ export class BreathworkSessionManager {
         if (this.indicator) {
             this.indicator.setExternalControl(false);
             this.indicator.stop();
+
+            // Hide session progress UI
+            if (this.indicator.showProgress) {
+                this.indicator.showProgress(false);
+            }
         }
 
         // Stop Audio
@@ -1007,6 +1017,19 @@ export class BreathworkSessionManager {
 
             if (this.onProgressCallback) {
                 this.onProgressCallback(progressData);
+            }
+
+            // Update breathing indicator's progress UI
+            if (this.indicator && this.indicator.updateProgress) {
+                this.indicator.updateProgress({
+                    phase: progressData.phase,
+                    round: progressData.round,
+                    totalRounds: progressData.totalRounds,
+                    breathCount: progressData.breathCount,
+                    totalBreaths: progressData.totalBreaths,
+                    sessionProgress: progressData.sessionProgress,
+                    sessionColor: this.activeSession.color
+                });
             }
         };
 
