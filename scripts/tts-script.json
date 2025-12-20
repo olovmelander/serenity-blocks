@@ -1,0 +1,324 @@
+{
+    "voice_config": {
+        "api": "aistudio",
+        "model": "gemini-2.5-flash-preview-tts",
+        "voice_name": "Algieba"
+    },
+    "sessions": [
+        {
+            "id": "base",
+            "description": "Base session - screen-synced audio (matches subPrompt exactly)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Close your eyes... Scan your body from head to toe... Release tension with each exhale."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "Breathe in through the nose... Full belly, then chest... Let go completely."
+                },
+                {
+                    "filename": "r1_hold.wav",
+                    "text": "Exhale fully... Relax into the stillness... You are safe here."
+                },
+                {
+                    "filename": "r1_recovery.wav",
+                    "text": "Deep inhale... Hold at the top... Squeeze gently to the crown."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Increase the rhythm... Belly rises, chest expands, then release."
+                },
+                {
+                    "filename": "r2_hold.wav",
+                    "text": "Relax completely... Be the observer of this moment."
+                },
+                {
+                    "filename": "r2_recovery.wav",
+                    "text": "Big inhale... Hold... Squeeze energy upward."
+                },
+                {
+                    "filename": "r3_active.wav",
+                    "text": "Full commitment... In... Out... You are limitless."
+                },
+                {
+                    "filename": "r3_hold.wav",
+                    "text": "Empty... Silent... Observe the space between thoughts."
+                },
+                {
+                    "filename": "r3_recovery.wav",
+                    "text": "One full breath... Hold... Gentle squeeze... Release."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Return to natural breath... There is nothing to do... Simply be."
+                }
+            ]
+        },
+        {
+            "id": "elixir",
+            "description": "Elixir session - screen-synced audio (matches subPrompt exactly)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Set your intention... What do you seek?... Energy or release?"
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "Mouth breathing... Powerful inhale... Sharp exhale... Keep the loop."
+                },
+                {
+                    "filename": "r1_hold.wav",
+                    "text": "Let go completely... Surrender to the silence."
+                },
+                {
+                    "filename": "r1_recovery.wav",
+                    "text": "Big inhale... Squeeze energy to the crown."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Faster rhythm... In-out-in-out... Connected breathing."
+                },
+                {
+                    "filename": "r2_hold.wav",
+                    "text": "Deep silence... Observe sensations without judgment."
+                },
+                {
+                    "filename": "r2_recovery.wav",
+                    "text": "Inhale fully... Compress... Release."
+                },
+                {
+                    "filename": "r3_active.wav",
+                    "text": "Push through... You are unstoppable... Breathe like fire."
+                },
+                {
+                    "filename": "r3_hold.wav",
+                    "text": "Complete release... Trust the process... You are held."
+                },
+                {
+                    "filename": "r3_recovery.wav",
+                    "text": "One massive inhale... Squeeze... Let everything go."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Drift into restoration... Allow whatever arises... You are complete."
+                }
+            ]
+        },
+        {
+            "id": "rest",
+            "description": "Rest session - soothing and sleep preparation",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Let your body sink into wherever you are... Release the weight of the day."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "Gentle inhale through the nose... Slow, long exhale... Let go with each breath."
+                },
+                {
+                    "filename": "r1_hold.wav",
+                    "text": "Rest in the stillness... No effort required."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Each exhale softens your muscles... Each pause deepens your calm."
+                },
+                {
+                    "filename": "r2_hold.wav",
+                    "text": "Float in the quiet space... You are safe here."
+                },
+                {
+                    "filename": "r3_active.wav",
+                    "text": "Breath becomes effortless... Body becomes light... Mind becomes still."
+                },
+                {
+                    "filename": "r3_hold.wav",
+                    "text": "Drift into stillness... There is nowhere to go, nothing to do."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Natural breath now... Allow yourself to drift... Sweet dreams await."
+                }
+            ]
+        },
+        {
+            "id": "flow",
+            "description": "Flow session - balancing box breathing",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Notice your heartbeat... Let it guide you to presence."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "Inhale 4... Hold 4... Exhale 4... Hold 4... Find your rhythm."
+                },
+                {
+                    "filename": "r1_hold.wav",
+                    "text": "Let the rhythm continue in your body... Natural, effortless."
+                },
+                {
+                    "filename": "r1_recovery.wav",
+                    "text": "One deep breath... Feel the balance."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Longer counts now... Inhale 5... Hold 5... Exhale 5... Hold 5."
+                },
+                {
+                    "filename": "r2_hold.wav",
+                    "text": "You are the breath... The breath is you... Unity."
+                },
+                {
+                    "filename": "r2_recovery.wav",
+                    "text": "One cleansing breath... Fully present."
+                },
+                {
+                    "filename": "r3_active.wav",
+                    "text": "Full expansion... Inhale 6... Hold 6... Exhale 6... Hold 6... Perfect balance."
+                },
+                {
+                    "filename": "r3_hold.wav",
+                    "text": "Complete equilibrium... Mind clear as still water."
+                },
+                {
+                    "filename": "r3_recovery.wav",
+                    "text": "One conscious breath... Carry this balance with you."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Return to natural rhythm... You are balanced... You are present."
+                }
+            ]
+        },
+        {
+            "id": "transitions",
+            "description": "Transition voice clips between phases",
+            "clips": [
+                {
+                    "filename": "round1_start.wav",
+                    "text": "Round one... begin."
+                },
+                {
+                    "filename": "round2_start.wav",
+                    "text": "Round two... go deeper."
+                },
+                {
+                    "filename": "round3_start.wav",
+                    "text": "Final round... give everything."
+                },
+                {
+                    "filename": "hold_start.wav",
+                    "text": "Now... empty... and hold."
+                },
+                {
+                    "filename": "recovery_start.wav",
+                    "text": "Recovery breath."
+                },
+                {
+                    "filename": "integration_start.wav",
+                    "text": "Integration... let go completely."
+                },
+                {
+                    "filename": "prepare_next.wav",
+                    "text": "Prepare for the next round."
+                }
+            ]
+        },
+        {
+            "id": "fillers",
+            "description": "Meditative filler content for integration and transitions",
+            "clips": [
+                {
+                    "filename": "floating_vibrating.wav",
+                    "text": "Floating... vibrating... renewed..."
+                },
+                {
+                    "filename": "observer_deep.wav",
+                    "text": "Observe your thoughts... observe yourself observing your thoughts... you as the observer... and the observed..."
+                },
+                {
+                    "filename": "stay_here.wav",
+                    "text": "Stay here as long as you need."
+                },
+                {
+                    "filename": "you_are_safe.wav",
+                    "text": "You are safe... You are held... You are home."
+                },
+                {
+                    "filename": "nothing_to_do.wav",
+                    "text": "There is nothing to do... nowhere to go... simply be."
+                }
+            ]
+        },
+        {
+            "id": "intentions",
+            "clips": [
+                {
+                    "filename": "base_calm.wav",
+                    "text": "Find Calm."
+                },
+                {
+                    "filename": "base_focus.wav",
+                    "text": "Sharpen Focus."
+                },
+                {
+                    "filename": "base_ground.wav",
+                    "text": "Ground Myself."
+                },
+                {
+                    "filename": "base_breathe.wav",
+                    "text": "Just Breathe."
+                },
+                {
+                    "filename": "elixir_energy.wav",
+                    "text": "Ignite Energy."
+                },
+                {
+                    "filename": "elixir_release.wav",
+                    "text": "Release and Let Go."
+                },
+                {
+                    "filename": "elixir_transform.wav",
+                    "text": "Transform."
+                },
+                {
+                    "filename": "elixir_power.wav",
+                    "text": "Build Power."
+                }
+            ]
+        },
+        {
+            "id": "cues",
+            "description": "Breath cues for rhythmic guidance",
+            "clips": [
+                {
+                    "filename": "breathe_in.wav",
+                    "text": "Breathe in..."
+                },
+                {
+                    "filename": "breathe_out.wav",
+                    "text": "Breathe out..."
+                },
+                {
+                    "filename": "hold.wav",
+                    "text": "And hold..."
+                },
+                {
+                    "filename": "release.wav",
+                    "text": "Release."
+                },
+                {
+                    "filename": "in_power.wav",
+                    "text": "In!"
+                },
+                {
+                    "filename": "out_power.wav",
+                    "text": "Out!"
+                }
+            ]
+        }
+    ]
+}
