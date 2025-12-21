@@ -1,86 +1,78 @@
 # TTS Audio Generation Tracking
 
-## Voice Configuration
-- **Current Model:** gemini-2.5-flash-preview-tts
-- **Voice:** Algieba
-- **Target Model:** gemini-2.5-pro-preview-tts (when quota available)
+## Summary
+- **95 total files** generated
+- **52 files** with PRO model (gemini-2.5-pro-preview-tts)
+- **43 files** with FLASH model (gemini-2.5-flash-preview-tts)
 
 ---
 
-## Files Generated with FLASH Model
+## PRO Model Files (Dec 21, 2024)
 
-### Intentions (8 files)
-- [x] intentions/base_breathe.wav
-- [x] intentions/base_calm.wav
-- [x] intentions/base_focus.wav
-- [x] intentions/base_ground.wav
-- [x] intentions/elixir_energy.wav
-- [x] intentions/elixir_power.wav
-- [x] intentions/elixir_release.wav
-- [x] intentions/elixir_transform.wav
+### Session Intros (4)
+- session_intros/base_intro.wav
+- session_intros/elixir_intro.wav
+- session_intros/rest_intro.wav
+- session_intros/flow_intro.wav
 
-### Cues (6 files)
-- [x] cues/breathe_in.wav
-- [x] cues/breathe_out.wav
-- [x] cues/hold.wav
-- [x] cues/release.wav
-- [x] cues/in_power.wav
-- [x] cues/out_power.wav
+### Base Session (11)
+- base/grounding_intro.wav, integration.wav
+- base/r1_active.wav, r1_hold.wav, r1_recovery.wav
+- base/r2_active.wav, r2_hold.wav, r2_recovery.wav
+- base/r3_active.wav, r3_hold.wav, r3_recovery.wav
 
-### Session Intros (1 of 4)
-- [x] session_intros/base_intro.wav
+### Elixir Session (11)
+- elixir/grounding_intro.wav, integration.wav
+- elixir/r1_active.wav, r1_hold.wav, r1_recovery.wav
+- elixir/r2_active.wav, r2_hold.wav, r2_recovery.wav
+- elixir/r3_active.wav, r3_hold.wav, r3_recovery.wav
+
+### Rest Session (8)
+- rest/grounding_intro.wav, integration.wav
+- rest/r1_active.wav, r1_hold.wav
+- rest/r2_active.wav, r2_hold.wav
+- rest/r3_active.wav, r3_hold.wav
+
+### Flow Session (11)
+- flow/grounding_intro.wav, integration.wav
+- flow/r1_active.wav, r1_hold.wav, r1_recovery.wav
+- flow/r2_active.wav, r2_hold.wav, r2_recovery.wav
+- flow/r3_active.wav, r3_hold.wav, r3_recovery.wav
+
+### Transitions (7)
+- transitions/round1_start.wav, round2_start.wav, round3_start.wav
+- transitions/hold_start.wav, recovery_start.wav
+- transitions/integration_start.wav, prepare_next.wav
 
 ---
 
-## Files Generated with PRO Model
-*(None yet - quota limit reached)*
+## FLASH Model Files
 
----
+### Cues (12)
+- cues/breathe_in.wav, breathe_out.wav
+- cues/hold.wav, release.wav
+- cues/in_power.wav, out_power.wav
+- cues/deep_inhale.wav, slow_exhale.wav
+- cues/hold_gently.wav, let_it_flow.wav
+- cues/in_quick.wav, out_quick.wav
 
-## Files Still Needed (Flash or Pro)
+### Intentions - Base/Elixir (8)
+- intentions/base_calm.wav, base_focus.wav, base_ground.wav, base_breathe.wav
+- intentions/elixir_energy.wav, elixir_release.wav, elixir_transform.wav, elixir_power.wav
 
-### Session Intros (3 remaining)
-- [ ] session_intros/elixir_intro.wav
-- [ ] session_intros/rest_intro.wav
-- [ ] session_intros/flow_intro.wav
+### Intentions - Rest/Flow/Universal (12)
+- intentions/rest_sleep.wav, rest_peace.wav, rest_unwind.wav, rest_restore.wav
+- intentions/flow_balance.wav, flow_presence.wav, flow_clarity.wav, flow_rhythm.wav
+- intentions/universal_gratitude.wav, universal_heal.wav, universal_clarity.wav, universal_strength.wav
 
-### Quick Cues (2 new)
-- [ ] cues/in_quick.wav
-- [ ] cues/out_quick.wav
-
-### New Cues (4)
-- [ ] cues/deep_inhale.wav
-- [ ] cues/slow_exhale.wav
-- [ ] cues/hold_gently.wav
-- [ ] cues/let_it_flow.wav
-
-### Rest/Flow Intentions (8)
-- [ ] intentions/rest_sleep.wav
-- [ ] intentions/rest_peace.wav
-- [ ] intentions/rest_unwind.wav
-- [ ] intentions/rest_restore.wav
-- [ ] intentions/flow_balance.wav
-- [ ] intentions/flow_presence.wav
-- [ ] intentions/flow_clarity.wav
-- [ ] intentions/flow_rhythm.wav
-
-### Universal Intentions (4)
-- [ ] intentions/universal_gratitude.wav
-- [ ] intentions/universal_heal.wav
-- [ ] intentions/universal_clarity.wav
-- [ ] intentions/universal_strength.wav
-
-### Fillers (6)
-- [ ] fillers/body_scan.wav
-- [ ] fillers/waves_ocean.wav
-- [ ] fillers/let_go.wav
-- [ ] fillers/inner_light.wav
-- [ ] fillers/trust_process.wav
-- [ ] fillers/complete_whole.wav
+### Fillers (11)
+- fillers/floating_vibrating.wav, observer_deep.wav, stay_here.wav
+- fillers/you_are_safe.wav, nothing_to_do.wav
+- fillers/body_scan.wav, waves_ocean.wav, let_go.wav
+- fillers/inner_light.wav, trust_process.wav, complete_whole.wav
 
 ---
 
 ## Notes
-- API quota resets at **9:00 AM CET** (midnight Pacific Time)
-- Run `node scripts/generate-tts.js` to generate missing files
-- Script skips existing files automatically
+- All files generated ✅
+- To regenerate with PRO: `node scripts/generate-tts.js --overwrite` (after setting model to pro in tts-script.json)
