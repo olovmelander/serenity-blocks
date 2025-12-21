@@ -204,7 +204,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r1_active.wav',
                             transition: 'transitions/round1_start.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
                         }
                     },
                     {
@@ -234,7 +234,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r2_active.wav',
                             transition: 'transitions/round2_start.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
                         }
                     },
                     {
@@ -264,7 +264,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r3_active.wav',
                             transition: 'transitions/round3_start.wav',
-                            cues: { in: 'voices/cues/in_power.wav', out: 'voices/cues/out_power.wav' }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
                         }
                     },
                     {
@@ -728,6 +728,9 @@ export class BreathworkSessionManager {
 
         // TRIGGER AUDIO
         if (this.audioManager && phase.audio) {
+            // Block cues during phase setup - voice is about to play
+            this.audioManager.isVoicePending = true;
+
             // Play session intro first for grounding phases (if exists)
             const hasSessionIntro = phase.audio.sessionIntro && phase.type === 'grounding';
             const sessionIntroDelay = hasSessionIntro ? 8000 : 0; // 8s for session intro
@@ -804,12 +807,17 @@ export class BreathworkSessionManager {
      */
     _scheduleIntention(intentions, delay, phase) {
         setTimeout(() => {
-            // Check if still in same phase
-            if (this.activeSession && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)) {
+            // Only play intention if still in same grounding phase (not during active breathing)
+            const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
+            if (this.activeSession &&
+                this.currentPhaseIndex === this.activeSession.phases.indexOf(phase) &&
+                currentPhase?.type === 'grounding') {
                 // Pick random intention
                 const intention = intentions[Math.floor(Math.random() * intentions.length)];
                 console.log(`[SessionManager] Playing intention: ${intention}`);
                 this.audioManager.playVoice(intention);
+            } else {
+                console.log(`[SessionManager] Skipping intention (no longer in grounding phase)`);
             }
         }, delay);
     }
@@ -880,9 +888,11 @@ export class BreathworkSessionManager {
                 console.log(`[SessionManager] Playing inhale cue`);
                 this.audioManager.playCue(phase.audio.cues.in);
             } else if (newPhase === 'exhale' && phase.audio.cues.out) {
-                console.log(`[SessionManager] Playing exhale cue`);
+                console.log(`[SessionManager] Playing exhale cue, pendingFlag=${this.audioManager.isVoicePending}, playingFlag=${this.audioManager.isVoicePlaying}`);
                 this.audioManager.playCue(phase.audio.cues.out);
             }
+        } else if (newPhase === 'exhale') {
+            console.log(`[SessionManager] Exhale but NOT in guidance mode`);
         }
     }
 
