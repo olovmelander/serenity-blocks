@@ -888,9 +888,11 @@ export class BreathworkSessionManager {
                 console.log(`[SessionManager] Playing inhale cue`);
                 this.audioManager.playCue(phase.audio.cues.in);
             } else if (newPhase === 'exhale' && phase.audio.cues.out) {
-                console.log(`[SessionManager] Playing exhale cue`);
+                console.log(`[SessionManager] Playing exhale cue, pendingFlag=${this.audioManager.isVoicePending}, playingFlag=${this.audioManager.isVoicePlaying}`);
                 this.audioManager.playCue(phase.audio.cues.out);
             }
+        } else if (newPhase === 'exhale') {
+            console.log(`[SessionManager] Exhale but NOT in guidance mode`);
         }
     }
 
