@@ -807,12 +807,17 @@ export class BreathworkSessionManager {
      */
     _scheduleIntention(intentions, delay, phase) {
         setTimeout(() => {
-            // Check if still in same phase
-            if (this.activeSession && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)) {
+            // Only play intention if still in same grounding phase (not during active breathing)
+            const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
+            if (this.activeSession &&
+                this.currentPhaseIndex === this.activeSession.phases.indexOf(phase) &&
+                currentPhase?.type === 'grounding') {
                 // Pick random intention
                 const intention = intentions[Math.floor(Math.random() * intentions.length)];
                 console.log(`[SessionManager] Playing intention: ${intention}`);
                 this.audioManager.playVoice(intention);
+            } else {
+                console.log(`[SessionManager] Skipping intention (no longer in grounding phase)`);
             }
         }, delay);
     }
