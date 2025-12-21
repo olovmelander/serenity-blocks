@@ -18,6 +18,8 @@ export class BreathworkAudioManager {
         // Track currently playing voice to allow clean interruption
         this.currentVoicePath = null;
         this.isVoicePlaying = false; // Track if voice is currently playing
+        this.isVoicePending = false; // Track if voice is about to play (blocks cues)
+        this.voicePendingTimeout = null; // Timeout reference for pending state
     }
 
     /**
@@ -93,6 +95,17 @@ export class BreathworkAudioManager {
 
         const fullPath = this.basePath + 'voices/' + relativePath;
 
+        // Clear any pending state
+        this.isVoicePending = false;
+        if (this.voicePendingTimeout) {
+            clearTimeout(this.voicePendingTimeout);
+            this.voicePendingTimeout = null;
+        }
+
+        // Stop any currently playing cue to prevent overlap ("br" sound)
+        this.cueAudio.pause();
+        this.cueAudio.currentTime = 0;
+
         // Stop current voice if any
         this.voiceAudio.pause();
         this.voiceAudio.src = fullPath;
@@ -114,16 +127,32 @@ export class BreathworkAudioManager {
     }
 
     /**
+     * Schedule voice to play after delay (marks pending state to block cues)
+     * @param {string} relativePath - Voice file path
+     * @param {number} delayMs - Delay in milliseconds
+     */
+    scheduleVoice(relativePath, delayMs) {
+        if (!this.isEnabled || !relativePath) return;
+
+        // Set pending state to block cues during the delay
+        this.isVoicePending = true;
+
+        this.voicePendingTimeout = setTimeout(() => {
+            this.playVoice(relativePath);
+        }, delayMs);
+    }
+
+    /**
      * Play a quick cue (breathe in, breathe out, etc.)
-     * Only plays if no voice is currently playing
+     * Only plays if no voice is currently playing or pending
      * @param {string} cuePath - e.g., 'voices/cues/breathe_in.wav'
      */
     playCue(cuePath) {
         if (!this.isEnabled || !cuePath) return;
 
-        // Don't play cue if voice is currently playing
-        if (this.isVoicePlaying) {
-            console.log(`[AudioManager] Skipping cue (voice playing): ${cuePath}`);
+        // Don't play cue if voice is currently playing or about to play
+        if (this.isVoicePlaying || this.isVoicePending) {
+            console.log(`[AudioManager] Skipping cue (voice playing/pending): ${cuePath}`);
             return;
         }
 

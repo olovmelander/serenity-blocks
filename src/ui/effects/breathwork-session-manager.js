@@ -204,7 +204,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r1_active.wav',
                             transition: 'transitions/round1_start.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
                         }
                     },
                     {
@@ -234,7 +234,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r2_active.wav',
                             transition: 'transitions/round2_start.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
                         }
                     },
                     {
@@ -264,7 +264,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r3_active.wav',
                             transition: 'transitions/round3_start.wav',
-                            cues: { in: 'voices/cues/in_power.wav', out: 'voices/cues/out_power.wav' }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
                         }
                     },
                     {
@@ -728,6 +728,9 @@ export class BreathworkSessionManager {
 
         // TRIGGER AUDIO
         if (this.audioManager && phase.audio) {
+            // Block cues during phase setup - voice is about to play
+            this.audioManager.isVoicePending = true;
+
             // Play session intro first for grounding phases (if exists)
             const hasSessionIntro = phase.audio.sessionIntro && phase.type === 'grounding';
             const sessionIntroDelay = hasSessionIntro ? 8000 : 0; // 8s for session intro

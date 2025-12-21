@@ -427,6 +427,14 @@
                 {
                     "filename": "let_it_flow.wav",
                     "text": "Let it flow..."
+                },
+                {
+                    "filename": "in_quick.wav",
+                    "text": "In"
+                },
+                {
+                    "filename": "out_quick.wav",
+                    "text": "Out"
                 }
             ]
         }
