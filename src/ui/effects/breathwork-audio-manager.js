@@ -120,9 +120,10 @@ export class BreathworkAudioManager {
             console.warn('[AudioManager] Play failed:', e);
         });
 
-        // Mark voice as done when it ends
+        // Mark voice as done when it ends (allow cues to resume)
         this.voiceAudio.onended = () => {
             this.isVoicePlaying = false;
+            this.isVoicePending = false; // Allow cues to play again
         };
     }
 
