@@ -41,6 +41,10 @@ if (!API_KEY) {
     process.exit(1);
 }
 
+// Check for --overwrite flag
+const OVERWRITE_MODE = process.argv.includes('--overwrite');
+const TRACKING_FILE = path.join(__dirname, 'tts-audio-tracking.md');
+
 async function generateAudio(text, voiceName, model) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
 
@@ -134,18 +138,21 @@ async function main() {
             const wavFilename = clip.filename.replace('.mp3', '.wav');
             const outputPath = path.join(outputDir, wavFilename);
 
-            if (fs.existsSync(outputPath)) {
+            if (fs.existsSync(outputPath) && !OVERWRITE_MODE) {
                 console.log(`  ⏭ ${wavFilename} (exists)`);
                 skipped++;
                 continue;
             }
+
+            const isOverwrite = fs.existsSync(outputPath);
 
             process.stdout.write(`  → ${wavFilename}... `);
 
             try {
                 const audioBuffer = await generateAudio(clip.text, voiceName, model);
                 fs.writeFileSync(outputPath, audioBuffer);
-                console.log(`✓ (${Math.round(audioBuffer.length / 1024)}KB)`);
+                const action = isOverwrite ? '↻' : '✓';
+                console.log(`${action} (${Math.round(audioBuffer.length / 1024)}KB) [${model.includes('pro') ? 'PRO' : 'FLASH'}]`);
                 totalFiles++;
             } catch (err) {
                 console.log(`✗ ${err.message}`);
@@ -158,6 +165,10 @@ async function main() {
 
     console.log(`\n✅ Done! Generated ${totalFiles} files, skipped ${skipped}`);
     console.log(`Output: ${OUTPUT_BASE_DIR}/voices/`);
+    console.log(`Model used: ${model}`);
+    if (OVERWRITE_MODE) {
+        console.log(`Mode: OVERWRITE (replaced existing files)`);
+    }
 }
 
 main();
