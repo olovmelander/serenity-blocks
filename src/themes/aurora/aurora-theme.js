@@ -12,7 +12,9 @@ import {
     shootingStarVertexShader,
     shootingStarFragmentShader,
     pulseWaveVertexShader,
-    pulseWaveFragmentShader
+    pulseWaveFragmentShader,
+    auroraSparkVertexShader,
+    auroraSparkFragmentShader
 } from './aurora-shaders.js';
 
 /**
@@ -40,6 +42,8 @@ export default class AuroraTheme extends BaseTheme {
         this.nebulaParticles = null;
         this.shootingStars = [];
         this.pulseWaves = [];
+        this.auroraSparks = [];  // Pool of spark particle systems
+        this.auroraSparkIndex = 0;  // Cycle through pool
 
         // Animation
         this.animationFrame = null;
@@ -48,7 +52,8 @@ export default class AuroraTheme extends BaseTheme {
         // Uniforms
         this.uniforms = {
             time: { value: 0 },
-            intensity: { value: 1.0 }
+            intensity: { value: 1.0 },
+            comboWave: { value: 0.0 }
         };
 
         // Aurora color palette - Deep greens with cyan/violet accents
@@ -60,12 +65,12 @@ export default class AuroraTheme extends BaseTheme {
 
         // Quality settings
         this.qualityPresets = {
-            Minimum: { starCount: 500, curtainLayers: 2, nebulaCount: 50 },
-            Low: { starCount: 800, curtainLayers: 3, nebulaCount: 80 },
-            Medium: { starCount: 1200, curtainLayers: 4, nebulaCount: 120 },
-            High: { starCount: 2000, curtainLayers: 5, nebulaCount: 180 },
-            Ultra: { starCount: 3000, curtainLayers: 6, nebulaCount: 250 },
-            Extreme: { starCount: 4000, curtainLayers: 7, nebulaCount: 350 }
+            Minimum: { starCount: 500, curtainLayers: 2, nebulaCount: 50, auroraSparks: 800 },
+            Low: { starCount: 800, curtainLayers: 3, nebulaCount: 80, auroraSparks: 1200 },
+            Medium: { starCount: 1200, curtainLayers: 4, nebulaCount: 120, auroraSparks: 1800 },
+            High: { starCount: 2000, curtainLayers: 5, nebulaCount: 180, auroraSparks: 2500 },
+            Ultra: { starCount: 3000, curtainLayers: 6, nebulaCount: 250, auroraSparks: 3500 },
+            Extreme: { starCount: 4000, curtainLayers: 7, nebulaCount: 350, auroraSparks: 5000 }
         };
         this.currentQuality = 'High';
     }
@@ -122,6 +127,7 @@ export default class AuroraTheme extends BaseTheme {
         this.createStars(preset.starCount);
         this.createAuroraCurtains(preset.curtainLayers);
         this.createNebulaParticles(preset.nebulaCount);
+        this.createAuroraSparks(preset.auroraSparks);
         this.setupLighting();
 
         // Event listeners
@@ -218,6 +224,7 @@ export default class AuroraTheme extends BaseTheme {
                 uniforms: {
                     time: this.uniforms.time,
                     intensity: this.uniforms.intensity,
+                    comboWave: this.uniforms.comboWave,
                     waveSpeed: { value: 0.3 + t * 0.2 },
                     waveAmplitude: { value: 2.0 + t * 1.0 },
                     layerOffset: { value: i * 3.0 },
@@ -299,6 +306,102 @@ export default class AuroraTheme extends BaseTheme {
         this.mainGroup.add(secondaryLight);
     }
 
+    createAuroraSparks(totalCount) {
+        // Pool of particle systems for overlapping bursts
+        const poolSize = 6;
+        const countPerSystem = Math.floor(totalCount / poolSize);
+
+        // Green/cyan aurora color palette
+        const colorOptions = [
+            new THREE.Color(0x00ff66),  // Vibrant emerald
+            new THREE.Color(0x44ffaa),  // Mint green
+            new THREE.Color(0x00ffcc),  // Cyan-green
+            new THREE.Color(0x88ff88),  // Light green
+            new THREE.Color(0x00dd88),  // Deep green
+        ];
+
+        for (let p = 0; p < poolSize; p++) {
+            const geometry = new THREE.BufferGeometry();
+
+            const thetas = new Float32Array(countPerSystem);
+            const phis = new Float32Array(countPerSystem);
+            const radii = new Float32Array(countPerSystem);
+            const randoms = new Float32Array(countPerSystem);
+            const colors = new Float32Array(countPerSystem * 3);
+            const positions = new Float32Array(countPerSystem * 3);
+            const origins = new Float32Array(countPerSystem * 3);
+
+            for (let i = 0; i < countPerSystem; i++) {
+                // Distribute particles across aurora area
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                thetas[i] = theta;
+                phis[i] = phi;
+                radii[i] = 1.0;  // Not used for spherical origin
+                randoms[i] = Math.random();
+
+                // Origin points spread across aurora viewing area
+                const originX = (Math.random() - 0.5) * 50;
+                const originY = 5 + Math.random() * 20;
+                const originZ = -5 - Math.random() * 25;
+
+                origins[i * 3] = originX;
+                origins[i * 3 + 1] = originY;
+                origins[i * 3 + 2] = originZ;
+
+                // Color selection
+                const c = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+
+                positions[i * 3] = originX;
+                positions[i * 3 + 1] = originY;
+                positions[i * 3 + 2] = originZ;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
+            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
+            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('aOrigin', new THREE.BufferAttribute(origins, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: this.uniforms.time,
+                    uPulseTimer: { value: -100.0 }
+                },
+                vertexShader: auroraSparkVertexShader,
+                fragmentShader: auroraSparkFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const sparks = new THREE.Points(geometry, material);
+            this.mainGroup.add(sparks);
+            this.auroraSparks.push(sparks);
+        }
+
+        console.log(`[Aurora3D] Aurora sparks pool created with ${poolSize} systems, ${countPerSystem} particles each`);
+    }
+
+    triggerAuroraSparks() {
+        // Trigger the next spark system in the pool
+        if (this.auroraSparks.length === 0) return;
+
+        const sparks = this.auroraSparks[this.auroraSparkIndex];
+        if (sparks && sparks.material.uniforms) {
+            sparks.material.uniforms.uPulseTimer.value = 0.0;
+        }
+
+        // Cycle to next system in pool
+        this.auroraSparkIndex = (this.auroraSparkIndex + 1) % this.auroraSparks.length;
+    }
+
     animate() {
         if (!this.isActive) return;
 
@@ -322,20 +425,25 @@ export default class AuroraTheme extends BaseTheme {
             this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.02;
         }
 
-        // Slow camera movement - gentle panning and drift
+        // Slow camera orbit for parallax depth (matches other themes)
         if (this.camera) {
-            const camTime = elapsedTime * 0.05; // Very slow
+            const cameraTime = elapsedTime * 0.06; // Slow but noticeable orbit
+            const orbitRadiusX = 8; // Wide horizontal sway
+            const orbitRadiusY = 6;  // Vertical sway range
+            const orbitRadiusZ = 5;  // Depth breathing
 
-            // Gentle position drift
-            this.camera.position.x = Math.sin(camTime) * 3.0 + Math.cos(camTime * 0.7) * 1.5;
-            this.camera.position.y = -5 + Math.sin(camTime * 0.6) * 2.0;
-            this.camera.position.z = 15 + Math.cos(camTime * 0.4) * 2.0;
+            // Orbital sway - creates parallax with starfield/aurora
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
+                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY +
+                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.z = 15 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
-            // Subtle look-at variation (looking slightly around the aurora)
-            const lookX = Math.sin(camTime * 0.8) * 2.0;
-            const lookY = 5 + Math.cos(camTime * 0.5) * 1.5;
-            const lookZ = -5 + Math.sin(camTime * 0.3) * 2.0;
-            this.camera.lookAt(lookX, lookY, lookZ);
+            // LookAt drift for dynamic framing
+            const lookOffsetX = Math.sin(cameraTime * 0.4) * 4;
+            const lookOffsetY = 5 + Math.cos(cameraTime * 0.5) * 3;
+            const lookOffsetZ = -5 + Math.sin(cameraTime * 0.3) * 3;
+            this.camera.lookAt(lookOffsetX, lookOffsetY, lookOffsetZ);
         }
 
         // Decay intensity back to baseline
@@ -347,11 +455,38 @@ export default class AuroraTheme extends BaseTheme {
             );
         }
 
+        // Decay combo wave back to zero
+        if (this.uniforms.comboWave.value > 0.0) {
+            this.uniforms.comboWave.value = THREE.MathUtils.lerp(
+                this.uniforms.comboWave.value,
+                0.0,
+                delta * 2.0
+            );
+            if (this.uniforms.comboWave.value < 0.01) {
+                this.uniforms.comboWave.value = 0.0;
+            }
+        }
+
         // Update shooting stars
         this.updateShootingStars(delta);
 
         // Update pulse waves
         this.updatePulseWaves(delta);
+
+        // Update aurora sparks pool (slower progression)
+        for (const sparks of this.auroraSparks) {
+            if (sparks && sparks.material.uniforms) {
+                // Progress pulse timer (slower for gentler effect)
+                if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
+                    sparks.material.uniforms.uPulseTimer.value += delta * 5.0;
+
+                    // Reset when animation completes
+                    if (sparks.material.uniforms.uPulseTimer.value > 65.0) {
+                        sparks.material.uniforms.uPulseTimer.value = -100.0;
+                    }
+                }
+            }
+        }
 
         this.renderer.render(this.scene, this.camera);
     }
@@ -469,9 +604,9 @@ export default class AuroraTheme extends BaseTheme {
         wave.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
 
         wave.userData = {
-            speed: 10 + intensity * 3,
-            life: 1.2,
-            maxLife: 1.2
+            speed: 4 + intensity * 1.5,
+            life: 2.0,
+            maxLife: 2.0
         };
 
         this.mainGroup.add(wave);
@@ -513,15 +648,22 @@ export default class AuroraTheme extends BaseTheme {
             }
         });
 
-        // Combo - shooting stars
+        // Combo - aurora sway, shooting stars, and aurora spark explosions
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             if (!this.isActive) return;
             this.uniforms.intensity.value += 0.2;
+
+            // Trigger aurora sway/wave effect
+            this.uniforms.comboWave.value = Math.min(1.0, 0.3 + data.comboCount * 0.15);
+
             if (data.comboCount >= 2) {
                 this.createShootingStar();
+                // Trigger aurora spark explosion
+                this.triggerAuroraSparks();
             }
             if (data.comboCount >= 4) {
                 this.createShootingStar(); // Extra shooting star for big combos
+                this.triggerAuroraSparks(); // Extra spark explosion for big combos
             }
         });
 
@@ -569,6 +711,14 @@ export default class AuroraTheme extends BaseTheme {
             wave.material.dispose();
         });
         this.pulseWaves = [];
+
+        // Cleanup aurora sparks pool
+        this.auroraSparks.forEach(sparks => {
+            this.mainGroup.remove(sparks);
+            sparks.geometry.dispose();
+            sparks.material.dispose();
+        });
+        this.auroraSparks = [];
 
         // Cleanup renderer
         if (this.renderer) {

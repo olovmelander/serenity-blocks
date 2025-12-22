@@ -123,17 +123,17 @@ export default class CinderDriftTheme extends BaseTheme {
     }
 
     createMultipleCores() {
-        // Configuration for multiple cores spread across the full screen
+        // Configuration for multiple cores spread across the FULL screen with wide drift
         const coreConfigs = [
-            { size: 4.0, position: [0, 0, -5], driftSpeed: 0.08, driftRadius: 15, phase: 0 },
-            { size: 2.5, position: [25, 10, -10], driftSpeed: 0.12, driftRadius: 20, phase: 1.5 },
-            { size: 2.0, position: [-25, -8, -8], driftSpeed: 0.10, driftRadius: 18, phase: 3.0 },
-            { size: 3.0, position: [18, -12, 0], driftSpeed: 0.09, driftRadius: 16, phase: 4.5 },
-            { size: 1.8, position: [-20, 15, -5], driftSpeed: 0.14, driftRadius: 14, phase: 2.0 },
-            { size: 1.2, position: [30, -5, -15], driftSpeed: 0.16, driftRadius: 12, phase: 5.0 },
-            { size: 1.5, position: [-30, 5, -12], driftSpeed: 0.13, driftRadius: 15, phase: 0.8 },
-            { size: 2.2, position: [10, 18, -8], driftSpeed: 0.11, driftRadius: 18, phase: 3.5 },
-            { size: 1.0, position: [-15, -18, -6], driftSpeed: 0.18, driftRadius: 10, phase: 4.0 },
+            { size: 4.0, position: [0, 0, -5], driftSpeed: 0.06, driftRadius: 35, phase: 0 },
+            { size: 2.5, position: [40, 15, -10], driftSpeed: 0.08, driftRadius: 40, phase: 1.5 },
+            { size: 2.0, position: [-40, -15, -8], driftSpeed: 0.07, driftRadius: 38, phase: 3.0 },
+            { size: 3.0, position: [30, -20, 0], driftSpeed: 0.065, driftRadius: 32, phase: 4.5 },
+            { size: 1.8, position: [-35, 25, -5], driftSpeed: 0.09, driftRadius: 30, phase: 2.0 },
+            { size: 1.2, position: [50, -10, -15], driftSpeed: 0.10, driftRadius: 28, phase: 5.0 },
+            { size: 1.5, position: [-50, 8, -12], driftSpeed: 0.085, driftRadius: 35, phase: 0.8 },
+            { size: 2.2, position: [15, 30, -8], driftSpeed: 0.075, driftRadius: 40, phase: 3.5 },
+            { size: 1.0, position: [-25, -28, -6], driftSpeed: 0.11, driftRadius: 25, phase: 4.0 },
         ];
 
         const glowTexture = this.createGlowTexture();
@@ -326,13 +326,24 @@ export default class CinderDriftTheme extends BaseTheme {
         const elapsedTime = this.clock.getElapsedTime();
         this.uniforms.time.value = elapsedTime;
 
-        // Slow camera movement
+        // Slow camera orbit for parallax depth (independent of cores)
         if (this.camera) {
-            const orbitSpeed = 0.04;
-            this.camera.position.x = Math.sin(elapsedTime * orbitSpeed) * 8;
-            this.camera.position.y = Math.sin(elapsedTime * orbitSpeed * 0.7) * 5;
-            this.camera.position.z = 60 + Math.cos(elapsedTime * orbitSpeed * 0.5) * 5;
-            this.camera.lookAt(0, 0, 0);
+            const cameraTime = elapsedTime * 0.06; // Slow but noticeable orbit
+            const orbitRadiusX = 20; // Wide horizontal sway
+            const orbitRadiusY = 15;  // Vertical sway range
+            const orbitRadiusZ = 12;  // Depth breathing
+
+            // Orbital sway - creates parallax with background embers
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
+                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
+                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.z = 60 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+
+            // LookAt drift for dynamic framing
+            const lookOffsetX = Math.sin(cameraTime * 0.4) * 8;
+            const lookOffsetY = Math.cos(cameraTime * 0.5) * 6;
+            this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
         }
 
         // Animate each core with unique drift pattern
