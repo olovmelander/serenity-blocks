@@ -505,6 +505,17 @@ export class EnhancedBreathingIndicator {
     }
 
     /**
+     * Reset the breathing cycle to the start of the pattern (Inhale)
+     * Used to sync visual breathing with audio cues
+     */
+    resetCycle() {
+        if (!this.isActive) return;
+        this.phaseStartTime = performance.now();
+        this.currentPhase = 'inhale';
+        console.log('[EnhancedBreathingIndicator] Cycle reset manually to Inhale');
+    }
+
+    /**
      * Set custom text prompt (Floating text) with optional sub-prompt
      * @param {string} text - Main prompt text
      * @param {string} subText - Optional secondary guidance text

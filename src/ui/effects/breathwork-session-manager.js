@@ -745,6 +745,8 @@ export class BreathworkSessionManager {
             // Session intro (only for grounding phases)
             if (phase.audio.sessionIntro && phase.type === 'grounding') {
                 voiceChain.push(phase.audio.sessionIntro);
+                // Add delay after session intro to separate it from grounding
+                voiceChain.push({ delay: 2000 });
             }
 
             // Transition audio
@@ -795,6 +797,13 @@ export class BreathworkSessionManager {
             if (currentIndex >= voiceChain.length) {
                 // All voices played, schedule fillers if applicable
                 console.log('[SessionManager] Voice chain complete');
+
+                // SYNC FIX: If this was a grounding phase, reset the breathing cycle 
+                // so the user gets an immediate "Breathe In" cue + visual sync.
+                if (phase.type === 'grounding' && this.indicator && this.indicator.resetCycle) {
+                    this.indicator.resetCycle();
+                }
+
                 if (phase.audio.fillers && phase.audio.fillers.length > 0) {
                     // Schedule fillers 10 seconds after last voice
                     this._scheduleFillersAudio(phase.audio.fillers, 10000, phase);
@@ -802,9 +811,17 @@ export class BreathworkSessionManager {
                 return;
             }
 
-            const voicePath = voiceChain[currentIndex];
+            const item = voiceChain[currentIndex];
             currentIndex++;
 
+            // Handle delay items
+            if (typeof item === 'object' && item.delay) {
+                console.log(`[SessionManager] Waiting ${item.delay}ms...`);
+                setTimeout(playNext, item.delay);
+                return;
+            }
+
+            const voicePath = item;
             console.log(`[SessionManager] Playing voice ${currentIndex}/${voiceChain.length}: ${voicePath}`);
             this.audioManager.playVoiceWithCallback(voicePath, playNext);
         };
