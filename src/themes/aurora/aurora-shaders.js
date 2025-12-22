@@ -81,6 +81,7 @@ uniform float time;
 uniform float waveSpeed;
 uniform float waveAmplitude;
 uniform float layerOffset;
+uniform float comboWave;
 
 varying vec2 vUv;
 varying float vDisplacement;
@@ -95,20 +96,30 @@ void main() {
     // Create flowing wave motion
     float t = time * waveSpeed + layerOffset;
     
+    // Enhanced wave speed during combos (reduced for subtlety)
+    float comboSpeedBoost = 1.0 + comboWave * 1.0;
+    float comboAmplitudeBoost = 1.0 + comboWave * 0.7;
+    
     // Multiple noise octaves for organic movement
-    float noise1 = snoise(vec3(position.x * 0.3, position.y * 0.1, t * 0.5)) * waveAmplitude;
-    float noise2 = snoise(vec3(position.x * 0.6, position.y * 0.2, t * 0.3)) * waveAmplitude * 0.5;
-    float noise3 = snoise(vec3(position.x * 1.2, position.y * 0.4, t * 0.7)) * waveAmplitude * 0.25;
+    float noise1 = snoise(vec3(position.x * 0.3, position.y * 0.1, t * 0.5 * comboSpeedBoost)) * waveAmplitude * comboAmplitudeBoost;
+    float noise2 = snoise(vec3(position.x * 0.6, position.y * 0.2, t * 0.3 * comboSpeedBoost)) * waveAmplitude * 0.5 * comboAmplitudeBoost;
+    float noise3 = snoise(vec3(position.x * 1.2, position.y * 0.4, t * 0.7 * comboSpeedBoost)) * waveAmplitude * 0.25 * comboAmplitudeBoost;
     
     vDisplacement = noise1 + noise2 + noise3;
     
     // Displace in Z direction for depth, and slight X for wave motion
     vec3 displaced = position;
     displaced.z += vDisplacement;
-    displaced.x += sin(position.y * 0.5 + t) * waveAmplitude * 0.3;
     
-    // Add vertical wave ripple
-    displaced.y += sin(position.x * 2.0 + t * 2.0) * 0.3;
+    // Enhanced horizontal sway during combos (slower, gentler)
+    float baseSwayX = sin(position.y * 0.5 + t) * waveAmplitude * 0.3;
+    float comboSwayX = sin(position.y * 1.0 + t * 1.5) * comboWave * 1.5;
+    displaced.x += baseSwayX + comboSwayX;
+    
+    // Add vertical wave ripple (slower)
+    float baseRipple = sin(position.x * 2.0 + t * 1.5) * 0.3;
+    float comboRipple = sin(position.x * 3.0 + t * 2.5) * comboWave * 0.7;
+    displaced.y += baseRipple + comboRipple;
     
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
 }
@@ -349,3 +360,114 @@ void main() {
     gl_FragColor = vec4(color, opacity * (0.4 + intensity));
 }
 `;
+
+/**
+ * Aurora Spark Vertex Shader - Explosive burst across aurora area
+ * Similar to blood moon's bloodSparks system but for green aurora particles
+ */
+export const auroraSparkVertexShader = `
+uniform float time;
+uniform float uPulseTimer;
+
+attribute float aTheta;
+attribute float aPhi;
+attribute float aRadius;
+attribute float aRandom;
+attribute vec3 aColor;
+attribute vec3 aOrigin;
+
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    // Initial position - spread across aurora area
+    vec3 initialPos = aOrigin;
+    
+    // Direction for burst - radial outward with variation
+    vec3 radialDir = normalize(vec3(
+        sin(aPhi) * cos(aTheta),
+        sin(aPhi) * sin(aTheta),
+        cos(aPhi)
+    ));
+    
+    // Stagger eruption timing based on random value
+    float triggerTime = aRandom * 2.5;
+    float age = uPulseTimer - triggerTime;
+    
+    vec3 animatedPos = initialPos;
+    float alpha = 0.0;
+    float size = 0.0;
+    
+    // Effect parameters
+    float maxLife = 50.0;
+    
+    if (age > 0.0 && age < maxLife) {
+        // EXPLOSION! Burst outward from origin point
+        
+        // Add spread to burst in ALL directions (full 3D sphere)
+        float spreadX = (aRandom - 0.5) * 0.8;
+        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.8;
+        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.8;
+        vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
+        
+        // Slower, gentler burst in all directions
+        float speed = 3.0 + aRandom * 2.5;
+        vec3 velocity = burstDir * speed;
+        
+        // Apply velocity - no upward bias for true spherical burst
+        animatedPos += velocity * age;
+        
+        // Fade out over lifetime
+        alpha = 1.0 - (age / maxLife);
+        alpha = pow(alpha, 0.5);
+        
+        // Particles that shrink over time (smaller, subtler)
+        size = (1.0 - (age / maxLife) * 0.6) * 10.0;
+    }
+    
+    vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    
+    // Point size for explosion (subtle)
+    gl_PointSize = size * (100.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 1.0, 35.0);
+    
+    vColor = aColor;
+    vAlpha = alpha;
+}
+`;
+
+/**
+ * Aurora Spark Fragment Shader - Green glowing particles
+ */
+export const auroraSparkFragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    if (vAlpha <= 0.01) discard;
+    
+    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
+    
+    // Bright hot center
+    float core = 1.0 - smoothstep(0.0, 0.3, dist);
+    
+    // Soft outer glow
+    float glow = 1.0 - smoothstep(0.0, 0.85, dist);
+    
+    // Mix color with softer white-green center (subtle)
+    vec3 finalColor = mix(vColor, vec3(0.6, 0.85, 0.7), core * 0.4);
+    
+    // Muted brightness
+    finalColor *= 0.7;
+    
+    // Softer alpha for ambient effect
+    gl_FragColor = vec4(finalColor, vAlpha * glow * 0.5);
+}
+`;
+
+// Keep the simple green spark shaders for compatibility
+export const greenSparkVertexShader = auroraSparkVertexShader;
+export const greenSparkFragmentShader = auroraSparkFragmentShader;
