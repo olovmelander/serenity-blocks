@@ -10,13 +10,13 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-// Quality Presets
+// Quality Presets - Optimized for calm, performant visuals
 const QUALITY_PRESETS = {
-    Extreme: { particleCount: 5000, enableBloom: true, bloomStrength: 0.7, geometryDetail: 64 },
-    High: { particleCount: 3000, enableBloom: true, bloomStrength: 0.5, geometryDetail: 48 },
-    Medium: { particleCount: 1500, enableBloom: true, bloomStrength: 0.4, geometryDetail: 32 },
-    Low: { particleCount: 800, enableBloom: false, bloomStrength: 0, geometryDetail: 24 },
-    Minimal: { particleCount: 400, enableBloom: false, bloomStrength: 0, geometryDetail: 16 },
+    Extreme: { particleCount: 800, enableBloom: false, bloomStrength: 0, geometryDetail: 32 },
+    High: { particleCount: 500, enableBloom: false, bloomStrength: 0, geometryDetail: 24 },
+    Medium: { particleCount: 300, enableBloom: false, bloomStrength: 0, geometryDetail: 20 },
+    Low: { particleCount: 150, enableBloom: false, bloomStrength: 0, geometryDetail: 16 },
+    Minimal: { particleCount: 80, enableBloom: false, bloomStrength: 0, geometryDetail: 12 },
 };
 
 export class ThreeJSBreathingRenderer {
@@ -247,10 +247,10 @@ export class ThreeJSBreathingRenderer {
                     void main() {
                         vUv = uv;
                         vec3 pos = position;
-                        float wave = sin(pos.x * 2.0 + uTime * 0.5 + uLayer) * 0.3;
-                        wave += sin(pos.x * 4.0 - uTime * 0.3) * 0.15;
+                        float wave = sin(pos.x * 2.0 + uTime * 0.25 + uLayer) * 0.3;
+                        wave += sin(pos.x * 4.0 - uTime * 0.15) * 0.15;
                         pos.z += wave;
-                        pos.y += sin(pos.x * 3.0 + uTime * 0.2) * 0.2;
+                        pos.y += sin(pos.x * 3.0 + uTime * 0.1) * 0.2;
                         vWave = wave;
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
                     }
@@ -265,7 +265,7 @@ export class ThreeJSBreathingRenderer {
                     void main() {
                         float gradient = vUv.y;
                         vec3 color = mix(uColor1, uColor2, gradient + vWave * 0.5);
-                        float shimmer = sin(vUv.y * 20.0 + uTime * 3.0) * 0.1 + 0.9;
+                        float shimmer = sin(vUv.y * 15.0 + uTime * 1.5) * 0.08 + 0.92;
                         float alpha = gradient * shimmer * uIntensity * 0.6;
                         alpha *= smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
                         gl_FragColor = vec4(color * 1.5, alpha);
@@ -339,8 +339,8 @@ export class ThreeJSBreathingRenderer {
                 void main() {
                     vUv = uv;
                     vec3 pos = position;
-                    float wave1 = sin(pos.x * 3.0 + uTime * 2.0) * 0.1;
-                    float wave2 = sin(pos.y * 4.0 - uTime * 1.5) * 0.08;
+                    float wave1 = sin(pos.x * 3.0 + uTime * 1.0) * 0.08;
+                    float wave2 = sin(pos.y * 4.0 - uTime * 0.75) * 0.06;
                     pos.z = wave1 + wave2;
                     vElevation = pos.z;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
@@ -354,9 +354,9 @@ export class ThreeJSBreathingRenderer {
                 varying float vElevation;
                 void main() {
                     vec2 uv = vUv * 10.0;
-                    float caustic1 = sin(uv.x * 2.0 + uTime * 2.0) * sin(uv.y * 2.0 - uTime * 1.5);
-                    float caustic2 = sin(uv.x * 3.0 - uTime * 1.8) * sin(uv.y * 3.0 + uTime * 2.2);
-                    float caustics = (caustic1 + caustic2) * 0.25 + 0.5;
+                    float caustic1 = sin(uv.x * 2.0 + uTime * 1.0) * sin(uv.y * 2.0 - uTime * 0.75);
+                    float caustic2 = sin(uv.x * 3.0 - uTime * 0.9) * sin(uv.y * 3.0 + uTime * 1.1);
+                    float caustics = (caustic1 + caustic2) * 0.2 + 0.5;
                     caustics = pow(caustics, 2.0);
                     vec3 color = uColor + vec3(0.2, 0.3, 0.4) * caustics * uIntensity;
                     float alpha = 0.6 + vElevation * 2.0;
@@ -417,20 +417,12 @@ export class ThreeJSBreathingRenderer {
         if (this.sceneObjects.water) {
             this.sceneObjects.water.material.uniforms.uTime.value = time;
             this.sceneObjects.water.material.uniforms.uIntensity.value = this.intensity;
+            this.sceneObjects.water.scale.setScalar(breathScale);
         }
+        // Bubbles now use simple Y translation instead of per-particle updates
         if (this.sceneObjects.bubbles) {
-            const pos = this.sceneObjects.bubbles.geometry.attributes.position.array;
-            for (let i = 0; i < pos.length / 3; i++) {
-                pos[i * 3 + 1] += 0.02;
-                if (pos[i * 3 + 1] > 4) pos[i * 3 + 1] = -3;
-            }
-            this.sceneObjects.bubbles.geometry.attributes.position.needsUpdate = true;
-            this.sceneObjects.bubbles.material.opacity = 0.4 + this.intensity * 0.4;
-        }
-        if (this.sceneObjects.rays) {
-            this.sceneObjects.rays.forEach((ray, i) => {
-                ray.material.opacity = 0.1 + Math.sin(time + i) * 0.05 * this.intensity;
-            });
+            this.sceneObjects.bubbles.position.y = Math.sin(time * 0.3) * 0.5;
+            this.sceneObjects.bubbles.material.opacity = 0.3 + this.intensity * 0.3;
         }
     }
 
@@ -551,17 +543,10 @@ export class ThreeJSBreathingRenderer {
             this.sceneObjects.lava.material.uniforms.uTime.value = time;
             this.sceneObjects.lava.material.uniforms.uIntensity.value = this.intensity;
         }
-        if (this.sceneObjects.embers && this.emberVelocities) {
-            const pos = this.sceneObjects.embers.geometry.attributes.position.array;
-            for (let i = 0; i < this.emberVelocities.length; i++) {
-                pos[i * 3 + 1] += this.emberVelocities[i] * (0.5 + this.intensity);
-                pos[i * 3] += Math.sin(time * 2 + i) * 0.01;
-                if (pos[i * 3 + 1] > 6) {
-                    pos[i * 3 + 1] = -2;
-                    pos[i * 3] = (Math.random() - 0.5) * 6;
-                }
-            }
-            this.sceneObjects.embers.geometry.attributes.position.needsUpdate = true;
+        // Embers now use simple rotation/translation instead of per-particle updates
+        if (this.sceneObjects.embers) {
+            this.sceneObjects.embers.rotation.y = time * 0.1;
+            this.sceneObjects.embers.position.y = Math.sin(time * 0.2) * 0.3;
         }
         if (this.sceneObjects.coreGlow) {
             this.sceneObjects.coreGlow.scale.setScalar(breathScale * 1.2);
@@ -732,19 +717,15 @@ export class ThreeJSBreathingRenderer {
     updateForest(time, breathScale) {
         if (this.sceneObjects.godRays) {
             this.sceneObjects.godRays.forEach((ray, i) => {
-                ray.material.opacity = 0.1 + Math.sin(time * 0.5 + i) * 0.05 * this.intensity;
+                ray.material.opacity = 0.1 + Math.sin(time * 0.3 + i) * 0.03 * this.intensity;
                 ray.scale.x = breathScale;
             });
         }
-        if (this.sceneObjects.fireflies && this.fireflyPhases) {
-            const pos = this.sceneObjects.fireflies.geometry.attributes.position.array;
-            for (let i = 0; i < this.fireflyPhases.length; i++) {
-                pos[i * 3] += Math.sin(time * 0.8 + this.fireflyPhases[i]) * 0.01;
-                pos[i * 3 + 1] += Math.cos(time * 0.6 + this.fireflyPhases[i] * 1.3) * 0.005;
-            }
-            this.sceneObjects.fireflies.geometry.attributes.position.needsUpdate = true;
-            // Pulsing glow
-            this.sceneObjects.fireflies.material.opacity = 0.3 + Math.pow(Math.sin(time * 3) * 0.5 + 0.5, 2) * 0.7 * this.intensity;
+        // Fireflies now use simple group transform instead of per-particle updates
+        if (this.sceneObjects.fireflies) {
+            this.sceneObjects.fireflies.rotation.y = Math.sin(time * 0.2) * 0.1;
+            this.sceneObjects.fireflies.position.y = Math.sin(time * 0.15) * 0.2;
+            this.sceneObjects.fireflies.material.opacity = 0.4 + this.intensity * 0.3;
         }
     }
 
@@ -821,40 +802,26 @@ export class ThreeJSBreathingRenderer {
     }
 
     updateStorm(time, breathScale) {
-        // Lightning flashes
+        // Lightning flashes - simplified with opacity only, no position updates
         if (this.sceneObjects.lightnings) {
             this.sceneObjects.lightnings.forEach((lightning, i) => {
                 if (time > lightning.userData.nextFlash) {
                     lightning.material.opacity = 1;
-                    lightning.userData.nextFlash = time + 2 + Math.random() * 4;
-                    // Regenerate bolt path
-                    const pos = lightning.geometry.attributes.position.array;
-                    let y = 3, x = (i - 1) * 2;
-                    for (let j = 0; j < 8; j++) {
-                        pos[j * 3] = x;
-                        pos[j * 3 + 1] = y;
-                        y -= 0.5;
-                        x += (Math.random() - 0.5) * 0.8;
-                    }
-                    lightning.geometry.attributes.position.needsUpdate = true;
+                    lightning.userData.nextFlash = time + 3 + Math.random() * 5;
                 } else {
-                    lightning.material.opacity *= 0.85;
+                    lightning.material.opacity *= 0.9;
                 }
             });
         }
-        // Rain falling
+        // Rain now uses simple transform instead of per-particle updates
         if (this.sceneObjects.rain) {
-            const pos = this.sceneObjects.rain.geometry.attributes.position.array;
-            for (let i = 0; i < pos.length / 3; i++) {
-                pos[i * 3 + 1] -= 0.15;
-                if (pos[i * 3 + 1] < -3) pos[i * 3 + 1] = 5;
-            }
-            this.sceneObjects.rain.geometry.attributes.position.needsUpdate = true;
+            this.sceneObjects.rain.position.y = -((time * 2) % 8);
+            this.sceneObjects.rain.material.opacity = 0.3 + this.intensity * 0.2;
         }
-        // Clouds drifting
+        // Clouds gentle drift
         if (this.sceneObjects.clouds) {
             this.sceneObjects.clouds.forEach((cloud, i) => {
-                cloud.position.x += Math.sin(time * 0.1 + i) * 0.002;
+                cloud.position.x = cloud.userData?.startX + Math.sin(time * 0.05 + i) * 0.3 || cloud.position.x;
             });
         }
     }
@@ -945,20 +912,14 @@ export class ThreeJSBreathingRenderer {
         }
         if (this.sceneObjects.corona) {
             this.sceneObjects.corona.forEach((corona, i) => {
-                corona.scale.setScalar(breathScale + Math.sin(time * 2 + i) * 0.05 * this.intensity);
-                corona.rotation.z = time * 0.1 * (i % 2 === 0 ? 1 : -1);
+                corona.scale.setScalar(breathScale + Math.sin(time * 1.5 + i) * 0.03 * this.intensity);
+                corona.rotation.z = time * 0.05 * (i % 2 === 0 ? 1 : -1);
             });
         }
-        if (this.sceneObjects.solarWind && this.solarWindAngles) {
-            const pos = this.sceneObjects.solarWind.geometry.attributes.position.array;
-            for (let i = 0; i < this.solarWindAngles.length; i++) {
-                let radius = Math.sqrt(pos[i * 3] ** 2 + pos[i * 3 + 1] ** 2);
-                radius += 0.03 * (0.5 + this.intensity);
-                if (radius > 5) radius = 1.5;
-                pos[i * 3] = Math.cos(this.solarWindAngles[i]) * radius;
-                pos[i * 3 + 1] = Math.sin(this.solarWindAngles[i]) * radius;
-            }
-            this.sceneObjects.solarWind.geometry.attributes.position.needsUpdate = true;
+        // Solar wind now uses simple rotation instead of per-particle expansion
+        if (this.sceneObjects.solarWind) {
+            this.sceneObjects.solarWind.rotation.z = time * 0.1;
+            this.sceneObjects.solarWind.scale.setScalar(0.9 + this.intensity * 0.2);
         }
     }
 
