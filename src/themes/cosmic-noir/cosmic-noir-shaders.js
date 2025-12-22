@@ -411,12 +411,12 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Size attenuation for depth
+    // Size attenuation for depth - larger clamp for bigger stars
     gl_PointSize = aSize * (300.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 0.5, 6.0);
+    gl_PointSize = clamp(gl_PointSize, 1.0, 10.0);
     
-    // Twinkle effect
-    float twinkle = sin(uTime * 2.5 + aPhase) * 0.35 + 0.65;
+    // Twinkle effect - higher baseline for more visibility
+    float twinkle = sin(uTime * 2.5 + aPhase) * 0.15 + 0.9;
     vAlpha = twinkle;
     
     // Pass vertex color (grayscale)

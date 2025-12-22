@@ -325,7 +325,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 1.0 + Math.random() * 2.5;
+            sizes[i] = 4.0 + Math.random() * 6.0;
             phases[i] = Math.random() * Math.PI * 2;
         }
 
@@ -770,18 +770,38 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.filmGrainPass.uniforms.uTime.value = this.time;
         }
 
-        // Slow drift planet across scene (Lissajous curves for organic movement)
+        // Slow drift planet across entire screen (Lissajous curves for organic movement)
         if (this.planetGroup) {
-            const driftX = Math.sin(this.time * 0.025 + this.planetPhaseX) * 220 +
-                Math.cos(this.time * 0.018 + this.planetPhaseX2) * 110;
-            const driftY = Math.cos(this.time * 0.02 + this.planetPhaseY) * 130 +
-                Math.sin(this.time * 0.012 + this.planetPhaseY2) * 70;
+            const driftX = Math.sin(this.time * 0.025 + this.planetPhaseX) * 550 +
+                Math.cos(this.time * 0.018 + this.planetPhaseX2) * 250;
+            const driftY = Math.cos(this.time * 0.02 + this.planetPhaseY) * 350 +
+                Math.sin(this.time * 0.012 + this.planetPhaseY2) * 150;
 
             this.planetGroup.position.x = driftX;
-            this.planetGroup.position.y = driftY + 40;
+            this.planetGroup.position.y = driftY;
 
             // Gentle rotation
             this.planetGroup.rotation.z = Math.sin(this.time * 0.008) * 0.04;
+        }
+
+        // Slow camera orbit for parallax depth (independent of planet)
+        if (this.camera) {
+            const cameraTime = this.time * 0.06; // Slow but noticeable orbit
+            const orbitRadiusX = 400; // Wide horizontal sway
+            const orbitRadiusY = 300;  // Vertical sway range
+            const orbitRadiusZ = 200;  // Depth breathing
+
+            // Orbital sway - creates parallax with starfield/nebula
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
+                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
+                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+
+            // LookAt drift for dynamic framing (not following planet)
+            const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
+            const lookOffsetY = Math.cos(cameraTime * 0.5) * 100;
+            this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
         }
 
         // Pulse glow layers with planet pulse intensity

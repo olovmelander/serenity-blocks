@@ -408,10 +408,10 @@ void main() {
     
     // Size attenuation for depth
     gl_PointSize = aSize * (300.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 0.5, 6.0);
+    gl_PointSize = clamp(gl_PointSize, 1.0, 10.0);
     
-    // Twinkle effect
-    float twinkle = sin(uTime * 3.0 + aPhase) * 0.3 + 0.7;
+    // Twinkle effect - higher baseline for more visibility
+    float twinkle = sin(uTime * 3.0 + aPhase) * 0.2 + 0.85;
     vAlpha = twinkle;
     
     // Pass vertex color

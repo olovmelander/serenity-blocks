@@ -309,16 +309,16 @@ export default class BloodMoonTheme extends BaseTheme {
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i3 + 2] = radius * Math.cos(phi) - 2000;
 
-            // Color - mostly white with some red-tinted
-            const colorIndex = Math.random() > 0.7
-                ? Math.floor(2 + Math.random() * 4) // Red tints
-                : Math.floor(Math.random() * 2); // White
+            // Color - mostly red-tinted stars for blood moon atmosphere
+            const colorIndex = Math.random() > 0.15
+                ? Math.floor(2 + Math.random() * 4) // Red tints (85%)
+                : Math.floor(Math.random() * 2); // White (15%)
             const color = starColors[colorIndex];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 1.0 + Math.random() * 3.0;
+            sizes[i] = 4.0 + Math.random() * 8.0;
             phases[i] = Math.random() * Math.PI * 2;
         }
 
@@ -707,18 +707,38 @@ export default class BloodMoonTheme extends BaseTheme {
             }
         }
 
-        // Slow drift moon across scene
+        // Slow drift moon across entire screen
         if (this.moonGroup) {
-            const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 200 +
-                Math.cos(this.time * 0.02 + this.moonPhaseX2) * 100;
-            const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 120 +
-                Math.sin(this.time * 0.015 + this.moonPhaseY2) * 60;
+            const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 550 +
+                Math.cos(this.time * 0.02 + this.moonPhaseX2) * 250;
+            const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 350 +
+                Math.sin(this.time * 0.015 + this.moonPhaseY2) * 150;
 
             this.moonGroup.position.x = driftX;
-            this.moonGroup.position.y = driftY + 50;
+            this.moonGroup.position.y = driftY;
 
             // Gentle rotation
             this.moonGroup.rotation.z = Math.sin(this.time * 0.01) * 0.05;
+        }
+
+        // Slow camera orbit for parallax depth (independent of moon)
+        if (this.camera) {
+            const cameraTime = this.time * 0.06; // Slow but noticeable orbit
+            const orbitRadiusX = 400; // Wide horizontal sway
+            const orbitRadiusY = 300;  // Vertical sway range
+            const orbitRadiusZ = 200;  // Depth breathing
+
+            // Orbital sway - creates parallax with starfield/nebula
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
+                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
+                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+
+            // LookAt drift for dynamic framing (not following moon)
+            const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
+            const lookOffsetY = Math.cos(cameraTime * 0.5) * 100;
+            this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
         }
 
         // Pulse glow layers with moon pulse intensity
