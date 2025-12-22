@@ -128,6 +128,55 @@ export class BreathworkAudioManager {
     }
 
     /**
+     * Play voice and execute callback when finished
+     * Used for sequential voice chaining to prevent overlaps
+     * @param {string} relativePath - Voice file path
+     * @param {function} onComplete - Callback when audio ends
+     */
+    playVoiceWithCallback(relativePath, onComplete) {
+        if (!this.isEnabled || !relativePath) {
+            if (onComplete) onComplete();
+            return;
+        }
+
+        const fullPath = this.basePath + 'voices/' + relativePath;
+
+        // Clear any pending state
+        this.isVoicePending = false;
+        if (this.voicePendingTimeout) {
+            clearTimeout(this.voicePendingTimeout);
+            this.voicePendingTimeout = null;
+        }
+
+        // Stop any currently playing cue to prevent overlap
+        this.cueAudio.pause();
+        this.cueAudio.currentTime = 0;
+
+        // Stop current voice if any
+        this.voiceAudio.pause();
+        this.voiceAudio.src = fullPath;
+        this.voiceAudio.volume = this.voiceVolume;
+
+        this.currentVoicePath = relativePath;
+        this.isVoicePlaying = true;
+        console.log(`[AudioManager] Playing voice (chained): ${relativePath}`);
+
+        this.voiceAudio.play().catch(e => {
+            this.isVoicePlaying = false;
+            console.warn('[AudioManager] Play failed:', e);
+            if (onComplete) onComplete(); // Still call callback on failure
+        });
+
+        // Execute callback when audio ends
+        this.voiceAudio.onended = () => {
+            this.isVoicePlaying = false;
+            this.isVoicePending = false;
+            console.log(`[AudioManager] Voice finished: ${relativePath}`);
+            if (onComplete) onComplete();
+        };
+    }
+
+    /**
      * Schedule voice to play after delay (marks pending state to block cues)
      * @param {string} relativePath - Voice file path
      * @param {number} delayMs - Delay in milliseconds
