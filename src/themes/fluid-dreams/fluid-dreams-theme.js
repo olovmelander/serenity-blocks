@@ -178,6 +178,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         // Camera state
         this.baseCameraPos = new THREE.Vector3(0, 0, 50);
         this.cameraTarget = new THREE.Vector3(0, 0, 0);
+        this.cameraTargetOffset = new THREE.Vector3(0, 0, 0);
 
         // Combo state
         this.comboMultiplier = 1.0;
@@ -449,25 +450,39 @@ export default class FluidDreamsTheme extends BaseTheme {
 
             const blob = new THREE.Mesh(geometry, material);
 
-            // Position blobs in a loose arrangement
-            const angle = (i / count) * Math.PI * 2;
-            const radius = 15 + Math.random() * 10;
-            const height = (Math.random() - 0.5) * 20;
+            // Spread blobs across the FULL screen for immersive coverage
+            // Use layered depth - some close, some far
+            const zLayer = Math.random();
+            const zPosition = (zLayer < 0.3) ? 10 + Math.random() * 15 : // Close layer
+                (zLayer < 0.7) ? -10 + Math.random() * 20 : // Mid layer
+                    -30 + Math.random() * 20; // Far layer
 
             blob.position.set(
-                Math.cos(angle) * radius,
-                height,
-                Math.sin(angle) * radius
+                (Math.random() - 0.5) * 120,  // Wide X spread across screen
+                (Math.random() - 0.5) * 70,   // Full vertical coverage
+                zPosition                      // Layered depth
             );
 
-            // Store animation data
+            // Store animation data for drifting/floating
             blob.userData = {
                 basePosition: blob.position.clone(),
                 floatPhase: Math.random() * Math.PI * 2,
-                floatSpeed: 0.3 + Math.random() * 0.3,
-                floatAmplitude: 1 + Math.random() * 2,
-                orbitSpeed: 0.05 + Math.random() * 0.05,
-                orbitRadius: radius,
+                floatPhase2: Math.random() * Math.PI * 2, // Secondary phase for complex motion
+                floatSpeed: 0.15 + Math.random() * 0.15,  // Slower, dreamier
+                floatAmplitude: 3 + Math.random() * 5,     // Larger float range
+                // Drift velocity - slow continuous movement across screen
+                driftSpeed: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.8,  // Slow X drift
+                    (Math.random() - 0.5) * 0.4,  // Slow Y drift
+                    (Math.random() - 0.5) * 0.5   // Slow Z drift
+                ),
+                // Combo effect state
+                comboScale: 1.0,
+                targetComboScale: 1.0,
+                comboColorShift: 0,  // Color cycling effect
+                comboWobble: 0,      // Wobble/jiggle effect
+                comboGlow: 0,        // Subtle light pulse
+                originalScale: size,
             };
 
             this.mainGroup.add(blob);
@@ -760,40 +775,94 @@ export default class FluidDreamsTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     onLineClear(lineCount) {
-        // Pulse intensity boost
-        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + lineCount * 0.3, 1.5);
+        // Very minimal pulse
+        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + lineCount * 0.02, 0.2);
 
-        // Create shockwave
-        this.createShockwave(lineCount * 0.3);
+        // Shockwave disabled - too bright
+        // this.createShockwave(lineCount * 0.3);
 
-        // Burst bubbles outward
-        this.burstBubbles(lineCount);
+        // Burst bubbles outward (subtle)
+        this.burstBubbles(lineCount * 0.3);
     }
 
     onCombo(comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.0);
 
-        // Strong pulse
-        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + comboCount * 0.2, 2.0);
+        // Minimal pulse - avoid brightness
+        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + comboCount * 0.01, 0.15);
 
-        // Boost bloom temporarily
-        if (this.bloomPass && this.activePreset.enableBloom) {
-            this.bloomPass.strength = this.activePreset.bloomStrength + comboCount * 0.1;
+        // No bloom boost - keep it at base level
+        // (removed to prevent brightness)
+
+        // ═══════════════════════════════════════════════════════════════════
+        // BLOB-CONNECTED COMBO EFFECTS
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Activate ALL blobs for the pulse/wobble/color effects
+        this.blobs.forEach((blob) => {
+            const data = blob.userData;
+
+            // Scale pulse - very subtle breathing effect
+            data.targetComboScale = 1.03 + comboCount * 0.01;  // Barely visible
+
+            // Color shift - cycle through the palette
+            data.comboColorShift = 1.0 + comboCount * 0.3;
+
+            // Wobble - make blobs jiggle gently
+            data.comboWobble = 0.5 + comboCount * 0.2;
+
+            // Light Pulse - Sharp "kick" that decays fast (snappy flash)
+            data.comboGlow = Math.min(0.4 + comboCount * 0.1, 0.8);
+
+            // Speed up drift temporarily
+            const speedBoost = 1.5 + comboCount * 0.3;
+            data.driftSpeed.x *= speedBoost;
+            data.driftSpeed.y *= speedBoost;
+            data.driftSpeed.z *= speedBoost;
+
+            // Decay speed back to normal over time
+            setTimeout(() => {
+                if (data.driftSpeed) {
+                    data.driftSpeed.x /= speedBoost;
+                    data.driftSpeed.y /= speedBoost;
+                    data.driftSpeed.z /= speedBoost;
+                }
+            }, 800);
+        });
+
+        // Trigger particles/ripples on a subset to avoid performance/visual overload
+        // Select random blobs to emit particles/ripples based on combo count
+        const particleCount = Math.min(comboCount + 1, 5);
+        const shuffledBlobs = [...this.blobs].sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < particleCount; i++) {
+            const blob = shuffledBlobs[i];
+
+            // Emit burst particles from this blob (re-enabled)
+            this.emitBlobBurstParticles(blob, comboCount);
+
+            // Create ripple rings emanating from this blob (fluid theme fitting)
+            this.createBlobRipple(blob, comboCount);
         }
 
-        // Multiple shockwaves for high combos
+        // Create energy connections between nearby blobs for high combos
         if (comboCount >= 3) {
-            for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
-                setTimeout(() => {
-                    this.createShockwave(0.5 + comboCount * 0.1);
-                }, i * 100);
-            }
+            this.createBlobConnections(comboCount);
         }
+
+        // Shockwaves disabled to prevent brightness
+        // if (comboCount >= 3) {
+        //     for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
+        //         setTimeout(() => {
+        //             this.createShockwave(0.5 + comboCount * 0.1);
+        //         }, i * 100);
+        //     }
+        // }
     }
 
     onPieceLock() {
-        // Stronger pulse for visibility
-        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + 0.5, 1.0);
+        // Very minimal pulse
+        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + 0.02, 0.1);
     }
 
     createShockwave(intensity) {
@@ -838,6 +907,243 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Blob Ripple Effect - Expanding rings emanating from blobs (fluid theme)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBlobRipple(blob, comboCount) {
+        const blobRadius = blob.userData.originalScale || 5;
+
+        // Create a ring geometry around the blob
+        const geometry = new THREE.RingGeometry(blobRadius * 0.8, blobRadius * 1.0, 32);
+
+        // Pick a color from the blob's palette
+        const colors = [0x79faff, 0xff7cf0, 0xa1ffcf, 0x8c9bff];
+        const ringColor = new THREE.Color(colors[Math.floor(Math.random() * colors.length)]);
+
+        const material = new THREE.MeshBasicMaterial({
+            color: ringColor,
+            transparent: true,
+            opacity: 0.2,  // Subtle starting opacity
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const ripple = new THREE.Mesh(geometry, material);
+        ripple.position.copy(blob.position);
+
+        // Random slight rotation
+        ripple.rotation.x = Math.random() * Math.PI * 0.3;
+        ripple.rotation.y = Math.random() * Math.PI * 2;
+
+        ripple.userData = {
+            startTime: this.clock.getElapsedTime(),
+            duration: 1.5 + comboCount * 0.2,
+            startScale: 1,
+            maxScale: 3 + comboCount * 0.5,
+            blob: blob,  // Reference to track blob position
+        };
+
+        this.scene.add(ripple);
+
+        // Store for animation/cleanup
+        if (!this.blobRipples) this.blobRipples = [];
+        this.blobRipples.push(ripple);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Blob Burst Particles - Emit sparkles from blob surface during combos
+    // ─────────────────────────────────────────────────────────────────────────
+
+    emitBlobBurstParticles(blob, comboCount) {
+        const particleCount = 5 + comboCount;  // Very few particles
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+
+        const colorOptions = [
+            new THREE.Color(0x79faff),
+            new THREE.Color(0xff7cf0),
+            new THREE.Color(0xa1ffcf),
+            new THREE.Color(0xffe066),
+        ];
+
+        for (let i = 0; i < particleCount; i++) {
+            // Emit from blob surface in random directions
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const direction = new THREE.Vector3(
+                Math.sin(phi) * Math.cos(theta),
+                Math.sin(phi) * Math.sin(theta),
+                Math.cos(phi)
+            );
+
+            // Start at blob surface
+            const blobRadius = blob.userData.originalScale || 5;
+            positions[i * 3] = blob.position.x + direction.x * blobRadius;
+            positions[i * 3 + 1] = blob.position.y + direction.y * blobRadius;
+            positions[i * 3 + 2] = blob.position.z + direction.z * blobRadius;
+
+            // Velocity outward
+            velocities.push(direction.clone().multiplyScalar(5 + Math.random() * 10));
+
+            // Random iridescent color
+            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+
+            sizes[i] = 0.5 + Math.random() * 0.8;  // Very small particles
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uOpacity: { value: 1.0 },
+            },
+            vertexShader: `
+                attribute vec3 aColor;
+                attribute float aSize;
+                varying vec3 vColor;
+                varying float vOpacity;
+                uniform float uOpacity;
+                void main() {
+                    vColor = aColor;
+                    vOpacity = uOpacity;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_PointSize = aSize * (100.0 / -mvPosition.z);  // Smaller point size
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vOpacity;
+                void main() {
+                    float dist = length(gl_PointCoord - vec2(0.5));
+                    if (dist > 0.5) discard;
+                    float glow = 1.0 - dist * 2.0;
+                    glow = pow(glow, 3.0);  // Very sharp falloff
+                    gl_FragColor = vec4(vColor, glow * vOpacity * 0.3);  // Much dimmer
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const burstParticles = new THREE.Points(geometry, material);
+        burstParticles.userData = {
+            velocities,
+            startTime: this.clock.getElapsedTime(),
+            duration: 1.2,
+            gravity: -2,
+        };
+
+        this.scene.add(burstParticles);
+
+        // Store for animation/cleanup
+        if (!this.blobBurstParticles) this.blobBurstParticles = [];
+        this.blobBurstParticles.push(burstParticles);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Blob Energy Connections - Draw glowing lines between nearby blobs
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBlobConnections(comboCount) {
+        // 1. Constellation Chain Logic: A -> B -> C
+        // Pick a random starting blob to ensure variety
+        let currentBlob = this.blobs[Math.floor(Math.random() * this.blobs.length)];
+        const visited = new Set([currentBlob]);
+
+        // Limit chain length based on combo, but keep it reasonable
+        const chainLength = Math.min(comboCount, 5);
+
+        for (let i = 0; i < chainLength; i++) {
+            let nearestBlob = null;
+            let minDist = Infinity;
+
+            // Find nearest unvisited blob
+            for (const blob of this.blobs) {
+                if (!visited.has(blob)) {
+                    const dist = currentBlob.position.distanceTo(blob.position);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearestBlob = blob;
+                    }
+                }
+            }
+
+            // If we found a neighbor within reasonable range, connect and continue chain
+            if (nearestBlob && minDist < 100) { // Large search radius ensures connections
+                this.createEnergyLine(currentBlob, nearestBlob, comboCount);
+                visited.add(nearestBlob);
+                currentBlob = nearestBlob;
+            } else {
+                break; // End chain if no valid neighbors
+            }
+        }
+    }
+
+    createEnergyLine(blobA, blobB, comboCount) {
+        // 2. Liquid Tendril Visuals: Multi-strand organic connection
+        const tendrilGroup = new THREE.Group();
+        tendrilGroup.userData = {
+            startTime: this.clock.getElapsedTime(),
+            duration: 1.2 + comboCount * 0.2, // Live longer for more enjoyment
+            blobA,
+            blobB,
+            strands: []
+        };
+
+        // Create 3 intertwined strands
+        const colors = [
+            new THREE.Color(0x79faff), // Aqua
+            new THREE.Color(0xff7cf0), // Pink
+            new THREE.Color(0xa1ffcf)  // Mint
+        ];
+
+        for (let i = 0; i < 3; i++) {
+            const points = [];
+            // Initialize with dummy points, will be set in animate
+            for (let j = 0; j <= 30; j++) points.push(new THREE.Vector3());
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+            const material = new THREE.LineBasicMaterial({
+                color: colors[i % colors.length],
+                transparent: true,
+                opacity: 0.0, // Start invisible, fade in
+                blending: THREE.AdditiveBlending,
+                linewidth: 1
+            });
+
+            const strand = new THREE.Line(geometry, material);
+            strand.userData = {
+                phaseOffset: i * ((Math.PI * 2) / 3), // 120 degree phase shift
+                frequency: 2 + Math.random(),
+                speed: 3 + Math.random() * 2
+            };
+
+            tendrilGroup.add(strand);
+            tendrilGroup.userData.strands.push(strand);
+        }
+
+        this.mainGroup.add(tendrilGroup);
+
+        // Store for animation/cleanup
+        if (!this.energyLines) this.energyLines = [];
+        this.energyLines.push(tendrilGroup);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Animation Loop
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -862,24 +1168,73 @@ export default class FluidDreamsTheme extends BaseTheme {
             this.bloomPass.strength += (this.activePreset.bloomStrength - this.bloomPass.strength) * 0.05;
         }
 
-        // Animate blobs
+        // Animate blobs with drifting and floating
         this.blobs.forEach((blob) => {
             const data = blob.userData;
 
-            // Floating motion
+            // Apply drift velocity (continuous slow movement)
+            blob.position.x += data.driftSpeed.x * delta;
+            blob.position.y += data.driftSpeed.y * delta;
+            blob.position.z += data.driftSpeed.z * delta;
+
+            // Layered floating motion (more organic with two sine waves)
             const floatY = Math.sin(elapsed * data.floatSpeed + data.floatPhase) * data.floatAmplitude;
+            const floatX = Math.sin(elapsed * data.floatSpeed * 0.7 + data.floatPhase2) * data.floatAmplitude * 0.5;
+            blob.position.y += floatY * delta * 0.5;
+            blob.position.x += floatX * delta * 0.3;
 
-            // Slow orbit
-            const orbitAngle = elapsed * data.orbitSpeed;
-            const baseAngle = Math.atan2(data.basePosition.z, data.basePosition.x);
+            // Wrap-around when blobs drift off-screen (seamless looping)
+            if (blob.position.x > 70) { blob.position.x = -70; data.basePosition.x = blob.position.x; }
+            if (blob.position.x < -70) { blob.position.x = 70; data.basePosition.x = blob.position.x; }
+            if (blob.position.y > 45) { blob.position.y = -45; data.basePosition.y = blob.position.y; }
+            if (blob.position.y < -45) { blob.position.y = 45; data.basePosition.y = blob.position.y; }
+            if (blob.position.z > 40) { blob.position.z = -40; data.basePosition.z = blob.position.z; }
+            if (blob.position.z < -50) { blob.position.z = 30; data.basePosition.z = blob.position.z; }
 
-            blob.position.x = Math.cos(baseAngle + orbitAngle) * data.orbitRadius;
-            blob.position.y = data.basePosition.y + floatY;
-            blob.position.z = Math.sin(baseAngle + orbitAngle) * data.orbitRadius;
+            // Animate combo scale effect
+            data.comboScale += (data.targetComboScale - data.comboScale) * 0.08;
+            data.targetComboScale += (1.0 - data.targetComboScale) * 0.02; // Decay back to 1.0
+            const scale = data.originalScale * data.comboScale;
+            blob.scale.setScalar(scale / data.originalScale);
 
-            // Slow rotation
-            blob.rotation.y += 0.002;
-            blob.rotation.x += 0.001;
+            // Animate color shift (passed to shader via morph seed modulation)
+            if (data.comboColorShift > 0) {
+                data.comboColorShift *= 0.98;  // Decay
+                if (blob.material.uniforms.uMorphSpeed) {
+                    blob.material.uniforms.uMorphSpeed.value = 0.3 + data.comboColorShift * 0.5;
+                }
+            }
+
+            // Animate wobble effect
+            if (data.comboWobble > 0) {
+                data.comboWobble *= 0.96;  // Decay
+                const wobbleX = Math.sin(elapsed * 8 + data.floatPhase) * data.comboWobble * 0.3;
+                const wobbleY = Math.cos(elapsed * 7 + data.floatPhase2) * data.comboWobble * 0.2;
+                blob.position.x += wobbleX * delta;
+                blob.position.y += wobbleY * delta;
+            }
+
+            // Animate glow pulse (Slower, dreamy pulse)
+            if (data.comboGlow > 0.01) {
+                data.comboGlow *= 0.96; // Slower decay for longer presence
+                if (blob.material.uniforms.uPulseIntensity) {
+                    // Add to base pulse
+                    const basePulse = this.uniforms.pulseIntensity.value;
+                    // Calmer sine modulation (3.0 vs 15.0)
+                    const life = 1.0 + Math.sin(elapsed * 3.0) * 0.15;
+                    blob.material.uniforms.uPulseIntensity.value = Math.min(basePulse + data.comboGlow * life, 1.3);
+                }
+            } else {
+                // Sync with global pulse if no local combo glow
+                if (blob.material.uniforms.uPulseIntensity) {
+                    blob.material.uniforms.uPulseIntensity.value = this.uniforms.pulseIntensity.value;
+                }
+            }
+
+            // Slow rotation for organic feel
+            blob.rotation.y += 0.003;
+            blob.rotation.x += 0.002;
+            blob.rotation.z += 0.001;
         });
 
         // Animate bubbles
@@ -931,12 +1286,167 @@ export default class FluidDreamsTheme extends BaseTheme {
             }
         }
 
-        // Gentle camera drift
-        const cameraWobbleX = Math.sin(elapsed * 0.1) * 2;
-        const cameraWobbleY = Math.cos(elapsed * 0.08) * 1.5;
+        // ═══════════════════════════════════════════════════════════════════
+        // Animate Blob Burst Particles
+        // ═══════════════════════════════════════════════════════════════════
+        if (this.blobBurstParticles) {
+            for (let i = this.blobBurstParticles.length - 1; i >= 0; i--) {
+                const burst = this.blobBurstParticles[i];
+                const age = elapsed - burst.userData.startTime;
+                const progress = age / burst.userData.duration;
+
+                if (progress >= 1) {
+                    this.scene.remove(burst);
+                    burst.geometry.dispose();
+                    burst.material.dispose();
+                    this.blobBurstParticles.splice(i, 1);
+                } else {
+                    // Update particle positions with velocity and gravity
+                    const positions = burst.geometry.attributes.position.array;
+                    const velocities = burst.userData.velocities;
+
+                    for (let j = 0; j < velocities.length; j++) {
+                        velocities[j].y += burst.userData.gravity * delta;
+                        positions[j * 3] += velocities[j].x * delta;
+                        positions[j * 3 + 1] += velocities[j].y * delta;
+                        positions[j * 3 + 2] += velocities[j].z * delta;
+                    }
+                    burst.geometry.attributes.position.needsUpdate = true;
+
+                    // Fade out
+                    burst.material.uniforms.uOpacity.value = 1 - progress;
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Animate Blob Ripples
+        // ═══════════════════════════════════════════════════════════════════
+        if (this.blobRipples) {
+            for (let i = this.blobRipples.length - 1; i >= 0; i--) {
+                const ripple = this.blobRipples[i];
+                const age = elapsed - ripple.userData.startTime;
+                const progress = age / ripple.userData.duration;
+
+                if (progress >= 1) {
+                    this.scene.remove(ripple);
+                    ripple.geometry.dispose();
+                    ripple.material.dispose();
+                    this.blobRipples.splice(i, 1);
+                } else {
+                    // Expand the ripple
+                    const scale = ripple.userData.startScale + progress * (ripple.userData.maxScale - ripple.userData.startScale);
+                    ripple.scale.setScalar(scale);
+
+                    // Fade out as it expands
+                    ripple.material.opacity = 0.2 * (1 - progress);
+
+                    // Follow the blob if it's still moving
+                    if (ripple.userData.blob && ripple.userData.blob.position) {
+                        ripple.position.lerp(ripple.userData.blob.position, 0.1);
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Animate Energy Lines
+        // ═══════════════════════════════════════════════════════════════════
+        // 3. Animate Liquid Tendrils
+        if (this.energyLines) {
+            for (let i = this.energyLines.length - 1; i >= 0; i--) {
+                const group = this.energyLines[i];
+                const age = elapsed - group.userData.startTime;
+                const progress = age / group.userData.duration;
+
+                if (progress >= 1) {
+                    // Cleanup children
+                    group.traverse((child) => {
+                        if (child.isMesh || child.isLine) {
+                            child.geometry.dispose();
+                            child.material.dispose();
+                        }
+                    });
+                    this.mainGroup.remove(group);
+                    this.energyLines.splice(i, 1);
+                } else {
+                    const blobA = group.userData.blobA;
+                    const blobB = group.userData.blobB;
+
+                    if (blobA && blobB && blobA.position && blobB.position) {
+                        const dist = blobA.position.distanceTo(blobB.position);
+
+                        // Base curve control points
+                        const midPoint = new THREE.Vector3().addVectors(blobA.position, blobB.position).multiplyScalar(0.5);
+                        // Gentle base arc
+                        midPoint.y += Math.min(dist * 0.2, 8);
+
+                        const baseCurve = new THREE.QuadraticBezierCurve3(
+                            blobA.position,
+                            midPoint,
+                            blobB.position
+                        );
+
+                        // Fade in/out logic
+                        const opacity = progress < 0.1 ? progress * 10 : (1 - progress);
+
+                        // Update each strand
+                        group.userData.strands.forEach(strand => {
+                            strand.material.opacity = opacity * 0.8; // Max opacity 0.8
+
+                            const points = [];
+                            const segments = 30; // High resolution for smooth waves
+
+                            for (let j = 0; j <= segments; j++) {
+                                const t = j / segments;
+                                const basePoint = baseCurve.getPoint(t);
+
+                                // Add flowing sine wave offset
+                                // Envelope: 0 at ends, 1 in middle
+                                const envelope = Math.sin(t * Math.PI);
+
+                                // Flowing motion
+                                const wavePhase = elapsed * strand.userData.speed + strand.userData.phaseOffset;
+                                // Spatial frequency
+                                const waveK = t * 10;
+
+                                const waveX = Math.sin(waveK + wavePhase) * envelope * 1.5; // Amplitude 1.5
+                                const waveY = Math.cos(waveK + wavePhase * 0.8) * envelope * 1.5;
+                                const waveZ = Math.sin(waveK * 1.2 + wavePhase) * envelope * 1.5;
+
+                                basePoint.add(new THREE.Vector3(waveX, waveY, waveZ));
+                                points.push(basePoint);
+                            }
+
+                            strand.geometry.setFromPoints(points);
+                        });
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Dynamic Dreamy Camera Movement
+        // ═══════════════════════════════════════════════════════════════════
+        const cameraTime = elapsed * 0.05;  // Slow overall movement
+
+        // Multi-layered sine waves for organic floating motion
+        const cameraWobbleX = Math.sin(cameraTime) * 4 + Math.sin(cameraTime * 1.7) * 2 + Math.sin(cameraTime * 0.3) * 3;
+        const cameraWobbleY = Math.cos(cameraTime * 0.8) * 3 + Math.sin(cameraTime * 1.3) * 1.5;
+        const cameraWobbleZ = Math.sin(cameraTime * 0.6) * 5 + Math.cos(cameraTime * 0.4) * 2;
+
         this.camera.position.x = this.baseCameraPos.x + cameraWobbleX;
         this.camera.position.y = this.baseCameraPos.y + cameraWobbleY;
-        this.camera.lookAt(this.cameraTarget);
+        this.camera.position.z = this.baseCameraPos.z + cameraWobbleZ;
+
+        // Subtle camera target movement for additional dreaminess
+        this.cameraTargetOffset.x = Math.sin(cameraTime * 0.4) * 2;
+        this.cameraTargetOffset.y = Math.cos(cameraTime * 0.3) * 1.5;
+        this.camera.lookAt(
+            this.cameraTarget.x + this.cameraTargetOffset.x,
+            this.cameraTarget.y + this.cameraTargetOffset.y,
+            this.cameraTarget.z
+        );
 
         // Render
         if (this.composer && this.activePreset.enableBloom) {
@@ -1030,6 +1540,40 @@ export default class FluidDreamsTheme extends BaseTheme {
                 this.scene.remove(sw);
             });
             this.shockwaves = [];
+
+            // Dispose blob burst particles
+            if (this.blobBurstParticles) {
+                this.blobBurstParticles.forEach((burst) => {
+                    burst.geometry.dispose();
+                    burst.material.dispose();
+                    this.scene.remove(burst);
+                });
+                this.blobBurstParticles = [];
+            }
+
+            // Dispose energy lines (Groups)
+            if (this.energyLines) {
+                this.energyLines.forEach((group) => {
+                    group.traverse((child) => {
+                        if (child.isMesh || child.isLine) {
+                            child.geometry.dispose();
+                            child.material.dispose();
+                        }
+                    });
+                    this.mainGroup.remove(group);
+                });
+                this.energyLines = [];
+            }
+
+            // Dispose blob ripples
+            if (this.blobRipples) {
+                this.blobRipples.forEach((ripple) => {
+                    ripple.geometry.dispose();
+                    ripple.material.dispose();
+                    this.scene.remove(ripple);
+                });
+                this.blobRipples = [];
+            }
 
             // Dispose background
             if (this.backgroundSphere) {
