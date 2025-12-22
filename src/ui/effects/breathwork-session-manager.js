@@ -726,59 +726,91 @@ export class BreathworkSessionManager {
         }
 
 
-        // TRIGGER AUDIO
+        // TRIGGER AUDIO - Use event-based chaining to prevent overlaps
         if (this.audioManager && phase.audio) {
             // Block cues during phase setup - voice is about to play
             this.audioManager.isVoicePending = true;
 
-            // Play session intro first for grounding phases (if exists)
-            const hasSessionIntro = phase.audio.sessionIntro && phase.type === 'grounding';
-            const sessionIntroDelay = hasSessionIntro ? 8000 : 0; // 8s for session intro
-
-            if (hasSessionIntro) {
-                this.audioManager.playVoice(phase.audio.sessionIntro);
+            // Store intentions for later scheduling (after first breath cycle)
+            if (phase.audio.intentions && phase.audio.intentions.length > 0) {
+                this.pendingIntentions = phase.audio.intentions;
+                this.hasPlayedFirstBreathCycle = false;
+            } else {
+                this.pendingIntentions = null;
             }
 
-            // Play transition audio (if exists), then main voice
-            const hasTransition = phase.audio.transition;
-            const transitionDelay = sessionIntroDelay + (hasTransition ? 3000 : 0); // 3s for transition to finish
+            // Build voice chain: sessionIntro -> transition -> mainVoice
+            const voiceChain = [];
 
-            if (hasTransition) {
-                setTimeout(() => {
-                    if (this.activeSession && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)) {
-                        this.audioManager.playVoice(phase.audio.transition);
-                    }
-                }, sessionIntroDelay);
+            // Session intro (only for grounding phases)
+            if (phase.audio.sessionIntro && phase.type === 'grounding') {
+                voiceChain.push(phase.audio.sessionIntro);
             }
 
-            // Play main voice after transition
-            const voiceDelay = transitionDelay + 1000;
+            // Transition audio
+            if (phase.audio.transition) {
+                voiceChain.push(phase.audio.transition);
+            }
+
+            // Main phase voice
             if (phase.audio.voice) {
-                setTimeout(() => {
-                    if (this.activeSession && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)) {
-                        this.audioManager.playVoice(phase.audio.voice);
-                    }
-                }, voiceDelay);
+                voiceChain.push(phase.audio.voice);
             }
 
-            // Breathing cues are now synced via indicator.onPhaseChangeCallback
+            // Play voice chain sequentially
+            this._playVoiceChain(voiceChain, phase);
+
+            // Breathing cues are synced via indicator.onPhaseChangeCallback
             // (registered in startSession) - no separate timing needed here
 
             // Single cue (for holds/recovery) - play immediately
             if (phase.audio.cue) {
                 this.audioManager.playCue(phase.audio.cue);
             }
-
-            // Schedule filler audio for integration phases
-            if (phase.audio.fillers && phase.audio.fillers.length > 0) {
-                this._scheduleFillersAudio(phase.audio.fillers, voiceDelay + 10000, phase);
-            }
-
-            // Schedule intention for grounding phases
-            if (phase.audio.intentions && phase.audio.intentions.length > 0) {
-                this._scheduleIntention(phase.audio.intentions, voiceDelay + 18000, phase);
-            }
         }
+    }
+
+    /**
+     * Play a chain of voice files sequentially, waiting for each to complete
+     * @param {string[]} voiceChain - Array of voice file paths to play in order
+     * @param {object} phase - Current phase object for validation
+     * @private
+     */
+    _playVoiceChain(voiceChain, phase) {
+        if (!voiceChain || voiceChain.length === 0) {
+            // No voices to play, allow cues immediately
+            this.audioManager.isVoicePending = false;
+            return;
+        }
+
+        let currentIndex = 0;
+
+        const playNext = () => {
+            // Check if still in the same phase
+            if (!this.activeSession || this.currentPhaseIndex !== this.activeSession.phases.indexOf(phase)) {
+                console.log('[SessionManager] Phase changed, stopping voice chain');
+                return;
+            }
+
+            if (currentIndex >= voiceChain.length) {
+                // All voices played, schedule fillers if applicable
+                console.log('[SessionManager] Voice chain complete');
+                if (phase.audio.fillers && phase.audio.fillers.length > 0) {
+                    // Schedule fillers 10 seconds after last voice
+                    this._scheduleFillersAudio(phase.audio.fillers, 10000, phase);
+                }
+                return;
+            }
+
+            const voicePath = voiceChain[currentIndex];
+            currentIndex++;
+
+            console.log(`[SessionManager] Playing voice ${currentIndex}/${voiceChain.length}: ${voicePath}`);
+            this.audioManager.playVoiceWithCallback(voicePath, playNext);
+        };
+
+        // Start the chain
+        playNext();
     }
 
     /**
@@ -890,6 +922,27 @@ export class BreathworkSessionManager {
             } else if (newPhase === 'exhale' && phase.audio.cues.out) {
                 console.log(`[SessionManager] Playing exhale cue, pendingFlag=${this.audioManager.isVoicePending}, playingFlag=${this.audioManager.isVoicePlaying}`);
                 this.audioManager.playCue(phase.audio.cues.out);
+
+                // --- 5. Schedule intention after first complete breath cycle ---
+                // Only trigger once per phase when we have pending intentions
+                if (this.pendingIntentions && !this.hasPlayedFirstBreathCycle) {
+                    this.hasPlayedFirstBreathCycle = true;
+                    console.log(`[SessionManager] First breath cycle complete, scheduling intention in 10s`);
+
+                    // Schedule intention 10 seconds after this exhale
+                    const intentions = this.pendingIntentions;
+                    setTimeout(() => {
+                        // Only play if still in grounding phase
+                        const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
+                        if (this.activeSession && currentPhase?.type === 'grounding') {
+                            const intention = intentions[Math.floor(Math.random() * intentions.length)];
+                            console.log(`[SessionManager] Playing intention: ${intention}`);
+                            this.audioManager.playVoice(intention);
+                        } else {
+                            console.log(`[SessionManager] Skipping intention (no longer in grounding phase)`);
+                        }
+                    }, 10000);
+                }
             }
         } else if (newPhase === 'exhale') {
             console.log(`[SessionManager] Exhale but NOT in guidance mode`);
