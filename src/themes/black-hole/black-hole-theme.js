@@ -1487,6 +1487,26 @@ export default class BlackHoleTheme extends BaseTheme {
                 cloud.rotation.z += 0.0001;
             });
 
+            // Very subtle camera orbit for gentle parallax (avoids disk distortion)
+            if (this.camera) {
+                const cameraTime = this.time * 0.04; // Slower orbit
+                const orbitRadiusX = 25; // Much smaller horizontal sway
+                const orbitRadiusY = 20;  // Much smaller vertical sway
+                const orbitRadiusZ = 15;  // Subtle depth breathing
+
+                // Gentle orbital sway - subtle parallax with starfield/nebula
+                this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
+                    Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.3;
+                this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
+                    Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.2;
+                this.camera.position.z = 600 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+
+                // LookAt follows black hole with minimal offset (keeps disk perspective correct)
+                const lookOffsetX = Math.sin(cameraTime * 0.4) * 5;
+                const lookOffsetY = Math.cos(cameraTime * 0.5) * 3;
+                this.camera.lookAt(this.driftX + lookOffsetX, this.driftY + lookOffsetY, 0);
+            }
+
             // Post-processing updates
             if (this.bloomPass) {
                 this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity);
