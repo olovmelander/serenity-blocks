@@ -144,6 +144,10 @@
                     "text": "Rest in the stillness... No effort required."
                 },
                 {
+                    "filename": "r1_recovery.wav",
+                    "text": "A gentle breath in... hold softly... and release."
+                },
+                {
                     "filename": "r2_active.wav",
                     "text": "Each exhale softens your muscles... Each pause deepens your calm."
                 },
@@ -152,12 +156,20 @@
                     "text": "Float in the quiet space... You are safe here."
                 },
                 {
+                    "filename": "r2_recovery.wav",
+                    "text": "One calming breath... embrace the stillness."
+                },
+                {
                     "filename": "r3_active.wav",
                     "text": "Breath becomes effortless... Body becomes light... Mind becomes still."
                 },
                 {
                     "filename": "r3_hold.wav",
                     "text": "Drift into stillness... There is nowhere to go, nothing to do."
+                },
+                {
+                    "filename": "r3_recovery.wav",
+                    "text": "Final breath... complete peace... you are ready."
                 },
                 {
                     "filename": "integration.wav",
@@ -250,6 +262,32 @@
             ]
         },
         {
+            "id": "encouragement",
+            "description": "Mid-practice encouragement and emotional closure",
+            "clips": [
+                {
+                    "filename": "doing_well.wav",
+                    "text": "You're doing beautifully... keep going."
+                },
+                {
+                    "filename": "halfway.wav",
+                    "text": "You're halfway there... stay with it."
+                },
+                {
+                    "filename": "almost_done.wav",
+                    "text": "Almost there... one more round."
+                },
+                {
+                    "filename": "thank_yourself.wav",
+                    "text": "Thank yourself for this practice... for showing up."
+                },
+                {
+                    "filename": "proud.wav",
+                    "text": "Be proud of yourself... you showed up today."
+                }
+            ]
+        },
+        {
             "id": "fillers",
             "description": "Meditative filler content for integration and transitions",
             "clips": [
@@ -304,7 +342,7 @@
             "clips": [
                 {
                     "filename": "base_calm.wav",
-                    "text": "Find Calm."
+                    "text": "Let yourself find calm."
                 },
                 {
                     "filename": "base_focus.wav",
@@ -312,7 +350,7 @@
                 },
                 {
                     "filename": "base_ground.wav",
-                    "text": "Ground Myself."
+                    "text": "Ground yourself in this moment."
                 },
                 {
                     "filename": "base_breathe.wav",
@@ -328,11 +366,11 @@
                 },
                 {
                     "filename": "elixir_transform.wav",
-                    "text": "Transform."
+                    "text": "Allow yourself to transform."
                 },
                 {
                     "filename": "elixir_power.wav",
-                    "text": "Build Power."
+                    "text": "Feel yourself building power."
                 },
                 {
                     "filename": "rest_sleep.wav",
@@ -360,7 +398,7 @@
                 },
                 {
                     "filename": "flow_clarity.wav",
-                    "text": "Gain Clarity."
+                    "text": "Allow clarity to emerge."
                 },
                 {
                     "filename": "flow_rhythm.wav",
@@ -376,7 +414,7 @@
                 },
                 {
                     "filename": "universal_clarity.wav",
-                    "text": "Seek Clarity."
+                    "text": "Open yourself to clarity."
                 },
                 {
                     "filename": "universal_strength.wav",
@@ -435,6 +473,22 @@
                 {
                     "filename": "out_quick.wav",
                     "text": "Out."
+                },
+                {
+                    "filename": "breathe_in_soft.wav",
+                    "text": "Breathe in... softly..."
+                },
+                {
+                    "filename": "breathe_out_soft.wav",
+                    "text": "Breathe out... gently..."
+                },
+                {
+                    "filename": "release_soft.wav",
+                    "text": "Gently release..."
+                },
+                {
+                    "filename": "hold_soft.wav",
+                    "text": "Rest in the pause..."
                 }
             ]
         }
