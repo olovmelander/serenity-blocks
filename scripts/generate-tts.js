@@ -79,9 +79,9 @@ async function generateAudio(text, voiceName, model, retries = 3) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
 
     // Pad very short text to help the API (single words can fail)
-    let styledText = text;
+    let styledText;
     if (text.length < 10) {
-        styledText = `[Speak calmly and clearly] Say: "${text}"`;
+        styledText = `[Speak calmly and meditatively, like a peaceful breathing guide] Say: "${text}"`;
     } else {
         styledText = `[Speak calmly and meditatively, like a peaceful breathing guide] ${text}`;
     }

@@ -163,7 +163,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'base/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav', 'fillers/body_scan.wav', 'fillers/complete_whole.wav']
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav', 'fillers/body_scan.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav']
                         }
                     }
                 ]
@@ -293,7 +293,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav', 'fillers/trust_process.wav', 'fillers/inner_light.wav']
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav', 'fillers/trust_process.wav', 'fillers/inner_light.wav', 'encouragement/proud.wav']
                         }
                     }
                 ]
@@ -329,7 +329,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Round 1 • Extended Exhale',
                         subPrompt: 'Gentle inhale through the nose. Slow, long exhale. Let go with each breath.',
-                        audio: { voice: 'rest/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'rest/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } }
                     },
                     {
                         type: 'retention',
@@ -337,7 +337,15 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Gentle Pause',
                         subPrompt: 'Rest in the stillness. No effort required.',
-                        audio: { voice: 'rest/r1_hold.wav', transition: 'transitions/hold_start.wav' }
+                        audio: { voice: 'rest/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' }
+                    },
+                    {
+                        type: 'recovery',
+                        duration: 15,
+                        round: 1,
+                        prompt: 'Gentle Recovery',
+                        subPrompt: 'A gentle breath in. Hold softly. And release.',
+                        audio: { voice: 'rest/r1_recovery.wav', cue: 'voices/cues/release_soft.wav' }
                     },
                     // Round 2
                     {
@@ -347,7 +355,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Round 2 • Deeper Relaxation',
                         subPrompt: 'Each exhale softens your muscles. Each pause deepens your calm.',
-                        audio: { voice: 'rest/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'rest/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } }
                     },
                     {
                         type: 'retention',
@@ -355,7 +363,15 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Restful Pause',
                         subPrompt: 'Float in the quiet space. You are safe here.',
-                        audio: { voice: 'rest/r2_hold.wav', transition: 'transitions/hold_start.wav' }
+                        audio: { voice: 'rest/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' }
+                    },
+                    {
+                        type: 'recovery',
+                        duration: 15,
+                        round: 2,
+                        prompt: 'Calming Recovery',
+                        subPrompt: 'One calming breath. Embrace the stillness.',
+                        audio: { voice: 'rest/r2_recovery.wav', cue: 'voices/cues/release_soft.wav' }
                     },
                     // Round 3
                     {
@@ -365,7 +381,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • Surrender',
                         subPrompt: 'Breath becomes effortless. Body becomes light. Mind becomes still.',
-                        audio: { voice: 'rest/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'rest/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } }
                     },
                     {
                         type: 'retention',
@@ -373,7 +389,15 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Deep Rest',
                         subPrompt: 'Drift into stillness. There is nowhere to go, nothing to do.',
-                        audio: { voice: 'rest/r3_hold.wav', transition: 'transitions/hold_start.wav' }
+                        audio: { voice: 'rest/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' }
+                    },
+                    {
+                        type: 'recovery',
+                        duration: 15,
+                        round: 3,
+                        prompt: 'Final Peace',
+                        subPrompt: 'Final breath. Complete peace. You are ready.',
+                        audio: { voice: 'rest/r3_recovery.wav', cue: 'voices/cues/release_soft.wav' }
                     },
                     // Integration
                     {
@@ -385,7 +409,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'rest/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav', 'fillers/waves_ocean.wav', 'fillers/let_go.wav']
+                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav', 'fillers/waves_ocean.wav', 'fillers/let_go.wav', 'encouragement/thank_yourself.wav']
                         }
                     }
                 ]
@@ -501,7 +525,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'flow/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav', 'fillers/inner_light.wav', 'fillers/complete_whole.wav']
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav', 'fillers/inner_light.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav']
                         }
                     }
                 ]
