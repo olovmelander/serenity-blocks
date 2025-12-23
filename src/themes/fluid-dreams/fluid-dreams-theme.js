@@ -1093,54 +1093,50 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     createEnergyLine(blobA, blobB, comboCount) {
-        // 2. Liquid Tendril Visuals: Multi-strand organic connection
-        const tendrilGroup = new THREE.Group();
-        tendrilGroup.userData = {
-            startTime: this.clock.getElapsedTime(),
-            duration: 1.2 + comboCount * 0.2, // Live longer for more enjoyment
-            blobA,
-            blobB,
-            strands: []
-        };
+        // Clean constellation line - simple glowing connection
+        const segments = 20;
+        const points = [];
 
-        // Create 3 intertwined strands
-        const colors = [
-            new THREE.Color(0x79faff), // Aqua
-            new THREE.Color(0xff7cf0), // Pink
-            new THREE.Color(0xa1ffcf)  // Mint
-        ];
+        // Create a gentle curved path between blobs
+        const midPoint = new THREE.Vector3()
+            .addVectors(blobA.position, blobB.position)
+            .multiplyScalar(0.5);
+        // Subtle upward arc for elegance
+        const dist = blobA.position.distanceTo(blobB.position);
+        midPoint.y += Math.min(dist * 0.15, 5);
 
-        for (let i = 0; i < 3; i++) {
-            const points = [];
-            // Initialize with dummy points, will be set in animate
-            for (let j = 0; j <= 30; j++) points.push(new THREE.Vector3());
+        const curve = new THREE.QuadraticBezierCurve3(
+            blobA.position.clone(),
+            midPoint,
+            blobB.position.clone()
+        );
 
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-
-            const material = new THREE.LineBasicMaterial({
-                color: colors[i % colors.length],
-                transparent: true,
-                opacity: 0.0, // Start invisible, fade in
-                blending: THREE.AdditiveBlending,
-                linewidth: 1
-            });
-
-            const strand = new THREE.Line(geometry, material);
-            strand.userData = {
-                phaseOffset: i * ((Math.PI * 2) / 3), // 120 degree phase shift
-                frequency: 2 + Math.random(),
-                speed: 3 + Math.random() * 2
-            };
-
-            tendrilGroup.add(strand);
-            tendrilGroup.userData.strands.push(strand);
+        for (let i = 0; i <= segments; i++) {
+            points.push(curve.getPoint(i / segments));
         }
 
-        this.mainGroup.add(tendrilGroup);
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
-        // Store for animation/cleanup
+        // Soft white-cyan glow for constellation aesthetic
+        const material = new THREE.LineBasicMaterial({
+            color: new THREE.Color(0xaaeeff),
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const line = new THREE.Line(geometry, material);
+        line.userData = {
+            startTime: this.clock.getElapsedTime(),
+            duration: 1.5 + comboCount * 0.2,
+            blobA,
+            blobB,
+        };
+
+        this.mainGroup.add(line);
+
         if (!this.energyLines) this.energyLines = [];
-        this.energyLines.push(tendrilGroup);
+        this.energyLines.push(line);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1351,75 +1347,43 @@ export default class FluidDreamsTheme extends BaseTheme {
 
         // ═══════════════════════════════════════════════════════════════════
         // Animate Energy Lines
-        // ═══════════════════════════════════════════════════════════════════
-        // 3. Animate Liquid Tendrils
+        // Animate Constellation Lines
         if (this.energyLines) {
             for (let i = this.energyLines.length - 1; i >= 0; i--) {
-                const group = this.energyLines[i];
-                const age = elapsed - group.userData.startTime;
-                const progress = age / group.userData.duration;
+                const line = this.energyLines[i];
+                const age = elapsed - line.userData.startTime;
+                const progress = age / line.userData.duration;
 
                 if (progress >= 1) {
-                    // Cleanup children
-                    group.traverse((child) => {
-                        if (child.isMesh || child.isLine) {
-                            child.geometry.dispose();
-                            child.material.dispose();
-                        }
-                    });
-                    this.mainGroup.remove(group);
+                    // Cleanup
+                    line.geometry.dispose();
+                    line.material.dispose();
+                    this.mainGroup.remove(line);
                     this.energyLines.splice(i, 1);
                 } else {
-                    const blobA = group.userData.blobA;
-                    const blobB = group.userData.blobB;
+                    const blobA = line.userData.blobA;
+                    const blobB = line.userData.blobB;
 
                     if (blobA && blobB && blobA.position && blobB.position) {
+                        // Fade in/out - quick fade in, slow fade out
+                        const opacity = progress < 0.1 ? progress * 6 : 0.6 * (1 - progress);
+                        line.material.opacity = opacity;
+
+                        // Update curve to follow moving blobs
                         const dist = blobA.position.distanceTo(blobB.position);
+                        const midPoint = new THREE.Vector3()
+                            .addVectors(blobA.position, blobB.position)
+                            .multiplyScalar(0.5);
+                        midPoint.y += Math.min(dist * 0.15, 5);
 
-                        // Base curve control points
-                        const midPoint = new THREE.Vector3().addVectors(blobA.position, blobB.position).multiplyScalar(0.5);
-                        // Gentle base arc
-                        midPoint.y += Math.min(dist * 0.2, 8);
-
-                        const baseCurve = new THREE.QuadraticBezierCurve3(
+                        const curve = new THREE.QuadraticBezierCurve3(
                             blobA.position,
                             midPoint,
                             blobB.position
                         );
 
-                        // Fade in/out logic
-                        const opacity = progress < 0.1 ? progress * 10 : (1 - progress);
-
-                        // Update each strand
-                        group.userData.strands.forEach(strand => {
-                            strand.material.opacity = opacity * 0.8; // Max opacity 0.8
-
-                            const points = [];
-                            const segments = 30; // High resolution for smooth waves
-
-                            for (let j = 0; j <= segments; j++) {
-                                const t = j / segments;
-                                const basePoint = baseCurve.getPoint(t);
-
-                                // Add flowing sine wave offset
-                                // Envelope: 0 at ends, 1 in middle
-                                const envelope = Math.sin(t * Math.PI);
-
-                                // Flowing motion
-                                const wavePhase = elapsed * strand.userData.speed + strand.userData.phaseOffset;
-                                // Spatial frequency
-                                const waveK = t * 10;
-
-                                const waveX = Math.sin(waveK + wavePhase) * envelope * 1.5; // Amplitude 1.5
-                                const waveY = Math.cos(waveK + wavePhase * 0.8) * envelope * 1.5;
-                                const waveZ = Math.sin(waveK * 1.2 + wavePhase) * envelope * 1.5;
-
-                                basePoint.add(new THREE.Vector3(waveX, waveY, waveZ));
-                                points.push(basePoint);
-                            }
-
-                            strand.geometry.setFromPoints(points);
-                        });
+                        const points = curve.getPoints(20);
+                        line.geometry.setFromPoints(points);
                     }
                 }
             }
@@ -1551,16 +1515,12 @@ export default class FluidDreamsTheme extends BaseTheme {
                 this.blobBurstParticles = [];
             }
 
-            // Dispose energy lines (Groups)
+            // Dispose energy lines
             if (this.energyLines) {
-                this.energyLines.forEach((group) => {
-                    group.traverse((child) => {
-                        if (child.isMesh || child.isLine) {
-                            child.geometry.dispose();
-                            child.material.dispose();
-                        }
-                    });
-                    this.mainGroup.remove(group);
+                this.energyLines.forEach((line) => {
+                    line.geometry.dispose();
+                    line.material.dispose();
+                    this.mainGroup.remove(line);
                 });
                 this.energyLines = [];
             }
