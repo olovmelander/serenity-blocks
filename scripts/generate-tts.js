@@ -43,13 +43,48 @@ if (!API_KEY) {
 
 // Check for --overwrite flag
 const OVERWRITE_MODE = process.argv.includes('--overwrite');
+const FLASH_ONLY_MODE = process.argv.includes('--flash-only');
 const TRACKING_FILE = path.join(__dirname, 'tts-audio-tracking.md');
 
-async function generateAudio(text, voiceName, model) {
+// Check for --only flag (e.g., --only=out_power.wav,in_quick.wav)
+const onlyArg = process.argv.find(a => a.startsWith('--only='));
+const ONLY_FILES = onlyArg ? onlyArg.split('=')[1].split(',').map(f => f.trim()) : null;
+
+// Sessions that were previously generated with FLASH model (per tts-audio-tracking.md)
+const FLASH_SESSIONS = ['cues', 'intentions', 'fillers'];
+
+// Update the tracking markdown file when a file is generated with PRO
+function updateTrackingFile(sessionId, filename, modelTag) {
+    try {
+        let content = fs.readFileSync(TRACKING_FILE, 'utf8');
+
+        // Update the checkbox for this file (mark as completed)
+        const filePattern = new RegExp(`\\[ \\] ${sessionId}/${filename}`, 'g');
+        content = content.replace(filePattern, `[x] ${sessionId}/${filename}`);
+
+        // Also check for files listed with multiple on one line
+        const altPattern = new RegExp(`(${filename})(?!\\])`, 'g');
+
+        // Update the "Last Updated" date
+        const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        content = content.replace(/\*\*Last Updated:\*\* .+/, `**Last Updated:** ${today}`);
+
+        fs.writeFileSync(TRACKING_FILE, content);
+    } catch (err) {
+        // Silently fail if tracking file doesn't exist or can't be updated
+    }
+}
+
+async function generateAudio(text, voiceName, model, retries = 3) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
 
-    // Embed style instruction directly with the text (single turn for Flash compatibility)
-    const styledText = `[Speak calmly and meditatively, like a peaceful breathing guide] ${text}`;
+    // Pad very short text to help the API (single words can fail)
+    let styledText = text;
+    if (text.length < 10) {
+        styledText = `[Speak calmly and clearly] Say: "${text}"`;
+    } else {
+        styledText = `[Speak calmly and meditatively, like a peaceful breathing guide] ${text}`;
+    }
 
     const payload = {
         contents: [
@@ -81,6 +116,11 @@ async function generateAudio(text, voiceName, model) {
     const audioPart = parts?.find(p => p.inlineData?.mimeType?.startsWith('audio'));
 
     if (!audioPart) {
+        if (retries > 0) {
+            console.log(`⟳ retry (${retries} left)... `);
+            await new Promise(r => setTimeout(r, 3000));
+            return generateAudio(text, voiceName, model, retries - 1);
+        }
         throw new Error('No audio in response');
     }
 
@@ -116,6 +156,9 @@ async function main() {
     console.log(`Generating TTS audio files`);
     console.log(`Model: ${model}`);
     console.log(`Voice: ${voiceName}`);
+    if (FLASH_ONLY_MODE) {
+        console.log(`Mode: FLASH-ONLY (regenerating cues, intentions, fillers)`);
+    }
     console.log(`Sessions: ${manifest.sessions.length}\n`);
 
     let totalFiles = 0;
@@ -124,6 +167,12 @@ async function main() {
     for (const session of manifest.sessions) {
         const sessionId = session.id;
         const clips = session.clips;
+
+        // Skip non-FLASH sessions if --flash-only mode
+        if (FLASH_ONLY_MODE && !FLASH_SESSIONS.includes(sessionId)) {
+            console.log(`\n[${sessionId.toUpperCase()}] ⏭ (already PRO)`);
+            continue;
+        }
 
         // Create output directory
         const outputDir = path.join(OUTPUT_BASE_DIR, 'voices', sessionId);
@@ -137,6 +186,11 @@ async function main() {
             // Use .wav extension since AI Studio returns PCM
             const wavFilename = clip.filename.replace('.mp3', '.wav');
             const outputPath = path.join(outputDir, wavFilename);
+
+            // Skip if --only flag is set and this file is not in the list
+            if (ONLY_FILES && !ONLY_FILES.includes(wavFilename)) {
+                continue;
+            }
 
             if (fs.existsSync(outputPath) && !OVERWRITE_MODE) {
                 console.log(`  ⏭ ${wavFilename} (exists)`);
@@ -152,10 +206,21 @@ async function main() {
                 const audioBuffer = await generateAudio(clip.text, voiceName, model);
                 fs.writeFileSync(outputPath, audioBuffer);
                 const action = isOverwrite ? '↻' : '✓';
-                console.log(`${action} (${Math.round(audioBuffer.length / 1024)}KB) [${model.includes('pro') ? 'PRO' : 'FLASH'}]`);
+                const modelTag = model.includes('pro') ? 'PRO' : 'FLASH';
+                console.log(`${action} (${Math.round(audioBuffer.length / 1024)}KB) [${modelTag}]`);
                 totalFiles++;
+
+                // Log successful PRO generation
+                if (model.includes('pro')) {
+                    const logEntry = `${new Date().toISOString()} | ${sessionId}/${wavFilename} | PRO | ${Math.round(audioBuffer.length / 1024)}KB\n`;
+                    fs.appendFileSync(path.join(__dirname, 'tts-pro-generated.log'), logEntry);
+                    updateTrackingFile(sessionId, wavFilename, 'PRO');
+                }
             } catch (err) {
                 console.log(`✗ ${err.message}`);
+                // Log failed attempts
+                const logEntry = `${new Date().toISOString()} | ${sessionId}/${wavFilename} | FAILED | ${err.message}\n`;
+                fs.appendFileSync(path.join(__dirname, 'tts-pro-generated.log'), logEntry);
             }
 
             // Rate limit - wait 7 seconds AFTER EVERY request (success or fail)
