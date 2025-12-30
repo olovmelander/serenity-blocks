@@ -12,6 +12,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { JourneyPathRenderer } from './JourneyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { JourneyCameraController } from './JourneyCameraController.js';
+import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { JOURNEY_PATH_DATA } from './path-data.js';
 
 /**
@@ -56,6 +57,7 @@ export class JourneyBoardController {
         this.pathRenderer = null;
         this.nodeManager = null;
         this.cameraController = null;
+        this.environmentManager = null;
 
         // State
         this.isActive = false;
@@ -105,10 +107,14 @@ export class JourneyBoardController {
         this.initScene();
         this.initCamera();
 
-        // Create background
+        // Create minimal background base (starfield only)
         this.createStarfield();
-        this.createNebula();
-        this.createAmbientParticles();
+
+        // Initialize chapter-specific environments
+        this.environmentManager = new ChapterEnvironmentManager(this.scene);
+        await this.environmentManager.initialize([1, 2, 3, 4, 5, 6], {
+            particleCount: this.qualityPreset.particleCount,
+        });
 
         // Create path
         this.pathRenderer = new JourneyPathRenderer(this.scene);
@@ -486,24 +492,15 @@ export class JourneyBoardController {
         this.nodeManager?.update(delta);
         this.cameraController?.update(delta);
 
-        // Update nebula
-        if (this.nebulaMesh) {
-            this.nebulaMesh.material.uniforms.uTime.value = this.time;
+        // Update chapter environments based on camera position
+        if (this.environmentManager && this.camera) {
+            this.environmentManager.updateVisibility(this.camera.position.y);
+            this.environmentManager.update(delta);
         }
 
         // Rotate stars slowly
         if (this.stars) {
             this.stars.rotation.y += delta * 0.01;
-        }
-
-        // Drift ambient particles
-        if (this.ambientParticles) {
-            const positions = this.ambientParticles.geometry.attributes.position.array;
-            for (let i = 0; i < positions.length; i += 3) {
-                positions[i + 1] += delta * 0.5;
-                if (positions[i + 1] > 150) positions[i + 1] = -50;
-            }
-            this.ambientParticles.geometry.attributes.position.needsUpdate = true;
         }
 
         // Render
@@ -545,6 +542,7 @@ export class JourneyBoardController {
         }
 
         // Dispose sub-controllers
+        this.environmentManager?.dispose();
         this.pathRenderer?.dispose();
         this.nodeManager?.dispose();
 
