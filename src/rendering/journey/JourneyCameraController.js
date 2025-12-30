@@ -32,7 +32,7 @@ export class JourneyCameraController {
 
         // Configuration
         this.config = {
-            followOffset: new THREE.Vector3(0, -5, 18), // Look more downward to see Level 1
+            followOffset: new THREE.Vector3(0, -1, 18), // More straight camera angle
             followLerpSpeed: 0.03,
             scrollSpeed: 0.5,
             focusDistance: 10,
@@ -191,8 +191,8 @@ export class JourneyCameraController {
         // Smooth camera movement
         this.camera.position.lerp(camPos, 0.1);
 
-        // Look slightly ahead on path
-        const lookAheadT = Math.min(1, this.currentPosition + 0.05);
+        // Look only slightly ahead on path (reduced from 0.05 to 0.01)
+        const lookAheadT = Math.min(1, this.currentPosition + 0.01);
         const lookTarget = this.pathCurve.getPointAt(lookAheadT);
         this.lookAtTarget.lerp(lookTarget, 0.1);
     }
