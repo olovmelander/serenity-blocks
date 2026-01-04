@@ -9,64 +9,68 @@
  * Path control points defining the cosmic ascent
  * Y-axis = vertical ascent, X/Z = horizontal variation
  */
+const CHAPTER_POSITIONS = [
+    0.0,     // Chapter 1 start
+    0.03816, // Chapter 2 start
+    0.070, // Chapter 3 start (Shifted earlier from 0.080)
+    0.2124,  // Chapter 4 start
+    0.5768,  // Chapter 5 start
+    0.821325, // Chapter 6 start
+    0.92098, // Chapter 7 start
+    0.96519, // Chapter 8 start (bonus)
+];
+
 export const JOURNEY_PATH_DATA = {
     // Main path control points
     controlPoints: [
         // Chapter 1: Earth Core (bottom, warm tones)
-        { x: 0, y: -20, z: 0 },
-        { x: 5, y: -15, z: 3 },
-        { x: -3, y: -10, z: 5 },
+        { x: 0, y: -30, z: 0 },
+        { x: 5, y: -22.5, z: 3 },
+        { x: -3, y: -15, z: 5 },
 
         // Chapter 2: Deep Ocean (rising, blue tones)
-        { x: 0, y: 0, z: 2 },
-        { x: -5, y: 10, z: 0 },
-        { x: 3, y: 20, z: -3 },
+        { x: -3, y: 0, z: 5 },
+        { x: -3, y: 15, z: 5 },
+        { x: -3, y: 30, z: 5 },
 
-        // Chapter 3: Surface World (ground level)
-        { x: 0, y: 30, z: 0 },
-        { x: 5, y: 40, z: 5 },
-        { x: -2, y: 50, z: 3 },
+        // Chapter 3: Surface World (ground level) - approaching mountains
+        { x: -3, y: 45, z: 5 },
+        { x: 5, y: 60, z: -20 },
+        { x: -15, y: 75, z: -60 },
 
-        // Chapter 4: Mountains (ascending peaks)
-        { x: 0, y: 60, z: 0 },
-        { x: -4, y: 75, z: -5 },
-        { x: 4, y: 90, z: -2 },
+        // Chapter 4: Mountains - ascend straight through aurora
+        // Path goes vertically through the aurora, not curving around mountains
+        { x: -20, y: 95, z: -150 },   // Approaching mountains, mostly centered
+        { x: -10, y: 140, z: -250 },  // Rising straight up through aurora
+        { x: 0, y: 190, z: -280 },    // Through the center of aurora
+        { x: 0, y: 235, z: -200 },    // Continue vertical ascent
 
-        // Chapter 5: Sky (floating in atmosphere)
-        { x: 0, y: 105, z: 0 },
-        { x: 6, y: 120, z: 3 },
-        { x: -3, y: 135, z: -3 },
+        // Chapter 5: Sky & Atmospheric Drift - straight ascent into space
+        { x: 0, y: 260, z: -100 },    // Continuing straight up
+        { x: 0, y: 280, z: -30 },     // Centered vertical path
+        { x: 0, y: 300, z: 10 },      // Centered, heading to space
 
-        // Chapter 6: Space (cosmic expanse)
-        { x: 0, y: 150, z: 0 },
-        { x: -5, y: 170, z: 5 },
-        { x: 3, y: 190, z: -5 },
+        // Chapter 6: Space (cosmic expanse, shifted up)
+        { x: 0, y: 310, z: 0 },     // +85
+        { x: -5, y: 340, z: 5 },
+        { x: 3, y: 370, z: -5 },
 
-        // Chapter 7: Black Hole (transcendence)
-        { x: 0, y: 210, z: 0 },
-        { x: 0, y: 225, z: 0 },
+        // Chapter 7: Black Hole (transcendence, shifted up)
+        { x: 0, y: 400, z: 0 },
+        { x: 0, y: 425, z: 0 },
 
-        // Chapter 8: Urban Dreams (bonus - neon cyberpunk detour)
-        { x: -5, y: 235, z: 5 },
-        { x: 5, y: 245, z: -3 },
-        { x: 0, y: 255, z: 0 },
+        // Chapter 8: Urban Dreams (bonus, shifted up)
+        { x: -5, y: 440, z: 5 },
+        { x: 5, y: 450, z: -3 },
+        { x: 0, y: 465, z: 0 },
     ],
 
     // Chapter positions (0-1 along path)
-    chapterPositions: [
-        0.0,    // Chapter 1 start
-        0.125,  // Chapter 2 start
-        0.25,   // Chapter 3 start
-        0.375,  // Chapter 4 start
-        0.5,    // Chapter 5 start
-        0.625,  // Chapter 6 start
-        0.75,   // Chapter 7 start
-        0.875,  // Chapter 8 start (bonus)
-    ],
+    chapterPositions: CHAPTER_POSITIONS,
 
     // Level positions for each of the 60 levels
     // Chapters 1-7 have 8 levels, Chapter 8 has 4 levels
-    levelPositions: generateLevelPositions(),
+    levelPositions: generateLevelPositions(CHAPTER_POSITIONS),
 
     // Geometry settings
     segments: 300,
@@ -78,31 +82,25 @@ export const JOURNEY_PATH_DATA = {
  * Generate path positions for all 60 levels
  * Chapters 1-7 have 8 levels each, Chapter 8 has 4 levels
  */
-function generateLevelPositions() {
+function generateLevelPositions(chapterPositions) {
     const positions = [];
+    const levelCounts = [7, 7, 8, 8, 6, 8, 7, 4]; // Matches CHAPTER_CONFIGS in chapters.js
 
-    // Chapters 1-7: 8 levels each (56 levels)
-    for (let chapter = 0; chapter < 7; chapter++) {
-        const chapterStart = chapter / 8; // Divide by 8 chapters now
-        const chapterEnd = (chapter + 1) / 8;
+    // Generate positions chapter by chapter
+    for (let chapter = 0; chapter < levelCounts.length; chapter++) {
+        const chapterStart = chapterPositions[chapter];
+        const chapterEnd = chapterPositions[chapter + 1] ?? 1;
         const chapterRange = chapterEnd - chapterStart;
 
-        for (let level = 0; level < 8; level++) {
-            const levelOffset = (level + 0.5) / 8;
+        const count = levelCounts[chapter];
+
+        for (let level = 0; level < count; level++) {
+            // Distribute levels evenly within the chapter segment
+            // (level + 0.5) / count centers them
+            const levelOffset = (level + 0.5) / count;
             const position = chapterStart + chapterRange * levelOffset;
             positions.push(position);
         }
-    }
-
-    // Chapter 8: 4 levels (57-60)
-    const ch8Start = 7 / 8;
-    const ch8End = 1.0;
-    const ch8Range = ch8End - ch8Start;
-
-    for (let level = 0; level < 4; level++) {
-        const levelOffset = (level + 0.5) / 4;
-        const position = ch8Start + ch8Range * levelOffset;
-        positions.push(position);
     }
 
     return positions;

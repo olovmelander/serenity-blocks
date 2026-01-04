@@ -19,8 +19,8 @@ import * as THREE from 'three';
 export const SKY_DRIFT_CONFIG = {
     id: 5,
     name: 'sky-drift',
-    yStart: 95,
-    yEnd: 125,
+    yStart: 232.5,
+    yEnd: 297.5,
     colors: {
         primary: 0x1a1a2e,
         secondary: 0x16213e,
@@ -43,12 +43,14 @@ const skyGradientVertexShader = `
 `;
 
 const skyGradientFragmentShader = `
+    uniform float uOpacity;
     varying vec3 vPosition;
     void main() {
         float t = (normalize(vPosition).y + 1.0) * 0.5;
-        vec3 spaceTop = vec3(0.02, 0.02, 0.06);
-        vec3 spaceMid = vec3(0.06, 0.05, 0.14);
-        vec3 horizon = vec3(0.12, 0.08, 0.22);
+        // Much darker space colors
+        vec3 spaceTop = vec3(0.0, 0.0, 0.02);       // Near black
+        vec3 spaceMid = vec3(0.02, 0.01, 0.05);     // Very dark purple
+        vec3 horizon = vec3(0.04, 0.02, 0.08);      // Dark purple horizon
         vec3 color;
         if (t > 0.6) {
             color = mix(spaceMid, spaceTop, (t - 0.6) / 0.4);
@@ -57,7 +59,7 @@ const skyGradientFragmentShader = `
         } else {
             color = horizon;
         }
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(color, uOpacity);
     }
 `;
 
@@ -262,15 +264,21 @@ export function createSkyDriftEnvironment(options = {}) {
 }
 
 function createSkyGradient(uniforms) {
-    const geometry = new THREE.SphereGeometry(250, 32, 24);
+    const geometry = new THREE.SphereGeometry(2500, 64, 48);  // Large sphere like Ch4
     const material = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
+        uniforms: {
+            uTime: uniforms.uTime,
+            uOpacity: { value: 1.0 }
+        },
         vertexShader: skyGradientVertexShader,
         fragmentShader: skyGradientFragmentShader,
         side: THREE.BackSide,
         depthWrite: false,
+        transparent: true,  // Allow Chapter 4 to show through
     });
-    return new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.renderOrder = -100;  // Render behind everything
+    return mesh;
 }
 
 function createStars(uniforms, count) {
