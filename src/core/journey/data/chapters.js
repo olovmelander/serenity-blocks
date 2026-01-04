@@ -20,7 +20,7 @@ export const CHAPTER_CONFIGS = [
         environment: {
             skyColor: 0x1a0a00,
             fogColor: 0x2d1500,
-            fogDensity: 0.03,
+            fogDensity: 0.015,  // Increased for better crater edge fog effect
             ambientLight: 0x331100,
             ambientIntensity: 0.4,
         },
@@ -52,7 +52,7 @@ export const CHAPTER_CONFIGS = [
         environment: {
             skyColor: 0x001030,
             fogColor: 0x002040,
-            fogDensity: 0.02,
+            fogDensity: 0.003,
             ambientLight: 0x003366,
             ambientIntensity: 0.5,
         },
@@ -87,7 +87,7 @@ export const CHAPTER_CONFIGS = [
         environment: {
             skyColor: 0x87ceeb,
             fogColor: 0xc8e6c9,
-            fogDensity: 0.01,
+            fogDensity: 0.0008,
             ambientLight: 0xfff8e7,
             ambientIntensity: 0.8,
         },
@@ -122,7 +122,7 @@ export const CHAPTER_CONFIGS = [
         environment: {
             skyColor: 0x2c3e50,
             fogColor: 0x95a5a6,
-            fogDensity: 0.015,
+            fogDensity: 0.0005,
             ambientLight: 0xbdc3c7,
             ambientIntensity: 0.6,
         },
@@ -157,7 +157,7 @@ export const CHAPTER_CONFIGS = [
         environment: {
             skyColor: 0x1a1a2e,
             fogColor: 0x16213e,
-            fogDensity: 0.008,
+            fogDensity: 0.001,
             ambientLight: 0x4a5568,
             ambientIntensity: 0.5,
         },
