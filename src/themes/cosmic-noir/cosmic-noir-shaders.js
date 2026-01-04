@@ -657,12 +657,12 @@ void main() {
         vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
 
         // Strong outward velocity - explosive burst
-        float speed = 12.0 + aRandom * 6.0;
+        float speed = 25.0 + aRandom * 10.0;
         vec3 velocity = burstDir * speed;
 
         // Apply velocity over time with slight deceleration
-        float decel = 1.0 - age * 0.005;
-        animatedPos += velocity * age * max(decel, 0.3);
+        float decel = 1.0 - age * 0.003;
+        animatedPos += velocity * age * max(decel, 0.5);
 
         // Fade out over lifetime
         alpha = 1.0 - (age / maxLife);

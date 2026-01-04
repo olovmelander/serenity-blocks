@@ -49,7 +49,7 @@ const QUALITY_PRESETS = {
         starCount: 8000,
         nebulaCount: 25,
         ambientParticles: 400,
-        voidSparks: 2500,
+        voidSparks: 8000,
         bloomStrength: 0.5,
         bloomRadius: 0.45,
         enablePostProcessing: true,
@@ -60,7 +60,7 @@ const QUALITY_PRESETS = {
         starCount: 6000,
         nebulaCount: 20,
         ambientParticles: 300,
-        voidSparks: 2000,
+        voidSparks: 6000,
         bloomStrength: 0.45,
         bloomRadius: 0.4,
         enablePostProcessing: true,
@@ -71,7 +71,7 @@ const QUALITY_PRESETS = {
         starCount: 5000,
         nebulaCount: 15,
         ambientParticles: 200,
-        voidSparks: 1500,
+        voidSparks: 5000,
         bloomStrength: 0.4,
         bloomRadius: 0.35,
         enablePostProcessing: true,
@@ -82,7 +82,7 @@ const QUALITY_PRESETS = {
         starCount: 3000,
         nebulaCount: 10,
         ambientParticles: 120,
-        voidSparks: 1000,
+        voidSparks: 3500,
         bloomStrength: 0.35,
         bloomRadius: 0.3,
         enablePostProcessing: true,
@@ -93,7 +93,7 @@ const QUALITY_PRESETS = {
         starCount: 1800,
         nebulaCount: 6,
         ambientParticles: 60,
-        voidSparks: 600,
+        voidSparks: 2000,
         bloomStrength: 0.25,
         bloomRadius: 0.25,
         enablePostProcessing: false,
@@ -104,7 +104,7 @@ const QUALITY_PRESETS = {
         starCount: 1000,
         nebulaCount: 4,
         ambientParticles: 30,
-        voidSparks: 400,
+        voidSparks: 1200,
         bloomStrength: 0.2,
         bloomRadius: 0.2,
         enablePostProcessing: false,
@@ -578,8 +578,8 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createVoidSparks() {
-        const poolSize = 6; // Number of overlapping bursts allowed
-        const countPerSystem = Math.floor(this.qualityPreset.voidSparks / 2);
+        const poolSize = 12; // Number of overlapping bursts allowed
+        const countPerSystem = Math.floor(this.qualityPreset.voidSparks / 3);
 
         const planetRadius = 180; // Start at planet surface
 
@@ -1013,13 +1013,34 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // === COMBO EFFECTS: Void Sparks + Gas Explosion ===
         if (comboCount >= 2 && this.voidSparks.length > 0) {
-            // Trigger void spark burst - cycle through pool
-            const sparks = this.voidSparks[this.voidSparkIndex];
-            if (sparks && sparks.material.uniforms) {
-                sparks.material.uniforms.uPulseTimer.value = 0.0;
+            // Find an inactive spark system (one that has finished animating)
+            // This prevents resetting systems that are still in progress
+            let sparkSystem = null;
+            for (let i = 0; i < this.voidSparks.length; i++) {
+                const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
+                const candidate = this.voidSparks[idx];
+                if (candidate && candidate.material.uniforms) {
+                    // A system is inactive if its timer is below -50 (reset value is -100)
+                    // or if it's past 75 (animation complete threshold)
+                    const timer = candidate.material.uniforms.uPulseTimer.value;
+                    if (timer < -50.0 || timer > 75.0) {
+                        sparkSystem = candidate;
+                        this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
+                        break;
+                    }
+                }
             }
-            // Cycle to next system in pool
-            this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
+
+            // If all systems are active, fallback to the oldest one (cycle through)
+            if (!sparkSystem) {
+                sparkSystem = this.voidSparks[this.voidSparkIndex];
+                this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
+            }
+
+            // Trigger the spark burst
+            if (sparkSystem && sparkSystem.material.uniforms) {
+                sparkSystem.material.uniforms.uPulseTimer.value = 0.0;
+            }
 
             // Trigger gas explosion on atmosphere
             this.gasExplosionTimer = 0.0;

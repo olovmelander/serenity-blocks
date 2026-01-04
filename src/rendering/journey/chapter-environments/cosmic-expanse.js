@@ -19,8 +19,8 @@ import * as THREE from 'three';
 export const COSMIC_EXPANSE_CONFIG = {
     id: 6,
     name: 'cosmic-expanse',
-    yStart: 125,
-    yEnd: 155,
+    yStart: 297.5,
+    yEnd: 430.0,
     colors: {
         primary: 0x0a0a0a,    // Void black
         secondary: 0x1a1a2e,  // Deep blue-black

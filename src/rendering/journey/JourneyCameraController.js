@@ -6,6 +6,11 @@
  */
 
 import * as THREE from 'three';
+import { JOURNEY_PATH_DATA } from './path-data.js';
+
+const CHAPTER_1_END_POSITION = JOURNEY_PATH_DATA.chapterPositions?.[1] ?? 0.125;
+const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -6, 0);
+const CHAPTER_1_LOOK_FADE_RANGE = 0.02;
 
 /**
  * JourneyCameraController - Camera navigation along the journey path
@@ -20,6 +25,7 @@ export class JourneyCameraController {
         this.currentPosition = 0; // 0-1 along path - start at Level 1
         this.targetPosition = 0;
         this.lookAtTarget = new THREE.Vector3();
+        this.lookAtOffset = new THREE.Vector3();
 
         // Animation state
         this.isAnimating = false;
@@ -34,10 +40,12 @@ export class JourneyCameraController {
         this.config = {
             followOffset: new THREE.Vector3(0, -1, 18), // More straight camera angle
             followLerpSpeed: 0.03,
-            scrollSpeed: 0.5,
+            scrollSpeed: 0.15, // Reduced from 0.5
             focusDistance: 10,
             minPosition: 0,    // Allow scrolling all the way to Level 1
             maxPosition: 1,    // Allow scrolling all the way to the end
+            magneticRadius: 0.015, // Distance to feel magnetic pull
+            magneticFriction: 0.2, // Multiplier for speed when near a level
         };
 
         // Initialize camera position
@@ -55,11 +63,51 @@ export class JourneyCameraController {
             this.isAnimating = false;
         }
 
+        // Apply magnetic friction if near a level
+        let effectiveDelta = delta;
+        const nearestLevel = this.findNearestLevel(this.targetPosition);
+
+        if (nearestLevel) {
+            const distance = Math.abs(this.targetPosition - nearestLevel);
+            if (distance < this.config.magneticRadius) {
+                // If we are moving AWAY from the level, don't apply as much friction
+                // If we are moving TOWARDS or ACROSS the level, apply friction
+                const movingAway = (delta > 0 && this.targetPosition > nearestLevel) ||
+                    (delta < 0 && this.targetPosition < nearestLevel);
+
+                if (!movingAway) {
+                    effectiveDelta *= this.config.magneticFriction;
+                } else {
+                    // Slight sticky feel when leaving too
+                    effectiveDelta *= 0.6;
+                }
+            }
+        }
+
         this.targetPosition = THREE.MathUtils.clamp(
-            this.targetPosition + delta * this.config.scrollSpeed,
+            this.targetPosition + effectiveDelta * this.config.scrollSpeed,
             this.config.minPosition,
             this.config.maxPosition,
         );
+    }
+
+    findNearestLevel(position) {
+        let minDist = Infinity;
+        let nearest = null;
+
+        // Optimization: We could binary search, but iterating ~60 items is negligible
+        // We can just check the relevant chapter's levels if we had chapter info handy,
+        // but simple loop is fine for this scale.
+        for (const levelPos of JOURNEY_PATH_DATA.levelPositions) {
+            const dist = Math.abs(position - levelPos);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = levelPos;
+            }
+        }
+
+        // Only return if within reasonable range to care
+        return minDist < 0.1 ? nearest : null;
     }
 
     /**
@@ -86,7 +134,7 @@ export class JourneyCameraController {
         this.animationEndPos.copy(pathPoint).add(this.config.followOffset);
 
         this.animationStartLookAt.copy(this.lookAtTarget);
-        this.animationEndLookAt.copy(pathPoint);
+        this.animationEndLookAt.copy(pathPoint).add(this.getLookAtOffset(this.targetPosition));
     }
 
     /**
@@ -194,7 +242,21 @@ export class JourneyCameraController {
         // Look only slightly ahead on path (reduced from 0.05 to 0.01)
         const lookAheadT = Math.min(1, this.currentPosition + 0.01);
         const lookTarget = this.pathCurve.getPointAt(lookAheadT);
+        lookTarget.add(this.getLookAtOffset(this.currentPosition));
         this.lookAtTarget.lerp(lookTarget, 0.1);
+    }
+
+    getLookAtOffset(position) {
+        if (position >= CHAPTER_1_END_POSITION) {
+            return this.lookAtOffset.set(0, 0, 0);
+        }
+
+        const fadeStart = Math.max(0, CHAPTER_1_END_POSITION - CHAPTER_1_LOOK_FADE_RANGE);
+        const fade = CHAPTER_1_LOOK_FADE_RANGE > 0
+            ? 1 - THREE.MathUtils.smoothstep(position, fadeStart, CHAPTER_1_END_POSITION)
+            : 1;
+
+        return this.lookAtOffset.copy(CHAPTER_1_LOOK_DOWN).multiplyScalar(fade);
     }
 
     updateAnimation() {

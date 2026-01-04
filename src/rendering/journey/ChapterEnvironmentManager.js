@@ -26,6 +26,8 @@ import {
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
 } from './chapter-environments/index.js';
+import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
+import { JOURNEY_PATH_DATA } from './path-data.js';
 
 /**
  * Chapter environment definitions
@@ -69,6 +71,16 @@ const CHAPTER_DEFS = [
     },
 ];
 
+const DEFAULT_PATH_TRANSITION_ZONE = 0.02;
+
+function getChapterPathRange(chapterId) {
+    const positions = JOURNEY_PATH_DATA.chapterPositions || [];
+    const start = positions[chapterId - 1];
+    if (start === undefined) return null;
+    const end = positions[chapterId] ?? 1;
+    return { start, end };
+}
+
 /**
  * ChapterEnvironmentManager - Orchestrates chapter-specific visuals
  */
@@ -76,8 +88,13 @@ export class ChapterEnvironmentManager {
     /**
      * @param {THREE.Scene} scene - The main Three.js scene
      */
-    constructor(scene) {
+    /**
+     * @param {THREE.Scene} scene - The main Three.js scene
+     * @param {THREE.WebGLRenderer} renderer - The renderer (for background color)
+     */
+    constructor(scene, renderer = null) {
         this.scene = scene;
+        this.renderer = renderer;
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -90,6 +107,7 @@ export class ChapterEnvironmentManager {
         // Current state
         this.currentChapter = 1;
         this.cameraY = 0;
+        this.cameraProgress = 0;
         this.time = 0;
 
         // Transition state
@@ -122,7 +140,7 @@ export class ChapterEnvironmentManager {
         }
 
         // Set initial visibility
-        this.updateVisibility(this.cameraY);
+        this.updateVisibility(this.cameraProgress, { mode: 'progress' });
 
         console.log('[ChapterEnvironmentManager] Initialized', this.environments.size, 'environments');
     }
@@ -158,29 +176,40 @@ export class ChapterEnvironmentManager {
      * Update environment visibility based on camera Y position
      * @param {number} cameraY - Current camera Y position
      */
-    updateVisibility(cameraY) {
-        this.cameraY = cameraY;
+    updateVisibility(position, options = {}) {
+        const mode = options.mode || 'y';
+        const transitionZone = options.transitionZone
+            ?? (mode === 'progress' ? DEFAULT_PATH_TRANSITION_ZONE : 5);
+
+        if (mode === 'progress') {
+            this.cameraProgress = THREE.MathUtils.clamp(position ?? 0, 0, 1);
+        } else {
+            this.cameraY = position ?? 0;
+        }
 
         this.environments.forEach((env, chapterId) => {
-            const { yStart, yEnd } = env.config;
+            const range = mode === 'progress'
+                ? getChapterPathRange(chapterId)
+                : { start: env.config.yStart, end: env.config.yEnd };
 
-            // Calculate visibility based on camera proximity to chapter bounds
-            const chapterCenter = (yStart + yEnd) / 2;
-            const chapterHeight = yEnd - yStart;
+            if (!range) {
+                env.group.visible = false;
+                return;
+            }
 
-            // Full visibility when camera is within chapter bounds
-            // Fade in/out over a transition zone
-            const transitionZone = 5;
+            const { start, end } = range;
+            const value = mode === 'progress' ? this.cameraProgress : this.cameraY;
+            const envTransitionZone = env.config.transitionZone ?? transitionZone;
 
             let opacity = 0;
 
-            if (cameraY >= yStart - transitionZone && cameraY <= yEnd + transitionZone) {
-                if (cameraY < yStart) {
+            if (value >= start - envTransitionZone && value <= end + envTransitionZone) {
+                if (value < start) {
                     // Fading in from below
-                    opacity = 1 - (yStart - cameraY) / transitionZone;
-                } else if (cameraY > yEnd) {
+                    opacity = 1 - (start - value) / envTransitionZone;
+                } else if (value > end) {
                     // Fading out above
-                    opacity = 1 - (cameraY - yEnd) / transitionZone;
+                    opacity = 1 - (value - end) / envTransitionZone;
                 } else {
                     // Fully visible
                     opacity = 1;
@@ -208,20 +237,41 @@ export class ChapterEnvironmentManager {
      */
     setGroupOpacity(group, opacity) {
         group.traverse((child) => {
+            const applyOpacity = (mat) => {
+                if (mat.uniforms?.uOpacity) {
+                    mat.uniforms.uOpacity.value = opacity;
+                    return;
+                }
+
+                if (mat.opacity !== undefined) {
+                    // Save initial state
+                    if (mat.userData.baseOpacity === undefined) {
+                        mat.userData.baseOpacity = mat.opacity;
+                        mat.userData.baseTransparent = mat.transparent;
+                    }
+
+                    mat.opacity = mat.userData.baseOpacity * opacity;
+
+                    if (opacity < 1) {
+                        mat.transparent = true;
+                    } else {
+                        // Restore original transparency state when fully opaque
+                        mat.transparent = mat.userData.baseTransparent;
+                    }
+
+                    // Update material needsUpdate if transparency changed
+                    if (mat.transparent !== mat.userData.lastTransparent) {
+                        mat.needsUpdate = true;
+                        mat.userData.lastTransparent = mat.transparent;
+                    }
+                }
+            };
+
             if (child.material) {
                 if (Array.isArray(child.material)) {
-                    child.material.forEach(mat => {
-                        if (mat.uniforms?.uOpacity) {
-                            mat.uniforms.uOpacity.value = opacity;
-                        } else if (mat.opacity !== undefined) {
-                            mat.opacity *= opacity;
-                        }
-                    });
+                    child.material.forEach(applyOpacity);
                 } else {
-                    if (child.material.uniforms?.uOpacity) {
-                        child.material.uniforms.uOpacity.value = opacity;
-                    }
-                    // Note: We don't modify base opacity to avoid compounding issues
+                    applyOpacity(child.material);
                 }
             }
         });
@@ -265,14 +315,15 @@ export class ChapterEnvironmentManager {
     /**
      * Update all environment animations
      * @param {number} delta - Delta time in seconds
+     * @param {THREE.Camera} camera - Camera for position-based effects
      */
-    update(delta) {
+    update(delta, camera = null) {
         this.time += delta;
 
         // Update each visible environment
         this.environments.forEach((env) => {
             if (env.group.visible && env.update) {
-                env.update(env.group, delta, this.time);
+                env.update(env.group, delta, this.time, camera);
             }
         });
 
@@ -287,6 +338,94 @@ export class ChapterEnvironmentManager {
                 console.log(`[ChapterEnvironmentManager] Transition complete to chapter ${this.currentChapter}`);
             }
         }
+    }
+
+    /**
+     * Update global environment (fog, background) based on camera progress
+     * @param {number} progress - Camera progress (0-1)
+     */
+    updateGlobalEnvironment(progress) {
+        // Find which chapters we are blending between
+        const positions = JOURNEY_PATH_DATA.chapterPositions;
+
+        let currentChapterId = 1;
+        let nextChapterId = 1;
+        let t = 0;
+
+        for (let i = 0; i < positions.length; i++) {
+            const start = positions[i];
+            const end = positions[i + 1] ?? 1;
+
+            if (progress >= start && progress <= end) {
+                currentChapterId = i + 1;
+
+                // Check if we are in a transition zone to next chapter
+                // Transition starts at end - transitionZone
+                // Or maybe we just interpolate completely between chapter centers?
+                // Let's stick to the config environment settings
+
+                // Simple interpolation:
+                // If we are in the last 20% of the chapter, blend to next
+                const chapterDuration = end - start;
+                const localProgress = (progress - start) / chapterDuration;
+
+                if (localProgress > 0.8 && (i + 1) < positions.length) {
+                    nextChapterId = currentChapterId + 1;
+                    t = (localProgress - 0.8) / 0.2; // 0 to 1
+                } else {
+                    nextChapterId = currentChapterId;
+                    t = 0;
+                }
+                break;
+            }
+        }
+
+        const currentConfig = CHAPTER_CONFIGS.find(c => c.id === currentChapterId)?.environment;
+        const nextConfig = CHAPTER_CONFIGS.find(c => c.id === nextChapterId)?.environment;
+
+        if (!currentConfig) return;
+
+        // Helper to lerp colors
+        const lerpColor = (c1, c2, alpha) => {
+            const r = new THREE.Color(c1).lerp(new THREE.Color(c2), alpha);
+            return r;
+        };
+
+        const targetEnv = nextConfig ? {
+            skyColor: lerpColor(currentConfig.skyColor, nextConfig.skyColor, t),
+            fogColor: lerpColor(currentConfig.fogColor, nextConfig.fogColor, t),
+            fogDensity: THREE.MathUtils.lerp(currentConfig.fogDensity, nextConfig.fogDensity, t),
+            ambientLight: lerpColor(currentConfig.ambientLight, nextConfig.ambientLight, t),
+            ambientIntensity: THREE.MathUtils.lerp(currentConfig.ambientIntensity, nextConfig.ambientIntensity, t),
+        } : {
+            skyColor: new THREE.Color(currentConfig.skyColor),
+            fogColor: new THREE.Color(currentConfig.fogColor),
+            fogDensity: currentConfig.fogDensity,
+            ambientLight: new THREE.Color(currentConfig.ambientLight),
+            ambientIntensity: currentConfig.ambientIntensity,
+        };
+
+        // Apply to scene
+        if (this.scene.fog instanceof THREE.FogExp2) {
+            this.scene.fog.color.copy(targetEnv.fogColor);
+            this.scene.fog.density = targetEnv.fogDensity;
+        } else {
+            this.scene.fog = new THREE.FogExp2(targetEnv.fogColor, targetEnv.fogDensity);
+        }
+
+        // Apply background color if renderer is available
+        if (this.renderer) {
+            this.renderer.setClearColor(targetEnv.skyColor, 1);
+        }
+
+        // Apply to ambient light if found in scene (assumed to be the first one found or we search by type)
+        // We know we added one in JourneyBoardController, but let's try to find it or modify all
+        this.scene.traverse((child) => {
+            if (child.isAmbientLight) {
+                child.color.copy(targetEnv.ambientLight);
+                child.intensity = targetEnv.ambientIntensity;
+            }
+        });
     }
 
     /**
