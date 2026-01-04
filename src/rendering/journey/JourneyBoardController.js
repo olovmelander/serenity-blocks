@@ -111,7 +111,7 @@ export class JourneyBoardController {
         this.createStarfield();
 
         // Initialize chapter-specific environments
-        this.environmentManager = new ChapterEnvironmentManager(this.scene);
+        this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer);
         await this.environmentManager.initialize([1, 2, 3, 4, 5, 6], {
             particleCount: this.qualityPreset.particleCount,
         });
@@ -130,6 +130,12 @@ export class JourneyBoardController {
             this.camera,
             this.pathRenderer.pathCurve,
         );
+        if (this.environmentManager) {
+            this.environmentManager.updateVisibility(
+                this.cameraController.getCurrentPosition(),
+                { mode: 'progress' },
+            );
+        }
 
         // Post-processing
         if (this.qualityPreset.enableBloom) {
@@ -168,7 +174,7 @@ export class JourneyBoardController {
 
     initCamera() {
         const aspect = this.container.clientWidth / this.container.clientHeight;
-        this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 9000);
         this.camera.position.set(0, 5, 30);
         this.camera.lookAt(0, 0, 0);
     }
@@ -207,6 +213,25 @@ export class JourneyBoardController {
     // Background Elements
     // =============================
 
+
+    createGlobalParticleTexture() {
+        if (typeof document === 'undefined') return null;
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+
+        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 32, 32);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
     createStarfield() {
         const count = this.qualityPreset.starCount;
         const geometry = new THREE.BufferGeometry();
@@ -241,12 +266,14 @@ export class JourneyBoardController {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
         const material = new THREE.PointsMaterial({
-            size: 1.5,
+            size: 2.0, // Increased size for soft texture
             vertexColors: true,
             sizeAttenuation: true,
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
+            map: this.createGlobalParticleTexture(),
+            depthWrite: false,
         });
 
         this.stars = new THREE.Points(geometry, material);
@@ -311,11 +338,13 @@ export class JourneyBoardController {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
         const material = new THREE.PointsMaterial({
-            size: 0.3,
+            size: 0.8, // Increased size for texture
             color: 0x8888ff,
             transparent: true,
             opacity: 0.4,
             blending: THREE.AdditiveBlending,
+            map: this.createGlobalParticleTexture(),
+            depthWrite: false,
         });
 
         this.ambientParticles = new THREE.Points(geometry, material);
@@ -494,8 +523,10 @@ export class JourneyBoardController {
 
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
-            this.environmentManager.updateVisibility(this.camera.position.y);
-            this.environmentManager.update(delta);
+            const cameraProgress = this.cameraController?.getCurrentPosition() ?? 0;
+            this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress' });
+            this.environmentManager.updateGlobalEnvironment(cameraProgress);
+            this.environmentManager.update(delta, this.camera);
         }
 
         // Rotate stars slowly
