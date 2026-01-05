@@ -268,6 +268,10 @@ export class JourneyMode extends BaseGameMode {
             this.levelTimerInterval = null;
         }
 
+        // Victory Lap System: Clean up
+        this._hideGoalCompleteOverlay();
+        this._removeVictoryLapInputs();
+
         // Phase 6: Clean up Journey HUD
         this._cleanupJourneyHUD();
 
@@ -590,6 +594,10 @@ export class JourneyMode extends BaseGameMode {
             clearInterval(this.levelTimerInterval);
             this.levelTimerInterval = null;
         }
+
+        // Victory Lap System: Clean up (in case of time failure during victory lap)
+        this._hideGoalCompleteOverlay();
+        this._removeVictoryLapInputs();
 
         // Record attempt
         this.journeyState.recordAttempt(this.currentLevelId);
@@ -1024,13 +1032,187 @@ export class JourneyMode extends BaseGameMode {
 
         // Phase 2: Use hybridEngine for victory/failure checking
         if (this.hybridEngine.checkVictory()) {
-            console.log('[Journey] Victory condition met!');
-            this.completeLevel({});
+            // Victory Lap System: Don't end level immediately, enter victory lap
+            if (!this.gameState.goalComplete) {
+                console.log('[Journey] Goal complete! Entering Victory Lap...');
+                this._enterVictoryLap();
+            }
+            // During victory lap, victory conditions are already met - just keep playing
             return;
         }
 
         if (this.hybridEngine.checkFailure()) {
             this.failLevel('time');
+        }
+    }
+
+    /**
+     * Enter victory lap mode - goal is complete but player can keep playing for stars
+     * @private
+     */
+    _enterVictoryLap() {
+        this.gameState.goalComplete = true;
+        this.gameState.victoryLapActive = true;
+        this.gameState.victoryLapStartTime = performance.now();
+
+        // Show goal complete overlay
+        this._showGoalCompleteOverlay();
+
+        // Update HUD to show victory lap state
+        if (this.journeyHUD) {
+            this.journeyHUD.enterVictoryLap();
+        }
+
+        // Play celebration sound
+        this.deps?.soundManager?.sfxPlayer?.playLevelUp?.();
+
+        // Emit event for other systems
+        eventBus.emit(EVENTS.JOURNEY_GOAL_COMPLETE, {
+            levelId: this.currentLevelId,
+            metrics: this.levelMetrics,
+        });
+
+        // Set up victory lap input handler
+        this._setupVictoryLapInputs();
+
+        console.log('[Journey] Victory lap started - press Enter to finish or keep playing for more stars');
+    }
+
+    /**
+     * Finish victory lap and complete the level
+     * @private
+     */
+    _finishVictoryLap() {
+        if (!this.gameState?.victoryLapActive) return;
+
+        console.log('[Journey] Victory lap finished, completing level...');
+        this.gameState.victoryLapActive = false;
+
+        // Hide overlay
+        this._hideGoalCompleteOverlay();
+
+        // Remove victory lap input handler
+        this._removeVictoryLapInputs();
+
+        // Emit event
+        eventBus.emit(EVENTS.JOURNEY_VICTORY_LAP_END, {
+            levelId: this.currentLevelId,
+            metrics: this.levelMetrics,
+        });
+
+        // Complete the level with final metrics
+        this.completeLevel({});
+    }
+
+    /**
+     * Set up input handling for victory lap (Enter/Escape to finish)
+     * @private
+     */
+    _setupVictoryLapInputs() {
+        this._victoryLapKeyHandler = (e) => {
+            if (!this.gameState?.victoryLapActive) return;
+            if (this.gameState?.isPaused) return;
+
+            // Enter or Escape to finish
+            if (e.key === 'Enter' || e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                this._finishVictoryLap();
+            }
+        };
+
+        document.addEventListener('keydown', this._victoryLapKeyHandler);
+    }
+
+    /**
+     * Remove victory lap input handler
+     * @private
+     */
+    _removeVictoryLapInputs() {
+        if (this._victoryLapKeyHandler) {
+            document.removeEventListener('keydown', this._victoryLapKeyHandler);
+            this._victoryLapKeyHandler = null;
+        }
+    }
+
+    /**
+     * Show goal complete overlay during victory lap
+     * @private
+     */
+    _showGoalCompleteOverlay() {
+        // Remove existing overlay if any
+        this._hideGoalCompleteOverlay();
+
+        this._goalCompleteOverlay = document.createElement('div');
+        this._goalCompleteOverlay.id = 'goal-complete-overlay';
+        this._goalCompleteOverlay.style.cssText = `
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, rgba(20, 60, 40, 0.95), rgba(10, 40, 30, 0.95));
+            border: 2px solid rgba(100, 255, 150, 0.6);
+            border-radius: 16px;
+            padding: 16px 32px;
+            z-index: 1000;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(100, 255, 150, 0.3);
+            animation: goalCompleteSlideIn 0.5s ease-out;
+        `;
+
+        this._goalCompleteOverlay.innerHTML = `
+            <style>
+                @keyframes goalCompleteSlideIn {
+                    from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+                }
+                @keyframes goalCompletePulse {
+                    0%, 100% { opacity: 0.7; }
+                    50% { opacity: 1; }
+                }
+                .goal-complete-title {
+                    font-family: 'Orbitron', sans-serif;
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #4ade80;
+                    text-shadow: 0 0 20px rgba(100, 255, 150, 0.8);
+                    margin-bottom: 8px;
+                }
+                .goal-complete-subtitle {
+                    font-family: 'Segoe UI', sans-serif;
+                    font-size: 14px;
+                    color: rgba(255, 255, 255, 0.8);
+                }
+                .goal-complete-hint {
+                    font-family: 'Segoe UI', sans-serif;
+                    font-size: 12px;
+                    color: rgba(255, 255, 255, 0.6);
+                    margin-top: 8px;
+                    animation: goalCompletePulse 2s ease-in-out infinite;
+                }
+                .goal-complete-hint kbd {
+                    background: rgba(255, 255, 255, 0.2);
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                }
+            </style>
+            <div class="goal-complete-title">GOAL COMPLETE!</div>
+            <div class="goal-complete-subtitle">Keep playing for more stars</div>
+            <div class="goal-complete-hint">Press <kbd>Enter</kbd> to finish</div>
+        `;
+
+        document.body.appendChild(this._goalCompleteOverlay);
+    }
+
+    /**
+     * Hide goal complete overlay
+     * @private
+     */
+    _hideGoalCompleteOverlay() {
+        if (this._goalCompleteOverlay) {
+            this._goalCompleteOverlay.remove();
+            this._goalCompleteOverlay = null;
         }
     }
 
@@ -1077,6 +1259,13 @@ export class JourneyMode extends BaseGameMode {
      */
     async _handleGameOver() {
         console.log('[Journey] Game over (top-out)');
+
+        // Victory Lap System: During victory lap, top-out completes the level (not a failure)
+        if (this.gameState?.victoryLapActive) {
+            console.log('[Journey] Top-out during victory lap - completing level with current progress');
+            this._finishVictoryLap();
+            return;
+        }
 
         // Check failure condition
         const failureType = this.currentLevelConfig?.victory?.failure?.type;
