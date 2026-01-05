@@ -102,61 +102,66 @@ export const SHAPES = {
 export const PIECE_KEYS = 'IOTZSLJ';
 
 /**
- * Score values for line clears
+ * Score values for line clears (Quadra-style)
+ * Base scores before level multiplier
  */
 export const SCORE_VALUES = {
-    1: 100, // Single
-    2: 300, // Double
-    3: 500, // Triple
-    4: 800, // Tetris
+    1: 250,  // Single
+    2: 500,  // Double
+    3: 1000, // Triple
+    4: 2000, // Tetris (Quadra)
 };
 
 /**
- * Drop speeds per level (in milliseconds)
- * Levels 1-40, speeds get progressively faster
+ * Quadra-style scoring constants
+ * Used for cascade bonuses, perfect clears, and level multipliers
  */
-export const LEVEL_SPEEDS = [
-    1000,
-    900,
-    800,
-    700,
-    600,
-    500,
-    450,
-    400,
-    360,
-    320, // Levels 1-10
-    290,
-    260,
-    240,
-    220,
-    200,
-    185,
-    170,
-    155,
-    145,
-    135, // Levels 11-20
-    125,
-    115,
-    105,
-    95,
-    90,
-    85,
-    80,
-    75,
-    70,
-    65, // Levels 21-30
-    62,
-    59,
-    56,
-    53,
-    50,
-    48,
-    46,
-    44,
-    42,
-    40, // Levels 31-40
-];
+export const QUADRA_SCORING = {
+    CASCADE_BASE: 200,         // 200 * (complexity-1)² for cascades
+    PERFECT_CLEAR_BASE: 1250,  // depth * 1250 for perfect clears (≤4 lines)
+    PERFECT_CLEAR_LARGE: 500,  // depth² * 500 for perfect clears (>4 lines)
+    LEVEL_MULTIPLIER: 0.1,     // +10% per level (additive, not multiplicative)
+};
+
+/**
+ * Calculate Quadra-style drop interval in milliseconds
+ * Based on Quadra's canvas.cc:calc_speed() and player.cc:calc_by()
+ * 
+ * Speed formula (canvas.cc):
+ *   level ≤ 10: speed = 4 + (level - 1) * 5
+ *   level > 10: speed = 50 + (level - 10) * 3
+ * 
+ * Conversion (from calc_by using >>4):
+ *   Y coordinates are in 1/16th pixel units
+ *   Cell height = 18 pixels × 16 = 288 sub-units
+ *   At 100fps (10ms/frame): time_per_row = 288 / speed * 10ms
+ * 
+ * @param {number} level - Current game level (1-indexed)
+ * @returns {number} Drop interval in milliseconds per row
+ */
+export function getQuadraDropInterval(level) {
+    let speed;
+    if (level <= 10) {
+        speed = 4 + (level - 1) * 5;
+    } else {
+        speed = 50 + (level - 10) * 3;
+    }
+    // 288 sub-units per cell × 10ms per frame = 2880 / speed
+    return Math.max(10, Math.floor(2880 / speed));
+}
+
+/**
+ * Drop speeds per level (in milliseconds) - Quadra-authentic values
+ * Generated from Quadra's canvas.cc:calc_speed() formula
+ * Level 1 = 450ms, Level 10 = 37ms, Level 20+ = very fast
+ */
+export const LEVEL_SPEEDS = (() => {
+    const speeds = [];
+    for (let level = 1; level <= 100; level++) {
+        speeds.push(getQuadraDropInterval(level));
+    }
+    return speeds;
+})();
 
 /**
  * Available theme names

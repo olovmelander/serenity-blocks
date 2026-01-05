@@ -5,10 +5,11 @@
  */
 
 import {
-    COLS, ROWS, HIDDEN_ROWS, SCORE_VALUES, LEVEL_SPEEDS, COLORS,
+    COLS, ROWS, HIDDEN_ROWS, LEVEL_SPEEDS, COLORS,
 } from './constants.js';
 import { cloneBoardGrid, rebuildBoardGridFromPieces, updatePiecePositionInGrid } from './board.js';
 import { markBoardDirty } from './game.js';
+import { calculateQuadraLineScore } from './scoring.js';
 
 const PHYSICS_DEBUG = false;
 const physicsLog = (...args) => {
@@ -751,7 +752,7 @@ export async function processPhysics(gameState, callbacks) {
 
         if (gameState.linesUntilNextLevel <= 0) {
             gameState.level++;
-            gameState.linesUntilNextLevel += 10; // Use += in case of multi-level-up
+            gameState.linesUntilNextLevel += 15; // Quadra: 15 lines per level
             gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
 
             if (callbacks.playLevelUp) callbacks.playLevelUp();
@@ -762,7 +763,10 @@ export async function processPhysics(gameState, callbacks) {
             callbacks.updateBackground(gameState.level);
         }
 
-        const points = (SCORE_VALUES[fullLines.length] || SCORE_VALUES[4]) * gameState.level;
+        // Quadra-style scoring: uses depth (lines), level, complexity (cascades), and perfect clear
+        // Perfect clear is detected later after all cascades complete, so we pass false here
+        // and add the perfect clear bonus at the end if the board is empty
+        const points = calculateQuadraLineScore(fullLines.length, gameState.level, cascadeCount, false);
         gameState.score += points;
 
         if (callbacks.playLineClear) callbacks.playLineClear();
@@ -859,6 +863,17 @@ export async function processPhysics(gameState, callbacks) {
     // Notify that cascades have completed and camera may need to update
     if (cascadeCount > 0 && callbacks.onCascadeComplete) {
         callbacks.onCascadeComplete(cascadeCount);
+    }
+
+    // Quadra-style Perfect Clear Bonus
+    // Award bonus points when the entire board is cleared
+    if (sendForClean && depth > 0) {
+        const perfectClearBonus = calculateQuadraLineScore(depth, gameState.level, complexity, true)
+            - calculateQuadraLineScore(depth, gameState.level, complexity, false);
+        gameState.score += perfectClearBonus;
+        physicsLog(`[Physics] Perfect clear bonus: +${perfectClearBonus} points (depth=${depth})`);
+        if (callbacks.onScoreAdd) callbacks.onScoreAdd(perfectClearBonus);
+        if (callbacks.onPerfectClear) callbacks.onPerfectClear(depth, perfectClearBonus);
     }
 
     // --- Finalize ---
