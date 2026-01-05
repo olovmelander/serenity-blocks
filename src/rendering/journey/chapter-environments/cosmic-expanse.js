@@ -207,17 +207,20 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const voidSky = createVoidSky(uniforms);
     group.add(voidSky);
 
-    // 2. The Black Hole
+    // 2. The Black Hole - Moved deep ahead of path (z=-800)
     const blackHole = createBlackHole(uniforms);
-    blackHole.position.set(0, 20, -120); // Looming ahead
+    blackHole.position.set(0, 0, -800); // Looming directly ahead
     blackHole.rotation.x = -0.3; // Tilted disk
+    // Scale up slightly to be more imposing at distance
+    blackHole.scale.setScalar(1.5);
     group.add(blackHole);
     group.userData.blackHole = blackHole;
 
     // 3. Suction Particles (Matter falling in)
     const debris = createSuctionParticles(uniforms, options.particleCount || 1000);
-    debris.position.set(0, 20, -120); // Centered on Black Hole
+    debris.position.set(0, 0, -800); // Centered on Black Hole
     debris.rotation.x = -0.3;
+    debris.scale.setScalar(1.5);
     group.add(debris);
 
     // 4. Distant "Stellar Velocity" Stars
@@ -227,7 +230,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // 5. Lighting (Ominous)
     setupCosmicLighting(group);
 
-    // Position
+    // Position center of chapter
     group.position.y = (COSMIC_EXPANSE_CONFIG.yStart + COSMIC_EXPANSE_CONFIG.yEnd) / 2;
 
     return group;
