@@ -34,35 +34,36 @@ export const JOURNEY_PATH_DATA = {
         { x: -3, y: 30, z: 5 },
 
         // Chapter 3: Surface World (ground level) - approaching mountains
-        { x: -3, y: 45, z: 5 },
-        { x: 5, y: 60, z: -20 },
-        { x: -15, y: 75, z: -60 },
+        // Straight ascent from water (up to y=55), then curve
+        { x: -3, y: 55, z: 5 },       // Continue straight up from Ch2
+        { x: -3, y: 70, z: -10 },     // Start gentle backward curve, keeping X largely stable
+        { x: -15, y: 100, z: -60 },   // Connect to mountain approach
 
         // Chapter 4: Mountains - ascend straight through aurora
         // Path goes vertically through the aurora, not curving around mountains
-        { x: -20, y: 95, z: -150 },   // Approaching mountains, mostly centered
-        { x: -10, y: 140, z: -250 },  // Rising straight up through aurora
-        { x: 0, y: 190, z: -280 },    // Through the center of aurora
-        { x: 0, y: 235, z: -200 },    // Continue vertical ascent
+        { x: -20, y: 160, z: -350 },  // Higher approach to clear Ch3 ground
+        { x: -10, y: 240, z: -480 },  // Bend EARLIER and HIGHER to clear mountain slope
+        { x: 0, y: 300, z: -480 },    // Vertical ascent (Constant Z at -480)
+        { x: 0, y: 450, z: -480 },    // Continue straight up into space
 
         // Chapter 5: Sky & Atmospheric Drift - straight ascent into space
-        { x: 0, y: 260, z: -100 },    // Continuing straight up
-        { x: 0, y: 280, z: -30 },     // Centered vertical path
-        { x: 0, y: 300, z: 10 },      // Centered, heading to space
+        { x: 0, y: 500, z: -480 },    // Continue vertical from Ch4
+        { x: 0, y: 600, z: -550 },    // Slow drift deeper into space
+        { x: 0, y: 700, z: -600 },    // Deep space
 
-        // Chapter 6: Space (cosmic expanse, shifted up)
-        { x: 0, y: 310, z: 0 },     // +85
-        { x: -5, y: 340, z: 5 },
-        { x: 3, y: 370, z: -5 },
+        // Chapter 6: Space (cosmic expanse, shifted up and deep)
+        { x: 0, y: 750, z: -600 },    // Maintain deep Z
+        { x: -5, y: 780, z: -595 },
+        { x: 3, y: 810, z: -605 },
 
-        // Chapter 7: Black Hole (transcendence, shifted up)
-        { x: 0, y: 400, z: 0 },
-        { x: 0, y: 425, z: 0 },
+        // Chapter 7: Black Hole (transcendence, shifted up and deep)
+        { x: 0, y: 850, z: -600 },
+        { x: 0, y: 900, z: -600 },
 
-        // Chapter 8: Urban Dreams (bonus, shifted up)
-        { x: -5, y: 440, z: 5 },
-        { x: 5, y: 450, z: -3 },
-        { x: 0, y: 465, z: 0 },
+        // Chapter 8: Urban Dreams (bonus, shifted up and deep)
+        { x: -5, y: 920, z: -595 },
+        { x: 5, y: 940, z: -605 },
+        { x: 0, y: 960, z: -600 },
     ],
 
     // Chapter positions (0-1 along path)

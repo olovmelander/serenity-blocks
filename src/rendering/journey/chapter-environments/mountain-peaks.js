@@ -18,7 +18,8 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     id: 4,
     name: 'mountain-peaks',
     yStart: 97.5,
-    yEnd: 1000,  // Extended much further to keep mountains visible during transition to Ch5
+    yEnd: 900,
+    endProgress: 0.82, // Extend deep into Chapter 5 (which ends at 0.82)
     transitionZone: 0.1,  // Increased transition zone for smoother fade out
     colors: {
         primary: 0x2d3436,
@@ -769,16 +770,16 @@ function createAurora(uniforms, layers) {
     const group = new THREE.Group();
 
     // Aurora configurations for each layer
-    // Positioned BEHIND mountains (approx z=-900) and HIGHER up
+    // Positioned BEHIND mountains (approx z=-900) but closer than before
     const auroraConfigs = [
-        // Main central aurora - Far behind center peak (z=-900), positioned HIGH
-        { x: 0, y: 1600, z: -3000, width: 5000, height: 1500, rotY: 0, opacity: 1.0 },
-        // Left aurora curtain - Behind left mountain (z=-650), positioned HIGH
-        { x: -500, y: 1500, z: -2800, width: 3000, height: 1200, rotY: 0.1, opacity: 0.8 },
-        // Right aurora curtain - Behind right mountain (z=-700), positioned HIGH
-        { x: 500, y: 1550, z: -2850, width: 3000, height: 1200, rotY: -0.1, opacity: 0.8 },
-        // Far back aurora - Creates depth, positioned HIGHEST
-        { x: 0, y: 1800, z: -3800, width: 6000, height: 1800, rotY: 0, opacity: 0.6 },
+        // Main central aurora - Behind center peak, moved closer
+        { x: 0, y: 600, z: -1500, width: 4000, height: 1500, rotY: 0, opacity: 1.0 },
+        // Left aurora curtain - Behind left mountain
+        { x: -500, y: 500, z: -1300, width: 2500, height: 1200, rotY: 0.1, opacity: 0.8 },
+        // Right aurora curtain - Behind right mountain
+        { x: 500, y: 550, z: -1350, width: 2500, height: 1200, rotY: -0.1, opacity: 0.8 },
+        // Far back aurora - Creates depth
+        { x: 0, y: 800, z: -2000, width: 5000, height: 1800, rotY: 0, opacity: 0.6 },
     ];
 
     for (let i = 0; i < Math.min(layers, auroraConfigs.length); i++) {
@@ -868,10 +869,10 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     // const progress = ...
 
     // ACCELERATED TRANSITIONS due to extended yEnd (1000)
-    // Make sky turn dark INSTANTLY (fully night by 10% progress)
-    const transition = THREE.MathUtils.smoothstep(progress, 0.0, 0.1);
-    // Make aurora appear INSTANTLY (fully visible by 15% progress)
-    const auroraFade = THREE.MathUtils.smoothstep(progress, 0.0, 0.15);
+    // Make sky turn dark INSTANTLY (fully night by 1% progress)
+    const transition = THREE.MathUtils.smoothstep(progress, 0.0, 0.01);
+    // Make aurora appear INSTANTLY (fully visible by 1% progress)
+    const auroraFade = THREE.MathUtils.smoothstep(progress, 0.0, 0.01);
 
     // SCALING: Mountains shrink as camera ascends into space (starts at 60% progress)
     // At 60% progress: scale = 1.0 (full size)
@@ -900,9 +901,9 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
         snowFloor.position.y = -scaleProgress * 50;
     }
 
-    // EXIT FADE: Very late fade out (from 90% to 100%)
+    // EXIT FADE: Very late fade out (from 95% to 100%)
     // This ensures mountains are visible for a long time while shrinking
-    const exitFade = 1.0 - THREE.MathUtils.smoothstep(progress, 0.90, 1.0);
+    const exitFade = 1.0 - THREE.MathUtils.smoothstep(progress, 0.95, 1.0);
 
     const sky = group.userData.sky;
     if (sky?.material?.uniforms) {
