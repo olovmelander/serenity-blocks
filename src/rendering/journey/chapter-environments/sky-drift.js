@@ -19,8 +19,8 @@ import * as THREE from 'three';
 export const SKY_DRIFT_CONFIG = {
     id: 5,
     name: 'sky-drift',
-    yStart: 232.5,
-    yEnd: 297.5,
+    yStart: 500,
+    yEnd: 750,
     colors: {
         primary: 0x1a1a2e,
         secondary: 0x16213e,
@@ -210,58 +210,7 @@ const starFragmentShader = `
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function createSkyDriftEnvironment(options = {}) {
-    const group = new THREE.Group();
-    group.name = 'sky-drift-environment';
-    group.userData.chapterId = 5;
-    group.userData.yStart = SKY_DRIFT_CONFIG.yStart;
-    group.userData.yEnd = SKY_DRIFT_CONFIG.yEnd;
 
-    const uniforms = { uTime: { value: 0 } };
-    group.userData.uniforms = uniforms;
-
-    // Sky background
-    group.add(createSkyGradient(uniforms));
-
-    // Dense starfield
-    const starCount = options.particleCount ? options.particleCount * 4 : 2500;
-    group.add(createStars(uniforms, starCount));
-
-    // COSMIC OBJECTS
-    // 1. Distant spiral galaxy
-    const galaxy = createSpiralGalaxy(uniforms);
-    galaxy.position.set(-60, 25, -180);
-    galaxy.rotation.x = 0.7;
-    galaxy.rotation.z = 0.3;
-    galaxy.scale.setScalar(0.8);
-    group.add(galaxy);
-    group.userData.galaxy = galaxy;
-
-    // 2. Solar eclipse
-    const eclipse = createSolarEclipse(uniforms);
-    eclipse.position.set(50, 15, -150);
-    eclipse.scale.setScalar(0.5);
-    group.add(eclipse);
-    group.userData.eclipse = eclipse;
-
-    // 3. Colorful nebulae
-    const nebulae = createNebulae(uniforms);
-    group.add(nebulae);
-
-    // 4. Distant planets
-    const planets = createPlanets(uniforms);
-    group.add(planets);
-    group.userData.planets = planets;
-
-    // 5. Ambient drift particles
-    const ambient = createAmbientParticles(uniforms, options.particleCount || 400);
-    group.add(ambient);
-
-    setupSkyLighting(group);
-    group.position.y = (SKY_DRIFT_CONFIG.yStart + SKY_DRIFT_CONFIG.yEnd) / 2;
-
-    return group;
-}
 
 function createSkyGradient(uniforms) {
     const geometry = new THREE.SphereGeometry(2500, 64, 48);  // Large sphere like Ch4
@@ -496,6 +445,63 @@ function createSolarEclipse(uniforms) {
     return eclipseGroup;
 }
 
+
+
+// ... (skipping shaders)
+
+export function createSkyDriftEnvironment(options = {}) {
+    const group = new THREE.Group();
+    group.name = 'sky-drift-environment';
+    group.userData.chapterId = 5;
+    group.userData.yStart = SKY_DRIFT_CONFIG.yStart;
+    group.userData.yEnd = SKY_DRIFT_CONFIG.yEnd;
+
+    const uniforms = { uTime: { value: 0 } };
+    group.userData.uniforms = uniforms;
+
+    // Sky background
+    group.add(createSkyGradient(uniforms));
+
+    // Dense starfield
+    const starCount = options.particleCount ? options.particleCount * 4 : 2500;
+    group.add(createStars(uniforms, starCount));
+
+    // COSMIC OBJECTS
+    // 1. Distant spiral galaxy - Moved deep into Z (-800) and adjusted Y
+    const galaxy = createSpiralGalaxy(uniforms);
+    galaxy.position.set(-80, 50, -850);
+    galaxy.rotation.x = 0.7;
+    galaxy.rotation.z = 0.3;
+    galaxy.scale.setScalar(2.5); // Larger because it's further away
+    group.add(galaxy);
+    group.userData.galaxy = galaxy;
+
+    // 2. Solar eclipse - Moved deep into Z (-750)
+    const eclipse = createSolarEclipse(uniforms);
+    eclipse.position.set(120, 80, -750);
+    eclipse.scale.setScalar(1.5);
+    group.add(eclipse);
+    group.userData.eclipse = eclipse;
+
+    // 3. Colorful nebulae - Moved deep into Z
+    const nebulae = createNebulae(uniforms);
+    group.add(nebulae);
+
+    // 4. Distant planets - Moved deep into Z
+    const planets = createPlanets(uniforms);
+    group.add(planets);
+    group.userData.planets = planets;
+
+    // 5. Ambient drift particles
+    const ambient = createAmbientParticles(uniforms, options.particleCount || 400);
+    group.add(ambient);
+
+    setupSkyLighting(group);
+    group.position.y = (SKY_DRIFT_CONFIG.yStart + SKY_DRIFT_CONFIG.yEnd) / 2;
+
+    return group;
+}
+
 /**
  * Create colorful nebula formations
  */
@@ -505,11 +511,11 @@ function createNebulae(uniforms) {
 
     const glowTexture = createGlowTexture();
     const configs = [
-        { pos: [-80, 5, -160], scale: 50, color: 0xFF33CC, opacity: 0.3 },
-        { pos: [80, -10, -170], scale: 60, color: 0x3399FF, opacity: 0.25 },
-        { pos: [0, 35, -190], scale: 70, color: 0x9933FF, opacity: 0.2 },
-        { pos: [-40, -20, -140], scale: 40, color: 0x66CCFF, opacity: 0.25 },
-        { pos: [60, 30, -180], scale: 45, color: 0xCC44FF, opacity: 0.22 },
+        { pos: [-150, -40, -800], scale: 120, color: 0xFF33CC, opacity: 0.3 },
+        { pos: [150, -60, -820], scale: 140, color: 0x3399FF, opacity: 0.25 },
+        { pos: [0, 80, -850], scale: 160, color: 0x9933FF, opacity: 0.2 },
+        { pos: [-80, -90, -780], scale: 100, color: 0x66CCFF, opacity: 0.25 },
+        { pos: [100, 50, -810], scale: 110, color: 0xCC44FF, opacity: 0.22 },
     ];
 
     configs.forEach(({ pos, scale, color, opacity }) => {
@@ -537,9 +543,9 @@ function createPlanets(uniforms) {
     planetGroup.name = 'planets';
 
     const planetConfigs = [
-        { pos: [-90, -15, -130], size: 6, color1: 0x2E4A62, color2: 0x1A2D3D, hasRing: false },
-        { pos: [100, 20, -160], size: 10, color1: 0xA67C52, color2: 0x6B4423, hasRing: true },
-        { pos: [-30, 40, -200], size: 4, color1: 0x4A626E, color2: 0x2C3E50, hasRing: false },
+        { pos: [-120, -50, -750], size: 15, color1: 0x2E4A62, color2: 0x1A2D3D, hasRing: false },
+        { pos: [140, 60, -780], size: 25, color1: 0xA67C52, color2: 0x6B4423, hasRing: true },
+        { pos: [-40, 90, -820], size: 10, color1: 0x4A626E, color2: 0x2C3E50, hasRing: false },
     ];
 
     planetConfigs.forEach(({ pos, size, color1, color2, hasRing }) => {
@@ -586,9 +592,12 @@ function createAmbientParticles(uniforms, count) {
     const sizes = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
-        positions[i * 3] = (Math.random() - 0.5) * 150;
-        positions[i * 3 + 1] = (Math.random() - 0.5) * 80;
-        positions[i * 3 + 2] = (Math.random() - 0.5) * 120 - 40;
+        const r = 100 + Math.random() * 200;
+        const theta = Math.random() * Math.PI * 2;
+        // Spread particles around the path in deep space
+        positions[i * 3] = r * Math.cos(theta);
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 300; // Increased vertical spread
+        positions[i * 3 + 2] = -500 - Math.random() * 400; // Deep Z spread
         sizes[i] = 1 + Math.random() * 2;
     }
 
@@ -628,17 +637,17 @@ function createGlowTexture() {
 function setupSkyLighting(group) {
     group.add(new THREE.AmbientLight(0x1a1a2e, 0.3));
 
-    const purpleGlow = new THREE.PointLight(0x9933FF, 0.4, 200);
-    purpleGlow.position.set(-30, 20, -100);
+    const purpleGlow = new THREE.PointLight(0x9933FF, 0.4, 400); // Increased range
+    purpleGlow.position.set(-50, 40, -600);
     group.add(purpleGlow);
     group.userData.purpleGlow = purpleGlow;
 
-    const cyanGlow = new THREE.PointLight(0x3399FF, 0.3, 180);
-    cyanGlow.position.set(40, 10, -90);
+    const cyanGlow = new THREE.PointLight(0x3399FF, 0.3, 400);
+    cyanGlow.position.set(60, 20, -600);
     group.add(cyanGlow);
 
-    const eclipseGlow = new THREE.PointLight(0xFFAA44, 0.5, 150);
-    eclipseGlow.position.set(50, 15, -120);
+    const eclipseGlow = new THREE.PointLight(0xFFAA44, 0.5, 300);
+    eclipseGlow.position.set(120, 80, -700);
     group.add(eclipseGlow);
 }
 

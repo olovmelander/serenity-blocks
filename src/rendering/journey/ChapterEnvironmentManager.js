@@ -197,6 +197,12 @@ export class ChapterEnvironmentManager {
                 return;
             }
 
+            // Allow extending the environment beyond the standard chapter end
+            // This is useful for environments that should persist into the next chapter (like Aurora)
+            if (mode === 'progress' && env.config.endProgress) {
+                range.end = env.config.endProgress;
+            }
+
             const { start, end } = range;
             const value = mode === 'progress' ? this.cameraProgress : this.cameraY;
             const envTransitionZone = env.config.transitionZone ?? transitionZone;
