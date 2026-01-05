@@ -1,11 +1,8 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- *  🔥 CINDER DRIFT 🔥
- *  A 3D Volcanic Fire Theme with Multiple Floating Ember Cores
+ *  🔥 CINDER DRIFT: VOLCANIC CORE EDITION 🔥
+ *  High-Fidelity Magma & Fire Theme
  * ═══════════════════════════════════════════════════════════════════════════════
- *
- * Design: Multiple glowing ember spheres of different sizes drifting through
- * space like floating lava globules, with rising ember particles.
  */
 
 import * as THREE from 'three';
@@ -13,12 +10,16 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { CINDER_DRIFT_TETROMINOS } from './cinder-drift-tetrominos.js';
 import {
-    coreVertexShader,
-    coreFragmentShader,
-    shockwaveVertexShader,
-    shockwaveFragmentShader,
-    emberParticleVertexShader,
-    emberParticleFragmentShader,
+    magmaBackgroundVertexShader,
+    magmaBackgroundFragmentShader,
+    rockVertexShader,
+    rockFragmentShader,
+    smokeVertexShader,
+    smokeFragmentShader,
+    emberVertexShader,
+    emberFragmentShader,
+    gpuBurstVertexShader,
+    gpuBurstFragmentShader,
 } from './cinder-drift-shaders.js';
 
 export default class CinderDriftTheme extends BaseTheme {
@@ -30,292 +31,679 @@ export default class CinderDriftTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
-        this.mainGroup = null;
-        this.cores = []; // Array of ember core objects
-        this.emberParticles = null;
-        this.shockwaves = [];
-        this.flares = [];
-
-        // Animation
-        this.animationFrame = null;
         this.clock = new THREE.Clock();
+
+        // Scene Groups
+        this.backgroundGroup = null;
+        this.rocksGroup = null;
+        this.smokeGroup = null;
+        this.embersGroup = null;
+
+        // Custom Objects
+        this.rocks = [];
+        this.flashIntensity = 0;
+
+        // Magma Explosion System
+        this.explosionGroup = null;
+        this.explosionActive = false;
+        this.explosionProgress = 0;
+        this.tendrils = [];
+        this.explosionCore = null;
+        this.splashParticles = null;
 
         // Uniforms
         this.uniforms = {
             time: { value: 0 },
-            coreIntensity: { value: 1.0 },
-            coreColorPrimary: { value: new THREE.Color(0xFF4400) },
-            coreColorSecondary: { value: new THREE.Color(0x8B0000) },
-            coreColorTertiary: { value: new THREE.Color(0xFFDD66) },
+            coreIntensity: { value: 1.0 }, // Reactive intensity
+            // Palette
+            colorPrimary: { value: new THREE.Color(0x1a0500) },   // Dark crust
+            colorSecondary: { value: new THREE.Color(0xff4400) }, // Magma
+            colorTertiary: { value: new THREE.Color(0xffcc00) },  // Bright heat
         };
-
-        // Theme palette
-        this.palette = [
-            new THREE.Color(0xFF4400),
-            new THREE.Color(0xFF6600),
-            new THREE.Color(0xFFAA00),
-            new THREE.Color(0xFF2200),
-            new THREE.Color(0xFFDD44),
-        ];
     }
 
     getTetrominoConfig() {
         return CINDER_DRIFT_TETROMINOS;
     }
 
-    getRandomThemeColor() {
-        return this.palette[Math.floor(Math.random() * this.palette.length)];
-    }
-
     async createScene() {
-        console.log('[CinderDrift] Initializing Three.js scene...');
+        console.log('[CinderDrift] Initializing Volcanic Core scene...');
 
         const container = document.getElementById('cinder-drift-theme');
-        if (!container) {
-            console.error('[CinderDrift] Container not found');
-            return;
-        }
-
+        if (!container) return;
         container.innerHTML = '';
 
-        // Scene setup
+        // 1. Setup
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x0a0400, 0.006);
 
-        // Camera
-        this.camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000
-        );
-        this.camera.position.z = 60;
+        // Camera setup for cinematic view
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.z = 40;
 
         // Renderer
         this.renderer = new THREE.WebGLRenderer({
-            alpha: true,
+            alpha: false, // Opaque background for magma
             antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setClearColor(0x080402, 1);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap pixel ratio for shader performance
         container.appendChild(this.renderer.domElement);
 
-        // Main group
-        this.mainGroup = new THREE.Group();
-        this.scene.add(this.mainGroup);
+        // 2. Create Layers
+        this.createMagmaBackground();
+        this.createVolumetricSmoke();
+        this.createEmbers();
+        // Old 3D tendril explosion removed - now using shader-based background ripple
 
-        // Create elements
-        this.createMultipleCores();
-        this.createEmberParticles();
-        this.createBackgroundEmbers();
-        this.setupLighting();
+        // 3. Post-Processing Setup (if applicable later)
+        // Ensure scene is bright enough to look good without bloom first
+        this.createBurstSystem();
 
-        // Event listeners
+        // 4. Events
         this.setupEventListeners();
         window.addEventListener('resize', this.onWindowResize.bind(this));
 
-        // Start animation
+        // 5. Start Loop
         this.animate();
-
-        console.log('[CinderDrift] Scene initialized with', this.cores.length, 'ember cores.');
     }
 
-    createMultipleCores() {
-        // Configuration for multiple cores spread across the FULL screen with wide drift
-        const coreConfigs = [
-            { size: 4.0, position: [0, 0, -5], driftSpeed: 0.06, driftRadius: 35, phase: 0 },
-            { size: 2.5, position: [40, 15, -10], driftSpeed: 0.08, driftRadius: 40, phase: 1.5 },
-            { size: 2.0, position: [-40, -15, -8], driftSpeed: 0.07, driftRadius: 38, phase: 3.0 },
-            { size: 3.0, position: [30, -20, 0], driftSpeed: 0.065, driftRadius: 32, phase: 4.5 },
-            { size: 1.8, position: [-35, 25, -5], driftSpeed: 0.09, driftRadius: 30, phase: 2.0 },
-            { size: 1.2, position: [50, -10, -15], driftSpeed: 0.10, driftRadius: 28, phase: 5.0 },
-            { size: 1.5, position: [-50, 8, -12], driftSpeed: 0.085, driftRadius: 35, phase: 0.8 },
-            { size: 2.2, position: [15, 30, -8], driftSpeed: 0.075, driftRadius: 40, phase: 3.5 },
-            { size: 1.0, position: [-25, -28, -6], driftSpeed: 0.11, driftRadius: 25, phase: 4.0 },
-        ];
+    createBurstSystem() {
+        const poolSize = 8;
+        this.burstSystemPool = [];
+        this.currentBurstIndex = 0;
 
-        const glowTexture = this.createGlowTexture();
+        const particleCount = 4000; // High count per burst for "thousands"
 
-        coreConfigs.forEach((config, index) => {
-            // Create core mesh
-            const geometry = new THREE.SphereGeometry(config.size, 48, 48);
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: this.uniforms.time,
-                    intensity: this.uniforms.coreIntensity,
-                    colorPrimary: this.uniforms.coreColorPrimary,
-                    colorSecondary: this.uniforms.coreColorSecondary,
-                    colorTertiary: this.uniforms.coreColorTertiary,
-                },
-                vertexShader: coreVertexShader,
-                fragmentShader: coreFragmentShader,
-                transparent: false,
-                side: THREE.FrontSide,
-            });
-
-            const coreMesh = new THREE.Mesh(geometry, material);
-            coreMesh.position.set(...config.position);
-
-            // Create glow sprites for this core
-            const glowScale = config.size;
-
-            // Inner glow
-            const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: 0xFFAA00,
-                transparent: true,
-                opacity: 0.85,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }));
-            innerGlow.scale.set(glowScale * 3.5, glowScale * 3.5, 1);
-            coreMesh.add(innerGlow);
-
-            // Outer glow
-            const outerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: 0xFF4400,
-                transparent: true,
-                opacity: 0.6,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }));
-            outerGlow.scale.set(glowScale * 5.5, glowScale * 5.5, 1);
-            coreMesh.add(outerGlow);
-
-            // Red halo
-            const haloGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: 0x660000,
-                transparent: true,
-                opacity: 0.35,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }));
-            haloGlow.scale.set(glowScale * 7.5, glowScale * 7.5, 1);
-            coreMesh.add(haloGlow);
-
-            // Point light for each core
-            const light = new THREE.PointLight(0xFF4400, config.size * 0.5, config.size * 15);
-            coreMesh.add(light);
-
-            // Store core data
-            this.cores.push({
-                mesh: coreMesh,
-                config,
-                glows: [innerGlow, outerGlow, haloGlow],
-                light,
-                basePosition: new THREE.Vector3(...config.position),
-            });
-
-            this.mainGroup.add(coreMesh);
-        });
-    }
-
-    createGlowTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(255, 200, 100, 1.0)');
-        gradient.addColorStop(0.2, 'rgba(255, 120, 50, 0.8)');
-        gradient.addColorStop(0.4, 'rgba(200, 50, 20, 0.4)');
-        gradient.addColorStop(0.7, 'rgba(100, 20, 10, 0.15)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 128, 128);
-
-        return new THREE.CanvasTexture(canvas);
-    }
-
-    createEmberParticles() {
-        const particleCount = 1000;
         const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(particleCount * 3);
-        const randoms = new Float32Array(particleCount);
+        const positions = new Float32Array(particleCount * 3); // Start pos (0,0,0)
+        const velocities = new Float32Array(particleCount * 3);
+        const lives = new Float32Array(particleCount);
+        const sizes = new Float32Array(particleCount);
+        const colors = new Float32Array(particleCount * 3);
 
         for (let i = 0; i < particleCount; i++) {
-            const i3 = i * 3;
+            // Initial random offset to form a "crater" or volume source
+            // This prevents them from looking like they come from a single pixel
+            const r = Math.random() * 3.0; // 3 unit radius
+            const angle = Math.random() * Math.PI * 2;
+            positions[i * 3] = r * Math.cos(angle);
+            positions[i * 3 + 1] = r * Math.sin(angle);
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 1.0; // Slight Z depth variation
 
-            // Spread across the scene
-            positions[i3] = (Math.random() - 0.5) * 40;
-            positions[i3 + 1] = (Math.random() - 0.5) * 30 - 5;
-            positions[i3 + 2] = (Math.random() - 0.5) * 30;
+            // Random direction in a cone or sphere - we'll rotate the system itself
+            // But for now, let's just make a generic explosive sphere
+            // We will customize direction via shader or rotation in triggerBurst
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+            const speed = 10 + Math.random() * 40; // High speed
 
-            randoms[i] = Math.random();
+            velocities[i * 3] = speed * Math.sin(phi) * Math.cos(theta);
+            velocities[i * 3 + 1] = speed * Math.sin(phi) * Math.sin(theta);
+            velocities[i * 3 + 2] = speed * Math.cos(phi);
+
+            lives[i] = 2.0 + Math.random() * 2.0;
+            sizes[i] = 4.0 + Math.random() * 6.0;
+
+            // Ember colors
+            const mixVal = Math.random();
+            const color = new THREE.Color().setHSL(0.05 + mixVal * 0.1, 1.0, 0.5 + mixVal * 0.3);
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+        geometry.setAttribute('life', new THREE.BufferAttribute(lives, 1));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        for (let i = 0; i < poolSize; i++) {
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uStartTime: { value: -999.0 }, // Inactive
+                    uIntensity: { value: 1.0 },
+                },
+                vertexShader: gpuBurstVertexShader,
+                fragmentShader: gpuBurstFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const points = new THREE.Points(geometry.clone(), material);
+            points.frustumCulled = false; // Always render
+            this.scene.add(points);
+
+            this.burstSystemPool.push({
+                mesh: points,
+                active: false,
+            });
+        }
+    }
+
+    triggerBurst(count, intensity = 1.0, color = null, origin = null) {
+        if (!this.burstSystemPool) return;
+
+        // Get next system in pool
+        const system = this.burstSystemPool[this.currentBurstIndex];
+        this.currentBurstIndex = (this.currentBurstIndex + 1) % this.burstSystemPool.length;
+
+        // Activate
+        system.active = true;
+        system.mesh.visible = true;
+
+        // 1. Position
+        if (origin) {
+            system.mesh.position.copy(origin);
+        } else {
+            system.mesh.position.set(0, 0, 0);
+        }
+
+        // 2. Random rotation (so small 5-particle bursts don't always look identical)
+        system.mesh.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+
+        // 3. Set Intensity (Scale size and velocity in shader)
+        system.mesh.material.uniforms.uIntensity.value = intensity;
+
+        // 4. Limit particle count (GPU optimization)
+        // Ensure count doesn't exceed buffer size (4000)
+        const safeCount = Math.min(count, 4000);
+        system.mesh.geometry.setDrawRange(0, safeCount);
+
+        // 5. Reset shader time
+        system.mesh.material.uniforms.uStartTime.value = this.uniforms.time.value;
+    }
+
+    updateBursts(delta) {
+        if (!this.burstSystemPool) return;
+        // No CPU update needed for positions (GPU handles it)
+    }
+
+    // =========================================================================
+    // SCENE GENERATION
+    // =========================================================================
+
+    createMagmaBackground() {
+        // Full screen quad for the flowing lava wall background
+        const geometry = new THREE.PlaneGeometry(400, 300);
+
+        // Explosion uniforms for ripple effect
+        this.explosionUniforms = {
+            explosionCenter: { value: new THREE.Vector2(0.5, 0.5) },
+            explosionProgress: { value: 0.0 },
+            explosionIntensity: { value: 0.0 },
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                colorPrimary: this.uniforms.colorPrimary,
+                colorSecondary: this.uniforms.colorSecondary,
+                colorTertiary: this.uniforms.colorTertiary,
+                ...this.explosionUniforms,
+            },
+            vertexShader: magmaBackgroundVertexShader,
+            fragmentShader: magmaBackgroundFragmentShader,
+            depthWrite: false,
+        });
+
+        this.magmaBackgroundMesh = new THREE.Mesh(geometry, material);
+        this.magmaBackgroundMesh.position.z = -50;
+        this.scene.add(this.magmaBackgroundMesh);
+    }
+
+    createVolcanicRocks() {
+        this.rocksGroup = new THREE.Group();
+        this.scene.add(this.rocksGroup);
+
+        // Create several detailed floating rocks
+        const rockConfigs = [
+            { size: 5.0, pos: [-25, 10, -20], rotSpeed: 0.05 },
+            { size: 3.5, pos: [28, -15, -15], rotSpeed: 0.07 },
+            { size: 2.0, pos: [0, 0, -10], rotSpeed: 0.03 }, // Center, further back
+            { size: 6.0, pos: [35, 20, -25], rotSpeed: 0.04 },
+            { size: 4.0, pos: [-30, -20, -18], rotSpeed: 0.06 },
+            // Small debris
+            { size: 1.0, pos: [-10, 25, -5], rotSpeed: 0.1 },
+            { size: 1.2, pos: [15, -28, -8], rotSpeed: 0.09 },
+        ];
+
+        // Detailed geometry for displacement
+        const baseGeometry = new THREE.IcosahedronGeometry(1, 40); // High subdivision
+
+        rockConfigs.forEach(config => {
+            const geometry = baseGeometry.clone();
+            geometry.scale(config.size, config.size, config.size);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: this.uniforms.time,
+                    baseColor: { value: new THREE.Color(0x050100) }, // Nearly black rock
+                    glowColor: this.uniforms.colorSecondary,
+                    glowIntensity: this.uniforms.coreIntensity,
+                },
+                vertexShader: rockVertexShader,
+                fragmentShader: rockFragmentShader,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(...config.pos);
+
+            // Store for animation
+            this.rocks.push({
+                mesh,
+                basePos: new THREE.Vector3(...config.pos),
+                rotSpeed: config.rotSpeed,
+                randomOffset: Math.random() * 100,
+            });
+
+            this.rocksGroup.add(mesh);
+        });
+    }
+
+    createVolumetricSmoke() {
+        const particleCount = 100;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = [];
+        const sizes = [];
+        const offsets = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            positions.push(
+                (Math.random() - 0.5) * 100, // x
+                (Math.random() - 0.5) * 60 - 20, // y (start lower)
+                (Math.random() - 0.5) * 20 + 10 // z (closer to camera)
+            );
+            sizes.push(10 + Math.random() * 20); // Large soft sprites
+            offsets.push(Math.random() * 100);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+        geometry.setAttribute('offset', new THREE.Float32BufferAttribute(offsets, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                color: { value: new THREE.Color(0x331100) }, // Dark reddish smoke
+            },
+            vertexShader: smokeVertexShader,
+            fragmentShader: smokeFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.NormalBlending, // Traditional alpha blend for smoke
+        });
+
+        this.smokeGroup = new THREE.Points(geometry, material);
+        this.scene.add(this.smokeGroup);
+    }
+
+    createEmbers() {
+        // High count instanced particles
+        const particleCount = 2000;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = [];
+        const velocities = [];
+        const lives = [];
+        const maxLives = [];
+        const offsets = [];
+        const sizes = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            // Source from everywhere
+            positions.push(
+                (Math.random() - 0.5) * 100, // x
+                (Math.random() - 0.5) * 100, // y (full screen)
+                (Math.random() - 0.5) * 40 - 10 // z
+            );
+
+            velocities.push(
+                (Math.random() - 0.5) * 0.5, // vx
+                2.0 + Math.random() * 3.0,   // vy (fast up)
+                (Math.random() - 0.5) * 0.5  // vz
+            );
+
+            lives.push(1.0);
+            maxLives.push(2.0 + Math.random() * 3.0);
+            offsets.push(Math.random() * 100);
+            sizes.push(0.5 + Math.random() * 1.5);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
+        geometry.setAttribute('life', new THREE.Float32BufferAttribute(lives, 1));
+        geometry.setAttribute('maxLife', new THREE.Float32BufferAttribute(maxLives, 1));
+        geometry.setAttribute('offset', new THREE.Float32BufferAttribute(offsets, 1));
+        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
             },
-            vertexShader: emberParticleVertexShader,
-            fragmentShader: emberParticleFragmentShader,
+            vertexShader: emberVertexShader,
+            fragmentShader: emberFragmentShader,
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending,
         });
 
-        this.emberParticles = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.emberParticles);
+        this.embersGroup = new THREE.Points(geometry, material);
+        this.scene.add(this.embersGroup);
     }
 
-    createBackgroundEmbers() {
-        const count = 500;
+    // =========================================================================
+    // 3D MAGMA EXPLOSION SYSTEM
+    // =========================================================================
+
+    createMagmaExplosion() {
+        this.explosionGroup = new THREE.Group();
+        this.explosionGroup.visible = false; // Hidden until triggered
+        this.scene.add(this.explosionGroup);
+
+        // 1. Glowing Core - Bright center sphere
+        const coreGeometry = new THREE.SphereGeometry(3, 32, 32);
+        const coreMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+                intensity: { value: 1.0 },
+            },
+            vertexShader: `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normal;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+            fragmentShader: `
+            uniform float time;
+            uniform float intensity;
+            varying vec3 vNormal;
+            void main() {
+                float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
+                vec3 hotColor = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 1.0, 0.5), fresnel);
+                float pulse = 0.8 + 0.2 * sin(time * 10.0);
+                gl_FragColor = vec4(hotColor * intensity * pulse, 1.0);
+            }
+        `,
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false,
+        });
+        this.explosionCore = new THREE.Mesh(coreGeometry, coreMaterial);
+        this.explosionGroup.add(this.explosionCore);
+
+        // 2. Lava Tendrils - Curves that shoot upward
+        this.tendrils = [];
+        const tendrilCount = 12;
+        for (let i = 0; i < tendrilCount; i++) {
+            const angle = (i / tendrilCount) * Math.PI * 2;
+            const tendril = this.createTendril(angle);
+            this.tendrils.push(tendril);
+            this.explosionGroup.add(tendril.mesh);
+        }
+
+        // 3. Splash Particles at the base
+        this.createSplashParticles();
+    }
+
+    createTendril(angle) {
+        // Each tendril is a tube following a bezier curve
+        // We'll animate this by regenerating the curve each frame
+        const tubeRadius = 0.3 + Math.random() * 0.4;
+        const radialOffset = 2 + Math.random() * 2;
+        const heightMax = 10 + Math.random() * 15;
+        const phase = Math.random() * Math.PI * 2;
+
+        // Initial curve
+        const points = this.generateTendrilPoints(angle, radialOffset, 0, heightMax, phase);
+        const curve = new THREE.CatmullRomCurve3(points);
+        const geometry = new THREE.TubeGeometry(curve, 20, tubeRadius, 8, false);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+            },
+            vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            void main() {
+                vUv = uv;
+                vPosition = position;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+            fragmentShader: `
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            uniform float time;
+            void main() {
+                // Hot core to cooler edges
+                float edge = 1.0 - abs(vUv.x - 0.5) * 2.0;
+                vec3 hotColor = vec3(1.0, 0.9, 0.3); // Yellow/White
+                vec3 coolColor = vec3(1.0, 0.2, 0.0); // Deep Red
+                vec3 crustColor = vec3(0.1, 0.05, 0.02); // Dark crust
+                
+                // Vertical gradient - hotter at base
+                float heightFade = 1.0 - vUv.y;
+                
+                vec3 col = mix(coolColor, hotColor, edge * heightFade);
+                col = mix(crustColor, col, edge); // Dark edges
+                
+                float alpha = edge * (1.0 - vUv.y * 0.5);
+                gl_FragColor = vec4(col, alpha);
+            }
+        `,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+
+        return {
+            mesh,
+            angle,
+            radialOffset,
+            heightMax,
+            tubeRadius,
+            phase,
+        };
+    }
+
+    generateTendrilPoints(angle, radialOffset, progress, heightMax, phase) {
+        // Generate bezier-like control points for the tendril
+        // Progress 0-1 controls how "extended" the tendril is
+        const points = [];
+        const segments = 5;
+        const actualHeight = heightMax * progress;
+
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const height = actualHeight * t;
+            // Outward curve that curls back at top
+            const outward = radialOffset * Math.sin(t * Math.PI) * (1 + Math.sin(phase + t * 3) * 0.3);
+            const x = Math.cos(angle) * outward;
+            const z = Math.sin(angle) * outward;
+            // Add some waviness
+            const wave = Math.sin(t * 4 + phase) * 0.5 * t;
+            points.push(new THREE.Vector3(x + wave, height - 5, z + wave));
+        }
+        return points;
+    }
+
+    createSplashParticles() {
+        const particleCount = 500;
         const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = new Float32Array(particleCount * 3);
+        const lifetimes = new Float32Array(particleCount);
+        const sizes = new Float32Array(particleCount);
 
-        const positions = new Float32Array(count * 3);
-        const colors = new Float32Array(count * 3);
+        for (let i = 0; i < particleCount; i++) {
+            // Start at center-bottom
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = -5;
+            positions[i * 3 + 2] = 0;
 
-        const emberColors = [
-            new THREE.Color(0xFF4400),
-            new THREE.Color(0xFF6600),
-            new THREE.Color(0xFFAA00),
-        ];
+            // Random outward velocity
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 5 + Math.random() * 15;
+            const upSpeed = 10 + Math.random() * 20;
+            velocities[i * 3] = Math.cos(angle) * speed;
+            velocities[i * 3 + 1] = upSpeed;
+            velocities[i * 3 + 2] = Math.sin(angle) * speed;
 
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-
-            positions[i3] = (Math.random() - 0.5) * 100;
-            positions[i3 + 1] = (Math.random() - 0.5) * 80;
-            positions[i3 + 2] = (Math.random() - 0.5) * 60 - 30;
-
-            const color = emberColors[Math.floor(Math.random() * emberColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
+            lifetimes[i] = 0; // Inactive
+            sizes[i] = 0.2 + Math.random() * 0.5;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+        geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-        const material = new THREE.PointsMaterial({
-            size: 0.15,
-            vertexColors: true,
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: this.uniforms.time,
+            },
+            vertexShader: `
+            attribute float lifetime;
+            attribute float size;
+            varying float vLife;
+            void main() {
+                vLife = lifetime;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+                gl_PointSize = size * (200.0 / -mvPosition.z) * lifetime;
+            }
+        `,
+            fragmentShader: `
+            varying float vLife;
+            void main() {
+                if (vLife <= 0.0) discard;
+                vec2 uv = gl_PointCoord - 0.5;
+                float dist = length(uv);
+                if (dist > 0.5) discard;
+                float glow = 1.0 - dist * 2.0;
+                vec3 col = mix(vec3(1.0, 0.2, 0.0), vec3(1.0, 1.0, 0.5), glow);
+                gl_FragColor = vec4(col, glow * vLife);
+            }
+        `,
             transparent: true,
-            opacity: 0.5,
+            depthWrite: false,
             blending: THREE.AdditiveBlending,
         });
 
-        const bgEmbers = new THREE.Points(geometry, material);
-        this.scene.add(bgEmbers);
-        this.backgroundEmbers = bgEmbers;
+        this.splashParticles = new THREE.Points(geometry, material);
+        this.splashParticles.frustumCulled = false;
+        this.explosionGroup.add(this.splashParticles);
     }
 
-    setupLighting() {
-        // Warm ambient
-        const ambientLight = new THREE.AmbientLight(0x200800, 0.4);
-        this.scene.add(ambientLight);
+    triggerMagmaExplosion(x = 0, y = -10) {
+        if (this.explosionActive) return; // Don't overlap explosions
+
+        this.explosionActive = true;
+        this.explosionProgress = 0;
+        this.explosionGroup.visible = true;
+        this.explosionGroup.position.set(x, y, 0);
+
+        // Reset splash particles
+        const positions = this.splashParticles.geometry.attributes.position.array;
+        const lifetimes = this.splashParticles.geometry.attributes.lifetime.array;
+        const velocities = this.splashParticles.geometry.attributes.velocity.array;
+        for (let i = 0; i < lifetimes.length; i++) {
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = 0;
+            lifetimes[i] = 1.0;
+            // Re-randomize velocity
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 5 + Math.random() * 15;
+            const upSpeed = 10 + Math.random() * 20;
+            velocities[i * 3] = Math.cos(angle) * speed;
+            velocities[i * 3 + 1] = upSpeed;
+            velocities[i * 3 + 2] = Math.sin(angle) * speed;
+        }
+        this.splashParticles.geometry.attributes.position.needsUpdate = true;
+        this.splashParticles.geometry.attributes.lifetime.needsUpdate = true;
+        this.splashParticles.geometry.attributes.velocity.needsUpdate = true;
     }
+
+    // NEW: Trigger shader-based ripple on background
+    triggerBackgroundExplosion(uvX = 0.5, uvY = 0.5) {
+        if (!this.explosionUniforms) return;
+
+        // Set explosion center in UV coords (0-1) SCALED by 1.5 to match shader
+        this.explosionUniforms.explosionCenter.value.set(uvX * 1.5, uvY * 1.5);
+        this.explosionUniforms.explosionProgress.value = 0.0;
+        this.explosionUniforms.explosionIntensity.value = 1.0;
+        this.explosionActive = true;
+    }
+
+    updateMagmaExplosion(delta) {
+        // Update 3D explosion group (old system - still running for particles)
+        if (this.explosionGroup && this.explosionGroup.visible) {
+            const explosionDuration = 2.0;
+            this.explosionProgress += delta / explosionDuration;
+
+            if (this.explosionProgress >= 1.0) {
+                this.explosionGroup.visible = false;
+            } else {
+                // Core animation
+                if (this.explosionCore) {
+                    const coreScale = Math.sin(this.explosionProgress * Math.PI) * 2;
+                    this.explosionCore.scale.set(coreScale, coreScale, coreScale);
+                    this.explosionCore.material.uniforms.intensity.value = 1.0 - this.explosionProgress * 0.5;
+                }
+
+                // Splash particles
+                if (this.splashParticles) {
+                    const positions = this.splashParticles.geometry.attributes.position.array;
+                    const velocities = this.splashParticles.geometry.attributes.velocity.array;
+                    const lifetimes = this.splashParticles.geometry.attributes.lifetime.array;
+                    const gravity = -30;
+
+                    for (let i = 0; i < lifetimes.length; i++) {
+                        if (lifetimes[i] > 0) {
+                            positions[i * 3] += velocities[i * 3] * delta;
+                            positions[i * 3 + 1] += velocities[i * 3 + 1] * delta;
+                            positions[i * 3 + 2] += velocities[i * 3 + 2] * delta;
+                            velocities[i * 3 + 1] += gravity * delta;
+                            lifetimes[i] -= delta * 0.5;
+                        }
+                    }
+                    this.splashParticles.geometry.attributes.position.needsUpdate = true;
+                    this.splashParticles.geometry.attributes.lifetime.needsUpdate = true;
+                }
+            }
+        }
+
+        // Update shader-based ripple effect on background
+        if (this.explosionUniforms && this.explosionActive) {
+            const rippleDuration = 4.0; // seconds (increased from 1.5)
+            this.explosionUniforms.explosionProgress.value += delta / rippleDuration;
+
+            if (this.explosionUniforms.explosionProgress.value >= 1.0) {
+                this.explosionActive = false;
+                this.explosionUniforms.explosionProgress.value = 0.0;
+                this.explosionUniforms.explosionIntensity.value = 0.0;
+            }
+        }
+    }
+
+    // =========================================================================
+    // ANIMATION & EVENTS
+    // =========================================================================
 
     animate() {
         if (!this.isActive) return;
@@ -323,257 +711,128 @@ export default class CinderDriftTheme extends BaseTheme {
         this.animationFrame = requestAnimationFrame(this.animate.bind(this));
 
         const delta = this.clock.getDelta();
-        const elapsedTime = this.clock.getElapsedTime();
-        this.uniforms.time.value = elapsedTime;
+        const time = this.clock.getElapsedTime();
+        this.uniforms.time.value = time;
 
-        // Slow camera orbit for parallax depth (independent of cores)
-        if (this.camera) {
-            const cameraTime = elapsedTime * 0.06; // Slow but noticeable orbit
-            const orbitRadiusX = 20; // Wide horizontal sway
-            const orbitRadiusY = 15;  // Vertical sway range
-            const orbitRadiusZ = 12;  // Depth breathing
+        // Update bursts
+        this.updateBursts(delta);
 
-            // Orbital sway - creates parallax with background embers
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
-                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
-            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
-                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
-            this.camera.position.z = 60 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+        // Update magma explosion
+        this.updateMagmaExplosion(delta);
 
-            // LookAt drift for dynamic framing
-            const lookOffsetX = Math.sin(cameraTime * 0.4) * 8;
-            const lookOffsetY = Math.cos(cameraTime * 0.5) * 6;
-            this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
-        }
-
-        // Animate each core with unique drift pattern
-        this.cores.forEach((core) => {
-            const { mesh, config, glows, light, basePosition } = core;
-            const t = elapsedTime * config.driftSpeed + config.phase;
-
-            // Lissajous curve drift pattern for organic movement
-            const driftX = Math.sin(t) * Math.cos(t * 0.7) * config.driftRadius;
-            const driftY = Math.sin(t * 0.8) * Math.cos(t * 0.5) * config.driftRadius * 0.7;
-            const driftZ = Math.cos(t * 0.6) * Math.sin(t * 0.9) * config.driftRadius * 0.5;
-
-            mesh.position.x = basePosition.x + driftX;
-            mesh.position.y = basePosition.y + driftY;
-            mesh.position.z = basePosition.z + driftZ;
-
+        // 1. Rock Animation (Drift & Bob)
+        this.rocks.forEach((rock, i) => {
             // Slow rotation
-            mesh.rotation.y = t * 0.1;
-            mesh.rotation.x = Math.sin(t * 0.3) * 0.2;
+            rock.mesh.rotation.x = time * rock.rotSpeed * 0.5;
+            rock.mesh.rotation.y = time * rock.rotSpeed;
 
-            // Pulse glow based on intensity
-            const pulseScale = 1.0 + (this.uniforms.coreIntensity.value - 1.0) * 0.3;
-            const baseScales = [config.size * 3.5, config.size * 5.5, config.size * 7.5];
-            glows.forEach((glow, i) => {
-                glow.scale.setScalar(baseScales[i] * pulseScale);
-            });
-
-            // Flicker light
-            light.intensity = config.size * 0.5 * (1 + Math.sin(elapsedTime * 5 + config.phase) * 0.2) *
-                this.uniforms.coreIntensity.value;
+            // Perlin-like gentle bobbing
+            rock.mesh.position.y = rock.basePos.y + Math.sin(time * 0.5 + rock.randomOffset) * 2.0;
+            rock.mesh.position.x = rock.basePos.x + Math.cos(time * 0.3 + rock.randomOffset) * 1.0;
         });
 
-        // Background rotation
-        if (this.backgroundEmbers) {
-            this.backgroundEmbers.rotation.y = elapsedTime * 0.015;
-            this.backgroundEmbers.rotation.x = elapsedTime * 0.003;
-        }
+        // 2. Camera Shake / Drift
+        const intensity = this.uniforms.coreIntensity.value - 1.0; // 0 at base
+        const shakeX = (Math.random() - 0.5) * intensity * 0.2;
+        const shakeY = (Math.random() - 0.5) * intensity * 0.2;
 
-        // Intensity decay
+        // Gentle cinematic orbit
+        this.camera.position.x = Math.sin(time * 0.1) * 5 + shakeX;
+        this.camera.position.y = Math.cos(time * 0.15) * 3 + shakeY;
+        this.camera.lookAt(0, 0, 0);
+
+        // 3. Intensity Decay
         if (this.uniforms.coreIntensity.value > 1.0) {
-            this.uniforms.coreIntensity.value = THREE.MathUtils.lerp(
-                this.uniforms.coreIntensity.value,
-                1.0,
-                delta * 1.5
-            );
+            this.uniforms.coreIntensity.value -= delta * 0.5;
+            if (this.uniforms.coreIntensity.value < 1.0) this.uniforms.coreIntensity.value = 1.0;
         }
 
-        // Update effects
-        this.updateShockwaves(delta);
-        this.updateFlares(delta);
+        // 4. Flash Decay
+        if (this.flashIntensity > 0) {
+            this.flashIntensity -= delta * 3.0; // Fast fade
+            if (this.flashIntensity < 0) this.flashIntensity = 0;
+
+            // Add flash to tertiary color (brightens magma)
+            this.uniforms.colorTertiary.value.setHSL(
+                0.12,
+                1.0,
+                0.5 + this.flashIntensity * 0.5
+            );
+        } else {
+            this.uniforms.colorTertiary.value.setHex(0xffcc00); // Reset
+        }
 
         this.renderer.render(this.scene, this.camera);
     }
 
-    updateShockwaves(delta) {
-        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-            const wave = this.shockwaves[i];
-            wave.scale.addScalar(wave.userData.speed * delta);
-            wave.userData.life -= delta;
-
-            if (wave.material.uniforms) {
-                wave.material.uniforms.opacity.value = wave.userData.life / wave.userData.maxLife;
-            }
-
-            if (wave.userData.life <= 0) {
-                this.mainGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
-                this.shockwaves.splice(i, 1);
-            }
-        }
-    }
-
-    createShockwave(coreIndex = 0) {
-        const core = this.cores[coreIndex] || this.cores[0];
-        if (!core) return;
-
-        const geometry = new THREE.TorusGeometry(core.config.size * 1.2, 0.1, 8, 50);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                opacity: { value: 1.0 },
-                color: { value: this.getRandomThemeColor() },
-            },
-            vertexShader: shockwaveVertexShader,
-            fragmentShader: shockwaveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.position.copy(core.mesh.position);
-        wave.rotation.x = Math.random() * Math.PI;
-        wave.rotation.y = Math.random() * Math.PI;
-
-        wave.userData = {
-            speed: 5.0,
-            life: 0.8,
-            maxLife: 0.8,
-        };
-
-        this.mainGroup.add(wave);
-        this.shockwaves.push(wave);
-    }
-
-    createFlare(coreIndex = 0) {
-        const core = this.cores[coreIndex] || this.cores[0];
-        if (!core) return;
-
-        const particleCount = 20;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = [];
-
-        const angle = Math.random() * Math.PI * 2;
-        const dirX = Math.cos(angle);
-        const dirY = Math.sin(angle);
-
-        for (let i = 0; i < particleCount; i++) {
-            positions[i * 3] = core.mesh.position.x + dirX * core.config.size;
-            positions[i * 3 + 1] = core.mesh.position.y + dirY * core.config.size;
-            positions[i * 3 + 2] = core.mesh.position.z + (Math.random() - 0.5);
-
-            const speed = 5.0 + Math.random() * 8.0;
-            velocities.push({
-                x: dirX * speed + (Math.random() - 0.5) * 2,
-                y: dirY * speed + (Math.random() - 0.5) * 2,
-                z: (Math.random() - 0.5) * 2,
-            });
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-        const material = new THREE.PointsMaterial({
-            color: this.getRandomThemeColor(),
-            size: 0.4,
-            transparent: true,
-            opacity: 1.0,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const flare = new THREE.Points(geometry, material);
-        flare.userData = {
-            velocities,
-            life: 0.6,
-            maxLife: 0.6,
-        };
-
-        this.mainGroup.add(flare);
-        this.flares.push(flare);
-    }
-
-    updateFlares(delta) {
-        for (let i = this.flares.length - 1; i >= 0; i--) {
-            const flare = this.flares[i];
-            const positions = flare.geometry.attributes.position.array;
-            const velocities = flare.userData.velocities;
-
-            flare.userData.life -= delta;
-
-            for (let j = 0; j < velocities.length; j++) {
-                positions[j * 3] += velocities[j].x * delta;
-                positions[j * 3 + 1] += velocities[j].y * delta;
-                positions[j * 3 + 2] += velocities[j].z * delta;
-            }
-            flare.geometry.attributes.position.needsUpdate = true;
-
-            flare.material.opacity = flare.userData.life / flare.userData.maxLife;
-
-            if (flare.userData.life <= 0) {
-                this.mainGroup.remove(flare);
-                flare.geometry.dispose();
-                flare.material.dispose();
-                this.flares.splice(i, 1);
-            }
-        }
-    }
-
     setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onLineClear(data.lineCount || data.lines || 1);
-            }
-        });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+                if (!this.isActive) return;
+                const count = data.lines || 1;
+                this.triggerSurge(count);
+                this.triggerBurst(20 * count, 1.0, new THREE.Color(0xff4400));
+            }),
+            eventBus.on(EVENTS.COMBO, (data) => {
+                if (!this.isActive) return;
+                const combo = data.combo || 1;
+                this.triggerSurge(combo * 1.5);
 
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onCombo(data.comboCount || data.combo || 1);
-            }
-        });
+                // Random location for the explosion - CONSTRAINED TO VISIBLE AREA
+                // Camera sees roughly 45% of the width and 35% of the height
+                // So UVs should be centered around 0.5 within that range
+                const visibleRangeX = 0.4; // 0.3 to 0.7
+                const visibleRangeY = 0.35; // 0.325 to 0.675
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onPieceLock();
-            }
-        });
+                const u = 0.5 + (Math.random() - 0.5) * visibleRangeX;
+                const v = 0.5 + (Math.random() - 0.5) * visibleRangeY;
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+                // Shader-based ripple on background!
+                this.triggerBackgroundExplosion(u, v);
+
+                // Calculate 3D position from UV to match visual explosion location
+                // Plane is 400x300 at z = -50
+                const worldX = (u - 0.5) * 400;
+                const worldY = (v - 0.5) * 300;
+                const explosionPos = new THREE.Vector3(worldX, worldY, -49); // Align closely with wall (-50) to fix parallax
+
+                // "Much glowing particles" for combo - SHOOTING AT CAMERA
+                // Scale up count significantly now that we limit draw range
+                this.triggerBurst(4000 * combo, 2.0, new THREE.Color(0xffcc00), explosionPos);
+            }),
+            eventBus.on(EVENTS.PIECE_LOCK, () => {
+                if (!this.isActive) return;
+                this.triggerMiniPulse();
+
+                // Random position for piece lock puff
+                const visibleRangeX = 0.4;
+                const visibleRangeY = 0.35;
+                const u = 0.5 + (Math.random() - 0.5) * visibleRangeX;
+                const v = 0.5 + (Math.random() - 0.5) * visibleRangeY;
+
+                const worldX = (u - 0.5) * 400;
+                const worldY = (v - 0.5) * 300;
+                const puffPos = new THREE.Vector3(worldX, worldY, -49);
+
+                this.triggerBurst(100, 0.5, new THREE.Color(0xff8800), puffPos);
+            })
+        );
     }
 
-    onLineClear(count) {
-        this.uniforms.coreIntensity.value += count * 0.4;
-        // Trigger shockwaves from random cores
-        const numWaves = Math.min(count, this.cores.length);
-        for (let i = 0; i < numWaves; i++) {
-            const coreIndex = Math.floor(Math.random() * this.cores.length);
-            setTimeout(() => this.createShockwave(coreIndex), i * 100);
-        }
+    triggerSurge(strength) {
+        // Boost glow intensity
+        this.uniforms.coreIntensity.value += strength * 0.5;
+        this.flashIntensity = 1.0; // Flash effect
+
+        // Maybe spawn shockwave? (Not implemented in V2 yet, relies on shader intensity)
     }
 
-    onCombo(count) {
-        if (count > 1) {
-            this.uniforms.coreIntensity.value += 0.3;
-            this.createShockwave(Math.floor(Math.random() * this.cores.length));
-        }
-    }
-
-    onPieceLock() {
+    triggerMiniPulse() {
         this.uniforms.coreIntensity.value += 0.1;
-        const coreIndex = Math.floor(Math.random() * this.cores.length);
-        this.createFlare(coreIndex);
     }
 
     onWindowResize() {
         if (!this.camera || !this.renderer) return;
-
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -581,7 +840,6 @@ export default class CinderDriftTheme extends BaseTheme {
 
     resize(width, height) {
         if (!this.camera || !this.renderer) return;
-
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
@@ -589,32 +847,14 @@ export default class CinderDriftTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
-
-        this.eventUnsubscribers.forEach((u) => u());
-        this.eventUnsubscribers = [];
-
         super.stop();
+        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers = [];
     }
 
     cleanup() {
         this.stop();
-
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-        }
-
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
-            });
-        }
+        if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
 
         if (this.renderer) {
             this.renderer.dispose();
@@ -624,13 +864,16 @@ export default class CinderDriftTheme extends BaseTheme {
             }
         }
 
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null;
-        this.cores = [];
+        // Clean scene
+        if (this.scene) {
+            this.scene.traverse(obj => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) obj.material.dispose();
+            });
+        }
 
-        super.cleanup();
+        this.scene = null;
+        this.renderer = null;
         console.log('[CinderDrift] Cleanup complete');
     }
 }

@@ -32,7 +32,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 1,
-        name: 'First Light',
+        name: 'Ashen Dawn',
         chapter: 1,
         chapterLevel: 1,
         isChapterStart: true,
@@ -40,7 +40,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.000,
 
         theme: {
-            primary: 'crystal-cave',
+            primary: 'cinder-drift',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 2000,
@@ -94,7 +94,7 @@ export const LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Begin your ascent from the crystal depths. A gentle introduction to the journey.',
+            description: 'Begin your ascent through the drifting embers. A gentle introduction.',
             difficulty: 1,
             estimatedTime: 120,
             tip: 'Focus on building flat stacks for efficient clears.',
@@ -103,7 +103,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 2,
-        name: 'Ember Cascade',
+        name: 'Crystal Cascade',
         chapter: 1,
         chapterLevel: 2,
         isChapterStart: false,
@@ -111,7 +111,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.019,
 
         theme: {
-            primary: 'cinder-drift',
+            primary: 'crystal-cave',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
