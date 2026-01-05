@@ -324,7 +324,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.074,
 
         theme: {
-            primary: 'shifting-sands',
+            primary: 'bioluminescence',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
@@ -388,15 +388,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 6,
-        name: 'Pressure Point',
-        chapter: 1,
-        chapterLevel: 6,
-        isChapterStart: false,
+        name: 'Seismic Surge',
+        chapter: 2,
+        chapterLevel: 1,
+        isChapterStart: true,
         isChapterEnd: false,
         pathPosition: 0.093,
 
         theme: {
-            primary: 'cosmic-noir',
+            primary: 'ocean',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2000,
@@ -459,15 +459,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 7,
-        name: 'Seismic Surge',
-        chapter: 1,
-        chapterLevel: 7,
+        name: 'Sunken Depths',
+        chapter: 2,
+        chapterLevel: 2,
         isChapterStart: false,
-        isChapterEnd: true,
+        isChapterEnd: false,
         pathPosition: 0.111,
 
         theme: {
-            primary: 'bioluminescence',
+            primary: 'luminous-tides',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 3000,
@@ -531,15 +531,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 8,
-        name: 'Sunken Depths',
+        name: 'Luminous Tides',
         chapter: 2,
-        chapterLevel: 1,
-        isChapterStart: true,
+        chapterLevel: 3,
+        isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.130,
 
         theme: {
-            primary: 'ocean',
+            primary: 'koi-pond',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 4000,
@@ -602,15 +602,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 9,
-        name: 'Luminous Tides',
+        name: 'Stillwater Sanctuary',
         chapter: 2,
-        chapterLevel: 2,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.148,
 
         theme: {
-            primary: 'luminous-tides',
+            primary: 'waves',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -673,15 +673,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 10,
-        name: 'Stillwater Sanctuary',
+        name: 'Koi Dreams',
         chapter: 2,
-        chapterLevel: 3,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.167,
 
         theme: {
-            primary: 'stillwater',
+            primary: 'misty-lake',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -745,15 +745,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 11,
-        name: 'Koi Dreams',
+        name: 'Wave Runner',
         chapter: 2,
-        chapterLevel: 4,
+        chapterLevel: 6,
         isChapterStart: false,
-        isChapterEnd: false,
+        isChapterEnd: true,
         pathPosition: 0.185,
 
         theme: {
-            primary: 'koi-pond',
+            primary: 'stillwater',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -817,15 +817,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 12,
-        name: 'Wave Runner',
-        chapter: 2,
-        chapterLevel: 5,
-        isChapterStart: false,
+        name: 'Forest Awakening',
+        chapter: 3,
+        chapterLevel: 1,
+        isChapterStart: true,
         isChapterEnd: false,
         pathPosition: 0.204,
 
         theme: {
-            primary: 'waves',
+            primary: 'forest',
             overlays: ['luminous-tides'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -889,9 +889,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 13,
-        name: 'Forest Awakening',
-        chapter: 2,
-        chapterLevel: 6,
+        name: 'Spring Bloom',
+        chapter: 3,
+        chapterLevel: 2,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.222,
@@ -960,15 +960,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 14,
-        name: 'Spring Bloom',
-        chapter: 2,
-        chapterLevel: 7,
+        name: 'Meadow Dance',
+        chapter: 3,
+        chapterLevel: 3,
         isChapterStart: false,
-        isChapterEnd: true,
+        isChapterEnd: false,
         pathPosition: 0.241,
 
         theme: {
-            primary: 'forest',
+            primary: 'swedish-forest',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1032,15 +1032,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 15,
-        name: 'Meadow Dance',
+        name: 'Summer Heat',
         chapter: 3,
-        chapterLevel: 1,
-        isChapterStart: true,
+        chapterLevel: 4,
+        isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.259,
 
         theme: {
-            primary: 'misty-lake',
+            primary: 'moonlit-greenhouse',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1103,15 +1103,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 16,
-        name: 'Summer Heat',
+        name: 'Fall Harvest',
         chapter: 3,
-        chapterLevel: 2,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.278,
 
         theme: {
-            primary: 'moonlit-greenhouse',
+            primary: 'spring',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
@@ -1174,15 +1174,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 17,
-        name: 'Fall Harvest',
+        name: 'Sakura Twilight',
         chapter: 3,
-        chapterLevel: 3,
+        chapterLevel: 6,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.296,
 
         theme: {
-            primary: 'spring',
+            primary: 'summer',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1246,15 +1246,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 18,
-        name: 'Sakura Twilight',
+        name: 'Verdant Heights',
         chapter: 3,
-        chapterLevel: 4,
+        chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.315,
 
         theme: {
-            primary: 'summer',
+            primary: 'fall',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1318,9 +1318,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 19,
-        name: 'Verdant Heights',
+        name: 'Sunset Ascension',
         chapter: 3,
-        chapterLevel: 5,
+        chapterLevel: 8,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.333,
@@ -1390,9 +1390,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 20,
-        name: 'Sunset Ascension',
+        name: 'Mountain Base',
         chapter: 3,
-        chapterLevel: 6,
+        chapterLevel: 9,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.352,
@@ -1463,15 +1463,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 21,
-        name: 'Mountain Base',
+        name: 'Himalayan Dawn',
         chapter: 3,
-        chapterLevel: 7,
+        chapterLevel: 10,
         isChapterStart: false,
-        isChapterEnd: false,
+        isChapterEnd: true,
         pathPosition: 0.370,
 
         theme: {
-            primary: 'ice-temple',
+            primary: 'verdant-hills',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 4000,
@@ -1534,15 +1534,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 22,
-        name: 'Himalayan Dawn',
-        chapter: 3,
-        chapterLevel: 8,
-        isChapterStart: false,
-        isChapterEnd: true,
+        name: 'Aurora Borealis',
+        chapter: 4,
+        chapterLevel: 1,
+        isChapterStart: true,
+        isChapterEnd: false,
         pathPosition: 0.389,
 
         theme: {
-            primary: 'nimbus-veil',
+            primary: 'aurora',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1605,22 +1605,22 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 23,
-        name: 'Ice Temple',
+        name: 'Alpine Night',
         chapter: 4,
-        chapterLevel: 1,
-        isChapterStart: true,
+        chapterLevel: 2,
+        isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.407,
 
         theme: {
-            primary: 'aurora',
+            primary: 'wolfhour',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
 
         mechanics: {
-            baseMode: 'infinity',
+            baseMode: 'standard',
 
             board: {
                 columns: 10,
@@ -1676,18 +1676,18 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 24,
-        name: 'Winter Storm',
+        name: 'Everest Ascent',
         chapter: 4,
-        chapterLevel: 2,
+        chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.426,
 
         theme: {
-            primary: 'wolfhour',
+            primary: 'himalayan-peak',
             overlays: [],
             transitionIn: 'crossfade',
-            transitionDuration: 2500,
+            transitionDuration: 3500,
         },
 
         mechanics: {
@@ -1747,18 +1747,18 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 25,
-        name: 'Moonlit Forest',
+        name: 'Wolfhour',
         chapter: 4,
-        chapterLevel: 3,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.444,
 
         theme: {
-            primary: 'himalayan-peak',
+            primary: 'mountain',
             overlays: [],
-            transitionIn: 'crossfade',
-            transitionDuration: 3500,
+            transitionIn: 'warp',
+            transitionDuration: 4000,
         },
 
         mechanics: {
@@ -1819,15 +1819,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 26,
-        name: 'Wolfhour',
+        name: 'Moonrise Summit',
         chapter: 4,
-        chapterLevel: 4,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.463,
 
         theme: {
-            primary: 'starlight',
+            primary: 'winter',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1891,15 +1891,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 27,
-        name: 'Moonrise Summit',
+        name: 'Peak Transcendence',
         chapter: 4,
-        chapterLevel: 5,
+        chapterLevel: 6,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.481,
 
         theme: {
-            primary: 'mountain',
+            primary: 'moonrise-summit',
             overlays: ['winter'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1963,15 +1963,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 28,
-        name: 'Peak Transcendence',
+        name: 'Cloud Walker',
         chapter: 4,
-        chapterLevel: 6,
+        chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.500,
 
         theme: {
-            primary: 'winter',
+            primary: 'sunset',
             overlays: ['ice-temple', 'moonrise-summit'],
             transitionIn: 'warp',
             transitionDuration: 4500,
@@ -2036,15 +2036,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 29,
-        name: 'Cloud Walker',
+        name: 'Aurora Dreams',
         chapter: 4,
-        chapterLevel: 7,
+        chapterLevel: 8,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.519,
 
         theme: {
-            primary: 'moonrise-summit',
+            primary: 'starlight',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 4500,
@@ -2107,15 +2107,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 30,
-        name: 'Aurora Dreams',
+        name: 'Starlight Path',
         chapter: 4,
-        chapterLevel: 8,
+        chapterLevel: 9,
         isChapterStart: false,
         isChapterEnd: true,
         pathPosition: 0.537,
 
         theme: {
-            primary: 'sunset',
+            primary: 'ice-temple',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -2179,7 +2179,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 31,
-        name: 'Starlight Path',
+        name: 'Rainy Window',
         chapter: 5,
         chapterLevel: 1,
         isChapterStart: true,
@@ -2187,7 +2187,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.556,
 
         theme: {
-            primary: 'aether-tides',
+            primary: 'nimbus-veil',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2250,7 +2250,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 32,
-        name: 'Rainy Window',
+        name: 'Storm Surge',
         chapter: 5,
         chapterLevel: 2,
         isChapterStart: false,
@@ -2259,78 +2259,6 @@ export const LEVEL_CONFIGS = [
 
         theme: {
             primary: 'rainy-window',
-            overlays: [],
-            transitionIn: 'crossfade',
-            transitionDuration: 3000,
-        },
-
-        mechanics: {
-            baseMode: 'standard',
-
-            board: {
-                columns: 10,
-                rows: 20,
-                startingRows: 0,
-            },
-
-            speed: {
-                startLevel: 6,
-                levelProgression: false,
-                fixedDropInterval: 700,
-            },
-
-            pieces: {
-                bagType: '7-bag',
-                customSequence: null,
-                holdEnabled: true,
-                previewCount: 6,
-            },
-        },
-
-        victory: {
-            primary: {
-                type: 'lines',
-                target: 60,
-            },
-            failure: {
-                type: 'top-out',
-                value: null,
-            },
-            bonuses: [
-                { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
-            ],
-        },
-
-        modifiers: {
-            active: [],
-        },
-
-        stars: {
-            one: { lines: 60 },
-            two: { lines: 60, tetrises: 8 },
-            three: { lines: 60, tetrises: 12, bonuses: 2 },
-        },
-
-        metadata: {
-            description: 'Watch the rain fall. A meditative challenge of patience and precision.',
-            difficulty: 6,
-            estimatedTime: 240,
-            tip: 'Like raindrops, let pieces fall into place naturally.',
-        },
-    },
-
-    {
-        id: 33,
-        name: 'Storm Surge',
-        chapter: 5,
-        chapterLevel: 3,
-        isChapterStart: false,
-        isChapterEnd: false,
-        pathPosition: 0.593,
-
-        theme: {
-            primary: 'galaxy',
             overlays: ['rainy-window'],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
@@ -2392,16 +2320,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 34,
+        id: 33,
         name: 'Ethereal Heights',
         chapter: 5,
-        chapterLevel: 4,
+        chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.611,
+        pathPosition: 0.593,
 
         theme: {
-            primary: 'solar-eclipse',
+            primary: 'aether-tides',
             overlays: ['nimbus-veil'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2464,16 +2392,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 35,
+        id: 34,
         name: 'Cosmic Threshold',
         chapter: 5,
-        chapterLevel: 5,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.630,
+        pathPosition: 0.611,
 
         theme: {
-            primary: 'verdant-hills',
+            primary: 'solar-eclipse',
             overlays: ['aurora'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2536,16 +2464,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 36,
+        id: 35,
         name: 'Atmosphere\'s End',
         chapter: 5,
-        chapterLevel: 6,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: true,
-        pathPosition: 0.648,
+        pathPosition: 0.630,
 
         theme: {
-            primary: 'fall',
+            primary: 'lunara',
             overlays: ['starlight', 'nimbus-veil'],
             transitionIn: 'warp',
             transitionDuration: 5000,
@@ -2609,16 +2537,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 37,
+        id: 36,
         name: 'Galaxy Core',
         chapter: 6,
         chapterLevel: 1,
         isChapterStart: true,
         isChapterEnd: false,
-        pathPosition: 0.667,
+        pathPosition: 0.648,
 
         theme: {
-            primary: 'supernova',
+            primary: 'galaxy',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -2681,16 +2609,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 38,
+        id: 37,
         name: 'Astral Weave',
         chapter: 6,
         chapterLevel: 2,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.685,
+        pathPosition: 0.667,
 
         theme: {
-            primary: 'astral-weave',
+            primary: 'cosmic-noir',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2752,16 +2680,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 39,
+        id: 38,
         name: 'Lunar Eclipse',
         chapter: 6,
         chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.704,
+        pathPosition: 0.685,
 
         theme: {
-            primary: 'blood-moon',
+            primary: 'supernova',
             overlays: ['blood-moon'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -2823,16 +2751,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 40,
+        id: 39,
         name: 'Solar Eclipse',
         chapter: 6,
         chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.722,
+        pathPosition: 0.704,
 
         theme: {
-            primary: 'lunara',
+            primary: 'blood-moon',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2895,6 +2823,78 @@ export const LEVEL_CONFIGS = [
     },
 
     {
+        id: 40,
+        name: 'Supernova',
+        chapter: 6,
+        chapterLevel: 5,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.722,
+
+        theme: {
+            primary: 'astral-weave',
+            overlays: [],
+            transitionIn: 'crossfade',
+            transitionDuration: 3000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+
+            board: {
+                columns: 10,
+                rows: 20,
+                startingRows: 0,
+            },
+
+            speed: {
+                startLevel: 11,
+                levelProgression: true,
+                fixedDropInterval: null,
+            },
+
+            pieces: {
+                bagType: '7-bag',
+                customSequence: null,
+                holdEnabled: true,
+                previewCount: 4,
+            },
+        },
+
+        victory: {
+            primary: {
+                type: 'score',
+                target: 80000,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
+                { type: 'combo', target: 8, description: 'Reach 8x combo' },
+            ],
+        },
+
+        modifiers: {
+            active: ['combo-multiplier'],
+        },
+
+        stars: {
+            one: { score: 80000 },
+            two: { score: 120000, tetrises: 10 },
+            three: { score: 180000, tetrises: 15, combo: 10 },
+        },
+
+        metadata: {
+            description: 'A dying star explodes. Capture the energy in your score.',
+            difficulty: 10,
+            estimatedTime: 240,
+            tip: 'The supernova energy fuels your combo multiplier.',
+        },
+    },
+
+    {
         id: 41,
         name: 'Supernova',
         chapter: 6,
@@ -2904,7 +2904,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.741,
 
         theme: {
-            primary: 'stellar-drift',
+            primary: 'astral-weave',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -2968,87 +2968,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 42,
-        name: 'Cosmic Velocity',
+        name: 'Event Horizon',
         chapter: 6,
-        chapterLevel: 6,
+        chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.759,
 
         theme: {
             primary: 'stellar-velocity',
-            overlays: ['galaxy'],
-            transitionIn: 'crossfade',
-            transitionDuration: 3000,
-        },
-
-        mechanics: {
-            baseMode: 'infinity',
-
-            board: {
-                columns: 10,
-                rows: 30,
-                startingRows: 14,
-            },
-
-            speed: {
-                startLevel: 10,
-                levelProgression: false,
-                fixedDropInterval: 450,
-            },
-
-            pieces: {
-                bagType: '7-bag',
-                customSequence: null,
-                holdEnabled: true,
-                previewCount: 5,
-            },
-        },
-
-        victory: {
-            primary: {
-                type: 'cascade',
-                target: 20,
-            },
-            failure: {
-                type: 'top-out',
-                value: null,
-            },
-            bonuses: [
-                { type: 'max-cascade-depth', target: 8, description: 'Trigger an 8+ chain' },
-                { type: 'combo', target: 12, description: 'Reach 12x combo' },
-            ],
-        },
-
-        modifiers: {
-            active: ['gravity-cascade', 'combo-multiplier'],
-        },
-
-        stars: {
-            one: { cascades: 20 },
-            two: { cascades: 20, maxCascadeDepth: 7 },
-            three: { cascades: 25, maxCascadeDepth: 10, combo: 15 },
-        },
-
-        metadata: {
-            description: 'Accelerate to cosmic velocity. Master cascades at light speed.',
-            difficulty: 9,
-            estimatedTime: 270,
-            tip: 'The extra-tall board allows incredible cascade chains.',
-        },
-    },
-
-    {
-        id: 43,
-        name: 'Event Horizon',
-        chapter: 6,
-        chapterLevel: 7,
-        isChapterStart: false,
-        isChapterEnd: false,
-        pathPosition: 0.778,
-
-        theme: {
-            primary: 'cosmic-chimes',
             overlays: ['galaxy', 'stellar-velocity'],
             transitionIn: 'warp',
             transitionDuration: 5000,
@@ -3112,16 +3040,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 44,
+        id: 43,
         name: 'Singularity Gate',
         chapter: 6,
         chapterLevel: 8,
         isChapterStart: false,
-        isChapterEnd: true,
-        pathPosition: 0.796,
+        isChapterEnd: false,
+        pathPosition: 0.778,
 
         theme: {
-            primary: 'black-hole',
+            primary: 'cosmic-chimes',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 5000,
@@ -3183,16 +3111,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 45,
-        name: 'Nebula Flow',
-        chapter: 7,
-        chapterLevel: 1,
-        isChapterStart: true,
-        isChapterEnd: false,
-        pathPosition: 0.815,
+        id: 44,
+        name: 'The Singularity',
+        chapter: 6,
+        chapterLevel: 9,
+        isChapterStart: false,
+        isChapterEnd: true,
+        pathPosition: 0.796,
 
         theme: {
-            primary: 'fluid-dreams',
+            primary: 'black-hole',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -3254,16 +3182,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 46,
+        id: 45,
         name: 'Fluid Dreams',
         chapter: 7,
-        chapterLevel: 2,
-        isChapterStart: false,
+        chapterLevel: 1,
+        isChapterStart: true,
         isChapterEnd: false,
-        pathPosition: 0.833,
+        pathPosition: 0.815,
 
         theme: {
-            primary: 'nebula-flow',
+            primary: 'fluid-dreams',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -3326,16 +3254,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 47,
-        name: 'Chromatic Void',
+        id: 46,
+        name: 'Nebula Flow',
         chapter: 7,
-        chapterLevel: 3,
+        chapterLevel: 2,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.852,
+        pathPosition: 0.833,
 
         theme: {
-            primary: 'chromadelic-highway',
+            primary: 'nebula-flow',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -3398,16 +3326,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 48,
-        name: 'Electric Dreams',
+        id: 47,
+        name: 'Chromadelic Highway',
         chapter: 7,
-        chapterLevel: 4,
+        chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.870,
+        pathPosition: 0.852,
 
         theme: {
-            primary: 'voltage-storm',
+            primary: 'chromadelic-highway',
             overlays: ['voltage-storm'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -3469,16 +3397,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 49,
-        name: 'Chromadelic Highway',
+        id: 48,
+        name: 'Voltage Storm',
         chapter: 7,
-        chapterLevel: 5,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.889,
+        pathPosition: 0.870,
 
         theme: {
-            primary: 'chromatic-impasto',
+            primary: 'voltage-storm',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -3541,16 +3469,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 50,
-        name: 'Voltage Storm',
+        id: 49,
+        name: 'Chromatic Impasto',
         chapter: 7,
-        chapterLevel: 6,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.907,
+        pathPosition: 0.889,
 
         theme: {
-            primary: 'electric-dreams',
+            primary: 'chromatic-impasto',
             overlays: ['electric-dreams'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -3613,8 +3541,79 @@ export const LEVEL_CONFIGS = [
     },
 
     {
+        id: 50,
+        name: 'Electric Dreams',
+        chapter: 7,
+        chapterLevel: 6,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.907,
+
+        theme: {
+            primary: 'electric-dreams',
+            overlays: ['black-hole', 'nebula-flow', 'fluid-dreams'],
+            transitionIn: 'warp',
+            transitionDuration: 6000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+
+            board: {
+                columns: 10,
+                rows: 20,
+                startingRows: 8,
+            },
+
+            speed: {
+                startLevel: 13,
+                levelProgression: false,
+                fixedDropInterval: 400,
+            },
+
+            pieces: {
+                bagType: '7-bag',
+                customSequence: null,
+                holdEnabled: true,
+                previewCount: 3,
+            },
+        },
+
+        victory: {
+            primary: {
+                type: 'lines',
+                target: 40,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'time', target: 90, description: 'Complete in under 90 seconds' },
+            ],
+        },
+
+        modifiers: {
+            active: ['gravity-cascade', 'combo-multiplier'],
+        },
+
+        stars: {
+            one: { lines: 40 },
+            two: { lines: 40, time: 120 },
+            three: { lines: 40, time: 75 },
+        },
+
+        metadata: {
+            description: 'Electricity crackles through the void. Speed through the static.',
+            difficulty: 9,
+            estimatedTime: 120,
+            tip: 'Lightning fast reflexes required - trust your muscle memory.',
+        },
+    },
+
+    {
         id: 51,
-        name: 'Transcendence',
+        name: 'Singularity Void',
         chapter: 7,
         chapterLevel: 7,
         isChapterStart: false,
@@ -3623,7 +3622,7 @@ export const LEVEL_CONFIGS = [
 
         theme: {
             primary: 'singing-bowl',
-            overlays: ['black-hole', 'nebula-flow', 'fluid-dreams'],
+            overlays: ['electric-dreams', 'black-hole'],
             transitionIn: 'warp',
             transitionDuration: 6000,
         },
@@ -3679,7 +3678,7 @@ export const LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The final challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
+            description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
             difficulty: 10,
             estimatedTime: 420,
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
@@ -3688,7 +3687,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 52,
-        name: 'Midnight Rain',
+        name: 'Neon Dunes',
         chapter: 8,
         chapterLevel: 1,
         isChapterStart: true,
@@ -3696,7 +3695,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.944,
 
         theme: {
-            primary: 'swedish-forest',
+            primary: 'shifting-sands',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 2000,
