@@ -20,6 +20,11 @@
     "path": "./assets/music/Cherry Blossom Garden.mp3"
   },
   {
+    "name": "Cinder Drift",
+    "file": "Cinder Drift.mp3",
+    "path": "./assets/music/Cinder Drift.mp3"
+  },
+  {
     "name": "Cosmic Chimes",
     "file": "Cosmic Chimes.mp3",
     "path": "./assets/music/Cosmic Chimes.mp3"
