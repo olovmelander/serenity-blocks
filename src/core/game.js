@@ -177,6 +177,11 @@ export class GameState {
         this.isProcessingPhysics = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
 
+        // Victory Lap System (Journey Mode)
+        this.goalComplete = false;      // True when primary goal is met
+        this.victoryLapActive = false;  // True when in victory lap phase
+        this.victoryLapStartTime = null; // Timestamp when victory lap began
+
         // Input
         this.inputQueue = null;
 

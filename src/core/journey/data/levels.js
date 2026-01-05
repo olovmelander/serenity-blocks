@@ -159,8 +159,11 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Complete the goal (trigger 3 separate cascades)
             one: { cascades: 3 },
-            two: { cascades: 3, maxCascadeDepth: 2 },
+            // 2 stars: 4 cascades + achieve a 2-deep chain (use victory lap to get extra cascade)
+            two: { cascades: 4, maxCascadeDepth: 2 },
+            // 3 stars: 5 cascades + achieve a 3-deep chain (master cascade setup in victory lap)
             three: { cascades: 5, maxCascadeDepth: 3 },
         },
 
@@ -168,7 +171,7 @@ export const LEVEL_CONFIGS = [
             description: 'Learn the power of cascading clears. Watch blocks fall and chain together.',
             difficulty: 2,
             estimatedTime: 180,
-            tip: 'Build towers with gaps that will collapse when cleared.',
+            tip: 'Build towers with gaps - when you clear a line, blocks above will fall and may trigger chain reactions! Keep playing after goal for more stars.',
         },
     },
 
