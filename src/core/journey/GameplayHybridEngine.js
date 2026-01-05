@@ -122,9 +122,14 @@ export class GameplayHybridEngine {
         };
 
         // Wrap cascade tracking
+        // IMPORTANT: Only count cascade SEQUENCES (one per piece placement that causes cascades)
+        // not cascade WAVES (each step within a chain). cascadeCount=2 means first wave of a sequence.
         const originalTriggerCascadeWave = modifiedCallbacks.triggerCascadeWave;
         modifiedCallbacks.triggerCascadeWave = (cascadeCount, ...args) => {
-            this.victoryEvaluator.onCascade(cascadeCount);
+            // Only increment cascade count on first wave (cascadeCount === 2)
+            // but always track max depth for bonus objectives
+            const isNewSequence = cascadeCount === 2;
+            this.victoryEvaluator.onCascade(cascadeCount, isNewSequence);
             originalTriggerCascadeWave?.(cascadeCount, ...args);
         };
 

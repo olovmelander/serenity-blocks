@@ -73,7 +73,7 @@ export function drawGrid(ctx, width, height, cols = COLS, rows = ROWS) {
  */
 export function drawBlock(ctx, x, y, blockSize, color, isGhost = false, isCurrent = false) {
     if (isGhost) {
-    // Ghost piece - semi-transparent fill with pulsating effect
+        // Ghost piece - semi-transparent fill with pulsating effect
         const time = Date.now() / 1000;
         const pulse = 0.5 + 0.5 * Math.sin(time * 2 + (x + y) * 0.1);
         const alpha = 0.1 + 0.25 * pulse;
@@ -81,7 +81,7 @@ export function drawBlock(ctx, x, y, blockSize, color, isGhost = false, isCurren
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.fillRect(x, y, blockSize, blockSize);
     } else {
-    // Solid block - no internal borders
+        // Solid block - no internal borders
         ctx.fillStyle = color || '#808080';
         ctx.fillRect(x, y, blockSize, blockSize);
     }
@@ -103,7 +103,7 @@ export function drawBlock(ctx, x, y, blockSize, color, isGhost = false, isCurren
  */
 export function drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost = false, alpha = 1.0) {
     if (isGhost) {
-    // Ghost pieces always use simple rendering for clarity
+        // Ghost pieces always use simple rendering for clarity
         const time = Date.now() / 1000;
         const pulse = 0.5 + 0.5 * Math.sin(time * 2 + (x + y) * 0.1);
         const ghostAlpha = 0.1 + 0.25 * pulse;
@@ -122,16 +122,16 @@ export function drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost = fal
 
     // Route to appropriate rendering function based on mode
     switch (renderMode) {
-    case 'glow':
-        drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
-        break;
-    case 'gradient':
-        drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
-        break;
-    case 'solid':
-    default:
-        drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
-        break;
+        case 'glow':
+            drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
+            break;
+        case 'gradient':
+            drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
+            break;
+        case 'solid':
+        default:
+            drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
+            break;
     }
 }
 
@@ -214,7 +214,7 @@ function drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha) {
         const centerY = y + blockSize / 2;
         gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, blockSize / 2);
     } else {
-    // Linear gradient
+        // Linear gradient
         gradient = ctx.createLinearGradient(x, y, x + blockSize, y + blockSize);
     }
 
@@ -225,7 +225,7 @@ function drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha) {
             gradient.addColorStop(stop.offset, stopColor);
         });
     } else {
-    // Default gradient if none specified
+        // Default gradient if none specified
         const lightColor = computeOutlineColor(color, 'lighten');
         gradient.addColorStop(0, lightColor);
         gradient.addColorStop(1, color);
@@ -663,7 +663,7 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
             gradient = ctx.createLinearGradient(gx1, gy1, gx2, gy2);
         }
         effects.gradientStops.forEach((stop) => {
-            const stopColor = stop.color === 'base' ? color : stop.color;
+            const stopColor = computeStopColor(color, stop.color, stop.opacity || 1);
             gradient.addColorStop(stop.offset, stopColor);
         });
         ctx.fillStyle = gradient;

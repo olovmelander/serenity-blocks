@@ -7,54 +7,61 @@
 export const CINDER_DRIFT_TETROMINOS = {
     version: 1,
 
+    // "Molten" Palette - Rich, deep, hot colors
+    // "Molten" Palette - Strict Heat Spectrum (No Neons)
     colors: {
-        I: '#ff6b35', // Ember Orange
-        O: '#ffa500', // Bright Ember
-        T: '#8B4513', // Charred Brown
-        S: '#D2691E', // Burnt Orange
-        Z: '#CD5C5C', // Smoldering Red
-        J: '#696969', // Ash Gray
-        L: '#FF4500', // Hot Ember
-        GARBAGE: '#1a1614', // Charcoal
+        I: '#fff5e6', // White Hot (hottest)
+        O: '#ffcc00', // Gold
+        T: '#800020', // Burgundy (cooling)
+        S: '#cccc00', // Dull Sulfur
+        Z: '#cc3300', // Red Clay
+        J: '#4a0404', // Dark Slag
+        L: '#ff8800', // Bright Ember
+        GARBAGE: '#333333', // Basalt
     },
 
-    renderMode: 'glow',
+    renderMode: 'gradient',
 
     effects: {
-        glowRadius: 18,
-        glowIntensity: 0.9,
+        // Molten Core look
+        gradientType: 'radial',
+        gradientStops: [
+            { offset: 0, color: 'lighten', opacity: 1 },  // Hot center
+            { offset: 1, color: 'base', opacity: 1 }      // Base color edge
+        ],
+
+        // Heat Haze Glow
+        glowRadius: 15, // Tighter glow
+        glowIntensity: 1.2,
         glowColor: 'auto',
 
         outline: true,
-        outlineWidth: 2.5,
-        outlineColor: '#2a1810', // Dark ember outline
+        outlineWidth: 1.0, // Thin crisp edge
+        outlineColor: 'lighten', // Glowing edge
 
         pulse: true,
-        pulseSpeed: 0.15, // Slow ember pulse
-        pulseAmplitude: 0.3,
+        pulseSpeed: 0.5,
+        pulseAmplitude: 0.15, // Subtle breathing
 
-        shimmer: true,
+        shimmer: true, // Heat shimmer
         shimmerSpeed: 0.2,
-        shimmerIntensity: 0.4,
+        shimmerIntensity: 0.3,
 
         trails: true,
         trailLength: 0.3,
-        trailOpacity: 0.5,
+        trailOpacity: 0.4,
 
-        // Theme specific
         emberGlow: true,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 14,
-            glowIntensity: 0.8,
-            outlineWidth: 2.0,
+            glowRadius: 12,
+            outlineWidth: 1.5,
         },
         phaser: {
-            glowRadius: 22,
-            glowIntensity: 1.1,
-            outlineWidth: 3.0,
+            glowRadius: 20,
+            outlineWidth: 2.0,
         },
     },
 };

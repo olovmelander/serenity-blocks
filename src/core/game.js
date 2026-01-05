@@ -162,7 +162,7 @@ export class GameState {
         this.score = 0;
         this.lines = 0;
         this.level = 1;
-        this.linesUntilNextLevel = 10;
+        this.linesUntilNextLevel = 15; // Quadra: 15 lines per level
 
         // Timing
         this.dropInterval = LEVEL_SPEEDS[0];
@@ -176,6 +176,11 @@ export class GameState {
         this.isPaused = false;
         this.isProcessingPhysics = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
+
+        // Victory Lap System (Journey Mode)
+        this.goalComplete = false;      // True when primary goal is met
+        this.victoryLapActive = false;  // True when in victory lap phase
+        this.victoryLapStartTime = null; // Timestamp when victory lap began
 
         // Input
         this.inputQueue = null;
@@ -248,7 +253,7 @@ export class GameState {
         this.score = 0;
         this.lines = 0;
         this.level = 1;
-        this.linesUntilNextLevel = 10;
+        this.linesUntilNextLevel = 15; // Quadra: 15 lines per level
         this.dropInterval = LEVEL_SPEEDS[0];
         this.dropCounter = 0;
         this.piecesPlaced = 0;
@@ -346,6 +351,9 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
 
     gameState.currentPiece = piece;
     invalidateGhostCache(gameState);
+
+    // Track when piece spawned for Quadra time-based lock bonus
+    gameState.pieceSpawnTime = performance.now();
 
     // Reset drop counter for new piece (CRITICAL for gravity!)
     gameState.dropCounter = 0;
@@ -475,7 +483,7 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks) {
         gameState.currentPiece.y + 1,
     )) {
         gameState.currentPiece.y++;
-        gameState.score += gameState.level;
+        // Quadra: No points for soft drop - only line clears and time-based lock bonus
         gameState.dropCounter = 0;
         invalidateGhostCache(gameState);
         return true;
@@ -509,7 +517,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
         distance++;
     }
 
-    gameState.score += distance * 2 * gameState.level;
+    // Quadra: No points for hard drop distance - only line clears and time-based lock bonus
     lockPiece(gameState, playDropCallback, physicsCallbacks);
 }
 
@@ -524,6 +532,16 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
 
     // Store piece reference before nulling for ripple effect
     const lockedPiece = gameState.currentPiece;
+
+    // Quadra-style time-based lock bonus: max(0, 100-frames)/2
+    // Faster piece placements earn more points (up to 50 for instant lock)
+    // One frame ≈ 16.67ms at 60fps
+    if (gameState.pieceSpawnTime) {
+        const timeHeldMs = performance.now() - gameState.pieceSpawnTime;
+        const framesElapsed = timeHeldMs / 16.67;
+        const lockBonus = Math.max(0, Math.floor((100 - framesElapsed) / 2));
+        gameState.score += lockBonus;
+    }
 
     if (playDropCallback) playDropCallback();
 

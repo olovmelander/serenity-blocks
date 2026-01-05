@@ -10,10 +10,10 @@ export const CHAPTER_CONFIGS = [
         id: 1,
         name: 'Earth Core & Subterranean Origins',
         subtitle: 'Begin your ascent',
-        levelRange: [1, 7],
+        levelRange: [1, 5],
 
         themes: {
-            primary: ['crystal-cave', 'cinder-drift', 'geode', 'pyrestorm', 'shifting-sands', 'cosmic-noir', 'bioluminescence'],
+            primary: ['crystal-cave', 'cinder-drift', 'geode', 'pyrestorm', 'bioluminescence'],
             supporting: [],
         },
 
@@ -42,10 +42,10 @@ export const CHAPTER_CONFIGS = [
         id: 2,
         name: 'Deep Ocean & Liquid Worlds',
         subtitle: 'Descend into the deep',
-        levelRange: [8, 14],
+        levelRange: [6, 11],
 
         themes: {
-            primary: ['ocean', 'luminous-tides', 'stillwater', 'koi-pond', 'waves', 'moonlit-forest', 'forest'],
+            primary: ['ocean', 'luminous-tides', 'stillwater', 'koi-pond', 'waves', 'misty-lake'],
             supporting: [],
         },
 
@@ -77,10 +77,10 @@ export const CHAPTER_CONFIGS = [
         id: 3,
         name: 'Surface World & Living Landscapes',
         subtitle: 'Embrace the light',
-        levelRange: [15, 22],
+        levelRange: [12, 21],
 
         themes: {
-            primary: ['misty-lake', 'moonlit-greenhouse', 'spring', 'summer', 'meadow', 'sakura-twilight', 'ice-temple', 'nimbus-veil'],
+            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'spring', 'summer', 'fall', 'meadow', 'sakura-twilight', 'verdant-hills'],
             supporting: [],
         },
 
@@ -112,10 +112,10 @@ export const CHAPTER_CONFIGS = [
         id: 4,
         name: 'Mountains & Thin-Air Ascension',
         subtitle: 'Scale the heights',
-        levelRange: [23, 30],
+        levelRange: [22, 30],
 
         themes: {
-            primary: ['aurora', 'wolfhour', 'himalayan-peak', 'starlight', 'mountain', 'winter', 'moonrise-summit', 'sunset'],
+            primary: ['aurora', 'wolfhour', 'himalayan-peak', 'mountain', 'winter', 'moonrise-summit', 'sunset', 'starlight', 'ice-temple'],
             supporting: [],
         },
 
@@ -147,10 +147,10 @@ export const CHAPTER_CONFIGS = [
         id: 5,
         name: 'Sky & Atmospheric Drift',
         subtitle: 'Float among clouds',
-        levelRange: [31, 36],
+        levelRange: [31, 35],
 
         themes: {
-            primary: ['aether-tides', 'rainy-window', 'galaxy', 'solar-eclipse', 'verdant-hills', 'fall'],
+            primary: ['nimbus-veil', 'rainy-window', 'aether-tides', 'solar-eclipse', 'lunara'],
             supporting: [],
         },
 
@@ -182,10 +182,10 @@ export const CHAPTER_CONFIGS = [
         id: 6,
         name: 'Space & Cosmic Expanse',
         subtitle: 'Journey through stars',
-        levelRange: [37, 44],
+        levelRange: [36, 44],
 
         themes: {
-            primary: ['supernova', 'astral-weave', 'blood-moon', 'lunara', 'stellar-drift', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
+            primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-drift', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
             supporting: [],
         },
 
@@ -255,7 +255,7 @@ export const CHAPTER_CONFIGS = [
         levelRange: [52, 55],
 
         themes: {
-            primary: ['swedish-forest', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
+            primary: ['shifting-sands', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
             supporting: [],
         },
 

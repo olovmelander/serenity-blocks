@@ -1234,6 +1234,11 @@ class SerenityBlocks {
         if (!this.soundManager) {
             this.soundManager = new SoundManager();
         }
+        // Sync volume settings immediately after creation/loading
+        if (this.soundManager) {
+            this.soundManager.setMusicVolume(currentSettings.musicVolume);
+            this.soundManager.setSFXVolume(currentSettings.sfxVolume);
+        }
         if (!Array.isArray(this.soundManager.songsData) || this.soundManager.songsData.length === 0) {
             await this.soundManager.initializeTracks();
         } else {
