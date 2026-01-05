@@ -88,16 +88,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 20 lines
             one: { lines: 20 },
+            // 2 stars: Clear 20 lines in under 3 minutes
             two: { lines: 20, time: 180 },
+            // 3 stars: Clear 20 lines fast + avoid single-line clears (use victory lap for extras)
             three: { lines: 20, time: 90, bonuses: 1 },
         },
 
         metadata: {
-            description: 'Begin your ascent through the drifting embers. A gentle introduction.',
+            description: 'Clear 20 lines to complete your first level! A gentle introduction to the journey.',
             difficulty: 1,
             estimatedTime: 120,
-            tip: 'Focus on building flat stacks for efficient clears.',
+            tip: 'Build flat stacks and clear multiple lines at once. Clearing 2+ lines is more efficient than singles! Keep playing after goal for more stars.',
         },
     },
 
@@ -233,16 +236,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 4 cascades
             one: { cascades: 4 },
+            // 2 stars: 4 cascades + achieve a 2-deep chain
             two: { cascades: 4, maxCascadeDepth: 2 },
-            three: { cascades: 6, maxCascadeDepth: 3 },
+            // 3 stars: 5 cascades + 3-deep chain (use victory lap for extra cascade)
+            three: { cascades: 5, maxCascadeDepth: 3 },
         },
 
         metadata: {
-            description: 'Reach the glowing heart of the geode. Use cascades to trigger chain reactions!',
+            description: 'Trigger 4 cascades in the crystal geode! A cascade happens when falling blocks clear more lines.',
             difficulty: 2,
             estimatedTime: 150,
-            tip: 'Build stacks with gaps - when you clear a line, blocks above will fall and trigger more clears!',
+            tip: 'Build tall stacks with gaps underneath. Clear the bottom line and watch the cascade chain! Keep playing after goal for more stars.',
         },
     },
 
@@ -304,16 +310,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 30 lines before time runs out
             one: { lines: 30 },
+            // 2 stars: Clear 30 lines with 30+ seconds remaining
             two: { lines: 30, time: 150 },
+            // 3 stars: Clear 30 lines in under 90 seconds (fast!)
             three: { lines: 30, time: 90 },
         },
 
         metadata: {
-            description: 'Race against the rising magma. Clear lines before time runs out!',
+            description: 'TIME ATTACK! Clear 30 lines before the 3-minute timer runs out.',
             difficulty: 3,
             estimatedTime: 120,
-            tip: 'Speed over perfection - just keep clearing lines!',
+            tip: 'This is your first time attack level! Speed matters more than perfection - keep clearing lines to beat the clock.',
         },
     },
 
@@ -376,16 +385,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 40 lines
             one: { lines: 40 },
+            // 2 stars: Clear 40 lines + trigger 2 cascades
             two: { lines: 40, cascades: 2 },
-            three: { lines: 40, cascades: 5, bonuses: 2 },
+            // 3 stars: Clear 40 lines + 4 cascades + both bonuses (use victory lap)
+            three: { lines: 40, cascades: 4, bonuses: 2 },
         },
 
         metadata: {
-            description: 'Navigate through crystalline formations. Use cascades to clear efficiently.',
+            description: 'Clear 40 lines in the crystal cavern! Cascades are active - falling blocks can trigger more clears.',
             difficulty: 4,
             estimatedTime: 200,
-            tip: 'The starting blocks create cascade opportunities. Use them wisely.',
+            tip: 'This level combines line clearing with cascades. The 6 starting rows create cascade opportunities - use them! Keep playing after goal for more stars.',
         },
     },
 
@@ -1453,7 +1465,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 35000 },
             two: { score: 50000, cascades: 8 },
-            three: { score: 70000, cascades: 12, tetrises: 10, time: 180 },
+            three: { score: 70000, cascades: 12, tetrises: 10 },
         },
 
         metadata: {
@@ -1522,16 +1534,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 10 cascades
             one: { cascades: 10 },
+            // 2 star: 10 cascades + achieve a 3-deep chain
             two: { cascades: 10, maxCascadeDepth: 3 },
-            three: { cascades: 15, maxCascadeDepth: 5 },
+            // 3 stars: 12 cascades + 4-deep chain (use victory lap for 2 extra cascades)
+            three: { cascades: 12, maxCascadeDepth: 4 },
         },
 
         metadata: {
-            description: 'Begin the mountain climb on a taller board. Build upward for epic cascades!',
-            difficulty: 5,
+            description: 'Chapter finale! Trigger 10 cascades on the tall 40-row board.',
+            difficulty: 7,
             estimatedTime: 180,
-            tip: 'The 40-row board gives you more room to build tall towers.',
+            tip: 'Build tall towers with gaps - the 40-row board gives space for epic chain reactions! Keep playing after goal for more stars.',
         },
     },
 
@@ -1879,16 +1894,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 30 lines
             one: { lines: 30 },
+            // 2 stars: Clear 30 lines in under 2 minutes
             two: { lines: 30, time: 120 },
-            three: { lines: 30, time: 75, tetrises: 5 },
+            // 3 stars: Clear 30 lines in 90s + 4 tetrises (more achievable with starting garbage)
+            three: { lines: 30, time: 90, tetrises: 4 },
         },
 
         metadata: {
-            description: 'The darkest hour before dawn. Dig out from danger under pressure.',
+            description: 'Clear 30 lines starting from a half-filled board! Dig out fast.',
             difficulty: 8,
             estimatedTime: 120,
-            tip: 'Half the board is filled - work fast to survive!',
+            tip: 'Half the board is garbage - clear it quickly and build for Tetrises. Keep playing after goal for more stars!',
         },
     },
 
@@ -2026,7 +2044,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 50000 },
             two: { score: 70000, cascades: 10 },
-            three: { score: 100000, cascades: 15, tetrises: 12, time: 180 },
+            three: { score: 100000, cascades: 15, tetrises: 12 },
         },
 
         metadata: {
@@ -2453,16 +2471,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 18 cascades
             one: { cascades: 18 },
-            two: { cascades: 18, maxCascadeDepth: 6 },
-            three: { cascades: 22, maxCascadeDepth: 8, combo: 12 },
+            // 2 stars: 18 cascades + 5-deep chain
+            two: { cascades: 18, maxCascadeDepth: 5 },
+            // 3 stars: 20 cascades + 6-deep chain + 8x combo (use victory lap)
+            three: { cascades: 20, maxCascadeDepth: 6, combo: 8 },
         },
 
         metadata: {
-            description: 'Stand at the threshold of space. Master cascades at the edge of atmosphere.',
+            description: 'Trigger 18 cascades at the edge of space. Build tall for chain reactions!',
             difficulty: 9,
             estimatedTime: 260,
-            tip: 'The tall board enables massive chain reactions. Build upward!',
+            tip: 'The 30-row board with 12 starting rows creates cascade opportunities. Build upward! Keep playing after goal for more stars.',
         },
     },
 
@@ -2528,7 +2549,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 60000 },
             two: { score: 85000, cascades: 12 },
-            three: { score: 120000, cascades: 18, tetrises: 15, time: 180 },
+            three: { score: 120000, cascades: 18, tetrises: 15 },
         },
 
         metadata: {
@@ -2740,16 +2761,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 35 lines
             one: { lines: 35 },
+            // 2 stars: Clear 35 lines in under 2 minutes
             two: { lines: 35, time: 120 },
-            three: { lines: 35, time: 75 },
+            // 3 stars: Clear 35 lines in 90s (adjusted from 75s - more achievable with garbage + fast speed)
+            three: { lines: 35, time: 90 },
         },
 
         metadata: {
-            description: 'Play under the blood moon\'s shadow. The eclipse tests your speed.',
+            description: 'Clear 35 lines under the blood moon! 8 rows of garbage and fast drops.',
             difficulty: 8,
             estimatedTime: 120,
-            tip: 'Clear garbage fast - the eclipse won\'t wait!',
+            tip: 'Fast 450ms drops with garbage - work quickly but stay calm. Every line counts!',
         },
     },
 
@@ -2899,9 +2923,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 41,
-        name: 'Supernova',
+        name: 'Stellar Shockwave',
         chapter: 6,
-        chapterLevel: 5,
+        chapterLevel: 6,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.741,
@@ -2946,8 +2970,8 @@ export const LEVEL_CONFIGS = [
                 value: 180,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
-                { type: 'time', target: 120, description: 'Complete in under 2 minutes' },
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
+                { type: 'time', target: 140, description: 'Finish with 40+ seconds left' },
             ],
         },
 
@@ -2956,16 +2980,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 60 lines before time runs out
             one: { lines: 60 },
-            two: { lines: 60, tetrises: 10 },
-            three: { lines: 60, tetrises: 15, time: 100 },
+            // 2 stars: Clear 60 lines + get 8 tetrises (efficient clearing)
+            two: { lines: 60, tetrises: 8 },
+            // 3 stars: Clear 60 lines + 12 tetrises + finish fast (use victory lap for extras)
+            three: { lines: 60, tetrises: 12, time: 120 },
         },
 
         metadata: {
-            description: 'A star explodes! Race the expanding shockwave at maximum intensity.',
+            description: 'Race the expanding shockwave! Clear 60 lines before time runs out.',
             difficulty: 9,
             estimatedTime: 150,
-            tip: 'The supernova accelerates everything - stay focused!',
+            tip: 'Speed is critical - use Tetrises (4-line clears) for maximum efficiency. Keep playing after goal for more stars!',
         },
     },
 
@@ -3031,7 +3058,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 80000 },
             two: { score: 120000, cascades: 15 },
-            three: { score: 180000, cascades: 22, tetrises: 18, time: 180 },
+            three: { score: 180000, cascades: 22, tetrises: 18 },
         },
 
         metadata: {
@@ -3171,16 +3198,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 18 cascades
             one: { cascades: 18 },
-            two: { cascades: 18, maxCascadeDepth: 7 },
-            three: { cascades: 22, maxCascadeDepth: 9 },
+            // 2 stars: 18 cascades + 6-deep chain
+            two: { cascades: 18, maxCascadeDepth: 6 },
+            // 3 stars: 20 cascades + 7-deep chain (use victory lap for 2 extra)
+            three: { cascades: 20, maxCascadeDepth: 7 },
         },
 
         metadata: {
-            description: 'Flow through cosmic nebulae. Create cascading rivers of star-stuff.',
+            description: 'Chapter 6 finale! Trigger 18 cascades at the singularity.',
             difficulty: 9,
             estimatedTime: 240,
-            tip: 'Let the nebula guide your cascades - flow with it.',
+            tip: 'The 28-row board is your canvas for massive chain reactions. Build tall and let gravity do the work! Keep playing after goal for more stars.',
         },
     },
 
@@ -3386,16 +3416,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 40 lines
             one: { lines: 40 },
+            // 2 stars: Clear 40 lines in under 2 minutes
             two: { lines: 40, time: 120 },
-            three: { lines: 40, time: 75 },
+            // 3 stars: Clear 40 lines in 100s (adjusted from 75s - more realistic at 400ms drops)
+            three: { lines: 40, time: 100 },
         },
 
         metadata: {
-            description: 'Electricity crackles through the void. Speed through the static.',
+            description: 'Clear 40 lines on the chromadelic highway! Ultra-fast 400ms drops.',
             difficulty: 9,
             estimatedTime: 120,
-            tip: 'Lightning fast reflexes required - trust your muscle memory.',
+            tip: 'At level 13 speed with 400ms drops, trust your reflexes. Fast but clean stacking wins!',
         },
     },
 
@@ -3458,16 +3491,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 25 cascades
             one: { cascades: 25 },
-            two: { cascades: 25, maxCascadeDepth: 9 },
-            three: { cascades: 30, maxCascadeDepth: 12, combo: 18 },
+            // 2 stars: 25 cascades + 7-deep chain
+            two: { cascades: 25, maxCascadeDepth: 7 },
+            // 3 stars: 27 cascades + 8-deep chain + 10x combo (challenging but achievable)
+            three: { cascades: 27, maxCascadeDepth: 8, combo: 10 },
         },
 
         metadata: {
-            description: 'Race down the chromadelic highway. Master cascades in psychedelic space.',
+            description: 'Harness the voltage! Trigger 25 cascades on the massive 32-row storm board.',
             difficulty: 10,
             estimatedTime: 300,
-            tip: 'The tallest board yet - create legendary cascade chains!',
+            tip: 'With 16 starting rows and 32 total rows, this board is built for epic cascades. Build strategically! Keep playing after goal for more stars.',
         },
     },
 
@@ -3601,16 +3637,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 40 lines
             one: { lines: 40 },
+            // 2 stars: Clear 40 lines in under 2 minutes
             two: { lines: 40, time: 120 },
-            three: { lines: 40, time: 75 },
+            // 3 stars: Clear 40 lines in 100s (adjusted - with cascade physics this is more achievable)
+            three: { lines: 40, time: 100 },
         },
 
         metadata: {
-            description: 'Electricity crackles through the void. Speed through the static.',
+            description: 'Clear 40 lines in an electric dreamscape! Cascades and combos active.',
             difficulty: 9,
             estimatedTime: 120,
-            tip: 'Lightning fast reflexes required - trust your muscle memory.',
+            tip: 'Gravity cascades are active - use them to chain clears for faster progress!',
         },
     },
 
