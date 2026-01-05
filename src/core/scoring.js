@@ -1,11 +1,65 @@
 // =================================================================================
 // SCORING - Score calculation and level progression for Serenity Blocks
+// Implements Quadra-style scoring system
 // =================================================================================
 
-import { SCORE_VALUES, LEVEL_SPEEDS } from './constants.js';
+import { SCORE_VALUES, LEVEL_SPEEDS, QUADRA_SCORING } from './constants.js';
 
 /**
- * Calculate score for line clears
+ * Calculate Quadra-style score for line clears
+ * Implements the complete Quadra scoring formula:
+ * - Base score: 250/500/1000/2000 (or 200*depth² for >4 lines)
+ * - Cascade bonus: 200 * (complexity-1)²
+ * - Perfect clear bonus: depth*1250 (or depth²*500 for >4)
+ * - Level multiplier: +10% per level (additive)
+ * 
+ * @param {number} linesCleared - Number of lines cleared (depth)
+ * @param {number} level - Current game level
+ * @param {number} complexity - Cascade count (1 = first clear, 2+ = cascades)
+ * @param {boolean} isPerfectClear - True if board is now empty
+ * @returns {number} Total points earned
+ */
+export function calculateQuadraLineScore(linesCleared, level, complexity = 1, isPerfectClear = false) {
+    if (linesCleared <= 0) return 0;
+
+    // Base score from SCORE_VALUES or quadratic for >4 lines
+    let baseScore;
+    if (linesCleared <= 4) {
+        baseScore = SCORE_VALUES[linesCleared] || 0;
+    } else {
+        // Quadra uses 200 * depth² for mega-clears (>4 lines)
+        baseScore = 200 * linesCleared * linesCleared;
+    }
+
+    // Cascade/complexity bonus: 200 * (complexity-1)²
+    // complexity=1 means first clear (no cascade bonus)
+    // complexity=2+ means cascades occurred
+    const cascadeBonus = QUADRA_SCORING.CASCADE_BASE * Math.pow(Math.max(0, complexity - 1), 2);
+
+    // Perfect clear bonus (board is now empty)
+    let perfectBonus = 0;
+    if (isPerfectClear) {
+        if (linesCleared <= 4) {
+            perfectBonus = linesCleared * QUADRA_SCORING.PERFECT_CLEAR_BASE;
+        } else {
+            perfectBonus = linesCleared * linesCleared * QUADRA_SCORING.PERFECT_CLEAR_LARGE;
+        }
+    }
+
+    // Subtotal before level multiplier
+    const subtotal = baseScore + cascadeBonus + perfectBonus;
+
+    // Level multiplier: +10% per level (additive, Quadra-style)
+    // Formula: subtotal + (subtotal * 0.1 * level)
+    // This is different from modern Tetris which uses subtotal * level
+    const levelBonus = Math.floor(subtotal * QUADRA_SCORING.LEVEL_MULTIPLIER * level);
+
+    return subtotal + levelBonus;
+}
+
+/**
+ * Calculate score for line clears (legacy wrapper)
+ * @deprecated Use calculateQuadraLineScore for full Quadra scoring
  * @param {number} linesCleared - Number of lines cleared (1-4)
  * @param {number} currentLevel - Current game level
  * @returns {number} Points earned

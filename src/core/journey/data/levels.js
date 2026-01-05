@@ -32,7 +32,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 1,
-        name: 'First Light',
+        name: 'Ashen Dawn',
         chapter: 1,
         chapterLevel: 1,
         isChapterStart: true,
@@ -40,7 +40,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.000,
 
         theme: {
-            primary: 'crystal-cave',
+            primary: 'cinder-drift',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 2000,
@@ -88,22 +88,25 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 20 lines
             one: { lines: 20 },
+            // 2 stars: Clear 20 lines in under 3 minutes
             two: { lines: 20, time: 180 },
+            // 3 stars: Clear 20 lines fast + avoid single-line clears (use victory lap for extras)
             three: { lines: 20, time: 90, bonuses: 1 },
         },
 
         metadata: {
-            description: 'Begin your ascent from the crystal depths. A gentle introduction to the journey.',
+            description: 'Clear 20 lines to complete your first level! A gentle introduction to the journey.',
             difficulty: 1,
             estimatedTime: 120,
-            tip: 'Focus on building flat stacks for efficient clears.',
+            tip: 'Build flat stacks and clear multiple lines at once. Clearing 2+ lines is more efficient than singles! Keep playing after goal for more stars.',
         },
     },
 
     {
         id: 2,
-        name: 'Ember Cascade',
+        name: 'Crystal Cascade',
         chapter: 1,
         chapterLevel: 2,
         isChapterStart: false,
@@ -111,7 +114,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.019,
 
         theme: {
-            primary: 'cinder-drift',
+            primary: 'crystal-cave',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -159,8 +162,11 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Complete the goal (trigger 3 separate cascades)
             one: { cascades: 3 },
-            two: { cascades: 3, maxCascadeDepth: 2 },
+            // 2 stars: 4 cascades + achieve a 2-deep chain (use victory lap to get extra cascade)
+            two: { cascades: 4, maxCascadeDepth: 2 },
+            // 3 stars: 5 cascades + achieve a 3-deep chain (master cascade setup in victory lap)
             three: { cascades: 5, maxCascadeDepth: 3 },
         },
 
@@ -168,7 +174,7 @@ export const LEVEL_CONFIGS = [
             description: 'Learn the power of cascading clears. Watch blocks fall and chain together.',
             difficulty: 2,
             estimatedTime: 180,
-            tip: 'Build towers with gaps that will collapse when cleared.',
+            tip: 'Build towers with gaps - when you clear a line, blocks above will fall and may trigger chain reactions! Keep playing after goal for more stars.',
         },
     },
 
@@ -230,16 +236,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 4 cascades
             one: { cascades: 4 },
+            // 2 stars: 4 cascades + achieve a 2-deep chain
             two: { cascades: 4, maxCascadeDepth: 2 },
-            three: { cascades: 6, maxCascadeDepth: 3 },
+            // 3 stars: 5 cascades + 3-deep chain (use victory lap for extra cascade)
+            three: { cascades: 5, maxCascadeDepth: 3 },
         },
 
         metadata: {
-            description: 'Reach the glowing heart of the geode. Use cascades to trigger chain reactions!',
+            description: 'Trigger 4 cascades in the crystal geode! A cascade happens when falling blocks clear more lines.',
             difficulty: 2,
             estimatedTime: 150,
-            tip: 'Build stacks with gaps - when you clear a line, blocks above will fall and trigger more clears!',
+            tip: 'Build tall stacks with gaps underneath. Clear the bottom line and watch the cascade chain! Keep playing after goal for more stars.',
         },
     },
 
@@ -301,16 +310,19 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 30 lines before time runs out
             one: { lines: 30 },
+            // 2 stars: Clear 30 lines with 30+ seconds remaining
             two: { lines: 30, time: 150 },
+            // 3 stars: Clear 30 lines in under 90 seconds (fast!)
             three: { lines: 30, time: 90 },
         },
 
         metadata: {
-            description: 'Race against the rising magma. Clear lines before time runs out!',
+            description: 'TIME ATTACK! Clear 30 lines before the 3-minute timer runs out.',
             difficulty: 3,
             estimatedTime: 120,
-            tip: 'Speed over perfection - just keep clearing lines!',
+            tip: 'This is your first time attack level! Speed matters more than perfection - keep clearing lines to beat the clock.',
         },
     },
 
@@ -324,7 +336,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.074,
 
         theme: {
-            primary: 'shifting-sands',
+            primary: 'bioluminescence',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
@@ -373,30 +385,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 40 lines
             one: { lines: 40 },
+            // 2 stars: Clear 40 lines + trigger 2 cascades
             two: { lines: 40, cascades: 2 },
-            three: { lines: 40, cascades: 5, bonuses: 2 },
+            // 3 stars: Clear 40 lines + 4 cascades + both bonuses (use victory lap)
+            three: { lines: 40, cascades: 4, bonuses: 2 },
         },
 
         metadata: {
-            description: 'Navigate through crystalline formations. Use cascades to clear efficiently.',
+            description: 'Clear 40 lines in the crystal cavern! Cascades are active - falling blocks can trigger more clears.',
             difficulty: 4,
             estimatedTime: 200,
-            tip: 'The starting blocks create cascade opportunities. Use them wisely.',
+            tip: 'This level combines line clearing with cascades. The 6 starting rows create cascade opportunities - use them! Keep playing after goal for more stars.',
         },
     },
 
     {
         id: 6,
-        name: 'Pressure Point',
-        chapter: 1,
-        chapterLevel: 6,
-        isChapterStart: false,
+        name: 'Seismic Surge',
+        chapter: 2,
+        chapterLevel: 1,
+        isChapterStart: true,
         isChapterEnd: false,
         pathPosition: 0.093,
 
         theme: {
-            primary: 'cosmic-noir',
+            primary: 'ocean',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2000,
@@ -459,15 +474,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 7,
-        name: 'Seismic Surge',
-        chapter: 1,
-        chapterLevel: 7,
+        name: 'Sunken Depths',
+        chapter: 2,
+        chapterLevel: 2,
         isChapterStart: false,
-        isChapterEnd: true,
+        isChapterEnd: false,
         pathPosition: 0.111,
 
         theme: {
-            primary: 'bioluminescence',
+            primary: 'luminous-tides',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 3000,
@@ -531,15 +546,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 8,
-        name: 'Sunken Depths',
+        name: 'Luminous Tides',
         chapter: 2,
-        chapterLevel: 1,
-        isChapterStart: true,
+        chapterLevel: 3,
+        isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.130,
 
         theme: {
-            primary: 'ocean',
+            primary: 'koi-pond',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 4000,
@@ -602,15 +617,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 9,
-        name: 'Luminous Tides',
+        name: 'Stillwater Sanctuary',
         chapter: 2,
-        chapterLevel: 2,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.148,
 
         theme: {
-            primary: 'luminous-tides',
+            primary: 'waves',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -673,15 +688,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 10,
-        name: 'Stillwater Sanctuary',
+        name: 'Koi Dreams',
         chapter: 2,
-        chapterLevel: 3,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.167,
 
         theme: {
-            primary: 'stillwater',
+            primary: 'misty-lake',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -745,15 +760,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 11,
-        name: 'Koi Dreams',
+        name: 'Wave Runner',
         chapter: 2,
-        chapterLevel: 4,
+        chapterLevel: 6,
         isChapterStart: false,
-        isChapterEnd: false,
+        isChapterEnd: true,
         pathPosition: 0.185,
 
         theme: {
-            primary: 'koi-pond',
+            primary: 'stillwater',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -817,15 +832,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 12,
-        name: 'Wave Runner',
-        chapter: 2,
-        chapterLevel: 5,
-        isChapterStart: false,
+        name: 'Forest Awakening',
+        chapter: 3,
+        chapterLevel: 1,
+        isChapterStart: true,
         isChapterEnd: false,
         pathPosition: 0.204,
 
         theme: {
-            primary: 'waves',
+            primary: 'forest',
             overlays: ['luminous-tides'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -889,9 +904,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 13,
-        name: 'Forest Awakening',
-        chapter: 2,
-        chapterLevel: 6,
+        name: 'Spring Bloom',
+        chapter: 3,
+        chapterLevel: 2,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.222,
@@ -960,15 +975,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 14,
-        name: 'Spring Bloom',
-        chapter: 2,
-        chapterLevel: 7,
+        name: 'Meadow Dance',
+        chapter: 3,
+        chapterLevel: 3,
         isChapterStart: false,
-        isChapterEnd: true,
+        isChapterEnd: false,
         pathPosition: 0.241,
 
         theme: {
-            primary: 'forest',
+            primary: 'swedish-forest',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1032,15 +1047,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 15,
-        name: 'Meadow Dance',
+        name: 'Summer Heat',
         chapter: 3,
-        chapterLevel: 1,
-        isChapterStart: true,
+        chapterLevel: 4,
+        isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.259,
 
         theme: {
-            primary: 'misty-lake',
+            primary: 'moonlit-greenhouse',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1103,15 +1118,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 16,
-        name: 'Summer Heat',
+        name: 'Fall Harvest',
         chapter: 3,
-        chapterLevel: 2,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.278,
 
         theme: {
-            primary: 'moonlit-greenhouse',
+            primary: 'spring',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
@@ -1174,15 +1189,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 17,
-        name: 'Fall Harvest',
+        name: 'Sakura Twilight',
         chapter: 3,
-        chapterLevel: 3,
+        chapterLevel: 6,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.296,
 
         theme: {
-            primary: 'spring',
+            primary: 'summer',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1246,15 +1261,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 18,
-        name: 'Sakura Twilight',
+        name: 'Verdant Heights',
         chapter: 3,
-        chapterLevel: 4,
+        chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.315,
 
         theme: {
-            primary: 'summer',
+            primary: 'fall',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1318,9 +1333,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 19,
-        name: 'Verdant Heights',
+        name: 'Sunset Ascension',
         chapter: 3,
-        chapterLevel: 5,
+        chapterLevel: 8,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.333,
@@ -1390,9 +1405,9 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 20,
-        name: 'Sunset Ascension',
+        name: 'Mountain Base',
         chapter: 3,
-        chapterLevel: 6,
+        chapterLevel: 9,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.352,
@@ -1450,7 +1465,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 35000 },
             two: { score: 50000, cascades: 8 },
-            three: { score: 70000, cascades: 12, tetrises: 10, time: 180 },
+            three: { score: 70000, cascades: 12, tetrises: 10 },
         },
 
         metadata: {
@@ -1463,15 +1478,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 21,
-        name: 'Mountain Base',
+        name: 'Himalayan Dawn',
         chapter: 3,
-        chapterLevel: 7,
+        chapterLevel: 10,
         isChapterStart: false,
-        isChapterEnd: false,
+        isChapterEnd: true,
         pathPosition: 0.370,
 
         theme: {
-            primary: 'ice-temple',
+            primary: 'verdant-hills',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 4000,
@@ -1519,30 +1534,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 10 cascades
             one: { cascades: 10 },
+            // 2 star: 10 cascades + achieve a 3-deep chain
             two: { cascades: 10, maxCascadeDepth: 3 },
-            three: { cascades: 15, maxCascadeDepth: 5 },
+            // 3 stars: 12 cascades + 4-deep chain (use victory lap for 2 extra cascades)
+            three: { cascades: 12, maxCascadeDepth: 4 },
         },
 
         metadata: {
-            description: 'Begin the mountain climb on a taller board. Build upward for epic cascades!',
-            difficulty: 5,
+            description: 'Chapter finale! Trigger 10 cascades on the tall 40-row board.',
+            difficulty: 7,
             estimatedTime: 180,
-            tip: 'The 40-row board gives you more room to build tall towers.',
+            tip: 'Build tall towers with gaps - the 40-row board gives space for epic chain reactions! Keep playing after goal for more stars.',
         },
     },
 
     {
         id: 22,
-        name: 'Himalayan Dawn',
-        chapter: 3,
-        chapterLevel: 8,
-        isChapterStart: false,
-        isChapterEnd: true,
+        name: 'Aurora Borealis',
+        chapter: 4,
+        chapterLevel: 1,
+        isChapterStart: true,
+        isChapterEnd: false,
         pathPosition: 0.389,
 
         theme: {
-            primary: 'nimbus-veil',
+            primary: 'aurora',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1605,22 +1623,22 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 23,
-        name: 'Ice Temple',
+        name: 'Alpine Night',
         chapter: 4,
-        chapterLevel: 1,
-        isChapterStart: true,
+        chapterLevel: 2,
+        isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.407,
 
         theme: {
-            primary: 'aurora',
+            primary: 'wolfhour',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
 
         mechanics: {
-            baseMode: 'infinity',
+            baseMode: 'standard',
 
             board: {
                 columns: 10,
@@ -1676,18 +1694,18 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 24,
-        name: 'Winter Storm',
+        name: 'Everest Ascent',
         chapter: 4,
-        chapterLevel: 2,
+        chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.426,
 
         theme: {
-            primary: 'wolfhour',
+            primary: 'himalayan-peak',
             overlays: [],
             transitionIn: 'crossfade',
-            transitionDuration: 2500,
+            transitionDuration: 3500,
         },
 
         mechanics: {
@@ -1747,18 +1765,18 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 25,
-        name: 'Moonlit Forest',
+        name: 'Wolfhour',
         chapter: 4,
-        chapterLevel: 3,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.444,
 
         theme: {
-            primary: 'himalayan-peak',
+            primary: 'mountain',
             overlays: [],
-            transitionIn: 'crossfade',
-            transitionDuration: 3500,
+            transitionIn: 'warp',
+            transitionDuration: 4000,
         },
 
         mechanics: {
@@ -1819,15 +1837,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 26,
-        name: 'Wolfhour',
+        name: 'Moonrise Summit',
         chapter: 4,
-        chapterLevel: 4,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.463,
 
         theme: {
-            primary: 'starlight',
+            primary: 'winter',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -1876,30 +1894,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 30 lines
             one: { lines: 30 },
+            // 2 stars: Clear 30 lines in under 2 minutes
             two: { lines: 30, time: 120 },
-            three: { lines: 30, time: 75, tetrises: 5 },
+            // 3 stars: Clear 30 lines in 90s + 4 tetrises (more achievable with starting garbage)
+            three: { lines: 30, time: 90, tetrises: 4 },
         },
 
         metadata: {
-            description: 'The darkest hour before dawn. Dig out from danger under pressure.',
+            description: 'Clear 30 lines starting from a half-filled board! Dig out fast.',
             difficulty: 8,
             estimatedTime: 120,
-            tip: 'Half the board is filled - work fast to survive!',
+            tip: 'Half the board is garbage - clear it quickly and build for Tetrises. Keep playing after goal for more stars!',
         },
     },
 
     {
         id: 27,
-        name: 'Moonrise Summit',
+        name: 'Peak Transcendence',
         chapter: 4,
-        chapterLevel: 5,
+        chapterLevel: 6,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.481,
 
         theme: {
-            primary: 'mountain',
+            primary: 'moonrise-summit',
             overlays: ['winter'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1963,15 +1984,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 28,
-        name: 'Peak Transcendence',
+        name: 'Cloud Walker',
         chapter: 4,
-        chapterLevel: 6,
+        chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.500,
 
         theme: {
-            primary: 'winter',
+            primary: 'sunset',
             overlays: ['ice-temple', 'moonrise-summit'],
             transitionIn: 'warp',
             transitionDuration: 4500,
@@ -2023,7 +2044,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 50000 },
             two: { score: 70000, cascades: 10 },
-            three: { score: 100000, cascades: 15, tetrises: 12, time: 180 },
+            three: { score: 100000, cascades: 15, tetrises: 12 },
         },
 
         metadata: {
@@ -2036,15 +2057,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 29,
-        name: 'Cloud Walker',
+        name: 'Aurora Dreams',
         chapter: 4,
-        chapterLevel: 7,
+        chapterLevel: 8,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.519,
 
         theme: {
-            primary: 'moonrise-summit',
+            primary: 'starlight',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 4500,
@@ -2107,15 +2128,15 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 30,
-        name: 'Aurora Dreams',
+        name: 'Starlight Path',
         chapter: 4,
-        chapterLevel: 8,
+        chapterLevel: 9,
         isChapterStart: false,
         isChapterEnd: true,
         pathPosition: 0.537,
 
         theme: {
-            primary: 'sunset',
+            primary: 'ice-temple',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -2179,7 +2200,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 31,
-        name: 'Starlight Path',
+        name: 'Rainy Window',
         chapter: 5,
         chapterLevel: 1,
         isChapterStart: true,
@@ -2187,7 +2208,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.556,
 
         theme: {
-            primary: 'aether-tides',
+            primary: 'nimbus-veil',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2250,7 +2271,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 32,
-        name: 'Rainy Window',
+        name: 'Storm Surge',
         chapter: 5,
         chapterLevel: 2,
         isChapterStart: false,
@@ -2259,78 +2280,6 @@ export const LEVEL_CONFIGS = [
 
         theme: {
             primary: 'rainy-window',
-            overlays: [],
-            transitionIn: 'crossfade',
-            transitionDuration: 3000,
-        },
-
-        mechanics: {
-            baseMode: 'standard',
-
-            board: {
-                columns: 10,
-                rows: 20,
-                startingRows: 0,
-            },
-
-            speed: {
-                startLevel: 6,
-                levelProgression: false,
-                fixedDropInterval: 700,
-            },
-
-            pieces: {
-                bagType: '7-bag',
-                customSequence: null,
-                holdEnabled: true,
-                previewCount: 6,
-            },
-        },
-
-        victory: {
-            primary: {
-                type: 'lines',
-                target: 60,
-            },
-            failure: {
-                type: 'top-out',
-                value: null,
-            },
-            bonuses: [
-                { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
-            ],
-        },
-
-        modifiers: {
-            active: [],
-        },
-
-        stars: {
-            one: { lines: 60 },
-            two: { lines: 60, tetrises: 8 },
-            three: { lines: 60, tetrises: 12, bonuses: 2 },
-        },
-
-        metadata: {
-            description: 'Watch the rain fall. A meditative challenge of patience and precision.',
-            difficulty: 6,
-            estimatedTime: 240,
-            tip: 'Like raindrops, let pieces fall into place naturally.',
-        },
-    },
-
-    {
-        id: 33,
-        name: 'Storm Surge',
-        chapter: 5,
-        chapterLevel: 3,
-        isChapterStart: false,
-        isChapterEnd: false,
-        pathPosition: 0.593,
-
-        theme: {
-            primary: 'galaxy',
             overlays: ['rainy-window'],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
@@ -2392,16 +2341,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 34,
+        id: 33,
         name: 'Ethereal Heights',
         chapter: 5,
-        chapterLevel: 4,
+        chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.611,
+        pathPosition: 0.593,
 
         theme: {
-            primary: 'solar-eclipse',
+            primary: 'aether-tides',
             overlays: ['nimbus-veil'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2464,16 +2413,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 35,
+        id: 34,
         name: 'Cosmic Threshold',
         chapter: 5,
-        chapterLevel: 5,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.630,
+        pathPosition: 0.611,
 
         theme: {
-            primary: 'verdant-hills',
+            primary: 'solar-eclipse',
             overlays: ['aurora'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2522,30 +2471,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 18 cascades
             one: { cascades: 18 },
-            two: { cascades: 18, maxCascadeDepth: 6 },
-            three: { cascades: 22, maxCascadeDepth: 8, combo: 12 },
+            // 2 stars: 18 cascades + 5-deep chain
+            two: { cascades: 18, maxCascadeDepth: 5 },
+            // 3 stars: 20 cascades + 6-deep chain + 8x combo (use victory lap)
+            three: { cascades: 20, maxCascadeDepth: 6, combo: 8 },
         },
 
         metadata: {
-            description: 'Stand at the threshold of space. Master cascades at the edge of atmosphere.',
+            description: 'Trigger 18 cascades at the edge of space. Build tall for chain reactions!',
             difficulty: 9,
             estimatedTime: 260,
-            tip: 'The tall board enables massive chain reactions. Build upward!',
+            tip: 'The 30-row board with 12 starting rows creates cascade opportunities. Build upward! Keep playing after goal for more stars.',
         },
     },
 
     {
-        id: 36,
+        id: 35,
         name: 'Atmosphere\'s End',
         chapter: 5,
-        chapterLevel: 6,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: true,
-        pathPosition: 0.648,
+        pathPosition: 0.630,
 
         theme: {
-            primary: 'fall',
+            primary: 'lunara',
             overlays: ['starlight', 'nimbus-veil'],
             transitionIn: 'warp',
             transitionDuration: 5000,
@@ -2597,7 +2549,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 60000 },
             two: { score: 85000, cascades: 12 },
-            three: { score: 120000, cascades: 18, tetrises: 15, time: 180 },
+            three: { score: 120000, cascades: 18, tetrises: 15 },
         },
 
         metadata: {
@@ -2609,16 +2561,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 37,
+        id: 36,
         name: 'Galaxy Core',
         chapter: 6,
         chapterLevel: 1,
         isChapterStart: true,
         isChapterEnd: false,
-        pathPosition: 0.667,
+        pathPosition: 0.648,
 
         theme: {
-            primary: 'supernova',
+            primary: 'galaxy',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -2681,16 +2633,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 38,
+        id: 37,
         name: 'Astral Weave',
         chapter: 6,
         chapterLevel: 2,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.685,
+        pathPosition: 0.667,
 
         theme: {
-            primary: 'astral-weave',
+            primary: 'cosmic-noir',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2752,16 +2704,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 39,
+        id: 38,
         name: 'Lunar Eclipse',
         chapter: 6,
         chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.704,
+        pathPosition: 0.685,
 
         theme: {
-            primary: 'blood-moon',
+            primary: 'supernova',
             overlays: ['blood-moon'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -2809,30 +2761,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 35 lines
             one: { lines: 35 },
+            // 2 stars: Clear 35 lines in under 2 minutes
             two: { lines: 35, time: 120 },
-            three: { lines: 35, time: 75 },
+            // 3 stars: Clear 35 lines in 90s (adjusted from 75s - more achievable with garbage + fast speed)
+            three: { lines: 35, time: 90 },
         },
 
         metadata: {
-            description: 'Play under the blood moon\'s shadow. The eclipse tests your speed.',
+            description: 'Clear 35 lines under the blood moon! 8 rows of garbage and fast drops.',
             difficulty: 8,
             estimatedTime: 120,
-            tip: 'Clear garbage fast - the eclipse won\'t wait!',
+            tip: 'Fast 450ms drops with garbage - work quickly but stay calm. Every line counts!',
         },
     },
 
     {
-        id: 40,
+        id: 39,
         name: 'Solar Eclipse',
         chapter: 6,
         chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.722,
+        pathPosition: 0.704,
 
         theme: {
-            primary: 'lunara',
+            primary: 'blood-moon',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2895,16 +2850,88 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 41,
+        id: 40,
         name: 'Supernova',
         chapter: 6,
         chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
+        pathPosition: 0.722,
+
+        theme: {
+            primary: 'astral-weave',
+            overlays: [],
+            transitionIn: 'crossfade',
+            transitionDuration: 3000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+
+            board: {
+                columns: 10,
+                rows: 20,
+                startingRows: 0,
+            },
+
+            speed: {
+                startLevel: 11,
+                levelProgression: true,
+                fixedDropInterval: null,
+            },
+
+            pieces: {
+                bagType: '7-bag',
+                customSequence: null,
+                holdEnabled: true,
+                previewCount: 4,
+            },
+        },
+
+        victory: {
+            primary: {
+                type: 'score',
+                target: 80000,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
+                { type: 'combo', target: 8, description: 'Reach 8x combo' },
+            ],
+        },
+
+        modifiers: {
+            active: ['combo-multiplier'],
+        },
+
+        stars: {
+            one: { score: 80000 },
+            two: { score: 120000, tetrises: 10 },
+            three: { score: 180000, tetrises: 15, combo: 10 },
+        },
+
+        metadata: {
+            description: 'A dying star explodes. Capture the energy in your score.',
+            difficulty: 10,
+            estimatedTime: 240,
+            tip: 'The supernova energy fuels your combo multiplier.',
+        },
+    },
+
+    {
+        id: 41,
+        name: 'Stellar Shockwave',
+        chapter: 6,
+        chapterLevel: 6,
+        isChapterStart: false,
+        isChapterEnd: false,
         pathPosition: 0.741,
 
         theme: {
-            primary: 'stellar-drift',
+            primary: 'astral-weave',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -2943,8 +2970,8 @@ export const LEVEL_CONFIGS = [
                 value: 180,
             },
             bonuses: [
-                { type: 'tetris-count', target: 12, description: 'Clear 12 Tetrises' },
-                { type: 'time', target: 120, description: 'Complete in under 2 minutes' },
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Tetrises' },
+                { type: 'time', target: 140, description: 'Finish with 40+ seconds left' },
             ],
         },
 
@@ -2953,102 +2980,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 60 lines before time runs out
             one: { lines: 60 },
-            two: { lines: 60, tetrises: 10 },
-            three: { lines: 60, tetrises: 15, time: 100 },
+            // 2 stars: Clear 60 lines + get 8 tetrises (efficient clearing)
+            two: { lines: 60, tetrises: 8 },
+            // 3 stars: Clear 60 lines + 12 tetrises + finish fast (use victory lap for extras)
+            three: { lines: 60, tetrises: 12, time: 120 },
         },
 
         metadata: {
-            description: 'A star explodes! Race the expanding shockwave at maximum intensity.',
+            description: 'Race the expanding shockwave! Clear 60 lines before time runs out.',
             difficulty: 9,
             estimatedTime: 150,
-            tip: 'The supernova accelerates everything - stay focused!',
+            tip: 'Speed is critical - use Tetrises (4-line clears) for maximum efficiency. Keep playing after goal for more stars!',
         },
     },
 
     {
         id: 42,
-        name: 'Cosmic Velocity',
+        name: 'Event Horizon',
         chapter: 6,
-        chapterLevel: 6,
+        chapterLevel: 7,
         isChapterStart: false,
         isChapterEnd: false,
         pathPosition: 0.759,
 
         theme: {
             primary: 'stellar-velocity',
-            overlays: ['galaxy'],
-            transitionIn: 'crossfade',
-            transitionDuration: 3000,
-        },
-
-        mechanics: {
-            baseMode: 'infinity',
-
-            board: {
-                columns: 10,
-                rows: 30,
-                startingRows: 14,
-            },
-
-            speed: {
-                startLevel: 10,
-                levelProgression: false,
-                fixedDropInterval: 450,
-            },
-
-            pieces: {
-                bagType: '7-bag',
-                customSequence: null,
-                holdEnabled: true,
-                previewCount: 5,
-            },
-        },
-
-        victory: {
-            primary: {
-                type: 'cascade',
-                target: 20,
-            },
-            failure: {
-                type: 'top-out',
-                value: null,
-            },
-            bonuses: [
-                { type: 'max-cascade-depth', target: 8, description: 'Trigger an 8+ chain' },
-                { type: 'combo', target: 12, description: 'Reach 12x combo' },
-            ],
-        },
-
-        modifiers: {
-            active: ['gravity-cascade', 'combo-multiplier'],
-        },
-
-        stars: {
-            one: { cascades: 20 },
-            two: { cascades: 20, maxCascadeDepth: 7 },
-            three: { cascades: 25, maxCascadeDepth: 10, combo: 15 },
-        },
-
-        metadata: {
-            description: 'Accelerate to cosmic velocity. Master cascades at light speed.',
-            difficulty: 9,
-            estimatedTime: 270,
-            tip: 'The extra-tall board allows incredible cascade chains.',
-        },
-    },
-
-    {
-        id: 43,
-        name: 'Event Horizon',
-        chapter: 6,
-        chapterLevel: 7,
-        isChapterStart: false,
-        isChapterEnd: false,
-        pathPosition: 0.778,
-
-        theme: {
-            primary: 'cosmic-chimes',
             overlays: ['galaxy', 'stellar-velocity'],
             transitionIn: 'warp',
             transitionDuration: 5000,
@@ -3100,7 +3058,7 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 80000 },
             two: { score: 120000, cascades: 15 },
-            three: { score: 180000, cascades: 22, tetrises: 18, time: 180 },
+            three: { score: 180000, cascades: 22, tetrises: 18 },
         },
 
         metadata: {
@@ -3112,16 +3070,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 44,
+        id: 43,
         name: 'Singularity Gate',
         chapter: 6,
         chapterLevel: 8,
         isChapterStart: false,
-        isChapterEnd: true,
-        pathPosition: 0.796,
+        isChapterEnd: false,
+        pathPosition: 0.778,
 
         theme: {
-            primary: 'black-hole',
+            primary: 'cosmic-chimes',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 5000,
@@ -3183,16 +3141,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 45,
-        name: 'Nebula Flow',
-        chapter: 7,
-        chapterLevel: 1,
-        isChapterStart: true,
-        isChapterEnd: false,
-        pathPosition: 0.815,
+        id: 44,
+        name: 'The Singularity',
+        chapter: 6,
+        chapterLevel: 9,
+        isChapterStart: false,
+        isChapterEnd: true,
+        pathPosition: 0.796,
 
         theme: {
-            primary: 'fluid-dreams',
+            primary: 'black-hole',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -3240,30 +3198,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 18 cascades
             one: { cascades: 18 },
-            two: { cascades: 18, maxCascadeDepth: 7 },
-            three: { cascades: 22, maxCascadeDepth: 9 },
+            // 2 stars: 18 cascades + 6-deep chain
+            two: { cascades: 18, maxCascadeDepth: 6 },
+            // 3 stars: 20 cascades + 7-deep chain (use victory lap for 2 extra)
+            three: { cascades: 20, maxCascadeDepth: 7 },
         },
 
         metadata: {
-            description: 'Flow through cosmic nebulae. Create cascading rivers of star-stuff.',
+            description: 'Chapter 6 finale! Trigger 18 cascades at the singularity.',
             difficulty: 9,
             estimatedTime: 240,
-            tip: 'Let the nebula guide your cascades - flow with it.',
+            tip: 'The 28-row board is your canvas for massive chain reactions. Build tall and let gravity do the work! Keep playing after goal for more stars.',
         },
     },
 
     {
-        id: 46,
+        id: 45,
         name: 'Fluid Dreams',
         chapter: 7,
-        chapterLevel: 2,
-        isChapterStart: false,
+        chapterLevel: 1,
+        isChapterStart: true,
         isChapterEnd: false,
-        pathPosition: 0.833,
+        pathPosition: 0.815,
 
         theme: {
-            primary: 'nebula-flow',
+            primary: 'fluid-dreams',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
@@ -3326,16 +3287,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 47,
-        name: 'Chromatic Void',
+        id: 46,
+        name: 'Nebula Flow',
         chapter: 7,
-        chapterLevel: 3,
+        chapterLevel: 2,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.852,
+        pathPosition: 0.833,
 
         theme: {
-            primary: 'chromadelic-highway',
+            primary: 'nebula-flow',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -3398,16 +3359,16 @@ export const LEVEL_CONFIGS = [
     },
 
     {
-        id: 48,
-        name: 'Electric Dreams',
+        id: 47,
+        name: 'Chromadelic Highway',
         chapter: 7,
-        chapterLevel: 4,
+        chapterLevel: 3,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.870,
+        pathPosition: 0.852,
 
         theme: {
-            primary: 'voltage-storm',
+            primary: 'chromadelic-highway',
             overlays: ['voltage-storm'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -3455,30 +3416,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Clear 40 lines
             one: { lines: 40 },
+            // 2 stars: Clear 40 lines in under 2 minutes
             two: { lines: 40, time: 120 },
-            three: { lines: 40, time: 75 },
+            // 3 stars: Clear 40 lines in 100s (adjusted from 75s - more realistic at 400ms drops)
+            three: { lines: 40, time: 100 },
         },
 
         metadata: {
-            description: 'Electricity crackles through the void. Speed through the static.',
+            description: 'Clear 40 lines on the chromadelic highway! Ultra-fast 400ms drops.',
             difficulty: 9,
             estimatedTime: 120,
-            tip: 'Lightning fast reflexes required - trust your muscle memory.',
+            tip: 'At level 13 speed with 400ms drops, trust your reflexes. Fast but clean stacking wins!',
         },
     },
 
     {
-        id: 49,
-        name: 'Chromadelic Highway',
+        id: 48,
+        name: 'Voltage Storm',
         chapter: 7,
-        chapterLevel: 5,
+        chapterLevel: 4,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.889,
+        pathPosition: 0.870,
 
         theme: {
-            primary: 'chromatic-impasto',
+            primary: 'voltage-storm',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -3527,30 +3491,33 @@ export const LEVEL_CONFIGS = [
         },
 
         stars: {
+            // 1 star: Trigger 25 cascades
             one: { cascades: 25 },
-            two: { cascades: 25, maxCascadeDepth: 9 },
-            three: { cascades: 30, maxCascadeDepth: 12, combo: 18 },
+            // 2 stars: 25 cascades + 7-deep chain
+            two: { cascades: 25, maxCascadeDepth: 7 },
+            // 3 stars: 27 cascades + 8-deep chain + 10x combo (challenging but achievable)
+            three: { cascades: 27, maxCascadeDepth: 8, combo: 10 },
         },
 
         metadata: {
-            description: 'Race down the chromadelic highway. Master cascades in psychedelic space.',
+            description: 'Harness the voltage! Trigger 25 cascades on the massive 32-row storm board.',
             difficulty: 10,
             estimatedTime: 300,
-            tip: 'The tallest board yet - create legendary cascade chains!',
+            tip: 'With 16 starting rows and 32 total rows, this board is built for epic cascades. Build strategically! Keep playing after goal for more stars.',
         },
     },
 
     {
-        id: 50,
-        name: 'Voltage Storm',
+        id: 49,
+        name: 'Chromatic Impasto',
         chapter: 7,
-        chapterLevel: 6,
+        chapterLevel: 5,
         isChapterStart: false,
         isChapterEnd: false,
-        pathPosition: 0.907,
+        pathPosition: 0.889,
 
         theme: {
-            primary: 'electric-dreams',
+            primary: 'chromatic-impasto',
             overlays: ['electric-dreams'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -3613,8 +3580,82 @@ export const LEVEL_CONFIGS = [
     },
 
     {
+        id: 50,
+        name: 'Electric Dreams',
+        chapter: 7,
+        chapterLevel: 6,
+        isChapterStart: false,
+        isChapterEnd: false,
+        pathPosition: 0.907,
+
+        theme: {
+            primary: 'electric-dreams',
+            overlays: ['black-hole', 'nebula-flow', 'fluid-dreams'],
+            transitionIn: 'warp',
+            transitionDuration: 6000,
+        },
+
+        mechanics: {
+            baseMode: 'standard',
+
+            board: {
+                columns: 10,
+                rows: 20,
+                startingRows: 8,
+            },
+
+            speed: {
+                startLevel: 13,
+                levelProgression: false,
+                fixedDropInterval: 400,
+            },
+
+            pieces: {
+                bagType: '7-bag',
+                customSequence: null,
+                holdEnabled: true,
+                previewCount: 3,
+            },
+        },
+
+        victory: {
+            primary: {
+                type: 'lines',
+                target: 40,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'time', target: 90, description: 'Complete in under 90 seconds' },
+            ],
+        },
+
+        modifiers: {
+            active: ['gravity-cascade', 'combo-multiplier'],
+        },
+
+        stars: {
+            // 1 star: Clear 40 lines
+            one: { lines: 40 },
+            // 2 stars: Clear 40 lines in under 2 minutes
+            two: { lines: 40, time: 120 },
+            // 3 stars: Clear 40 lines in 100s (adjusted - with cascade physics this is more achievable)
+            three: { lines: 40, time: 100 },
+        },
+
+        metadata: {
+            description: 'Clear 40 lines in an electric dreamscape! Cascades and combos active.',
+            difficulty: 9,
+            estimatedTime: 120,
+            tip: 'Gravity cascades are active - use them to chain clears for faster progress!',
+        },
+    },
+
+    {
         id: 51,
-        name: 'Transcendence',
+        name: 'Singularity Void',
         chapter: 7,
         chapterLevel: 7,
         isChapterStart: false,
@@ -3623,7 +3664,7 @@ export const LEVEL_CONFIGS = [
 
         theme: {
             primary: 'singing-bowl',
-            overlays: ['black-hole', 'nebula-flow', 'fluid-dreams'],
+            overlays: ['electric-dreams', 'black-hole'],
             transitionIn: 'warp',
             transitionDuration: 6000,
         },
@@ -3679,7 +3720,7 @@ export const LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The final challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
+            description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
             difficulty: 10,
             estimatedTime: 420,
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
@@ -3688,7 +3729,7 @@ export const LEVEL_CONFIGS = [
 
     {
         id: 52,
-        name: 'Midnight Rain',
+        name: 'Neon Dunes',
         chapter: 8,
         chapterLevel: 1,
         isChapterStart: true,
@@ -3696,7 +3737,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.944,
 
         theme: {
-            primary: 'swedish-forest',
+            primary: 'shifting-sands',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 2000,

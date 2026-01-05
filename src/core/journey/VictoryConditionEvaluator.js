@@ -72,9 +72,15 @@ export class VictoryConditionEvaluator {
     /**
      * Track a cascade event
      * @param {number} cascadeDepth - Depth of the cascade chain
+     * @param {boolean} isNewSequence - True if this is the start of a new cascade sequence
      */
-    onCascade(cascadeDepth) {
-        this.trackedMetrics.cascades++;
+    onCascade(cascadeDepth, isNewSequence = true) {
+        // Only count cascade sequences (one per piece that triggers cascades)
+        // not individual waves within a chain
+        if (isNewSequence) {
+            this.trackedMetrics.cascades++;
+        }
+        // Always track max depth for bonus objectives
         this.trackedMetrics.maxCascadeDepth = Math.max(
             this.trackedMetrics.maxCascadeDepth,
             cascadeDepth,

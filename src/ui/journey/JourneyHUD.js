@@ -846,6 +846,135 @@ export class JourneyHUD {
         bonusItem.style.color = 'rgba(100, 255, 150, 1)';
     }
 
+    // =============================
+    // Victory Lap System
+    // =============================
+
+    /**
+     * Enter victory lap mode - goal is complete, player can keep playing
+     */
+    enterVictoryLap() {
+        this.isVictoryLap = true;
+
+        // Change objective section to show "VICTORY LAP"
+        if (this.objectiveDisplay) {
+            this.objectiveDisplay.textContent = 'VICTORY LAP';
+            this.objectiveDisplay.style.color = 'rgba(100, 255, 150, 1)';
+            this.objectiveDisplay.style.textShadow = '0 0 15px rgba(100, 255, 150, 0.6)';
+        }
+
+        // Update progress bar to gold/green gradient
+        if (this.progressBar) {
+            this.progressBar.style.width = '100%';
+            this.progressBar.style.background = 'linear-gradient(90deg, #4ade80 0%, #fbbf24 50%, #4ade80 100%)';
+            this.progressBar.style.backgroundSize = '200% 100%';
+            this.progressBar.style.animation = 'victoryLapShimmer 2s ease-in-out infinite';
+        }
+
+        // Update progress value text
+        if (this.progressValue) {
+            this.progressValue.textContent = 'COMPLETE!';
+            this.progressValue.style.color = 'rgba(100, 255, 150, 1)';
+        }
+
+        // Add pulsing glow to container
+        this.container.style.borderColor = 'rgba(100, 255, 150, 0.5)';
+        this.container.style.boxShadow = `
+            0 8px 32px rgba(0, 0, 0, 0.5),
+            0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+            0 0 60px rgba(100, 255, 150, 0.2)
+        `;
+
+        // Add finish hint
+        this._showFinishHint();
+
+        // Add shimmer animation style if not present
+        this._addVictoryLapStyles();
+
+        console.log('[JourneyHUD] Victory lap mode activated');
+    }
+
+    /**
+     * Exit victory lap mode
+     */
+    exitVictoryLap() {
+        this.isVictoryLap = false;
+        this._hideFinishHint();
+
+        // Reset container styling
+        this.container.style.borderColor = 'rgba(180, 130, 255, 0.3)';
+        this.container.style.boxShadow = `
+            0 8px 32px rgba(0, 0, 0, 0.5),
+            0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+            0 0 60px rgba(140, 80, 255, 0.1)
+        `;
+
+        console.log('[JourneyHUD] Victory lap mode deactivated');
+    }
+
+    /**
+     * Show finish hint during victory lap
+     * @private
+     */
+    _showFinishHint() {
+        if (!this.finishHint) {
+            this.finishHint = document.createElement('div');
+            this.finishHint.className = 'finish-hint';
+            this.finishHint.innerHTML = 'Press <kbd>Enter</kbd> to finish';
+            this.finishHint.style.cssText = `
+                text-align: center;
+                font-size: clamp(9px, 0.9vw, 11px);
+                color: rgba(255, 255, 255, 0.7);
+                margin-top: 10px;
+                padding-top: 10px;
+                border-top: 1px solid rgba(100, 255, 150, 0.3);
+                animation: victoryLapPulse 2s ease-in-out infinite;
+            `;
+            this.finishHint.querySelector('kbd').style.cssText = `
+                background: rgba(100, 255, 150, 0.2);
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid rgba(100, 255, 150, 0.4);
+                font-family: inherit;
+            `;
+            this.container.appendChild(this.finishHint);
+        }
+        this.finishHint.style.display = 'block';
+    }
+
+    /**
+     * Hide finish hint
+     * @private
+     */
+    _hideFinishHint() {
+        if (this.finishHint) {
+            this.finishHint.style.display = 'none';
+        }
+    }
+
+    /**
+     * Add victory lap CSS animations
+     * @private
+     */
+    _addVictoryLapStyles() {
+        if (document.getElementById('victory-lap-hud-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'victory-lap-hud-styles';
+        style.textContent = `
+            @keyframes victoryLapShimmer {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+            @keyframes victoryLapPulse {
+                0%, 100% { opacity: 0.7; }
+                50% { opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     /**
      * Reset all metrics
      */
@@ -860,9 +989,11 @@ export class JourneyHUD {
             combo: 0,
         };
         this.elapsedTime = 0;
+        this.isVictoryLap = false;
         this._updateProgress();
         this._updateStars(0);
         this.updateTime(0);
+        this._hideFinishHint();
     }
 
     /**
