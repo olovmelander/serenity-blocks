@@ -169,6 +169,82 @@ export const LEVEL_SPEEDS = (() => {
 export const THEMES = getThemeIds();
 
 /**
+ * Theme to Sound Effect Set mapping
+ * Maps theme IDs to their corresponding SFX set names
+ * Themes not in this map will use 'Zen' as the default
+ */
+export const THEME_SFX_MAP = {
+    // Theme-specific SFX (themes with dedicated sound sets)
+    'stellar-drift': 'StellarDrift',
+    'cinder-drift': 'CinderDrift',
+    pyrestorm: 'Pyrestorm',
+    'swedish-forest': 'SwedishForest',
+    galaxy: 'Galaxy',
+    bioluminescence: 'Bioluminescence',
+    wolfhour: 'Wolfhour',
+    'neon-dusk': 'NeonDusk',
+    'chromatic-impasto': 'ChromaticImpasto',
+
+    // Themes using Nebula SFX (flowing, ethereal)
+    'nebula-flow': 'Nebula',
+    'fluid-dreams': 'Nebula',
+    'aether-tides': 'Nebula',
+
+    // Themes using Cosmic SFX (space, cosmic)
+    'black-hole': 'Cosmic',
+    supernova: 'Cosmic',
+    'cosmic-noir': 'Cosmic',
+    starlight: 'Cosmic',
+    'blood-moon': 'Cosmic',
+    'solar-eclipse': 'Cosmic',
+    lunara: 'Cosmic',
+    'astral-weave': 'Cosmic',
+    'stellar-velocity': 'Cosmic',
+    'cosmic-chimes': 'Cosmic',
+
+    // Themes using Galaxy SFX (starry, expansive)
+    aurora: 'Galaxy',
+    'crystal-cave': 'Galaxy',
+    geode: 'Galaxy',
+
+    // Themes using SwedishForest SFX (natural, organic)
+    forest: 'SwedishForest',
+    'moonlit-forest': 'SwedishForest',
+    meadow: 'SwedishForest',
+    'verdant-hills': 'SwedishForest',
+    spring: 'SwedishForest',
+    summer: 'SwedishForest',
+    fall: 'SwedishForest',
+
+    // Themes using Bioluminescence SFX (underwater, glowing)
+    ocean: 'Bioluminescence',
+    'koi-pond': 'Bioluminescence',
+    'luminous-tides': 'Bioluminescence',
+    waves: 'Bioluminescence',
+    'misty-lake': 'Bioluminescence',
+    stillwater: 'Bioluminescence',
+
+    // Themes using NeonDusk SFX (urban, synthetic)
+    'neon-district': 'NeonDusk',
+    'synthwave-sunset': 'NeonDusk',
+    'chromadelic-highway': 'NeonDusk',
+    'electric-dreams': 'NeonDusk',
+    'voltage-storm': 'NeonDusk',
+    'rainy-window': 'NeonDusk',
+
+    // Themes using Pyrestorm SFX (warm, fiery)
+    'nimbus-veil': 'Pyrestorm',
+
+    // Themes using Wolfhour SFX (mysterious, nocturnal)
+    'moonlit-greenhouse': 'Wolfhour',
+    'sakura-twilight': 'Wolfhour',
+    'moonrise-summit': 'Wolfhour',
+
+    // Themes using default Zen (calm, minimal) - not listed, handled by fallback
+    // mountain, winter, sunset, ice-temple, himalayan-peak, shifting-sands, singing-bowl
+};
+
+/**
  * Game modes
  */
 export const GAME_MODES = {
@@ -214,6 +290,7 @@ export const DEFAULT_SETTINGS = {
     backgroundMode: 'Level', // 'Level', 'Random', or 'Specific'
     backgroundTheme: 'forest',
     themeLinkedMode: false,
+    themeLinkedSfx: false,
     autoThemeChange: false,
     randomThemeInterval: 60, // seconds
     pieceLockRipple: true,

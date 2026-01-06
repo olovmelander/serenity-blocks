@@ -69,6 +69,11 @@ export default class CinderDriftTheme extends BaseTheme {
     async createScene() {
         console.log('[CinderDrift] Initializing Volcanic Core scene...');
 
+        // Activate Cinder Drift sound set
+        if (typeof window !== 'undefined' && window.app && window.app.soundManager) {
+            // Sound set activation handled by theme-linked settings
+        }
+
         const container = document.getElementById('cinder-drift-theme');
         if (!container) return;
         container.innerHTML = '';

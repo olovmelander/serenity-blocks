@@ -211,6 +211,7 @@ export class GameState {
                 maxComboDepth: 0,
                 maxComboComplexity: 0,
                 maxCombo: 0,
+                maxCascadeScore: 0, // Best score from a single cascade sequence
                 totalCascades: 0,
                 rowsReached: 0,
                 blocksPlaced: 0,

@@ -140,6 +140,11 @@
     "path": "./assets/music/Starlight.mp3"
   },
   {
+    "name": "Stellar Drift",
+    "file": "Stellar Drift.mp3",
+    "path": "./assets/music/Stellar Drift.mp3"
+  },
+  {
     "name": "Stillwater",
     "file": "Stillwater.mp3",
     "path": "./assets/music/Stillwater.mp3"

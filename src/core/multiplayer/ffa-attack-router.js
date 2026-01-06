@@ -91,7 +91,7 @@ export class FFAAttackRouter {
    * ENHANCED: Insert immediately if opponent has no piece
    */
     sendGarbageToPlayer(opponent, lines, cascadeSummary, attacker) {
-    // Create garbage entries with attacker's color and steamId
+        // Create garbage entries with attacker's color and steamId
         const context = {
             color: attacker.color || '#808080', // Use player's assigned color
             attackerId: attacker.steamId, // Track who sent the garbage for frag attribution
@@ -128,33 +128,15 @@ export class FFAAttackRouter {
     }
 
     /**
-   * Apply Quadra-style attack scaling
-   *
-   * With many players, reduce damage to prevent overwhelming
-   * (unless "boring rules" is enabled)
-   */
+     * Apply Quadra-style attack scaling - REMOVED
+     *
+     * Quadra does NOT scale attacks based on player count directly.
+     * It uses a stamp-based handicap system instead.
+     * We return the base lines unmodified here.
+     */
     applyAttackScaling(baseLines, opponentCount, boringRules) {
-        if (boringRules || opponentCount <= 2) {
-            // No scaling with boring rules or ≤2 opponents
-            return baseLines;
-        }
-
-        // Quadra scaling formula: reduce damage with 3+ opponents
-        // Formula: lines / (1 + (opponentCount - 2) * 0.2)
-        // Examples:
-        //   2 opponents: 1.0x (no scaling)
-        //   3 opponents: 0.83x (1 / 1.2)
-        //   4 opponents: 0.71x (1 / 1.4)
-        //   5 opponents: 0.63x (1 / 1.6)
-        //   8 opponents: 0.45x (1 / 2.2)
-        const scaleFactor = 1 + (opponentCount - 2) * 0.2;
-        const scaledLines = Math.max(1, Math.floor(baseLines / scaleFactor));
-
-        if (baseLines !== scaledLines) {
-            console.log(`  📉 Attack scaled: ${baseLines} → ${scaledLines} lines (${opponentCount} opponents)`);
-        }
-
-        return scaledLines;
+        // Quadra legacy behavior: No artificial scaling, rely on stamps
+        return baseLines;
     }
 
     /**
