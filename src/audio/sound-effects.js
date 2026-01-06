@@ -480,6 +480,154 @@ export function createSoundSets(createTone, createRichTone) {
                 });
             },
         },
+        StellarDrift: {
+            move: () => richTone({
+                oscillators: [{ type: 'sine', freq: 60, gain: 0.5 }], // Sub-heavy thud
+                noise: { type: 'pink', gain: 0.05 },
+                filter: { type: 'lowpass', frequency: 150, envAmount: -50 }, // Muffled
+                envelope: { attack: 0.01, decay: 0.1, release: 0.05 },
+                volume: 0.4,
+            }),
+            rotate: () => richTone({
+                oscillators: [
+                    { type: 'sine', freq: 50, gain: 0.3 },
+                    { type: 'sine', freq: 52, gain: 0.3 }, // Detuned pulse
+                ],
+                filter: { type: 'bandpass', frequency: 100, envAmount: 50, Q: 1 },
+                envelope: { attack: 0.05, decay: 0.3, release: 0.1 },
+                volume: 0.35,
+            }),
+            drop: () => richTone({
+                oscillators: [
+                    { type: 'sine', freq: 35, gain: 0.8 }, // Deep sub
+                    { type: 'triangle', freq: 70, gain: 0.2 },
+                ],
+                filter: { type: 'lowpass', frequency: 120, Q: 0.8 },
+                envelope: { attack: 0.01, decay: 0.6, release: 0.4 },
+                volume: 0.8,
+            }),
+            lineClear: () => {
+                // "Slow-evolving interstellar dark ambient drone"
+                // Using a long, evolving chord with low frequencies
+                // Frequencies: 40Hz, 80Hz, 120Hz (harmonic series)
+                [40, 80, 120, 160].forEach((f, i) => {
+                    setTimeout(() => richTone({
+                        oscillators: [
+                            { type: 'sine', freq: f, gain: 0.3 },
+                            { type: 'sine', freq: f * 1.01, gain: 0.1 }, // Detuned
+                        ],
+                        noise: { type: 'pink', gain: 0.05 }, // "Textural cosmic rumble"
+                        filter: { type: 'lowpass', frequency: 300, envAmount: 100 },
+                        envelope: { attack: 0.5, decay: 3.0, release: 2.0 }, // "Long arcs"
+                        volume: 0.4,
+                    }), i * 100);
+                });
+            },
+            levelUp: () => {
+                // "Distant metallic hull groans"
+                richTone({
+                    oscillators: [
+                        { type: 'sawtooth', freq: 60, gain: 0.2 },
+                        { type: 'square', freq: 118, gain: 0.15 }, // Dissonant
+                    ],
+                    filter: {
+                        type: 'bandpass', frequency: 200, envAmount: -50, Q: 5,
+                    }, // Resonant moan
+                    envelope: { attack: 1.0, decay: 4.0, release: 2.0 },
+                    volume: 0.5,
+                });
+            },
+            gameOver: () => {
+                // "Filtered vacuum noise"
+                richTone({
+                    noise: { type: 'pink', gain: 0.4 },
+                    filter: { type: 'lowpass', frequency: 400, envAmount: -300 }, // Closing down
+                    envelope: { attack: 0.1, decay: 5.0, release: 3.0 },
+                    oscillators: [{ type: 'sine', freq: 30, gain: 0.6 }], // Ultra low sub
+                    volume: 0.6,
+                });
+            },
+            garbageSend: () => {
+                richTone({
+                    oscillators: [{ type: 'square', freq: 50, gain: 0.2 }],
+                    filter: { type: 'lowpass', frequency: 200, envAmount: 100 },
+                    envelope: { attack: 0.05, decay: 0.4, release: 0.2 },
+                    volume: 0.4,
+                });
+            },
+        },
+        CinderDrift: {
+            move: () => richTone({
+                // Deep low-end thud (55-60Hz sine) - raised freq, lower gain
+                oscillators: [{ type: 'sine', freq: 55, gain: 0.4 }],
+                filter: { type: 'lowpass', frequency: 120, envAmount: -30 }, // Less muffled
+                envelope: { attack: 0.02, decay: 0.15, release: 0.1 },
+                volume: 0.4,
+            }),
+            rotate: () => richTone({
+                // Grinding texture - lighter touch
+                oscillators: [
+                    { type: 'sawtooth', freq: 50, gain: 0.15 },
+                    { type: 'triangle', freq: 48, gain: 0.15 },
+                ],
+                noise: { type: 'brown', gain: 0.08 },
+                filter: { type: 'bandpass', frequency: 90, Q: 0.5, envAmount: 20 },
+                envelope: { attack: 0.05, decay: 0.2, release: 0.1 },
+                volume: 0.35,
+            }),
+            drop: () => richTone({
+                // Impact - raised sub freq, reduced decay
+                oscillators: [
+                    { type: 'sine', freq: 45, gain: 0.6 },
+                    { type: 'square', freq: 45, gain: 0.1 },
+                ],
+                noise: { type: 'brown', gain: 0.15 },
+                filter: { type: 'lowpass', frequency: 150, Q: 1.0, envAmount: -20 },
+                envelope: { attack: 0.01, decay: 0.6, release: 0.4 },
+                volume: 0.8,
+            }),
+            lineClear: () => {
+                // "Long evolving drone" - shifted up
+                const freqs = [60, 90, 120]; // Shifted up ~10-20Hz
+                freqs.forEach((f, i) => {
+                    setTimeout(() => richTone({
+                        oscillators: [
+                            { type: 'sine', freq: f, gain: 0.25 },
+                            { type: 'sawtooth', freq: f * 1.005, gain: 0.06 },
+                        ],
+                        filter: { type: 'lowpass', frequency: 200 + (i * 50), Q: 2, envAmount: 50 },
+                        envelope: { attack: 0.5 + (i * 0.2), decay: 2.0, sustain: 0.3, release: 3.0 },
+                        volume: 0.45,
+                    }), i * 150);
+                });
+            },
+            levelUp: () => richTone({
+                // Swell - less sub focus
+                oscillators: [
+                    { type: 'sawtooth', freq: 65, gain: 0.25 },
+                    { type: 'sine', freq: 50, gain: 0.4 },
+                ],
+                filter: { type: 'lowpass', frequency: 250, Q: 2, envAmount: 200 },
+                envelope: { attack: 1.5, decay: 3.0, release: 4.0 },
+                volume: 0.6,
+            }),
+            gameOver: () => richTone({
+                // Ambient fade - lighter
+                oscillators: [{ type: 'sine', freq: 40, gain: 0.4 }],
+                noise: { type: 'pink', gain: 0.15 },
+                filter: { type: 'lowpass', frequency: 80, Q: 3 },
+                envelope: { attack: 0.1, decay: 4.0, release: 5.0 },
+                volume: 0.5,
+            }),
+            garbageSend: () => richTone({
+                // Rumble
+                oscillators: [{ type: 'sawtooth', freq: 50, gain: 0.25 }],
+                noise: { type: 'brown', gain: 0.08 },
+                filter: { type: 'lowpass', frequency: 100, envAmount: -10 },
+                envelope: { attack: 0.2, decay: 0.5, release: 0.3 },
+                volume: 0.4,
+            }),
+        },
         Bioluminescence: {
             move: () => richTone({
                 oscillators: [{ type: 'sine', freq: 220, gain: 0.3 }], // Soft sonar ping

@@ -16,6 +16,7 @@ const DEFAULT_CONFIG = {
     backgroundMode: 'Level', // 'Level', 'Specific', 'Random'
     backgroundTheme: 'forest',
     themeLinkedMode: false,
+    themeLinkedSfx: false,
     autoThemeChange: false,
     randomThemeInterval: 60,
     pieceLockRipple: true,
@@ -770,6 +771,23 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
                 settingsManager.save();
             });
+        });
+    }
+
+    // Theme-Linked SFX toggle
+    const themeLinkedSfxSelect = document.getElementById('theme-linked-sfx');
+    if (themeLinkedSfxSelect) {
+        themeLinkedSfxSelect.value = (settings.themeLinkedSfx ?? false) ? 'true' : 'false';
+
+        themeLinkedSfxSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ themeLinkedSfx: enabled });
+            settingsManager.save();
+            console.log(`[Settings] Theme-linked SFX ${enabled ? 'enabled' : 'disabled'}`);
+
+            if (callbacks.onThemeLinkedSfxChange) {
+                callbacks.onThemeLinkedSfxChange(enabled);
+            }
         });
     }
 
