@@ -258,58 +258,115 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = 2000;
+        const starCount = 3000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
+        const twinkleData = new Float32Array(starCount * 2);
 
         const starColors = [
             new THREE.Color(0xffffff),
-            new THREE.Color(0xffeedd),
-            new THREE.Color(0xddddff),
-            new THREE.Color(0xffdddd),
+            new THREE.Color(0xfff8f0),
+            new THREE.Color(0xf0f0ff),
+            new THREE.Color(0xfff0f0),
+            new THREE.Color(0xc8e0ff),
+            new THREE.Color(0xfffff0),
         ];
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
-            // Spread stars across a large sphere
+            const i2 = i * 2;
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
-            // Push stars VERY far back - all behind planet (z < -500)
-            // Max z = 4500 - 5000 = -500, Min z = -4500 - 5000 = -9500
-            const radius = 2500 + Math.random() * 2000;
+            const radius = 3000 + Math.random() * 3000;
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i3 + 2] = (radius * Math.cos(phi)) - 5000; // Pushed WAY back
+            positions[i3 + 2] = (radius * Math.cos(phi)) - 6000;
 
             const color = starColors[Math.floor(Math.random() * starColors.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 1 + Math.random() * 3;
+            // Larger, more visible stars
+            sizes[i] = 35 + Math.random() * 50;
+            // Gentle twinkle - cycles every 8-20 seconds
+            twinkleData[i2] = Math.random() * Math.PI * 2;
+            twinkleData[i2 + 1] = 1.5 + Math.random() * 2.5; // Balanced speed
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
 
-        const material = new THREE.PointsMaterial({
-            map: this.getStarTexture(), // Premium star texture
-            size: 14, // Even bigger stars (was 10)
-            vertexColors: true,
+        // GPU shader - constant size, only brightness twinkles
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uEventBoost: { value: 0 },
+                uTexture: { value: this.getStarTexture() },
+            },
+            vertexShader: `
+                attribute float aSize;
+                attribute vec2 aTwinkle;
+
+                uniform float uTime;
+                uniform float uPixelRatio;
+                uniform float uEventBoost;
+
+                varying vec3 vColor;
+                varying float vBrightness;
+
+                void main() {
+                    vColor = color;
+
+                    // Gentle brightness twinkle (no size change)
+                    float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
+                    vBrightness = 0.8 + twinkle * 0.2; // Subtle range: 0.6 to 1.0
+                    vBrightness *= (1.0 + uEventBoost * 0.3);
+
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+
+                    // CONSTANT size - no twinkle affecting size
+                    gl_PointSize = aSize * uPixelRatio * (400.0 / -mvPosition.z);
+                    gl_PointSize = clamp(gl_PointSize, 3.0, 60.0);
+
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uTexture;
+
+                varying vec3 vColor;
+                varying float vBrightness;
+
+                void main() {
+                    vec4 texColor = texture2D(uTexture, gl_PointCoord);
+
+                    // Smooth circular falloff
+                    vec2 center = gl_PointCoord - 0.5;
+                    float dist = length(center) * 2.0;
+                    float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
+
+                    vec3 finalColor = vColor * vBrightness * 1.8;
+                    float alpha = texColor.a * softCircle * (vBrightness + 0.3);
+
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `,
             transparent: true,
-            opacity: 1.0,
-            blending: THREE.AdditiveBlending, // Glow effect
+            blending: THREE.AdditiveBlending,
             depthWrite: false,
-            sizeAttenuation: true,
+            vertexColors: true,
         });
 
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
-        console.log('[StellarDrift] Starfield created with', starCount, 'stars');
+        console.log('[StellarDrift] Starfield created with', starCount, 'smooth stars');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -632,34 +689,22 @@ export default class StellarDriftTheme extends BaseTheme {
         // Clear canvas
         ctx.clearRect(0, 0, 128, 128);
 
-        // Outer soft glow halo - larger and more visible
+        // Outer soft glow halo - smooth circular falloff
         const outerGlow = ctx.createRadialGradient(center, center, 0, center, center, 64);
-        outerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-        outerGlow.addColorStop(0.2, 'rgba(255, 255, 255, 0.08)');
-        outerGlow.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
+        outerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+        outerGlow.addColorStop(0.15, 'rgba(255, 255, 255, 0.15)');
+        outerGlow.addColorStop(0.35, 'rgba(255, 255, 255, 0.06)');
+        outerGlow.addColorStop(0.6, 'rgba(255, 255, 255, 0.02)');
         outerGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = outerGlow;
         ctx.fillRect(0, 0, 128, 128);
 
-        // Subtle cross/sparkle rays - Made more visible
-        ctx.save();
-        ctx.globalAlpha = 0.4; // Increased from 0.15
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 3; // Thicker rays
-        ctx.beginPath();
-        ctx.moveTo(center, center - 40);
-        ctx.lineTo(center, center + 40);
-        ctx.moveTo(center - 40, center);
-        ctx.lineTo(center + 40, center);
-        ctx.stroke();
-        ctx.restore();
-
-        // Bright core with sharp falloff
-        const coreGlow = ctx.createRadialGradient(center, center, 0, center, center, 16);
+        // Bright core - circular with soft edges
+        const coreGlow = ctx.createRadialGradient(center, center, 0, center, center, 20);
         coreGlow.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        coreGlow.addColorStop(0.15, 'rgba(255, 255, 255, 0.95)');
-        coreGlow.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)');
-        coreGlow.addColorStop(0.7, 'rgba(255, 255, 255, 0.15)');
+        coreGlow.addColorStop(0.2, 'rgba(255, 255, 255, 0.9)');
+        coreGlow.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)');
+        coreGlow.addColorStop(0.8, 'rgba(255, 255, 255, 0.1)');
         coreGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = coreGlow;
         ctx.fillRect(0, 0, 128, 128);
@@ -1428,16 +1473,17 @@ export default class StellarDriftTheme extends BaseTheme {
                 cloud.rotation.z += 0.0001; // Very slow rotation
             });
 
-            // Starfield twinkling - EVENT DRIVEN (not automatic)
-            // this.starTwinkleIntensity is set by triggerLockEffect and decays
-            if (this.starfield && this.starfield.material) {
-                // Decay the twinkle intensity over time
+            // Starfield twinkling - GPU shader driven (smooth 60fps)
+            if (this.starfield?.material?.uniforms) {
+                // Decay the event-triggered boost
                 if (this.starTwinkleIntensity > 0) {
-                    this.starTwinkleIntensity *= 0.95; // Slower decay for smoothness
+                    this.starTwinkleIntensity *= 0.95;
                     if (this.starTwinkleIntensity < 0.01) this.starTwinkleIntensity = 0;
                 }
-                // Base opacity + flash intensity
-                this.starfield.material.opacity = 0.6 + this.starTwinkleIntensity * 0.4;
+
+                // Update shader uniforms (GPU does all the work)
+                this.starfield.material.uniforms.uTime.value = this.time;
+                this.starfield.material.uniforms.uEventBoost.value = this.starTwinkleIntensity;
             }
 
             // SMOOTH DUST RING PULSE - Gradual scale decay
