@@ -508,16 +508,17 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // Load 9 distinct nebula textures (Starless)
         // Attach exact colors to each texture so they stay linked after shuffle
+        const texturePath = './textures/stellar-drift/';
         const textures = [
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula.png'),     // 1: Emerald/Violet
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_2.png'),   // 2: Gold/Orange
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_3.png'),   // 3: Blue/Purple
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_4.png'),   // 4: Red/Magenta
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_5.png'),   // 5: Cyan/Teal
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_6.png'),   // 6: Deep Indigo
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_7.png'),   // 7: Crimson/Black
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_8.png'),   // 8: Amber/Gold
-            textureLoader.load('/textures/stellar-drift/stellar_drift_nebula_9.png'),   // 9: Silver/Ghost
+            textureLoader.load(texturePath + 'stellar_drift_nebula.png'),     // 1: Emerald/Violet
+            textureLoader.load(texturePath + 'stellar_drift_nebula_2.png'),   // 2: Gold/Orange
+            textureLoader.load(texturePath + 'stellar_drift_nebula_3.png'),   // 3: Blue/Purple
+            textureLoader.load(texturePath + 'stellar_drift_nebula_4.png'),   // 4: Red/Magenta
+            textureLoader.load(texturePath + 'stellar_drift_nebula_5.png'),   // 5: Cyan/Teal
+            textureLoader.load(texturePath + 'stellar_drift_nebula_6.png'),   // 6: Deep Indigo
+            textureLoader.load(texturePath + 'stellar_drift_nebula_7.png'),   // 7: Crimson/Black
+            textureLoader.load(texturePath + 'stellar_drift_nebula_8.png'),   // 8: Amber/Gold
+            textureLoader.load(texturePath + 'stellar_drift_nebula_9.png'),   // 9: Silver/Ghost
         ];
 
         // Assign colors to textures
