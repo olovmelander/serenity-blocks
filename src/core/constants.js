@@ -169,6 +169,23 @@ export const LEVEL_SPEEDS = (() => {
 export const THEMES = getThemeIds();
 
 /**
+ * Theme to Sound Effect Set mapping
+ * Only themes with their own dedicated SFX set are listed here
+ * All other themes use 'Zen' as the default
+ */
+export const THEME_SFX_MAP = {
+    'stellar-drift': 'StellarDrift',
+    'cinder-drift': 'CinderDrift',
+    pyrestorm: 'Pyrestorm',
+    'swedish-forest': 'SwedishForest',
+    galaxy: 'Galaxy',
+    bioluminescence: 'Bioluminescence',
+    wolfhour: 'Wolfhour',
+    'neon-dusk': 'NeonDusk',
+    'chromatic-impasto': 'ChromaticImpasto',
+};
+
+/**
  * Game modes
  */
 export const GAME_MODES = {
@@ -214,6 +231,7 @@ export const DEFAULT_SETTINGS = {
     backgroundMode: 'Level', // 'Level', 'Random', or 'Specific'
     backgroundTheme: 'forest',
     themeLinkedMode: false,
+    themeLinkedSfx: false,
     autoThemeChange: false,
     randomThemeInterval: 60, // seconds
     pieceLockRipple: true,

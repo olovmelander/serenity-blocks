@@ -1023,18 +1023,23 @@
             <!-- Trophy icon -->
             <g class="trophy-icon">
                 <!-- Trophy cup body -->
-                <path d="M 35 30 L 35 55 Q 35 70 50 72 Q 65 70 65 55 L 65 30 Z" fill="none" stroke="currentColor" stroke-width="3" opacity="0.9"></path>
-                
+                <path d="M 35 30 L 35 55 Q 35 70 50 72 Q 65 70 65 55 L 65 30 Z" fill="none" stroke="currentColor"
+                    stroke-width="3" opacity="0.9"></path>
+
                 <!-- Trophy handles -->
-                <path d="M 35 35 Q 20 35 20 48 Q 20 58 35 55" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.7"></path>
-                <path d="M 65 35 Q 80 35 80 48 Q 80 58 65 55" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.7"></path>
-                
+                <path d="M 35 35 Q 20 35 20 48 Q 20 58 35 55" fill="none" stroke="currentColor" stroke-width="2.5"
+                    opacity="0.7"></path>
+                <path d="M 65 35 Q 80 35 80 48 Q 80 58 65 55" fill="none" stroke="currentColor" stroke-width="2.5"
+                    opacity="0.7"></path>
+
                 <!-- Trophy base -->
-                <path d="M 50 72 L 50 80" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.9"></path>
+                <path d="M 50 72 L 50 80" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.9">
+                </path>
                 <path d="M 38 80 L 62 80 L 60 85 L 40 85 Z" fill="currentColor" opacity="0.8"></path>
-                
+
                 <!-- Star decoration -->
-                <path d="M 50 42 L 52 48 L 58 48 L 53 52 L 55 58 L 50 54 L 45 58 L 47 52 L 42 48 L 48 48 Z" fill="currentColor" opacity="0.9"></path>
+                <path d="M 50 42 L 52 48 L 58 48 L 53 52 L 55 58 L 50 54 L 45 58 L 47 52 L 42 48 L 48 48 Z"
+                    fill="currentColor" opacity="0.9"></path>
             </g>
         </svg>
         <div class="highscores-icon-glow"></div>
@@ -1234,11 +1239,20 @@
                                 <option value="Wolfhour">Wolfhour</option>
                                 <option value="NeonDusk">Neon Dusk</option>
                                 <option value="BloodMoon">Blood Moon</option>
+                                <option value="StellarDrift">Stellar Drift</option>
+                                <option value="CinderDrift">Cinder Drift</option>
                             </select>
                         </div>
                         <div class="setting">
                             <label for="theme-linked-mode">Theme-Linked Music:</label>
                             <select id="theme-linked-mode" class="setting-select">
+                                <option value="false">Off</option>
+                                <option value="true">On</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="theme-linked-sfx">Theme-Linked SFX:</label>
+                            <select id="theme-linked-sfx" class="setting-select">
                                 <option value="false">Off</option>
                                 <option value="true">On</option>
                             </select>

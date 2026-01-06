@@ -19,6 +19,7 @@ import {
     setBlockSize,
     DEFAULT_SETTINGS,
     GAME_MODES,
+    THEME_SFX_MAP,
 } from './core/constants.js';
 import {
     GameState,
@@ -1496,26 +1497,11 @@ class SerenityBlocks {
                 this.soundManager.applyThemeLinkedMusic(themeName);
             }
 
-            // Update sound set based on theme
-            const themeSoundMap = {
-                pyrestorm: 'Pyrestorm',
-                'nebula-flow': 'Nebula',
-                galaxy: 'Galaxy',
-                'black-hole': 'Cosmic',
-                supernova: 'Cosmic',
-                'cosmic-noir': 'Cosmic',
-                starlight: 'Cosmic',
-                'swedish-forest': 'SwedishForest',
-                bioluminescence: 'Bioluminescence',
-                wolfhour: 'Wolfhour',
-                'neon-dusk': 'NeonDusk',
-                'blood-moon': 'BloodMoon',
-                'chromatic-impasto': 'ChromaticImpasto',
-            };
-
-            if (themeSoundMap[themeName]) {
-                console.log(`[Main] Auto-switching sound set to ${themeSoundMap[themeName]} for theme ${themeName}`);
-                this.soundManager.setSoundSet(themeSoundMap[themeName]);
+            // Update sound set based on theme (only if theme-linked SFX is enabled)
+            if (settings.themeLinkedSfx) {
+                const soundSet = THEME_SFX_MAP[themeName] || 'Zen';
+                console.log(`[Main] Theme-Linked SFX: Switching to ${soundSet} for theme ${themeName}`);
+                this.soundManager.setSoundSet(soundSet);
             }
         });
 
@@ -1707,7 +1693,20 @@ class SerenityBlocks {
             },
             onBackgroundThemeChange: (theme) => {
                 console.log('[Main] Theme changed to:', theme);
+                // switchTheme will emit THEME_CHANGED event, which handles themeLinkedSfx
                 this.themeManager.switchTheme(theme);
+            },
+            onThemeLinkedSfxChange: (enabled) => {
+                console.log('[Main] Theme-Linked SFX toggled:', enabled);
+                if (enabled) {
+                    // Immediately apply sound set based on current theme
+                    const currentTheme = this.themeManager.activeThemeName;
+                    if (currentTheme) {
+                        const soundSet = THEME_SFX_MAP[currentTheme] || 'Zen';
+                        console.log(`[Main] Theme-Linked SFX enabled: Setting ${soundSet} for theme ${currentTheme}`);
+                        this.soundManager.setSoundSet(soundSet);
+                    }
+                }
             },
             onGameModeChange: async (mode) => {
                 console.log('[Main] Game mode changed to:', mode);

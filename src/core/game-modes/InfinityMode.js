@@ -815,6 +815,8 @@ export class InfinityMode extends BaseGameMode {
                 // Update infinity stats
                 if (this.gameState.infinityStats) {
                     this.gameState.infinityStats.blocksPlaced += 4; // Approximate blocks per piece
+                    // Track score at the start of cascade to calculate cascade score
+                    this.gameState.infinityStats._cascadeStartScore = this.gameState.score;
                 }
 
                 const lockedBelowViewport = this._didPieceLockBelowViewport(piece);
@@ -857,10 +859,22 @@ export class InfinityMode extends BaseGameMode {
             onCascadeComplete: (cascadeCount) => {
                 if (cascadeCount > 0) {
                     // Track cascade statistics for infinity mode
-                    if (this.gameState.infinityStats && cascadeCount >= 2) {
+                    if (this.gameState.infinityStats) {
+                        // Calculate cascade score (points earned during this cascade sequence)
+                        const startScore = this.gameState.infinityStats._cascadeStartScore || 0;
+                        const cascadeScore = this.gameState.score - startScore;
+
+                        // Update max cascade score if this is a new record
+                        if (cascadeScore > this.gameState.infinityStats.maxCascadeScore) {
+                            this.gameState.infinityStats.maxCascadeScore = cascadeScore;
+                            console.log(`[Infinity] New max cascade score: ${cascadeScore} points`);
+                        }
+
                         // Only count actual cascades (2+), not the initial clear
-                        this.gameState.infinityStats.totalCascades++;
-                        console.log(`[Infinity] Cascade completed: count=${cascadeCount}, total cascades=${this.gameState.infinityStats.totalCascades}`);
+                        if (cascadeCount >= 2) {
+                            this.gameState.infinityStats.totalCascades++;
+                        }
+                        console.log(`[Infinity] Cascade completed: count=${cascadeCount}, score=${cascadeScore}, max=${this.gameState.infinityStats.maxCascadeScore}`);
                     }
 
                     // PERFORMANCE: Reset camera update throttle counters
