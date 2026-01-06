@@ -136,10 +136,26 @@ export default class StellarDriftTheme extends BaseTheme {
         this.nebulaBoostIntensity = 0; // Smooth nebula brightness
         this.glowSurgeIntensity = 0;   // Smooth planet glow surge
         this.meteorActivity = 0;       // Dynamic meteor spin speed based on APM
+        this.nebulaPulse = 0;          // Pulse intensity for nebulas
+        this.cameraSway = new THREE.Vector3(0, 0, 0); // Gentle camera motion
 
+        // Nebula Particle Bursts
+        this.nebulaBursts = [];
+        this.nebulaColors = [
+            new THREE.Color(0x00FF88), // Emerald
+            new THREE.Color(0xFFAA00), // Gold/Orange
+            new THREE.Color(0x6633FF), // Deep Purple
+            new THREE.Color(0xFF3366), // Red/Magenta
+            new THREE.Color(0x00FFFF), // Cyan/Teal
+            new THREE.Color(0x3344FF), // Indigo
+            new THREE.Color(0xFF0044), // Crimson
+            new THREE.Color(0xFFCC00), // Amber
+            new THREE.Color(0xCCCCFF), // Silver/Ghost
+        ];
         // Animation
         this.clock = new THREE.Clock();
         this.time = 0;
+        this.planetPhaseOffset = Math.random() * Math.PI * 2; // Random starting position for planet
 
         // State
         this.glowIntensity = 0.5;
@@ -178,9 +194,9 @@ export default class StellarDriftTheme extends BaseTheme {
 
         this.initRenderer(container);
         this.createStarfield();      // 3D point stars
-        this.createNebulaClouds();   // Colorful nebula
-        this.createOrbitingParticles(); // NEW: 3D Orbiting particles (Supernova-style)
-        // this.createBackground();   // REMOVED: Was causing foreground artifact issues
+        // this.createNebulaClouds();   // REMOVED: Replaced by volumetric backdrop
+        // this.createOrbitingParticles(); // REMOVED: User request
+        this.createNebulaBackdrop();   // NEW: High-def majestic nebula
         this.createPlanet();
         this.createDustRing();        // Dust ring around planet
         this.createAmbientParticles(); // Floating ambient sparkles
@@ -281,10 +297,13 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
         const material = new THREE.PointsMaterial({
-            size: 3,
+            map: this.getStarTexture(), // Premium star texture
+            size: 14, // Even bigger stars (was 10)
             vertexColors: true,
             transparent: true,
-            opacity: 0.9,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending, // Glow effect
+            depthWrite: false,
             sizeAttenuation: true,
         });
 
@@ -413,202 +432,303 @@ export default class StellarDriftTheme extends BaseTheme {
     // Orbiting Particles (Supernova Style)
     // ─────────────────────────────────────────────────────────────────────────
 
-    createOrbitingParticles() {
-        // High count for dense field
-        const particleCount = 2000;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const randoms = new Float32Array(particleCount); // For phase/size variation
-        const colors = new Float32Array(particleCount * 3);
+    // ─────────────────────────────────────────────────────────────────────────
+    // Orbiting Particles (REMOVED)
+    // ─────────────────────────────────────────────────────────────────────────
 
-        const colorPalette = [
-            new THREE.Color(0x00FFFF), // Cyan
-            new THREE.Color(0xFF00FF), // Magenta
-            new THREE.Color(0xFFFFFF), // White
-            new THREE.Color(0x0088FF), // Blue
-        ];
-
-        for (let i = 0; i < particleCount; i++) {
-            const i3 = i * 3;
-            randoms[i] = Math.random();
-
-            // Distribute in a thick torus/disk around the planet
-            const theta = Math.random() * Math.PI * 2;
-            // Radius from 400 (near planet) to 1500 (far out)
-            const r = 400 + Math.pow(Math.random(), 2) * 1100;
-
-            // Random scatter
-            const scatter = 50 + Math.random() * 150;
-
-            positions[i3] = Math.cos(theta) * r + (Math.random() - 0.5) * scatter;
-            // Y spread depends on radius (thicker near planet)
-            positions[i3 + 1] = (Math.random() - 0.5) * (300 - (r * 0.1));
-            positions[i3 + 2] = Math.sin(theta) * r + (Math.random() - 0.5) * scatter;
-
-            // Colors
-            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        // Custom shader for smooth points with size attenuation and transparency
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-            },
-            vertexShader: `
-                uniform float uTime;
-                attribute float aRandom;
-                attribute vec3 color;
-                varying vec3 vColor;
-                varying float vAlpha;
-                
-                void main() {
-                    vColor = color;
-                    vec3 pos = position;
-                    
-                    // Orbit rotation (slow)
-                    float angle = uTime * 0.05 * (0.5 + aRandom * 0.5);
-                    // Add slight vertical wave
-                    pos.y += sin(angle * 2.0 + pos.x * 0.01) * 20.0;
-                    
-                    // Simple rotation matrix around Y axis
-                    float c = cos(angle);
-                    float s = sin(angle);
-                    vec3 rotatedPos = vec3(
-                        pos.x * c + pos.z * s,
-                        pos.y,
-                        -pos.x * s + pos.z * c
-                    );
-                    
-                    vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
-                    gl_Position = projectionMatrix * mvPosition;
-                    
-                    // Size attenuation - INCREASED SIZE
-                    gl_PointSize = (8.0 * aRandom + 4.0) * (500.0 / -mvPosition.z);
-                    
-                    // Twinkle support
-                    float twinkle = sin(uTime * 3.0 + aRandom * 10.0);
-                    vAlpha = 0.8 + 0.2 * twinkle; // Higher base opacity
-                }
-            `,
-            fragmentShader: `
-                varying vec3 vColor;
-                varying float vAlpha;
-                
-                void main() {
-                    // Soft circular particle
-                    vec2 coord = gl_PointCoord - vec2(0.5);
-                    float dist = length(coord);
-                    if (dist > 0.5) discard;
-                    
-                    // Soft edge glow
-                    float strength = 1.0 - (dist * 2.0);
-                    strength = pow(strength, 1.5);
-                    
-                    gl_FragColor = vec4(vColor, vAlpha * strength);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.orbitingParticles = new THREE.Points(geometry, material);
-        // Tilt the whole system to match the other rings
-        this.orbitingParticles.rotation.z = 0.2;
-        this.orbitingParticles.rotation.x = 0.3;
-
-        this.scene.add(this.orbitingParticles);
-        console.log('[StellarDrift] 3D Orbiting particles created');
-    }
+    // createOrbitingParticles() { ... }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Background (Two scrolling planes at z=-520, like Andromeda)
     // ─────────────────────────────────────────────────────────────────────────
 
-    createBackground() {
-        const scale = 3200;
-        const planeWidth = scale * 4;  // 12800
-        const planeHeight = scale;     // 3200
+    // ─────────────────────────────────────────────────────────────────────────
+    // Drifting Nebula Clouds - Separate planes that scroll left-to-right
+    // ─────────────────────────────────────────────────────────────────────────
 
-        // Create procedural starfield texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
+    createNebulaBackdrop() {
+        const textureLoader = new THREE.TextureLoader();
 
-        // Deep space gradient with nebula colors - More Colorful
-        const gradient = ctx.createLinearGradient(0, 0, 1024, 256);
-        gradient.addColorStop(0, '#2a0835');   // Deep Purple
-        gradient.addColorStop(0.3, '#10204a'); // Deep Blue
-        gradient.addColorStop(0.5, '#0a1520'); // Space Dark
-        gradient.addColorStop(0.7, '#15303a'); // Deep Teal
-        gradient.addColorStop(1, '#2a0835');   // Deep Purple
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 1024, 256);
+        // Load 9 distinct nebula textures (Starless)
+        // Attach exact colors to each texture so they stay linked after shuffle
+        const textures = [
+            textureLoader.load('src/assets/textures/stellar_drift_nebula.png'),     // 1: Emerald/Violet
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_2.png'),   // 2: Gold/Orange
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_3.png'),   // 3: Blue/Purple
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_4.png'),   // 4: Red/Magenta
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_5.png'),   // 5: Cyan/Teal
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_6.png'),   // 6: Deep Indigo
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_7.png'),   // 7: Crimson/Black
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_8.png'),   // 8: Amber/Gold
+            textureLoader.load('src/assets/textures/stellar_drift_nebula_9.png'),   // 9: Silver/Ghost
+        ];
 
-        // NOTE: Removed painted stars - the 3D starfield handles all stars now
-        // The painted stars on this scrolling layer caused foreground artifacts
+        // Assign colors to textures
+        // These MUST match the visual look of the texture files
+        textures[0].userData = { color: new THREE.Color(0x00FF88) }; // Emerald
+        textures[1].userData = { color: new THREE.Color(0xFFAA00) }; // Gold
+        textures[2].userData = { color: new THREE.Color(0x6633FF) }; // Purple
+        textures[3].userData = { color: new THREE.Color(0xFF3366) }; // Red
+        textures[4].userData = { color: new THREE.Color(0x00FFFF) }; // Cyan
+        textures[5].userData = { color: new THREE.Color(0x3344FF) }; // Indigo
+        textures[6].userData = { color: new THREE.Color(0xFF0044) }; // Crimson
+        textures[7].userData = { color: new THREE.Color(0xFFCC00) }; // Amber
+        textures[8].userData = { color: new THREE.Color(0xCCCCFF) }; // Silver
 
-        // Pink/magenta/Teal nebula clouds - VIBRANT
-        for (let i = 0; i < 8; i++) { // More clouds
-            const x = Math.random() * 1024;
-            const y = Math.random() * 256;
-            const radius = 100 + Math.random() * 100;
-            const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-
-            // Random vibrant colors
-            const hue = Math.random() > 0.5 ? 320 + Math.random() * 40 : 180 + Math.random() * 40;
-
-            grad.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.2)`);
-            grad.addColorStop(0.5, `hsla(${hue}, 70%, 40%, 0.1)`);
-            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, 1024, 256);
-        }
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.ClampToEdgeWrapping;
-
-        const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-
-        const material = new THREE.MeshBasicMaterial({
-            map: texture,
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.25,     // Reduced from 0.8 to remove "blurry window" look
-            side: THREE.DoubleSide,
-            depthTest: false,
-            depthWrite: false,
+        textures.forEach(t => {
+            t.wrapS = THREE.ClampToEdgeWrapping;
+            t.wrapT = THREE.ClampToEdgeWrapping;
         });
 
-        // Two planes for seamless horizontal scrolling
-        const randomOffset = Math.random() * planeWidth * 0.6;
-
-        for (let i = 0; i < 2; i++) {
-            const plane = new THREE.Mesh(geometry, material.clone());
-            plane.position.z = -800;  // Push further back
-            plane.position.x = (i === 0 ? -planeWidth * 0.5 : planeWidth * 0.5) + randomOffset;
-            plane.userData.speed = 0.3;  // Slower
-            plane.userData.width = planeWidth;
-            this.scene.add(plane);
-            this.backgroundPlanes.push(plane);
+        // Randomize order so it's different every time
+        for (let i = textures.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [textures[i], textures[j]] = [textures[j], textures[i]];
         }
 
-        console.log('[StellarDrift] Background at z=-520');
+        // Configuration for 9 nebula clouds - "Smart Loop" System
+        // Total Cycle Width: 450,000 units
+        // Spacing: 50,000 units (Ensures max 2-3 visible at once in 100k view)
+        // Range: -200,000 to +200,000
+
+        const nebulaConfigs = [
+            // Center Group (Visible Now)
+            { texture: textures[0], x: 0, y: 8000, z: -35000, size: 75000, speed: 0.4, vRange: 2000 },  // Center
+            { texture: textures[1], x: 50000, y: -10000, z: -32000, size: 72000, speed: 0.6, vRange: 1500 },  // Right 1
+            { texture: textures[2], x: 100000, y: 0, z: -40000, size: 80000, speed: 0.3, vRange: 1000 },  // Right 2
+            { texture: textures[8], x: -50000, y: -5000, z: -36000, size: 70000, speed: 0.35, vRange: 2200 }, // Left 1 (Silver)
+
+            // Outer Wings (Incoming/Outgoing)
+            { texture: textures[3], x: 150000, y: 5000, z: -38000, size: 78000, speed: 0.5, vRange: 1800 },  // Right 3
+            { texture: textures[4], x: 200000, y: -8000, z: -39000, size: 76000, speed: 0.55, vRange: 1600 }, // Right 4 (Edge)
+
+            { texture: textures[5], x: -100000, y: 8000, z: -35000, size: 74000, speed: 0.45, vRange: 2000 }, // Left 2
+            { texture: textures[6], x: -150000, y: 2000, z: -34000, size: 77000, speed: 0.3, vRange: 2500 },  // Left 3
+            { texture: textures[7], x: -200000, y: -2000, z: -37000, size: 75000, speed: 0.4, vRange: 1900 },  // Left 4 (Deep Edge)
+        ];
+
+        // Store nebula meshes for animation
+        this.nebulaMeshes = [];
+
+        nebulaConfigs.forEach((config, index) => {
+            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.6);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: config.texture },
+                    uTime: { value: 0 },
+                    uOpacity: { value: 0.4 },
+                    uPulse: { value: 0.0 }, // Pulse intensity (0.0 to 1.0)
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D tDiffuse;
+                    uniform float uTime;
+                    uniform float uOpacity;
+                    uniform float uPulse;
+                    
+                    varying vec2 vUv;
+                    
+                    void main() {
+                        vec2 uv = vUv;
+                        
+                        // Sample the texture
+                        vec4 texColor = texture2D(tDiffuse, uv);
+                        
+                        // Heavy edge fade - 40% fade zone on all sides
+                        float fadeX = smoothstep(0.0, 0.4, uv.x) * smoothstep(1.0, 0.6, uv.x);
+                        float fadeY = smoothstep(0.0, 0.4, uv.y) * smoothstep(1.0, 0.6, uv.y);
+                        float fade = fadeX * fadeY;
+                        
+                        // Apply fade to alpha
+                        // Pulse boosts alpha slightly
+                        float pulseAlpha = uPulse * 0.2; 
+                        float alpha = texColor.a * (uOpacity + pulseAlpha) * fade;
+                        
+                        // Pulse boosts brightness significantly
+                        vec3 color = texColor.rgb;
+                        color += color * uPulse * 1.5; // Bright flash
+                        
+                        gl_FragColor = vec4(color, alpha);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: true,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(config.x, config.y, config.z);
+            mesh.renderOrder = -2000 - index;
+
+            mesh.userData.speed = config.speed;
+            mesh.userData.startX = config.x;
+            mesh.userData.startY = config.y; // Base Y position
+            mesh.userData.verticalRange = config.vRange; // How much it bobs up/down
+            mesh.userData.driftPhase = Math.random() * Math.PI * 2; // Random starting phase
+
+            // Store color from texture (for particle bursts)
+            if (config.texture.userData && config.texture.userData.color) {
+                mesh.userData.color = config.texture.userData.color;
+            } else {
+                mesh.userData.color = new THREE.Color(0xFFFFFF); // Fallback
+            }
+
+            // "Smart Loop" Setup
+            // Wrap boundary: 225,000 (Half of 450k width)
+            // When x > 225,000, we subtract 450,000 to move it to -225,000
+            mesh.userData.wrapBoundary = 225000;
+            mesh.userData.totalWidth = 450000;
+
+            this.nebulaMeshes.push(mesh);
+            this.scene.add(mesh);
+        });
+
+        console.log('[StellarDrift] 3 Drifting Nebula Clouds created');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Planet - Pink/Salmon Gas Giant with Flowing Bands
     // ─────────────────────────────────────────────────────────────────────────
 
+
+
+    getRoundParticleTexture() {
+        if (this._roundParticleTexture) return this._roundParticleTexture;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.4)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 32, 32);
+
+        this._roundParticleTexture = new THREE.CanvasTexture(canvas);
+        return this._roundParticleTexture;
+    }
+
+    getStarTexture() {
+        if (this._starTexture) return this._starTexture;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const center = 64;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, 128, 128);
+
+        // Outer soft glow halo - larger and more visible
+        const outerGlow = ctx.createRadialGradient(center, center, 0, center, center, 64);
+        outerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+        outerGlow.addColorStop(0.2, 'rgba(255, 255, 255, 0.08)');
+        outerGlow.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
+        outerGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = outerGlow;
+        ctx.fillRect(0, 0, 128, 128);
+
+        // Subtle cross/sparkle rays - Made more visible
+        ctx.save();
+        ctx.globalAlpha = 0.4; // Increased from 0.15
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 3; // Thicker rays
+        ctx.beginPath();
+        ctx.moveTo(center, center - 40);
+        ctx.lineTo(center, center + 40);
+        ctx.moveTo(center - 40, center);
+        ctx.lineTo(center + 40, center);
+        ctx.stroke();
+        ctx.restore();
+
+        // Bright core with sharp falloff
+        const coreGlow = ctx.createRadialGradient(center, center, 0, center, center, 16);
+        coreGlow.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        coreGlow.addColorStop(0.15, 'rgba(255, 255, 255, 0.95)');
+        coreGlow.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)');
+        coreGlow.addColorStop(0.7, 'rgba(255, 255, 255, 0.15)');
+        coreGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = coreGlow;
+        ctx.fillRect(0, 0, 128, 128);
+
+        this._starTexture = new THREE.CanvasTexture(canvas);
+        return this._starTexture;
+    }
+
+    createNebulaBurst(nebulaMesh, particleCount = 30) {
+        // Get nebula's current world position and scale
+        const pos = nebulaMesh.position.clone();
+        const scale = nebulaMesh.geometry.parameters?.width || 50000; // Nebula size
+
+        // Use color directly from mesh (synced to texture)
+        const color = nebulaMesh.userData.color || new THREE.Color(0xFFFFFF);
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            // Spawn across the FULL nebula area
+            const spreadX = (Math.random() - 0.5) * scale * 0.8;
+            const spreadY = (Math.random() - 0.5) * scale * 0.5;
+
+            positions[i * 3] = pos.x + spreadX;
+            positions[i * 3 + 1] = pos.y + spreadY;
+            positions[i * 3 + 2] = pos.z + 3000 + Math.random() * 2000; // In front of nebula
+
+            // Velocity: Shoot toward camera with some spread
+            const speed = 60 + Math.random() * 60; // INCREASED SPEED MORE (was 40-100)
+            velocities.push({
+                x: (Math.random() - 0.5) * 20,
+                y: (Math.random() - 0.5) * 20,
+                z: speed // Toward camera
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: color,
+            map: this.getRoundParticleTexture(), // USE ROUND TEXTURE
+            size: 150 + Math.random() * 100, // Slightly bigger
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true,
+        });
+
+        const burst = new THREE.Points(geometry, material);
+        burst.userData = {
+            velocities: velocities,
+            life: 8.0, // EVEN LONGER LIFE (was 5.0)
+            maxLife: 8.0
+        };
+
+        this.scene.add(burst);
+        this.nebulaBursts.push(burst);
+    }
+
+    burstAllVisibleNebulas(particlesPerNebula) {
+        // Burst from ALL nebulas
+        this.nebulaMeshes.forEach((nebula) => {
+            // No need to look up color array anymore - it's on the mesh
+            this.createNebulaBurst(nebula, particlesPerNebula);
+        });
+    }
     createPlanet() {
         const planetSize = 500;
 
@@ -670,6 +790,13 @@ export default class StellarDriftTheme extends BaseTheme {
                     return v;
                 }
                 
+                // Color Shift Function
+                vec3 hueShift(vec3 color, float shift) {
+                    vec3 k = vec3(0.57735);
+                    float cosAngle = cos(shift);
+                    return vec3(color * cosAngle + cross(k, color) * sin(shift) + k * dot(k, color) * (1.0 - cosAngle));
+                }
+                
                 void main() {
                     // Use LOCAL position for seamless noise that ROTATES with mesh
                     vec3 pos = normalize(vLocalPos) * 5.0;
@@ -690,28 +817,41 @@ export default class StellarDriftTheme extends BaseTheme {
                     float storm3 = smoothstep(0.5, 0.2, length(pos.xz - vec2(0.5, -2.5)));
                     float storms = storm1 * 0.4 + storm2 * 0.3 + storm3 * 0.25;
                     
-                    // Color Palette: Mars-like (rusty red/orange)
-                    vec3 white = vec3(1.0, 0.95, 0.9);
-                    vec3 dustyOrange = vec3(0.9, 0.6, 0.4);    // Bright dusty orange
-                    vec3 rustRed = vec3(0.75, 0.35, 0.25);     // Mars rust red
-                    vec3 terracotta = vec3(0.6, 0.25, 0.15);   // Deep terracotta
-                    vec3 darkRust = vec3(0.35, 0.15, 0.1);     // Dark shadow rust
+                    // ─────────────────────────────────────────────────────────────
+                    // DYNAMIC COLOR PALETTE
+                    // Start: Mars-like (Red, Rust, Orange)
+                    // Evolution: Very slow hue shift
+                    // ─────────────────────────────────────────────────────────────
+                    
+                    float timeShift = uTime * 0.05; // Very slow color evolution
+                    
+                    // Base Mars Palette
+                    vec3 baseDeep    = vec3(0.3, 0.05, 0.05); // Dark Red
+                    vec3 baseMid     = vec3(0.8, 0.2, 0.1);   // Rust
+                    vec3 baseBright  = vec3(1.0, 0.5, 0.2);   // Orange
+                    vec3 baseHighlight = vec3(1.0, 0.8, 0.6); // Pale Yellow
+                    
+                    // Apply Shift
+                    vec3 deepColor   = hueShift(baseDeep, timeShift);
+                    vec3 midColor    = hueShift(baseMid, timeShift);
+                    vec3 brightColor = hueShift(baseBright, timeShift);
+                    vec3 highlight   = hueShift(baseHighlight, timeShift);
                     
                     // Mix colors based on bands
                     vec3 bandColor;
                     if (bands < 0.3) {
-                        bandColor = mix(darkRust, terracotta, bands * 3.3);
+                        bandColor = mix(deepColor, midColor, bands * 3.3);
                     } else if (bands < 0.6) {
-                        bandColor = mix(terracotta, rustRed, (bands - 0.3) * 3.3);
+                        bandColor = mix(midColor, brightColor, (bands - 0.3) * 3.3);
                     } else {
-                        bandColor = mix(rustRed, dustyOrange, (bands - 0.6) * 2.5);
+                        bandColor = mix(brightColor, highlight, (bands - 0.6) * 2.5);
                     }
                     
                     // Apply storm spots - darker areas that are visible during rotation
-                    vec3 stormColor = darkRust * 0.7; // Dark storm centers
+                    vec3 stormColor = deepColor * 0.6; // Dark storm centers
                     bandColor = mix(bandColor, stormColor, storms);
                     
-                    // REALISTIC MARS-LIKE LIGHTING
+                    // REALISTIC LIGHTING tuned for Nebula
                     // Light direction from upper-right
                     vec3 lightDir = normalize(vec3(0.7, 0.3, 0.6));
                     vec3 viewDir = normalize(vViewPosition);
@@ -721,28 +861,29 @@ export default class StellarDriftTheme extends BaseTheme {
                     float shadow = smoothstep(-0.1, 0.3, NdotL); // Soft terminator line
                     
                     // Apply deep shadow to unlit side
-                    vec3 shadowColor = bandColor * 0.15; // Very dark shadow
+                    vec3 shadowColor = bandColor * 0.1; // Very dark shadow
                     vec3 litColor = bandColor;
                     vec3 finalColor = mix(shadowColor, litColor, shadow);
                     
-                    // Add subtle ambient light to shadow side (from nebula)
-                    float ambient = 0.08;
-                    finalColor += bandColor * ambient * (1.0 - shadow);
+                    // Add ambient light from nebula (green/purple glow)
+                    float ambient = 0.12;
+                    vec3 ambientColor = vec3(0.4, 0.2, 0.6); // Purple ambient
+                    finalColor += bandColor * ambientColor * (1.0 - shadow) * 2.0;
                     
-                    // Rim light on the dark edge (subtle backlight)
+                    // Rim light on the dark edge (Backlight from nebula)
                     float rimLight = pow(1.0 - abs(dot(vNormal, viewDir)), 3.0);
-                    rimLight *= (1.0 - shadow) * 0.3; // Only on shadow side
-                    finalColor += vec3(0.4, 0.2, 0.15) * rimLight;
+                    rimLight *= (1.0 - shadow) * 0.6; // Only on shadow side, stronger
+                    finalColor += vec3(0.5, 0.8, 0.6) * rimLight; // Emerald rim light
                     
                     // Specular highlight on lit side
                     vec3 halfDir = normalize(lightDir + viewDir);
                     float spec = pow(max(dot(vNormal, halfDir), 0.0), 20.0) * shadow;
-                    finalColor += vec3(1.0, 0.9, 0.8) * spec * 0.15;
+                    finalColor += vec3(1.0, 0.95, 0.8) * spec * 0.2;
                     
                     // Very subtle atmospheric haze at edges
                     float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 2.5);
-                    vec3 atmosphereColor = vec3(0.9, 0.5, 0.3);
-                    finalColor += atmosphereColor * fresnel * shadow * 0.2;
+                    vec3 atmosphereColor = vec3(0.6, 0.4, 0.9); // Violet atmosphere
+                    finalColor += atmosphereColor * fresnel * shadow * 0.25;
                     
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
@@ -919,11 +1060,12 @@ export default class StellarDriftTheme extends BaseTheme {
     createMeteorField() {
         const count = this.qualityPreset.meteorCount;
 
-        // Dark material with solid appearance
+        // Dark material with solid appearance - BRIGHTENED FOR VISIBILITY
         const material = new THREE.MeshStandardMaterial({
-            color: 0x0a0a0a,
-            roughness: 0.9,
-            metalness: 0.1,
+            color: 0x776655,        // Rocky Grey/Brown (was 0x0a0a0a)
+            emissive: 0x222233,     // Subtle nebula glow (was none) -- Key for dark background
+            roughness: 0.7,         // Slightly smoother to catch light
+            metalness: 0.2,         // Slight metallic sheens
             flatShading: true,
             side: THREE.DoubleSide, // Render both sides for solid appearance
         });
@@ -1082,6 +1224,8 @@ export default class StellarDriftTheme extends BaseTheme {
         this.shockwaveRings.push(ring);
     }
 
+
+
     // ─────────────────────────────────────────────────────────────────────────
     // 3D COMBO EFFECTS - Smooth interpolation (no harsh setTimeout)
     // ─────────────────────────────────────────────────────────────────────────
@@ -1098,6 +1242,10 @@ export default class StellarDriftTheme extends BaseTheme {
         // 2. NEBULA BOOST - Set intensity based on combo (decays smoothly)
         this.nebulaBoostIntensity = Math.min(comboCount * 0.15, 0.6);
 
+        // 2b. NEBULA PULSE (SHADER) - Spike the shader pulse uniform
+        const pulseIntensity = Math.min(0.4 + (comboCount * 0.15), 1.0);
+        this.nebulaPulse = Math.max(this.nebulaPulse, pulseIntensity);
+
         // 3. PLANET GLOW SURGE - Set intensity based on combo (decays smoothly)
         this.glowSurgeIntensity = Math.min(comboCount * 0.08, 0.5);
 
@@ -1106,6 +1254,10 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // 5. STAR TWINKLE on combos too
         this.starTwinkleIntensity = Math.max(this.starTwinkleIntensity, 0.5 + comboCount * 0.1);
+
+        // 6. NEBULA PARTICLE BURSTS - ALL nebulas burst simultaneously
+        const particlesPerNebula = (15 + comboCount * 5) * 5; // 5x PARTICLES
+        this.burstAllVisibleNebulas(particlesPerNebula);
     }
 
     createShootingStar() {
@@ -1145,6 +1297,12 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     startAnimation() {
+        if (!this.isActive) return;
+
+        // Sound set activation handled by theme-linked settings
+
+        this.planetPhaseOffset = Math.random() * Math.PI * 2;
+
         const animate = () => {
             if (!this.isActive) return;
 
@@ -1154,35 +1312,77 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.planet.material.uniforms.uTime.value = this.time;
             }
 
-            // Update Orbiting Particles Shader
-            if (this.orbitingParticles?.material?.uniforms) {
-                this.orbitingParticles.material.uniforms.uTime.value = this.time;
+            // Update Nebula Shader
+            // Update and drift nebula clouds (left to right)
+            if (this.nebulaMeshes && this.nebulaMeshes.length > 0) {
+                this.nebulaMeshes.forEach(mesh => {
+                    // 1. Horizontal Drift (Left to Right)
+                    mesh.position.x += mesh.userData.speed;
+
+                    // 2. Vertical Bobbing (Natural "floating" motion)
+                    // Uses sin wave based on time + random phase offset
+                    const verticalOffset = Math.sin(this.time * 0.2 + mesh.userData.driftPhase) * mesh.userData.verticalRange;
+                    mesh.position.y = mesh.userData.startY + verticalOffset;
+
+                    // Wrap around when off-screen right
+                    if (mesh.position.x > mesh.userData.wrapDistance) {
+                        mesh.position.x = -mesh.userData.wrapDistance;
+
+                        // Randomize Y slightly on reset for variety
+                        // Variance of +/- 2000 units from base
+                        const variance = (Math.random() - 0.5) * 4000;
+                        mesh.userData.startY = mesh.userData.startY + variance;
+                        // Clamp to prevent drifting too far off screen over time
+                        // (Reset to original config logic could be better but this adds evolution)
+                    }
+
+                    // Update time uniform
+                    if (mesh.material?.uniforms?.uTime) {
+                        mesh.material.uniforms.uTime.value = this.time;
+                    }
+                });
             }
 
-            // CAMERA DRIFT: Figure-8 parallax movement - INCREASED AMPLITUDE
+            // Update Orbiting Particles Shader (REMOVED)
+            // if (this.orbitingParticles?.material?.uniforms) {
+            //     this.orbitingParticles.material.uniforms.uTime.value = this.time;
+            // }
+
+            // CAMERA DRIFT: Gentle camera movement
             if (this.camera) {
-                const xDrift = Math.sin(this.time * 0.15) * 150;  // Was 50 - tripled
-                const yDrift = Math.cos(this.time * 0.1) * 80;    // Was 30 - nearly tripled
+                // Subtle camera movement for depth
+                const xDrift = Math.sin(this.time * 0.08) * 150;
+                const yDrift = Math.cos(this.time * 0.06) * 80;
                 this.camera.position.x = xDrift;
-                this.camera.position.y = 100 + yDrift; // Add to base Y=100
-                // Always look at center (0,0,0) to maintain focus
+                this.camera.position.y = yDrift;
                 this.camera.lookAt(0, 0, 0);
             }
 
-            // Rotate planet around its axis
+            // PLANET DRIFT: Move planet to different screen positions
+            let planetX = 0;
+            let planetY = 0;
             if (this.planet) {
                 this.planet.rotation.y += 0.0001; // Ultra slow spin
+
+                // Large orbit so planet appears on different sides of the screen
+                // Use phase offset for random starting position
+                planetX = Math.sin(this.time * 0.03 + this.planetPhaseOffset) * 600;
+                planetY = Math.cos(this.time * 0.025 + this.planetPhaseOffset) * 350;
+                this.planet.position.x = planetX;
+                this.planet.position.y = planetY;
+
+                // Also move the glow planes with the planet
+                if (this.smallGlow) {
+                    this.smallGlow.position.x = planetX;
+                    this.smallGlow.position.y = planetY;
+                }
+                if (this.bigGlow) {
+                    this.bigGlow.position.x = planetX;
+                    this.bigGlow.position.y = planetY;
+                }
             }
 
-            // Scroll background (like Andromeda)
-            this.backgroundPlanes.forEach((plane) => {
-                plane.position.x += plane.userData.speed;
-                if (plane.position.x > plane.userData.width * 0.5) {
-                    plane.position.x -= plane.userData.width;
-                } else if (plane.position.x < -plane.userData.width * 0.5) {
-                    plane.position.x += plane.userData.width;
-                }
-            });
+            // Nebula drift is handled above
 
             // ─────────────────────────────────────────────────────────────────
             // DYNAMIC METEOR ACTIVITY
@@ -1195,17 +1395,17 @@ export default class StellarDriftTheme extends BaseTheme {
             // Speed multiplier: 1.0 (base) up to ~5.0 (fastest, was ~8.5)
             const speedMultiplier = 1.0 + (this.meteorActivity * 0.8);
 
-            // Move meteors (Rotate around planet)
+            // Move meteors (Rotate around PLANET position)
             this.meteors.forEach((m) => {
                 // Orbital rotation
                 m.angle += m.speed * speedMultiplier;
 
-                // Update position based on new angle
-                m.mesh.position.x = Math.sin(m.angle) * m.radius;
+                // Update position relative to planet's current position
+                m.mesh.position.x = planetX + Math.sin(m.angle) * m.radius;
                 m.mesh.position.z = Math.cos(m.angle) * m.radius;
 
-                // Add slight vertical wave movement
-                m.mesh.position.y = m.yBase + Math.sin(m.angle * 2.0 + this.time) * 10;
+                // Add slight vertical wave movement relative to planet
+                m.mesh.position.y = planetY + m.yBase + Math.sin(m.angle * 2.0 + this.time) * 10;
 
                 // Tumble rotation
                 m.mesh.rotation.x -= m.rotationSpeed.x * speedMultiplier;
@@ -1265,18 +1465,60 @@ export default class StellarDriftTheme extends BaseTheme {
                 if (this.nebulaBoostIntensity < 0.01) this.nebulaBoostIntensity = 0;
             }
 
-            // SMOOTH GLOW SURGE - Gradual planet glow decay
+            // NEBULA PULSE DECAY - Slower decay for lingering effect
+            if (this.nebulaPulse > 0) {
+                this.nebulaPulse *= 0.97; // Was 0.92, now decays much slower
+                if (this.nebulaPulse < 0.01) this.nebulaPulse = 0;
+            }
+
+            // Update Nebula Uniforms (Pulse + Time)
+            this.nebulaMeshes.forEach(mesh => {
+                // 1. Horizontal Drift (Left to Right)
+                mesh.position.x += mesh.userData.speed;
+
+                // 2. Vertical Bobbing
+                const verticalOffset = Math.sin(this.time * 0.2 + mesh.userData.driftPhase) * mesh.userData.verticalRange;
+                mesh.position.y = mesh.userData.startY + verticalOffset;
+
+                // 3. Smart Loop
+                if (mesh.position.x > mesh.userData.wrapBoundary) {
+                    mesh.position.x -= mesh.userData.totalWidth;
+                    const variance = (Math.random() - 0.5) * 4000;
+                    mesh.userData.startY = mesh.userData.startY + variance;
+                }
+
+                // Update uniforms
+                if (mesh.material?.uniforms) {
+                    // Update Time
+                    if (mesh.material.uniforms.uTime) {
+                        mesh.material.uniforms.uTime.value = this.time;
+                    }
+                    // Update Pulse
+                    if (mesh.material.uniforms.uPulse) {
+                        mesh.material.uniforms.uPulse.value = this.nebulaPulse;
+                    }
+                }
+            });
             if (this.glowSurgeIntensity > 0) {
                 this.glowSurgeIntensity *= 0.96;
                 if (this.glowSurgeIntensity < 0.01) this.glowSurgeIntensity = 0;
             }
+
+            // DYNAMIC PLANET GLOW COLOR
+            // Matches the shader's hue shift (speed 0.05)
+            // Base Mars Hue: ~20 degrees (0.05 turn)
+            const hueShift = (this.time * 0.05) / (Math.PI * 2); // Convert rad to turns
+            const currentHue = (0.05 + hueShift) % 1.0;
+
             if (this.smallGlow) {
                 const glowScale = 1 + this.glowSurgeIntensity;
                 this.smallGlow.scale.set(glowScale, glowScale, 1);
+                this.smallGlow.material.color.setHSL(currentHue, 0.9, 0.6);
             }
             if (this.bigGlow) {
                 const bigScale = 1 + this.glowSurgeIntensity * 0.5;
                 this.bigGlow.scale.set(bigScale, bigScale, 1);
+                this.bigGlow.material.color.setHSL(currentHue, 0.8, 0.5);
             }
 
             // Animate shockwave rings (if any exist)
@@ -1304,6 +1546,33 @@ export default class StellarDriftTheme extends BaseTheme {
                     this.scene.remove(star);
                     star.geometry.dispose();
                     star.material.dispose();
+                    return false;
+                }
+                return true;
+            });
+
+            // Animate nebula particle bursts
+            this.nebulaBursts = this.nebulaBursts.filter((burst) => {
+                const positions = burst.geometry.attributes.position.array;
+                const velocities = burst.userData.velocities;
+
+                // Move particles
+                for (let j = 0; j < velocities.length; j++) {
+                    positions[j * 3] += velocities[j].x;
+                    positions[j * 3 + 1] += velocities[j].y;
+                    positions[j * 3 + 2] += velocities[j].z;
+                }
+                burst.geometry.attributes.position.needsUpdate = true;
+
+                // Fade out
+                burst.userData.life -= 0.02;
+                burst.material.opacity = Math.max(0, burst.userData.life / burst.userData.maxLife);
+
+                // Cleanup
+                if (burst.userData.life <= 0) {
+                    this.scene.remove(burst);
+                    burst.geometry.dispose();
+                    burst.material.dispose();
                     return false;
                 }
                 return true;

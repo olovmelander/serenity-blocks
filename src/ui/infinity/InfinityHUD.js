@@ -52,6 +52,7 @@ export class InfinityHUD {
         this.lastScore = null;
         this.lastBlocks = null;
         this.lastLines = null;
+        this.lastMaxCascadeScore = null;
 
         // Initialize
         this._initialize();
@@ -396,12 +397,20 @@ export class InfinityHUD {
             </div>
             <div style="grid-column: span 2; height: 1px; background: rgba(100, 200, 255, 0.15); margin: 4px 0;"></div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Max Combo</span>
-                <span id="stat-max-combo" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
+                <span style="font-size: 0.8em; color: rgba(100, 255, 180, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Best Score</span>
+                <span id="stat-max-cascade-score" style="font-size: 1.2em; font-weight: 700; color: rgba(100, 255, 180, 1);">0</span>
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Max Cascade</span>
+                <span style="font-size: 0.8em; color: rgba(100, 255, 180, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Best Lines</span>
+                <span id="stat-max-lines" style="font-size: 1.2em; font-weight: 700; color: rgba(100, 255, 180, 1);">0</span>
+            </div>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Best Chain</span>
                 <span id="stat-max-cascade" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
+            </div>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Total Cascades</span>
+                <span id="stat-total-cascades" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
             </div>
         `;
 
@@ -710,16 +719,32 @@ export class InfinityHUD {
             }
         }
 
-        // Update max combo (standard combo counter)
-        const maxComboElem = document.getElementById('stat-max-combo');
-        if (maxComboElem && this.gameState.infinityStats) {
-            maxComboElem.textContent = this.gameState.infinityStats.maxCombo.toString();
+        // Update max cascade score (best score from a single cascade)
+        const maxCascadeScoreElem = document.getElementById('stat-max-cascade-score');
+        if (maxCascadeScoreElem && this.gameState.infinityStats) {
+            const maxCascadeScore = this.gameState.infinityStats.maxCascadeScore || 0;
+            if (this.lastMaxCascadeScore !== maxCascadeScore) {
+                this.lastMaxCascadeScore = maxCascadeScore;
+                maxCascadeScoreElem.textContent = maxCascadeScore.toLocaleString();
+            }
         }
 
-        // Update max cascade (cascade complexity)
+        // Update max cascade (cascade complexity / best chain depth)
         const maxCascadeElem = document.getElementById('stat-max-cascade');
         if (maxCascadeElem && this.gameState.infinityStats) {
             maxCascadeElem.textContent = this.gameState.infinityStats.maxComboComplexity.toString();
+        }
+
+        // Update max lines in cascade (best lines from one piece)
+        const maxLinesElem = document.getElementById('stat-max-lines');
+        if (maxLinesElem && this.gameState.infinityStats) {
+            maxLinesElem.textContent = this.gameState.infinityStats.maxComboDepth.toString();
+        }
+
+        // Update total cascades (how many chain reactions 2+ triggered)
+        const totalCascadesElem = document.getElementById('stat-total-cascades');
+        if (totalCascadesElem && this.gameState.infinityStats) {
+            totalCascadesElem.textContent = this.gameState.infinityStats.totalCascades.toString();
         }
     }
 

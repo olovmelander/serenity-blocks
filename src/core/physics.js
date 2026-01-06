@@ -750,13 +750,17 @@ export async function processPhysics(gameState, callbacks) {
         gameState.lines += fullLines.length;
         gameState.linesUntilNextLevel -= fullLines.length;
 
-        if (gameState.linesUntilNextLevel <= 0) {
+        // Skip level progression if disabled (e.g., Infinity mode uses fixed speed)
+        if (gameState.linesUntilNextLevel <= 0 && !gameState.disableLevelProgression) {
             gameState.level++;
             gameState.linesUntilNextLevel += 15; // Quadra: 15 lines per level
             gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
 
             if (callbacks.playLevelUp) callbacks.playLevelUp();
             if (callbacks.onLevelUp) callbacks.onLevelUp(gameState.level);
+        } else if (gameState.linesUntilNextLevel <= 0) {
+            // Reset line counter even when level progression is disabled
+            gameState.linesUntilNextLevel += 15;
         }
 
         if (oldLevel !== gameState.level && callbacks.updateBackground) {

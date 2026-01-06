@@ -28,9 +28,9 @@ export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
 export const CROWD_THRESHOLD = 4; // Players before crowd handicap kicks in
 
 // Quadra-authentic clean patterns (Quadra columns 5,8 and 4,7,10,13 mapped to 0-indexed)
-// Quadra even: 72  = 0b0001001000 = columns 5, 8 → [1, 4] in 0-indexed
+// Quadra even: 72  = 0b0001001000 = columns 3, 6 → [3, 6] in 0-indexed
 // Quadra odd:  585 = 0b1001001001 = columns 4, 7, 10, 13 → [0, 3, 6, 9] in 0-indexed
-const CLEAN_PATTERN_EVEN = [1, 4];
+const CLEAN_PATTERN_EVEN = [3, 6];
 const CLEAN_PATTERN_ODD = [0, 3, 6, 9];
 
 /**
