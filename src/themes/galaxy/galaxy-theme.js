@@ -330,8 +330,8 @@ export default class GalaxyTheme extends BaseTheme {
     }
 
     createSpiralSparks() {
-        // Less particles than stars, but enough for a good spray
-        const count = 4000;
+        // More particles for impressive combo effects
+        const count = 8000;
         const geometry = new THREE.BufferGeometry();
 
         const angles = new Float32Array(count);
