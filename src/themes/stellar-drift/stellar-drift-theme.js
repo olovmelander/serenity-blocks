@@ -107,6 +107,98 @@ const VignetteShader = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Chromatic Aberration Shader (High-Speed Warp Effect)
+// ─────────────────────────────────────────────────────────────────────────────
+const ChromaticAberrationShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        intensity: { value: 0.0 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float intensity;
+        varying vec2 vUv;
+        
+        void main() {
+            vec2 dir = vUv - 0.5;
+            float dist = length(dir);
+            vec2 offset = dir * dist * intensity * 0.02;
+            
+            float r = texture2D(tDiffuse, vUv + offset).r;
+            float g = texture2D(tDiffuse, vUv).g;
+            float b = texture2D(tDiffuse, vUv - offset).b;
+            
+            gl_FragColor = vec4(r, g, b, 1.0);
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Radial Speed Lines Shader (Motion Trails Effect)
+// ─────────────────────────────────────────────────────────────────────────────
+const RadialSpeedLinesShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        intensity: { value: 0.0 },
+        time: { value: 0.0 },
+        center: { value: new THREE.Vector2(0.5, 0.5) },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float intensity;
+        uniform float time;
+        uniform vec2 center;
+        varying vec2 vUv;
+        
+        void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            
+            if (intensity > 0.01) {
+                // Radial blur / zoom effect
+                vec2 dir = vUv - center;
+                float dist = length(dir);
+                vec2 normDir = normalize(dir);
+                
+                // Sample along the radial direction for motion blur
+                vec4 sum = texel;
+                float samples = 8.0;
+                float blurAmount = intensity * 0.03 * dist;
+                
+                for (float i = 1.0; i <= 8.0; i++) {
+                    float t = i / samples;
+                    vec2 offset = normDir * blurAmount * t;
+                    sum += texture2D(tDiffuse, vUv - offset) * (1.0 - t * 0.3);
+                }
+                
+                texel = sum / (samples * 0.7 + 1.0);
+                
+                // Add subtle speed lines
+                float angle = atan(dir.y, dir.x);
+                float speedLine = sin(angle * 60.0 + time * 10.0) * 0.5 + 0.5;
+                speedLine = pow(speedLine, 8.0) * intensity * 0.15 * dist;
+                texel.rgb += vec3(speedLine);
+            }
+            
+            gl_FragColor = texel;
+        }
+    `,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
 export default class StellarDriftTheme extends BaseTheme {
@@ -138,6 +230,18 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorActivity = 0;       // Dynamic meteor spin speed based on APM
         this.nebulaPulse = 0;          // Pulse intensity for nebulas
         this.cameraSway = new THREE.Vector3(0, 0, 0); // Gentle camera motion
+
+        // WARP SPEED EFFECTS - Tunnel Vision & Motion Trails
+        this.baseFOV = 75;
+        this.currentFOV = 75;
+        this.targetFOV = 75;
+        this.cameraShake = new THREE.Vector3(0, 0, 0);
+        this.chromaticIntensity = 0;         // Chromatic aberration strength
+        this.radialBlurIntensity = 0;        // Radial motion blur strength
+        this.warpSpeed = 0;                  // Current warp speed (0-1)
+        this.targetWarpSpeed = 0;            // Target warp speed
+        this.starTrailIntensity = 0;         // Star elongation intensity
+        this.speedLineOpacity = 0;           // Speed line visibility
 
         // Nebula Particle Bursts
         this.nebulaBursts = [];
@@ -302,13 +406,14 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
 
-        // GPU shader - constant size, only brightness twinkles
+        // GPU shader - with WARP SPEED trail effects
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
                 uPixelRatio: { value: this.renderer.getPixelRatio() },
                 uEventBoost: { value: 0 },
                 uTexture: { value: this.getStarTexture() },
+                uWarpSpeed: { value: 0 },  // NEW: Warp speed for trail effect
             },
             vertexShader: `
                 attribute float aSize;
@@ -317,43 +422,88 @@ export default class StellarDriftTheme extends BaseTheme {
                 uniform float uTime;
                 uniform float uPixelRatio;
                 uniform float uEventBoost;
+                uniform float uWarpSpeed;
 
                 varying vec3 vColor;
                 varying float vBrightness;
+                varying float vWarpSpeed;
+                varying vec2 vScreenDir;
 
                 void main() {
                     vColor = color;
+                    vWarpSpeed = uWarpSpeed;
 
                     // Gentle brightness twinkle (no size change)
                     float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
                     vBrightness = 0.8 + twinkle * 0.2; // Subtle range: 0.6 to 1.0
                     vBrightness *= (1.0 + uEventBoost * 0.3);
+                    
+                    // WARP: Brighter stars during warp
+                    vBrightness *= (1.0 + uWarpSpeed * 0.5);
 
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vec4 projected = projectionMatrix * mvPosition;
+                    
+                    // Calculate screen direction for trail orientation
+                    vScreenDir = normalize(projected.xy / projected.w);
 
-                    // CONSTANT size - no twinkle affecting size
-                    gl_PointSize = aSize * uPixelRatio * (400.0 / -mvPosition.z);
-                    gl_PointSize = clamp(gl_PointSize, 3.0, 60.0);
+                    // WARP: Size increases during warp for more dramatic trails
+                    float warpSizeBoost = 1.0 + uWarpSpeed * 1.5;
+                    gl_PointSize = aSize * uPixelRatio * warpSizeBoost * (400.0 / -mvPosition.z);
+                    gl_PointSize = clamp(gl_PointSize, 3.0, 120.0);
 
-                    gl_Position = projectionMatrix * mvPosition;
+                    gl_Position = projected;
                 }
             `,
             fragmentShader: `
                 uniform sampler2D uTexture;
+                uniform float uWarpSpeed;
 
                 varying vec3 vColor;
                 varying float vBrightness;
+                varying float vWarpSpeed;
+                varying vec2 vScreenDir;
 
                 void main() {
-                    vec4 texColor = texture2D(uTexture, gl_PointCoord);
-
-                    // Smooth circular falloff
                     vec2 center = gl_PointCoord - 0.5;
                     float dist = length(center) * 2.0;
+                    
+                    // WARP: Elongate stars into trails pointing toward center
+                    float trailFactor = 1.0;
+                    if (vWarpSpeed > 0.01) {
+                        // Calculate angle to make trail point toward screen center
+                        vec2 trailDir = normalize(vScreenDir);
+                        float angle = atan(trailDir.y, trailDir.x);
+                        
+                        // Rotate UV coordinates
+                        float cosA = cos(-angle);
+                        float sinA = sin(-angle);
+                        vec2 rotatedCenter = vec2(
+                            center.x * cosA - center.y * sinA,
+                            center.x * sinA + center.y * cosA
+                        );
+                        
+                        // Stretch along the trail direction (x-axis after rotation)
+                        float stretch = 1.0 + vWarpSpeed * 4.0;
+                        rotatedCenter.x /= stretch;
+                        
+                        // Recalculate distance with stretched coords
+                        dist = length(rotatedCenter) * 2.0;
+                        trailFactor = stretch * 0.5 + 0.5;
+                    }
+                    
+                    // Smooth circular/elliptical falloff
                     float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
-
-                    vec3 finalColor = vColor * vBrightness * 1.8;
-                    float alpha = texColor.a * softCircle * (vBrightness + 0.3);
+                    
+                    // WARP: Add motion trail glow
+                    vec3 coreColor = vColor * vBrightness * 1.8;
+                    vec3 trailColor = vColor * (1.0 + vWarpSpeed * 0.5);
+                    vec3 finalColor = mix(coreColor, trailColor, vWarpSpeed * 0.3);
+                    
+                    // Add white hot core during warp
+                    finalColor += vec3(1.0) * vWarpSpeed * softCircle * 0.4;
+                    
+                    float alpha = softCircle * (vBrightness + 0.3) * trailFactor;
 
                     gl_FragColor = vec4(finalColor, alpha);
                 }
@@ -1201,10 +1351,24 @@ export default class StellarDriftTheme extends BaseTheme {
         );
         this.composer.addPass(this.bloomPass);
 
-        const vignettePass = new ShaderPass(VignetteShader);
-        vignettePass.uniforms.darkness.value = 0.4;
-        vignettePass.uniforms.offset.value = 1.1;
-        this.composer.addPass(vignettePass);
+        // Vignette Pass (dynamic darkness for tunnel vision)
+        this.vignettePass = new ShaderPass(VignetteShader);
+        this.vignettePass.uniforms.darkness.value = 0.4;
+        this.vignettePass.uniforms.offset.value = 1.1;
+        this.composer.addPass(this.vignettePass);
+
+        // WARP EFFECTS: Chromatic Aberration (color fringing at edges during warp)
+        this.chromaticPass = new ShaderPass(ChromaticAberrationShader);
+        this.chromaticPass.uniforms.intensity.value = 0;
+        this.composer.addPass(this.chromaticPass);
+
+        // WARP EFFECTS: Radial Speed Lines (motion blur/trails during warp)
+        this.radialSpeedPass = new ShaderPass(RadialSpeedLinesShader);
+        this.radialSpeedPass.uniforms.intensity.value = 0;
+        this.radialSpeedPass.uniforms.time.value = 0;
+        this.composer.addPass(this.radialSpeedPass);
+
+        console.log('[StellarDrift] Post-processing with warp effects initialized');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1304,6 +1468,50 @@ export default class StellarDriftTheme extends BaseTheme {
         // 6. NEBULA PARTICLE BURSTS - ALL nebulas burst simultaneously
         const particlesPerNebula = (20 + comboCount * 8) * 10; // 10x PARTICLES for maximum visibility
         this.burstAllVisibleNebulas(particlesPerNebula);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // 7. WARP SPEED EFFECTS - Tunnel Vision & Motion Trails
+        // The intensity scales with combo count for an escalating rush
+        // ═══════════════════════════════════════════════════════════════════════
+
+        if (comboCount >= 8) {
+            // MAXIMUM WARP - Intense tunnel vision, heavy chromatic aberration
+            this.targetWarpSpeed = 1.0;
+            this.targetFOV = this.baseFOV - 25;  // Dramatic narrow FOV
+            this.chromaticIntensity = 2.0;       // Strong color fringing
+            this.radialBlurIntensity = 1.5;      // Heavy motion blur
+            this.starTrailIntensity = 1.0;       // Full star trails
+            this.createShockwaveRing();           // Big shockwave
+        } else if (comboCount >= 5) {
+            // HIGH WARP - Strong effects
+            this.targetWarpSpeed = 0.7;
+            this.targetFOV = this.baseFOV - 15;
+            this.chromaticIntensity = 1.2;
+            this.radialBlurIntensity = 1.0;
+            this.starTrailIntensity = 0.7;
+        } else if (comboCount >= 3) {
+            // MEDIUM WARP - Noticeable effects
+            this.targetWarpSpeed = 0.4;
+            this.targetFOV = this.baseFOV - 8;
+            this.chromaticIntensity = 0.6;
+            this.radialBlurIntensity = 0.5;
+            this.starTrailIntensity = 0.4;
+        } else {
+            // LOW WARP - Subtle hint of speed
+            this.targetWarpSpeed = 0.2;
+            this.targetFOV = this.baseFOV - 3;
+            this.chromaticIntensity = 0.2;
+            this.radialBlurIntensity = 0.2;
+            this.starTrailIntensity = 0.2;
+        }
+
+        // Camera shake intensity scales with combo
+        const shakeStrength = Math.min(comboCount * 3, 25);
+        this.cameraShake.set(
+            (Math.random() - 0.5) * shakeStrength,
+            (Math.random() - 0.5) * shakeStrength,
+            0
+        );
     }
 
     createShootingStar() {
@@ -1394,13 +1602,52 @@ export default class StellarDriftTheme extends BaseTheme {
             //     this.orbitingParticles.material.uniforms.uTime.value = this.time;
             // }
 
-            // CAMERA DRIFT: Gentle camera movement
+            // ═══════════════════════════════════════════════════════════════════════
+            // WARP SPEED STATE UPDATE - Smooth interpolation and decay
+            // ═══════════════════════════════════════════════════════════════════════
+
+            // Smooth warp speed interpolation
+            this.warpSpeed += (this.targetWarpSpeed - this.warpSpeed) * 0.08;
+            if (this.targetWarpSpeed < 0.01) {
+                this.targetWarpSpeed = 0;
+            }
+
+            // Decay warp target over time (auto-return to normal)
+            this.targetWarpSpeed *= 0.985;
+
+            // Smooth FOV interpolation (tunnel vision effect)
+            this.currentFOV += (this.targetFOV - this.currentFOV) * 0.06;
+            if (Math.abs(this.targetFOV - this.baseFOV) > 0.01) {
+                // Auto-return FOV to base when not in warp
+                this.targetFOV += (this.baseFOV - this.targetFOV) * 0.015;
+            }
+
+            // Update camera FOV
+            if (this.camera && Math.abs(this.camera.fov - this.currentFOV) > 0.1) {
+                this.camera.fov = this.currentFOV;
+                this.camera.updateProjectionMatrix();
+            }
+
+            // Decay chromatic aberration and radial blur
+            this.chromaticIntensity *= 0.93;
+            this.radialBlurIntensity *= 0.92;
+            this.starTrailIntensity *= 0.94;
+            if (this.chromaticIntensity < 0.01) this.chromaticIntensity = 0;
+            if (this.radialBlurIntensity < 0.01) this.radialBlurIntensity = 0;
+            if (this.starTrailIntensity < 0.01) this.starTrailIntensity = 0;
+
+            // Smooth camera shake decay
+            this.cameraShake.multiplyScalar(0.9);
+
+            // CAMERA DRIFT: Gentle camera movement + warp shake
             if (this.camera) {
                 // Subtle camera movement for depth
                 const xDrift = Math.sin(this.time * 0.08) * 150;
                 const yDrift = Math.cos(this.time * 0.06) * 80;
-                this.camera.position.x = xDrift;
-                this.camera.position.y = yDrift;
+
+                // Apply camera shake on top of drift
+                this.camera.position.x = xDrift + this.cameraShake.x;
+                this.camera.position.y = yDrift + this.cameraShake.y;
                 this.camera.lookAt(0, 0, 0);
             }
 
@@ -1485,6 +1732,9 @@ export default class StellarDriftTheme extends BaseTheme {
                 // Update shader uniforms (GPU does all the work)
                 this.starfield.material.uniforms.uTime.value = this.time;
                 this.starfield.material.uniforms.uEventBoost.value = this.starTwinkleIntensity;
+
+                // WARP: Update star trail effect
+                this.starfield.material.uniforms.uWarpSpeed.value = this.starTrailIntensity;
             }
 
             // SMOOTH DUST RING PULSE - Gradual scale decay
@@ -1497,13 +1747,42 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.dustRing.scale.set(scale, scale, scale);
             }
 
-            // SMOOTH BLOOM PULSE - Gradual bloom decay
+            // SMOOTH BLOOM PULSE - Gradual bloom decay (boosted during warp)
             if (this.bloomPass) {
                 if (this.bloomPulseIntensity > 0) {
                     this.bloomPulseIntensity *= 0.94; // Smooth decay
                     if (this.bloomPulseIntensity < 0.005) this.bloomPulseIntensity = 0;
                 }
-                this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity);
+                // Extra bloom during warp (subtle glow)
+                const warpBloomBoost = this.warpSpeed * 0.1;
+                this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity + warpBloomBoost);
+            }
+
+            // ═══════════════════════════════════════════════════════════════════════
+            // WARP POST-PROCESSING EFFECTS - Tunnel Vision & Motion Trails
+            // ═══════════════════════════════════════════════════════════════════════
+
+            // Dynamic Vignette (tunnel vision - darker edges during warp)
+            if (this.vignettePass) {
+                const baseDarkness = 0.4;
+                const warpDarkness = this.warpSpeed * 0.5;  // Up to 0.9 total at max warp
+                this.vignettePass.uniforms.darkness.value = baseDarkness + warpDarkness;
+
+                // Tighten the vignette offset for more tunnel effect
+                const baseOffset = 1.1;
+                const warpOffset = this.warpSpeed * 0.3;  // Smaller offset = tighter tunnel
+                this.vignettePass.uniforms.offset.value = baseOffset - warpOffset;
+            }
+
+            // Chromatic Aberration (color fringing at edges)
+            if (this.chromaticPass) {
+                this.chromaticPass.uniforms.intensity.value = this.chromaticIntensity;
+            }
+
+            // Radial Speed Lines (motion blur / zoom effect)
+            if (this.radialSpeedPass) {
+                this.radialSpeedPass.uniforms.intensity.value = this.radialBlurIntensity;
+                this.radialSpeedPass.uniforms.time.value = this.time * 50;  // Fast animation
             }
 
             // SMOOTH NEBULA BOOST - Gradual opacity decay
@@ -1692,6 +1971,11 @@ export default class StellarDriftTheme extends BaseTheme {
         this.bigGlow = null;
         this.backgroundPlanes = [];
         this.meteors = [];
+
+        // Cleanup warp effect passes
+        this.vignettePass = null;
+        this.chromaticPass = null;
+        this.radialSpeedPass = null;
 
         super.cleanup();
     }
