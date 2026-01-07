@@ -735,11 +735,11 @@ export default class StellarDriftTheme extends BaseTheme {
             positions[i * 3 + 1] = pos.y + spreadY;
             positions[i * 3 + 2] = pos.z + 3000 + Math.random() * 2000; // In front of nebula
 
-            // Velocity: Shoot toward camera with some spread
-            const speed = 60 + Math.random() * 60; // INCREASED SPEED MORE (was 40-100)
+            // Velocity: Shoot toward camera with dramatic spread
+            const speed = 80 + Math.random() * 80; // FAST shooting particles
             velocities.push({
-                x: (Math.random() - 0.5) * 20,
-                y: (Math.random() - 0.5) * 20,
+                x: (Math.random() - 0.5) * 35, // More lateral spread
+                y: (Math.random() - 0.5) * 35,
                 z: speed // Toward camera
             });
         }
@@ -749,7 +749,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const material = new THREE.PointsMaterial({
             color: color,
             map: this.getRoundParticleTexture(), // USE ROUND TEXTURE
-            size: 150 + Math.random() * 100, // Slightly bigger
+            size: 200 + Math.random() * 150, // Balanced size for visibility
             transparent: true,
             opacity: 1.0,
             blending: THREE.AdditiveBlending,
@@ -1302,7 +1302,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.starTwinkleIntensity = Math.max(this.starTwinkleIntensity, 0.5 + comboCount * 0.1);
 
         // 6. NEBULA PARTICLE BURSTS - ALL nebulas burst simultaneously
-        const particlesPerNebula = (15 + comboCount * 5) * 5; // 5x PARTICLES
+        const particlesPerNebula = (20 + comboCount * 8) * 10; // 10x PARTICLES for maximum visibility
         this.burstAllVisibleNebulas(particlesPerNebula);
     }
 
