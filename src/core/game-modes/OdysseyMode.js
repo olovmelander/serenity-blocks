@@ -302,6 +302,9 @@ export class OdysseyMode extends BaseGameMode {
         // Hide odyssey UI
         this._hideOdysseyUI();
 
+        // Dispose the 3D Odyssey Board and overlay
+        this._disposeOdysseyBoard();
+
         // Cleanup
         this.gameState = null;
         this.currentLevelId = null;

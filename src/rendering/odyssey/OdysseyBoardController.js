@@ -14,6 +14,7 @@ import { LevelNodeManager } from './LevelNodeManager.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
+import { PostProcessingStack } from './effects/PostProcessingStack.js';
 
 /**
  * Quality presets for the Odyssey Board
@@ -59,6 +60,10 @@ export class OdysseyBoardController {
         this.cameraController = null;
         this.environmentManager = null;
 
+        // Enhanced post-processing
+        this.postProcessingStack = null;
+        this.qualityName = 'High';
+
         // State
         this.isActive = false;
         this.animationFrameId = null;
@@ -101,6 +106,7 @@ export class OdysseyBoardController {
         // Get quality settings
         const quality = window.settings?.effectQuality || 'High';
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        this.qualityName = quality;
 
         // Create Three.js fundamentals
         this.initRenderer();
@@ -130,6 +136,17 @@ export class OdysseyBoardController {
             this.camera,
             this.pathRenderer.pathCurve,
         );
+
+        // Connect chapter change events to camera for FOV pulse and post-processing effects
+        if (this.environmentManager && this.cameraController) {
+            this.environmentManager.setOnChapterChange((chapterId, previousChapter) => {
+                this.cameraController.onChapterChange(chapterId);
+                // Trigger post-processing transition effect
+                this.postProcessingStack?.triggerTransitionEffect();
+                console.log(`[OdysseyBoard] Chapter transition: ${previousChapter} → ${chapterId}`);
+            });
+        }
+
         if (this.environmentManager) {
             this.environmentManager.updateVisibility(
                 this.cameraController.getCurrentPosition(),
@@ -137,10 +154,8 @@ export class OdysseyBoardController {
             );
         }
 
-        // Post-processing
-        if (this.qualityPreset.enableBloom) {
-            this.setupPostProcessing();
-        }
+        // Post-processing (enhanced pipeline)
+        this.setupPostProcessing();
 
         // Setup lighting
         this.setupLighting();
@@ -180,17 +195,37 @@ export class OdysseyBoardController {
     }
 
     setupPostProcessing() {
-        this.composer = new EffectComposer(this.renderer);
-        this.composer.addPass(new RenderPass(this.scene, this.camera));
+        // Use enhanced PostProcessingStack instead of basic bloom
+        // This provides chromatic aberration, dynamic vignette, and film grain
+        // based on quality preset
+        try {
+            this.postProcessingStack = new PostProcessingStack(
+                this.renderer,
+                this.scene,
+                this.camera,
+                this.qualityName,
+            );
 
-        const bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(this.container.clientWidth, this.container.clientHeight),
-            this.qualityPreset.bloomStrength,
-            0.4,
-            0.85,
-        );
-        this.bloomPass = bloomPass;
-        this.composer.addPass(bloomPass);
+            // Keep reference to composer for resize handling
+            this.composer = this.postProcessingStack.composer;
+            this.bloomPass = this.postProcessingStack.passes.bloom || null;
+
+            console.log(`[OdysseyBoard] PostProcessingStack initialized (${this.qualityName})`);
+        } catch (error) {
+            // Fallback to basic bloom if PostProcessingStack fails
+            console.warn('[OdysseyBoard] PostProcessingStack failed, falling back to basic bloom:', error);
+            this.composer = new EffectComposer(this.renderer);
+            this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+            const bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(this.container.clientWidth, this.container.clientHeight),
+                this.qualityPreset.bloomStrength || 0.5,
+                0.4,
+                0.85,
+            );
+            this.bloomPass = bloomPass;
+            this.composer.addPass(bloomPass);
+        }
     }
 
     setupLighting() {
@@ -435,7 +470,10 @@ export class OdysseyBoardController {
 
         this.renderer.setSize(width, height);
 
-        if (this.composer) {
+        // Resize post-processing stack
+        if (this.postProcessingStack) {
+            this.postProcessingStack.resize(width, height);
+        } else if (this.composer) {
             this.composer.setSize(width, height);
         }
     }
@@ -534,8 +572,11 @@ export class OdysseyBoardController {
             this.stars.rotation.y += delta * 0.01;
         }
 
-        // Render
-        if (this.composer && this.qualityPreset.enableBloom) {
+        // Update and render via PostProcessingStack
+        if (this.postProcessingStack) {
+            this.postProcessingStack.update(delta);
+            this.postProcessingStack.render();
+        } else if (this.composer) {
             this.composer.render();
         } else {
             this.renderer.render(this.scene, this.camera);
@@ -576,6 +617,9 @@ export class OdysseyBoardController {
         this.environmentManager?.dispose();
         this.pathRenderer?.dispose();
         this.nodeManager?.dispose();
+
+        // Dispose post-processing stack
+        this.postProcessingStack?.dispose();
 
         // Dispose scene objects
         this.scene?.traverse((obj) => {
