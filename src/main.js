@@ -183,15 +183,7 @@ function setPieceLockRippleCss(colorHex) {
     );
 }
 
-function applySunsetFlarePreference(intensitySetting) {
-    if (typeof document === 'undefined') {
-        return;
-    }
 
-    const root = document.documentElement;
-    const strength = intensitySetting === 'reduced' ? 0.45 : 1;
-    root.style.setProperty('--global-sunset-flare-strength', strength);
-}
 
 /**
  * Main application class that orchestrates all systems
@@ -1213,7 +1205,7 @@ class SerenityBlocks {
         }
         const currentSettings = this.settingsManager.get();
         setPieceLockRippleCss(currentSettings.pieceLockRippleColor);
-        applySunsetFlarePreference(currentSettings.sunsetFlareIntensity);
+
 
         // Display manager (Phase 1)
         this.displayManager = new DisplayManager();
@@ -1621,10 +1613,6 @@ class SerenityBlocks {
             onSfxVolumeChange: (volume) => {
                 this.soundManager.setSFXVolume(volume);
             },
-            onMusicTrackChange: (track) => {
-                console.log('[Main] Music track changed to:', track);
-                this.soundManager.setTrack(track);
-            },
             onSoundSetChange: (soundSet) => {
                 console.log('[Main] Sound set changed to:', soundSet);
                 this.soundManager.setSoundSet(soundSet);
@@ -1690,11 +1678,6 @@ class SerenityBlocks {
                     this.themeManager.switchTheme(levelTheme);
                     this.themeManager.stopRandomThemeInterval();
                 }
-            },
-            onBackgroundThemeChange: (theme) => {
-                console.log('[Main] Theme changed to:', theme);
-                // switchTheme will emit THEME_CHANGED event, which handles themeLinkedSfx
-                this.themeManager.switchTheme(theme);
             },
             onThemeLinkedSfxChange: (enabled) => {
                 console.log('[Main] Theme-Linked SFX toggled:', enabled);
@@ -2528,9 +2511,7 @@ class SerenityBlocks {
             setPieceLockRippleCss(settings.pieceLockRippleColor);
         }
 
-        if (changes.sunsetFlareIntensity !== undefined) {
-            applySunsetFlarePreference(settings.sunsetFlareIntensity);
-        }
+
 
         // Handle gamepad binding changes
         if (
