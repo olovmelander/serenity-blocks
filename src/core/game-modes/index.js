@@ -9,5 +9,5 @@ export { SinglePlayerMode } from './SinglePlayerMode.js';
 export { LocalMultiplayerMode } from './LocalMultiplayerMode.js';
 export { OnlineMultiplayerMode } from './OnlineMultiplayerMode.js';
 export { SerenityMode } from './SerenityMode.js';
-export { JourneyMode } from './JourneyMode.js';
+export { OdysseyMode } from './OdysseyMode.js';
 export { GameModeManager } from './GameModeManager.js';
