@@ -606,20 +606,21 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createGroundPlane() {
-        // Large dark plane at the bottom to cover any visible stars below mountains
-        // Made extra large to handle different aspect ratios in windowed mode
-        const geometry = new THREE.PlaneGeometry(12000, 4000);
+        // Vertical plane to cover the bottom of the screen (blocking stars)
+        // Matches the mountain base color to make them look like they extend downwards
+        const geometry = new THREE.PlaneGeometry(12000, 2000);
 
         const material = new THREE.MeshBasicMaterial({
-            color: 0x080808, // Very dark, almost black
+            color: 0x151515, // Match uRockColorDark from mountains
             side: THREE.DoubleSide,
         });
 
         const plane = new THREE.Mesh(geometry, material);
-        // Position below the mountains, rotated to be horizontal, pushed further down
-        plane.rotation.x = -Math.PI / 2;
-        plane.position.set(0, -450, -200); // Moved forward in Z to cover more area
-        plane.renderOrder = -50; // Render after mountains but before stars
+        // Position center so top edge is around -350 (overlapping mountain base at -450)
+        // Center Y = -350 - 1000 = -1350
+        plane.position.set(0, -1350, -200);
+        // Render after mountains but before stars to occlude stars
+        plane.renderOrder = -50;
 
         this.scene.add(plane);
     }
