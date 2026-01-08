@@ -1,5 +1,5 @@
 /**
- * @fileoverview ModifierStack - Manages gameplay modifiers for Journey Mode levels
+ * @fileoverview ModifierStack - Manages gameplay modifiers for Odyssey Mode levels
  *
  * Defines available modifiers and provides methods to activate and apply them
  * to game state and physics callbacks.
@@ -38,7 +38,7 @@ export const MODIFIER_DEFINITIONS = {
             gameState.timeAttackMode = true;
         },
         applyToCallbacks: (callbacks) =>
-            // Timer UI is handled separately by JourneyMode
+            // Timer UI is handled separately by OdysseyMode
             callbacks
         ,
     },

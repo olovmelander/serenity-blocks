@@ -1,5 +1,5 @@
 /**
- * @fileoverview Journey Path Data - Control points for the cosmic ascent path
+ * @fileoverview Odyssey Path Data - Control points for the cosmic ascent path
  *
  * Defines the 3D spline path through all 7 chapters,
  * ascending from Earth Core to Black Hole transcendence.
@@ -20,7 +20,7 @@ const CHAPTER_POSITIONS = [
     0.96519, // Chapter 8 start (bonus)
 ];
 
-export const JOURNEY_PATH_DATA = {
+export const ODYSSEY_PATH_DATA = {
     // Main path control points
     controlPoints: [
         // Chapter 1: Earth Core (bottom, warm tones)
@@ -114,10 +114,10 @@ function generateLevelPositions(chapterPositions) {
  */
 export function getLevelPathPosition(levelId) {
     const index = levelId - 1;
-    if (index < 0 || index >= JOURNEY_PATH_DATA.levelPositions.length) {
+    if (index < 0 || index >= ODYSSEY_PATH_DATA.levelPositions.length) {
         return 0;
     }
-    return JOURNEY_PATH_DATA.levelPositions[index];
+    return ODYSSEY_PATH_DATA.levelPositions[index];
 }
 
 /**
@@ -129,4 +129,4 @@ export function getChapterForLevel(levelId) {
     return Math.ceil(levelId / 8);
 }
 
-export default JOURNEY_PATH_DATA;
+export default ODYSSEY_PATH_DATA;

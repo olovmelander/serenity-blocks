@@ -1,5 +1,5 @@
 /**
- * @fileoverview MechanicsMixer - Manages base mechanics selection for Journey Mode
+ * @fileoverview MechanicsMixer - Manages base mechanics selection for Odyssey Mode
  *
  * Allows levels to mix rules from Standard and Infinity modes, with
  * per-level overrides for specific mechanics.

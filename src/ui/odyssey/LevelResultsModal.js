@@ -1,10 +1,10 @@
 /**
- * @fileoverview Journey Mode Level Results Modal
+ * @fileoverview Odyssey Mode Level Results Modal
  * Displays results after completing or failing a level
  */
 
-import { getLevelById, getNextLevel } from '../../core/journey/data/levels.js';
-import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
+import { getLevelById, getNextLevel } from '../../core/odyssey/data/levels.js';
+import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 
 /**
  * LevelResultsModal - Shows results after level completion/failure

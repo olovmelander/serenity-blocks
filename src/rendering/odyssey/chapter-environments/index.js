@@ -1,7 +1,7 @@
 /**
  * @fileoverview Chapter Environments Index
  * 
- * Exports all chapter environment modules for the Journey Mode game board.
+ * Exports all chapter environment modules for the Odyssey Mode game board.
  */
 
 export {

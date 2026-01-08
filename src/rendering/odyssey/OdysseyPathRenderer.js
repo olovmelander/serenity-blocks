@@ -1,16 +1,16 @@
 /**
- * @fileoverview JourneyPathRenderer - Renders the ascending path through chapters
+ * @fileoverview OdysseyPathRenderer - Renders the ascending path through chapters
  *
- * Creates a glowing 3D spline path that represents the player's journey
+ * Creates a glowing 3D spline path that represents the player's odyssey
  * from Earth Core to Black Hole transcendence.
  */
 
 import * as THREE from 'three';
 
 /**
- * JourneyPathRenderer - Renders the cosmic ascent path
+ * OdysseyPathRenderer - Renders the cosmic ascent path
  */
-export class JourneyPathRenderer {
+export class OdysseyPathRenderer {
     constructor(scene) {
         this.scene = scene;
         this.pathCurve = null;
@@ -43,7 +43,7 @@ export class JourneyPathRenderer {
         // Add chapter transition markers
         this.createChapterMarkers(pathData.chapterPositions);
 
-        console.log('[JourneyPath] Path built with', points.length, 'control points');
+        console.log('[OdysseyPath] Path built with', points.length, 'control points');
     }
 
     createPathTube(pathData) {
@@ -260,4 +260,4 @@ export class JourneyPathRenderer {
     }
 }
 
-export default JourneyPathRenderer;
+export default OdysseyPathRenderer;

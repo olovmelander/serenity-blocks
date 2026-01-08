@@ -1,13 +1,13 @@
 /**
- * @fileoverview Journey Mode HUD Component
+ * @fileoverview Odyssey Mode HUD Component
  * Displays level objectives, progress, stars, and time during gameplay
  */
 
-import { getLevelById } from '../../core/journey/data/levels.js';
-import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
+import { getLevelById } from '../../core/odyssey/data/levels.js';
+import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 
 /**
- * JourneyHUD - Displays journey-specific statistics and objectives
+ * OdysseyHUD - Displays odyssey-specific statistics and objectives
  *
  * Features:
  * - Current level name and chapter
@@ -17,7 +17,7 @@ import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
  * - Bonus objectives checklist
  * - Victory condition tracking
  */
-export class JourneyHUD {
+export class OdysseyHUD {
     /**
      * Create HUD component
      * @param {Object} options - Configuration options
@@ -70,8 +70,8 @@ export class JourneyHUD {
     _initialize() {
         // Create main container
         this.container = document.createElement('div');
-        this.container.id = 'journey-hud';
-        this.container.className = 'journey-hud';
+        this.container.id = 'odyssey-hud';
+        this.container.className = 'odyssey-hud';
         this.container.style.cssText = `
             position: absolute;
             left: 50%;
@@ -110,7 +110,7 @@ export class JourneyHUD {
         this._createStarsSection();
         this._createBonusesSection();
 
-        console.log('[JourneyHUD] Initialized');
+        console.log('[OdysseyHUD] Initialized');
     }
 
     /**
@@ -427,7 +427,7 @@ export class JourneyHUD {
         this.levelConfig = getLevelById(levelId);
 
         if (!this.levelConfig) {
-            console.error('[JourneyHUD] Level not found:', levelId);
+            console.error('[OdysseyHUD] Level not found:', levelId);
             return;
         }
 
@@ -462,7 +462,7 @@ export class JourneyHUD {
         // Reset metrics
         this.resetMetrics();
 
-        console.log('[JourneyHUD] Level set:', levelId, this.levelConfig.name);
+        console.log('[OdysseyHUD] Level set:', levelId, this.levelConfig.name);
     }
 
     /**
@@ -891,7 +891,7 @@ export class JourneyHUD {
         // Add shimmer animation style if not present
         this._addVictoryLapStyles();
 
-        console.log('[JourneyHUD] Victory lap mode activated');
+        console.log('[OdysseyHUD] Victory lap mode activated');
     }
 
     /**
@@ -909,7 +909,7 @@ export class JourneyHUD {
             0 0 60px rgba(140, 80, 255, 0.1)
         `;
 
-        console.log('[JourneyHUD] Victory lap mode deactivated');
+        console.log('[OdysseyHUD] Victory lap mode deactivated');
     }
 
     /**
@@ -1009,7 +1009,7 @@ export class JourneyHUD {
 
         this.container.style.display = 'block';
         this.isVisible = true;
-        console.log('[JourneyHUD] Shown');
+        console.log('[OdysseyHUD] Shown');
     }
 
     /**
@@ -1018,7 +1018,7 @@ export class JourneyHUD {
     hide() {
         this.container.style.display = 'none';
         this.isVisible = false;
-        console.log('[JourneyHUD] Hidden');
+        console.log('[OdysseyHUD] Hidden');
     }
 
     /**
@@ -1049,6 +1049,6 @@ export class JourneyHUD {
             this.container.parentElement.removeChild(this.container);
         }
 
-        console.log('[JourneyHUD] Destroyed');
+        console.log('[OdysseyHUD] Destroyed');
     }
 }

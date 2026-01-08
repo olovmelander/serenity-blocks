@@ -1,13 +1,13 @@
 /**
- * @fileoverview Journey Mode Level Selection UI
+ * @fileoverview Odyssey Mode Level Selection UI
  * Full-screen level selection interface with chapter tabs and level grid
  */
 
-import { LEVEL_CONFIGS, getLevelsByChapter } from '../../core/journey/data/levels.js';
-import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
+import { LEVEL_CONFIGS, getLevelsByChapter } from '../../core/odyssey/data/levels.js';
+import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 
 /**
- * LevelSelectUI - Level selection interface for Journey Mode
+ * LevelSelectUI - Level selection interface for Odyssey Mode
  *
  * Features:
  * - Chapter tabs for navigation
@@ -50,8 +50,8 @@ export class LevelSelectUI {
     _initialize() {
         // Create main container
         this.container = document.createElement('div');
-        this.container.id = 'journey-level-select';
-        this.container.className = 'journey-level-select';
+        this.container.id = 'odyssey-level-select';
+        this.container.className = 'odyssey-level-select';
         this.container.style.cssText = `
             position: fixed;
             top: 0;
@@ -108,7 +108,7 @@ export class LevelSelectUI {
 
         // Title
         const title = document.createElement('h1');
-        title.textContent = 'JOURNEY MODE';
+        title.textContent = 'ODYSSEY MODE';
         title.style.cssText = `
             font-size: 28px;
             font-weight: 700;

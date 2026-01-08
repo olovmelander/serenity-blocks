@@ -26,8 +26,8 @@ import {
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
 } from './chapter-environments/index.js';
-import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
-import { JOURNEY_PATH_DATA } from './path-data.js';
+import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
+import { ODYSSEY_PATH_DATA } from './path-data.js';
 
 /**
  * Chapter environment definitions
@@ -74,7 +74,7 @@ const CHAPTER_DEFS = [
 const DEFAULT_PATH_TRANSITION_ZONE = 0.02;
 
 function getChapterPathRange(chapterId) {
-    const positions = JOURNEY_PATH_DATA.chapterPositions || [];
+    const positions = ODYSSEY_PATH_DATA.chapterPositions || [];
     const start = positions[chapterId - 1];
     if (start === undefined) return null;
     const end = positions[chapterId] ?? 1;
@@ -352,7 +352,7 @@ export class ChapterEnvironmentManager {
      */
     updateGlobalEnvironment(progress) {
         // Find which chapters we are blending between
-        const positions = JOURNEY_PATH_DATA.chapterPositions;
+        const positions = ODYSSEY_PATH_DATA.chapterPositions;
 
         let currentChapterId = 1;
         let nextChapterId = 1;
@@ -425,7 +425,7 @@ export class ChapterEnvironmentManager {
         }
 
         // Apply to ambient light if found in scene (assumed to be the first one found or we search by type)
-        // We know we added one in JourneyBoardController, but let's try to find it or modify all
+        // We know we added one in OdysseyBoardController, but let's try to find it or modify all
         this.scene.traverse((child) => {
             if (child.isAmbientLight) {
                 child.color.copy(targetEnv.ambientLight);

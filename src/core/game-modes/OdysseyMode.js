@@ -1,13 +1,13 @@
 /**
- * @fileoverview JourneyMode - Journey Mode game mode implementation
+ * @fileoverview OdysseyMode - Odyssey Mode game mode implementation
  *
- * Journey Mode is a linear progression through 56 levels organized in 7 chapters.
+ * Odyssey Mode is a linear progression through 56 levels organized in 7 chapters.
  * Each level has unique victory conditions, theme settings, and gameplay modifiers
  * that mix mechanics from Standard Single Player and Infinity modes.
  *
  * Phase 1 Implementation:
  * - Basic level selection and launching
- * - Progress tracking via JourneyStateManager
+ * - Progress tracking via OdysseyStateManager
  * - Level configuration via LevelRegistry
  * - Standard gameplay with level-specific settings
  */
@@ -37,24 +37,24 @@ import {
 import { draw, updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { JourneyStateManager } from '../journey/JourneyStateManager.js';
-import { getLevelRegistry } from '../journey/LevelRegistry.js';
-import { GameplayHybridEngine } from '../journey/GameplayHybridEngine.js';
-import { ThemeTransitionManager } from '../journey/ThemeTransitionManager.js';
-import { JourneyBoardController } from '../../rendering/journey/JourneyBoardController.js';
-import { getLevelPathPosition } from '../../rendering/journey/path-data.js';
-import { JourneyHUD } from '../../ui/journey/JourneyHUD.js';
+import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
+import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
+import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
+import { ThemeTransitionManager } from '../odyssey/ThemeTransitionManager.js';
+import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardController.js';
+import { getLevelPathPosition } from '../../rendering/odyssey/path-data.js';
+import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 
 /**
- * JourneyMode - Narrative-driven progression through themed levels
+ * OdysseyMode - Narrative-driven progression through themed levels
  */
-export class JourneyMode extends BaseGameMode {
+export class OdysseyMode extends BaseGameMode {
     constructor(dependencies) {
         super(dependencies);
 
-        // Journey-specific state
-        this.journeyState = new JourneyStateManager();
+        // Odyssey-specific state
+        this.odysseyState = new OdysseyStateManager();
         this.levelRegistry = getLevelRegistry();
 
         // Phase 2: Gameplay Hybrid Engine
@@ -67,7 +67,7 @@ export class JourneyMode extends BaseGameMode {
         this.levelStartTime = null;
         this.levelTimerInterval = null;
 
-        // Phase 3: Journey Board Controller
+        // Phase 3: Odyssey Board Controller
         this.boardController = null;
 
         // Phase 4: Theme Transition Manager
@@ -84,8 +84,8 @@ export class JourneyMode extends BaseGameMode {
         this.lastStatsUpdateTime = 0;
         this.statsUpdateInterval = 250;
 
-        // Phase 6: Journey HUD
-        this.journeyHUD = null;
+        // Phase 6: Odyssey HUD
+        this.odysseyHUD = null;
 
         // Minimap for tall boards (30+ rows)
         this.minimap = null;
@@ -122,11 +122,11 @@ export class JourneyMode extends BaseGameMode {
     }
 
     getModeId() {
-        return GAME_MODES.JOURNEY;
+        return GAME_MODES.ODYSSEY;
     }
 
     getDisplayName() {
-        return 'Journey Mode';
+        return 'Odyssey Mode';
     }
 
     // =============================
@@ -134,21 +134,21 @@ export class JourneyMode extends BaseGameMode {
     // =============================
 
     /**
-     * Called when Journey Mode is selected
+     * Called when Odyssey Mode is selected
      */
     async onActivate() {
         await super.onActivate();
 
-        console.log('[Journey] Activating Journey Mode...');
+        console.log('[Odyssey] Activating Odyssey Mode...');
 
         // Load saved progress
-        this.journeyState.load();
+        this.odysseyState.load();
 
-        // Show journey UI
-        this._showJourneyUI();
+        // Show odyssey UI
+        this._showOdysseyUI();
 
         // Start session tracking
-        this.journeyState.startSession();
+        this.odysseyState.startSession();
 
         // Phase 4: Initialize theme transition manager
         if (this.deps?.themeManager && !this.transitionManager) {
@@ -159,18 +159,18 @@ export class JourneyMode extends BaseGameMode {
         this.isInBoardView = true;
         this._showBoardView();
 
-        // Expose for console testing: window.testJourneyLevel(3) to test level 3
-        window.testJourneyLevel = (levelId) => {
-            console.log(`[Journey] Testing level ${levelId}...`);
+        // Expose for console testing: window.testOdysseyLevel(3) to test level 3
+        window.testOdysseyLevel = (levelId) => {
+            console.log(`[Odyssey] Testing level ${levelId}...`);
             // Unlock the level for testing (bypasses normal progression)
-            this.journeyState.unlockLevel(levelId);
+            this.odysseyState.unlockLevel(levelId);
             return this.enterLevel(levelId);
         };
-        window.journeyMode = this;
+        window.odysseyMode = this;
 
-        console.log('[Journey] Mode activated');
-        console.log(`[Journey] Progress: ${this.journeyState.getOverallProgress()}%`);
-        console.log('[Journey] Debug: Use window.testJourneyLevel(levelId) to test a specific level');
+        console.log('[Odyssey] Mode activated');
+        console.log(`[Odyssey] Progress: ${this.odysseyState.getOverallProgress()}%`);
+        console.log('[Odyssey] Debug: Use window.testOdysseyLevel(levelId) to test a specific level');
     }
 
     /**
@@ -178,7 +178,7 @@ export class JourneyMode extends BaseGameMode {
      */
     async onStart() {
         await super.onStart();
-        console.log('[Journey] onStart called - entering level');
+        console.log('[Odyssey] onStart called - entering level');
     }
 
     /**
@@ -205,7 +205,7 @@ export class JourneyMode extends BaseGameMode {
             if (this.boardScene) {
                 this.boardScene.enableManualCameraControl();
                 this._setupCameraControls();
-                console.log('[Journey] Camera controls enabled for tall board - Use arrow keys or mouse wheel');
+                console.log('[Odyssey] Camera controls enabled for tall board - Use arrow keys or mouse wheel');
             }
 
             // Trigger minimap pause highlight effect
@@ -254,7 +254,7 @@ export class JourneyMode extends BaseGameMode {
     async onStop() {
         await super.onStop();
 
-        console.log('[Journey] Stopping...');
+        console.log('[Odyssey] Stopping...');
 
         // Stop game loop
         if (this.gameState?.animationId) {
@@ -272,8 +272,8 @@ export class JourneyMode extends BaseGameMode {
         this._hideGoalCompleteOverlay();
         this._removeVictoryLapInputs();
 
-        // Phase 6: Clean up Journey HUD
-        this._cleanupJourneyHUD();
+        // Phase 6: Clean up Odyssey HUD
+        this._cleanupOdysseyHUD();
 
         // Clean up minimap
         this._cleanupMinimap();
@@ -290,17 +290,17 @@ export class JourneyMode extends BaseGameMode {
     async onDeactivate() {
         await super.onDeactivate();
 
-        console.log('[Journey] Deactivating...');
+        console.log('[Odyssey] Deactivating...');
 
         // End session and save
-        this.journeyState.endSession();
-        this.journeyState.save();
+        this.odysseyState.endSession();
+        this.odysseyState.save();
 
         // Restore inputs
         this._restoreInputs();
 
-        // Hide journey UI
-        this._hideJourneyUI();
+        // Hide odyssey UI
+        this._hideOdysseyUI();
 
         // Cleanup
         this.gameState = null;
@@ -313,7 +313,7 @@ export class JourneyMode extends BaseGameMode {
     }
 
     // =============================
-    // Journey-Specific Methods
+    // Odyssey-Specific Methods
     // =============================
 
     /**
@@ -321,18 +321,18 @@ export class JourneyMode extends BaseGameMode {
      * @param {number} levelId - Level to enter
      */
     async enterLevel(levelId) {
-        console.log(`[Journey] Entering level ${levelId}...`);
+        console.log(`[Odyssey] Entering level ${levelId}...`);
 
         // Check if level is unlocked
-        if (!this.journeyState.isLevelUnlocked(levelId)) {
-            console.warn(`[Journey] Level ${levelId} is locked`);
+        if (!this.odysseyState.isLevelUnlocked(levelId)) {
+            console.warn(`[Odyssey] Level ${levelId} is locked`);
             return false;
         }
 
         // Get level configuration
         const levelConfig = this.levelRegistry.getLevel(levelId);
         if (!levelConfig) {
-            console.error(`[Journey] Level ${levelId} not found in registry`);
+            console.error(`[Odyssey] Level ${levelId} not found in registry`);
             return false;
         }
 
@@ -353,7 +353,7 @@ export class JourneyMode extends BaseGameMode {
         // 4. Gameplay reveals smoothly at 6.5s (4s overlap with warp end)
         // 5. Level starts (pieces fall) at 9.5s (1s before warp fully ends)
 
-        console.log('[Journey] Starting 10-second cinematic transition...');
+        console.log('[Odyssey] Starting 10-second cinematic transition...');
 
         // Start camera zoom (non-blocking) -- ZOOM FOR 7 SECONDS
         const zoomDuration = 7000;
@@ -386,22 +386,22 @@ export class JourneyMode extends BaseGameMode {
         // Current time is T = 6.0s.
         // We want to trigger reveal at 6.5s (4s before warp ends).
         // So we wait another 500ms.
-        console.log('[Journey] Waiting to trigger early reveal...');
+        console.log('[Odyssey] Waiting to trigger early reveal...');
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Switch to gameplay view (starts fade-in animation)
-        console.log('[Journey] Triggering early gameplay reveal (4s before warp ends)');
+        console.log('[Odyssey] Triggering early gameplay reveal (4s before warp ends)');
         this.isInBoardView = false;
         this._showGameplayView(); // Async, don't await full completion yet
 
         // Warp finishes at T+10.5s. We are at T+6.5s.
         // We want to start level at T+9.5s (1s before warp ends).
         // Wait 3000ms.
-        console.log('[Journey] Waiting to start level...');
+        console.log('[Odyssey] Waiting to start level...');
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
         // Start the level EARLY (1s before warp ends)
-        console.log('[Journey] Starting level early (1s before warp ends)');
+        console.log('[Odyssey] Starting level early (1s before warp ends)');
         this._showLevelIntro(levelConfig);
         this._startLevel();
 
@@ -411,9 +411,9 @@ export class JourneyMode extends BaseGameMode {
         // Ensure warp promise is settled nicely
         warpPromise.catch(e => console.error(e));
 
-        // Clean up the Journey Board now that transition is fully complete
+        // Clean up the Odyssey Board now that transition is fully complete
         // Doing this at the end prevents stutters during the animation
-        setTimeout(() => this._disposeJourneyBoard(), 2000);
+        setTimeout(() => this._disposeOdysseyBoard(), 2000);
 
         return true;
     }
@@ -440,7 +440,7 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     _hideGameUIForTransition() {
-        console.log('[Journey] Hiding game UI before warp...');
+        console.log('[Odyssey] Hiding game UI before warp...');
 
         // Hide game container (Correct ID: single-player-container)
         const gameContainer = document.getElementById('single-player-container');
@@ -475,7 +475,7 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _loadLevelInBackground(levelConfig) {
-        console.log('[Journey] Loading theme and board in background...');
+        console.log('[Odyssey] Loading theme and board in background...');
 
         const { theme } = levelConfig;
 
@@ -484,7 +484,7 @@ export class JourneyMode extends BaseGameMode {
             if (this.deps.themeManager) {
                 // Check if we already started loading during the "Launching..." delay
                 if (this.currentThemeSwitchPromise) {
-                    console.log('[Journey] Waiting for pre-loaded theme...');
+                    console.log('[Odyssey] Waiting for pre-loaded theme...');
                     await this.currentThemeSwitchPromise;
                     this.currentThemeSwitchPromise = null;
                 } else {
@@ -498,13 +498,13 @@ export class JourneyMode extends BaseGameMode {
                 // When returnToBoard() is called, themes get suspended. switchTheme() then defers
                 // theme activation. We must explicitly resume to activate the pending theme.
                 if (this.deps.themeManager.themesSuspended) {
-                    console.log('[Journey] Resuming suspended themes after switch...');
+                    console.log('[Odyssey] Resuming suspended themes after switch...');
                     await this.deps.themeManager.resumeThemes();
                 }
             }
 
-            // HIDE the journey board (don't dispose yet to avoid stutter)
-            const boardContainer = document.getElementById('journey-board-3d');
+            // HIDE the odyssey board (don't dispose yet to avoid stutter)
+            const boardContainer = document.getElementById('odyssey-board-3d');
             if (boardContainer) {
                 boardContainer.style.display = 'none';
             }
@@ -513,9 +513,9 @@ export class JourneyMode extends BaseGameMode {
             // Note: Game UI is already hidden by _hideGameUIForTransition
             // so we don't need to redundantly hide everything here.
 
-            console.log('[Journey] Background loading complete (hidden until warp ends)');
+            console.log('[Odyssey] Background loading complete (hidden until warp ends)');
         } catch (error) {
-            console.error('[Journey] Background loading failed:', error);
+            console.error('[Odyssey] Background loading failed:', error);
         }
     }
 
@@ -528,7 +528,7 @@ export class JourneyMode extends BaseGameMode {
         if (this.levelCompleting) return;
         this.levelCompleting = true;
 
-        console.log(`[Journey] Level ${this.currentLevelId} completed!`, results);
+        console.log(`[Odyssey] Level ${this.currentLevelId} completed!`, results);
 
         // Stop game loop immediately
         if (this.gameState?.animationId) {
@@ -562,8 +562,8 @@ export class JourneyMode extends BaseGameMode {
         const bonuses = this._evaluateBonuses(finalResults);
         finalResults.bonuses = bonuses;
 
-        // Save completion to journey state
-        this.journeyState.completeLevel(this.currentLevelId, finalResults);
+        // Save completion to odyssey state
+        this.odysseyState.completeLevel(this.currentLevelId, finalResults);
 
         // Show results
         await this._showLevelResults(finalResults);
@@ -581,7 +581,7 @@ export class JourneyMode extends BaseGameMode {
         if (this.levelCompleting) return;
         this.levelCompleting = true;
 
-        console.log(`[Journey] Level ${this.currentLevelId} failed: ${reason}`);
+        console.log(`[Odyssey] Level ${this.currentLevelId} failed: ${reason}`);
 
         // Stop game loop immediately
         if (this.gameState?.animationId) {
@@ -600,7 +600,7 @@ export class JourneyMode extends BaseGameMode {
         this._removeVictoryLapInputs();
 
         // Record attempt
-        this.journeyState.recordAttempt(this.currentLevelId);
+        this.odysseyState.recordAttempt(this.currentLevelId);
 
         // Show failure screen
         await this._showLevelFailure(reason);
@@ -613,7 +613,7 @@ export class JourneyMode extends BaseGameMode {
      * Return to the board view (level selection)
      */
     async returnToBoard() {
-        console.log('[Journey] Returning to board view...');
+        console.log('[Odyssey] Returning to board view...');
 
         // Phase 4: Transition effect when returning to board
         if (this.transitionManager) {
@@ -641,7 +641,7 @@ export class JourneyMode extends BaseGameMode {
      * @param {number} chapterId
      */
     navigateToChapter(chapterId) {
-        console.log(`[Journey] Navigating to chapter ${chapterId}`);
+        console.log(`[Odyssey] Navigating to chapter ${chapterId}`);
         // Phase 3: Camera navigation on 3D board
         // For now, just update UI to show chapter's levels
         this._updateLevelSelectUI(chapterId);
@@ -651,7 +651,7 @@ export class JourneyMode extends BaseGameMode {
      * Get progress summary for UI
      */
     getProgress() {
-        return this.journeyState.getProgressSummary();
+        return this.odysseyState.getProgressSummary();
     }
 
     // =============================
@@ -674,7 +674,7 @@ export class JourneyMode extends BaseGameMode {
             this._addStartingRows(mechanics.board.startingRows);
         }
 
-        console.log(`[Journey] GameState created via HybridEngine: mode=${mechanics.baseMode}, rows=${mechanics.board.rows}, startLevel=${this.gameState.level}`);
+        console.log(`[Odyssey] GameState created via HybridEngine: mode=${mechanics.baseMode}, rows=${mechanics.board.rows}, startLevel=${this.gameState.level}`);
     }
 
     /**
@@ -728,21 +728,21 @@ export class JourneyMode extends BaseGameMode {
             lockedPieces.push(garbagePiece);
         }
 
-        console.log(`[Journey] Added ${rowCount} starting garbage rows`);
+        console.log(`[Odyssey] Added ${rowCount} starting garbage rows`);
     }
 
     /**
-     * Zoom the Journey Board camera into the selected level node
+     * Zoom the Odyssey Board camera into the selected level node
      * Creates a slow, cinematic zoom effect that overlaps with warp
      * @private
      */
     async _zoomIntoLevel(levelId) {
         if (!this.boardController?.cameraController) {
-            console.log('[Journey] No camera controller for zoom');
+            console.log('[Odyssey] No camera controller for zoom');
             return;
         }
 
-        console.log(`[Journey] Cinematic zoom into level ${levelId}...`);
+        console.log(`[Odyssey] Cinematic zoom into level ${levelId}...`);
 
         // Get the node position from the board
         const nodePosition = this.boardController.nodeManager?.getNodePosition?.(levelId);
@@ -770,7 +770,7 @@ export class JourneyMode extends BaseGameMode {
     async _applyLevelTheme(levelConfig) {
         const { theme } = levelConfig;
 
-        console.log(`[Journey] Applying theme: ${theme.primary}`);
+        console.log(`[Odyssey] Applying theme: ${theme.primary}`);
 
         // Phase 4: Use transition manager if available
         if (this.transitionManager) {
@@ -790,7 +790,7 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _startLevel() {
-        console.log('[Journey] Starting level gameplay...');
+        console.log('[Odyssey] Starting level gameplay...');
 
         // Reset completion flag for new level
         this.levelCompleting = false;
@@ -805,7 +805,7 @@ export class JourneyMode extends BaseGameMode {
         // Apply infinity layout for tall boards
         if (isTallBoard) {
             this._applyInfinityLayout(true);
-            console.log(`[Journey] Applied infinity layout for ${boardRows}-row board`);
+            console.log(`[Odyssey] Applied infinity layout for ${boardRows}-row board`);
         }
 
         // Show Phaser board scene and store reference
@@ -835,7 +835,7 @@ export class JourneyMode extends BaseGameMode {
             this.boardScene.updateCameraPosition(spawnRow);
             // CRITICAL: Set gameState.cameraRow for proper piece spawning
             this.gameState.cameraRow = spawnRow;
-            console.log(`[Journey] Camera configured for ${boardRows}-row board, garbage=${startingGarbageRows}, positioned at row ${spawnRow}`);
+            console.log(`[Odyssey] Camera configured for ${boardRows}-row board, garbage=${startingGarbageRows}, positioned at row ${spawnRow}`);
         }
 
         // Initialize piece bag
@@ -853,8 +853,8 @@ export class JourneyMode extends BaseGameMode {
         this._refreshNextQueue();
         this._updateStats();
 
-        // Phase 6: Initialize and show Journey HUD
-        this._initializeJourneyHUD();
+        // Phase 6: Initialize and show Odyssey HUD
+        this._initializeOdysseyHUD();
 
         // Initialize minimap for tall boards
         this._initializeMinimap();
@@ -869,7 +869,7 @@ export class JourneyMode extends BaseGameMode {
         // Mark as running
         this.isRunning = true;
 
-        console.log('[Journey] Level started!');
+        console.log('[Odyssey] Level started!');
     }
 
     /**
@@ -904,8 +904,8 @@ export class JourneyMode extends BaseGameMode {
                 this.lastStatsUpdateTime = now;
                 this._updateStats();
 
-                // Phase 6: Update Journey HUD with current metrics
-                this._updateJourneyHUD();
+                // Phase 6: Update Odyssey HUD with current metrics
+                this._updateOdysseyHUD();
 
                 // Update minimap for tall boards
                 this._updateMinimap();
@@ -917,7 +917,7 @@ export class JourneyMode extends BaseGameMode {
             // Check failure conditions for tall boards (Infinity Mode logic)
             if (this.currentLevelConfig?.mechanics?.baseMode === 'infinity' || this.isTallBoard) {
                 if (!this.gameState.isGameOver && checkInfinityGameOver(this.gameState)) {
-                    console.log('[Journey] Game over condition met (Board Full)');
+                    console.log('[Odyssey] Game over condition met (Board Full)');
                     this.gameState.isGameOver = true;
                     this._handleGameOver();
                 }
@@ -950,7 +950,7 @@ export class JourneyMode extends BaseGameMode {
                 // Emit event
                 eventBus.emit(EVENTS.LINE_CLEAR, {
                     lineCount,
-                    source: 'journey',
+                    source: 'odyssey',
                     levelId: this.currentLevelId,
                 });
             },
@@ -961,7 +961,7 @@ export class JourneyMode extends BaseGameMode {
 
                 eventBus.emit(EVENTS.COMBO, {
                     comboCount,
-                    source: 'journey',
+                    source: 'odyssey',
                     levelId: this.currentLevelId,
                 });
 
@@ -1034,7 +1034,7 @@ export class JourneyMode extends BaseGameMode {
         if (this.hybridEngine.checkVictory()) {
             // Victory Lap System: Don't end level immediately, enter victory lap
             if (!this.gameState.goalComplete) {
-                console.log('[Journey] Goal complete! Entering Victory Lap...');
+                console.log('[Odyssey] Goal complete! Entering Victory Lap...');
                 this._enterVictoryLap();
             }
             // During victory lap, victory conditions are already met - just keep playing
@@ -1059,15 +1059,15 @@ export class JourneyMode extends BaseGameMode {
         this._showGoalCompleteOverlay();
 
         // Update HUD to show victory lap state
-        if (this.journeyHUD) {
-            this.journeyHUD.enterVictoryLap();
+        if (this.odysseyHUD) {
+            this.odysseyHUD.enterVictoryLap();
         }
 
         // Play celebration sound
         this.deps?.soundManager?.sfxPlayer?.playLevelUp?.();
 
         // Emit event for other systems
-        eventBus.emit(EVENTS.JOURNEY_GOAL_COMPLETE, {
+        eventBus.emit(EVENTS.ODYSSEY_GOAL_COMPLETE, {
             levelId: this.currentLevelId,
             metrics: this.levelMetrics,
         });
@@ -1075,7 +1075,7 @@ export class JourneyMode extends BaseGameMode {
         // Set up victory lap input handler
         this._setupVictoryLapInputs();
 
-        console.log('[Journey] Victory lap started - press Enter to finish or keep playing for more stars');
+        console.log('[Odyssey] Victory lap started - press Enter to finish or keep playing for more stars');
     }
 
     /**
@@ -1085,7 +1085,7 @@ export class JourneyMode extends BaseGameMode {
     _finishVictoryLap() {
         if (!this.gameState?.victoryLapActive) return;
 
-        console.log('[Journey] Victory lap finished, completing level...');
+        console.log('[Odyssey] Victory lap finished, completing level...');
         this.gameState.victoryLapActive = false;
 
         // Hide overlay
@@ -1095,7 +1095,7 @@ export class JourneyMode extends BaseGameMode {
         this._removeVictoryLapInputs();
 
         // Emit event
-        eventBus.emit(EVENTS.JOURNEY_VICTORY_LAP_END, {
+        eventBus.emit(EVENTS.ODYSSEY_VICTORY_LAP_END, {
             levelId: this.currentLevelId,
             metrics: this.levelMetrics,
         });
@@ -1258,11 +1258,11 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _handleGameOver() {
-        console.log('[Journey] Game over (top-out)');
+        console.log('[Odyssey] Game over (top-out)');
 
         // Victory Lap System: During victory lap, top-out completes the level (not a failure)
         if (this.gameState?.victoryLapActive) {
-            console.log('[Journey] Top-out during victory lap - completing level with current progress');
+            console.log('[Odyssey] Top-out during victory lap - completing level with current progress');
             this._finishVictoryLap();
             return;
         }
@@ -1284,10 +1284,10 @@ export class JourneyMode extends BaseGameMode {
     // =============================
 
     /**
-     * Show journey-specific UI
+     * Show odyssey-specific UI
      * @private
      */
-    _showJourneyUI() {
+    _showOdysseyUI() {
         // Show single player stage and container (reuse for now)
         const singlePlayerStage = document.querySelector('.single-player-stage');
         if (singlePlayerStage) {
@@ -1315,10 +1315,10 @@ export class JourneyMode extends BaseGameMode {
     }
 
     /**
-     * Hide journey UI
+     * Hide odyssey UI
      * @private
      */
-    _hideJourneyUI() {
+    _hideOdysseyUI() {
         this._hideLevelSelectUI();
     }
 
@@ -1327,10 +1327,10 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _showBoardView() {
-        console.log('[Journey] Showing board view');
+        console.log('[Odyssey] Showing board view');
 
-        // Initialize Three.js Journey Board if not exists
-        await this._initializeJourneyBoard();
+        // Initialize Three.js Odyssey Board if not exists
+        await this._initializeOdysseyBoard();
 
         // Phase 3: Using 3D board as primary level selector
         // The HTML UI is disabled - 3D board handles level selection via click
@@ -1339,19 +1339,19 @@ export class JourneyMode extends BaseGameMode {
     }
 
     /**
-     * Initialize the Three.js Journey Board
+     * Initialize the Three.js Odyssey Board
      * @private
      */
-    async _initializeJourneyBoard() {
+    async _initializeOdysseyBoard() {
         if (this.boardController) {
             return; // Already initialized
         }
 
         // Create container for the 3D board
-        let boardContainer = document.getElementById('journey-board-3d');
+        let boardContainer = document.getElementById('odyssey-board-3d');
         if (!boardContainer) {
             boardContainer = document.createElement('div');
-            boardContainer.id = 'journey-board-3d';
+            boardContainer.id = 'odyssey-board-3d';
             Object.assign(boardContainer.style, {
                 position: 'fixed',
                 top: '0',
@@ -1365,7 +1365,7 @@ export class JourneyMode extends BaseGameMode {
         }
 
         // Create board controller
-        this.boardController = new JourneyBoardController(boardContainer);
+        this.boardController = new OdysseyBoardController(boardContainer);
 
         // Prepare level data with path positions
         const allLevels = this.levelRegistry.getAllLevels();
@@ -1375,10 +1375,10 @@ export class JourneyMode extends BaseGameMode {
         }));
 
         // Get progress data
-        // Build level progress from JourneyStateManager
+        // Build level progress from OdysseyStateManager
         const levelProgress = {};
         for (let i = 1; i <= 56; i++) {
-            const completion = this.journeyState.getLevelCompletion(i);
+            const completion = this.odysseyState.getLevelCompletion(i);
             if (completion) {
                 levelProgress[i] = {
                     completed: true,
@@ -1388,7 +1388,7 @@ export class JourneyMode extends BaseGameMode {
         }
 
         const progressData = {
-            furthestLevel: Math.max(...Array.from(this.journeyState.unlockedLevels)),
+            furthestLevel: Math.max(...Array.from(this.odysseyState.unlockedLevels)),
             levelProgress,
         };
 
@@ -1398,7 +1398,7 @@ export class JourneyMode extends BaseGameMode {
         // Connect level selection callback - now shows info panel first
         // Click once to select (shows info), click again or use Play button to enter
         this.boardController.onLevelSelect = (levelId) => {
-            console.log(`[Journey] Board clicked level: ${levelId}`);
+            console.log(`[Odyssey] Board clicked level: ${levelId}`);
             // Always show info panel - do NOT auto-start level on second click
             // User must press the "Play" button in the panel
             this._updateLevelPreview(levelId);
@@ -1413,7 +1413,7 @@ export class JourneyMode extends BaseGameMode {
         // Empty click hides the info panel
         this.boardController.onEmptyClick = () => {
             this.selectedLevelId = null;
-            const panel = document.getElementById('journey-level-panel');
+            const panel = document.getElementById('odyssey-level-panel');
             if (panel) panel.classList.add('hidden');
         };
 
@@ -1425,20 +1425,20 @@ export class JourneyMode extends BaseGameMode {
             this.transitionManager.preInitWarp();
         }
 
-        console.log('[Journey] Three.js board initialized');
+        console.log('[Odyssey] Three.js board initialized');
     }
 
     /**
-     * Dispose the Journey Board
+     * Dispose the Odyssey Board
      * @private
      */
-    _disposeJourneyBoard() {
+    _disposeOdysseyBoard() {
         if (this.boardController) {
             this.boardController.dispose();
             this.boardController = null;
         }
 
-        const boardContainer = document.getElementById('journey-board-3d');
+        const boardContainer = document.getElementById('odyssey-board-3d');
         if (boardContainer) {
             boardContainer.remove();
         }
@@ -1448,26 +1448,26 @@ export class JourneyMode extends BaseGameMode {
     }
 
     /**
-     * Create the Journey Board info overlay (header + level panel)
+     * Create the Odyssey Board info overlay (header + level panel)
      * @private
      */
     _createBoardInfoOverlay() {
         // Check if already exists
-        if (document.getElementById('journey-board-overlay')) {
+        if (document.getElementById('odyssey-board-overlay')) {
             return;
         }
 
         const overlay = document.createElement('div');
-        overlay.id = 'journey-board-overlay';
+        overlay.id = 'odyssey-board-overlay';
         overlay.innerHTML = `
-            <div class="journey-header-bar">
-                <h1>Journey Mode</h1>
-                <div class="journey-progress-info">
-                    <span id="journey-header-stars">⭐ 0/168</span>
-                    <span id="journey-header-progress">Progress: 0%</span>
+            <div class="odyssey-header-bar">
+                <h1>Odyssey Mode</h1>
+                <div class="odyssey-progress-info">
+                    <span id="odyssey-header-stars">⭐ 0/168</span>
+                    <span id="odyssey-header-progress">Progress: 0%</span>
                 </div>
             </div>
-            <div id="journey-level-panel" class="journey-level-panel hidden">
+            <div id="odyssey-level-panel" class="odyssey-level-panel hidden">
                 <h2 id="level-panel-name">Level Name</h2>
                 <p id="level-panel-chapter" class="level-chapter">Chapter 1</p>
                 <p id="level-panel-description" class="level-description">Description...</p>
@@ -1479,9 +1479,9 @@ export class JourneyMode extends BaseGameMode {
 
         // Add styles
         const style = document.createElement('style');
-        style.id = 'journey-board-overlay-styles';
+        style.id = 'odyssey-board-overlay-styles';
         style.textContent = `
-            #journey-board-overlay {
+            #odyssey-board-overlay {
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -1490,7 +1490,7 @@ export class JourneyMode extends BaseGameMode {
                 pointer-events: none;
                 z-index: 1001;
             }
-            .journey-header-bar {
+            .odyssey-header-bar {
                 position: absolute;
                 top: 0;
                 left: 0;
@@ -1502,20 +1502,20 @@ export class JourneyMode extends BaseGameMode {
                 background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
                 pointer-events: auto;
             }
-            .journey-header-bar h1 {
+            .odyssey-header-bar h1 {
                 font-family: 'Orbitron', sans-serif;
                 font-size: 1.5rem;
                 color: #00ffcc;
                 text-shadow: 0 0 10px #00ffcc;
                 margin: 0;
             }
-            .journey-progress-info {
+            .odyssey-progress-info {
                 display: flex;
                 gap: 2rem;
                 font-size: 1rem;
                 color: #88aaff;
             }
-            .journey-level-panel {
+            .odyssey-level-panel {
                 position: absolute;
                 right: 2rem;
                 top: 50%;
@@ -1528,10 +1528,10 @@ export class JourneyMode extends BaseGameMode {
                 pointer-events: auto;
                 box-shadow: 0 0 30px rgba(0, 100, 255, 0.2);
             }
-            .journey-level-panel.hidden {
+            .odyssey-level-panel.hidden {
                 display: none;
             }
-            .journey-level-panel h2 {
+            .odyssey-level-panel h2 {
                 margin: 0 0 0.5rem 0;
                 font-size: 1.4rem;
                 color: #00ffcc;
@@ -1631,20 +1631,20 @@ export class JourneyMode extends BaseGameMode {
                 playBtn.textContent = 'Launching...';
 
                 // Wait for animation and linger (3.5s total as requested)
-                console.log('[Journey] Play clicked. Waiting 3.5s...');
+                console.log('[Odyssey] Play clicked. Waiting 3.5s...');
 
                 // Pre-load the theme NOW while the user waits
                 // This prevents lag during the actual cinematic transition
                 const levelConfig = this.levelRegistry.getLevel(this.selectedLevelId);
                 if (levelConfig && levelConfig.theme && this.deps.themeManager) {
-                    console.log(`[Journey] Pre-loading theme ${levelConfig.theme.primary} during delay...`);
+                    console.log(`[Odyssey] Pre-loading theme ${levelConfig.theme.primary} during delay...`);
                     this.currentThemeSwitchPromise = this.deps.themeManager.switchTheme(levelConfig.theme.primary, true);
                 }
 
                 await new Promise(resolve => setTimeout(resolve, 3500));
 
                 // Close the panel explicitly
-                const panel = document.getElementById('journey-level-panel');
+                const panel = document.getElementById('odyssey-level-panel');
                 if (panel) {
                     panel.style.transition = 'opacity 0.5s ease';
                     panel.style.opacity = '0';
@@ -1661,14 +1661,14 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     _updateHeaderProgress() {
-        const stars = document.getElementById('journey-header-stars');
-        const progress = document.getElementById('journey-header-progress');
+        const stars = document.getElementById('odyssey-header-stars');
+        const progress = document.getElementById('odyssey-header-progress');
         if (stars) {
-            const totalStars = this.journeyState.getTotalStars();
+            const totalStars = this.odysseyState.getTotalStars();
             stars.textContent = `⭐ ${totalStars}/168`;
         }
         if (progress) {
-            const pct = this.journeyState.getOverallProgress();
+            const pct = this.odysseyState.getOverallProgress();
             progress.textContent = `Progress: ${pct}%`;
         }
     }
@@ -1691,7 +1691,7 @@ export class JourneyMode extends BaseGameMode {
         // Ensure overlay exists
         this._createBoardInfoOverlay();
 
-        const panel = document.getElementById('journey-level-panel');
+        const panel = document.getElementById('odyssey-level-panel');
         if (!panel) return;
 
         if (!levelId) {
@@ -1709,8 +1709,8 @@ export class JourneyMode extends BaseGameMode {
         this.selectedLevelId = levelId;
 
         // Check if level is unlocked
-        const isUnlocked = this.journeyState.isLevelUnlocked(levelId);
-        const completion = this.journeyState.getLevelCompletion(levelId);
+        const isUnlocked = this.odysseyState.isLevelUnlocked(levelId);
+        const completion = this.odysseyState.getLevelCompletion(levelId);
         const stars = completion?.stars || 0;
 
         // Update panel content
@@ -1780,9 +1780,9 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     _disposeInfoOverlay() {
-        const overlay = document.getElementById('journey-board-overlay');
+        const overlay = document.getElementById('odyssey-board-overlay');
         if (overlay) overlay.remove();
-        const styles = document.getElementById('journey-board-overlay-styles');
+        const styles = document.getElementById('odyssey-board-overlay-styles');
         if (styles) styles.remove();
     }
 
@@ -1791,10 +1791,10 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _showGameplayView() {
-        console.log('[Journey] Showing gameplay view with reveal animation');
+        console.log('[Odyssey] Showing gameplay view with reveal animation');
         this._hideLevelSelectUI();
 
-        // Note: We do NOT dispose the Journey Board here anymore.
+        // Note: We do NOT dispose the Odyssey Board here anymore.
         // It is disposed at the end of enterLevel() to prevent frame drops during the reveal.
 
 
@@ -1877,7 +1877,7 @@ export class JourneyMode extends BaseGameMode {
      */
     _showLevelSelectUI() {
         // Create level select UI if it doesn't exist
-        let levelSelectUI = document.getElementById('journey-level-select');
+        let levelSelectUI = document.getElementById('odyssey-level-select');
         if (!levelSelectUI) {
             levelSelectUI = this._createLevelSelectUI();
         }
@@ -1892,7 +1892,7 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     _hideLevelSelectUI() {
-        const levelSelectUI = document.getElementById('journey-level-select');
+        const levelSelectUI = document.getElementById('odyssey-level-select');
         if (levelSelectUI) {
             levelSelectUI.style.display = 'none';
         }
@@ -1904,26 +1904,26 @@ export class JourneyMode extends BaseGameMode {
      */
     _createLevelSelectUI() {
         const container = document.createElement('div');
-        container.id = 'journey-level-select';
-        container.className = 'journey-level-select';
+        container.id = 'odyssey-level-select';
+        container.className = 'odyssey-level-select';
         container.innerHTML = `
-            <div class="journey-header">
-                <h1>Journey Mode</h1>
-                <div class="journey-progress">
-                    <span class="journey-stars">Stars: <span id="journey-total-stars">0</span>/<span id="journey-max-stars">168</span></span>
-                    <span class="journey-completion">Progress: <span id="journey-progress-pct">0</span>%</span>
+            <div class="odyssey-header">
+                <h1>Odyssey Mode</h1>
+                <div class="odyssey-progress">
+                    <span class="odyssey-stars">Stars: <span id="odyssey-total-stars">0</span>/<span id="odyssey-max-stars">168</span></span>
+                    <span class="odyssey-completion">Progress: <span id="odyssey-progress-pct">0</span>%</span>
                 </div>
             </div>
-            <div class="journey-chapters" id="journey-chapters"></div>
-            <div class="journey-actions">
-                <button id="journey-back-btn" class="journey-btn">Back to Menu</button>
+            <div class="odyssey-chapters" id="odyssey-chapters"></div>
+            <div class="odyssey-actions">
+                <button id="odyssey-back-btn" class="odyssey-btn">Back to Menu</button>
             </div>
         `;
 
         // Add styles
         const style = document.createElement('style');
         style.textContent = `
-            .journey-level-select {
+            .odyssey-level-select {
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -1939,12 +1939,12 @@ export class JourneyMode extends BaseGameMode {
                 box-sizing: border-box;
             }
 
-            .journey-header {
+            .odyssey-header {
                 text-align: center;
                 margin-bottom: 2rem;
             }
 
-            .journey-header h1 {
+            .odyssey-header h1 {
                 font-family: 'Orbitron', monospace;
                 font-size: 2.5rem;
                 color: #00ffff;
@@ -1952,7 +1952,7 @@ export class JourneyMode extends BaseGameMode {
                 margin-bottom: 0.5rem;
             }
 
-            .journey-progress {
+            .odyssey-progress {
                 display: flex;
                 gap: 2rem;
                 justify-content: center;
@@ -1960,11 +1960,11 @@ export class JourneyMode extends BaseGameMode {
                 color: #888;
             }
 
-            .journey-stars {
+            .odyssey-stars {
                 color: #ffd700;
             }
 
-            .journey-chapters {
+            .odyssey-chapters {
                 display: flex;
                 flex-direction: column;
                 gap: 1.5rem;
@@ -1972,38 +1972,38 @@ export class JourneyMode extends BaseGameMode {
                 width: 100%;
             }
 
-            .journey-chapter {
+            .odyssey-chapter {
                 background: rgba(255, 255, 255, 0.05);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 12px;
                 padding: 1rem;
             }
 
-            .journey-chapter-header {
+            .odyssey-chapter-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 margin-bottom: 0.75rem;
             }
 
-            .journey-chapter-name {
+            .odyssey-chapter-name {
                 font-family: 'Orbitron', monospace;
                 font-size: 1.1rem;
                 color: #fff;
             }
 
-            .journey-chapter-stars {
+            .odyssey-chapter-stars {
                 color: #ffd700;
                 font-size: 0.9rem;
             }
 
-            .journey-levels {
+            .odyssey-levels {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 0.5rem;
             }
 
-            .journey-level-btn {
+            .odyssey-level-btn {
                 width: 50px;
                 height: 50px;
                 border-radius: 8px;
@@ -2020,38 +2020,38 @@ export class JourneyMode extends BaseGameMode {
                 justify-content: center;
             }
 
-            .journey-level-btn:hover:not(.locked) {
+            .odyssey-level-btn:hover:not(.locked) {
                 background: rgba(0, 255, 255, 0.2);
                 border-color: #00ffff;
                 transform: scale(1.05);
             }
 
-            .journey-level-btn.locked {
+            .odyssey-level-btn.locked {
                 opacity: 0.3;
                 cursor: not-allowed;
             }
 
-            .journey-level-btn.completed {
+            .odyssey-level-btn.completed {
                 border-color: #00ff00;
                 background: rgba(0, 255, 0, 0.1);
             }
 
-            .journey-level-btn.current {
+            .odyssey-level-btn.current {
                 border-color: #00ffff;
                 background: rgba(0, 255, 255, 0.2);
                 animation: pulse 2s infinite;
             }
 
-            .journey-level-stars {
+            .odyssey-level-stars {
                 font-size: 0.6rem;
                 margin-top: 2px;
             }
 
-            .journey-actions {
+            .odyssey-actions {
                 margin-top: 2rem;
             }
 
-            .journey-btn {
+            .odyssey-btn {
                 padding: 0.75rem 2rem;
                 font-family: 'Orbitron', monospace;
                 font-size: 1rem;
@@ -2063,7 +2063,7 @@ export class JourneyMode extends BaseGameMode {
                 transition: all 0.2s ease;
             }
 
-            .journey-btn:hover {
+            .odyssey-btn:hover {
                 background: rgba(0, 255, 255, 0.2);
             }
 
@@ -2078,7 +2078,7 @@ export class JourneyMode extends BaseGameMode {
         document.body.appendChild(container);
 
         // Add event listeners
-        document.getElementById('journey-back-btn').addEventListener('click', () => {
+        document.getElementById('odyssey-back-btn').addEventListener('click', () => {
             this._exitToMenu();
         });
 
@@ -2090,53 +2090,53 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     _updateLevelSelectUI(focusChapter = null) {
-        const progress = this.journeyState.getProgressSummary();
+        const progress = this.odysseyState.getProgressSummary();
 
         // Update header stats
-        document.getElementById('journey-total-stars').textContent = progress.totalStars;
-        document.getElementById('journey-max-stars').textContent = progress.maxStars;
-        document.getElementById('journey-progress-pct').textContent = progress.overallProgress;
+        document.getElementById('odyssey-total-stars').textContent = progress.totalStars;
+        document.getElementById('odyssey-max-stars').textContent = progress.maxStars;
+        document.getElementById('odyssey-progress-pct').textContent = progress.overallProgress;
 
         // Build chapters
-        const chaptersContainer = document.getElementById('journey-chapters');
+        const chaptersContainer = document.getElementById('odyssey-chapters');
         chaptersContainer.innerHTML = '';
 
         const chapters = this.levelRegistry.getAllChapters();
 
         for (const chapter of chapters) {
-            const chapterProgress = this.journeyState.getChapterProgress(chapter.id);
+            const chapterProgress = this.odysseyState.getChapterProgress(chapter.id);
             const levels = this.levelRegistry.getLevelsInChapter(chapter.id);
 
             const chapterEl = document.createElement('div');
-            chapterEl.className = 'journey-chapter';
+            chapterEl.className = 'odyssey-chapter';
             chapterEl.innerHTML = `
-                <div class="journey-chapter-header">
-                    <span class="journey-chapter-name">Chapter ${chapter.id}: ${chapter.name}</span>
-                    <span class="journey-chapter-stars">${chapterProgress.stars}/${chapterProgress.maxStars} ★</span>
+                <div class="odyssey-chapter-header">
+                    <span class="odyssey-chapter-name">Chapter ${chapter.id}: ${chapter.name}</span>
+                    <span class="odyssey-chapter-stars">${chapterProgress.stars}/${chapterProgress.maxStars} ★</span>
                 </div>
-                <div class="journey-levels" id="journey-chapter-${chapter.id}-levels"></div>
+                <div class="odyssey-levels" id="odyssey-chapter-${chapter.id}-levels"></div>
             `;
 
             chaptersContainer.appendChild(chapterEl);
 
             // Add level buttons
-            const levelsContainer = document.getElementById(`journey-chapter-${chapter.id}-levels`);
+            const levelsContainer = document.getElementById(`odyssey-chapter-${chapter.id}-levels`);
 
             for (const level of levels) {
-                const isUnlocked = this.journeyState.isLevelUnlocked(level.id);
-                const isCompleted = this.journeyState.isLevelCompleted(level.id);
-                const stars = this.journeyState.getLevelStars(level.id);
+                const isUnlocked = this.odysseyState.isLevelUnlocked(level.id);
+                const isCompleted = this.odysseyState.isLevelCompleted(level.id);
+                const stars = this.odysseyState.getLevelStars(level.id);
                 const isCurrent = level.id === progress.currentLevel;
 
                 const btn = document.createElement('button');
-                btn.className = 'journey-level-btn';
+                btn.className = 'odyssey-level-btn';
                 if (!isUnlocked) btn.classList.add('locked');
                 if (isCompleted) btn.classList.add('completed');
                 if (isCurrent && isUnlocked && !isCompleted) btn.classList.add('current');
 
                 btn.innerHTML = `
                     <span>${level.id}</span>
-                    <span class="journey-level-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>
+                    <span class="odyssey-level-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>
                 `;
 
                 btn.title = `${level.name}\n${level.metadata.description}`;
@@ -2156,10 +2156,10 @@ export class JourneyMode extends BaseGameMode {
      */
     async _showLevelIntro(levelConfig) {
         // Simple intro for Phase 1 - just log it
-        console.log(`[Journey] === Level ${levelConfig.id}: ${levelConfig.name} ===`);
-        console.log(`[Journey] ${levelConfig.metadata.description}`);
-        console.log(`[Journey] Goal: ${levelConfig.victory.primary.type} >= ${levelConfig.victory.primary.target}`);
-        console.log(`[Journey] Tip: ${levelConfig.metadata.tip}`);
+        console.log(`[Odyssey] === Level ${levelConfig.id}: ${levelConfig.name} ===`);
+        console.log(`[Odyssey] ${levelConfig.metadata.description}`);
+        console.log(`[Odyssey] Goal: ${levelConfig.victory.primary.type} >= ${levelConfig.victory.primary.target}`);
+        console.log(`[Odyssey] Tip: ${levelConfig.metadata.tip}`);
 
         // Small delay for transition
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -2170,14 +2170,14 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _showLevelResults(results) {
-        console.log('[Journey] === Level Complete! ===');
-        console.log(`[Journey] Stars: ${'★'.repeat(results.stars)}${'☆'.repeat(3 - results.stars)}`);
-        console.log(`[Journey] Score: ${results.score}`);
-        console.log(`[Journey] Time: ${Math.floor(results.time)}s`);
-        console.log(`[Journey] Lines: ${results.lines}`);
+        console.log('[Odyssey] === Level Complete! ===');
+        console.log(`[Odyssey] Stars: ${'★'.repeat(results.stars)}${'☆'.repeat(3 - results.stars)}`);
+        console.log(`[Odyssey] Score: ${results.score}`);
+        console.log(`[Odyssey] Time: ${Math.floor(results.time)}s`);
+        console.log(`[Odyssey] Lines: ${results.lines}`);
 
-        // Hide Journey HUD
-        this._cleanupJourneyHUD();
+        // Hide Odyssey HUD
+        this._cleanupOdysseyHUD();
 
         // Hide minimap
         this._cleanupMinimap();
@@ -2195,7 +2195,7 @@ export class JourneyMode extends BaseGameMode {
      */
     _createResultsModal(results, onClose) {
         const modal = document.createElement('div');
-        modal.id = 'journey-results-modal';
+        modal.id = 'odyssey-results-modal';
         modal.style.cssText = `
             position: fixed;
             inset: 0;
@@ -2352,10 +2352,10 @@ export class JourneyMode extends BaseGameMode {
      * @private
      */
     async _showLevelFailure(reason) {
-        console.log(`[Journey] === Level Failed: ${reason} ===`);
+        console.log(`[Odyssey] === Level Failed: ${reason} ===`);
 
-        // Hide Journey HUD
-        this._cleanupJourneyHUD();
+        // Hide Odyssey HUD
+        this._cleanupOdysseyHUD();
 
         // Phase 6: Show proper failure modal
         const reasonText = reason === 'time' ? 'Time ran out!' : 'You topped out!';
@@ -2372,7 +2372,7 @@ export class JourneyMode extends BaseGameMode {
      */
     _createFailureModal(reasonText, onClose) {
         const modal = document.createElement('div');
-        modal.id = 'journey-failure-modal';
+        modal.id = 'odyssey-failure-modal';
         modal.style.cssText = `
             position: fixed;
             inset: 0;
@@ -2575,46 +2575,46 @@ export class JourneyMode extends BaseGameMode {
     }
 
     // =============================
-    // Phase 6: Journey HUD Methods
+    // Phase 6: Odyssey HUD Methods
     // =============================
 
     /**
-     * Initialize and show the Journey HUD
+     * Initialize and show the Odyssey HUD
      * @private
      */
-    _initializeJourneyHUD() {
+    _initializeOdysseyHUD() {
         // Clean up existing HUD if any
-        if (this.journeyHUD) {
-            this.journeyHUD.destroy();
-            this.journeyHUD = null;
+        if (this.odysseyHUD) {
+            this.odysseyHUD.destroy();
+            this.odysseyHUD = null;
         }
 
         // Create new HUD instance
-        this.journeyHUD = new JourneyHUD({
+        this.odysseyHUD = new OdysseyHUD({
             levelId: this.currentLevelId,
         });
 
         // Set level configuration
-        this.journeyHUD.setLevel(this.currentLevelId);
+        this.odysseyHUD.setLevel(this.currentLevelId);
 
         // Show the HUD
-        this.journeyHUD.show();
+        this.odysseyHUD.show();
 
-        console.log('[Journey] HUD initialized for level', this.currentLevelId);
+        console.log('[Odyssey] HUD initialized for level', this.currentLevelId);
     }
 
     /**
-     * Update the Journey HUD with current metrics
+     * Update the Odyssey HUD with current metrics
      * @private
      */
-    _updateJourneyHUD() {
-        if (!this.journeyHUD) return;
+    _updateOdysseyHUD() {
+        if (!this.odysseyHUD) return;
 
         // Get current metrics from hybrid engine
         const metrics = this.levelMetrics;
 
         // Update HUD metrics
-        this.journeyHUD.updateMetrics({
+        this.odysseyHUD.updateMetrics({
             lines: metrics.lines,
             score: this.gameState?.score || 0,
             cascades: metrics.cascades,
@@ -2627,19 +2627,19 @@ export class JourneyMode extends BaseGameMode {
         // Update time
         if (this.levelStartTime) {
             const elapsedMs = Date.now() - this.levelStartTime;
-            this.journeyHUD.updateTime(elapsedMs);
+            this.odysseyHUD.updateTime(elapsedMs);
         }
     }
 
     /**
-     * Clean up the Journey HUD
+     * Clean up the Odyssey HUD
      * @private
      */
-    _cleanupJourneyHUD() {
-        if (this.journeyHUD) {
-            this.journeyHUD.destroy();
-            this.journeyHUD = null;
-            console.log('[Journey] HUD cleaned up');
+    _cleanupOdysseyHUD() {
+        if (this.odysseyHUD) {
+            this.odysseyHUD.destroy();
+            this.odysseyHUD = null;
+            console.log('[Odyssey] HUD cleaned up');
         }
     }
 
@@ -2652,7 +2652,7 @@ export class JourneyMode extends BaseGameMode {
 
         // Only show minimap for tall boards
         if (boardRows < this.MINIMAP_ROW_THRESHOLD) {
-            console.log(`[Journey] Minimap skipped (${boardRows} rows < ${this.MINIMAP_ROW_THRESHOLD} threshold)`);
+            console.log(`[Odyssey] Minimap skipped (${boardRows} rows < ${this.MINIMAP_ROW_THRESHOLD} threshold)`);
             return;
         }
 
@@ -2685,7 +2685,7 @@ export class JourneyMode extends BaseGameMode {
             }
         });
 
-        console.log(`[Journey] Minimap initialized for ${boardRows}-row board`);
+        console.log(`[Odyssey] Minimap initialized for ${boardRows}-row board`);
     }
 
     /**
@@ -2714,7 +2714,7 @@ export class JourneyMode extends BaseGameMode {
             this.minimap.hide();
             this.minimap.destroy();
             this.minimap = null;
-            console.log('[Journey] Minimap cleaned up');
+            console.log('[Odyssey] Minimap cleaned up');
         }
     }
 
@@ -2732,11 +2732,11 @@ export class JourneyMode extends BaseGameMode {
         if (enable) {
             stage.classList.add('infinity-mode-active');
             container.classList.add('infinity-mode-active');
-            console.log('[Journey] Infinity layout applied');
+            console.log('[Odyssey] Infinity layout applied');
         } else {
             stage.classList.remove('infinity-mode-active');
             container.classList.remove('infinity-mode-active');
-            console.log('[Journey] Infinity layout removed');
+            console.log('[Odyssey] Infinity layout removed');
         }
     }
 
@@ -2962,4 +2962,4 @@ export class JourneyMode extends BaseGameMode {
     }
 }
 
-export default JourneyMode;
+export default OdysseyMode;

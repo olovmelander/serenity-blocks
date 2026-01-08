@@ -20,7 +20,7 @@ export class GameModeUI {
         this.onlineMultiplayerBtn = document.getElementById('online-multiplayer-btn') || document.getElementById('online-multiplayer-card-btn');
         this.serenityBtn = document.getElementById('serenity-btn') || document.getElementById('serenity-card-btn');
         this.infinityBtn = document.getElementById('infinity-btn') || document.getElementById('infinity-card-btn');
-        this.journeyBtn = document.getElementById('journey-btn') || document.getElementById('journey-card-btn');
+        this.odysseyBtn = document.getElementById('odyssey-btn') || document.getElementById('odyssey-card-btn');
 
         // Mode description elements (may not exist with card design)
         this.singlePlayerDesc = document.getElementById('single-player-desc');
@@ -28,7 +28,7 @@ export class GameModeUI {
         this.onlineMultiplayerDesc = document.getElementById('online-multiplayer-desc');
         this.serenityDesc = document.getElementById('serenity-desc');
         this.infinityDesc = document.getElementById('infinity-desc');
-        this.journeyDesc = document.getElementById('journey-desc');
+        this.odysseyDesc = document.getElementById('odyssey-desc');
 
         this.setupModeButtons();
     }
@@ -67,9 +67,9 @@ export class GameModeUI {
             });
         }
 
-        if (this.journeyBtn) {
-            this.journeyBtn.addEventListener('click', async () => {
-                await this.selectModeAndStart(GAME_MODES.JOURNEY);
+        if (this.odysseyBtn) {
+            this.odysseyBtn.addEventListener('click', async () => {
+                await this.selectModeAndStart(GAME_MODES.ODYSSEY);
             });
         }
     }
@@ -113,8 +113,8 @@ export class GameModeUI {
         if (this.infinityBtn) {
             this.infinityBtn.classList.toggle('active', mode === GAME_MODES.INFINITY);
         }
-        if (this.journeyBtn) {
-            this.journeyBtn.classList.toggle('active', mode === GAME_MODES.JOURNEY);
+        if (this.odysseyBtn) {
+            this.odysseyBtn.classList.toggle('active', mode === GAME_MODES.ODYSSEY);
         }
 
         // Update description visibility
@@ -150,8 +150,8 @@ export class GameModeUI {
         if (this.infinityDesc) {
             this.infinityDesc.classList.toggle('active', this.currentMode === GAME_MODES.INFINITY);
         }
-        if (this.journeyDesc) {
-            this.journeyDesc.classList.toggle('active', this.currentMode === GAME_MODES.JOURNEY);
+        if (this.odysseyDesc) {
+            this.odysseyDesc.classList.toggle('active', this.currentMode === GAME_MODES.ODYSSEY);
         }
     }
 
@@ -182,8 +182,8 @@ export class GameModeUI {
                 if (singlePlayerStage) singlePlayerStage.style.display = 'none';
                 this.singlePlayerContainer.style.display = 'none';
                 this.multiplayerContainer.style.display = 'none';
-            } else if (this.currentMode === GAME_MODES.JOURNEY) {
-                // Journey mode handles its own UI
+            } else if (this.currentMode === GAME_MODES.ODYSSEY) {
+                // Odyssey mode handles its own UI
                 if (singlePlayerStage) singlePlayerStage.style.display = 'none';
                 this.singlePlayerContainer.style.display = 'none';
                 this.multiplayerContainer.style.display = 'none';

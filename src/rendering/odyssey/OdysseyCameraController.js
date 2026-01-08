@@ -1,21 +1,21 @@
 /**
- * @fileoverview JourneyCameraController - Camera navigation for Journey Board
+ * @fileoverview OdysseyCameraController - Camera navigation for Odyssey Board
  *
  * Handles camera movement, zoom, and transitions along the path.
  * Supports follow mode, free mode, and focused node viewing.
  */
 
 import * as THREE from 'three';
-import { JOURNEY_PATH_DATA } from './path-data.js';
+import { ODYSSEY_PATH_DATA } from './path-data.js';
 
-const CHAPTER_1_END_POSITION = JOURNEY_PATH_DATA.chapterPositions?.[1] ?? 0.125;
+const CHAPTER_1_END_POSITION = ODYSSEY_PATH_DATA.chapterPositions?.[1] ?? 0.125;
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -6, 0);
 const CHAPTER_1_LOOK_FADE_RANGE = 0.02;
 
 /**
- * JourneyCameraController - Camera navigation along the journey path
+ * OdysseyCameraController - Camera navigation along the odyssey path
  */
-export class JourneyCameraController {
+export class OdysseyCameraController {
     constructor(camera, pathCurve) {
         this.camera = camera;
         this.pathCurve = pathCurve;
@@ -98,7 +98,7 @@ export class JourneyCameraController {
         // Optimization: We could binary search, but iterating ~60 items is negligible
         // We can just check the relevant chapter's levels if we had chapter info handy,
         // but simple loop is fine for this scale.
-        for (const levelPos of JOURNEY_PATH_DATA.levelPositions) {
+        for (const levelPos of ODYSSEY_PATH_DATA.levelPositions) {
             const dist = Math.abs(position - levelPos);
             if (dist < minDist) {
                 minDist = dist;
@@ -320,4 +320,4 @@ export class JourneyCameraController {
     }
 }
 
-export default JourneyCameraController;
+export default OdysseyCameraController;

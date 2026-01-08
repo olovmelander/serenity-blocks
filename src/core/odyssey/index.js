@@ -1,8 +1,8 @@
 /**
- * @fileoverview Journey Mode Module Exports
+ * @fileoverview Odyssey Mode Module Exports
  */
 
-export { JourneyStateManager } from './JourneyStateManager.js';
+export { OdysseyStateManager } from './OdysseyStateManager.js';
 export { LevelRegistry, getLevelRegistry } from './LevelRegistry.js';
 export { LEVEL_CONFIGS } from './data/levels.js';
 export { CHAPTER_CONFIGS } from './data/chapters.js';
