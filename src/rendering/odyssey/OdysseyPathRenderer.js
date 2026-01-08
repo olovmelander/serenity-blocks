@@ -15,6 +15,7 @@ export class OdysseyPathRenderer {
         this.scene = scene;
         this.pathCurve = null;
         this.pathMesh = null;
+        this.pathCoreMesh = null; // Inner glowing core
         this.pathGlowMesh = null;
         this.chapterMarkers = [];
         this.progress = 0;
@@ -32,7 +33,7 @@ export class OdysseyPathRenderer {
         );
         this.pathCurve = new THREE.CatmullRomCurve3(points);
         this.pathCurve.curveType = 'catmullrom';
-        this.pathCurve.tension = 0.5;
+        this.pathCurve.tension = 0.3; // Reduced from 0.5 for smoother curves
 
         // Create tube geometry along path
         this.createPathTube(pathData);
@@ -47,22 +48,26 @@ export class OdysseyPathRenderer {
     }
 
     createPathTube(pathData) {
+        // ═══════════════════════════════════════════════════════════════════
+        // OUTER PATH TUBE - Main visible path
+        // ═══════════════════════════════════════════════════════════════════
+        const outerRadius = pathData.radius || 0.6; // Increased from 0.3
         const geometry = new THREE.TubeGeometry(
             this.pathCurve,
-            pathData.segments || 200,
-            pathData.radius || 0.3,
-            8,
+            pathData.segments || 300,
+            outerRadius,
+            16, // More radial segments for smoother tube
             false,
         );
 
-        // Custom shader material for animated path
+        // Enhanced shader material with brighter emission
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
                 uProgress: { value: 0 },
                 uColorStart: { value: new THREE.Color(0xff6600) }, // Earth Core
                 uColorEnd: { value: new THREE.Color(0x6600ff) }, // Black Hole
-                uEmission: { value: 1.2 },
+                uEmission: { value: 1.8 }, // Increased from 1.2
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -93,18 +98,19 @@ export class OdysseyPathRenderer {
                     float edgeGlow = smoothstep(uProgress - 0.05, uProgress, vUv.x) * (1.0 - step(uProgress, vUv.x));
 
                     // Pulse animation on lit portion
-                    float pulse = sin(vUv.x * 20.0 - uTime * 2.0) * 0.2 + 0.8;
+                    float pulse = sin(vUv.x * 20.0 - uTime * 2.0) * 0.15 + 0.85;
 
-                    // Rim lighting
+                    // Rim lighting - enhanced
                     float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-                    rim = pow(rim, 2.0);
+                    rim = pow(rim, 1.5); // Softer rim falloff
 
-                    // Final color
-                    float intensity = (lit * pulse + edgeGlow * 2.0 + rim * 0.5) * uEmission;
+                    // Final color - BRIGHTER base emission
+                    float baseGlow = 0.5; // Minimum brightness for unlit (was 0.2)
+                    float intensity = (lit * pulse + edgeGlow * 2.0 + rim * 0.6) * uEmission;
                     vec3 finalColor = color * intensity;
 
-                    // Dim unlit portion
-                    finalColor = mix(color * 0.2, finalColor, max(lit, edgeGlow));
+                    // Brighter unlit portion
+                    finalColor = mix(color * baseGlow, finalColor, max(lit, edgeGlow * 0.5 + 0.5));
 
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
@@ -114,6 +120,55 @@ export class OdysseyPathRenderer {
 
         this.pathMesh = new THREE.Mesh(geometry, material);
         this.scene.add(this.pathMesh);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // INNER CORE - Bright glowing center line
+        // ═══════════════════════════════════════════════════════════════════
+        const coreRadius = outerRadius * 0.3; // Inner core is 30% of outer
+        const coreGeometry = new THREE.TubeGeometry(
+            this.pathCurve,
+            pathData.segments || 300,
+            coreRadius,
+            8,
+            false,
+        );
+
+        const coreMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uProgress: { value: 0 },
+                uColorStart: { value: new THREE.Color(0xffaa44) }, // Brighter orange
+                uColorEnd: { value: new THREE.Color(0xaa66ff) }, // Brighter purple
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uProgress;
+                uniform vec3 uColorStart;
+                uniform vec3 uColorEnd;
+                varying vec2 vUv;
+
+                void main() {
+                    vec3 color = mix(uColorStart, uColorEnd, vUv.x);
+                    float lit = step(vUv.x, uProgress);
+                    float pulse = sin(vUv.x * 30.0 - uTime * 4.0) * 0.2 + 0.8;
+                    
+                    // Core is always bright, even brighter when lit
+                    float intensity = 0.8 + lit * pulse * 0.5;
+                    gl_FragColor = vec4(color * intensity * 2.0, 1.0);
+                }
+            `,
+            transparent: false,
+        });
+
+        this.pathCoreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+        this.scene.add(this.pathCoreMesh);
     }
 
     createPathGlow(pathData) {
@@ -225,6 +280,12 @@ export class OdysseyPathRenderer {
             this.pathMesh.material.uniforms.uProgress.value = this.progress;
         }
 
+        // Update inner core
+        if (this.pathCoreMesh) {
+            this.pathCoreMesh.material.uniforms.uTime.value = this.time;
+            this.pathCoreMesh.material.uniforms.uProgress.value = this.progress;
+        }
+
         if (this.pathGlowMesh) {
             this.pathGlowMesh.material.uniforms.uTime.value = this.time;
             this.pathGlowMesh.material.uniforms.uProgress.value = this.progress;
@@ -244,6 +305,12 @@ export class OdysseyPathRenderer {
             this.pathMesh.geometry.dispose();
             this.pathMesh.material.dispose();
             this.scene.remove(this.pathMesh);
+        }
+
+        if (this.pathCoreMesh) {
+            this.pathCoreMesh.geometry.dispose();
+            this.pathCoreMesh.material.dispose();
+            this.scene.remove(this.pathCoreMesh);
         }
 
         if (this.pathGlowMesh) {

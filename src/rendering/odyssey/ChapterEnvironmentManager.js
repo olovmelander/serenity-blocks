@@ -117,12 +117,23 @@ export class ChapterEnvironmentManager {
         this.transitionFrom = null;
         this.transitionTo = null;
 
+        // Chapter change callback (for camera FOV pulse integration)
+        this.onChapterChangeCallback = null;
+
         // Quality settings
         this.qualitySettings = {
             particleCount: 500,
         };
 
         console.log('[ChapterEnvironmentManager] Created');
+    }
+
+    /**
+     * Set callback for chapter change events
+     * @param {Function} callback - Function(chapterId) called when chapter changes
+     */
+    setOnChapterChange(callback) {
+        this.onChapterChangeCallback = callback;
     }
 
     /**
@@ -383,6 +394,21 @@ export class ChapterEnvironmentManager {
                     t = 0;
                 }
                 break;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Chapter Change Detection - Trigger callback for FOV pulse
+        // ═══════════════════════════════════════════════════════════════════
+        if (currentChapterId !== this.currentChapter) {
+            const previousChapter = this.currentChapter;
+            this.currentChapter = currentChapterId;
+
+            console.log(`[ChapterEnvironmentManager] Chapter changed: ${previousChapter} → ${currentChapterId}`);
+
+            // Notify camera controller (for FOV pulse and other effects)
+            if (this.onChapterChangeCallback) {
+                this.onChapterChangeCallback(currentChapterId, previousChapter);
             }
         }
 

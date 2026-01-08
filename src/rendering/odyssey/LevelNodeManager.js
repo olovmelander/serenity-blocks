@@ -46,18 +46,15 @@ export class LevelNodeManager {
         group.userData.completed = false;
         group.userData.stars = 0;
 
-        // Position along path
+        // Position along path - CENTERED ON PATH (no offset)
         const pathPosition = levelConfig.pathPosition || (levelConfig.id - 1) / 55;
         const point = this.pathCurve.getPointAt(THREE.MathUtils.clamp(pathPosition, 0, 1));
         group.position.copy(point);
 
-        // Slight offset perpendicular to path for visual spacing
-        const tangent = this.pathCurve.getTangentAt(pathPosition);
-        const offset = new THREE.Vector3(-tangent.y, tangent.x, 0).multiplyScalar(2);
-        group.position.add(offset);
+        // NO perpendicular offset - level orbs should sit directly on the path
 
-        // Core orb geometry
-        const coreGeometry = new THREE.IcosahedronGeometry(0.6, 2);
+        // Core orb geometry - LARGER for visibility
+        const coreGeometry = new THREE.IcosahedronGeometry(1.0, 2); // Increased from 0.6
         const coreMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
@@ -89,26 +86,48 @@ export class LevelNodeManager {
                 varying vec3 vPosition;
 
                 void main() {
-                    // Base color with rim lighting
+                    // Enhanced rim lighting for 3D depth
                     float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-                    rim = pow(rim, 2.0);
+                    rim = pow(rim, 1.5);
 
                     vec3 color = uColor;
 
-                    // Locked = grayscale
-                    float gray = dot(color, vec3(0.299, 0.587, 0.114));
-                    color = mix(color, vec3(gray * 0.5), uLocked);
+                    // Locked = dark grayscale with subtle color tint
+                    if (uLocked > 0.5) {
+                        float gray = dot(color, vec3(0.299, 0.587, 0.114));
+                        color = vec3(gray * 0.4);
+                    } else {
+                        // Unlocked = VIBRANT with inner glow
+                        float innerGlow = 1.0 - length(vPosition) * 0.5;
+                        innerGlow = max(0.0, innerGlow);
+                        
+                        // Pulsing energy
+                        float pulse = sin(uTime * 2.0) * 0.15 + 1.0;
+                        
+                        // Apply vibrance
+                        color = color * pulse * 1.3;
+                        color += color * innerGlow * 0.4;
+                        color += rim * color * 0.5;
+                    }
 
-                    // Completed = brighter with pulse
-                    float pulse = sin(uTime * 3.0) * 0.1 + 0.9;
-                    color = mix(color, color * 1.5 * pulse, uCompleted);
+                    // Completed = golden shimmer overlay
+                    if (uCompleted > 0.5) {
+                        float shimmer = sin(uTime * 4.0 + vPosition.x * 10.0) * 0.5 + 0.5;
+                        vec3 gold = vec3(1.0, 0.85, 0.4);
+                        color = mix(color, gold * 1.5, shimmer * 0.3);
+                    }
 
-                    // Hover/selection effects
-                    float glow = uHovered * 0.3 + uSelected * 0.5;
-                    color += vec3(glow);
+                    // Hover = bright highlight
+                    if (uHovered > 0.5) {
+                        color *= 1.4;
+                        color += vec3(0.2);
+                    }
 
-                    // Rim highlight
-                    color += rim * 0.3;
+                    // Selected = pulsing outline
+                    if (uSelected > 0.5) {
+                        float selectPulse = sin(uTime * 5.0) * 0.2 + 0.8;
+                        color += rim * selectPulse * 0.6;
+                    }
 
                     gl_FragColor = vec4(color, 1.0);
                 }
@@ -119,8 +138,8 @@ export class LevelNodeManager {
         const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
         group.add(coreMesh);
 
-        // Outer glow shell
-        const glowGeometry = new THREE.IcosahedronGeometry(0.9, 2);
+        // Outer glow shell - LARGER
+        const glowGeometry = new THREE.IcosahedronGeometry(1.3, 2); // Increased from 0.9
         const glowMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uColor: { value: this.getChapterColor(levelConfig.chapter || 1) },
@@ -182,25 +201,105 @@ export class LevelNodeManager {
     createLockIcon() {
         const group = new THREE.Group();
 
-        // Simple lock representation using basic shapes
-        const bodyGeometry = new THREE.BoxGeometry(0.3, 0.25, 0.1);
-        const shackleGeometry = new THREE.TorusGeometry(0.12, 0.03, 8, 16, Math.PI);
+        // ═══════════════════════════════════════════════════════════════════
+        // CLEAR LOCK ICON - Sprite-based for maximum visibility
+        // Uses canvas-drawn padlock that's instantly recognizable
+        // ═══════════════════════════════════════════════════════════════════
 
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x888888,
-            metalness: 0.7,
-            roughness: 0.3,
+        // Create lock texture via canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        // Clear background
+        ctx.clearRect(0, 0, 128, 128);
+
+        // Draw padlock shackle (curved top)
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(64, 50, 28, Math.PI, 0, false); // Arc for shackle
+        ctx.stroke();
+
+        // Shackle vertical bars
+        ctx.beginPath();
+        ctx.moveTo(36, 50);
+        ctx.lineTo(36, 65);
+        ctx.moveTo(92, 50);
+        ctx.lineTo(92, 65);
+        ctx.stroke();
+
+        // Draw padlock body (rounded rectangle)
+        ctx.fillStyle = '#ff4444'; // Red body for visibility
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.roundRect(24, 60, 80, 56, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // Keyhole - circle part
+        ctx.fillStyle = '#220000';
+        ctx.beginPath();
+        ctx.arc(64, 78, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Keyhole - triangular slot
+        ctx.beginPath();
+        ctx.moveTo(58, 82);
+        ctx.lineTo(64, 102);
+        ctx.lineTo(70, 82);
+        ctx.closePath();
+        ctx.fill();
+
+        // Create texture and sprite
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: true,
+            depthWrite: false,
         });
 
-        const body = new THREE.Mesh(bodyGeometry, material);
-        body.position.set(0, 0.9, 0);
+        const lockSprite = new THREE.Sprite(spriteMaterial);
+        lockSprite.scale.set(0.9, 0.9, 1); // Smaller lock
+        lockSprite.position.set(0, 1.1, 1.3);
+        lockSprite.center.set(0.5, 0.5);
+        lockSprite.renderOrder = 100; // Ensure it renders on top
 
-        const shackle = new THREE.Mesh(shackleGeometry, material);
-        shackle.position.set(0, 1.05, 0);
-        shackle.rotation.x = Math.PI / 2;
+        group.add(lockSprite);
 
-        group.add(body);
-        group.add(shackle);
+        // Add subtle glow behind for extra visibility
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 64;
+        glowCanvas.height = 64;
+        const glowCtx = glowCanvas.getContext('2d');
+
+        const gradient = glowCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 100, 100, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 50, 50, 0.3)');
+        gradient.addColorStop(1, 'rgba(200, 0, 0, 0)');
+        glowCtx.fillStyle = gradient;
+        glowCtx.fillRect(0, 0, 64, 64);
+
+        const glowTexture = new THREE.CanvasTexture(glowCanvas);
+        const glowMaterial = new THREE.SpriteMaterial({
+            map: glowTexture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+        });
+
+        const glowSprite = new THREE.Sprite(glowMaterial);
+        glowSprite.scale.set(1.3, 1.3, 1); // Smaller glow
+        glowSprite.position.set(0, 1.1, 1.1);
+        glowSprite.renderOrder = 99;
+
+        group.add(glowSprite);
 
         return group;
     }
@@ -208,42 +307,154 @@ export class LevelNodeManager {
     createStarIndicators() {
         const group = new THREE.Group();
 
-        // Three star positions
+        // ═══════════════════════════════════════════════════════════════════
+        // SPRITE-BASED STAR ICONS - 5-pointed stars like the lock icons
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Three star positions - arc above orb
         const starPositions = [
-            new THREE.Vector3(-0.4, 1.0, 0),
-            new THREE.Vector3(0, 1.2, 0),
-            new THREE.Vector3(0.4, 1.0, 0),
+            new THREE.Vector3(-0.5, 1.4, 1.2),  // Left star
+            new THREE.Vector3(0, 1.6, 1.3),     // Center star (higher)
+            new THREE.Vector3(0.5, 1.4, 1.2),   // Right star
         ];
 
         starPositions.forEach((pos, i) => {
-            const starGeometry = new THREE.OctahedronGeometry(0.12, 0);
-            const starMaterial = new THREE.MeshStandardMaterial({
-                color: 0xffdd00,
-                emissive: 0xffaa00,
-                emissiveIntensity: 0.5,
+            // Create star texture via canvas
+            const starTexture = this.createStarTexture(128);
+
+            const starMaterial = new THREE.SpriteMaterial({
+                map: starTexture,
+                transparent: true,
+                depthTest: true,
+                depthWrite: false,
             });
 
-            const star = new THREE.Mesh(starGeometry, starMaterial);
-            star.position.copy(pos);
-            star.name = `star_${i}`;
-            star.visible = false;
+            const starSprite = new THREE.Sprite(starMaterial);
+            starSprite.scale.set(0.7, 0.7, 1);
+            starSprite.position.copy(pos);
+            starSprite.center.set(0.5, 0.5);
+            starSprite.name = `star_${i}`;
+            starSprite.visible = false;
+            starSprite.renderOrder = 100;
 
-            group.add(star);
+            // Golden glow behind star
+            const glowTexture = this.createGlowTexture(64);
+            const glowMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: 0xffcc00,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthTest: false,
+            });
+            const glowSprite = new THREE.Sprite(glowMaterial);
+            glowSprite.scale.set(1.0, 1.0, 1);
+            glowSprite.position.copy(pos);
+            glowSprite.position.z -= 0.1;
+            glowSprite.name = `star_glow_${i}`;
+            glowSprite.visible = false;
+            glowSprite.renderOrder = 99;
+
+            group.add(glowSprite);
+            group.add(starSprite);
         });
 
         return group;
     }
 
+    /**
+     * Create a 5-pointed star texture via canvas
+     * @param {number} size - Canvas size
+     * @returns {THREE.CanvasTexture}
+     */
+    createStarTexture(size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const cx = size / 2;
+        const cy = size / 2;
+        const outerRadius = size * 0.4;
+        const innerRadius = size * 0.18;
+        const spikes = 5;
+
+        // Clear
+        ctx.clearRect(0, 0, size, size);
+
+        // Draw star with gradient fill
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius);
+        gradient.addColorStop(0, '#ffffcc');   // Bright center
+        gradient.addColorStop(0.3, '#ffdd00'); // Golden
+        gradient.addColorStop(0.7, '#ffaa00'); // Deep gold
+        gradient.addColorStop(1, '#ff8800');   // Orange edge
+
+        ctx.fillStyle = gradient;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+
+        for (let i = 0; i < spikes * 2; i++) {
+            const radius = i % 2 === 0 ? outerRadius : innerRadius;
+            const angle = (i * Math.PI) / spikes - Math.PI / 2;
+            const x = cx + Math.cos(angle) * radius;
+            const y = cy + Math.sin(angle) * radius;
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Add shine highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.beginPath();
+        ctx.arc(cx - outerRadius * 0.2, cy - outerRadius * 0.2, outerRadius * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+
+        return new THREE.CanvasTexture(canvas);
+    }
+    /**
+     * Create a radial glow texture for sprites
+     * @param {number} size - Texture size
+     * @returns {THREE.CanvasTexture}
+     */
+    createGlowTexture(size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(
+            size / 2, size / 2, 0,
+            size / 2, size / 2, size / 2,
+        );
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 180, 50, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
     getChapterColor(chapter) {
+        // ═══════════════════════════════════════════════════════════════════
+        // VIBRANT CHAPTER COLORS - Saturated and eye-catching
+        // ═══════════════════════════════════════════════════════════════════
         const colors = [
-            new THREE.Color(0xff6600), // Ch1: Earth Core - Orange
-            new THREE.Color(0x0066ff), // Ch2: Deep Ocean - Blue
-            new THREE.Color(0x00ff66), // Ch3: Surface - Green
-            new THREE.Color(0xaaaaff), // Ch4: Mountains - Light Blue
-            new THREE.Color(0xffff66), // Ch5: Sky - Yellow
-            new THREE.Color(0x9966ff), // Ch6: Space - Purple
-            new THREE.Color(0xff00ff), // Ch7: Black Hole - Magenta
-            new THREE.Color(0x00ffff), // Ch8: Urban Dreams - Cyan
+            new THREE.Color(0xff4400), // Ch1: Earth Core - Molten Orange
+            new THREE.Color(0x0088ff), // Ch2: Deep Ocean - Bright Blue
+            new THREE.Color(0x00dd44), // Ch3: Surface - Emerald Green
+            new THREE.Color(0x88ccff), // Ch4: Mountains - Icy Blue
+            new THREE.Color(0xffdd00), // Ch5: Sky - Golden Yellow
+            new THREE.Color(0xaa44ff), // Ch6: Space - Cosmic Purple
+            new THREE.Color(0xff44aa), // Ch7: Black Hole - Magenta
+            new THREE.Color(0x00eeff), // Ch8: Urban Dreams - Neon Cyan
         ];
         return colors[(chapter - 1) % colors.length];
     }
@@ -288,11 +499,16 @@ export class LevelNodeManager {
         // Toggle lock icon
         node.lockGroup.visible = state.locked;
 
-        // Toggle and update star indicators
+        // Toggle and update star indicators (handles both stars and glow sprites)
         node.starGroup.visible = state.completed && state.stars > 0;
         if (node.starGroup.visible) {
-            node.starGroup.children.forEach((star, i) => {
-                star.visible = i < state.stars;
+            node.starGroup.children.forEach((child) => {
+                // Extract index from name (e.g., "star_0", "star_glow_0")
+                const match = child.name.match(/_(\d+)$/);
+                if (match) {
+                    const starIndex = parseInt(match[1], 10);
+                    child.visible = starIndex < state.stars;
+                }
             });
         }
     }

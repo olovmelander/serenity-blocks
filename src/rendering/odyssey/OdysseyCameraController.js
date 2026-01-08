@@ -48,6 +48,43 @@ export class OdysseyCameraController {
             magneticFriction: 0.2, // Multiplier for speed when near a level
         };
 
+        // ═══════════════════════════════════════════════════════════════════
+        // Cinematic Camera Breathing Settings
+        // ═══════════════════════════════════════════════════════════════════
+        this.cinematicConfig = {
+            // Subtle sway (horizontal drift)
+            swayEnabled: true,
+            swayAmplitude: 0.15,      // World units of horizontal movement
+            swayFrequency: 0.3,       // Cycles per second (slow, dreamlike)
+
+            // Gentle bob (vertical float)
+            bobEnabled: true,
+            bobAmplitude: 0.08,       // World units of vertical movement
+            bobFrequency: 0.4,        // Slightly faster than sway
+
+            // Camera roll breathing (very subtle tilt)
+            rollEnabled: true,
+            rollAmplitude: 0.003,     // Radians (~0.17 degrees)
+            rollFrequency: 0.25,      // Very slow
+
+            // FOV pulse for chapter transitions
+            fovPulseEnabled: true,
+            baseFov: 60,
+            fovPulseAmount: 8,        // Degrees to expand/contract
+            fovPulseDuration: 1.5,    // Seconds for full pulse cycle
+
+            // Look-ahead bias (anticipate path direction)
+            lookAheadEnabled: true,
+            lookAheadDistance: 0.02,  // How far ahead on path (0-1)
+        };
+
+        // Breathing animation state
+        this.breatheTime = 0;
+        this.fovPulseActive = false;
+        this.fovPulseStartTime = 0;
+        this.fovPulseType = 'expand'; // 'expand' | 'contract'
+        this.lastChapterId = 1;
+
         // Initialize camera position
         this.updateFollowPosition();
     }
@@ -204,14 +241,111 @@ export class OdysseyCameraController {
      * @param {number} deltaTime
      */
     update(deltaTime) {
+        // Update breathing time
+        this.breatheTime += deltaTime;
+
         if (this.isAnimating) {
             this.updateAnimation();
         } else if (this.mode === 'follow') {
             this.updateFollow(deltaTime);
         }
 
+        // Apply cinematic breathing effects
+        this.applyBreathingMotion(deltaTime);
+
+        // Update FOV pulse
+        this.updateFovPulse(deltaTime);
+
         // Always look at target
         this.camera.lookAt(this.lookAtTarget);
+    }
+
+    /**
+     * Apply subtle breathing motion (sway, bob, roll)
+     * @param {number} deltaTime
+     */
+    applyBreathingMotion(deltaTime) {
+        const cc = this.cinematicConfig;
+        const t = this.breatheTime;
+
+        // Don't apply during rapid animations (focus/zoom)
+        if (this.isAnimating && this.mode === 'focus') return;
+
+        // Horizontal sway (dreamlike drift)
+        if (cc.swayEnabled) {
+            const sway = Math.sin(t * Math.PI * 2 * cc.swayFrequency) * cc.swayAmplitude;
+            this.camera.position.x += sway * deltaTime * 2; // Smooth application
+        }
+
+        // Vertical bob (gentle float)
+        if (cc.bobEnabled) {
+            const bob = Math.sin(t * Math.PI * 2 * cc.bobFrequency + Math.PI * 0.5) * cc.bobAmplitude;
+            this.camera.position.y += bob * deltaTime * 2;
+        }
+
+        // Camera roll (very subtle tilt)
+        if (cc.rollEnabled) {
+            const roll = Math.sin(t * Math.PI * 2 * cc.rollFrequency) * cc.rollAmplitude;
+            this.camera.rotation.z = roll;
+        }
+    }
+
+    /**
+     * Update FOV pulse animation
+     * @param {number} deltaTime
+     */
+    updateFovPulse(deltaTime) {
+        const cc = this.cinematicConfig;
+        if (!cc.fovPulseEnabled || !this.fovPulseActive) return;
+
+        const elapsed = (performance.now() - this.fovPulseStartTime) / 1000;
+        const t = Math.min(elapsed / cc.fovPulseDuration, 1);
+
+        // Smooth ease-out curve
+        const eased = 1 - Math.pow(1 - t, 3);
+
+        if (this.fovPulseType === 'expand') {
+            // Expand then contract
+            const pulseT = t < 0.4 ? t / 0.4 : 1 - (t - 0.4) / 0.6;
+            const smoothPulse = Math.sin(pulseT * Math.PI) * cc.fovPulseAmount;
+            this.camera.fov = cc.baseFov + smoothPulse;
+        } else {
+            // Just contract (tunnel effect)
+            const smoothPulse = (1 - eased) * cc.fovPulseAmount;
+            this.camera.fov = cc.baseFov - smoothPulse * 0.5;
+        }
+
+        this.camera.updateProjectionMatrix();
+
+        // End pulse
+        if (t >= 1) {
+            this.fovPulseActive = false;
+            this.camera.fov = cc.baseFov;
+            this.camera.updateProjectionMatrix();
+        }
+    }
+
+    /**
+     * Trigger FOV pulse effect (for chapter transitions)
+     * @param {string} type - 'expand' | 'contract'
+     */
+    triggerFovPulse(type = 'expand') {
+        if (!this.cinematicConfig.fovPulseEnabled) return;
+
+        this.fovPulseActive = true;
+        this.fovPulseStartTime = performance.now();
+        this.fovPulseType = type;
+    }
+
+    /**
+     * Notify camera of chapter change (for transition effects)
+     * @param {number} chapterId
+     */
+    onChapterChange(chapterId) {
+        if (chapterId !== this.lastChapterId) {
+            this.triggerFovPulse('expand');
+            this.lastChapterId = chapterId;
+        }
     }
 
     updateFollow(deltaTime) {
