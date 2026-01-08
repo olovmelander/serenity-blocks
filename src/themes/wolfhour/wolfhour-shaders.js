@@ -139,7 +139,7 @@ export const mountainFragmentShader = `
     }
 
     void main() {
-        // Base rock color based on layer
+        // Base rock color based on layer (closer = darker)
         vec3 rockColor = mix(uRockColorDark, uRockColorLight, uMountainLayer);
 
         // Subtle rock texture variation
@@ -160,7 +160,11 @@ export const mountainFragmentShader = `
         float peakGlow = smoothstep(0.6, 1.0, vHeight) * uPulseIntensity;
         color += vec3(0.8, 0.8, 0.9) * peakGlow * 0.3;
 
-
+        // === ATMOSPHERIC FOG ===
+        // Distant mountains fade toward a darker misty color (keeping them dark)
+        vec3 fogColor = vec3(0.12, 0.13, 0.16); // Much darker fog
+        float atmosphericFade = pow(uMountainLayer, 1.8) * 0.35; // Reduced fade, more gradual
+        color = mix(color, fogColor, atmosphericFade);
 
         gl_FragColor = vec4(color, 1.0);
     }
@@ -321,23 +325,22 @@ export const beamFragmentShader = `
     varying vec2 vUv;
 
     void main() {
-        // Vertical gradient - strongest at center, very soft edges
-        float centerFade = 1.0 - abs(vUv.x - 0.5) * 2.0;
-        centerFade = pow(centerFade, 3.0); // Softer falloff
-
-        // Top/bottom fade - very soft
-        float vertFade = smoothstep(0.0, 0.25, vUv.y) * smoothstep(1.0, 0.75, vUv.y);
-
-        // Shimmer effect
-        float shimmer = sin(vUv.y * 50.0 + uTime * 10.0) * 0.1 + 0.9;
-
-        float alpha = centerFade * vertFade * uOpacity * shimmer;
-        alpha = pow(alpha, 1.3); // Extra soft edges
-
-        // Silver/white color with slight cool tint
-        vec3 color = vec3(0.85, 0.85, 0.95);
-
-        gl_FragColor = vec4(color, alpha * 0.4); // Reduced intensity
+        // Use distance from vertical center line for beam shape
+        float distFromCenterX = abs(vUv.x - 0.5) * 2.0;
+        float distFromCenterY = abs(vUv.y - 0.5) * 2.0;
+        
+        // Horizontal beam shape - gaussian falloff
+        float beamShape = exp(-distFromCenterX * distFromCenterX * 20.0);
+        
+        // Vertical fade - visible in center, faded at top/bottom
+        float vertFade = 1.0 - smoothstep(0.1, 0.5, distFromCenterY);
+        float edgeFade = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+        
+        float shimmer = sin(vUv.y * 50.0 + uTime * 10.0) * 0.08 + 0.92;
+        float alpha = beamShape * vertFade * edgeFade * uOpacity * shimmer;
+        
+        vec3 color = vec3(0.9, 0.9, 1.0);
+        gl_FragColor = vec4(color, alpha * 0.5);
     }
 `;
 
@@ -420,12 +423,15 @@ export const waveFragmentShader = `
     varying vec2 vUv;
 
     void main() {
-        // Horizontal ripple
-        float dist = abs(vUv.x - 0.5 - uTime * 0.5); // Move L to R
-        float ripple = sin(dist * 20.0 - uTime * 10.0) * 0.5 + 0.5;
+        // Edge fade - must be zero at geometry boundaries
+        float edgeFadeX = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
+        float edgeFadeY = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+        float edgeFade = edgeFadeX * edgeFadeY;
         
-        // Fades
-        float alpha = uOpacity * smoothstep(0.5, 0.0, dist) * ripple;
+        // Horizontal ripple moving L to R
+        float dist = abs(vUv.x - 0.5 - uTime * 0.5);
+        float ripple = sin(dist * 20.0 - uTime * 10.0) * 0.5 + 0.5;
+        float alpha = uOpacity * smoothstep(0.5, 0.0, dist) * ripple * edgeFade;
         
         vec3 color = vec3(0.8, 0.85, 1.0);
         gl_FragColor = vec4(color, alpha * 0.4);
