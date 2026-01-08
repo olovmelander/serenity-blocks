@@ -194,7 +194,7 @@ export const GAME_MODES = {
     ONLINE_MULTIPLAYER: 'online-multiplayer',
     SERENITY: 'serenity',
     INFINITY: 'infinity',
-    JOURNEY: 'journey',
+    ODYSSEY: 'odyssey',
 };
 
 /**
