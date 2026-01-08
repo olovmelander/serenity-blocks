@@ -1471,6 +1471,7 @@ export class OdysseyMode extends BaseGameMode {
                 </div>
             </div>
             <div id="odyssey-level-panel" class="odyssey-level-panel hidden">
+                <div id="level-panel-number" class="level-number-badge">LEVEL 1</div>
                 <h2 id="level-panel-name">Level Name</h2>
                 <p id="level-panel-chapter" class="level-chapter">Chapter 1</p>
                 <p id="level-panel-description" class="level-description">Description...</p>
@@ -1533,6 +1534,21 @@ export class OdysseyMode extends BaseGameMode {
             }
             .odyssey-level-panel.hidden {
                 display: none;
+            }
+            .level-number-badge {
+                display: inline-block;
+                padding: 0.35rem 0.75rem;
+                background: linear-gradient(135deg, rgba(0, 170, 255, 0.2), rgba(0, 255, 204, 0.2));
+                border: 1px solid rgba(0, 255, 204, 0.4);
+                border-radius: 6px;
+                font-family: 'Orbitron', sans-serif;
+                font-size: 0.7rem;
+                font-weight: 600;
+                letter-spacing: 1.5px;
+                color: #00ffcc;
+                text-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+                margin-bottom: 0.75rem;
+                box-shadow: 0 0 15px rgba(0, 255, 204, 0.15);
             }
             .odyssey-level-panel h2 {
                 margin: 0 0 0.5rem 0;
@@ -1717,6 +1733,7 @@ export class OdysseyMode extends BaseGameMode {
         const stars = completion?.stars || 0;
 
         // Update panel content
+        document.getElementById('level-panel-number').textContent = `LEVEL ${levelId}`;
         document.getElementById('level-panel-name').textContent = level.name;
         document.getElementById('level-panel-chapter').textContent =
             `Chapter ${level.chapter}: ${this._getChapterName(level.chapter)}`;

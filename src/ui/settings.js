@@ -24,7 +24,6 @@ const DEFAULT_CONFIG = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
-    sunsetFlareIntensity: 'full',
     // Tetromino Visual Settings
     themeBasedTetrominos: true, // Use theme-specific tetromino colors and effects
     controlScheme: 'Keyboard',
@@ -716,15 +715,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         bgModeSelect.value = settings.backgroundMode;
 
         const handleModeChange = (mode) => {
-            if (mode === 'Specific') {
-                setThemeSelectorVisibility(true);
-                setRandomIntervalVisibility(false);
-            } else if (mode === 'Random') {
-                setThemeSelectorVisibility(false);
+            if (mode === 'Random') {
                 setRandomIntervalVisibility(true);
             } else {
-                // 'Level'
-                setThemeSelectorVisibility(false);
+                // 'Level' or 'Specific'
                 setRandomIntervalVisibility(false);
             }
         };
@@ -744,35 +738,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-    // Background theme selector - populate dropdown and handle changes
-    const bgThemeSelect = document.getElementById('background-theme');
-    if (bgThemeSelect && callbacks.onBackgroundThemeChange) {
-        // Import themes list
-        import('../core/constants.js').then(({ THEMES }) => {
-            // Populate dropdown with available themes
-            bgThemeSelect.innerHTML = THEMES.map(
-                (theme) => `<option value="${theme}">${theme
-                    .split('-')
-                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                    .join(' ')}</option>`,
-            ).join('');
-
-            // Set current value
-            bgThemeSelect.value = settings.backgroundTheme || 'forest';
-
-            // Handle theme changes
-            bgThemeSelect.addEventListener('change', (e) => {
-                const theme = e.target.value;
-                settingsManager.update({ backgroundTheme: theme });
-
-                if (callbacks.onBackgroundThemeChange) {
-                    callbacks.onBackgroundThemeChange(theme);
-                }
-
-                settingsManager.save();
-            });
-        });
-    }
 
     // Theme-Linked SFX toggle
     const themeLinkedSfxSelect = document.getElementById('theme-linked-sfx');
@@ -853,31 +818,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-    const sunsetFlareSelect = document.getElementById('sunset-flare-intensity');
-    if (sunsetFlareSelect) {
-        sunsetFlareSelect.value = settings.sunsetFlareIntensity || 'full';
-        sunsetFlareSelect.addEventListener('change', (e) => {
-            settingsManager.update({ sunsetFlareIntensity: e.target.value });
-            settingsManager.save();
-        });
-    }
-
-    // Music track selector
-    const musicTrackSelect = document.getElementById('music-track');
-    if (musicTrackSelect) {
-        musicTrackSelect.value = settings.musicTrack || 'Ambient';
-
-        musicTrackSelect.addEventListener('change', (e) => {
-            const track = e.target.value;
-            settingsManager.update({ musicTrack: track });
-
-            if (callbacks.onMusicTrackChange) {
-                callbacks.onMusicTrackChange(track);
-            }
-
-            settingsManager.save();
-        });
-    }
 
     // Sound effects selector
     const sfxSetSelect = document.getElementById('sfx-set');
@@ -1213,16 +1153,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     updateGamepadControlsDisplay(settings);
 }
 
-/**
- * Sets theme selector visibility based on background mode
- * @param {boolean} visible - Whether theme selector should be visible
- */
-export function setThemeSelectorVisibility(visible) {
-    const selector = document.getElementById('theme-setting');
-    if (selector) {
-        selector.style.display = visible ? '' : 'none';
-    }
-}
 
 /**
  * Sets random interval visibility based on background mode
