@@ -1,10 +1,10 @@
 /**
- * @fileoverview Journey Mode Level Preview Panel
+ * @fileoverview Odyssey Mode Level Preview Panel
  * Displays detailed level information before starting gameplay
  */
 
-import { getLevelById } from '../../core/journey/data/levels.js';
-import { CHAPTER_CONFIGS } from '../../core/journey/data/chapters.js';
+import { getLevelById } from '../../core/odyssey/data/levels.js';
+import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 
 /**
  * LevelPreviewPanel - Shows detailed level info before playing

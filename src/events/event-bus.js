@@ -47,7 +47,7 @@ export const EVENTS = {
     COMBO: 'combo',
     PIECE_LOCK: 'pieceLock',
     SETTINGS_CHANGED: 'settingsChanged',
-    // Journey Mode Victory Lap
-    JOURNEY_GOAL_COMPLETE: 'journeyGoalComplete',
-    JOURNEY_VICTORY_LAP_END: 'journeyVictoryLapEnd',
+    // Odyssey Mode Victory Lap
+    ODYSSEY_GOAL_COMPLETE: 'odysseyGoalComplete',
+    ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',
 };

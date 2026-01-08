@@ -1,7 +1,7 @@
 /**
- * @fileoverview JourneyBoardController - Three.js Journey Board Scene
+ * @fileoverview OdysseyBoardController - Three.js Odyssey Board Scene
  *
- * Main controller for the Journey Mode level selection board.
+ * Main controller for the Odyssey Mode level selection board.
  * Renders a 3D ascending path through 7 chapters with level nodes.
  */
 
@@ -9,14 +9,14 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { JourneyPathRenderer } from './JourneyPathRenderer.js';
+import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
-import { JourneyCameraController } from './JourneyCameraController.js';
+import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
-import { JOURNEY_PATH_DATA } from './path-data.js';
+import { ODYSSEY_PATH_DATA } from './path-data.js';
 
 /**
- * Quality presets for the Journey Board
+ * Quality presets for the Odyssey Board
  */
 const QUALITY_PRESETS = {
     Minimal: {
@@ -40,9 +40,9 @@ const QUALITY_PRESETS = {
 };
 
 /**
- * JourneyBoardController - Main Three.js scene for level selection
+ * OdysseyBoardController - Main Three.js scene for level selection
  */
-export class JourneyBoardController {
+export class OdysseyBoardController {
     constructor(container) {
         this.container = container;
 
@@ -83,7 +83,7 @@ export class JourneyBoardController {
         this.nebulaMesh = null;
         this.ambientParticles = null;
 
-        console.log('[JourneyBoard] Controller created');
+        console.log('[OdysseyBoard] Controller created');
     }
 
     // =============================
@@ -91,12 +91,12 @@ export class JourneyBoardController {
     // =============================
 
     /**
-     * Initialize the journey board
+     * Initialize the odyssey board
      * @param {Object} levelData - Level configurations
      * @param {Object} progressData - Player progress data
      */
     async initialize(levelData, progressData) {
-        console.log('[JourneyBoard] Initializing...');
+        console.log('[OdysseyBoard] Initializing...');
 
         // Get quality settings
         const quality = window.settings?.effectQuality || 'High';
@@ -117,8 +117,8 @@ export class JourneyBoardController {
         });
 
         // Create path
-        this.pathRenderer = new JourneyPathRenderer(this.scene);
-        await this.pathRenderer.buildPath(JOURNEY_PATH_DATA);
+        this.pathRenderer = new OdysseyPathRenderer(this.scene);
+        await this.pathRenderer.buildPath(ODYSSEY_PATH_DATA);
 
         // Create level nodes
         this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
@@ -126,7 +126,7 @@ export class JourneyBoardController {
         this.nodeManager.updateFromProgress(progressData);
 
         // Setup camera controller
-        this.cameraController = new JourneyCameraController(
+        this.cameraController = new OdysseyCameraController(
             this.camera,
             this.pathRenderer.pathCurve,
         );
@@ -152,7 +152,7 @@ export class JourneyBoardController {
         this.isActive = true;
         this.animate();
 
-        console.log('[JourneyBoard] Initialized successfully');
+        console.log('[OdysseyBoard] Initialized successfully');
     }
 
     initRenderer() {
@@ -492,7 +492,7 @@ export class JourneyBoardController {
      * @param {number} duration - Animation duration in ms
      */
     panToChapter(chapterId, duration = 1500) {
-        const chapterPosition = JOURNEY_PATH_DATA.chapterPositions[chapterId - 1] || 0;
+        const chapterPosition = ODYSSEY_PATH_DATA.chapterPositions[chapterId - 1] || 0;
         this.cameraController?.panToPosition(chapterPosition, duration);
     }
 
@@ -598,8 +598,8 @@ export class JourneyBoardController {
             this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
         }
 
-        console.log('[JourneyBoard] Disposed');
+        console.log('[OdysseyBoard] Disposed');
     }
 }
 
-export default JourneyBoardController;
+export default OdysseyBoardController;

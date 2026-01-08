@@ -1,5 +1,5 @@
 /**
- * @fileoverview JourneyStateManager - Manages Journey Mode progression and persistence
+ * @fileoverview OdysseyStateManager - Manages Odyssey Mode progression and persistence
  *
  * Handles:
  * - Level unlock tracking
@@ -8,7 +8,7 @@
  * - Save/load to localStorage
  */
 
-const STORAGE_KEY = 'serenityBlocks_journeyProgress';
+const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 const SAVE_VERSION = 1;
 
 /**
@@ -22,8 +22,8 @@ const SAVE_VERSION = 1;
  */
 
 /**
- * @typedef {Object} JourneyStatistics
- * @property {number} totalPlayTime - Total time spent in Journey Mode (seconds)
+ * @typedef {Object} OdysseyStatistics
+ * @property {number} totalPlayTime - Total time spent in Odyssey Mode (seconds)
  * @property {number} totalLinesCleared - Cumulative lines cleared
  * @property {number} totalScore - Cumulative score
  * @property {number} highestCombo - Best combo achieved
@@ -32,9 +32,9 @@ const SAVE_VERSION = 1;
  * @property {number} totalStars - Sum of all stars earned
  */
 
-export class JourneyStateManager {
+export class OdysseyStateManager {
     constructor() {
-        // Current position in journey
+        // Current position in odyssey
         this.currentChapter = 1;
         this.currentLevel = 1;
 
@@ -81,10 +81,10 @@ export class JourneyStateManager {
 
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
-            console.log('[JourneyState] Progress saved successfully');
+            console.log('[OdysseyState] Progress saved successfully');
             return true;
         } catch (error) {
-            console.error('[JourneyState] Failed to save progress:', error);
+            console.error('[OdysseyState] Failed to save progress:', error);
             return false;
         }
     }
@@ -96,7 +96,7 @@ export class JourneyStateManager {
         try {
             const savedData = localStorage.getItem(STORAGE_KEY);
             if (!savedData) {
-                console.log('[JourneyState] No saved progress found, starting fresh');
+                console.log('[OdysseyState] No saved progress found, starting fresh');
                 return false;
             }
 
@@ -104,7 +104,7 @@ export class JourneyStateManager {
 
             // Version migration if needed
             if (data.version !== SAVE_VERSION) {
-                console.log(`[JourneyState] Migrating save from v${data.version} to v${SAVE_VERSION}`);
+                console.log(`[OdysseyState] Migrating save from v${data.version} to v${SAVE_VERSION}`);
                 this.migrateSaveData(data);
             }
 
@@ -115,14 +115,14 @@ export class JourneyStateManager {
             this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
             this.statistics = { ...this.statistics, ...data.statistics };
 
-            console.log('[JourneyState] Progress loaded successfully');
-            console.log(`[JourneyState] Current: Chapter ${this.currentChapter}, Level ${this.currentLevel}`);
-            console.log(`[JourneyState] Unlocked levels: ${this.unlockedLevels.size}`);
-            console.log(`[JourneyState] Completed levels: ${this.completedLevels.size}`);
+            console.log('[OdysseyState] Progress loaded successfully');
+            console.log(`[OdysseyState] Current: Chapter ${this.currentChapter}, Level ${this.currentLevel}`);
+            console.log(`[OdysseyState] Unlocked levels: ${this.unlockedLevels.size}`);
+            console.log(`[OdysseyState] Completed levels: ${this.completedLevels.size}`);
 
             return true;
         } catch (error) {
-            console.error('[JourneyState] Failed to load progress:', error);
+            console.error('[OdysseyState] Failed to load progress:', error);
             return false;
         }
     }
@@ -134,7 +134,7 @@ export class JourneyStateManager {
     migrateSaveData(data) {
         // Add migration logic as save format evolves
         // For now, just log the migration
-        console.log('[JourneyState] Migration complete');
+        console.log('[OdysseyState] Migration complete');
     }
 
     /**
@@ -158,9 +158,9 @@ export class JourneyStateManager {
         // Clear localStorage
         try {
             localStorage.removeItem(STORAGE_KEY);
-            console.log('[JourneyState] Progress reset');
+            console.log('[OdysseyState] Progress reset');
         } catch (error) {
-            console.error('[JourneyState] Failed to clear saved progress:', error);
+            console.error('[OdysseyState] Failed to clear saved progress:', error);
         }
     }
 
@@ -212,7 +212,7 @@ export class JourneyStateManager {
     unlockLevel(levelId) {
         if (!this.unlockedLevels.has(levelId)) {
             this.unlockedLevels.add(levelId);
-            console.log(`[JourneyState] Level ${levelId} unlocked`);
+            console.log(`[OdysseyState] Level ${levelId} unlocked`);
             this.save();
         }
     }
@@ -264,7 +264,7 @@ export class JourneyStateManager {
             this.currentChapter = Math.ceil(nextLevelId / 8); // 8 levels per chapter
         }
 
-        console.log(`[JourneyState] Level ${levelId} completed with ${completion.stars} stars`);
+        console.log(`[OdysseyState] Level ${levelId} completed with ${completion.stars} stars`);
         this.save();
 
         return completion;
@@ -493,4 +493,4 @@ export class JourneyStateManager {
     }
 }
 
-export default JourneyStateManager;
+export default OdysseyStateManager;

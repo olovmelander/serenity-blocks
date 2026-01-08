@@ -1,7 +1,7 @@
 /**
- * @fileoverview Journey Mode Chapter Configurations
+ * @fileoverview Odyssey Mode Chapter Configurations
  *
- * Defines the eight chapters of Journey Mode, each representing a stage
+ * Defines the eight chapters of Odyssey Mode, each representing a stage
  * of cosmic ascent from Earth's core to abstract transcendence and urban dreams.
  */
 

@@ -26536,7 +26536,7 @@ body.cursor-hidden * {
     }
 }
 
-/* ===== Theme Transition Overlay (Phase 4 - Journey Mode) ===== */
+/* ===== Theme Transition Overlay (Phase 4 - Odyssey Mode) ===== */
 .theme-transition-overlay {
     position: fixed;
     top: 0;
@@ -26610,11 +26610,11 @@ body.cursor-hidden * {
 }
 
 /* ==========================================================================
-   JOURNEY MODE STYLES
+   ODYSSEY MODE STYLES
    ========================================================================== */
 
-/* Journey Container */
-.journey-container {
+/* Odyssey Container */
+.odyssey-container {
     position: fixed;
     top: 0;
     left: 0;
@@ -26624,8 +26624,8 @@ body.cursor-hidden * {
     background: linear-gradient(135deg, #0a0515 0%, #150a25 50%, #0a0515 100%);
 }
 
-/* Journey Board (3D World) */
-.journey-board {
+/* Odyssey Board (3D World) */
+.odyssey-board {
     position: absolute;
     top: 0;
     left: 0;
@@ -26634,13 +26634,13 @@ body.cursor-hidden * {
     overflow: hidden;
 }
 
-.journey-board canvas {
+.odyssey-board canvas {
     width: 100%;
     height: 100%;
 }
 
-/* Journey Gameplay Area */
-.journey-gameplay {
+/* Odyssey Gameplay Area */
+.odyssey-gameplay {
     position: absolute;
     top: 0;
     left: 0;
@@ -26651,8 +26651,8 @@ body.cursor-hidden * {
     align-items: center;
 }
 
-/* Journey HUD Animations */
-@keyframes journey-pulse {
+/* Odyssey HUD Animations */
+@keyframes odyssey-pulse {
     0% {
         box-shadow: 0 0 20px rgba(180, 130, 255, 0.3);
     }
@@ -26666,7 +26666,7 @@ body.cursor-hidden * {
     }
 }
 
-@keyframes journey-star-pop {
+@keyframes odyssey-star-pop {
     0% {
         transform: scale(0);
         opacity: 0;
@@ -26683,7 +26683,7 @@ body.cursor-hidden * {
     }
 }
 
-@keyframes journey-slide-in {
+@keyframes odyssey-slide-in {
     0% {
         transform: translateX(-100%);
         opacity: 0;
@@ -26695,7 +26695,7 @@ body.cursor-hidden * {
     }
 }
 
-@keyframes journey-fade-in {
+@keyframes odyssey-fade-in {
     0% {
         opacity: 0;
     }
@@ -26738,29 +26738,29 @@ body.cursor-hidden * {
     border-radius: 2px;
 }
 
-/* Journey Mode Card Styles */
-.game-mode-card[data-mode="journey"] {
+/* Odyssey Mode Card Styles */
+.game-mode-card[data-mode="odyssey"] {
     --card-glow-color: rgba(180, 130, 255, 0.4);
 }
 
-.game-mode-card[data-mode="journey"]:hover,
-.game-mode-card[data-mode="journey"]:focus {
+.game-mode-card[data-mode="odyssey"]:hover,
+.game-mode-card[data-mode="odyssey"]:focus {
     border-color: rgba(180, 130, 255, 0.6);
     box-shadow: 0 0 40px rgba(180, 130, 255, 0.3);
 }
 
-.game-mode-card[data-mode="journey"] .mode-card-icon {
+.game-mode-card[data-mode="odyssey"] .mode-card-icon {
     color: rgba(180, 130, 255, 0.9);
 }
 
-.game-mode-card[data-mode="journey"]:hover .mode-card-icon,
-.game-mode-card[data-mode="journey"]:focus .mode-card-icon {
+.game-mode-card[data-mode="odyssey"]:hover .mode-card-icon,
+.game-mode-card[data-mode="odyssey"]:focus .mode-card-icon {
     color: rgba(200, 160, 255, 1);
     filter: drop-shadow(0 0 15px rgba(180, 130, 255, 0.8));
 }
 
-/* Journey Progress Ring Animation */
-@keyframes journey-progress-ring {
+/* Odyssey Progress Ring Animation */
+@keyframes odyssey-progress-ring {
     0% {
         stroke-dashoffset: 283;
     }
@@ -26785,7 +26785,7 @@ body.cursor-hidden * {
     }
 }
 
-.journey-hud .star.earned {
+.odyssey-hud .star.earned {
     animation: star-shimmer 2s ease-in-out infinite;
 }
 
@@ -26827,7 +26827,7 @@ body.cursor-hidden * {
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {
-    .journey-level-select {
+    .odyssey-level-select {
         padding: 10px;
     }
 

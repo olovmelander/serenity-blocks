@@ -4,7 +4,7 @@
  * Creates a mesmerizing warp tunnel effect for level transitions.
  * Features: star trails, energy spiral, light beams, and smooth reveal.
  *
- * Phase 4 - Journey Mode Enhanced Transitions
+ * Phase 4 - Odyssey Mode Enhanced Transitions
  */
 
 import * as THREE from 'three';

@@ -1,8 +1,8 @@
 /**
- * @fileoverview VictoryConditionEvaluator - Evaluates victory/failure conditions for Journey Mode
+ * @fileoverview VictoryConditionEvaluator - Evaluates victory/failure conditions for Odyssey Mode
  *
  * Tracks gameplay metrics and evaluates whether victory/failure/bonus conditions are met.
- * Extracted from inline JourneyMode logic to enable reuse and testing.
+ * Extracted from inline OdysseyMode logic to enable reuse and testing.
  */
 
 /**

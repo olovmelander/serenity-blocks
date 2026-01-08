@@ -1,5 +1,5 @@
 /**
- * @fileoverview GameplayHybridEngine - Orchestrates Journey Mode gameplay systems
+ * @fileoverview GameplayHybridEngine - Orchestrates Odyssey Mode gameplay systems
  *
  * Main coordinator that:
  * - Creates GameState configured for the level
@@ -17,7 +17,7 @@ import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
 
 /**
- * GameplayHybridEngine - Configures gameplay for Journey Mode levels
+ * GameplayHybridEngine - Configures gameplay for Odyssey Mode levels
  */
 export class GameplayHybridEngine {
     constructor() {
@@ -71,7 +71,7 @@ export class GameplayHybridEngine {
             isInfinityMode: isInfinityBased,
             maxRows: mechanics.board.rows || ROWS,
             disableLevelProgression: !mixer.hasLevelProgression(),
-            disableGarbage: true, // Journey mode doesn't use garbage attacks
+            disableGarbage: true, // Odyssey mode doesn't use garbage attacks
             initialInfinityRows: (mechanics.board.rows || ROWS) + HIDDEN_ROWS,
         };
 

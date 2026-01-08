@@ -1,5 +1,5 @@
 /**
- * @fileoverview Journey Mode Level Configurations
+ * @fileoverview Odyssey Mode Level Configurations
  *
  * Each level is a complete configuration defining:
  * - Theme and visual settings
@@ -20,7 +20,7 @@
 
 /**
  * @typedef {Object} LevelConfig
- * See JOURNEY_MODE_IMPLEMENTATION_PLAN.md for full schema
+ * See ODYSSEY_MODE_IMPLEMENTATION_PLAN.md for full schema
  */
 
 export const LEVEL_CONFIGS = [
@@ -97,7 +97,7 @@ export const LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 20 lines to complete your first level! A gentle introduction to the journey.',
+            description: 'Clear 20 lines to complete your first level! A gentle introduction to the odyssey.',
             difficulty: 1,
             estimatedTime: 120,
             tip: 'Build flat stacks and clear multiple lines at once. Clearing 2+ lines is more efficient than singles! Keep playing after goal for more stars.',

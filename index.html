@@ -841,15 +841,15 @@
 
     </div>
 
-    <!-- Journey Mode Container -->
-    <div id="journey-container" class="journey-container" style="display: none;">
-        <!-- Journey Board (3D World) - Rendered by JourneyBoardController -->
-        <div id="journey-board" class="journey-board"></div>
+    <!-- Odyssey Mode Container -->
+    <div id="odyssey-container" class="odyssey-container" style="display: none;">
+        <!-- Odyssey Board (3D World) - Rendered by OdysseyBoardController -->
+        <div id="odyssey-board" class="odyssey-board"></div>
 
-        <!-- Journey Gameplay Area - Uses same layout as single player -->
-        <div id="journey-gameplay" class="journey-gameplay" style="display: none;">
-            <div class="game-container single-player-layout" id="journey-game-container">
-                <!-- Game board will be rendered here by JourneyMode -->
+        <!-- Odyssey Gameplay Area - Uses same layout as single player -->
+        <div id="odyssey-gameplay" class="odyssey-gameplay" style="display: none;">
+            <div class="game-container single-player-layout" id="odyssey-game-container">
+                <!-- Game board will be rendered here by OdysseyMode -->
             </div>
         </div>
     </div>
@@ -928,11 +928,11 @@
                 <div class="mode-card-glow"></div>
             </div>
 
-            <div class="game-mode-card" data-mode="journey" id="journey-card-btn" tabindex="0">
+            <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
                 <div class="mode-card-icon">
                     <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
                         stroke-linecap="round" stroke-linejoin="round">
-                        <!-- Mountain path icon representing journey/ascent -->
+                        <!-- Mountain path icon representing odyssey/ascent -->
                         <path d="M3 20L8 10L13 15L21 4" />
                         <polyline points="16 4 21 4 21 9" />
                         <circle cx="8" cy="10" r="1.5" fill="currentColor" />
@@ -940,7 +940,7 @@
                         <circle cx="21" cy="4" r="1.5" fill="currentColor" />
                     </svg>
                 </div>
-                <h2 class="mode-card-title">Journey</h2>
+                <h2 class="mode-card-title">Odyssey</h2>
                 <p class="mode-card-desc">Ascend through 56 levels across 7 chapters of evolving challenges and themes
                 </p>
                 <div class="mode-card-glow"></div>
@@ -2004,7 +2004,7 @@
     <!-- Multiplayer Countdown Overlay (Global - always accessible) -->
     <div id="multiplayer-countdown" class="multiplayer-countdown" aria-live="polite"></div>
 
-    <!-- Theme Transition Overlay (Phase 4 - Journey Mode) -->
+    <!-- Theme Transition Overlay (Phase 4 - Odyssey Mode) -->
     <div id="theme-transition-overlay" class="theme-transition-overlay"></div>
 
     <!-- FPS Counter -->

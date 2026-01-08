@@ -1,6 +1,6 @@
-# Journey Mode Implementation Plan
+# Odyssey Mode Implementation Plan
 
-## Serenity Blocks - Journey Mode Technical Specification
+## Serenity Blocks - Odyssey Mode Technical Specification
 
 **Version**: 1.0
 **Author**: Claude Code
@@ -30,7 +30,7 @@
 ## 1. Executive Summary
 
 ### Vision
-Journey Mode transforms Serenity Blocks from a traditional puzzle game into an immersive, emotionally-driven experience inspired by Tetris Effect. Players traverse a linear path through 56+ levels spanning seven chapters, each representing a stage of cosmic ascent—from Earth's core to abstract transcendence.
+Odyssey Mode transforms Serenity Blocks from a traditional puzzle game into an immersive, emotionally-driven experience inspired by Tetris Effect. Players traverse a linear path through 56+ levels spanning seven chapters, each representing a stage of cosmic ascent—from Earth's core to abstract transcendence.
 
 ### Key Design Goals
 1. **Modularity**: Level parameters, gameplay mechanics, and visuals are fully data-driven
@@ -57,13 +57,13 @@ Journey Mode transforms Serenity Blocks from a traditional puzzle game into an i
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐  │
-│  │  JourneyMode     │───▶│ JourneyStateManager│───▶│  LevelRegistry  │  │
+│  │  OdysseyMode     │───▶│ OdysseyStateManager│───▶│  LevelRegistry  │  │
 │  │  (GameMode)      │    │  (Progression)     │    │  (Level Data)   │  │
 │  └────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘  │
 │           │                       │                       │             │
 │           ▼                       ▼                       ▼             │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                     JourneyBoardController                        │  │
+│  │                     OdysseyBoardController                        │  │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │  │
 │  │  │ WorldScene  │  │ PathRenderer│  │ LevelNodes  │              │  │
 │  │  │ (Three.js)  │  │ (Spline)    │  │ (Markers)   │              │  │
@@ -92,8 +92,8 @@ Journey Mode transforms Serenity Blocks from a traditional puzzle game into an i
 ### Integration with Existing Systems
 
 ```javascript
-// JourneyMode extends existing patterns
-class JourneyMode extends BaseGameMode {
+// OdysseyMode extends existing patterns
+class OdysseyMode extends BaseGameMode {
     constructor(dependencies) {
         super(dependencies);
 
@@ -103,8 +103,8 @@ class JourneyMode extends BaseGameMode {
         this.settingsManager = dependencies.settingsManager;
 
         // Journey-specific systems
-        this.journeyState = new JourneyStateManager();
-        this.boardController = new JourneyBoardController();
+        this.journeyState = new OdysseyStateManager();
+        this.boardController = new OdysseyBoardController();
         this.hybridEngine = new GameplayHybridEngine();
         this.transitionManager = new ThemeTransitionManager();
     }
@@ -115,14 +115,14 @@ class JourneyMode extends BaseGameMode {
 
 ## 3. Core Systems Design
 
-### 3.1 JourneyMode (Main Entry Point)
+### 3.1 OdysseyMode (Main Entry Point)
 
-**Location**: `src/core/game-modes/JourneyMode.js`
+**Location**: `src/core/game-modes/OdysseyMode.js`
 
 ```javascript
-export class JourneyMode extends BaseGameMode {
-    getModeId() { return GAME_MODES.JOURNEY; }
-    getDisplayName() { return 'Journey Mode'; }
+export class OdysseyMode extends BaseGameMode {
+    getModeId() { return GAME_MODES.ODYSSEY; }
+    getDisplayName() { return 'Odyssey Mode'; }
 
     // Lifecycle
     async onActivate() { /* Setup board view, load progress */ }
@@ -141,12 +141,12 @@ export class JourneyMode extends BaseGameMode {
 }
 ```
 
-### 3.2 JourneyStateManager (Progression Tracking)
+### 3.2 OdysseyStateManager (Progression Tracking)
 
-**Location**: `src/core/journey/JourneyStateManager.js`
+**Location**: `src/core/journey/OdysseyStateManager.js`
 
 ```javascript
-export class JourneyStateManager {
+export class OdysseyStateManager {
     constructor() {
         this.currentChapter = 1;
         this.currentLevel = 1;
@@ -207,14 +207,14 @@ export class LevelRegistry {
 
 ## 4. Journey Board (Three.js World)
 
-### 4.1 JourneyBoardController
+### 4.1 OdysseyBoardController
 
-**Location**: `src/rendering/journey/JourneyBoardController.js`
+**Location**: `src/rendering/journey/OdysseyBoardController.js`
 
 The Journey Board is a 3D environment where players navigate between levels. It renders the entire journey as a continuous, ascending path.
 
 ```javascript
-export class JourneyBoardController {
+export class OdysseyBoardController {
     constructor(container) {
         // Three.js fundamentals
         this.scene = new THREE.Scene();
@@ -222,10 +222,10 @@ export class JourneyBoardController {
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 
         // Core components
-        this.pathRenderer = new JourneyPathRenderer();
+        this.pathRenderer = new OdysseyPathRenderer();
         this.nodeManager = new LevelNodeManager();
         this.environmentManager = new EnvironmentManager();
-        this.cameraController = new JourneyCameraController(this.camera);
+        this.cameraController = new OdysseyCameraController(this.camera);
 
         // Post-processing
         this.composer = new EffectComposer(this.renderer);
@@ -260,14 +260,14 @@ export class JourneyBoardController {
 }
 ```
 
-### 4.2 JourneyPathRenderer (The Ascending Path)
+### 4.2 OdysseyPathRenderer (The Ascending Path)
 
-**Location**: `src/rendering/journey/JourneyPathRenderer.js`
+**Location**: `src/rendering/journey/OdysseyPathRenderer.js`
 
 Renders the continuous path through all chapters as a 3D spline with visual embellishments.
 
 ```javascript
-export class JourneyPathRenderer {
+export class OdysseyPathRenderer {
     constructor(scene) {
         this.scene = scene;
         this.pathMesh = null;
@@ -498,14 +498,14 @@ export class EnvironmentManager {
 }
 ```
 
-### 4.5 JourneyCameraController
+### 4.5 OdysseyCameraController
 
-**Location**: `src/rendering/journey/JourneyCameraController.js`
+**Location**: `src/rendering/journey/OdysseyCameraController.js`
 
 Handles camera movement, zoom, and transitions in the 3D board.
 
 ```javascript
-export class JourneyCameraController {
+export class OdysseyCameraController {
     constructor(camera, pathCurve) {
         this.camera = camera;
         this.pathCurve = pathCurve;
@@ -1728,18 +1728,18 @@ export const SAVE_SCHEMA = {
 
 ### Phase 1: Foundation (Week 1-2)
 
-**Goal**: Core architecture and basic Journey Mode shell
+**Goal**: Core architecture and basic Odyssey Mode shell
 
 **Tasks**:
-1. Create `JourneyMode` class extending `BaseGameMode`
-2. Implement `JourneyStateManager` with save/load
+1. Create `OdysseyMode` class extending `BaseGameMode`
+2. Implement `OdysseyStateManager` with save/load
 3. Create `LevelRegistry` with first 5 test levels
-4. Add `GAME_MODES.JOURNEY` constant
+4. Add `GAME_MODES.ODYSSEY` constant
 5. Register mode in `GameModeManager`
 6. Basic level selection UI (placeholder)
 
 **Deliverables**:
-- [ ] Can launch Journey Mode from menu
+- [ ] Can launch Odyssey Mode from menu
 - [ ] Can load a level configuration
 - [ ] Progress saves to localStorage
 - [ ] Basic level completion flow
@@ -1767,10 +1767,10 @@ export const SAVE_SCHEMA = {
 **Goal**: 3D world navigation
 
 **Tasks**:
-1. Create `JourneyBoardController` with Three.js scene
-2. Implement `JourneyPathRenderer` (spline path)
+1. Create `OdysseyBoardController` with Three.js scene
+2. Implement `OdysseyPathRenderer` (spline path)
 3. Build `LevelNodeManager` (level markers)
-4. Create `JourneyCameraController` (navigation)
+4. Create `OdysseyCameraController` (navigation)
 5. Implement `EnvironmentManager` (chapter backdrops)
 6. Add mouse/touch/gamepad navigation
 7. Level preview on hover/selection
@@ -1823,7 +1823,7 @@ export const SAVE_SCHEMA = {
 **Goal**: Complete user experience
 
 **Tasks**:
-1. Journey Mode menu design
+1. Odyssey Mode menu design
 2. Level select UI refinement
 3. Progress display (stars, completion)
 4. Results screen with stats
@@ -1862,11 +1862,11 @@ export const SAVE_SCHEMA = {
 src/
 ├── core/
 │   ├── game-modes/
-│   │   ├── JourneyMode.js          # Main mode class
-│   │   └── index.js                # Export JourneyMode
+│   │   ├── OdysseyMode.js          # Main mode class
+│   │   └── index.js                # Export OdysseyMode
 │   │
 │   └── journey/
-│       ├── JourneyStateManager.js  # Progress tracking
+│       ├── OdysseyStateManager.js  # Progress tracking
 │       ├── LevelRegistry.js        # Level data access
 │       ├── GameplayHybridEngine.js # Mechanics mixing
 │       ├── MechanicsMixer.js       # Mode rule mixing
@@ -1886,11 +1886,11 @@ src/
 │
 ├── rendering/
 │   └── journey/
-│       ├── JourneyBoardController.js
-│       ├── JourneyPathRenderer.js
+│       ├── OdysseyBoardController.js
+│       ├── OdysseyPathRenderer.js
 │       ├── LevelNodeManager.js
 │       ├── EnvironmentManager.js
-│       ├── JourneyCameraController.js
+│       ├── OdysseyCameraController.js
 │       │
 │       └── shaders/
 │           ├── path.vert
@@ -1906,7 +1906,7 @@ src/
 │       ├── JourneyMenu.js          # Main menu integration
 │       ├── LevelSelectUI.js        # Level selection overlay
 │       ├── LevelPreviewPanel.js    # Level info popup
-│       ├── JourneyHUD.js           # In-game UI
+│       ├── OdysseyHUD.js           # In-game UI
 │       ├── LevelResultsModal.js    # Completion screen
 │       └── ChapterIntroOverlay.js  # Chapter start cinematics
 │
@@ -1921,7 +1921,7 @@ src/
 
 ## 11. API Reference
 
-### JourneyMode Public API
+### OdysseyMode Public API
 
 ```javascript
 // Mode lifecycle (inherited from BaseGameMode)
@@ -1942,7 +1942,7 @@ journeyMode.getProgress(): JourneyProgress
 journeyMode.resetProgress(): void
 ```
 
-### JourneyBoardController Public API
+### OdysseyBoardController Public API
 
 ```javascript
 // Initialization
@@ -2094,7 +2094,7 @@ The data-driven design enables future modding:
 
 ## Conclusion
 
-This implementation plan provides a comprehensive roadmap for building Journey Mode. The modular, data-driven architecture ensures:
+This implementation plan provides a comprehensive roadmap for building Odyssey Mode. The modular, data-driven architecture ensures:
 
 1. **Easy Modification**: Level parameters in simple config objects
 2. **Flexible Mechanics**: Mix and match gameplay rules per level

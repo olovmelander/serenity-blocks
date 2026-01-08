@@ -1,5 +1,5 @@
 /**
- * @fileoverview LevelRegistry - Central registry for Journey Mode level configurations
+ * @fileoverview LevelRegistry - Central registry for Odyssey Mode level configurations
  *
  * Provides access to level data, chapter information, and navigation helpers.
  * Level data is loaded from data/levels.js and data/chapters.js
@@ -166,7 +166,7 @@ export class LevelRegistry {
     }
 
     /**
-     * Check if this is the final level in the journey
+     * Check if this is the final level in the odyssey
      * @param {number} levelId
      * @returns {boolean}
      */

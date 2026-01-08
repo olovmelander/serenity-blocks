@@ -1,10 +1,10 @@
 /**
- * @fileoverview ThemeTransitionManager - Smooth theme transitions for Journey Mode
+ * @fileoverview ThemeTransitionManager - Smooth theme transitions for Odyssey Mode
  *
  * Provides fade, crossfade, and warp transitions between themes.
- * Wraps the existing ThemeManager for journey-specific transitions.
+ * Wraps the existing ThemeManager for odyssey-specific transitions.
  *
- * Phase 4 - Journey Mode Theme Transitions
+ * Phase 4 - Odyssey Mode Theme Transitions
  */
 
 import { WarpTransitionRenderer } from '../../rendering/transitions/WarpTransitionRenderer.js';
@@ -63,7 +63,7 @@ export class ThemeTransitionManager {
     }
 
     /**
-     * Transition from gameplay back to Journey Board (no theme needed)
+     * Transition from gameplay back to Odyssey Board (no theme needed)
      * @param {number} duration - Transition duration in ms
      * @returns {Promise<void>}
      */
