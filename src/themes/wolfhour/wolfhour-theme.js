@@ -212,6 +212,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.createStarfield();
         this.createNebulaBackdrop();
         this.createMountains();
+        this.createGroundPlane(); // Dark ground to cover stars below mountains
         this.createSpirits();
         this.setupPostProcessing();
         this.setupEventListeners();
@@ -374,7 +375,7 @@ export default class WolfhourTheme extends BaseTheme {
     createNebulaBackdrop() {
         const textureLoader = new THREE.TextureLoader();
         // Correct path for Vite public folder
-        const texturePath = '/textures/wolfhour/';
+        const texturePath = './textures/wolfhour/';
 
         const textures = [
             textureLoader.load(texturePath + 'nebula-silver-1.png'),
@@ -445,24 +446,53 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createMountains() {
+        // Mountain range with 8 peaks - atmospheric depth via layer value and position
+        // Lower layer = closer/darker, higher layer = further/hazier
         const configs = [
-            // Foreground (Z -500, darkest)
+            // === FOREGROUND LAYER (Z -400 to -700) - Darkest ===
+            // Main dramatic center peak
             {
-                z: -500, size: 2000, height: 400,
-                color: new THREE.Color(0x151515),
+                x: 0, z: -500, size: 3200, height: 420,
                 layer: 0.0, seed: 11111,
             },
-            // Mid-ground (Z -1000)
+            // Right side mid peak
             {
-                z: -1000, size: 2500, height: 500,
-                color: new THREE.Color(0x202020),
-                layer: 0.5, seed: 22222,
+                x: 650, z: -550, size: 2400, height: 280,
+                layer: 0.1, seed: 44444,
             },
-            // Background (Z -1500, lightest)
+            // Left side mid peak  
             {
-                z: -1500, size: 3000, height: 600,
-                color: new THREE.Color(0x303030),
-                layer: 1.0, seed: 33333,
+                x: -750, z: -650, size: 2500, height: 300,
+                layer: 0.15, seed: 55555,
+            },
+
+            // === MID LAYER (Z -800 to -1200) - Medium gray ===
+            // Far left peak
+            {
+                x: -1100, z: -950, size: 2800, height: 350,
+                layer: 0.4, seed: 66666,
+            },
+            // Far right peak
+            {
+                x: 1000, z: -1000, size: 2700, height: 320,
+                layer: 0.45, seed: 77777,
+            },
+
+            // === BACKGROUND LAYER (Z -1200 to -1600) - Lightest/haziest ===
+            // Distant left cluster
+            {
+                x: -500, z: -1300, size: 3400, height: 400,
+                layer: 0.7, seed: 22222,
+            },
+            // Distant right
+            {
+                x: 700, z: -1350, size: 3200, height: 380,
+                layer: 0.75, seed: 88888,
+            },
+            // Far background center-right
+            {
+                x: 150, z: -1550, size: 4200, height: 520,
+                layer: 0.95, seed: 33333,
             },
         ];
 
@@ -563,11 +593,35 @@ export default class WolfhourTheme extends BaseTheme {
         });
 
         const mesh = new THREE.Mesh(geometry, material);
-        // Position well below viewport to account for camera movement (±30 units vertical drift)
-        mesh.position.set(0, -580, config.z);
+        // Position with X offset for mountain range spread, higher up to fill screen more
+        const xPos = config.x || 0;
+        mesh.position.set(xPos, -450, config.z);
         // Render in front of stars (higher layer = closer to camera = renders later)
         mesh.renderOrder = -100 + Math.round(config.layer * 10); // Render BEFORE stars
         return mesh;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ground Plane (covers stars below mountains)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createGroundPlane() {
+        // Large dark plane at the bottom to cover any visible stars below mountains
+        // Made extra large to handle different aspect ratios in windowed mode
+        const geometry = new THREE.PlaneGeometry(12000, 4000);
+
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x080808, // Very dark, almost black
+            side: THREE.DoubleSide,
+        });
+
+        const plane = new THREE.Mesh(geometry, material);
+        // Position below the mountains, rotated to be horizontal, pushed further down
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.set(0, -450, -200); // Moved forward in Z to cover more area
+        plane.renderOrder = -50; // Render after mountains but before stars
+
+        this.scene.add(plane);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -806,8 +860,10 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     createCelestialBeam() {
-        const beamWidth = 20 + Math.random() * 30;
-        const beamHeight = 1200;
+        // Make beam MUCH larger than camera frustum (1000) so edges are never visible
+        // Using 4000 units = 4x frustum size, ensuring edges are far outside view
+        const beamWidth = 40 + Math.random() * 60;
+        const beamHeight = 4000;
         const geometry = new THREE.PlaneGeometry(beamWidth, beamHeight);
 
         const material = new THREE.ShaderMaterial({
@@ -824,7 +880,8 @@ export default class WolfhourTheme extends BaseTheme {
         });
 
         const beam = new THREE.Mesh(geometry, material);
-        beam.position.set((Math.random() - 0.5) * 1000, 0, -800);
+        // Position slightly below center so the visible portion is well-centered
+        beam.position.set((Math.random() - 0.5) * 1000, -200, -800);
         beam.rotation.z = (Math.random() - 0.5) * 0.1;
 
         beam.userData.startTime = this.time;
@@ -1202,19 +1259,22 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateCameraAnimation() {
-        // Subtle but noticeable camera movements for immersive feel
-        // Drift period: ~45 seconds for full cycle
-        const driftSpeed = 0.03; // Slightly faster drift
+        // More pronounced camera movements for immersive, breathing feel
+        // Primary drift period: ~30 seconds, secondary: ~50 seconds
+        const driftSpeed = 0.04;
+        const slowDrift = 0.025;
 
-        // More noticeable horizontal drift (parallax effect)
-        const xDrift = Math.sin(this.time * driftSpeed) * 40; // ±40 units
+        // Horizontal drift with layered motion for organic feel
+        const xDrift = Math.sin(this.time * driftSpeed) * 60 +
+            Math.sin(this.time * slowDrift * 0.6) * 25; // Combined ±85 units max
 
-        // Larger vertical movement to reveal mountain top at times
-        const yDrift = Math.sin(this.time * driftSpeed * 0.7 + 1.0) * 30; // ±30 units
+        // Vertical breathing movement - larger range to shift mountain up/down
+        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 45 +
+            Math.cos(this.time * slowDrift * 0.5) * 20; // Combined ±65 units max
 
-        // Breathing effect - subtle zoom via frustum size
-        // Period: ~20 seconds
-        const breathe = Math.sin(this.time * 0.1) * 0.02; // ±2% zoom
+        // Breathing zoom effect - subtle but noticeable
+        // Period: ~15 seconds
+        const breathe = Math.sin(this.time * 0.12) * 0.035; // ±3.5% zoom
 
         // Apply position drift
         this.camera.position.x = xDrift;
