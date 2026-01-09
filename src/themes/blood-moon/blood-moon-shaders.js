@@ -366,8 +366,8 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Size with attenuation
-    gl_PointSize = aSize * (200.0 / -mvPosition.z);
+    // Size with attenuation - minimum 4px for visibility
+    gl_PointSize = max(4.0, aSize * (200.0 / -mvPosition.z));
     
     // Pulsing alpha
     vAlpha = 0.4 + 0.4 * sin(uTime * 2.0 + aRandom * 10.0);
@@ -393,49 +393,64 @@ void main() {
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Star Shader - Twinkling stars with color variation
+// Star Shader - Round, atmospheric twinkling stars with uniform speed
 // ─────────────────────────────────────────────────────────────────────────────
 export const starVertexShader = `
 attribute float aSize;
-attribute float aPhase;
+attribute vec2 aTwinkle; // x = phase offset, y = speed multiplier
+attribute float aBrightness;
+
 uniform float uTime;
-varying float vAlpha;
+uniform float uPixelRatio;
+uniform float uEventBoost;
+
+varying float vBrightness;
 varying vec3 vColor;
 
 void main() {
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    
-    // Size attenuation for depth
-    gl_PointSize = aSize * (300.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 1.0, 10.0);
-    
-    // Twinkle effect - higher baseline for more visibility
-    float twinkle = sin(uTime * 3.0 + aPhase) * 0.2 + 0.85;
-    vAlpha = twinkle;
-    
-    // Pass vertex color
     vColor = color;
+    
+    // Twinkle animation with varied speed per star
+    float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
+    vBrightness = aBrightness * (0.7 + twinkle * 0.3);
+    vBrightness *= (1.0 + uEventBoost * 0.5);
+    
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    
+    // Size attenuation for depth - larger for atmospheric look
+    gl_PointSize = aSize * uPixelRatio * (300.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 3.0, 80.0);
+    
+    gl_Position = projectionMatrix * mvPosition;
 }
 `;
 
 export const starFragmentShader = `
-varying float vAlpha;
+varying float vBrightness;
 varying vec3 vColor;
 
 void main() {
-    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
+    // Soft circular point with atmospheric glow
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center) * 2.0;
+    
+    // Discard outside circle for round shape
     if (dist > 1.0) discard;
-
-    // Soft glow falloff
-    float alpha = (1.0 - dist * dist) * vAlpha;
-
-    // Add glow core
-    float core = 1.0 - smoothstep(0.0, 0.3, dist);
-    vec3 color = vColor + vec3(0.2) * core;
-
-    gl_FragColor = vec4(color, alpha);
+    
+    // Soft atmospheric falloff - smooth gradient from center
+    float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
+    softCircle = pow(softCircle, 0.8); // Slightly wider glow
+    
+    // Bright core with halo
+    float core = 1.0 - smoothstep(0.0, 0.25, dist);
+    
+    // Color with boosted core brightness
+    vec3 coreColor = vColor * vBrightness * 1.5 + vec3(0.15) * core;
+    
+    // Atmospheric alpha with minimum visibility
+    float alpha = softCircle * (vBrightness + 0.2);
+    
+    gl_FragColor = vec4(coreColor, alpha);
 }
 `;
 
@@ -537,4 +552,38 @@ void main() {
 
     gl_FragColor = vec4(finalColor, vAlpha * glow);
 }
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Nebula Shader - Texture based with soft edge fade
+// ─────────────────────────────────────────────────────────────────────────────
+export const nebulaVertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const nebulaFragmentShader = `
+    uniform sampler2D tDiffuse;
+    uniform float uOpacity;
+    uniform float uPulse;
+    varying vec2 vUv;
+
+    void main() {
+        vec4 texColor = texture2D(tDiffuse, vUv);
+
+        // Aggressive edge fade to hide plane boundaries
+        float fadeX = smoothstep(0.0, 0.4, vUv.x) * smoothstep(1.0, 0.6, vUv.x);
+        float fadeY = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+        float fade = fadeX * fadeY;
+        fade = pow(fade, 1.5);
+
+        // Pulse effect
+        float alpha = texColor.a * (uOpacity + uPulse * 0.05) * fade;
+        vec3 color = texColor.rgb * (1.0 + uPulse * 0.3);
+
+        gl_FragColor = vec4(color, alpha);
+    }
 `;

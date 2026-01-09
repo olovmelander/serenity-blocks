@@ -38,7 +38,8 @@ import {
     voidSparkVertexShader,
     voidSparkFragmentShader,
     ChromaticAberrationShader,
-    FilmGrainShader,
+    nebulaVertexShader,
+    nebulaFragmentShader,
 } from './cosmic-noir-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 8000,
+        starCount: 80000,
         nebulaCount: 25,
         ambientParticles: 400,
         voidSparks: 8000,
@@ -57,7 +58,7 @@ const QUALITY_PRESETS = {
         glowLayers: 8,
     },
     Ultra: {
-        starCount: 6000,
+        starCount: 50000,
         nebulaCount: 20,
         ambientParticles: 300,
         voidSparks: 6000,
@@ -68,7 +69,7 @@ const QUALITY_PRESETS = {
         glowLayers: 7,
     },
     High: {
-        starCount: 5000,
+        starCount: 30000,
         nebulaCount: 15,
         ambientParticles: 200,
         voidSparks: 5000,
@@ -79,7 +80,7 @@ const QUALITY_PRESETS = {
         glowLayers: 6,
     },
     Medium: {
-        starCount: 3000,
+        starCount: 15000,
         nebulaCount: 10,
         ambientParticles: 120,
         voidSparks: 3500,
@@ -90,7 +91,7 @@ const QUALITY_PRESETS = {
         glowLayers: 5,
     },
     Low: {
-        starCount: 1800,
+        starCount: 8000,
         nebulaCount: 6,
         ambientParticles: 60,
         voidSparks: 2000,
@@ -101,7 +102,7 @@ const QUALITY_PRESETS = {
         glowLayers: 4,
     },
     Minimal: {
-        starCount: 1000,
+        starCount: 4000,
         nebulaCount: 4,
         ambientParticles: 30,
         voidSparks: 1200,
@@ -163,11 +164,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGroup = null;
         this.starfield = null;
         this.nebulaClouds = [];
-        this.ambientParticles = null;
         this.planetGlowLayers = [];
         this.atmosphere = null;
         this.cosmicWaves = [];
-        this.voidOrbs = [];
         this.voidSparks = []; // Pool of particle systems for overlapping bursts
         this.voidSparkIndex = 0; // Cycle through available systems
 
@@ -231,8 +230,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.createNebulaClouds();
         this.createPlanet();
         this.createAtmosphere();
-        this.createAmbientParticles();
-        this.createVoidSparks();
+        // Ambient particles removed for cleaner noir star aesthetic
+        // VoidSparks removed for cleaner aesthetic
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -294,7 +293,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
-        const phases = new Float32Array(starCount);
+        const twinkleData = new Float32Array(starCount * 2); // phase + speed
+        const brightness = new Float32Array(starCount);
 
         // Grayscale star colors - pure noir palette
         const starColors = [
@@ -308,35 +308,56 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
+            const i2 = i * 2;
 
-            // Spread stars across a large 3D sphere
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const radius = 1500 + Math.random() * 5500;
+            // Spread stars across full screen (rectangular distribution)
+            // Use extra wide spread to account for camera parallax movement
+            const spreadX = (Math.random() - 0.5) * 16000;  // Very wide horizontal spread
+            const spreadY = (Math.random() - 0.5) * 10000;  // Very wide vertical spread
 
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i3 + 2] = radius * Math.cos(phi) - 2000;
+            // 3 depth layers: near, mid, far
+            const layerRand = Math.random();
+            let depth;
+            if (layerRand < 0.33) {
+                depth = -1500 - Math.random() * 500;   // Near layer
+            } else if (layerRand < 0.66) {
+                depth = -2500 - Math.random() * 1000;  // Mid layer
+            } else {
+                depth = -4000 - Math.random() * 2000;  // Far layer
+            }
 
-            // Color - mostly white with some silver-tinted
+            positions[i3] = spreadX;
+            positions[i3 + 1] = spreadY;
+            positions[i3 + 2] = depth;
+
+            // Color - grayscale noir palette
             const colorIndex = Math.floor(Math.random() * starColors.length);
             const color = starColors[colorIndex];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 4.0 + Math.random() * 6.0;
-            phases[i] = Math.random() * Math.PI * 2;
+            // Larger sizes for atmospheric appearance
+            sizes[i] = 20 + Math.random() * 40;
+
+            // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
+            twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7;    // speed
+
+            brightness[i] = 0.3 + Math.random() * 0.7;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uEventBoost: { value: 0 },
             },
             vertexShader: starVertexShader,
             fragmentShader: starFragmentShader,
@@ -348,7 +369,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
-        console.log('[CosmicNoir] Starfield created with', starCount, 'stars');
+        console.log('[CosmicNoir] Starfield created with', starCount, 'atmospheric stars');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -356,58 +377,65 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createNebulaClouds() {
-        const cloudCount = this.qualityPreset.nebulaCount;
+        const textureLoader = new THREE.TextureLoader();
+        const texturePath = './textures/cosmic-noir/';
 
-        for (let i = 0; i < cloudCount; i++) {
-            const size = 800 + Math.random() * 1500;
+        const textures = [
+            textureLoader.load(texturePath + 'nebula-noir-1.png'),
+            textureLoader.load(texturePath + 'nebula-noir-2.png'),
+            textureLoader.load(texturePath + 'nebula-noir-3.png'),
+        ];
 
-            const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
+        textures.forEach((t) => {
+            t.wrapS = THREE.ClampToEdgeWrapping;
+            t.wrapT = THREE.ClampToEdgeWrapping;
+        });
 
-            // Grayscale color palette for noir aesthetic
-            const brightness = 15 + Math.random() * 25; // Very dark
-            const alpha = 0.06 + Math.random() * 0.08; // Very subtle
+        // Configure nebula planes at different depths
+        const nebulaConfigs = [
+            // Deep background layer (Parallax factor low)
+            { texture: textures[0], size: 6000, z: -4500, opacity: 0.25, speed: 0.00008 },
+            { texture: textures[1], size: 7000, z: -4000, opacity: 0.2, speed: 0.0001 },
+            // Mid layer
+            { texture: textures[2], size: 5000, z: -3000, opacity: 0.15, speed: 0.00015 },
+            { texture: textures[0], size: 5500, z: -2500, opacity: 0.12, speed: 0.0002 },
+        ];
 
-            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-            gradient.addColorStop(0, `rgba(${brightness + 10}, ${brightness + 10}, ${brightness + 15}, ${alpha})`);
-            gradient.addColorStop(0.4, `rgba(${brightness}, ${brightness}, ${brightness + 5}, ${alpha * 0.5})`);
-            gradient.addColorStop(0.7, `rgba(${brightness - 5}, ${brightness - 5}, ${brightness}, ${alpha * 0.2})`);
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 256, 256);
+        this.nebulaClouds = [];
 
-            const texture = new THREE.CanvasTexture(canvas);
-            const geometry = new THREE.PlaneGeometry(size, size);
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
+        nebulaConfigs.forEach((config) => {
+            const geometry = new THREE.PlaneGeometry(config.size, config.size);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: config.texture },
+                    uOpacity: { value: config.opacity },
+                    uPulse: { value: 0 },
+                },
+                vertexShader: nebulaVertexShader,
+                fragmentShader: nebulaFragmentShader,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                side: THREE.DoubleSide,
             });
 
-            const cloud = new THREE.Mesh(geometry, material);
+            const mesh = new THREE.Mesh(geometry, material);
+            // Random position spread
+            mesh.position.x = (Math.random() - 0.5) * 2000;
+            mesh.position.y = (Math.random() - 0.5) * 1000;
+            mesh.position.z = config.z;
+            mesh.rotation.z = Math.random() * Math.PI * 2;
 
-            // Spread at varying depths for parallax
-            cloud.position.x = (Math.random() - 0.5) * 4000;
-            cloud.position.y = (Math.random() - 0.5) * 2500;
-            cloud.position.z = -500 - Math.random() * 2500;
-            cloud.rotation.z = Math.random() * Math.PI;
-
-            // Store animation properties
-            cloud.userData = {
-                driftSpeed: 0.00005 + Math.random() * 0.0001,
+            mesh.userData = {
+                driftSpeed: config.speed,
+                baseOpacity: config.opacity,
                 pulsePhase: Math.random() * Math.PI * 2,
-                baseOpacity: material.opacity,
             };
 
-            this.nebulaClouds.push(cloud);
-            this.scene.add(cloud);
-        }
+            this.nebulaClouds.push(mesh);
+            this.scene.add(mesh);
+        });
 
-        console.log('[CosmicNoir] Nebula clouds created');
+        console.log('[CosmicNoir] Nebula clouds created with high-def textures');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -415,7 +443,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createPlanet() {
-        const planetSize = 180;
+        const planetSize = 280;
 
         // Create planet group for drifting
         this.planetGroup = new THREE.Group();
@@ -497,47 +525,8 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Ambient Particles - Floating grayscale particles
     // ─────────────────────────────────────────────────────────────────────────
 
-    createAmbientParticles() {
-        const particleCount = this.qualityPreset.ambientParticles;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const randoms = new Float32Array(particleCount);
-        const sizes = new Float32Array(particleCount);
+    // Ambient particles method removed
 
-        for (let i = 0; i < particleCount; i++) {
-            const i3 = i * 3;
-            // Orbit around planet area
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 200 + Math.random() * 600;
-
-            positions[i3] = Math.cos(angle) * radius;
-            positions[i3 + 1] = (Math.random() - 0.5) * 400;
-            positions[i3 + 2] = Math.sin(angle) * radius - 100;
-
-            randoms[i] = Math.random();
-            sizes[i] = 10.0 + Math.random() * 20.0; // Large, prominent particles
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-            },
-            vertexShader: particleVertexShader,
-            fragmentShader: particleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.ambientParticles = new THREE.Points(geometry, material);
-        this.planetGroup.add(this.ambientParticles);
-
-        console.log('[CosmicNoir] Ambient particles created');
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Atmosphere - Volumetric gas shell with explosion support
@@ -545,7 +534,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     createAtmosphere() {
         // Create an atmosphere slightly larger than the planet
-        const planetSize = 180;
+        const planetSize = 280;
         const atmosphereSize = planetSize * 1.25;
 
         const geometry = new THREE.SphereGeometry(atmosphereSize, 64, 64);
@@ -688,12 +677,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         const vignettePass = new ShaderPass(VignetteShader);
         this.composer.addPass(vignettePass);
 
-        // Film Grain for noir cinema aesthetic
-        this.filmGrainPass = new ShaderPass(FilmGrainShader);
-        this.filmGrainPass.uniforms.uIntensity.value = 0.06;
-        this.composer.addPass(this.filmGrainPass);
-
-        console.log('[CosmicNoir] Post-processing configured (with chromatic aberration and film grain)');
+        console.log('[CosmicNoir] Post-processing configured (with chromatic aberration)');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -765,10 +749,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
-        // Update film grain time
-        if (this.filmGrainPass && this.filmGrainPass.uniforms) {
-            this.filmGrainPass.uniforms.uTime.value = this.time;
-        }
+
 
         // Slow drift planet across entire screen (Lissajous curves for organic movement)
         if (this.planetGroup) {
@@ -812,17 +793,32 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         // Nebula drift and pulse
+        // Nebula drift and pulse (synced with camera for seamless coverage)
         for (const cloud of this.nebulaClouds) {
-            cloud.position.x += cloud.userData.driftSpeed * 50;
-            if (cloud.position.x > 2500) cloud.position.x = -2500;
+            // Move nebulas with camera so they always cover the view
+            // Plus gentle drift for atmosphere
+            cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
+            if (cloud.userData.driftOffset > 6000) cloud.userData.driftOffset = -6000;
+
+            // Sync base position with camera, add drift offset
+            cloud.position.x = (this.camera?.position.x || 0) * 0.3 + cloud.userData.driftOffset;
+            cloud.position.y = (this.camera?.position.y || 0) * 0.2;
 
             cloud.userData.pulsePhase += 0.003;
-            const pulse = Math.sin(cloud.userData.pulsePhase) * 0.15 + 1.0;
-            cloud.material.opacity = cloud.userData.baseOpacity * pulse;
+            // Pulse: -1 to 1 for subtle breathing
+            const pulse = Math.sin(cloud.userData.pulsePhase);
+
+            if (cloud.material.uniforms) {
+                cloud.material.uniforms.uPulse.value = pulse + (this.planetPulseIntensity * 2.0); // React to gameplay
+            }
         }
 
-        // Slowly rotate starfield
-        if (this.starfield) {
+        // Starfield follows camera (appears at infinite distance)
+        if (this.starfield && this.camera) {
+            // Position starfield at camera location so stars are always visible
+            this.starfield.position.copy(this.camera.position);
+
+            // Slowly rotate starfield for subtle animation
             this.starfield.rotation.y = this.time * 0.003;
             this.starfield.rotation.z = this.time * 0.001;
         }
@@ -835,9 +831,6 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Update cosmic waves
         this.updateCosmicWaves(delta);
-
-        // Update void orbs
-        this.updateVoidOrbs(delta);
 
         // Render
         this.renderer.clear();
@@ -905,52 +898,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Void Orbs - Glowing particles drifting outward
     // ─────────────────────────────────────────────────────────────────────────
 
-    createVoidOrb() {
-        const geometry = new THREE.SphereGeometry(3 + Math.random() * 3, 8, 8);
-        const brightness = 0.5 + Math.random() * 0.4;
-        const material = new THREE.MeshBasicMaterial({
-            color: new THREE.Color(brightness, brightness, brightness + 0.05),
-            transparent: true,
-            opacity: 0.7,
-            blending: THREE.AdditiveBlending,
-        });
 
-        const orb = new THREE.Mesh(geometry, material);
-        orb.position.x = (Math.random() - 0.5) * 300;
-        orb.position.y = -180;
-        orb.position.z = (Math.random() - 0.5) * 200;
-
-        orb.userData = {
-            velocityY: 25 + Math.random() * 35,
-            velocityX: (Math.random() - 0.5) * 8,
-            life: 1.0,
-            pulsePhase: Math.random() * Math.PI * 2,
-        };
-
-        this.planetGroup.add(orb);
-        this.voidOrbs.push(orb);
-    }
-
-    updateVoidOrbs(delta) {
-        for (let i = this.voidOrbs.length - 1; i >= 0; i--) {
-            const orb = this.voidOrbs[i];
-            orb.position.y += orb.userData.velocityY * delta;
-            orb.position.x += orb.userData.velocityX * delta;
-            orb.userData.life -= delta * 0.25;
-
-            // Pulse
-            orb.userData.pulsePhase += delta * 4;
-            const pulse = Math.sin(orb.userData.pulsePhase) * 0.25 + 0.75;
-            orb.material.opacity = orb.userData.life * pulse;
-
-            if (orb.userData.life <= 0 || orb.position.y > 280) {
-                this.planetGroup.remove(orb);
-                orb.geometry.dispose();
-                orb.material.dispose();
-                this.voidOrbs.splice(i, 1);
-            }
-        }
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Event Handlers
@@ -1053,13 +1001,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             setTimeout(() => this.createCosmicWave(comboCount), i * 100);
         }
 
-        // Create void orbs for combos
-        if (comboCount >= 2) {
-            const orbCount = Math.min(comboCount * 2, 8);
-            for (let i = 0; i < orbCount; i++) {
-                setTimeout(() => this.createVoidOrb(), i * 50);
-            }
-        }
+
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1116,7 +1058,6 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.composer = null;
-        this.filmGrainPass = null;
         this.planet = null;
         this.planetGroup = null;
         this.starfield = null;
@@ -1124,10 +1065,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGlowLayers = [];
         this.atmosphere = null;
         this.cosmicWaves = [];
-        this.voidOrbs = [];
         this.voidSparks = [];
         this.voidSparkIndex = 0;
-        this.ambientParticles = null;
 
         super.stop();
     }
