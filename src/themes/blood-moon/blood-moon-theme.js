@@ -35,6 +35,8 @@ import {
     starFragmentShader,
     bloodSparkVertexShader,
     bloodSparkFragmentShader,
+    nebulaVertexShader,
+    nebulaFragmentShader,
 } from './blood-moon-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,7 +44,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 6000,
+        starCount: 50000,
         nebulaCount: 25,
         ambientParticles: 400,
         bloodSparks: 3000,
@@ -53,7 +55,7 @@ const QUALITY_PRESETS = {
         glowLayers: 8,
     },
     Ultra: {
-        starCount: 5000,
+        starCount: 40000,
         nebulaCount: 20,
         ambientParticles: 300,
         bloodSparks: 2500,
@@ -64,7 +66,7 @@ const QUALITY_PRESETS = {
         glowLayers: 7,
     },
     High: {
-        starCount: 4000,
+        starCount: 30000,
         nebulaCount: 15,
         ambientParticles: 200,
         bloodSparks: 2000,
@@ -75,7 +77,7 @@ const QUALITY_PRESETS = {
         glowLayers: 6,
     },
     Medium: {
-        starCount: 2500,
+        starCount: 18000,
         nebulaCount: 10,
         ambientParticles: 120,
         bloodSparks: 1500,
@@ -86,7 +88,7 @@ const QUALITY_PRESETS = {
         glowLayers: 5,
     },
     Low: {
-        starCount: 1500,
+        starCount: 10000,
         nebulaCount: 6,
         ambientParticles: 60,
         bloodSparks: 1000,
@@ -97,7 +99,7 @@ const QUALITY_PRESETS = {
         glowLayers: 4,
     },
     Minimal: {
-        starCount: 800,
+        starCount: 5000,
         nebulaCount: 4,
         ambientParticles: 30,
         bloodSparks: 600,
@@ -286,10 +288,12 @@ export default class BloodMoonTheme extends BaseTheme {
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
-        const phases = new Float32Array(starCount);
+        const twinkleData = new Float32Array(starCount * 2); // vec2: phase, speed
+        const brightness = new Float32Array(starCount);
 
+        // Blood moon red-tinted star colors
         const starColors = [
-            new THREE.Color(0xffffff), // White
+            new THREE.Color(0xffffff), // Pure white
             new THREE.Color(0xffeedd), // Warm white
             new THREE.Color(0xffcccc), // Light pink
             new THREE.Color(0xff9999), // Pink
@@ -299,37 +303,58 @@ export default class BloodMoonTheme extends BaseTheme {
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
+            const i2 = i * 2;
 
-            // Spread stars across a large 3D sphere
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const radius = 1500 + Math.random() * 5000;
+            // Spread stars across full screen (rectangular distribution)
+            // Use extra wide spread to account for camera parallax movement
+            const spreadX = (Math.random() - 0.5) * 16000;  // Very wide horizontal spread
+            const spreadY = (Math.random() - 0.5) * 10000;  // Very wide vertical spread
 
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i3 + 2] = radius * Math.cos(phi) - 2000;
+            // 3 depth layers: near, mid, far
+            const layerRand = Math.random();
+            let depth;
+            if (layerRand < 0.33) {
+                depth = -1500 - Math.random() * 500;   // Near layer
+            } else if (layerRand < 0.66) {
+                depth = -2500 - Math.random() * 1000;  // Mid layer
+            } else {
+                depth = -4000 - Math.random() * 2000;  // Far layer
+            }
+
+            positions[i3] = spreadX;
+            positions[i3 + 1] = spreadY;
+            positions[i3 + 2] = depth;
 
             // Color - mostly red-tinted stars for blood moon atmosphere
             const colorIndex = Math.random() > 0.15
                 ? Math.floor(2 + Math.random() * 4) // Red tints (85%)
-                : Math.floor(Math.random() * 2); // White (15%)
+                : Math.floor(Math.random() * 2);     // White (15%)
             const color = starColors[colorIndex];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 4.0 + Math.random() * 8.0;
-            phases[i] = Math.random() * Math.PI * 2;
+            // Larger atmospheric star sizes
+            sizes[i] = 20 + Math.random() * 40;
+
+            // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
+            twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7;    // speed
+
+            brightness[i] = 0.3 + Math.random() * 0.7;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uEventBoost: { value: 0 },
             },
             vertexShader: starVertexShader,
             fragmentShader: starFragmentShader,
@@ -341,79 +366,75 @@ export default class BloodMoonTheme extends BaseTheme {
 
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
-        console.log('[BloodMoon] Starfield created with', starCount, 'stars');
+        console.log('[BloodMoon] Starfield created with', starCount, 'atmospheric stars in 3 depth layers');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Nebula Clouds - Crimson/burgundy clouds at varying depths
     // ─────────────────────────────────────────────────────────────────────────
 
+
+
     createNebulaClouds() {
-        const cloudCount = this.qualityPreset.nebulaCount;
+        const textureLoader = new THREE.TextureLoader();
+        const texturePath = './textures/blood-moon/';
 
-        for (let i = 0; i < cloudCount; i++) {
-            const size = 800 + Math.random() * 1500;
+        const textures = [
+            textureLoader.load(texturePath + 'nebula-red-1.png'),
+            textureLoader.load(texturePath + 'nebula-red-2.png'),
+            textureLoader.load(texturePath + 'nebula-red-3.png'),
+        ];
 
-            const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
+        textures.forEach((t) => {
+            t.wrapS = THREE.ClampToEdgeWrapping;
+            t.wrapT = THREE.ClampToEdgeWrapping;
+        });
 
-            // Crimson/burgundy color palette
-            const colorType = Math.random();
-            let hue, sat, light;
-            if (colorType < 0.4) {
-                hue = 350 + Math.random() * 20; // Deep red
-                sat = 70 + Math.random() * 20;
-                light = 15 + Math.random() * 10;
-            } else if (colorType < 0.7) {
-                hue = 330 + Math.random() * 20; // Crimson
-                sat = 60 + Math.random() * 25;
-                light = 12 + Math.random() * 8;
-            } else {
-                hue = 310 + Math.random() * 20; // Dark magenta
-                sat = 50 + Math.random() * 30;
-                light = 10 + Math.random() * 10;
-            }
+        // Large planes to fill the background
+        const nebulaConfigs = [
+            // Deep background layer (Parallax factor 0.1)
+            { texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001 },
+            { texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015 },
+            // Mid layer (Parallax factor 0.3)
+            { texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002 },
+            { texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025 },
+        ];
 
-            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-            gradient.addColorStop(0, `hsla(${hue}, ${sat}%, ${light}%, 0.15)`);
-            gradient.addColorStop(0.4, `hsla(${hue}, ${sat}%, ${light}%, 0.08)`);
-            gradient.addColorStop(0.7, `hsla(${hue}, ${sat}%, ${light}%, 0.03)`);
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 256, 256);
+        this.nebulaClouds = [];
 
-            const texture = new THREE.CanvasTexture(canvas);
-            const geometry = new THREE.PlaneGeometry(size, size);
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
+        nebulaConfigs.forEach((config) => {
+            const geometry = new THREE.PlaneGeometry(config.size, config.size);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: config.texture },
+                    uOpacity: { value: config.opacity },
+                    uPulse: { value: 0 },
+                },
+                vertexShader: nebulaVertexShader,
+                fragmentShader: nebulaFragmentShader,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                side: THREE.DoubleSide,
             });
 
-            const cloud = new THREE.Mesh(geometry, material);
+            const mesh = new THREE.Mesh(geometry, material);
+            // Random position spread
+            mesh.position.x = (Math.random() - 0.5) * 2000;
+            mesh.position.y = (Math.random() - 0.5) * 1000;
+            mesh.position.z = config.z;
+            mesh.rotation.z = Math.random() * Math.PI * 2;
 
-            // Spread at varying depths for parallax
-            cloud.position.x = (Math.random() - 0.5) * 4000;
-            cloud.position.y = (Math.random() - 0.5) * 2500;
-            cloud.position.z = -500 - Math.random() * 2500;
-            cloud.rotation.z = Math.random() * Math.PI;
-
-            // Store animation properties
-            cloud.userData = {
-                driftSpeed: 0.0001 + Math.random() * 0.0002,
+            mesh.userData = {
+                driftSpeed: config.speed,
+                baseOpacity: config.opacity,
                 pulsePhase: Math.random() * Math.PI * 2,
-                baseOpacity: material.opacity,
             };
 
-            this.nebulaClouds.push(cloud);
-            this.scene.add(cloud);
-        }
+            this.nebulaClouds.push(mesh);
+            this.scene.add(mesh);
+        });
 
-        console.log('[BloodMoon] Nebula clouds created');
+        console.log('[BloodMoon] Nebula clouds created with textures');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -421,7 +442,7 @@ export default class BloodMoonTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createMoon() {
-        const moonSize = 180;
+        const moonSize = 280;
 
         // Create moon group for drifting
         this.moonGroup = new THREE.Group();
@@ -521,7 +542,7 @@ export default class BloodMoonTheme extends BaseTheme {
             positions[i3 + 2] = Math.sin(angle) * radius - 100;
 
             randoms[i] = Math.random();
-            sizes[i] = 3.0 + Math.random() * 6.0;
+            sizes[i] = 8.0 + Math.random() * 10.0;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -683,6 +704,13 @@ export default class BloodMoonTheme extends BaseTheme {
 
         if (this.starfield && this.starfield.material.uniforms) {
             this.starfield.material.uniforms.uTime.value = this.time;
+            // Decay event boost smoothly
+            if (this.starfield.material.uniforms.uEventBoost.value > 0) {
+                this.starfield.material.uniforms.uEventBoost.value *= 0.95;
+                if (this.starfield.material.uniforms.uEventBoost.value < 0.01) {
+                    this.starfield.material.uniforms.uEventBoost.value = 0;
+                }
+            }
         }
 
         if (this.ambientParticles && this.ambientParticles.material.uniforms) {
@@ -748,14 +776,24 @@ export default class BloodMoonTheme extends BaseTheme {
             glow.material.opacity = glow.userData.baseOpacity * pulse;
         }
 
-        // Nebula drift and pulse
+        // Nebula drift and pulse (synced with camera for seamless coverage)
         for (const cloud of this.nebulaClouds) {
-            cloud.position.x += cloud.userData.driftSpeed * 50;
-            if (cloud.position.x > 2500) cloud.position.x = -2500;
+            // Move nebulas with camera so they always cover the view
+            // Plus gentle drift for atmosphere
+            cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
+            if (cloud.userData.driftOffset > 6000) cloud.userData.driftOffset = -6000;
+
+            // Sync base position with camera, add drift offset
+            cloud.position.x = (this.camera?.position.x || 0) * 0.3 + cloud.userData.driftOffset;
+            cloud.position.y = (this.camera?.position.y || 0) * 0.2;
 
             cloud.userData.pulsePhase += 0.005;
-            const pulse = Math.sin(cloud.userData.pulsePhase) * 0.2 + 1.0;
-            cloud.material.opacity = cloud.userData.baseOpacity * pulse;
+            // Pulse: -1 to 1 for subtle breathing
+            const pulse = Math.sin(cloud.userData.pulsePhase);
+
+            if (cloud.material.uniforms) {
+                cloud.material.uniforms.uPulse.value = pulse + (this.moonPulseIntensity * 2.0); // React to gameplay
+            }
         }
 
         // Slowly rotate starfield
@@ -919,6 +957,12 @@ export default class BloodMoonTheme extends BaseTheme {
 
     handlePieceLock() {
         this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.15, 0.5);
+        // Subtle star twinkle boost on piece lock
+        if (this.starfield && this.starfield.material.uniforms) {
+            this.starfield.material.uniforms.uEventBoost.value = Math.min(
+                this.starfield.material.uniforms.uEventBoost.value + 0.2, 0.5
+            );
+        }
     }
 
     handleCombo(eventPayload) {
@@ -946,6 +990,12 @@ export default class BloodMoonTheme extends BaseTheme {
     onLineClear(lineCount, comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.3, 3.0);
         this.moonPulseIntensity = Math.min(0.6 + comboCount * 0.2, 1.5);
+
+        // Star twinkle boost scales with combo
+        if (this.starfield && this.starfield.material.uniforms) {
+            const boost = Math.min(0.3 + comboCount * 0.15 + lineCount * 0.1, 1.0);
+            this.starfield.material.uniforms.uEventBoost.value = boost;
+        }
 
         // Trigger blood spark burst on combos - cycle through pool for overlapping
         if (comboCount >= 2 && this.bloodSparks.length > 0) {
