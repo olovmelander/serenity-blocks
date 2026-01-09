@@ -398,51 +398,108 @@ void main() {
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Star Shader - Grayscale twinkling stars
+// Star Shader - Round, atmospheric twinkling stars with uniform speed (Blood Moon quality)
 // ─────────────────────────────────────────────────────────────────────────────
 export const starVertexShader = `
 attribute float aSize;
-attribute float aPhase;
+attribute vec2 aTwinkle; // x = phase offset, y = speed multiplier
+attribute float aBrightness;
+
 uniform float uTime;
-varying float vAlpha;
+uniform float uPixelRatio;
+uniform float uEventBoost;
+
+varying float vBrightness;
 varying vec3 vColor;
 
 void main() {
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    
-    // Size attenuation for depth - larger clamp for bigger stars
-    gl_PointSize = aSize * (300.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 1.0, 10.0);
-    
-    // Twinkle effect - higher baseline for more visibility
-    float twinkle = sin(uTime * 2.5 + aPhase) * 0.15 + 0.9;
-    vAlpha = twinkle;
-    
-    // Pass vertex color (grayscale)
     vColor = color;
+    
+    // Twinkle animation with varied speed per star
+    float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
+    vBrightness = aBrightness * (0.7 + twinkle * 0.3);
+    vBrightness *= (1.0 + uEventBoost * 0.5);
+    
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    
+    // Size attenuation for depth - larger for atmospheric look
+    gl_PointSize = aSize * uPixelRatio * (300.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 3.0, 80.0);
+    
+    gl_Position = projectionMatrix * mvPosition;
 }
 `;
 
 export const starFragmentShader = `
-varying float vAlpha;
+varying float vBrightness;
 varying vec3 vColor;
 
 void main() {
-    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = length(circCoord);
+    // Soft circular point with atmospheric glow
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center) * 2.0;
+    
+    // Discard outside circle for round shape
     if (dist > 1.0) discard;
     
-    // Soft glow falloff
-    float alpha = (1.0 - dist * dist) * vAlpha;
+    // Soft atmospheric falloff - smooth gradient from center
+    float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
+    softCircle = pow(softCircle, 0.8); // Slightly wider glow
     
-    // Add glow core
-    float core = 1.0 - smoothstep(0.0, 0.3, dist);
-    vec3 color = vColor + vec3(0.2) * core;
+    // Bright core with halo
+    float core = 1.0 - smoothstep(0.0, 0.25, dist);
     
-    gl_FragColor = vec4(color, alpha);
+    // Color with boosted core brightness
+    vec3 coreColor = vColor * vBrightness * 1.5 + vec3(0.15) * core;
+    
+    // Atmospheric alpha with minimum visibility
+    float alpha = softCircle * (vBrightness + 0.2);
+    
+    gl_FragColor = vec4(coreColor, alpha);
 }
 `;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Nebula Shader - White/Silver texture based with soft edge fade (Noir)
+// ─────────────────────────────────────────────────────────────────────────────
+export const nebulaVertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const nebulaFragmentShader = `
+    uniform sampler2D tDiffuse;
+    uniform float uOpacity;
+    uniform float uPulse;
+    varying vec2 vUv;
+
+    void main() {
+        vec4 texColor = texture2D(tDiffuse, vUv);
+
+        // Aggressive edge fade to hide plane boundaries and blend properly
+        float fadeX = smoothstep(0.0, 0.4, vUv.x) * smoothstep(1.0, 0.6, vUv.x);
+        float fadeY = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+        float fade = fadeX * fadeY;
+        fade = pow(fade, 1.5);
+
+        // Desaturate to ensure pure black/white noir look (just in case texture has color)
+        float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 color = vec3(gray);
+
+        // Pulse effect boosts brightness
+        float pulseFactor = 1.0 + uPulse * 0.3;
+        color *= pulseFactor;
+
+        // Final alpha combines texture alpha, master opacity, and edge fade
+        float alpha = texColor.r * (uOpacity + uPulse * 0.05) * fade * 1.5; // Boost visibility slightly
+
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Atmosphere Shader - Swirling gas shell around the planet
@@ -751,49 +808,4 @@ void main() {
 `,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Film Grain Shader - Animated noise for noir cinema aesthetic
-// ─────────────────────────────────────────────────────────────────────────────
-export const FilmGrainShader = {
-    uniforms: {
-        tDiffuse: { value: null },
-        uTime: { value: 0 },
-        uIntensity: { value: 0.08 },
-    },
-    vertexShader: `
-        varying vec2 vUv;
-void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`,
-    fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float uTime;
-        uniform float uIntensity;
-        varying vec2 vUv;
 
-        // High-quality noise function
-        float hash(vec2 p) {
-            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-void main() {
-            vec4 color = texture2D(tDiffuse, vUv);
-
-            // Animated grain
-            float grain = hash(vUv * 1000.0 + uTime * 100.0);
-    grain = (grain - 0.5) * uIntensity;
-
-            // Apply grain more to darker areas (classic film look)
-            float luminance = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-            float grainStrength = 1.0 - luminance * 0.5;
-
-    color.rgb += grain * grainStrength;
-
-    gl_FragColor = color;
-}
-`,
-};
