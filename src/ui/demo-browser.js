@@ -1,3 +1,5 @@
+import { eventBus, EVENTS } from '../events/event-bus.js';
+
 // Helper function to format time
 function formatTime(ms) {
     if (!ms || isNaN(ms)) return '00:00';
@@ -22,7 +24,11 @@ export class DemoBrowser {
         // Close button
         const closeBtn = document.getElementById('close-demo-browser');
         if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.hide());
+            closeBtn.addEventListener('click', () => {
+                this.hide();
+                // Return to main menu (intro + start modal)
+                eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+            });
         }
 
         // Import button

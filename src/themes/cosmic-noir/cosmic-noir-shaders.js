@@ -599,24 +599,55 @@ void main() {
         energyPulse = pulseWave * explosionFactor * 0.4 * (1.0 - dissipation);
     }
 
-    // Swirling gas noise with EXTREME turbulence during explosion
-    float t = uTime * 0.2;
+    // === LIVING ATMOSPHERE SIMULATION ===
+    // We displace the coordinate system over time to create swirling flow
+    // ACCELERATED MOVEMENT: Increased speeds significantly to ensure visibility
+    float t = uTime * 0.8; 
     float turbulenceSpeed = 1.0 + explosionTurbulence * 8.0;
     float turbulenceScale = 1.0 + explosionTurbulence * 0.5;
+
+    // 1. ROTATIONAL FLOW (Planetary Spin)
+    // Rotate coordinates around Y axis - faster spin
+    float sinT = sin(t * 0.5);
+    float cosT = cos(t * 0.5);
+    mat2 rot = mat2(cosT, -sinT, sinT, cosT);
     
-    // Multi-octave turbulent gas
-    float gasDetailed = fbm(pos * 2.5 * turbulenceScale + vec3(t * turbulenceSpeed, t * 0.5, explosionAge * 4.0));
-    float gasLarge = snoise(pos * 1.0 - vec3(0.0, t * 0.3 * turbulenceSpeed, explosionAge * 2.0));
-    float gasVeryFine = snoise(pos * 8.0 + vec3(explosionAge * 10.0)) * 0.3;
+    vec3 flowPos = pos;
+    flowPos.xz = rot * flowPos.xz; 
+
+    // 2. MULTI-LAYERED FLUID NOISE
     
-    // Explosion shockwave distortion
+    // Layer 1: Deep currents (Slow, large scale) - increased scroll speed
+    // Moves with the rotation
+    float gasDeep = fbm(flowPos * 1.6 * turbulenceScale + vec3(0.0, t * 0.4, explosionAge * 3.0));
+    
+    // Layer 2: Surface Turbulence (Medium scale, counter-movement)
+    // We add a counter-flow vector to create shearing/eddies
+    vec3 counterFlow = vec3(sin(t * 0.8), cos(t * 0.6), 0.0) * 0.5;
+    float gasSurface = snoise(pos * 3.5 * turbulenceScale + counterFlow + vec3(0.0, -t * 0.7 * turbulenceSpeed, explosionAge * 2.0));
+    
+    // Layer 3: Ethereal Wisps (High frequency, vertical drift) - fast drift
+    float gasWisps = snoise(pos * 7.0 + vec3(t * 0.5, -t * 1.5, explosionAge * 5.0));
+    
+    // 3. COMPOSITION
+    // Combine layers: Deep structure + Surface detail + Wisps
+    // Use the surface layer to distort the deep layer slightly (domain warping)
+    float gasCombined = gasDeep + gasSurface * 0.35 + gasWisps * 0.15;
+    
+    // 4. BREATHING EFFECT
+    // More noticeable density pulse
+    float breath = 1.0 + sin(uTime * 1.2) * 0.12; 
+    gasCombined *= breath;
+    
+    // Explosion shockwave distortion (preserved)
     float shockwaveNoise = snoise(pos * 6.0 + vec3(explosionAge * 12.0));
     float burstNoise = snoise(pos * 3.0 - vec3(explosionAge * 5.0, 0.0, explosionAge * 3.0));
-    gasDetailed += (shockwaveNoise + burstNoise) * explosionFactor * 0.6;
-    gasDetailed += gasVeryFine * explosionTurbulence;
+    
+    // Mix it all
+    gasCombined += (shockwaveNoise + burstNoise) * explosionFactor * 0.6;
+    gasCombined += (gasWisps * 0.5) * explosionTurbulence; // Add grit during explosion
 
-    // Combine noise layers
-    float gas = gasDetailed * 0.6 + gasLarge * 0.4;
+    float gas = gasCombined;
 
     // === DRAMATIC COLOR PALETTE ===
     vec3 colorDense = vec3(0.12, 0.12, 0.15);      // Dark noir base

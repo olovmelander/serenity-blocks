@@ -305,25 +305,15 @@ export default class BloodMoonTheme extends BaseTheme {
             const i3 = i * 3;
             const i2 = i * 2;
 
-            // Spread stars across full screen (rectangular distribution)
-            // Use extra wide spread to account for camera parallax movement
-            const spreadX = (Math.random() - 0.5) * 16000;  // Very wide horizontal spread
-            const spreadY = (Math.random() - 0.5) * 10000;  // Very wide vertical spread
+            // Spherical distribution to ensure coverage at all angles
+            // Radius: min 2500 (beyond camera), max 14000
+            const radius = 2500 + Math.random() * 11500;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
 
-            // 3 depth layers: near, mid, far
-            const layerRand = Math.random();
-            let depth;
-            if (layerRand < 0.33) {
-                depth = -1500 - Math.random() * 500;   // Near layer
-            } else if (layerRand < 0.66) {
-                depth = -2500 - Math.random() * 1000;  // Mid layer
-            } else {
-                depth = -4000 - Math.random() * 2000;  // Far layer
-            }
-
-            positions[i3] = spreadX;
-            positions[i3 + 1] = spreadY;
-            positions[i3 + 2] = depth;
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = radius * Math.cos(phi);
 
             // Color - mostly red-tinted stars for blood moon atmosphere
             const colorIndex = Math.random() > 0.15
@@ -334,8 +324,8 @@ export default class BloodMoonTheme extends BaseTheme {
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            // Larger atmospheric star sizes
-            sizes[i] = 20 + Math.random() * 40;
+            // Scaled up sizes for potentially greater distances in spherical volume
+            sizes[i] = 30 + Math.random() * 60;
 
             // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
             twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
@@ -749,6 +739,11 @@ export default class BloodMoonTheme extends BaseTheme {
             this.moonGroup.rotation.z = Math.sin(this.time * 0.01) * 0.05;
         }
 
+        // Rotate moon around its own axis
+        if (this.moon) {
+            this.moon.rotation.y += delta * 0.03; // Very slow rotation
+        }
+
         // Slow camera orbit for parallax depth (independent of moon)
         if (this.camera) {
             const cameraTime = this.time * 0.06; // Slow but noticeable orbit
@@ -957,10 +952,10 @@ export default class BloodMoonTheme extends BaseTheme {
 
     handlePieceLock() {
         this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.15, 0.5);
-        // Subtle star twinkle boost on piece lock
+        // Star twinkle boost on piece lock
         if (this.starfield && this.starfield.material.uniforms) {
             this.starfield.material.uniforms.uEventBoost.value = Math.min(
-                this.starfield.material.uniforms.uEventBoost.value + 0.2, 0.5
+                this.starfield.material.uniforms.uEventBoost.value + 0.8, 2.0
             );
         }
     }

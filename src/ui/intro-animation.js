@@ -631,8 +631,34 @@ export class IntroAnimation {
      * (for returning to start modal from gameplay)
      */
     showBackgroundOnly(soundManager = null) {
-        // If already showing, do nothing
+        // If already showing, check if it's hidden and revive it
         if (this.container && document.body.contains(this.container)) {
+            if (this.container.style.display === 'none') {
+                console.log('[IntroAnimation] Reviving hidden container');
+                this.container.style.removeProperty('display');
+                this.container.style.display = '';
+
+                // Ensure correct state for background only
+                this.container.classList.add('background-only');
+                this.container.style.zIndex = '100';
+                this.container.style.pointerEvents = 'none';
+
+                const titleContainer = this.container.querySelector('.intro-title-container');
+                if (titleContainer) {
+                    titleContainer.classList.add('shrink-to-logo');
+                }
+
+                // Hide prompt/chromatic if they exist (cleanup from full intro)
+                const prompt = this.container.querySelector('.intro-prompt');
+                if (prompt) prompt.style.display = 'none';
+                const chromatic = this.container.querySelector('.intro-chromatic');
+                if (chromatic) chromatic.style.display = 'none';
+
+                // Ensure music
+                this.ensureIntroMusic();
+                this.isAnimating = true;
+                this.animate(performance.now() / 1000);
+            }
             return;
         }
 

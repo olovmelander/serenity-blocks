@@ -1580,6 +1580,18 @@ class SerenityBlocks {
             });
         }
 
+        // Listen for global open requests (e.g. from Game Over screens)
+        eventBus.on(EVENTS.OPEN_DEMO_BROWSER, () => {
+            if (this.demoBrowser) {
+                this.demoBrowser.show();
+            }
+        });
+
+        // Listen for return to main menu requests
+        eventBus.on(EVENTS.EXIT_TO_MAIN_MENU, () => {
+            this._returnToMainMenu();
+        });
+
         // Setup modal UI with callbacks (pass gameModeManager for Serenity Hub icon)
         setupModalUI(this.modalManager, {
             onSettingsOpen: () => {
@@ -1589,7 +1601,7 @@ class SerenityBlocks {
                 this.resumeGame();
             },
             onHighScoresOpen: () => {
-                showHighScoresModal(this.modalManager, this.highScoreManager);
+                showHighScoresModal(this.modalManager, this.highScoreManager, (demoId) => this._playDemoById(demoId));
             },
             onHighScoresClose: () => {
                 // Modal closes automatically
@@ -2082,7 +2094,7 @@ class SerenityBlocks {
             if (this.modalManager.isVisible('highScores')) {
                 closeHighScoresModal(this.modalManager);
             } else {
-                showHighScoresModal(this.modalManager, this.highScoreManager);
+                showHighScoresModal(this.modalManager, this.highScoreManager, (demoId) => this._playDemoById(demoId));
             }
         };
 
@@ -2575,8 +2587,12 @@ class SerenityBlocks {
             // If user presses Space/Enter (Restart) during demo playback game over,
             // we want to return to demo browser, not start a new game.
             if (activeMode && activeMode.getModeId() === 'single' && activeMode.isPlayingDemo) {
-                console.log('[Main] In demo playback mode, returning to demo browser instead of starting new game');
-                this.modalManager.hideAll();
+                console.log('[Main] In demo playback mode, showing demo browser instead of starting new game');
+                // Navigate to demo browser (with Start screen under)
+                this.modalManager.show('start');
+                if (this.demoBrowser) {
+                    this.demoBrowser.show();
+                }
                 return;
             }
 
@@ -2840,6 +2856,84 @@ class SerenityBlocks {
         // Fallback to old game state for classic modes
         if (!this.gameState.isGameOver && !this.gameState.isPaused) {
             this.gameState.isPaused = true;
+        }
+    }
+
+    /**
+     * Play a demo by its ID (used by high scores modal)
+     * @param {number} demoId - The demo ID to play
+     */
+    async _playDemoById(demoId) {
+        try {
+            const demo = await this.demoManager.loadDemo(demoId);
+            if (!demo) {
+                console.error('[Main] Demo not found:', demoId);
+                return;
+            }
+
+            // Close all modals
+            this.modalManager.hideAll();
+
+            // Switch to single player mode and start playback
+            await this.gameModeManager.activateMode('single');
+            await this.gameModeManager.startCurrentMode({ demo: demo });
+        } catch (err) {
+            console.error('[Main] Failed to play demo:', err);
+        }
+    }
+
+    /**
+     * Return to main menu (exit current mode and show start screen)
+     */
+    async _returnToMainMenu() {
+        console.log('[Main] Returning to main menu');
+
+        try {
+            // Stop and deactivate current game mode if active
+            const currentMode = this.gameModeManager.getCurrentMode();
+            if (currentMode) {
+                console.log('[Main] Deactivating current mode:', currentMode.getModeId());
+                await this.gameModeManager.stopCurrentMode();
+                await this.gameModeManager.deactivateCurrentMode();
+            }
+
+            // Hide UI containers explicitly (safeguard)
+            const singlePlayerContainer = document.getElementById('single-player-container');
+            if (singlePlayerContainer) singlePlayerContainer.style.display = 'none';
+
+            const multiplayerContainer = document.getElementById('multiplayer-container');
+            if (multiplayerContainer) multiplayerContainer.style.display = 'none';
+
+            const statsBar = document.querySelector('.single-player-stats-bar');
+            if (statsBar) statsBar.style.display = 'none';
+
+            // Hide performance overlay (if active)
+            if (performanceMonitor) {
+                performanceMonitor.hidePerformanceOverlay();
+            }
+
+            // Hide lingering demo indicator
+            const demoIndicator = document.getElementById('demo-indicator');
+            if (demoIndicator) {
+                demoIndicator.classList.remove('visible');
+            }
+
+            // Show intro animation background
+            // Use the top-level import 'introAnimation' instead of dynamic import if possible,
+            // or stick to dynamic if main.js structure requires it. 
+            // Step 448 shows 'import { introAnimation } from ./ui/intro-animation.js' at line 80.
+            // So we can use it directly.
+            if (introAnimation) {
+                introAnimation.showBackgroundOnly(this.soundManager);
+            }
+
+            // Show start modal
+            this.modalManager.hideAll();
+            this.modalManager.show('start');
+        } catch (err) {
+            console.error('[Main] Error returning to main menu:', err);
+            // Fallback
+            this.modalManager.show('start');
         }
     }
 

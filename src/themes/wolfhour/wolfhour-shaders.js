@@ -599,3 +599,288 @@ export const meteorHeadFragmentShader = `
         gl_FragColor = vec4(color, glow * vLifeAlpha);
     }
 `;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meteor Crash Effect Shaders
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Impact Flash - bright flash at impact point
+export const impactFlashVertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const impactFlashFragmentShader = `
+    uniform float uProgress;
+    uniform vec2 uCenter;
+    varying vec2 vUv;
+    
+    void main() {
+        // Distance from impact center (normalized screen coords)
+        vec2 pos = vUv - uCenter;
+        float dist = length(pos);
+        
+        // Flash expands outward quickly then fades
+        float flashRadius = uProgress * 0.8;
+        float flash = smoothstep(flashRadius + 0.1, flashRadius, dist);
+        flash *= 1.0 - uProgress; // Fade out over time
+        flash = pow(flash, 0.5); // Brighter core
+        
+        // Color: bright white with silver edge
+        vec3 color = mix(vec3(0.9, 0.92, 1.0), vec3(1.0), flash);
+        
+        gl_FragColor = vec4(color, flash * 0.8);
+    }
+`;
+
+// Debris Particles - rock fragments with gravity
+export const debrisVertexShader = `
+    attribute vec3 aVelocity;
+    attribute float aSize;
+    attribute float aRotation;
+    
+    uniform float uTime;
+    uniform float uPixelRatio;
+    
+    varying float vAlpha;
+    varying float vTwinkle;
+    
+    void main() {
+        // Apply velocity and gravity (reduced gravity for floatier sparks)
+        vec3 pos = position;
+        pos += aVelocity * uTime;
+        pos.y -= 200.0 * uTime * uTime; // Lighter gravity
+        
+        // Fade out significantly slower (over 4.5 seconds)
+        float life = 1.0 - smoothstep(0.0, 4.5, uTime);
+        vAlpha = life; // Fully opaque initially, then fades
+        
+        // Twinkle effect
+        vTwinkle = 0.7 + 0.3 * sin(uTime * 8.0 + aRotation * 10.0);
+        
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        gl_PointSize = aSize * uPixelRatio * vAlpha * vTwinkle;
+        gl_Position = projectionMatrix * mvPosition;
+    }
+`;
+
+export const debrisFragmentShader = `
+    varying float vAlpha;
+    varying float vTwinkle;
+    
+    void main() {
+        vec2 center = gl_PointCoord - 0.5;
+        float dist = length(center) * 2.0;
+        
+        // Soft circular glow
+        float glow = 1.0 - smoothstep(0.0, 1.0, dist);
+        glow = pow(glow, 1.5);
+        
+        // Silver/white spark colors with slight blue tint
+        vec3 core = vec3(1.0, 1.0, 1.0);
+        vec3 halo = vec3(0.85, 0.88, 1.0);
+        vec3 color = mix(halo, core, glow);
+        
+        gl_FragColor = vec4(color, glow * vAlpha * vTwinkle);
+    }
+`;
+
+// Shockwave Ring - expanding ring of light
+export const shockwaveVertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const shockwaveFragmentShader = `
+    uniform float uProgress;
+    uniform float uOpacity;
+    
+    varying vec2 vUv;
+    
+    void main() {
+        vec2 center = vUv - 0.5;
+        float dist = length(center) * 2.0;
+        
+        // Ring expands from center
+        float ringRadius = uProgress * 1.2;
+        float ringWidth = 0.15 * (1.0 - uProgress * 0.5); // Ring thins as it expands
+        
+        // Ring shape with soft edges
+        float ring = smoothstep(ringRadius - ringWidth, ringRadius - ringWidth * 0.5, dist)
+                   * smoothstep(ringRadius + ringWidth * 0.5, ringRadius, dist);
+        
+        // Fade out as it expands
+        float fade = (1.0 - uProgress) * uOpacity;
+        
+        // Silver-white color with slight blue tint
+        vec3 color = vec3(0.9, 0.92, 1.0);
+        
+        gl_FragColor = vec4(color, ring * fade);
+    }
+`;
+
+// Dust Cloud - soft billowing particles
+export const dustCloudVertexShader = `
+    attribute float aSize;
+    attribute float aPhase;
+    attribute vec3 aVelocity;
+    
+    uniform float uTime;
+    uniform float uPixelRatio;
+    
+    varying float vAlpha;
+    
+    void main() {
+        vec3 pos = position;
+        
+        // Billowing motion - rises and spreads
+        float t = uTime;
+        pos += aVelocity * t;
+        pos.y += sin(t * 2.0 + aPhase) * 20.0; // Turbulence
+        pos.x += cos(t * 1.5 + aPhase) * 15.0;
+        
+        // Slow rise
+        pos.y += t * 30.0;
+        
+        // Fade in quickly, then fade out slowly (over 4.5 seconds)
+        float fadeIn = smoothstep(0.0, 0.2, uTime);
+        float fadeOut = smoothstep(4.5, 1.0, uTime); // Note: smoothstep(edge0, edge1, x) returns 0 if x >= edge1? No, 1 IF edge0 < edge1. Here edge0 > edge1 is likely wrong usage or "standard" fading logic often does 1.0 - smoothstep. 
+        // Actually, smoothstep(2.5, 1.0, uTime) is undefined behavior or at least weird if min > max in some GLSL versions, but often used as 1.0 - smoothstep.
+        // Let's use standard: float life = 1.0 - smoothstep(0.0, 4.5, uTime);
+        // But here 'fadeOut' variable suggests it's a multiplier.
+        // Existing was: float fadeOut = smoothstep(2.5, 1.0, uTime); 
+        // Wait, if 2.5 > 1.0, smoothstep results might be inverted or clamped? 
+        // Standard textual replacement suggested:
+        
+        float life = 1.0 - smoothstep(1.0, 4.5, uTime); // Fade out from 1s to 4.5s
+        vAlpha = fadeIn * life * 0.4;
+        
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        
+        // Particles grow as dust expands
+        float grow = 1.0 + uTime * 0.5;
+        gl_PointSize = aSize * uPixelRatio * grow;
+        gl_Position = projectionMatrix * mvPosition;
+    }
+`;
+
+export const dustCloudFragmentShader = `
+    varying float vAlpha;
+    
+    void main() {
+        vec2 center = gl_PointCoord - 0.5;
+        float dist = length(center) * 2.0;
+        
+        // Very soft circular falloff
+        float soft = 1.0 - smoothstep(0.0, 1.0, dist);
+        soft = pow(soft, 0.8);
+        
+        // Gray-brown dust color
+        vec3 color = vec3(0.4, 0.38, 0.35);
+        
+        gl_FragColor = vec4(color, soft * vAlpha);
+    }
+`;
+
+// Impact Meteor Head - larger, more intense glow for crash meteor
+export const crashMeteorHeadVertexShader = `
+    uniform float uProgress;
+    uniform float uPixelRatio;
+    
+    varying float vLifeAlpha;
+    varying float vIntensity;
+    
+    void main() {
+        // Fade in fast, stay bright until impact
+        float fadeIn = smoothstep(0.0, 0.1, uProgress);
+        float fadeOut = smoothstep(1.0, 0.9, uProgress);
+        vLifeAlpha = fadeIn * fadeOut;
+        
+        // Intensity increases as meteor approaches impact
+        vIntensity = 1.0 + uProgress * 0.5;
+        
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        // Larger than regular meteor head
+        gl_PointSize = 20.0 * uPixelRatio * vIntensity;
+        gl_Position = projectionMatrix * mvPosition;
+    }
+`;
+
+export const crashMeteorHeadFragmentShader = `
+    varying float vLifeAlpha;
+    varying float vIntensity;
+    
+    void main() {
+        float dist = length(gl_PointCoord - 0.5) * 2.0;
+        if (dist > 1.0) discard;
+        
+        // Intense glowing core
+        float glow = 1.0 - dist;
+        glow = pow(glow, 1.2);
+        
+        // Bright core with fiery halo
+        vec3 core = vec3(1.0, 1.0, 1.0);
+        vec3 halo = vec3(1.0, 0.9, 0.7); // Warmer/fiery tint
+        vec3 color = mix(halo, core, glow) * vIntensity;
+        
+        gl_FragColor = vec4(color, glow * vLifeAlpha);
+    }
+`;
+
+// Crash Meteor Trail - more intense, thicker trail
+export const crashMeteorTrailVertexShader = `
+    attribute float aTrailPosition;
+    
+    uniform float uTime;
+    uniform float uProgress;
+    
+    varying float vTrailPos;
+    varying float vLifeAlpha;
+    varying float vIntensity;
+    
+    void main() {
+        vTrailPos = aTrailPosition;
+        
+        // Stays visible until impact
+        float fadeIn = smoothstep(0.0, 0.1, uProgress);
+        float fadeOut = smoothstep(1.0, 0.85, uProgress);
+        vLifeAlpha = fadeIn * fadeOut;
+        
+        // Intensity ramps up as meteor descends
+        vIntensity = 1.0 + uProgress * 0.3;
+        
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const crashMeteorTrailFragmentShader = `
+    uniform float uTime;
+    uniform float uProgress;
+    
+    varying float vTrailPos;
+    varying float vLifeAlpha;
+    varying float vIntensity;
+    
+    void main() {
+        // Trail fades from bright head to dim tail
+        float trailFade = pow(1.0 - vTrailPos, 2.0);
+        
+        // More aggressive shimmer
+        float shimmer = 0.9 + 0.1 * sin(vTrailPos * 40.0 + uTime * 15.0);
+        
+        // Color: white-orange head transitioning to silver-blue tail
+        vec3 headColor = vec3(1.0, 0.95, 0.85);
+        vec3 tailColor = vec3(0.7, 0.75, 0.9);
+        vec3 color = mix(headColor, tailColor, vTrailPos) * vIntensity;
+        
+        float alpha = trailFade * vLifeAlpha * shimmer;
+        
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
