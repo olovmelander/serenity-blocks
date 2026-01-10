@@ -600,13 +600,6 @@ export function createBaseBoardScene(
             this.cameraSettings.manualControl = false;
         }
 
-        moveCamera(deltaRows) {
-            if (!this.cameraSettings?.manualControl) return;
-
-            const targetTopRow = this.cameraSettings.targetTopRow + deltaRows;
-            this.updateCameraPosition(targetTopRow);
-        }
-
         /**
          * Shake camera with default intensity scaled by multiplier.
          * @param {number} [multiplier=1]

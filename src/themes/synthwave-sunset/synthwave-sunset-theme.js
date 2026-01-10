@@ -1,208 +1,118 @@
+/**
+ * Synthwave Sunset Theme - Three.js Masterpiece Edition
+ * 
+ * A stunning 3D retrofuturistic experience featuring:
+ * - Infinite perspective neon grid with glow
+ * - Volumetric sun with stripes and corona
+ * - 3D procedural cityscape with window lights
+ * - Dynamic tetromino grid highlighting
+ * - Particle-based combo effects
+ * - Post-processing bloom and atmosphere
+ */
+
+import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
-import WebGLSynthwaveRenderer from './webgl-synthwave-renderer.js';
-import WebGLSynthwaveEffects from './webgl-synthwave-effects.js';
-import WebGLSynthwaveSun from './webgl-synthwave-sun.js';
+import {
+    gridVertexShader,
+    gridFragmentShader,
+    sunVertexShader,
+    sunFragmentShader,
+    sunGlowVertexShader,
+    sunGlowFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+    highlightVertexShader,
+    highlightFragmentShader,
+    particleVertexShader,
+    particleFragmentShader
+} from './synthwave-shaders.js';
 
 export default class SynthwaveSunsetTheme extends BaseTheme {
     constructor() {
         super('synthwave-sunset');
-        this.gridCanvas = null;
-        this.gridCtx = null;
-        this.webglCanvas = null;
-        this.webglRenderer = null;
-        this.useWebGL = true;
-        this.animationTime = 0;
-        this.eventUnsubscribers = [];
-        this.gridPulseIntensity = 0;
-        this.comboColorShift = 0;
 
-        // Random phase offsets for unique sun movement each time
+        // Three.js core
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.clock = new THREE.Clock();
+
+        // Scene elements
+        this.grid = null;
+        this.sun = null;
+        this.sunGlowLayers = [];
+        this.starField = null;
+        this.buildings = [];
+        this.buildingEdges = [];
+
+        // Effects
+        this.gridHighlights = [];
+        this.highlightPool = [];
+        this.particles = null;
+        this.particleData = [];
+
+        // Animation state
+        this.sunPosition = { x: 0, y: 0 };
         this.sunPhaseX = Math.random() * Math.PI * 2;
-        this.sunPhaseY = Math.random() * Math.PI * 2;
-        this.sunPhaseX2 = Math.random() * Math.PI * 2;
-        this.sunPhaseY2 = Math.random() * Math.PI * 2;
-
-        // Random starting time offset so sun starts at different position each time
         this.timeOffset = Math.random() * 10000;
 
-        // Combo effects
-        this.effectsCanvas = null;
-        this.effectsCanvas = null;
-        this.webglEffects = null;
-        this.horizonBursts = [];
-        this.retroStreaks = [];
-        this.retroParticles = [];
-        this.retroParticles = [];
-        this.gridWaves = [];
-        this.gridHighlights = []; // Array of {x, y, intensity, life}
-        this.sunSparkles = [];
+        // Event state
+        this.gridPulseIntensity = 0;
         this.sunPulseIntensity = 0;
-        this.comboMultiplier = 1.0;
         this.cityGlowIntensity = 0;
-        this.frontCityPath = null;
-        this.backCityPath = null;
-        this.qualityChangeHandler = null;
+        this.comboColorShift = 0;
+        this.highlightTwinkleIntensity = 0;  // For combo twinkle effect on highlights
 
-        // Performance limits
-        this.MAX_BURSTS = 5;
-        this.MAX_STREAKS = 8;
-        this.MAX_PARTICLES = 150;
-        this.MAX_PARTICLES = 150;
-        this.MAX_WAVES = 4;
-        this.MAX_SPARKLES = 500;
+        // Event handlers
+        this.eventUnsubscribers = [];
 
-        // Graphics quality presets - optimized for better performance
+        // Quality presets
         this.qualityPresets = {
-            Minimal: {
-                maxBursts: 1,
-                maxStreaks: 2,
-                maxParticles: 30,
-                maxWaves: 1,
-                cityGlowBeams: 3,
-                sunGlowLayers: 1,
-                gridRows: 15,
-                gridCols: 15,
-                particlesPerBurstMin: 5,
-                particlesPerBurstMax: 10,
-                streakMultiplier: 0.6,
-                gridScrollSpeed: 5,
-                glowIntensity: 0.5,
-                useShadowBlur: false,
-                useDropShadow: false,
-                cityGlowUpdateInterval: 4, // Update every 4 frames
-            },
-            Low: {
-                maxBursts: 2,
-                maxStreaks: 4,
-                maxParticles: 50,
-                maxWaves: 2,
-                cityGlowBeams: 5,
-                sunGlowLayers: 2,
-                gridRows: 20,
-                gridCols: 20,
-                particlesPerBurstMin: 8,
-                particlesPerBurstMax: 15,
-                streakMultiplier: 0.8,
-                gridScrollSpeed: 6,
-                glowIntensity: 0.7,
-                useShadowBlur: false,
-                useDropShadow: false,
-                cityGlowUpdateInterval: 3, // Update every 3 frames
-            },
-            Medium: {
-                maxBursts: 3,
-                maxStreaks: 5,
-                maxParticles: 90,
-                maxWaves: 3,
-                cityGlowBeams: 7,
-                sunGlowLayers: 3,
-                gridRows: 30,
-                gridCols: 30,
-                particlesPerBurstMin: 10,
-                particlesPerBurstMax: 20,
-                streakMultiplier: 1.2,
-                gridScrollSpeed: 7,
-                glowIntensity: 0.85,
-                useShadowBlur: false,
-                useDropShadow: true,
-                cityGlowUpdateInterval: 2, // Update every 2 frames
-            },
-            High: {
-                maxBursts: 4,
-                maxStreaks: 6,
-                maxParticles: 120,
-                maxWaves: 3,
-                cityGlowBeams: 9,
-                sunGlowLayers: 3,
-                gridRows: 35,
-                gridCols: 35,
-                particlesPerBurstMin: 12,
-                particlesPerBurstMax: 28,
-                streakMultiplier: 1.6,
-                gridScrollSpeed: 8,
-                glowIntensity: 1.0,
-                useShadowBlur: true,
-                useDropShadow: true,
-                cityGlowUpdateInterval: 1, // Update every frame
-            },
-            Ultra: {
-                maxBursts: 6,
-                maxStreaks: 10,
-                maxParticles: 200,
-                maxWaves: 6,
-                cityGlowBeams: 12,
-                sunGlowLayers: 4,
-                gridRows: 50,
-                gridCols: 50,
-                particlesPerBurstMin: 15,
-                particlesPerBurstMax: 40,
-                streakMultiplier: 2.2,
-                gridScrollSpeed: 9,
-                glowIntensity: 1.2,
-                useShadowBlur: true,
-                useDropShadow: true,
-                cityGlowUpdateInterval: 1, // Update every frame
-            },
-            Extreme: {
-                maxBursts: 8,
-                maxStreaks: 15,
-                maxParticles: 300,
-                maxWaves: 9,
-                cityGlowBeams: 18,
-                sunGlowLayers: 6,
-                gridRows: 70,
-                gridCols: 70,
-                particlesPerBurstMin: 20,
-                particlesPerBurstMax: 60,
-                streakMultiplier: 3.0,
-                gridScrollSpeed: 10,
-                glowIntensity: 1.5,
-                useShadowBlur: true,
-                useDropShadow: true,
-                cityGlowUpdateInterval: 1, // Update every frame
-            },
+            Minimal: { starCount: 500, buildingCount: 20, glowLayers: 1, maxHighlights: 30, particleBudget: 500 },
+            Low: { starCount: 1000, buildingCount: 30, glowLayers: 2, maxHighlights: 40, particleBudget: 1000 },
+            Medium: { starCount: 1800, buildingCount: 45, glowLayers: 3, maxHighlights: 60, particleBudget: 2000 },
+            High: { starCount: 2500, buildingCount: 60, glowLayers: 4, maxHighlights: 80, particleBudget: 3500 },
+            Ultra: { starCount: 4000, buildingCount: 80, glowLayers: 5, maxHighlights: 100, particleBudget: 6000 },
+            Extreme: { starCount: 6000, buildingCount: 100, glowLayers: 6, maxHighlights: 150, particleBudget: 10000 }
+        };
+        this.currentQuality = 'High';
+        this.activePreset = this.qualityPresets.High;
+
+        // Colors
+        this.colors = {
+            gridPink: new THREE.Color(0xff0066),
+            gridCyan: new THREE.Color(0x00ffff),
+            sunTop: new THREE.Color(0xffdd00),
+            sunMid: new THREE.Color(0xff8800),
+            sunBottom: new THREE.Color(0xff0066),
+            skyTop: new THREE.Color(0x1a0033),
+            skyMid: new THREE.Color(0x660066),
+            skyBottom: new THREE.Color(0xff6600),
+            buildingDark: new THREE.Color(0x0a0515)
         };
 
-        this.currentQuality = 'Medium'; // Default to Medium for better performance
-        this.activePreset = this.qualityPresets.Medium;
-        this.frameCounter = 0;
-    }
+        // Neon palette for highlights
+        this.neonColors = [
+            new THREE.Color(0x00ffff), // Cyan
+            new THREE.Color(0xff00ff), // Magenta
+            new THREE.Color(0xffff00), // Yellow
+            new THREE.Color(0x00ff00), // Lime
+            new THREE.Color(0x9900ff), // Purple
+            new THREE.Color(0xff6600)  // Orange
+        ];
 
-    applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Synthwave Sunset: Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        const preset = this.activePreset;
-        this.MAX_BURSTS = preset.maxBursts;
-        this.MAX_STREAKS = preset.maxStreaks;
-        this.MAX_PARTICLES = preset.maxParticles;
-        this.MAX_WAVES = preset.maxWaves;
-
-        this.trimEffectCounts();
-
-        console.log(`🌇 Synthwave Sunset: Applying ${quality} quality preset`);
-    }
-
-    trimEffectCounts() {
-        const clampArray = (collection, maxSize) => {
-            if (!collection || typeof maxSize !== 'number') return;
-            if (collection.length > maxSize) {
-                collection.splice(0, collection.length - maxSize);
-            }
-        };
-
-        clampArray(this.horizonBursts, this.MAX_BURSTS);
-        clampArray(this.retroStreaks, this.MAX_STREAKS);
-        clampArray(this.retroParticles, this.MAX_PARTICLES);
-        clampArray(this.gridWaves, this.MAX_WAVES);
-        clampArray(this.sunSparkles, this.MAX_SPARKLES);
+        // Tetromino shapes (relative cell positions)
+        this.tetrominoShapes = [
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }], // I
+            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }], // J
+            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }], // L
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }], // O
+            [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }], // S
+            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }], // T
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }]  // Z
+        ];
     }
 
     getGraphicsQuality() {
@@ -210,570 +120,380 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
+    async createScene() {
+        console.log('[Synthwave3D] Initializing Three.js scene...');
 
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        const container = document.getElementById('synthwave-sunset-theme');
+        if (!container) {
+            console.error('[Synthwave3D] Container not found');
+            return;
         }
 
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
+        container.innerHTML = '';
 
-            this.applyQualityPreset(newQuality);
-            this.refreshQualityDependentElements();
-        };
+        // Apply quality settings
+        this.currentQuality = this.getGraphicsQuality();
+        this.activePreset = this.qualityPresets[this.currentQuality] || this.qualityPresets.High;
 
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
+        // Setup Three.js scene
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x1a0033);
+        this.scene.fog = new THREE.FogExp2(0x330033, 0.015);
 
-    refreshQualityDependentElements() {
+        // Setup camera
+        this.camera = new THREE.PerspectiveCamera(
+            70,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        this.camera.position.set(0, 8, 20);
+        this.camera.lookAt(0, 2, -20);
+
+        // Setup renderer
+        this.renderer = new THREE.WebGLRenderer({
+            alpha: false,
+            antialias: this.getAntialiasEnabled(),
+            powerPreference: 'high-performance'
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        container.appendChild(this.renderer.domElement);
+
+        // Create scene elements
+        this.createSkyGradient();
+        this.createStarField();
         this.createSun();
-        this.createCityGlow();
-        this.resizeGrid();
-        this.trimEffectCounts();
+        this.createBuildings();
+        this.createGrid();
+        this.createHighlightPool();
+        this.createParticleSystem();
+
+        // Setup events
+        this.setupEventListeners();
+        window.addEventListener('resize', this.onResize.bind(this));
+
+        // Start animation
+        this.animate();
+
+        console.log(`[Synthwave3D] Scene initialized with ${this.currentQuality} quality`);
     }
 
-    async createScene() {
-        try {
-            const container = this.getContainer('synthwave-sunset-theme');
-            if (!container) {
-                console.error('Synthwave Sunset: Main theme container not found');
-                return;
+    createSkyGradient() {
+        // Create a much larger background plane so edges are never visible and it sits behind stars
+        const geometry = new THREE.PlaneGeometry(3000, 1600);
+
+        // Use vertex colors for gradient
+        const colors = new Float32Array(geometry.attributes.position.count * 3);
+        const positions = geometry.attributes.position.array;
+
+        for (let i = 0; i < geometry.attributes.position.count; i++) {
+            const y = positions[i * 3 + 1];
+            const t = (y + 800) / 1600; // Normalize to 0-1 for new 1600 height
+
+            let color;
+            if (t < 0.4) {
+                color = this.colors.skyBottom.clone().lerp(this.colors.skyMid, t / 0.4);
+            } else {
+                color = this.colors.skyMid.clone().lerp(this.colors.skyTop, (t - 0.4) / 0.6);
             }
 
-            // Create sky gradient background (handled by CSS)
-            const sky = this.getContainer('synthwave-sunset-sky');
-
-            // Apply graphics quality preset based on user settings
-            const quality = this.getGraphicsQuality();
-            this.applyQualityPreset(quality);
-
-            // Create sun
-            this.createSun();
-
-            // Create city glow effect
-            this.createCityGlow();
-
-            // Create city skyline
-            this.createCitySkyline();
-
-            // Create perspective grid (WebGL)
-            this.initWebGLRenderer();
-
-            // Create scan lines overlay
-            this.createScanLines();
-
-            // Setup combo effects canvas
-            this.setupComboEffects();
-
-            // Setup event listeners for combo effects
-            this.setupEventListeners();
-
-            // Listen for runtime quality changes
-            this.setupQualityListener();
-
-            // Start animation loop
-            this.animate();
-
-            // Ensure everything is sized correctly after DOM creation
-            requestAnimationFrame(() => this.resizeGrid());
-        } catch (error) {
-            console.error('Synthwave Sunset: Error creating scene:', error);
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
         }
+
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.MeshBasicMaterial({
+            vertexColors: true,
+            side: THREE.DoubleSide,
+            depthWrite: false // Don't write depth so stars/sun can composite nicely
+        });
+
+        const sky = new THREE.Mesh(geometry, material);
+        sky.position.z = -900; // Far back behind stars/sun
+        sky.position.y = 100;
+        this.scene.add(sky);
+    }
+
+    createStarField() {
+        const count = this.activePreset.starCount;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const phases = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        const starColors = [
+            new THREE.Color(0xffffff),
+            new THREE.Color(0xaaddff),
+            new THREE.Color(0xffddee)
+        ];
+
+        for (let i = 0; i < count; i++) {
+            // Distribute in a full large sphere surrounding the scene
+            // Radius much larger to cover all camera angles
+            const radius = 300 + Math.random() * 200;
+            const theta = Math.random() * Math.PI * 2; // Full horizontal rotation
+            const phi = Math.acos(2 * Math.random() - 1); // Uniform sphere distribution
+
+            // Only keep stars above a certain horizon (y > -50) to avoid wasting stars deep underground
+            // But keep enough low ones to fill gaps near horizon
+            // User requested "higher" stars, so we cut off earlier (0.45 * PI) to lift them off the "ground"
+            if (phi > Math.PI * 0.45) {
+                i--; // Retry
+                continue;
+            }
+
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.cos(phi);
+            positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+
+            sizes[i] = Math.random() * 2.5 + 1.5; // Larger stars since they are far away
+            phases[i] = Math.random() * Math.PI * 2;
+
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 }
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.starField = new THREE.Points(geometry, material);
+        this.scene.add(this.starField);
     }
 
     createSun() {
-        const sunContainer = this.getContainer('synthwave-sunset-sun');
-
-        if (!sunContainer) {
-            this.sunContainer = null;
-            return;
-        }
-
-        // Create canvas for WebGL Sun
-        let canvas = sunContainer.querySelector('.synthwave-sun-canvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.className = 'synthwave-sun-canvas';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            sunContainer.appendChild(canvas);
-        }
-
-        this.webglSun = new WebGLSynthwaveSun(canvas);
-        if (this.webglSun.init()) {
-            this.webglSun.resize(sunContainer.clientWidth, sunContainer.clientHeight);
-
-            // Create some retro background stars
-            const count = 200; // Sparse retro stars
-            const stars = [];
-
-            for (let i = 0; i < count; i++) {
-                stars.push({
-                    x: Math.random() * sunContainer.clientWidth,
-                    y: Math.random() * sunContainer.clientHeight,
-                    size: Math.random() * 2 + 1,
-                    brightness: Math.random() * 0.5 + 0.5,
-                });
-            }
-
-            this.webglSun.allocateStars(count);
-            this.webglSun.uploadStars(stars);
-        } else {
-            console.warn('Synthwave Sunset: WebGL Sun init failed');
-        }
-
-        // Store reference to sun container for animation
-        this.sunContainer = sunContainer;
-    }
-
-    calculateSunPosition() {
-        // Smooth left-to-right horizontal drift centered around screen center
-        // The sun drifts continuously from left to right with subtle vertical float
-
-        // Movement range (percentage of viewport from center)
-        const horizontalRange = 80; // Full screen width + margin to go completely off-screen
-        const verticalRange = 3; // Subtle up-down floating
-
-        // Apply time offset so sun starts at different position each time
-        const time = this.animationTime + this.timeOffset;
-
-        // Continuous left-to-right drift using modulo to loop smoothly
-        // Drift cycle takes longer now for a meditative pace
-        const driftSpeed = 0.0005; // Slower speed for wider range
-        const driftProgress = (time * driftSpeed) % 1; // 0 to 1 progress through drift cycle
-
-        // Map progress to position: -horizontalRange (left) to +horizontalRange (right)
-        const sunX = (driftProgress * 2 - 1) * horizontalRange; // Maps 0->1 to -25->+25
-
-        // Subtle vertical float (very gentle)
-        const sunY = Math.sin(time * 0.0004) * verticalRange;
-
-        return {
-            x: sunX,
-            y: sunY,
-        };
-    }
-
-    updateSunPosition() {
-        const pos = this.calculateSunPosition();
-        this.sunPosition = pos;
-
-        if (!this.sunContainer) return;
-
-        // If using WebGL, we don't move the container, we move the sun in the shader.
-        // We also ensure the container is full screen to prevent distortion.
-        if (this.useWebGL && this.webglSun) {
-            this.sunContainer.style.transform = 'none';
-            this.sunContainer.style.width = '100%';
-            this.sunContainer.style.height = '100%';
-            this.sunContainer.style.top = '0';
-            this.sunContainer.style.left = '0';
-            this.sunContainer.style.position = 'absolute';
-            return;
-        }
-
-        // Combine the centering transform (-50%, -50%) with the movement offset
-        // The CSS centers the sun, and we add the drift on top of that
-        const finalX = -50 + pos.x;
-        const finalY = -50 + pos.y;
-
-        this.sunContainer.style.transform = `translate(${finalX}%, ${finalY}%)`;
-    }
-
-    updateSunPulse() {
-        if (!this.sunContainer) return;
-
-        // If using WebGL, pulse is handled in shader
-        if (this.useWebGL && this.webglSun) {
-            this.sunContainer.style.filter = '';
-            this.sunContainer.style.scale = '1';
-            return;
-        }
-
-        // Apply pulse effect by adjusting filter brightness
-        if (this.sunPulseIntensity > 0) {
-            const brightness = 1 + this.sunPulseIntensity * 0.5;
-            const scale = 1 + this.sunPulseIntensity * 0.15;
-            this.sunContainer.style.filter = `brightness(${brightness})`;
-            this.sunContainer.style.scale = `${scale}`;
-        } else {
-            this.sunContainer.style.filter = '';
-            this.sunContainer.style.scale = '1';
-        }
-    }
-
-    updateCityGlow() {
-        // PERFORMANCE: Only update city glow based on quality interval
-        if (this.frameCounter % this.activePreset.cityGlowUpdateInterval !== 0) {
-            return;
-        }
-
-        // Only apply filters if drop-shadow is enabled in quality preset
-        if (!this.activePreset.useDropShadow) {
-            return;
-        }
-
-        const glowActive = this.cityGlowIntensity > 0.05; // Threshold to avoid micro-updates
-
-        // Apply hot pink glow effect to front city outline
-        if (this.frontCityPath) {
-            if (glowActive) {
-                const strokeWidth = this.cityGlowIntensity * 0.5;
-                const glowBlur = this.cityGlowIntensity * 15;
-
-                this.frontCityPath.setAttribute('stroke', '#ff0066');
-                this.frontCityPath.setAttribute('stroke-width', strokeWidth);
-                // Single drop-shadow for performance (removed double shadow)
-                this.frontCityPath.style.filter = `drop-shadow(0 0 ${glowBlur}px #ff0066)`;
-            } else {
-                this.frontCityPath.setAttribute('stroke', 'none');
-                this.frontCityPath.setAttribute('stroke-width', '0');
-                this.frontCityPath.style.filter = '';
-            }
-        }
-
-        // Apply subtle purple glow effect to back city outline
-        if (this.backCityPath) {
-            if (glowActive) {
-                const strokeWidth = this.cityGlowIntensity * 0.25;
-                const glowBlur = this.cityGlowIntensity * 8;
-
-                this.backCityPath.setAttribute('stroke', '#b000ff');
-                this.backCityPath.setAttribute('stroke-width', strokeWidth);
-                this.backCityPath.style.filter = `drop-shadow(0 0 ${glowBlur}px #b000ff)`;
-            } else {
-                this.backCityPath.setAttribute('stroke', 'none');
-                this.backCityPath.setAttribute('stroke-width', '0');
-                this.backCityPath.style.filter = '';
-            }
-        }
-    }
-
-    createCityGlow() {
-        const glowContainer = this.getContainer('synthwave-sunset-city-glow');
-
-        if (!glowContainer) return;
-
-        // Clear existing beams so we can rebuild based on the active preset
-        const existingBeams = glowContainer.querySelectorAll('.synthwave-city-glow-beam');
-        existingBeams.forEach((beam) => beam.remove());
-
-        const beamCount = this.activePreset?.cityGlowBeams ?? 8;
-        const spacing = 100 / (beamCount + 1);
-
-        for (let i = 0; i < beamCount; i++) {
-            const glow = document.createElement('div');
-            glow.className = 'synthwave-city-glow-beam';
-
-            const jitter = this.random(-spacing * 0.25, spacing * 0.25);
-            const xPos = Math.max(2, Math.min(98, spacing * (i + 1) + jitter));
-            glow.style.left = `${xPos}%`;
-
-            // Vary the width and intensity slightly for a more organic look
-            const width = this.random(10, 18);
-            const delay = this.random(0, 3);
-            glow.style.width = `${width}%`;
-            glow.style.animationDelay = `${delay}s`;
-
-            glowContainer.appendChild(glow);
-        }
-    }
-
-    createCitySkyline() {
-        // Create back city layer (smaller, more distant)
-        this.createCityLayer('synthwave-sunset-city-back', '#08040f', 1.1);
-
-        // Create front city layer (larger, closer)
-        this.createCityLayer('synthwave-sunset-city-front', '#0a0515', 1.0);
-    }
-
-    createCityLayer(containerId, fillColor, sizeScale) {
-        const cityContainer = this.getContainer(containerId);
-
-        // Only create city layer if container is empty
-        if (!cityContainer || cityContainer.children.length > 0) {
-            return;
-        }
-
-        // Generate clean, simple city buildings
-        const buildings = [];
-        let currentX = 0;
-
-        // Create buildings that span the entire width
-        while (currentX < 100) {
-            const width = this.random(2, 7);
-            const baseHeight = this.random(20, 50);
-
-            // Occasionally add a very tall building
-            const isTall = this.random(0, 1) > 0.85;
-            const height = isTall ? this.random(45, 55) : baseHeight;
-
-            // Scale height for depth
-            const finalHeight = height * sizeScale;
-
-            buildings.push({
-                x: currentX,
-                width,
-                height: finalHeight,
-            });
-
-            currentX += width;
-        }
-
-        // Create simple SVG path for clean silhouette
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('width', '100%');
-        svg.setAttribute('height', '100%');
-        svg.setAttribute('viewBox', '0 0 100 50');
-        svg.setAttribute('preserveAspectRatio', 'none');
-        svg.classList.add('synthwave-city-svg');
-
-        // Build clean rectangular skyline
-        let pathData = 'M 0 50 ';
-
-        buildings.forEach((building) => {
-            const { x } = building;
-            const { width } = building;
-            const { height } = building;
-            const top = 50 - height;
-
-            // Simple rectangle - no decorations
-            pathData += `L ${x} 50 L ${x} ${top} L ${x + width} ${top} L ${x + width} 50 `;
+        // Main sun sphere
+        const sunGeometry = new THREE.SphereGeometry(12, 64, 32);
+        const sunMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                colorTop: { value: this.colors.sunTop },
+                colorMid: { value: this.colors.sunMid },
+                colorBottom: { value: this.colors.sunBottom },
+                stripeCount: { value: 12.0 },
+                pulseIntensity: { value: 0 }
+            },
+            vertexShader: sunVertexShader,
+            fragmentShader: sunFragmentShader,
+            transparent: true,
+            side: THREE.FrontSide
         });
 
-        pathData += 'L 100 50 Z';
+        this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        this.sun.position.set(0, 35, -100);
+        this.scene.add(this.sun);
 
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', pathData);
-        path.setAttribute('fill', fillColor);
-        path.setAttribute('stroke', 'none');
+        // Glow layers
+        const glowCount = this.activePreset.glowLayers;
+        const glowColors = [
+            new THREE.Color(0xff8800),
+            new THREE.Color(0xff4400),
+            new THREE.Color(0xff0066),
+            new THREE.Color(0xaa0088),
+            new THREE.Color(0x6600aa),
+            new THREE.Color(0x330066)
+        ];
 
-        // Store reference to city paths for glow effects
-        if (containerId === 'synthwave-sunset-city-front') {
-            this.frontCityPath = path;
-        } else if (containerId === 'synthwave-sunset-city-back') {
-            this.backCityPath = path;
-        }
-
-        svg.appendChild(path);
-        cityContainer.appendChild(svg);
-    }
-
-    initWebGLRenderer() {
-        const container = this.getContainer('synthwave-sunset-grid');
-        if (!container) return;
-
-        try {
-            // Create canvas for WebGL
-            this.webglCanvas = document.createElement('canvas');
-            this.webglCanvas.className = 'synthwave-grid-canvas';
-            this.webglCanvas.style.width = '100%';
-            this.webglCanvas.style.height = '100%';
-            container.appendChild(this.webglCanvas);
-
-            this.webglRenderer = new WebGLSynthwaveRenderer(this.webglCanvas);
-
-            if (this.webglRenderer.init()) {
-                this.useWebGL = true;
-                this.resizeGrid();
-
-                window.addEventListener('resize', () => this.resizeGrid());
-            } else {
-                console.warn('Synthwave Sunset: WebGL init failed, falling back to Canvas2D');
-                this.useWebGL = false;
-                this.createPerspectiveGrid(); // Fallback
-            }
-        } catch (error) {
-            console.error('Synthwave Sunset: Error initializing WebGL:', error);
-            this.useWebGL = false;
-        }
-    }
-
-    createPerspectiveGrid() {
-        // Fallback implementation or legacy code
-        const gridContainer = this.getContainer('synthwave-sunset-grid');
-        if (!gridContainer) return;
-
-        // ... existing canvas 2d setup if needed for fallback ...
-        // For now we assume WebGL works or we just leave this empty/legacy
-        // If we really want fallback, we'd keep the old code here.
-        // But to save space/complexity, I'll assume WebGL is the target.
-        // If fallback is needed, I should have kept the old code. 
-        // Let's restore the old code as fallback logic if I deleted it.
-        // Actually, I'm replacing the method, so I'll just keep a minimal version or the original if I didn't select it for replacement.
-        // Wait, I selected lines 523-562 to replace. I should probably keep the old code logic if I want fallback.
-        // But the user wants to "improve" using WebGL.
-
-        // I will re-implement a basic fallback here just in case, or just log error.
-        // Given the prompt, I'll focus on WebGL.
-    }
-
-    resizeGrid() {
-        if (this.useWebGL && this.webglRenderer) {
-            this.webglRenderer.resize(window.innerWidth, window.innerHeight);
-            if (this.webglCanvas) {
-                this.webglCanvas.width = window.innerWidth;
-                this.webglCanvas.height = window.innerHeight;
-            }
-
-            // Resize Sun Renderer
-            if (this.webglSun && this.sunContainer) {
-                this.webglSun.resize(this.sunContainer.clientWidth, this.sunContainer.clientHeight);
-            }
-            return;
-        }
-
-        // Fallback resize
-        if (!this.gridCanvas || !this.gridCtx) return;
-        // ... existing resize logic ...
-    }
-
-    drawPerspectiveGrid() {
-        if (this.useWebGL && this.webglRenderer) {
-            // Hide old DOM sun elements if WebGL is active, but keep the container visible for the canvas
-            if (this.sunContainer) {
-                const domSun = this.sunContainer.querySelector('.synthwave-sun');
-                if (domSun) domSun.style.display = 'none';
-
-                const glows = this.sunContainer.querySelectorAll('.synthwave-sun-glow');
-                glows.forEach(glow => glow.style.display = 'none');
-
-                // Ensure container is visible
-                this.sunContainer.style.display = 'block';
-            }
-
-            const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
-            // Convert scroll speed to WebGL speed unit
-            const webglSpeed = scrollSpeed * 0.05;
-
-            const baseGlow = this.activePreset?.glowIntensity ?? 0.8;
-            const glow = baseGlow + this.gridPulseIntensity * 0.5;
-
-            // Grid color
-            // Base: Hot Pink [1.0, 0.0, 0.6]
-            // Combo: Electric Cyan [0.0, 1.0, 1.0] or Bright White/Blue
-
-            // Normalize combo shift (it goes up to 60, but let's cap effect around 20)
-            const shiftFactor = Math.min(1.0, this.comboColorShift / 20.0);
-
-            // Interpolate
-            const r = 1.0 * (1.0 - shiftFactor) + 0.0 * shiftFactor;
-            const g = 0.0 * (1.0 - shiftFactor) + 1.0 * shiftFactor;
-            const b = 0.6 * (1.0 - shiftFactor) + 1.0 * shiftFactor;
-
-            // Update highlights
-            for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
-                const h = this.gridHighlights[i];
-                h.intensity *= 0.99; // Fade out much slower
-                h.life -= h.decay;
-
-                if (h.life <= 0 || h.intensity < 0.01) {
-                    this.gridHighlights.splice(i, 1);
-                }
-            }
-
-            // Sun Parameters
-            const aspect = window.innerWidth / window.innerHeight;
-            const sunX = ((this.sunPosition?.x || 0) / 100.0) * aspect;
-            const sunY = ((this.sunPosition?.y || 0) / 100.0) + 0.05; // Position lower to set behind buildings
-
-            const sunParams = {
-                x: sunX,
-                y: sunY,
-                radius: 0.25 + this.sunPulseIntensity * 0.05,
-                colorTop: [1.0, 0.9 + this.sunPulseIntensity * 0.1, 0.0], // Yellow/Orange
-                colorBottom: [1.0, 0.0, 0.6 + this.sunPulseIntensity * 0.2], // Hot Pink
-                stripeCount: 40.0
-            };
-
-            // Render Sun (Standalone)
-            if (this.webglSun) {
-                this.webglSun.render(this.animationTime, sunParams);
-            }
-
-            // Render Grid
-            this.webglRenderer.render(this.animationTime, {
-                speed: webglSpeed,
-                color: [r, g, b],
-                glowIntensity: glow,
-                bendFactor: 0.2, // Slight curvature
-                highlights: this.gridHighlights
+        for (let i = 0; i < glowCount; i++) {
+            const scale = 1.5 + i * 0.8;
+            const glowGeometry = new THREE.PlaneGeometry(30 * scale, 30 * scale);
+            const glowMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    glowColor: { value: glowColors[i % glowColors.length] },
+                    opacity: { value: 0.4 - i * 0.05 },
+                    pulseIntensity: { value: 0 }
+                },
+                vertexShader: sunGlowVertexShader,
+                fragmentShader: sunGlowFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
             });
 
-            // Decay effects
-            if (this.gridPulseIntensity > 0) {
-                this.gridPulseIntensity *= 0.95;
-                if (this.gridPulseIntensity < 0.01) this.gridPulseIntensity = 0;
-            }
-            return;
-        }
-
-        // Fallback 2D rendering would go here if needed
-    }
-
-    createScanLines() {
-        const container = this.getContainer('synthwave-sunset-scanlines');
-
-        // Only create scanlines if container is empty
-        if (container && container.children.length === 0) {
-            const scanlines = document.createElement('div');
-            scanlines.className = 'synthwave-scanlines';
-            container.appendChild(scanlines);
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            glow.position.copy(this.sun.position);
+            glow.position.z += 1 + i * 0.5;
+            this.scene.add(glow);
+            this.sunGlowLayers.push(glow);
         }
     }
 
-    setupComboEffects() {
-        const themeContainer = this.getContainer('synthwave-sunset-theme');
-        if (!themeContainer) {
-            console.warn('Synthwave Sunset: Theme container not found, skipping combo effects');
-            return;
-        }
+    createBuildings() {
+        const count = this.activePreset.buildingCount;
 
-        try {
-            // Create canvas for combo effects
-            let canvas = themeContainer.querySelector('.synthwave-effects-canvas');
-            if (!canvas) {
-                canvas = document.createElement('canvas');
-                canvas.className = 'synthwave-effects-canvas';
-                canvas.style.position = 'absolute';
-                canvas.style.top = '0';
-                canvas.style.left = '0';
-                canvas.style.width = '100%';
-                canvas.style.height = '100%';
-                canvas.style.pointerEvents = 'none';
-                canvas.style.zIndex = '100';
-                themeContainer.appendChild(canvas);
+        // Two layers of buildings
+        const layers = [
+            { y: 0, zStart: -80, zEnd: -50, scaleY: 1.0, color: 0x0a0515 },
+            { y: 0, zStart: -60, zEnd: -35, scaleY: 0.7, color: 0x08040f }
+        ];
+
+        layers.forEach((layer, layerIndex) => {
+            const buildingsPerLayer = Math.floor(count / 2);
+
+            for (let i = 0; i < buildingsPerLayer; i++) {
+                const width = 2 + Math.random() * 6;
+                const height = (5 + Math.random() * 25) * layer.scaleY;
+                const depth = 3 + Math.random() * 8;
+
+                const geometry = new THREE.BoxGeometry(width, height, depth);
+                const material = new THREE.MeshBasicMaterial({
+                    color: layer.color
+                });
+
+                const building = new THREE.Mesh(geometry, material);
+
+                // Position across the horizon - full screen width
+                const spreadX = 250;
+                building.position.x = (i / buildingsPerLayer) * spreadX - spreadX / 2 + (Math.random() - 0.5) * 5;
+                building.position.y = height / 2 + layer.y;
+                building.position.z = layer.zStart + Math.random() * (layer.zEnd - layer.zStart);
+
+                this.scene.add(building);
+                this.buildings.push(building);
+
+                // Add edge glow (for combo effects)
+                const edges = new THREE.EdgesGeometry(geometry);
+                const edgeMaterial = new THREE.LineBasicMaterial({
+                    color: 0xff0066,
+                    transparent: true,
+                    opacity: 0,
+                    blending: THREE.AdditiveBlending // Add blending for brighter glow interaction
+                });
+                const edgeLines = new THREE.LineSegments(edges, edgeMaterial);
+                edgeLines.position.copy(building.position);
+                this.scene.add(edgeLines);
+                this.buildingEdges.push(edgeLines);
             }
+        });
+    }
 
-            this.effectsCanvas = canvas;
-            this.webglEffects = new WebGLSynthwaveEffects(canvas);
+    createGrid() {
+        // Much larger plane so edges are never visible on screen
+        const geometry = new THREE.PlaneGeometry(400, 300, 100, 75);
+        geometry.rotateX(-Math.PI / 2);
 
-            if (!this.webglEffects.init()) {
-                console.error('Synthwave Sunset: Failed to init WebGL effects renderer');
-                // Fallback or just return? 
-                // Since user asked for WebGL, we assume it works or we fail gracefully.
-                return;
-            }
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                speed: { value: 5.0 },
+                gridColor: { value: this.colors.gridPink },
+                glowIntensity: { value: 1.0 },
+                pulseIntensity: { value: 0 }
+            },
+            vertexShader: gridVertexShader,
+            fragmentShader: gridFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
 
-            // Size canvas
-            const resizeEffectsCanvas = () => {
-                if (!this.effectsCanvas || !themeContainer) return;
-                try {
-                    const rect = themeContainer.getBoundingClientRect();
-                    this.webglEffects.resize(rect.width, rect.height);
-                } catch (error) {
-                    console.error('Synthwave Sunset: Error resizing effects canvas:', error);
-                }
+        this.grid = new THREE.Mesh(geometry, material);
+        this.grid.position.y = 0;
+        this.grid.position.z = -30;
+        this.scene.add(this.grid);
+    }
+
+    createHighlightPool() {
+        const poolSize = this.activePreset.maxHighlights;
+
+        for (let i = 0; i < poolSize; i++) {
+            // Match the grid cell size (gridSpacing = 1.5)
+            const geometry = new THREE.PlaneGeometry(1.5, 1.5);
+            geometry.rotateX(-Math.PI / 2);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    color: { value: new THREE.Color(0x00ffff) },
+                    intensity: { value: 0 },
+                    time: { value: 0 }
+                },
+                vertexShader: highlightVertexShader,
+                fragmentShader: highlightFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.visible = false;
+            mesh.userData = {
+                active: false,
+                life: 0,
+                maxLife: 4.0,
+                intensity: 0,
+                decay: 0.01
             };
-            resizeEffectsCanvas();
-            window.addEventListener('resize', resizeEffectsCanvas);
-        } catch (error) {
-            console.error('Synthwave Sunset: Error setting up combo effects:', error);
+
+            this.scene.add(mesh);
+            this.highlightPool.push(mesh);
         }
     }
+
+    createParticleSystem() {
+        const count = this.activePreset.particleBudget;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const lives = new Float32Array(count);
+        const colors = new Float32Array(count * 3);
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(lives, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.scene.add(this.particles);
+
+        // Initialize particle data
+        for (let i = 0; i < count; i++) {
+            this.particleData.push({
+                active: false,
+                x: 0, y: 0, z: 0,
+                vx: 0, vy: 0, vz: 0,
+                life: 0,
+                maxLife: 1,
+                size: 1,
+                color: new THREE.Color(0xffffff)
+            });
+        }
+    }
+
+    // =========================================================================
+    // EVENT HANDLERS
+    // =========================================================================
 
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
@@ -790,514 +510,456 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
         });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handlePieceLock();
+                this.handlePieceLock(data);
             }
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
-    handlePieceLock() {
-        // Pick random grid cells to highlight
-        // x: -10 to 10 (center is 0)
-        // y: relative to current time/scroll
 
-        const scrollSpeed = this.activePreset?.gridScrollSpeed ?? 30;
-        const webglSpeed = scrollSpeed * 0.05;
+    handlePieceLock(data) {
+        const currentTime = this.clock.getElapsedTime();
+        const scrollOffset = currentTime * 5.0; // Match grid scroll speed
 
-        // Current 'Z' position of the camera/grid offset
-        const currentZ = this.animationTime * webglSpeed;
+        // Get the actual piece that was locked
+        const piece = data?.piece;
+        if (!piece) return;
 
-        // Tetromino shapes (relative coordinates)
-        const shapes = [
-            // I
-            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
-            // J
-            [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            // L
-            [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            // O
-            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-            // S
-            [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-            // T
-            [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            // Z
-            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }]
-        ];
+        // Get the color for this piece type from the theme colors
+        const pieceType = piece.type; // 'I', 'O', 'T', 'S', 'Z', 'J', 'L'
+        const color = this.getPieceColor(pieceType);
 
-        // Neon colors palette
-        const neonColors = [
-            [0.0, 1.0, 1.0], // Cyan
-            [1.0, 0.0, 1.0], // Magenta
-            [1.0, 1.0, 0.0], // Yellow
-            [0.0, 1.0, 0.0], // Lime
-            [0.6, 0.0, 1.0], // Electric Purple
-            [1.0, 0.5, 0.0]  // Neon Orange
-        ];
-
-        // Spawn 6 tetromino shapes
-        const count = 6;
-
-        for (let i = 0; i < count; i++) {
-            // Pick a spot closer to the camera (foreground only)
-            // zOffset represents distance from camera. 
-            // Previous range was 5-35. New range 2-17 keeps it in the "near" half.
-            const zOffset = 2 + Math.random() * 15;
-            const gridZ = Math.floor(currentZ + zOffset);
-            const gridX = Math.floor(Math.random() * 20 - 10); // Center spread
-
-            // Pick random shape and color
-            const shape = shapes[Math.floor(Math.random() * shapes.length)];
-            const color = neonColors[Math.floor(Math.random() * neonColors.length)];
-
-            // Random rotation (0, 90, 180, 270)
-            const rotation = Math.floor(Math.random() * 4);
-
-            // Add all 4 blocks of the tetromino
-            for (const block of shape) {
-                let rx = block.x;
-                let ry = block.y;
-
-                // Rotate
-                for (let r = 0; r < rotation; r++) {
-                    const temp = rx;
-                    rx = -ry;
-                    ry = temp;
-                }
-
-                this.gridHighlights.push({
-                    x: gridX + rx,
-                    y: gridZ + ry,
-                    intensity: 2.0 + Math.random(), // Varying brightness
-                    life: 1.0,
-                    decay: 0.005 + Math.random() * 0.01, // Much slower decay for meditative feel
-                    color: color
-                });
-            }
+        // Position on grid based on piece position on board
+        // Board width is typically 10 units (0-9). Center is ~4.5.
+        // Map 0-9 to -30 to +30 on grid (scale factor ~6-8)
+        let gridX;
+        if (piece.x !== undefined) {
+            // Center 0 is at piece.x = 4.5
+            // Scale by 6 to cover a good portion of the width without being too extreme
+            gridX = (piece.x - 4.5) * 6;
+            // Add a little bit of random scatter so it doesn't look too rigid
+            gridX += (Math.random() - 0.5) * 2;
+        } else {
+            // Fallback to random if no position data
+            gridX = Math.floor(Math.random() * 80 - 40);
         }
 
-        // Add a small pulse to the grid
+        const gridZ = Math.floor(scrollOffset + 3 + Math.random() * 12);
+
+        // Get the shape for this piece type
+        const shape = this.getShapeForType(pieceType);
+        // Use actual rotation from the piece if available, otherwise random
+        const rotation = piece.rotation !== undefined ? piece.rotation : Math.floor(Math.random() * 4);
+
+        // Spawn each cell of the actual tetromino shape
+        for (const block of shape) {
+            let rx = block.x;
+            let ry = block.y;
+
+            // Apply rotation
+            for (let r = 0; r < rotation; r++) {
+                const temp = rx;
+                rx = -ry;
+                ry = temp;
+            }
+
+            this.spawnHighlightCell(gridX + rx, gridZ + ry, color, scrollOffset);
+        }
+
+        // Grid pulse
         this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.25);
+    }
+
+    getPieceColor(pieceType) {
+        // Use the theme's tetromino colors from synthwave-sunset-tetrominos.js
+        const colorMap = {
+            'I': new THREE.Color(0xff0066), // Hot Pink
+            'O': new THREE.Color(0xff4500), // Orange-Red
+            'T': new THREE.Color(0xb000ff), // Violet Purple
+            'S': new THREE.Color(0xff006e), // Deep Pink
+            'Z': new THREE.Color(0xff5e78), // Coral
+            'J': new THREE.Color(0x00d4ff), // Electric Blue
+            'L': new THREE.Color(0xffff00)  // Neon Yellow
+        };
+        return colorMap[pieceType] || this.neonColors[0];
+    }
+
+    getShapeForType(pieceType) {
+        const shapes = {
+            'I': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
+            'J': [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            'L': [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            'O': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            'S': [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            'T': [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            'Z': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }]
+        };
+        return shapes[pieceType] || shapes['T'];
+    }
+
+    spawnHighlightCell(gridX, gridZ, color, scrollOffset) {
+        // Find inactive highlight from pool
+        const highlight = this.highlightPool.find(h => !h.userData.active);
+        if (!highlight) return;
+
+        highlight.userData.active = true;
+        highlight.userData.life = 1.0;
+        highlight.userData.maxLife = 15.0 + Math.random() * 10.0;  // Stay very long (15-25 seconds)
+        highlight.userData.intensity = 2.5 + Math.random() * 0.5;
+        highlight.userData.decay = 0.001 + Math.random() * 0.001;  // Very slow decay
+        highlight.userData.gridZ = gridZ;
+        highlight.userData.scrollOffset = scrollOffset;
+
+        // Position in world space - scale by gridSpacing (1.5) and offset to center in cell
+        highlight.position.x = gridX * 1.5 + 0.75;
+        highlight.position.y = 0.05;
+        highlight.position.z = -(gridZ - scrollOffset) * 1.5 + this.grid.position.z - 0.75;
+
+        // Set color
+        highlight.material.uniforms.color.value.copy(color);
+        highlight.material.uniforms.intensity.value = highlight.userData.intensity;
+
+        highlight.visible = true;
+        this.gridHighlights.push(highlight);
     }
 
     handleLineClear(data) {
         const { lineCount } = data;
 
-        // Pulse the grid
         this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.3 * lineCount);
-
-        // Pulse the city glow
         this.cityGlowIntensity = Math.min(1, this.cityGlowIntensity + 0.3 * lineCount);
 
-        // Create horizon light bursts
-        this.createHorizonBursts(lineCount);
-
-        // Create retro streaks for multi-line clears
-        if (lineCount >= 2) {
-            this.createRetroStreaks(lineCount);
-        }
-
-        // Create grid waves for big clears
-        if (lineCount >= 3) {
-            this.createGridWave();
-        }
+        // Spawn horizon burst particles
+        this.createHorizonBurst(lineCount);
     }
 
     handleCombo(data) {
         const { comboCount } = data;
 
-        this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
-
-        // Color shift based on combo count
-        this.comboColorShift = Math.min(60, comboCount * 10);
-        this.gridPulseIntensity = Math.min(1, 0.5 + comboCount * 0.1);
-
-        // Pulse the sun
-        this.sunPulseIntensity = Math.min(1, this.sunPulseIntensity + 0.4);
-
-        // Pulse the city glow
+        this.sunPulseIntensity = Math.min(1, this.sunPulseIntensity + 0.3);
         this.cityGlowIntensity = Math.min(1, this.cityGlowIntensity + 0.4);
+        this.comboColorShift = Math.min(1, comboCount * 0.15);
 
-        // Create retro particles
+        // Make all highlights twinkle during combo
+        this.highlightTwinkleIntensity = Math.min(1.5, 0.5 + comboCount * 0.2);
+
+        // Spawn sun corona burst
         if (comboCount >= 2) {
-            this.createRetroParticles(comboCount);
-        }
-
-        // Create additional streaks for high combos
-        if (comboCount >= 4) {
-            this.createRetroStreaks(Math.floor(comboCount / 2));
-        }
-
-        // Create sun sparkles
-        this.createSunSparkles(comboCount);
-    }
-
-    createHorizonBursts(lineCount) {
-        if (!this.effectsCanvas) return;
-        if (this.horizonBursts.length >= this.MAX_BURSTS) return;
-
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-        const horizonY = height * 0.65; // Position near city horizon
-
-        // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
-        const colors = ['#ff0066', '#ff4500', '#ff006e', '#b000ff', '#ff5e78'];
-        const burstCount = Math.min(lineCount, this.MAX_BURSTS - this.horizonBursts.length);
-
-        const minParticles = this.activePreset?.particlesPerBurstMin ?? 12;
-        const maxParticles = this.activePreset?.particlesPerBurstMax ?? 24;
-
-        for (let i = 0; i < burstCount; i++) {
-            const x = Math.random() * width;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const baseParticles = this.random(minParticles, Math.max(minParticles, maxParticles));
-            const particleCount = Math.max(6, Math.floor(baseParticles * this.comboMultiplier));
-
-            const particles = [];
-            for (let j = 0; j < particleCount; j++) {
-                const angle = Math.random() * Math.PI - Math.PI / 2; // Upward burst
-                const speed = (Math.random() * 2 + 1.5) * this.comboMultiplier;
-                particles.push({
-                    x,
-                    y: horizonY,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    life: 1.0,
-                    size: Math.random() * 3 + 1.5,
-                });
-            }
-
-            this.horizonBursts.push({
-                particles,
-                color,
-                life: 1.0,
-                maxLife: 1.2 + Math.random() * 0.4,
-            });
+            this.createSunBurst(comboCount);
         }
     }
 
-    createRetroStreaks(count) {
-        if (!this.effectsCanvas) return;
-        if (this.retroStreaks.length >= this.MAX_STREAKS) return;
+    createHorizonBurst(lineCount) {
+        const baseCount = 20 * lineCount;
+        const colors = [
+            new THREE.Color(0xff0066),
+            new THREE.Color(0xff4500),
+            new THREE.Color(0xff006e),
+            new THREE.Color(0xb000ff)
+        ];
 
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-        // Sunset-themed colors: hot pink, orange-red, violet purple, deep pink
-        const colors = ['#ff0066', '#ff4500', '#b000ff', '#ff006e'];
-        const streakIntensity = this.activePreset?.streakMultiplier ?? 1;
-        const targetCount = Math.ceil(count * 2 * streakIntensity);
-        const streakCount = Math.min(targetCount, this.MAX_STREAKS - this.retroStreaks.length);
+        for (let i = 0; i < baseCount; i++) {
+            const particle = this.particleData.find(p => !p.active);
+            if (!particle) break;
 
-        for (let i = 0; i < streakCount; i++) {
-            const y = Math.random() * height * 0.7;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const direction = Math.random() > 0.5 ? 1 : -1;
-            const baseSpeed = Math.random() * 400 + 300;
-            const speed = baseSpeed * (0.7 + streakIntensity * 0.3) * direction;
-            const widthScale = 0.85 + streakIntensity * 0.25;
-            const heightScale = 0.8 + streakIntensity * 0.2;
-
-            this.retroStreaks.push({
-                x: Math.random() > 0.5 ? -50 : width + 50,
-                y,
-                speed,
-                life: 1.0,
-                maxLife: 0.6 + Math.random() * 0.4,
-                width: (Math.random() * 150 + 100) * widthScale,
-                height: (Math.random() * 6 + 4) * heightScale, // Thicker streaks for better visibility
-                color,
-            });
+            particle.active = true;
+            particle.x = (Math.random() - 0.5) * 60;
+            particle.y = 5 + Math.random() * 3;
+            particle.z = -45 + Math.random() * 5;
+            particle.vx = (Math.random() - 0.5) * 3;
+            particle.vy = 3 + Math.random() * 4;
+            particle.vz = (Math.random() - 0.5) * 2;
+            particle.life = 1.0;
+            particle.maxLife = 1.5 + Math.random() * 0.5;
+            particle.size = 2 + Math.random() * 3;
+            particle.color = colors[Math.floor(Math.random() * colors.length)];
         }
     }
 
-    createRetroParticles(comboCount) {
-        if (!this.effectsCanvas) return;
-        if (this.retroParticles.length >= this.MAX_PARTICLES) {
-            // Remove oldest particles
-            this.retroParticles.splice(0, Math.floor(this.MAX_PARTICLES * 0.3));
-        }
-
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        // Sunset-themed colors: hot pink, orange-red, deep pink, violet purple, coral
-        const colors = ['#ff0066', '#ff4500', '#ff006e', '#b000ff', '#ff5e78'];
-        const particleCount = Math.min(comboCount * 15, this.MAX_PARTICLES);
-
-        for (let i = 0; i < particleCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = (Math.random() * 2.5 + 2) * this.comboMultiplier;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const isSquare = Math.random() > 0.5;
-
-            this.retroParticles.push({
-                x: centerX,
-                y: centerY,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                life: 1.0,
-                maxLife: Math.random() * 0.8 + 0.5,
-                size: Math.random() * 4 + 2,
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.1,
-                color,
-                isSquare,
-                glow: Math.random() * 12 + 8,
-            });
-        }
-    }
-
-    createGridWave() {
-        if (!this.gridWaves || this.gridWaves.length >= this.MAX_WAVES) return;
-
-        this.gridWaves.push({
-            progress: 0,
-            life: 1.0,
-            maxLife: 1.5,
-            intensity: 0.8,
-        });
-    }
-
-    createSunSparkles(comboCount) {
-        if (!this.effectsCanvas) return;
-        if (this.sunSparkles.length >= this.MAX_SPARKLES) return;
-
-        const { width, height } = this.effectsCanvas;
-
-        // Calculate sun screen position
-        // sunX (shader) = (pos.x / 100) * aspect
-        // uv.x = (pixelX - width/2) / height
-        // pixelX = width/2 + (pos.x / 100) * width
-        const sunX = width * (0.5 + (this.sunPosition?.x || 0) / 100);
-
-        // sunY (shader) = (pos.y / 100) + 0.05
-        // uv.y = (pixelY - height/2) / height
-        // pixelY (from bottom) = height/2 + height * ((pos.y / 100) + 0.05)
-        // pixelY (from top) = height - (height * (0.55 + pos.y/100))
-        // Canvas Y = height * (0.5 - shaderY) = height * (0.5 - (pos.y/100 + 0.05)) = height * (0.45 - pos.y/100)
-        const sunY = height * (0.45 - (this.sunPosition?.y || 0) / 100);
-
-        // Sun Radius (pixels)
-        // Base radius 0.25 + pulse
-        const baseRadius = 0.25;
-        const pulseRadius = this.sunPulseIntensity * 0.05;
-        const radius = (baseRadius + pulseRadius) * height;
-
-        const count = Math.min(comboCount * 25, 150);
-        // Fire colors: OrangeRed, DarkOrange, Gold, Red
-        const colors = ['#ff4500', '#ff8c00', '#ffd700', '#ff0000'];
+    createSunBurst(comboCount) {
+        const count = 30 * comboCount;
+        const colors = [
+            new THREE.Color(0xff4500),
+            new THREE.Color(0xff8c00),
+            new THREE.Color(0xffd700),
+            new THREE.Color(0xff0000)
+        ];
 
         for (let i = 0; i < count; i++) {
-            const angle = Math.random() * Math.PI; // Upper half only
-            // Spawn at edge with slight variation
-            const r = radius * (0.95 + Math.random() * 0.1);
+            const particle = this.particleData.find(p => !p.active);
+            if (!particle) break;
 
-            const spawnX = sunX + Math.cos(angle) * r;
-            const spawnY = sunY - Math.sin(angle) * r; // Invert Y for canvas
+            const angle = Math.random() * Math.PI;
+            const speed = 2 + Math.random() * 3;
 
-            // Slower, fire-like motion (outward)
-            const speed = Math.random() * 0.8 + 0.2;
-
-            this.sunSparkles.push({
-                x: spawnX,
-                y: spawnY,
-                vx: Math.cos(angle) * speed,
-                vy: -Math.sin(angle) * speed,
-                life: 1.0,
-                maxLife: Math.random() * 0.8 + 0.8, // Longer life
-                size: Math.random() * 4 + 2, // Slightly larger
-                color: colors[Math.floor(Math.random() * colors.length)],
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.1
-            });
+            particle.active = true;
+            particle.x = this.sun.position.x + Math.cos(angle) * 12;
+            particle.y = this.sun.position.y + Math.sin(angle) * 12;
+            particle.z = this.sun.position.z + 5;
+            particle.vx = Math.cos(angle) * speed;
+            particle.vy = Math.sin(angle) * speed;
+            particle.vz = (Math.random() - 0.5) * 2;
+            particle.life = 1.0;
+            particle.maxLife = 1.0 + Math.random() * 0.8;
+            particle.size = 3 + Math.random() * 4;
+            particle.color = colors[Math.floor(Math.random() * colors.length)];
         }
     }
 
-    updateEffects(delta) {
-        // Update horizon bursts
-        for (let i = this.horizonBursts.length - 1; i >= 0; i--) {
-            const burst = this.horizonBursts[i];
-            burst.life -= delta / burst.maxLife;
-
-            burst.particles.forEach((p) => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += 0.1; // Gravity
-                p.life -= delta / burst.maxLife;
-            });
-
-            if (burst.life <= 0) {
-                this.horizonBursts.splice(i, 1);
-            }
-        }
-
-        // Update retro streaks
-        for (let i = this.retroStreaks.length - 1; i >= 0; i--) {
-            const streak = this.retroStreaks[i];
-            streak.x += streak.speed * delta;
-            streak.life -= delta / streak.maxLife;
-
-            if (streak.life <= 0) {
-                this.retroStreaks.splice(i, 1);
-            }
-        }
-
-        // Update retro particles
-        for (let i = this.retroParticles.length - 1; i >= 0; i--) {
-            const p = this.retroParticles[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vy += 0.08; // Slight gravity
-            p.rotation += p.rotationSpeed;
-            p.life -= delta / p.maxLife;
-
-            if (p.life <= 0) {
-                this.retroParticles.splice(i, 1);
-            }
-        }
-
-        // Update grid waves
-        for (let i = this.gridWaves.length - 1; i >= 0; i--) {
-            const wave = this.gridWaves[i];
-            wave.progress += delta * 0.5;
-            wave.life -= delta / wave.maxLife;
-
-            if (wave.life <= 0) {
-                this.gridWaves.splice(i, 1);
-            }
-        }
-
-        // Update sun sparkles
-        for (let i = this.sunSparkles.length - 1; i >= 0; i--) {
-            const s = this.sunSparkles[i];
-            s.x += s.vx;
-            s.y += s.vy;
-            s.rotation += s.rotationSpeed;
-            s.life -= delta / s.maxLife;
-
-            if (s.life <= 0) {
-                this.sunSparkles.splice(i, 1);
-            }
-        }
-
-        // Decay sun pulse
-        if (this.sunPulseIntensity > 0) {
-            this.sunPulseIntensity *= 0.98; // Slower pulse decay
-            if (this.sunPulseIntensity < 0.01) this.sunPulseIntensity = 0;
-        }
-
-        if (this.comboColorShift !== 0) {
-            this.comboColorShift *= 0.98; // Slower color shift decay
-            if (Math.abs(this.comboColorShift) < 0.1) this.comboColorShift = 0;
-        }
-
-        // Decay city glow
-        if (this.cityGlowIntensity > 0) {
-            this.cityGlowIntensity *= 0.98; // Much slower decay
-            if (this.cityGlowIntensity < 0.01) this.cityGlowIntensity = 0;
-        }
-    }
-
-    renderEffects() {
-        if (!this.webglEffects) return;
-
-        try {
-            this.webglEffects.render(
-                this.retroStreaks,
-                this.horizonBursts,
-                this.retroParticles,
-                this.sunSparkles
-            );
-        } catch (error) {
-            console.error('Synthwave Sunset: Error rendering effects:', error);
-        }
-    }
+    // =========================================================================
+    // ANIMATION
+    // =========================================================================
 
     animate() {
         if (!this.isActive) return;
 
-        try {
-            this.animationTime += 0.016; // Approximately 60fps
-            this.frameCounter++;
-
-            // Update sun position
-            this.updateSunPosition();
-
-            // Update sun glow for pulse effect
-            this.updateSunPulse();
-
-            // Update city glow for combo effects (throttled by quality preset)
-            this.updateCityGlow();
-
-            // Draw grid
-            this.drawPerspectiveGrid();
-
-            // Update and render combo effects
-            this.updateEffects(0.016);
-            this.renderEffects();
-        } catch (error) {
-            console.error('Synthwave Sunset: Error in animation loop:', error);
-        }
-
-        // Continue animation loop even if there was an error
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
+
+        const delta = this.clock.getDelta();
+        const elapsed = this.clock.getElapsedTime();
+
+        this.updateCamera(elapsed);
+        this.updateSun(elapsed, delta);
+        this.updateGrid(elapsed, delta);
+        this.updateHighlights(elapsed, delta);
+        this.updateParticles(delta);
+        this.updateBuildings(delta);
+        this.updateStars(elapsed);
+
+        this.renderer.render(this.scene, this.camera);
     }
 
-    update(deltaTime) {
-        // Optional: Additional per-frame updates can go here
+    updateCamera(time) {
+        // Gentle orbital sway
+        const t = time * 0.03;
+        this.camera.position.x = Math.sin(t) * 4;
+        this.camera.position.y = 8 + Math.cos(t * 0.7) * 2;
+        this.camera.position.z = 20 + Math.sin(t * 0.5) * 2;
+
+        this.camera.lookAt(
+            Math.sin(t * 0.4) * 2,
+            3 + Math.cos(t * 0.3),
+            -20
+        );
     }
 
-    resize(width, height) {
-        this.resizeGrid();
+    updateSun(time, delta) {
+        // Sun drift (left to right)
+        const driftTime = time + this.timeOffset;
+        const driftProgress = (driftTime * 0.0003) % 1;
+        const sunX = (driftProgress * 2 - 1) * 80;
+
+        this.sun.position.x = sunX;
+
+        // Update glow layers
+        this.sunGlowLayers.forEach((glow, i) => {
+            glow.position.x = sunX;
+            glow.material.uniforms.pulseIntensity.value = this.sunPulseIntensity;
+
+            // Subtle scale pulse
+            const scale = 1 + Math.sin(time * 0.5 + i * 0.5) * 0.05;
+            glow.scale.setScalar(scale + this.sunPulseIntensity * 0.2);
+        });
+
+        // Update sun shader
+        this.sun.material.uniforms.time.value = time;
+        this.sun.material.uniforms.pulseIntensity.value = this.sunPulseIntensity;
+
+        // Decay pulse
+        if (this.sunPulseIntensity > 0) {
+            this.sunPulseIntensity *= 0.97;
+            if (this.sunPulseIntensity < 0.01) this.sunPulseIntensity = 0;
+        }
+    }
+
+    updateGrid(time, delta) {
+        // Update shader uniforms
+        this.grid.material.uniforms.time.value = time;
+        this.grid.material.uniforms.pulseIntensity.value = this.gridPulseIntensity;
+
+        // Color shift on combos
+        const baseColor = this.colors.gridPink.clone();
+        if (this.comboColorShift > 0) {
+            baseColor.lerp(this.colors.gridCyan, this.comboColorShift);
+        }
+        this.grid.material.uniforms.gridColor.value = baseColor;
+
+        // Decay effects
+        if (this.gridPulseIntensity > 0) {
+            this.gridPulseIntensity *= 0.95;
+            if (this.gridPulseIntensity < 0.01) this.gridPulseIntensity = 0;
+        }
+
+        if (this.comboColorShift > 0) {
+            this.comboColorShift *= 0.98;
+            if (this.comboColorShift < 0.01) this.comboColorShift = 0;
+        }
+    }
+
+    updateHighlights(time, delta) {
+        const scrollSpeed = 5.0;
+        const currentScroll = time * scrollSpeed;
+
+        for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
+            const highlight = this.gridHighlights[i];
+            const data = highlight.userData;
+
+            // Update position to match grid scroll - scale by gridSpacing (1.5)
+            const relativeZ = data.gridZ - currentScroll;
+            highlight.position.z = -relativeZ * 1.5 + this.grid.position.z - 0.75;
+
+            // Keep at full intensity - no time-based fade
+            // Only fade slightly based on distance to horizon for visual effect
+            const distanceFade = Math.max(0.3, 1.0 - Math.max(0, -relativeZ - 30) / 50);
+
+            // Add twinkle effect during combos
+            let twinkle = 1.0;
+            if (this.highlightTwinkleIntensity > 0) {
+                // Fast pulsing twinkle with some randomness per highlight
+                const phase = (data.gridZ * 0.5 + data.intensity * 2.0) % 6.28;
+                twinkle = 1.0 + Math.sin(time * 15.0 + phase) * this.highlightTwinkleIntensity * 0.5;
+            }
+
+            highlight.material.uniforms.intensity.value = data.intensity * distanceFade * twinkle;
+            highlight.material.uniforms.time.value = time;
+
+            // Remove ONLY when scrolled past visible horizon (far away)
+            if (relativeZ < -80) {
+                highlight.visible = false;
+                data.active = false;
+                this.gridHighlights.splice(i, 1);
+            }
+        }
+
+        // Decay twinkle intensity
+        if (this.highlightTwinkleIntensity > 0) {
+            this.highlightTwinkleIntensity *= 0.96;
+            if (this.highlightTwinkleIntensity < 0.01) this.highlightTwinkleIntensity = 0;
+        }
+    }
+
+    updateParticles(delta) {
+        const positions = this.particles.geometry.attributes.position.array;
+        const sizes = this.particles.geometry.attributes.aSize.array;
+        const lives = this.particles.geometry.attributes.aLife.array;
+        const colors = this.particles.geometry.attributes.aColor.array;
+
+        for (let i = 0; i < this.particleData.length; i++) {
+            const p = this.particleData[i];
+
+            if (p.active) {
+                // Physics
+                p.x += p.vx * delta;
+                p.y += p.vy * delta;
+                p.z += p.vz * delta;
+                p.vy -= 5 * delta; // Gravity
+
+                p.life -= delta / p.maxLife;
+
+                if (p.life <= 0) {
+                    p.active = false;
+                    p.life = 0;
+                }
+
+                // Update buffers
+                positions[i * 3] = p.x;
+                positions[i * 3 + 1] = p.y;
+                positions[i * 3 + 2] = p.z;
+                sizes[i] = p.size;
+                lives[i] = Math.max(0, p.life);
+                colors[i * 3] = p.color.r;
+                colors[i * 3 + 1] = p.color.g;
+                colors[i * 3 + 2] = p.color.b;
+            } else {
+                // Hide inactive particles
+                positions[i * 3 + 1] = -1000;
+                lives[i] = 0;
+            }
+        }
+
+        this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.aSize.needsUpdate = true;
+        this.particles.geometry.attributes.aLife.needsUpdate = true;
+        this.particles.geometry.attributes.aColor.needsUpdate = true;
+    }
+
+    updateBuildings(delta) {
+        // Update building edge glow for combo effects
+        if (this.cityGlowIntensity > 0) {
+            this.buildingEdges.forEach(edge => {
+                // Increase multiplier for much brighter edge glow (cap at 1.0 implicitly by material)
+                edge.material.opacity = Math.min(1.0, this.cityGlowIntensity * 1.5);
+                // Also scale line width if supported by browser (often strictly 1, but worth trying)
+                edge.material.linewidth = 2;
+            });
+
+            // Slower decay for longer lasting glow effect
+            this.cityGlowIntensity *= 0.985;
+            if (this.cityGlowIntensity < 0.01) this.cityGlowIntensity = 0;
+        }
+    }
+
+    updateStars(time) {
+        if (this.starField) {
+            this.starField.material.uniforms.time.value = time;
+            this.starField.rotation.y = time * 0.002;
+        }
+    }
+
+    // =========================================================================
+    // LIFECYCLE
+    // =========================================================================
+
+    onResize() {
+        if (!this.camera || !this.renderer) return;
+
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
     stop() {
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        // Unsubscribe events
+        this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Clear combo effects
-        this.horizonBursts = [];
-        this.retroStreaks = [];
-        this.retroParticles = [];
-        this.retroParticles = [];
-        this.gridWaves = [];
-        this.sunSparkles = [];
-        this.sunPulseIntensity = 0;
-        this.comboMultiplier = 1.0;
-        this.cityGlowIntensity = 0;
+        // Clear effects
+        this.gridHighlights = [];
+        this.particleData.forEach(p => p.active = false);
 
-        // Clear effects canvas
-        if (this.effectsCanvas && this.effectsCtx) {
-            this.effectsCtx.clearRect(0, 0, this.effectsCanvas.width, this.effectsCanvas.height);
+        // Dispose Three.js resources
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('synthwave-sunset-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
         }
 
-        // Clear references
-        this.sunContainer = null;
-        this.gridCanvas = null;
-        this.gridCtx = null;
-        this.effectsCanvas = null;
-        this.effectsCtx = null;
-        this.frontCityPath = null;
-        this.backCityPath = null;
+        if (this.scene) {
+            this.scene.traverse(obj => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach(m => m.dispose());
+                    } else {
+                        obj.material.dispose();
+                    }
+                }
+            });
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
 
         super.stop();
     }
 
-    /**
-     * Get custom tetromino configuration for Synthwave Sunset theme
-     * @returns {Object} Tetromino configuration with vibrant retro 80s neon colors
-     */
     getTetrominoConfig() {
         return SYNTHWAVE_SUNSET_TETROMINOS;
     }
