@@ -208,8 +208,7 @@ export class GameModeManager {
 
     /**
      * Pause the current running mode
-     * @param {Object} options - Pause options
-     * @param {boolean} options.enableTranceState - Whether to enable trance state effects (Infinity Mode only)
+     * @param {Object} options - Pause options (passed to onPause)
      */
     pauseCurrentMode(options = {}) {
         if (!this.currentMode || !this.currentMode.isRunning) {

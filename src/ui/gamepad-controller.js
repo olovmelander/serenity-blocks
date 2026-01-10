@@ -390,21 +390,21 @@ export class GamepadController {
      */
     processGameOverInput(gamepad, slot) {
         const prevState = this.previousStates[slot];
-        
+
         // Check if any main button is pressed (A, B, X, Y, Start)
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
         const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
         const xPressed = gamepad.buttons[BUTTON_MAP.X]?.pressed;
         const yPressed = gamepad.buttons[BUTTON_MAP.Y]?.pressed;
         const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
-        
+
         const anyButtonPressed = aPressed || bPressed || xPressed || yPressed || startPressed;
         const wasAnyButtonPressed = prevState.gameOverButton;
-        
+
         // Trigger restart on button press (rising edge)
         if (anyButtonPressed && !wasAnyButtonPressed) {
             console.log('[Gamepad] Button pressed on game over screen - restarting');
-            
+
             // Call the global startGame function if available
             if (window.startGame) {
                 window.startGame();
@@ -413,7 +413,7 @@ export class GamepadController {
                 window.dispatchEvent(new CustomEvent('gamepadRestart'));
             }
         }
-        
+
         prevState.gameOverButton = anyButtonPressed;
     }
 
@@ -515,7 +515,7 @@ export class GamepadController {
             || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
         const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
             || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
-        
+
         // Check for Select button (A)
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
 
@@ -523,10 +523,10 @@ export class GamepadController {
         if (!current || !current.classList.contains('game-mode-card')) {
             // If any direction or Select is pressed, focus the selected/default card
             if ((leftPressed || rightPressed || upPressed || downPressed || aPressed) && this.gameModeCards.length > 0) {
-                 const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
-                 this.gameModeCards[index].focus();
-                 this.selectedGameModeIndex = index;
-                 current = this.gameModeCards[index];
+                const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
+                this.gameModeCards[index].focus();
+                this.selectedGameModeIndex = index;
+                current = this.gameModeCards[index];
             }
         }
 
@@ -577,12 +577,12 @@ export class GamepadController {
         if (this.serenityModeActive && this.serenityModeCallbacks) {
             const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
             const wasSelectPressed = prevState.gameModeSelect_hub;
-            
+
             // Check cooldown to prevent double-triggering
             const now = performance.now();
             if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
             const cooldownActive = now - this._serenitySelectCooldown < 500;
-            
+
             if (selectPressed && !wasSelectPressed && !cooldownActive) {
                 const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
                 console.log('[Gamepad] SELECT pressed in game mode selection - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
@@ -757,12 +757,12 @@ export class GamepadController {
         if (this.serenityModeActive && this.serenityModeCallbacks) {
             const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
             const wasSelectPressed = prevState.menuSelect_hub;
-            
+
             // Check cooldown to prevent double-triggering
             const now = performance.now();
             if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
             const cooldownActive = now - this._serenitySelectCooldown < 500;
-            
+
             if (selectPressed && !wasSelectPressed && !cooldownActive) {
                 const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
                 console.log('[Gamepad] SELECT pressed in menu navigation - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
@@ -1325,15 +1325,40 @@ export class GamepadController {
         // Otherwise, process both Serenity shortcuts (SELECT to open hub) AND game input
         if (this.serenityModeActive && this.serenityModeCallbacks) {
             const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
-            
+
             // Always process Serenity Mode input for hub toggle (SELECT button) and other shortcuts
             this.processSerenityModeInput(gamepad, slot);
-            
+
             // If hub is open, don't process game input (tetromino controls)
             if (hubIsOpen) {
                 return;
             }
             // If hub is closed, continue to process game input below
+        }
+
+        // Handle Exploration Input (Right Stick Button Hold + Axis Scroll)
+        if (slot === 0 && this.explorationCallbacks) {
+            const r3Pressed = gamepad.buttons[BUTTON_MAP.R_STICK]?.pressed;
+            const rightStickY = gamepad.axes[AXIS_MAP.RIGHT_STICK_Y];
+
+            // Activation: Hold R3
+            if (r3Pressed) {
+                if (!this.explorationActive) {
+                    this.explorationActive = true;
+                    this.explorationCallbacks.onStart?.();
+                }
+
+                // Always stream input while held
+                this.explorationCallbacks.onInput?.(rightStickY);
+
+                // Suppress standard input while controlling camera
+                return;
+            } else if (this.explorationActive) {
+                // Released R3 -> End exploration
+                this.explorationActive = false;
+                this.explorationCallbacks.onEnd?.();
+                // Do NOT return here, allow frame to proceed to standard input immediately
+            }
         }
 
         // Use custom bindings if available, otherwise use default
@@ -1657,6 +1682,22 @@ export class GamepadController {
     }
 
     /**
+     * Enable Exploration Mode (Right Stick control)
+     * @param {Object} callbacks - onStart, onInput(value), onEnd
+     */
+    enableExplorationMode(callbacks) {
+        this.explorationCallbacks = callbacks;
+        this.explorationActive = false;
+        console.log('[Gamepad] Exploration Mode enabled');
+    }
+
+    disableExplorationMode() {
+        this.explorationCallbacks = null;
+        this.explorationActive = false;
+        console.log('[Gamepad] Exploration Mode disabled');
+    }
+
+    /**
      * Process Serenity Mode specific gamepad input
      */
     processSerenityModeInput(gamepad, slot) {
@@ -1699,7 +1740,8 @@ export class GamepadController {
 
         // R3 (Right stick click) - Toggle Fullscreen
         const r3Pressed = gamepad.buttons[BUTTON_MAP.R_STICK]?.pressed;
-        if (r3Pressed && !prevState.serenityR3) {
+        // Skip fullscreen toggle if Exploration Mode is enabled (it uses R3)
+        if (r3Pressed && !prevState.serenityR3 && !this.explorationCallbacks) {
             callbacks.toggleFullscreen?.();
         }
         prevState.serenityR3 = r3Pressed;
@@ -1729,23 +1771,23 @@ export class GamepadController {
         // SELECT - Toggle Serenity Hub
         const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
         const wasSelectPressed = prevState.serenitySelect;
-        
+
         // Check cooldown to prevent double-triggering when states are cleared
         // Store cooldown outside of prevState so it survives state clearing
         const now = performance.now();
         if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
         const cooldownActive = now - this._serenitySelectCooldown < 500; // 500ms cooldown
-        
+
         // Only trigger on rising edge (button just pressed) and not in cooldown
         if (selectPressed && !wasSelectPressed && !cooldownActive) {
             const hubIsOpen = callbacks.isHubOpen?.();
             console.log('[Gamepad] SELECT pressed - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
             callbacks.toggleHub?.();
-            
+
             // Set cooldown to prevent re-triggering if states get cleared
             this._serenitySelectCooldown = now;
         }
-        
+
         // Always update the previous state
         prevState.serenitySelect = selectPressed;
 

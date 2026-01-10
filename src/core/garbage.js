@@ -48,7 +48,7 @@ const CLEAN_PATTERN_ODD = [0, 3, 6, 9];
  * @param {Array<boolean>} mask - Boolean array where true = hole, false = solid
  * @returns {number} 10-bit value (0-1023) encoding hole positions
  */
-function maskArrayToBits(mask) {
+export function maskArrayToBits(mask) {
     let bits = 0;
     // Quadra encodes MSB-first: column 0 → bit 9, column 9 → bit 0
     for (let x = 0; x < COLS; x++) {
