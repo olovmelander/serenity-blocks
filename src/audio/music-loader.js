@@ -26,8 +26,8 @@ export async function loadSongs() {
         availableSongs = [
             {
                 name: 'Echoes of the Soul',
-                file: 'Echoes of the Soul.mp3',
-                path: './assets/music/Echoes of the Soul.mp3',
+                file: 'echoes-of-the-soul.mp3',
+                path: './assets/music/echoes-of-the-soul.mp3',
             },
         ];
         return availableSongs;
@@ -59,7 +59,7 @@ export function nameToKey(name) {
  */
 export function getSongPath(trackName, songsData) {
     const song = songsData.find((s) => nameToKey(s.name) === trackName);
-    return song ? song.path : songsData[0]?.path || '/assets/music/Echoes of the Soul.mp3';
+    return song ? song.path : songsData[0]?.path || '/assets/music/echoes-of-the-soul.mp3';
 }
 
 /**

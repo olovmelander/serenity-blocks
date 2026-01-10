@@ -23,6 +23,34 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { WINTER_TETROMINOS } from './winter-tetrominos.js';
 
+// Import enhanced shaders
+import {
+    iceWispVertexShader,
+    iceWispFragmentShader,
+    cometTrailVertexShader,
+    cometTrailFragmentShader,
+    cometHeadVertexShader,
+    cometHeadFragmentShader,
+    iceCrystalHeadVertexShader,
+    iceCrystalHeadFragmentShader,
+    iceCrystalTrailVertexShader,
+    iceCrystalTrailFragmentShader,
+    iceShardDebrisVertexShader,
+    iceShardDebrisFragmentShader,
+    frostRingShockwaveVertexShader,
+    frostRingShockwaveFragmentShader,
+    iceMistVertexShader,
+    iceMistFragmentShader,
+    blizzardWaveVertexShader,
+    blizzardWaveFragmentShader,
+    volumetricFogVertexShader,
+    volumetricFogFragmentShader,
+    moonRayVertexShader,
+    moonRayFragmentShader,
+    frostSnapVertexShader,
+    frostSnapFragmentShader,
+} from './winter-shaders.js';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,13 +96,20 @@ const QUALITY_PRESETS = {
         streakCount: 200,
         vortexCount: 300,
         mountainSegments: 128,
-        auroraLayers: 4,     // Multi-layer aurora
+        auroraLayers: 4,
         auroraSegments: 128,
         enableAurora: true,
         bloomStrength: 0.25,
         bloomRadius: 0.5,
         enablePostProcessing: true,
         fogDensity: 0.0005,
+        // New enhanced effects
+        iceWispCount: 40,
+        maxShootingStars: 3,
+        maxIceCrystalCrashes: 3,
+        maxBlizzardWaves: 2,
+        fogLayerCount: 3,
+        enableCameraAnimation: true,
     },
     Ultra: {
         snowCount: 15000,
@@ -89,6 +124,13 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.5,
         enablePostProcessing: true,
         fogDensity: 0.0006,
+        // New enhanced effects
+        iceWispCount: 30,
+        maxShootingStars: 2,
+        maxIceCrystalCrashes: 2,
+        maxBlizzardWaves: 2,
+        fogLayerCount: 2,
+        enableCameraAnimation: true,
     },
     High: {
         snowCount: 10000,
@@ -103,6 +145,13 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.4,
         enablePostProcessing: true,
         fogDensity: 0.0008,
+        // New enhanced effects
+        iceWispCount: 25,
+        maxShootingStars: 2,
+        maxIceCrystalCrashes: 2,
+        maxBlizzardWaves: 1,
+        fogLayerCount: 2,
+        enableCameraAnimation: true,
     },
     Medium: {
         snowCount: 6000,
@@ -117,6 +166,13 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.3,
         enablePostProcessing: true,
         fogDensity: 0.001,
+        // New enhanced effects
+        iceWispCount: 15,
+        maxShootingStars: 1,
+        maxIceCrystalCrashes: 1,
+        maxBlizzardWaves: 1,
+        fogLayerCount: 1,
+        enableCameraAnimation: true,
     },
     Low: {
         snowCount: 3000,
@@ -126,11 +182,18 @@ const QUALITY_PRESETS = {
         mountainSegments: 32,
         auroraLayers: 1,
         auroraSegments: 32,
-        enableAurora: true, // Simplified
+        enableAurora: true,
         bloomStrength: 0.1,
         bloomRadius: 0.2,
         enablePostProcessing: false,
         fogDensity: 0.0015,
+        // New enhanced effects
+        iceWispCount: 8,
+        maxShootingStars: 1,
+        maxIceCrystalCrashes: 1,
+        maxBlizzardWaves: 0,
+        fogLayerCount: 0,
+        enableCameraAnimation: true,
     },
 };
 
@@ -438,7 +501,7 @@ export default class WinterTheme extends BaseTheme {
         this.renderer = null; this.scene = null; this.camera = null; this.composer = null;
 
         this.snowParticles = null;
-        this.auroraLayers = []; // Array of aurora meshes
+        this.auroraLayers = [];
         this.mountains = [];
         this.moon = null;
         this.iceBurstParticles = null;
@@ -448,11 +511,30 @@ export default class WinterTheme extends BaseTheme {
 
         this.snowflakeTexture = null;
 
+        // === NEW ENHANCED EFFECTS ===
+        this.iceWisps = null;
+        this.shootingStars = [];
+        this.lastShootingStarTime = 0;
+        this.nextShootingStarDelay = 15 + Math.random() * 20;
+        this.iceCrystalCrashes = [];
+        this.blizzardWaves = [];
+        this.fogLayers = [];
+        this.moonRays = [];
+
+        // Effect state for smooth transitions
+        this.effectState = {
+            iceWispSurge: 0,
+            bloomBoost: 0,
+            auroraBoost: 0,
+        };
+
         this.windForce = 0; this.targetWindForce = 0;
         this.gustIntensity = 0; this.gustDuration = 0;
         this.comboMultiplier = 1.0; this.comboDecay = 0;
         this.flashIntensity = 0;
         this.cameraShake = { x: 0, y: 0, intensity: 0 };
+        // Base camera position for animation
+        this.baseCameraPosition = { x: 0, y: 0, z: 100 };
 
         this.comboWindTimer = 0; this.pendingComboCount = 0;
         this.clock = new THREE.Clock(); this.time = 0;
@@ -489,12 +571,17 @@ export default class WinterTheme extends BaseTheme {
 
         this.initRenderer(container);
         this.createSkyBackground();
-        this.createMoon(); // NEW
+        this.createMoon();
         this.createMountains();
-        if (this.qualityPreset.enableAurora) this.createAuroraSystem(); // UPGRADED
+        if (this.qualityPreset.enableAurora) this.createAuroraSystem();
         this.createSnowParticles();
         this.createIceBurstSystem();
         this.createWindStreaks();
+
+        // === NEW ENHANCED EFFECTS ===
+        this.createIceWisps();
+        this.createFogLayers();
+
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -621,7 +708,52 @@ export default class WinterTheme extends BaseTheme {
         });
         const glow = new THREE.Sprite(spriteMat);
         glow.scale.set(600, 600, 1);
-        this.moon.add(glow); // Attach to moon
+        this.moon.userData = { glow: glow, glowBase: 600 };
+        this.moon.add(glow);
+
+        // === NEW: Moon God-Rays ===
+        const rayGeo = new THREE.PlaneGeometry(800, 1500);
+        const rayMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uOpacity: { value: 0.3 },
+                uIntensity: { value: 1.0 },
+            },
+            vertexShader: moonRayVertexShader,
+            fragmentShader: moonRayFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        // Multiple rays
+        for (let i = 0; i < 3; i++) {
+            const ray = new THREE.Mesh(rayGeo, rayMat.clone());
+            ray.position.y = -600;
+            ray.position.z = 50 + i * 20;
+            ray.rotation.z = 0.1 - i * 0.1;
+            this.moonRays.push(ray);
+            this.moon.add(ray);
+        }
+    }
+
+    updateMoonEffects(delta) {
+        if (!this.moon) return;
+
+        // Pulse glow
+        if (this.moon.userData.glow) {
+            const pulse = 1.0 + Math.sin(this.time * 2.0) * 0.05 + this.flashIntensity * 0.2;
+            const size = this.moon.userData.glowBase * pulse;
+            this.moon.userData.glow.scale.set(size, size, 1);
+        }
+
+        // Update rays
+        this.moonRays.forEach((ray, i) => {
+            ray.material.uniforms.uTime.value = this.time + i * 10.0;
+            // Boost intensity with combos
+            ray.material.uniforms.uIntensity.value = 1.0 + this.flashIntensity * 3.0;
+        });
     }
 
     createGlowCanvas() {
@@ -833,7 +965,6 @@ export default class WinterTheme extends BaseTheme {
 
     createWindStreaks() {
         const count = this.qualityPreset.streakCount;
-        // Same simple streak system
         const geo = new THREE.BufferGeometry();
         const pos = new Float32Array(count * 3);
         const len = new Float32Array(count);
@@ -858,6 +989,571 @@ export default class WinterTheme extends BaseTheme {
         });
         this.windStreaks = new THREE.Points(geo, mat);
         this.scene.add(this.windStreaks);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NEW ENHANCED EFFECTS - Phase 1: Ice Wisps (Floating Spirit Particles)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createIceWisps() {
+        const count = this.qualityPreset.iceWispCount || 0;
+        if (count === 0) return;
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const phases = new Float32Array(count);
+        const speeds = new Float32Array(count);
+        const sizes = new Float32Array(count);
+        const brightness = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            // Scatter around aurora and mountains area
+            positions[i * 3] = (Math.random() - 0.5) * 1000;
+            positions[i * 3 + 1] = -50 + Math.random() * 350;
+            positions[i * 3 + 2] = -300 - Math.random() * 600;
+
+            phases[i] = Math.random() * Math.PI * 2;
+            speeds[i] = 0.3 + Math.random() * 0.7;
+            sizes[i] = 25 + Math.random() * 40;
+            brightness[i] = 0.6 + Math.random() * 0.4;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uSurgeIntensity: { value: 0 },
+            },
+            vertexShader: iceWispVertexShader,
+            fragmentShader: iceWispFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.iceWisps = new THREE.Points(geometry, material);
+        this.iceWisps.renderOrder = 100;
+        this.scene.add(this.iceWisps);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NEW ENHANCED EFFECTS - Volumetric Fog Layers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createFogLayers() {
+        const layerCount = this.qualityPreset.fogLayerCount || 0;
+        if (layerCount === 0) return;
+
+        const configs = [
+            { y: -150, z: -400, width: 2500, height: 350, speed: 0.008, opacity: 0.15 },
+            { y: -100, z: -700, width: 3000, height: 400, speed: 0.005, opacity: 0.12 },
+            { y: -50, z: -1000, width: 3500, height: 450, speed: 0.003, opacity: 0.08 },
+        ];
+
+        for (let i = 0; i < Math.min(layerCount, configs.length); i++) {
+            const config = configs[i];
+            const geometry = new THREE.PlaneGeometry(config.width, config.height);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: config.opacity },
+                    uSpeed: { value: config.speed },
+                },
+                vertexShader: volumetricFogVertexShader,
+                fragmentShader: volumetricFogFragmentShader,
+                transparent: true,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(0, config.y, config.z);
+            mesh.renderOrder = -100 - i;
+
+            this.fogLayers.push(mesh);
+            this.scene.add(mesh);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NEW ENHANCED EFFECTS - Shooting Stars / Comets
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createShootingStar() {
+        const maxStars = this.qualityPreset.maxShootingStars || 0;
+        if (this.shootingStars.length >= maxStars) return;
+
+        // Start position in upper sky
+        const startX = (Math.random() - 0.5) * 1000;
+        const startY = 300 + Math.random() * 200;
+        const startZ = -800 - Math.random() * 500;
+
+        // Diagonal downward trajectory
+        const angle = -0.3 - Math.random() * 0.4;
+        const direction = Math.random() > 0.5 ? 1 : -1;
+        const speed = 300 + Math.random() * 200;
+        const trailLength = 120 + Math.random() * 80;
+        const duration = 2.0 + Math.random() * 1.5;
+
+        // Trail geometry
+        const trailSegments = 35;
+        const positions = new Float32Array(trailSegments * 3);
+        const trailPositions = new Float32Array(trailSegments);
+
+        for (let i = 0; i < trailSegments; i++) {
+            positions[i * 3] = startX;
+            positions[i * 3 + 1] = startY;
+            positions[i * 3 + 2] = startZ;
+            trailPositions[i] = i / (trailSegments - 1);
+        }
+
+        const trailGeometry = new THREE.BufferGeometry();
+        trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        trailGeometry.setAttribute('aTrailPosition', new THREE.BufferAttribute(trailPositions, 1));
+
+        const trailMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uProgress: { value: 0 },
+            },
+            vertexShader: cometTrailVertexShader,
+            fragmentShader: cometTrailFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const trail = new THREE.Line(trailGeometry, trailMaterial);
+        trail.renderOrder = 200;
+
+        // Glowing head
+        const headGeometry = new THREE.BufferGeometry();
+        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([startX, startY, startZ]), 3));
+
+        const headMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uProgress: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+            },
+            vertexShader: cometHeadVertexShader,
+            fragmentShader: cometHeadFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const head = new THREE.Points(headGeometry, headMaterial);
+        head.renderOrder = 201;
+
+        const meteor = new THREE.Group();
+        meteor.add(trail);
+        meteor.add(head);
+
+        meteor.userData = {
+            startTime: this.time,
+            duration,
+            startX, startY, startZ,
+            angle, direction, speed, trailLength, trailSegments,
+            trail, head,
+        };
+
+        this.shootingStars.push(meteor);
+        this.scene.add(meteor);
+    }
+
+    updateShootingStars() {
+        // Auto-spawn periodically
+        if (this.time - this.lastShootingStarTime > this.nextShootingStarDelay) {
+            this.createShootingStar();
+            this.lastShootingStarTime = this.time;
+            this.nextShootingStarDelay = 20 + Math.random() * 25;
+        }
+
+        // Update existing shooting stars
+        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+            const star = this.shootingStars[i];
+            const data = star.userData;
+            const elapsed = this.time - data.startTime;
+            const progress = elapsed / data.duration;
+
+            if (progress > 1.0) {
+                this.scene.remove(star);
+                data.trail.geometry.dispose();
+                data.trail.material.dispose();
+                data.head.geometry.dispose();
+                data.head.material.dispose();
+                this.shootingStars.splice(i, 1);
+                continue;
+            }
+
+            const travelDistance = elapsed * data.speed;
+            const headX = data.startX + Math.cos(data.angle) * travelDistance * data.direction;
+            const headY = data.startY + Math.sin(data.angle) * travelDistance;
+            const headZ = data.startZ;
+
+            // Update trail
+            const trailPositions = data.trail.geometry.attributes.position.array;
+            for (let j = 0; j < data.trailSegments; j++) {
+                const t = j / (data.trailSegments - 1);
+                const trailOffset = t * data.trailLength;
+                trailPositions[j * 3] = headX - Math.cos(data.angle) * trailOffset * data.direction;
+                trailPositions[j * 3 + 1] = headY - Math.sin(data.angle) * trailOffset;
+                trailPositions[j * 3 + 2] = headZ;
+            }
+            data.trail.geometry.attributes.position.needsUpdate = true;
+
+            data.trail.material.uniforms.uTime.value = this.time;
+            data.trail.material.uniforms.uProgress.value = progress;
+            data.head.material.uniforms.uProgress.value = progress;
+
+            const headPositions = data.head.geometry.attributes.position.array;
+            headPositions[0] = headX;
+            headPositions[1] = headY;
+            headPositions[2] = headZ;
+            data.head.geometry.attributes.position.needsUpdate = true;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Dynamic Camera Animation (Breathing/Drifting)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    updateCameraAnimation() {
+        if (!this.qualityPreset.enableCameraAnimation) return;
+
+        const driftSpeed = 0.035;
+        const slowDrift = 0.02;
+
+        // Horizontal drift with layered motion
+        const xDrift = Math.sin(this.time * driftSpeed) * 50 +
+            Math.sin(this.time * slowDrift * 0.7) * 20;
+
+        // Vertical breathing movement
+        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 35 +
+            Math.cos(this.time * slowDrift * 0.5) * 15;
+
+        // Apply drift on top of shake
+        this.camera.position.x = this.baseCameraPosition.x + xDrift + this.cameraShake.x;
+        this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NEW ENHANCED EFFECTS - Phase 2: Ice Crystal Crash (Meteor Crash Equivalent)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createIceCrystalCrash() {
+        const maxCrashes = this.qualityPreset.maxIceCrystalCrashes || 0;
+        if (this.iceCrystalCrashes.length >= maxCrashes) return;
+
+        // Target random mountain position
+        const targetX = (Math.random() - 0.5) * 800; // Constrain to mid-area
+        const targetY = -200 + Math.random() * 200; // Mountain base area
+        const targetZ = -400 + Math.random() * 200;
+
+        // Start high up
+        const startX = targetX + (Math.random() - 0.5) * 400;
+        const startY = 800;
+        const startZ = targetZ;
+
+        const duration = 0.6; // Fast descent
+
+        // Big crystal head
+        const headGeo = new THREE.BufferGeometry();
+        headGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([startX, startY, startZ]), 3));
+        const headMat = new THREE.ShaderMaterial({
+            uniforms: { uProgress: { value: 0 }, uPixelRatio: { value: this.renderer.getPixelRatio() } },
+            vertexShader: iceCrystalHeadVertexShader,
+            fragmentShader: iceCrystalHeadFragmentShader,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const head = new THREE.Points(headGeo, headMat);
+        head.renderOrder = 300;
+
+        // Trail
+        const trailSegments = 20;
+        const trailPositions = new Float32Array(trailSegments * 3);
+        const trailUvs = new Float32Array(trailSegments);
+        for (let i = 0; i < trailSegments; i++) {
+            trailPositions[i * 3] = startX; trailPositions[i * 3 + 1] = startY; trailPositions[i * 3 + 2] = startZ;
+            trailUvs[i] = i / (trailSegments - 1);
+        }
+        const trailGeo = new THREE.BufferGeometry();
+        trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+        trailGeo.setAttribute('aTrailPosition', new THREE.BufferAttribute(trailUvs, 1));
+        const trailMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uProgress: { value: 0 } },
+            vertexShader: iceCrystalTrailVertexShader,
+            fragmentShader: iceCrystalTrailFragmentShader,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const trail = new THREE.Line(trailGeo, trailMat);
+        trail.renderOrder = 299;
+
+        const crash = new THREE.Group();
+        crash.add(head);
+        crash.add(trail);
+
+        crash.userData = {
+            phase: 'descent', // descent, explosion
+            startTime: this.time,
+            duration,
+            startX, startY, startZ,
+            targetX, targetY, targetZ,
+            trail, head,
+            trailPositions,
+            exploded: false
+        };
+
+        this.iceCrystalCrashes.push(crash);
+        this.scene.add(crash);
+    }
+
+    updateIceCrystalCrashes(delta) {
+        for (let i = this.iceCrystalCrashes.length - 1; i >= 0; i--) {
+            const crash = this.iceCrystalCrashes[i];
+            const d = crash.userData;
+            const elapsed = this.time - d.startTime;
+
+            if (d.phase === 'descent') {
+                const progress = Math.min(elapsed / d.duration, 1.0);
+
+                const curX = d.startX + (d.targetX - d.startX) * progress;
+                const curY = d.startY + (d.targetY - d.startY) * progress * progress; // Accelerate
+                const curZ = d.startZ + (d.targetZ - d.startZ) * progress;
+
+                // Update head
+                const hPos = d.head.geometry.attributes.position.array;
+                hPos[0] = curX; hPos[1] = curY; hPos[2] = curZ;
+                d.head.geometry.attributes.position.needsUpdate = true;
+                d.head.material.uniforms.uProgress.value = progress;
+
+                // Update trail
+                const tPos = d.trail.geometry.attributes.position.array;
+                // Shift old positions
+                for (let k = d.trailPositions.length / 3 - 1; k > 0; k--) {
+                    tPos[k * 3] = tPos[(k - 1) * 3];
+                    tPos[k * 3 + 1] = tPos[(k - 1) * 3 + 1];
+                    tPos[k * 3 + 2] = tPos[(k - 1) * 3 + 2];
+                }
+                tPos[0] = curX; tPos[1] = curY; tPos[2] = curZ;
+                d.trail.geometry.attributes.position.needsUpdate = true;
+                d.trail.material.uniforms.uTime.value = this.time;
+                d.trail.material.uniforms.uProgress.value = progress;
+
+                if (progress >= 1.0) {
+                    this.triggerIceExplosion(d.targetX, d.targetY, d.targetZ);
+                    this.scene.remove(crash);
+                    d.head.geometry.dispose(); d.head.material.dispose();
+                    d.trail.geometry.dispose(); d.trail.material.dispose();
+                    this.iceCrystalCrashes.splice(i, 1);
+                }
+            }
+        }
+    }
+
+    createFrostSnap(x, y) {
+        // Boost bloom for full-screen impact
+        if (this.effectState) {
+            this.effectState.bloomBoost = 2.0;
+            this.effectState.iceWispSurge = 1.0;
+        }
+
+        const pCount = 32;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(pCount * 3);
+        const vel = new Float32Array(pCount * 3);
+        const size = new Float32Array(pCount);
+
+        for (let i = 0; i < pCount; i++) {
+            // Z = 20 (Slightly in front)
+            pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = 20;
+
+            const angle = Math.random() * 6.28;
+            // FAST speed for screen coverage
+            const speed = 3.0 + Math.random() * 5.0;
+
+            vel[i * 3] = Math.cos(angle) * speed;
+            vel[i * 3 + 1] = Math.sin(angle) * speed;
+            // Explode OUT
+            vel[i * 3 + 2] = 5.0 + Math.random() * 10.0;
+
+            size[i] = 30 + Math.random() * 40;
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('aVelocity', new THREE.BufferAttribute(vel, 3));
+        geo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+
+        const mat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() }
+            },
+            vertexShader: frostSnapVertexShader,
+            fragmentShader: frostSnapFragmentShader,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+
+        const snap = new THREE.Points(geo, mat);
+        snap.userData = { life: 0, maxLife: 0.8 };
+
+        if (!this.tempEffects) this.tempEffects = [];
+        this.tempEffects.push(snap);
+        this.scene.add(snap);
+    }
+
+    triggerIceExplosion(x, y, z) {
+        // 1. Shockwave ring
+        const ringGeo = new THREE.PlaneGeometry(300, 300);
+        const ringMat = new THREE.ShaderMaterial({
+            uniforms: { uProgress: { value: 0 }, uOpacity: { value: 1.0 } },
+            vertexShader: frostRingShockwaveVertexShader,
+            fragmentShader: frostRingShockwaveFragmentShader,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(x, y + 20, z); // Slightly above ground
+        ring.rotation.x = -Math.PI / 2;
+        ring.userData = { life: 0, maxLife: 1.2 };
+
+        // Let's create a dedicated array for "temporary effects" to be cleaner
+        if (!this.tempEffects) this.tempEffects = [];
+        this.tempEffects.push(ring);
+        this.scene.add(ring);
+
+        // 2. Debris Shards
+        const debrisCount = 40;
+        const dGeo = new THREE.BufferGeometry();
+        const dPos = new Float32Array(debrisCount * 3);
+        const dVel = new Float32Array(debrisCount * 3);
+        const dSize = new Float32Array(debrisCount);
+        const dRot = new Float32Array(debrisCount);
+
+        for (let i = 0; i < debrisCount; i++) {
+            dPos[i * 3] = x; dPos[i * 3 + 1] = y; dPos[i * 3 + 2] = z;
+            const theta = Math.random() * 6.28;
+            const phi = Math.random() * 3.14 * 0.5; // Upward hemisphere
+            const speed = 100 + Math.random() * 200;
+            dVel[i * 3] = Math.cos(theta) * Math.sin(phi) * speed;
+            dVel[i * 3 + 1] = Math.cos(phi) * speed;
+            dVel[i * 3 + 2] = Math.sin(theta) * Math.sin(phi) * speed;
+            dSize[i] = 10 + Math.random() * 20;
+            dRot[i] = Math.random() * 6.28;
+        }
+        dGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));
+        dGeo.setAttribute('aVelocity', new THREE.BufferAttribute(dVel, 3));
+        dGeo.setAttribute('aSize', new THREE.BufferAttribute(dSize, 1));
+        dGeo.setAttribute('aRotation', new THREE.BufferAttribute(dRot, 1));
+
+        const dMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uPixelRatio: { value: this.renderer.getPixelRatio() } },
+            vertexShader: iceShardDebrisVertexShader,
+            fragmentShader: iceShardDebrisFragmentShader,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const debris = new THREE.Points(dGeo, dMat);
+        debris.userData = { life: 0, maxLife: 2.5 };
+        this.tempEffects.push(debris);
+        this.scene.add(debris);
+
+        // 3. Camera Shake Impact
+        this.cameraShake.intensity = 15; // Massive shake
+        this.flashIntensity = 1.0; // Bright flash
+    }
+
+    updateTempEffects(delta) {
+        if (!this.tempEffects) return;
+        for (let i = this.tempEffects.length - 1; i >= 0; i--) {
+            const eff = this.tempEffects[i];
+            eff.userData.life += delta;
+
+            if (eff.userData.life >= eff.userData.maxLife) {
+                this.scene.remove(eff);
+                if (eff.geometry) eff.geometry.dispose();
+                if (eff.material) eff.material.dispose();
+                this.tempEffects.splice(i, 1);
+                continue;
+            }
+
+            // Update specific uniforms
+            const progress = eff.userData.life / eff.userData.maxLife;
+            if (eff.material.uniforms.uProgress) eff.material.uniforms.uProgress.value = progress;
+            if (eff.material.uniforms.uTime) eff.material.uniforms.uTime.value = eff.userData.life;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NEW ENHANCED EFFECTS - Phase 3: Blizzard Waves (Line Clear)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createBlizzardWave(direction = 1) { // 1 for left-to-right, -1 for right-to-left
+        const maxWaves = this.qualityPreset.maxBlizzardWaves || 0;
+        if (this.blizzardWaves.length >= maxWaves) return;
+
+        const pCount = 2000;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(pCount * 3);
+        const phase = new Float32Array(pCount);
+        const size = new Float32Array(pCount);
+        const speed = new Float32Array(pCount);
+
+        for (let i = 0; i < pCount; i++) {
+            // Wall of snow
+            pos[i * 3] = (Math.random() - 0.5) * 200 - (direction * 800); // Start off-screen
+            pos[i * 3 + 1] = (Math.random() - 0.5) * 1000; // Full height
+            pos[i * 3 + 2] = (Math.random() - 0.5) * 600 - 200; // Depth
+
+            phase[i] = Math.random() * 6.28;
+            size[i] = 5 + Math.random() * 15;
+            speed[i] = 1.0 + Math.random() * 0.5;
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+        geo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+        geo.setAttribute('aSpeed', new THREE.BufferAttribute(speed, 1));
+
+        const mat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uProgress: { value: 0 },
+                uDirection: { value: direction },
+                uPixelRatio: { value: this.renderer.getPixelRatio() }
+            },
+            vertexShader: blizzardWaveVertexShader,
+            fragmentShader: blizzardWaveFragmentShader,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+
+        const wave = new THREE.Points(geo, mat);
+        wave.userData = { life: 0, maxLife: 1.5 };
+        this.blizzardWaves.push(wave);
+        this.scene.add(wave);
+    }
+
+    updateBlizzardWaves(delta) {
+        for (let i = this.blizzardWaves.length - 1; i >= 0; i--) {
+            const wave = this.blizzardWaves[i];
+            wave.userData.life += delta;
+
+            if (wave.userData.life >= wave.userData.maxLife) {
+                this.scene.remove(wave);
+                wave.geometry.dispose(); wave.material.dispose();
+                this.blizzardWaves.splice(i, 1);
+                continue;
+            }
+
+            wave.material.uniforms.uTime.value = this.time;
+            wave.material.uniforms.uProgress.value = wave.userData.life / wave.userData.maxLife;
+        }
     }
 
     createFrozenLightningEffect(cx, cy, cz) {
@@ -939,7 +1635,7 @@ export default class WinterTheme extends BaseTheme {
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.LINE_CLEAR, d => this.handleLineClear(d)),
             eventBus.on(EVENTS.COMBO, d => this.handleCombo(d)),
-            eventBus.on(EVENTS.PIECE_LOCK, d => this.handlePieceLock())
+            eventBus.on(EVENTS.PIECE_LOCK, d => this.handlePieceLock(d))
         );
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
@@ -962,9 +1658,41 @@ export default class WinterTheme extends BaseTheme {
         this.comboDecay = 200;
     }
 
-    handlePieceLock() {
+    handlePieceLock(data) {
         this.cameraShake.intensity += 0.5;
         this.cameraShake.intensity = Math.min(this.cameraShake.intensity, 2.5);
+
+        // === NEW: Frost Snap Effect ===
+        if (data && this.qualityPreset.iceWispCount > 0) {
+            const piece = data.piece;
+            // Fallback to data directly if properties exist on it (legacy support)
+            const obj = piece || data;
+
+            // Check for positions array (from previous assumption) or x/y from piece
+            let wx = 0, wy = 0;
+
+            if (obj.positions) {
+                let avgX = 0, avgY = 0;
+                obj.positions.forEach(p => { avgX += p.x; avgY += p.y; });
+                avgX /= obj.positions.length;
+                avgY /= obj.positions.length;
+                // Scale 4.0 ensures bottom of board isn't cut off at Z=20
+                wx = (avgX - 4.5) * 4.0;
+                wy = (10 - avgY) * 4.0 - 2.0;
+            } else if (typeof obj.x === 'number' && typeof obj.y === 'number') {
+                const cx = obj.x + 1.5;
+                const cy = obj.y + 1.5;
+                wx = (cx - 4.5) * 4.0;
+                wy = (10 - cy) * 4.0 - 2.0;
+            } else {
+                // Last resort fallback
+                console.warn('[Winter] Piece Lock data missing coords:', data);
+                return;
+            }
+
+            console.log(`[Winter] Frost Snap at (${wx.toFixed(1)}, ${wy.toFixed(1)})`);
+            this.createFrostSnap(wx, wy);
+        }
     }
 
     onLineClear(lines, combo) {
@@ -979,8 +1707,29 @@ export default class WinterTheme extends BaseTheme {
             this.createFrozenLightningEffect((Math.random() - 0.5) * 300, 100, -400);
         }
 
+        // === NEW: Blizzard Wave on big clear ===
+        if (lines >= 2 || combo >= 2) {
+            this.createBlizzardWave(Math.random() > 0.5 ? 1 : -1);
+        }
+
+        // === NEW: Aurora Pulse Wave ===
+        // (Will implement aurora pulse logic in update loop if needed, 
+        //  but simpler to just boost intensity here for now)
+        if (this.effectState) {
+            this.effectState.auroraBoost = 1.0; // Decay handled in update
+        }
+
         if (combo >= 4) {
             this.createVortexSystem(0, 0, -200);
+
+            // === NEW: Ice Crystal Crash on High Combo ===
+            if (combo >= 6) {
+                this.createIceCrystalCrash();
+            }
+            // === NEW: Shooting Star on Medium Combo ===
+            else if (combo >= 3) {
+                this.createShootingStar();
+            }
         }
 
         this.flashIntensity = 0.5 + Math.min(combo * 0.1, 1.0);
@@ -1007,6 +1756,14 @@ export default class WinterTheme extends BaseTheme {
             this.updateFrozenLightning(delta);
             this.updateVortexes(delta);
 
+            // === NEW ENHANCED EFFECT UPDATES ===
+            this.updateShootingStars();
+            this.updateCameraAnimation();
+            this.updateIceCrystalCrashes(delta);
+            this.updateBlizzardWaves(delta);
+            this.updateTempEffects(delta);
+            this.updateMoonEffects(delta);
+
             // Updated Uniforms
             if (this.snowParticles) {
                 const u = this.snowParticles.material.uniforms;
@@ -1025,14 +1782,21 @@ export default class WinterTheme extends BaseTheme {
             this.auroraLayers.forEach(layer => {
                 const u = layer.material.uniforms;
                 u.uTime.value = this.time;
-                // Decay intensity back to 1.0
                 if (u.uIntensity.value > 1.0) u.uIntensity.value -= delta * 0.5;
             });
             if (this.starfield) this.starfield.material.uniforms.uTime.value = this.time;
 
-            // Cam shake
-            this.camera.position.x = this.cameraShake.x;
-            this.camera.position.y = this.cameraShake.y;
+            // === NEW: Ice Wisps uniforms ===
+            if (this.iceWisps) {
+                const u = this.iceWisps.material.uniforms;
+                u.uTime.value = this.time;
+                u.uSurgeIntensity.value = this.effectState.iceWispSurge;
+            }
+
+            // === NEW: Fog layers uniforms ===
+            this.fogLayers.forEach(layer => {
+                layer.material.uniforms.uTime.value = this.time;
+            });
 
             if (this.composer && this.qualityPreset.enablePostProcessing) {
                 this.renderer.clear();
@@ -1047,6 +1811,26 @@ export default class WinterTheme extends BaseTheme {
     }
 
     updateEffectState(delta) {
+        if (this.effectState) {
+            // Decay Bloom Boost
+            if (this.effectState.bloomBoost > 0) {
+                this.effectState.bloomBoost -= delta * 3.0; // Fast decay
+                if (this.effectState.bloomBoost < 0) this.effectState.bloomBoost = 0;
+
+                // Apply to pass
+                if (this.bloomPass) {
+                    const base = this.qualityPreset.bloomStrength;
+                    this.bloomPass.strength = base + (this.effectState.bloomBoost * base * 2.0);
+                }
+            }
+
+            // Decay Ice Wisp Surge
+            if (this.effectState.iceWispSurge > 0) {
+                this.effectState.iceWispSurge -= delta * 1.0;
+                if (this.effectState.iceWispSurge < 0) this.effectState.iceWispSurge = 0;
+            }
+        }
+
         if (this.comboDecay > 0) {
             this.comboDecay -= delta * 60;
             if (this.comboDecay <= 0) this.comboMultiplier = 1.0;
@@ -1123,8 +1907,8 @@ export default class WinterTheme extends BaseTheme {
             const v = this.vortexSystems[i];
             v.userData.life -= delta * 0.4;
             if (v.material.uniforms) {
-                v.material.uniforms.uTime.value = this.time;
-                v.material.uniforms.uIntensity.value = v.userData.life;
+                if (v.material.uniforms.uTime) v.material.uniforms.uTime.value = this.time;
+                if (v.material.uniforms.uIntensity) v.material.uniforms.uIntensity.value = v.userData.life;
             }
             if (v.userData.life <= 0) {
                 this.scene.remove(v); v.geometry.dispose(); v.material.dispose(); this.vortexSystems.splice(i, 1);

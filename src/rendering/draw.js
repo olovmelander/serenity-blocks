@@ -40,6 +40,8 @@ const statElements = {
     level: null,
     nextLevel: null,
     speed: null,
+    bpm: null,
+    ppm: null,
 };
 
 const lastStatValues = {
@@ -48,6 +50,8 @@ const lastStatValues = {
     level: null,
     linesUntilNextLevel: null,
     speedMultiplier: null,
+    bpm: null,
+    ppm: null,
 };
 
 function getComboColor(comboCount) {
@@ -849,6 +853,7 @@ export function updateStats(stats) {
         statElements.nextLevel = document.getElementById('next-level');
         statElements.speed = document.getElementById('speed');
         statElements.bpm = document.getElementById('bpm');
+        statElements.ppm = document.getElementById('ppm');
     }
 
     // Helper to trigger pulse animation
@@ -903,12 +908,12 @@ export function updateStats(stats) {
         pulseElement(statElements.speed);
     }
 
-    // Calculate BPM (Blocks Per Minute)
+    // Calculate BPM (Blocks/Pieces Per Minute)
+    const elapsedMs = startTime ? (Date.now() - startTime) : 0;
+    const elapsedMinutes = elapsedMs / 60000;
+    const pieces = piecesPlaced || 0;
+
     if (statElements.bpm) {
-        // startTime is set via Date.now() in GameState
-        const elapsedMs = startTime ? (Date.now() - startTime) : 0;
-        const elapsedMinutes = elapsedMs / 60000;
-        const pieces = piecesPlaced || 0;
         const bpm = elapsedMinutes > 0.05 ? Math.round(pieces / elapsedMinutes) : 0; // Wait 3s before calculating
 
         if (lastStatValues.bpm !== bpm) {
@@ -917,6 +922,20 @@ export function updateStats(stats) {
             // Only pulse on meaningful changes (avoid constant pulsing)
             if (bpm > 0 && pieces % 5 === 0) {
                 pulseElement(statElements.bpm);
+            }
+        }
+    }
+
+    // Calculate PPM (Points Per Minute) - like Quadra
+    if (statElements.ppm) {
+        const ppm = elapsedMinutes > 0.05 ? Math.round(score / elapsedMinutes) : 0; // Wait 3s before calculating
+
+        if (lastStatValues.ppm !== ppm) {
+            lastStatValues.ppm = ppm;
+            statElements.ppm.textContent = ppm.toLocaleString();
+            // Only pulse on meaningful score changes
+            if (ppm > 0 && score % 100 === 0) {
+                pulseElement(statElements.ppm);
             }
         }
     }

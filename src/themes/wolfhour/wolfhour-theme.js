@@ -39,7 +39,20 @@ import {
     meteorTrailVertexShader,
     meteorTrailFragmentShader,
     meteorHeadVertexShader,
-    meteorHeadFragmentShader
+    meteorHeadFragmentShader,
+    // Meteor crash effect shaders
+    impactFlashVertexShader,
+    impactFlashFragmentShader,
+    debrisVertexShader,
+    debrisFragmentShader,
+    shockwaveVertexShader,
+    shockwaveFragmentShader,
+    dustCloudVertexShader,
+    dustCloudFragmentShader,
+    crashMeteorHeadVertexShader,
+    crashMeteorHeadFragmentShader,
+    crashMeteorTrailVertexShader,
+    crashMeteorTrailFragmentShader
 } from './wolfhour-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +69,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 3,
         maxCosmicRifts: 1,
         maxCelestialBeams: 0,
+        maxMeteorCrashes: 0,
         starTwinkleSpeed: 0.5,
     },
     Low: {
@@ -68,6 +82,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 5,
         maxCosmicRifts: 2,
         maxCelestialBeams: 0,
+        maxMeteorCrashes: 2,
         starTwinkleSpeed: 0.7,
     },
     Medium: {
@@ -80,6 +95,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 8,
         maxCosmicRifts: 3,
         maxCelestialBeams: 2,
+        maxMeteorCrashes: 3,
         starTwinkleSpeed: 1.0,
     },
     High: {
@@ -92,6 +108,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 12,
         maxCosmicRifts: 4,
         maxCelestialBeams: 4,
+        maxMeteorCrashes: 4,
         starTwinkleSpeed: 1.0,
     },
     Ultra: {
@@ -104,6 +121,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 15,
         maxCosmicRifts: 5,
         maxCelestialBeams: 6,
+        maxMeteorCrashes: 4,
         starTwinkleSpeed: 1.0,
     },
     Extreme: {
@@ -116,6 +134,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 20,
         maxCosmicRifts: 6,
         maxCelestialBeams: 8,
+        maxMeteorCrashes: 5,
         starTwinkleSpeed: 1.2,
     },
 };
@@ -150,6 +169,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.meteors = []; // Shooting star meteors
         this.lastMeteorTime = 0; // Time of last meteor spawn
         this.nextMeteorDelay = 15 + Math.random() * 15; // 15-30 seconds
+        this.meteorCrashes = []; // Dramatic meteor crash impacts
 
         // Effect state (smooth decay)
         this.effectState = {
@@ -212,7 +232,6 @@ export default class WolfhourTheme extends BaseTheme {
         this.createStarfield();
         this.createNebulaBackdrop();
         this.createMountains();
-        this.createGroundPlane(); // Dark ground to cover stars below mountains
         this.createSpirits();
         this.setupPostProcessing();
         this.setupEventListeners();
@@ -452,29 +471,29 @@ export default class WolfhourTheme extends BaseTheme {
             // === FOREGROUND LAYER (Z -400 to -700) - Darkest ===
             // Main dramatic center peak
             {
-                x: 0, z: -500, size: 3200, height: 420,
+                x: 0, z: -500, size: 4000, height: 520,
                 layer: 0.0, seed: 11111,
             },
             // Right side mid peak
             {
-                x: 650, z: -550, size: 2400, height: 280,
+                x: 650, z: -550, size: 3200, height: 380,
                 layer: 0.1, seed: 44444,
             },
             // Left side mid peak  
             {
-                x: -750, z: -650, size: 2500, height: 300,
+                x: -750, z: -650, size: 3200, height: 380,
                 layer: 0.15, seed: 55555,
             },
 
             // === MID LAYER (Z -800 to -1200) - Medium gray ===
             // Far left peak
             {
-                x: -1100, z: -950, size: 2800, height: 350,
+                x: -1100, z: -950, size: 3600, height: 450,
                 layer: 0.4, seed: 66666,
             },
             // Far right peak
             {
-                x: 1000, z: -1000, size: 2700, height: 320,
+                x: 1000, z: -1000, size: 3600, height: 420,
                 layer: 0.45, seed: 77777,
             },
 
@@ -552,8 +571,8 @@ export default class WolfhourTheme extends BaseTheme {
             const maxDist = config.size * 0.45;
 
             if (dist > maxDist) {
-                posAttribute.setY(i, 0);
-                heights.push(0);
+                posAttribute.setY(i, -2000); // Drop edges deep down to cover stars
+                heights.push(-2000);
                 continue;
             }
 
@@ -597,32 +616,8 @@ export default class WolfhourTheme extends BaseTheme {
         const xPos = config.x || 0;
         mesh.position.set(xPos, -450, config.z);
         // Render in front of stars (higher layer = closer to camera = renders later)
-        mesh.renderOrder = -100 + Math.round(config.layer * 10); // Render BEFORE stars
+        mesh.renderOrder = -100 + Math.round(config.layer * 10);
         return mesh;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ground Plane (covers stars below mountains)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createGroundPlane() {
-        // Vertical plane to cover the bottom of the screen (blocking stars)
-        // Matches the mountain base color to make them look like they extend downwards
-        const geometry = new THREE.PlaneGeometry(12000, 2000);
-
-        const material = new THREE.MeshBasicMaterial({
-            color: 0x151515, // Match uRockColorDark from mountains
-            side: THREE.DoubleSide,
-        });
-
-        const plane = new THREE.Mesh(geometry, material);
-        // Position center so top edge is around -350 (overlapping mountain base at -450)
-        // Center Y = -350 - 1000 = -1350
-        plane.position.set(0, -1350, -200);
-        // Render after mountains but before stars to occlude stars
-        plane.renderOrder = -50;
-
-        this.scene.add(plane);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -782,9 +777,19 @@ export default class WolfhourTheme extends BaseTheme {
             this.effectState.cosmicRiftIntensity = Math.min(comboCount * 0.2, 1.0);
         }
 
-        // Spawn shooting star on combos of 4+
-        if (comboCount >= 4) {
-            this.createMeteor();
+        // Spawn shooting stars based on combo count (more stars at higher combos)
+        if (comboCount >= 3) {
+            const starCount = Math.min(comboCount - 2, 4); // 1 star at combo 3, up to 4 stars at combo 6+
+            for (let i = 0; i < starCount; i++) {
+                this.createMeteor();
+            }
+        }
+
+        // Spawn dramatic meteor crash on combos of 6+
+        if (comboCount >= 6) {
+            if (this.meteorCrashes.length < this.qualityPreset.maxMeteorCrashes) {
+                this.createMeteorCrash();
+            }
         }
 
         if (comboCount >= 5) {
@@ -1224,6 +1229,326 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Meteor Crash System (Combo 6+)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createMeteorCrash() {
+        // Choose a random mountain as target
+        const targetMountain = this.mountains[Math.floor(Math.random() * this.mountains.length)];
+        const targetX = targetMountain.position.x + (Math.random() - 0.5) * 200;
+        const targetY = targetMountain.position.y + 200 + Math.random() * 150; // Mountain peak area
+        const targetZ = targetMountain.position.z + 100; // Slightly in front of mountain
+
+        // Start position - upper sky, off to one side
+        const startX = targetX + (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 300);
+        const startY = 400 + Math.random() * 150;
+        const startZ = targetZ;
+
+        const duration = 0.8; // Faster descent for impact
+        const trailSegments = 50;
+        const trailLength = 200;
+
+        // Create trail geometry
+        const positions = new Float32Array(trailSegments * 3);
+        const trailPositions = new Float32Array(trailSegments);
+
+        for (let i = 0; i < trailSegments; i++) {
+            positions[i * 3] = startX;
+            positions[i * 3 + 1] = startY;
+            positions[i * 3 + 2] = startZ;
+            trailPositions[i] = i / (trailSegments - 1);
+        }
+
+        const trailGeometry = new THREE.BufferGeometry();
+        trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        trailGeometry.setAttribute('aTrailPosition', new THREE.BufferAttribute(trailPositions, 1));
+
+        const trailMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uProgress: { value: 0 },
+            },
+            vertexShader: crashMeteorTrailVertexShader,
+            fragmentShader: crashMeteorTrailFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const trail = new THREE.Line(trailGeometry, trailMaterial);
+        trail.renderOrder = 510;
+
+        // Create glowing head
+        const headGeometry = new THREE.BufferGeometry();
+        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([startX, startY, startZ]), 3));
+
+        const headMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uProgress: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+            },
+            vertexShader: crashMeteorHeadVertexShader,
+            fragmentShader: crashMeteorHeadFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const head = new THREE.Points(headGeometry, headMaterial);
+        head.renderOrder = 511;
+
+        const crash = new THREE.Group();
+        crash.add(trail);
+        crash.add(head);
+
+        crash.userData = {
+            phase: 'descent', // 'descent', 'impact', 'explosion', 'cleanup'
+            startTime: this.time,
+            duration,
+            startX, startY, startZ,
+            targetX, targetY, targetZ,
+            trailLength,
+            trailSegments,
+            trail,
+            head,
+            // Explosion components (created on impact)
+            debris: null,
+            shockwave: null,
+            dustCloud: null,
+            impactFlash: null,
+        };
+
+        this.meteorCrashes.push(crash);
+        this.scene.add(crash);
+
+        console.log('[Wolfhour] Meteor crash initiated');
+    }
+
+    createImpactExplosion(crash) {
+        const { targetX, targetY, targetZ } = crash.userData;
+
+        // Create debris particles
+        const debrisCount = 40;
+        const debrisPositions = new Float32Array(debrisCount * 3);
+        const debrisVelocities = new Float32Array(debrisCount * 3);
+        const debrisSizes = new Float32Array(debrisCount);
+        const debrisRotations = new Float32Array(debrisCount);
+
+        for (let i = 0; i < debrisCount; i++) {
+            const i3 = i * 3;
+            debrisPositions[i3] = targetX;
+            debrisPositions[i3 + 1] = targetY;
+            debrisPositions[i3 + 2] = targetZ + 50;
+
+            // Radial explosion pattern, biased upward
+            const angle = Math.random() * Math.PI * 2;
+            const upAngle = Math.random() * Math.PI * 0.6; // More upward
+            const speed = 250 + Math.random() * 400; // Faster debris
+            debrisVelocities[i3] = Math.cos(angle) * Math.sin(upAngle) * speed;
+            debrisVelocities[i3 + 1] = Math.cos(upAngle) * speed + 50; // Upward bias
+            debrisVelocities[i3 + 2] = Math.sin(angle) * Math.sin(upAngle) * speed * 0.3;
+
+            debrisSizes[i] = 12 + Math.random() * 20; // Larger debris
+            debrisRotations[i] = Math.random() * Math.PI * 2;
+        }
+
+        const debrisGeometry = new THREE.BufferGeometry();
+        debrisGeometry.setAttribute('position', new THREE.BufferAttribute(debrisPositions, 3));
+        debrisGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(debrisVelocities, 3));
+        debrisGeometry.setAttribute('aSize', new THREE.BufferAttribute(debrisSizes, 1));
+        debrisGeometry.setAttribute('aRotation', new THREE.BufferAttribute(debrisRotations, 1));
+
+        const debrisMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+            },
+            vertexShader: debrisVertexShader,
+            fragmentShader: debrisFragmentShader,
+            transparent: true,
+            depthWrite: false,
+        });
+
+        const debris = new THREE.Points(debrisGeometry, debrisMaterial);
+        debris.renderOrder = 520;
+        crash.add(debris);
+        crash.userData.debris = debris;
+
+        // Create shockwave ring
+        const shockwaveGeometry = new THREE.PlaneGeometry(1000, 1000); // Larger shockwave
+        const shockwaveMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uProgress: { value: 0 },
+                uOpacity: { value: 1.0 },
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        const shockwave = new THREE.Mesh(shockwaveGeometry, shockwaveMaterial);
+        shockwave.position.set(targetX, targetY, targetZ + 60);
+        shockwave.renderOrder = 515;
+        crash.add(shockwave);
+        crash.userData.shockwave = shockwave;
+
+        // Create dust cloud
+        const dustCount = 25;
+        const dustPositions = new Float32Array(dustCount * 3);
+        const dustSizes = new Float32Array(dustCount);
+        const dustPhases = new Float32Array(dustCount);
+        const dustVelocities = new Float32Array(dustCount * 3);
+
+        for (let i = 0; i < dustCount; i++) {
+            const i3 = i * 3;
+            dustPositions[i3] = targetX + (Math.random() - 0.5) * 150; // Wider spread
+            dustPositions[i3 + 1] = targetY + Math.random() * 60;
+            dustPositions[i3 + 2] = targetZ + 40;
+
+            dustSizes[i] = 100 + Math.random() * 120; // Larger clouds
+            dustPhases[i] = Math.random() * Math.PI * 2;
+            dustVelocities[i3] = (Math.random() - 0.5) * 80; // Faster spread
+            dustVelocities[i3 + 1] = Math.random() * 40;
+            dustVelocities[i3 + 2] = Math.random() * 20;
+        }
+
+        const dustGeometry = new THREE.BufferGeometry();
+        dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+        dustGeometry.setAttribute('aSize', new THREE.BufferAttribute(dustSizes, 1));
+        dustGeometry.setAttribute('aPhase', new THREE.BufferAttribute(dustPhases, 1));
+        dustGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(dustVelocities, 3));
+
+        const dustMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+            },
+            vertexShader: dustCloudVertexShader,
+            fragmentShader: dustCloudFragmentShader,
+            transparent: true,
+            blending: THREE.NormalBlending,
+            depthWrite: false,
+        });
+
+        const dustCloud = new THREE.Points(dustGeometry, dustMaterial);
+        dustCloud.renderOrder = 505;
+        crash.add(dustCloud);
+        crash.userData.dustCloud = dustCloud;
+
+        // Boost bloom and mountain effects
+        this.effectState.bloomBoost = 0.3;
+        this.effectState.mountainShockwave = 1.5;
+        this.effectState.mountainPulse = 1.0;
+    }
+
+    updateMeteorCrashes() {
+        for (let i = this.meteorCrashes.length - 1; i >= 0; i--) {
+            const crash = this.meteorCrashes[i];
+            const data = crash.userData;
+            const elapsed = this.time - data.startTime;
+
+            if (data.phase === 'descent') {
+                const progress = elapsed / data.duration;
+
+                if (progress >= 1.0) {
+                    // Impact! Remove meteor trail/head, create explosion
+                    crash.remove(data.trail);
+                    crash.remove(data.head);
+                    data.trail.geometry.dispose();
+                    data.trail.material.dispose();
+                    data.head.geometry.dispose();
+                    data.head.material.dispose();
+
+                    data.phase = 'explosion';
+                    data.explosionStartTime = this.time;
+                    this.createImpactExplosion(crash);
+                    console.log('[Wolfhour] Meteor impact!');
+                    continue;
+                }
+
+                // Animate meteor descent with acceleration
+                const easedProgress = progress * progress; // Accelerate
+                const currentX = data.startX + (data.targetX - data.startX) * easedProgress;
+                const currentY = data.startY + (data.targetY - data.startY) * easedProgress;
+                const currentZ = data.startZ;
+
+                // Update trail
+                const trailPositions = data.trail.geometry.attributes.position.array;
+                const dx = data.targetX - data.startX;
+                const dy = data.targetY - data.startY;
+                const trailAngle = Math.atan2(dy, dx);
+
+                for (let j = 0; j < data.trailSegments; j++) {
+                    const t = j / (data.trailSegments - 1);
+                    const offset = t * data.trailLength;
+                    trailPositions[j * 3] = currentX - Math.cos(trailAngle) * offset;
+                    trailPositions[j * 3 + 1] = currentY - Math.sin(trailAngle) * offset;
+                    trailPositions[j * 3 + 2] = currentZ;
+                }
+                data.trail.geometry.attributes.position.needsUpdate = true;
+
+                data.trail.material.uniforms.uTime.value = this.time;
+                data.trail.material.uniforms.uProgress.value = progress;
+                data.head.material.uniforms.uProgress.value = progress;
+
+                // Update head position
+                const headPos = data.head.geometry.attributes.position.array;
+                headPos[0] = currentX;
+                headPos[1] = currentY;
+                headPos[2] = currentZ;
+                data.head.geometry.attributes.position.needsUpdate = true;
+
+            } else if (data.phase === 'explosion') {
+                const explosionElapsed = this.time - data.explosionStartTime;
+                const explosionDuration = 4.5; // Longer duration (was 2.5)
+
+                if (explosionElapsed > explosionDuration) {
+                    // Cleanup
+                    if (data.debris) {
+                        data.debris.geometry.dispose();
+                        data.debris.material.dispose();
+                    }
+                    if (data.shockwave) {
+                        data.shockwave.geometry.dispose();
+                        data.shockwave.material.dispose();
+                    }
+                    if (data.dustCloud) {
+                        data.dustCloud.geometry.dispose();
+                        data.dustCloud.material.dispose();
+                    }
+                    this.scene.remove(crash);
+                    this.meteorCrashes.splice(i, 1);
+                    console.log('[Wolfhour] Meteor crash cleaned up');
+                    continue;
+                }
+
+                const explosionProgress = explosionElapsed / explosionDuration;
+
+                // Update debris
+                if (data.debris) {
+                    data.debris.material.uniforms.uTime.value = explosionElapsed;
+                }
+
+                // Update shockwave
+                if (data.shockwave) {
+                    // Slower expansion (over 2.5s instead of 1.0s)
+                    const shockwaveProgress = Math.min(explosionElapsed / 2.5, 1.0);
+                    data.shockwave.material.uniforms.uProgress.value = shockwaveProgress;
+                    data.shockwave.material.uniforms.uOpacity.value = 1.0 - shockwaveProgress; // Fade out slowly
+                }
+
+                // Update dust cloud
+                if (data.dustCloud) {
+                    data.dustCloud.material.uniforms.uTime.value = explosionElapsed;
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Animation Loop
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -1248,6 +1573,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateNebulas(deltaTime);
             this.updateEffects(deltaTime);
             this.updateMeteors(); // Shooting star system
+            this.updateMeteorCrashes(); // Meteor crash system
 
             if (this.composer) {
                 this.composer.render();
@@ -1338,6 +1664,16 @@ export default class WolfhourTheme extends BaseTheme {
             m.userData.head.material.dispose();
         });
         this.meteors = [];
+        this.meteorCrashes.forEach((c) => {
+            const d = c.userData;
+            if (d.trail) { d.trail.geometry.dispose(); d.trail.material.dispose(); }
+            if (d.head) { d.head.geometry.dispose(); d.head.material.dispose(); }
+            if (d.debris) { d.debris.geometry.dispose(); d.debris.material.dispose(); }
+            if (d.shockwave) { d.shockwave.geometry.dispose(); d.shockwave.material.dispose(); }
+            if (d.dustCloud) { d.dustCloud.geometry.dispose(); d.dustCloud.material.dispose(); }
+            if (d.impactFlash) { d.impactFlash.geometry.dispose(); d.impactFlash.material.dispose(); }
+        });
+        this.meteorCrashes = [];
 
         if (this.spirits) {
             this.spirits.geometry.dispose();

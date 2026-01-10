@@ -38,6 +38,13 @@
             <!-- Clip path removed to allow dynamic sizing -->
         </defs>
     </svg>
+
+    <!-- Demo Playback Indicator - Shows when watching a replay -->
+    <div id="demo-indicator" class="demo-indicator">
+        <span class="demo-icon">▶</span>
+        <span class="demo-text">Watching Replay</span>
+    </div>
+
     <div class="background-container">
         <canvas id="background-canvas"></canvas>
         <div id="stars"></div>
@@ -508,6 +515,13 @@
                 <div class="stat-content">
                     <div class="single-player-stat-label">BPM</div>
                     <div class="single-player-stat-value" id="bpm">0</div>
+                </div>
+            </div>
+            <div class="single-player-stat stat-ppm">
+                <span class="stat-icon">📈</span>
+                <div class="stat-content">
+                    <div class="single-player-stat-label">PPM</div>
+                    <div class="single-player-stat-value" id="ppm">0</div>
                 </div>
             </div>
         </div>
@@ -1065,6 +1079,20 @@
             <p>Press any key or tap to restart</p>
         </div>
     </div>
+
+    <!-- Demo Complete Modal - Shown after replay finishes -->
+    <div id="demo-complete-modal" class="modal">
+        <div class="modal-content game-over-stats-hud">
+            <h1>Replay Complete</h1>
+            <div class="stats-scroll-container">
+                <div id="demo-final-stats"></div>
+            </div>
+            <div class="demo-complete-buttons" id="demo-complete-buttons">
+                <!-- Buttons populated by JS -->
+            </div>
+        </div>
+    </div>
+
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <div class="settings-header">
