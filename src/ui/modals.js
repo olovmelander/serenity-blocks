@@ -11,6 +11,7 @@ export class ModalManager {
         this.modals = {
             start: document.getElementById('start-modal'),
             gameOver: document.getElementById('game-over-modal'),
+            demoComplete: document.getElementById('demo-complete-modal'),
             settings: document.getElementById('settings-modal'),
             highScores: document.getElementById('high-scores-modal'),
         };
@@ -116,10 +117,8 @@ export function showStartModal(modalManager) {
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} gameState - Current game state
  * @param {Object} highScoreManager - High score manager instance
- * @param {Object} demoManager - Demo manager instance (optional)
- * @param {Object} demo - Recorded demo object (optional)
  */
-export async function showGameOverModal(modalManager, gameState, highScoreManager, demoManager = null, demo = null) {
+export async function showGameOverModal(modalManager, gameState, highScoreManager) {
     const {
         score, lines, level, dropInterval, startTime, piecesPlaced,
     } = gameState;
@@ -145,51 +144,6 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
     // Calculate efficiency metrics
     const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
     const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
-
-    // Prepare demo buttons HTML
-    let demoButtonsHTML = '';
-
-    console.log('[Modals] showGameOverModal - demoManager:', !!demoManager, 'demo:', !!demo);
-    console.log('[Modals] Demo object details:', demo);
-    console.log('[Modals] DemoManager object details:', demoManager);
-
-    // Store original values for button functionality
-    const originalDemoManager = demoManager;
-    const originalDemo = demo;
-
-    // DEBUG: Force dummy objects if missing (for UI testing only)
-    if (!demo) {
-        console.warn('[Modals] Demo missing, creating dummy demo for UI testing');
-        demo = { version: '1.0', inputs: [], metadata: { duration: 0 } };
-    }
-
-    if (!demoManager) {
-        console.warn('[Modals] DemoManager missing, creating dummy manager for UI testing');
-        demoManager = {
-            saveDemo: async (d) => { console.log('Dummy save called'); alert('Demo saved (dummy)'); },
-            exportToURL: async (d) => { const url = 'http://dummy-url'; console.log('Dummy export called'); await navigator.clipboard.writeText(url); alert('Link copied (dummy)'); }
-        };
-    }
-
-    // ALWAYS show buttons
-    demoButtonsHTML = `
-        <div class="demo-actions" style="margin-top: 20px; display: flex; gap: 15px; justify-content: center; width: 100%;">
-            <button id="save-replay-btn" class="action-btn" style="flex: 1; min-width: 160px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; white-space: nowrap;">
-                <span class="icon" style="font-size: 18px;">💾</span> Save Replay
-            </button>
-            <button id="share-replay-btn" class="action-btn" style="flex: 1; min-width: 160px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; white-space: nowrap;">
-                <span class="icon" style="font-size: 18px;">🔗</span> Share Replay
-            </button>
-        </div>
-    `;
-
-    // Show debug info in footer
-    const footerText = document.querySelector('#game-over-modal p');
-    if (footerText) {
-        const realMgr = !!originalDemoManager;
-        const realDemo = !!originalDemo;
-        footerText.innerHTML = `Press any key or tap to restart<br><small style="font-size: 10px; color: #666;">Real: Demo=${realDemo}, Mgr=${realMgr} | Inputs=${originalDemo?.inputs?.length || 0}</small>`;
-    }
 
     try {
         // Get rank and statistics
@@ -311,7 +265,6 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                     </div>
                 </div>
             </div>
-            ${demoButtonsHTML}
         `;
     } catch (error) {
         console.error('Error displaying game over stats:', error);
@@ -337,70 +290,203 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                     </div>
                 </div>
             </div>
-            ${demoButtonsHTML}
         `;
     }
 
     modalManager.show('gameOver');
+}
 
-    // Add event listeners for demo buttons - use ORIGINAL objects if available
-    const saveBtn = document.getElementById('save-replay-btn');
-    const shareBtn = document.getElementById('share-replay-btn');
+/**
+ * Shows the demo complete modal after replay finishes
+ * @param {ModalManager} modalManager - Modal manager instance
+ * @param {Object} gameState - Game state at end of demo
+ * @param {Object} callbacks - Navigation callbacks { onWatchAgain, onBrowseReplays, onMainMenu }
+ */
+export async function showDemoCompleteModal(modalManager, gameState, highScoreManager, callbacks = {}) {
+    const {
+        score = 0, lines = 0, level = 1, dropInterval = 1000, startTime, piecesPlaced = 0,
+    } = gameState || {};
 
-    if (saveBtn) {
-        console.log('[Modals] Save Replay button found, attaching listener');
-        console.log('[Modals] Using real demo:', !!originalDemo, 'real manager:', !!originalDemoManager);
+    // Calculate speed multiplier (same logic as Game Over)
+    const LEVEL_SPEEDS = [
+        1000, 900, 800, 700, 600, 500, 400, 350, 300, 250, 200, 175, 150, 125, 100, 90, 80, 70, 60,
+        50,
+    ];
+    const speedMultiplier = (LEVEL_SPEEDS[0] / dropInterval).toFixed(1);
 
-        saveBtn.addEventListener('click', async () => {
-            try {
-                saveBtn.innerHTML = '<span class="icon">⏳</span> Saving...';
+    // Calculate duration
+    const duration = startTime ? Date.now() - startTime : 0;
+    const minutes = Math.floor(duration / 60000);
+    const seconds = Math.floor((duration % 60000) / 1000);
+    const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const totalMinutes = duration / 60000;
 
-                // Use original demo and manager if available
-                if (originalDemoManager && originalDemo) {
-                    await originalDemoManager.saveDemo(originalDemo);
-                    saveBtn.innerHTML = '<span class="icon">✅</span> Saved!';
-                } else {
-                    // Fallback to dummy
-                    await demoManager.saveDemo(demo);
-                    saveBtn.innerHTML = '<span class="icon">✅</span> Saved (dummy)!';
-                }
+    // Calculate PPM metrics
+    const piecesPPM = duration > 0 ? Math.round((piecesPlaced / duration) * 60000) : 0;
+    const pointsPPM = totalMinutes > 0 ? Math.round(score / totalMinutes) : 0;
 
-                saveBtn.disabled = true;
-                saveBtn.style.opacity = '0.7';
-                saveBtn.style.cursor = 'default';
-            } catch (err) {
-                console.error('Failed to save demo:', err);
-                saveBtn.innerHTML = '<span class="icon">❌</span> Error';
-            }
+    // Calculate efficiency metrics
+    const linesPerPiece = piecesPlaced > 0 ? (lines / piecesPlaced).toFixed(2) : '0.00';
+    const efficiency = piecesPlaced > 0 ? Math.min(100, Math.round((lines / piecesPlaced) * 100)) : 0;
+
+    // Fetch stats
+    let rank = 0;
+    let stats = { highestScore: 0, highestLevel: 0, totalGames: 0, totalLines: 0, totalScore: 0 };
+
+    if (highScoreManager) {
+        try {
+            rank = await highScoreManager.getRank(score);
+            stats = await highScoreManager.getStatistics();
+        } catch (e) {
+            console.warn('[Modal] Failed to load stats', e);
+        }
+    }
+
+    // Ranking Logic
+    let rankingHTML = '';
+    let rankingBadge = '';
+    if (rank === 1) {
+        rankingHTML = '🏆 NEW HIGH SCORE!';
+        rankingBadge = '<div class="stat-badge stat-badge-gold">New Record</div>';
+    } else if (rank > 0 && rank <= 10) {
+        rankingHTML = `Rank #${rank}`;
+        rankingBadge = '<div class="stat-badge stat-badge-purple">Top 10</div>';
+    } else if (rank > 0) {
+        rankingHTML = `Rank #${rank}`;
+    } else {
+        rankingHTML = 'Replay';
+    }
+
+    // Personal best comparison
+    const personalBest = stats.highestScore > score ? stats.highestScore : null;
+
+    // Calculate averages
+    const avgScore = stats.totalGames > 0 ? Math.round(stats.totalScore / stats.totalGames) : 0;
+
+    // Update final stats display with 2x2 grid
+    document.getElementById('demo-final-stats').innerHTML = `
+        <div class="stats-header">
+            <div class="score-display">${score.toLocaleString()}</div>
+            <div class="ranking-display">${rankingHTML}</div>
+            ${rankingBadge}
+        </div>
+
+        <div class="stats-grid">
+            <!-- Performance Section (Purple) -->
+            <div class="stat-card stat-card-purple">
+                <div class="stat-card-header">Performance</div>
+                <div class="stat-row">
+                    <span class="stat-label">Level</span>
+                    <span class="stat-value">${level}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Speed</span>
+                    <span class="stat-value">${speedMultiplier}x</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Lines</span>
+                    <span class="stat-value">${lines}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Pieces</span>
+                    <span class="stat-value">${piecesPlaced}</span>
+                </div>
+            </div>
+
+            <!-- Rate Stats Section (Cyan) -->
+            <div class="stat-card stat-card-cyan">
+                <div class="stat-card-header">Rates (Per Min)</div>
+                <div class="stat-row">
+                    <span class="stat-label">Points/Min</span>
+                    <span class="stat-value">${pointsPPM.toLocaleString()}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Pieces/Min</span>
+                    <span class="stat-value">${piecesPPM}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Lines/Piece</span>
+                    <span class="stat-value">${linesPerPiece}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Efficiency</span>
+                    <span class="stat-value">${efficiency}%</span>
+                </div>
+            </div>
+
+            <!-- Career Stats Section (Gold) -->
+            <div class="stat-card stat-card-gold">
+                <div class="stat-card-header">Career Best</div>
+                <div class="stat-row">
+                    <span class="stat-label">High Score</span>
+                    <span class="stat-value">${stats.highestScore.toLocaleString()}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">High Level</span>
+                    <span class="stat-value">${stats.highestLevel}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Games</span>
+                    <span class="stat-value">${stats.totalGames}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Lines</span>
+                    <span class="stat-value">${stats.totalLines.toLocaleString()}</span>
+                </div>
+            </div>
+
+            <!-- Comparison Section (Green) -->
+            <div class="stat-card stat-card-green">
+                <div class="stat-card-header">Replay (${durationStr})</div>
+                <div class="stat-row">
+                    <span class="stat-label">Score</span>
+                    <span class="stat-value">${score.toLocaleString()}</span>
+                </div>
+                ${personalBest ? `
+                <div class="stat-row">
+                    <span class="stat-label">vs Best</span>
+                    <span class="stat-value stat-comparison">${score > personalBest ? '+' : ''}${(score - personalBest).toLocaleString()}</span>
+                </div>
+                ` : ''}
+                <div class="stat-row">
+                    <span class="stat-label">vs Avg</span>
+                    <span class="stat-value stat-comparison">${score > avgScore ? '+' : ''}${(score - avgScore).toLocaleString()}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Avg Score</span>
+                    <span class="stat-value">${avgScore.toLocaleString()}</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Render Buttons
+    const buttonsContainer = document.getElementById('demo-complete-buttons');
+    if (buttonsContainer) {
+        buttonsContainer.innerHTML = `
+            <button id="demo-watch-again" class="demo-btn primary">▶ Watch Again</button>
+            <button id="demo-browse-replays" class="demo-btn secondary">📁 Browse Replays</button>
+            <button id="demo-main-menu" class="demo-btn tertiary">🏠 Main Menu</button>
+        `;
+
+        // Wire up button event listeners
+        document.getElementById('demo-watch-again').addEventListener('click', () => {
+            modalManager.hide('demoComplete');
+            if (callbacks.onWatchAgain) callbacks.onWatchAgain();
+        });
+
+        document.getElementById('demo-browse-replays').addEventListener('click', () => {
+            modalManager.hide('demoComplete');
+            if (callbacks.onBrowseReplays) callbacks.onBrowseReplays();
+        });
+
+        document.getElementById('demo-main-menu').addEventListener('click', () => {
+            modalManager.hide('demoComplete');
+            if (callbacks.onMainMenu) callbacks.onMainMenu();
         });
     }
 
-    if (shareBtn) {
-        shareBtn.addEventListener('click', async () => {
-            try {
-                shareBtn.innerHTML = '<span class="icon">⏳</span> Generating...';
-
-                // Use original demo and manager if available
-                if (originalDemoManager && originalDemo) {
-                    const url = await originalDemoManager.exportToURL(originalDemo);
-                    await navigator.clipboard.writeText(url);
-                    shareBtn.innerHTML = '<span class="icon">🔗</span> Copied!';
-                } else {
-                    // Fallback to dummy
-                    const url = await demoManager.exportToURL(demo);
-                    await navigator.clipboard.writeText(url);
-                    shareBtn.innerHTML = '<span class="icon">🔗</span> Copied (dummy)!';
-                }
-
-                shareBtn.disabled = true;
-                shareBtn.style.opacity = '0.7';
-                shareBtn.style.cursor = 'default';
-            } catch (err) {
-                console.error('Failed to share demo:', err);
-                shareBtn.innerHTML = '<span class="icon">❌</span> Error';
-            }
-        });
-    }
+    modalManager.show('demoComplete');
 }
 
 /**
@@ -416,11 +502,15 @@ export function showSettingsModal(modalManager) {
  * Shows the high scores modal with scores and statistics
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} highScoreManager - High score manager instance
+ * @param {Function} [onPlayDemo] - Optional callback to play a demo by ID: (demoId) => void
  */
-export async function showHighScoresModal(modalManager, highScoreManager) {
+export async function showHighScoresModal(modalManager, highScoreManager, onPlayDemo = null) {
     try {
         const topScores = await highScoreManager.getTopScores(10);
         const stats = await highScoreManager.getStatistics();
+
+        // Check if any scores have linked demos
+        const hasAnyDemos = topScores.some(score => score.demoId);
 
         // Build high scores table
         let scoresHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Top 10 Scores</h2>';
@@ -436,6 +526,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
                         <th style="text-align: center; padding: 8px;">Level</th>
                         <th style="text-align: center; padding: 8px;">Lines</th>
                         <th style="text-align: right; padding: 8px;">Date</th>
+                        ${hasAnyDemos ? '<th style="text-align: center; padding: 8px; width: 50px;"></th>' : ''}
                     </tr>
                 </thead>
                 <tbody>
@@ -447,6 +538,26 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
                 const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
                 const rowColor = index % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent';
 
+                // Play button for scores with linked demos
+                let playButtonHTML = '';
+                if (hasAnyDemos) {
+                    if (score.demoId && onPlayDemo) {
+                        playButtonHTML = `
+                            <td style="padding: 8px; text-align: center;">
+                                <button class="play-demo-btn" data-demo-id="${score.demoId}"
+                                    style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4);
+                                           color: #10b981; padding: 4px 8px; border-radius: 4px; cursor: pointer;
+                                           font-size: 14px; transition: all 0.2s;"
+                                    title="Watch replay">
+                                    ▶
+                                </button>
+                            </td>
+                        `;
+                    } else {
+                        playButtonHTML = '<td style="padding: 8px; text-align: center; color: #4b5563;">—</td>';
+                    }
+                }
+
                 scoresHTML += `
                     <tr style="background: ${rowColor};">
                         <td style="padding: 8px; font-weight: bold;">${rankEmoji}</td>
@@ -454,6 +565,7 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
                         <td style="padding: 8px; text-align: center;">${score.level}</td>
                         <td style="padding: 8px; text-align: center;">${score.lines}</td>
                         <td style="padding: 8px; text-align: right; color: #9ca3af; font-size: 12px;">${dateStr}</td>
+                        ${playButtonHTML}
                     </tr>
                 `;
             });
@@ -462,6 +574,24 @@ export async function showHighScoresModal(modalManager, highScoreManager) {
         }
 
         document.getElementById('high-scores-list').innerHTML = scoresHTML;
+
+        // Attach event listeners to play buttons
+        if (onPlayDemo) {
+            document.querySelectorAll('.play-demo-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const demoId = parseInt(e.target.dataset.demoId, 10);
+                    modalManager.hide('highScores');
+                    onPlayDemo(demoId);
+                });
+                // Hover effect
+                btn.addEventListener('mouseenter', () => {
+                    btn.style.background = 'rgba(16, 185, 129, 0.4)';
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.background = 'rgba(16, 185, 129, 0.2)';
+                });
+            });
+        }
 
         // Build statistics section
         let statsHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Statistics</h2>';

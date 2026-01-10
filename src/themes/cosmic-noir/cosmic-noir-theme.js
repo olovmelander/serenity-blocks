@@ -172,6 +172,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Effect states
         this.planetPulseIntensity = 0;
+        this.starEventBoost = 0; // Flash stars on events
         this.planetGlowIntensity = 1.0;
         this.comboMultiplier = 1.0;
         this.gasExplosionTimer = -10.0; // Timer for atmosphere gas explosion
@@ -231,7 +232,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.createPlanet();
         this.createAtmosphere();
         // Ambient particles removed for cleaner noir star aesthetic
-        // VoidSparks removed for cleaner aesthetic
+        this.createVoidSparks();
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -310,25 +311,15 @@ export default class CosmicNoirTheme extends BaseTheme {
             const i3 = i * 3;
             const i2 = i * 2;
 
-            // Spread stars across full screen (rectangular distribution)
-            // Use extra wide spread to account for camera parallax movement
-            const spreadX = (Math.random() - 0.5) * 16000;  // Very wide horizontal spread
-            const spreadY = (Math.random() - 0.5) * 10000;  // Very wide vertical spread
+            // FIXED: Use Spherical Distribution to prevent black voids on rotation
+            // Stars are now placed in a full 360-degree sphere around the origin
+            const radius = 2000 + Math.random() * 8000; // Deep depth range
+            const theta = Math.random() * Math.PI * 2;          // Horizontal angle
+            const phi = Math.acos(2 * Math.random() - 1);       // Vertical angle (acos for uniform sphere)
 
-            // 3 depth layers: near, mid, far
-            const layerRand = Math.random();
-            let depth;
-            if (layerRand < 0.33) {
-                depth = -1500 - Math.random() * 500;   // Near layer
-            } else if (layerRand < 0.66) {
-                depth = -2500 - Math.random() * 1000;  // Mid layer
-            } else {
-                depth = -4000 - Math.random() * 2000;  // Far layer
-            }
-
-            positions[i3] = spreadX;
-            positions[i3 + 1] = spreadY;
-            positions[i3 + 2] = depth;
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = radius * Math.cos(phi);
 
             // Color - grayscale noir palette
             const colorIndex = Math.floor(Math.random() * starColors.length);
@@ -706,6 +697,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (this.starfield && this.starfield.material.uniforms) {
             this.starfield.material.uniforms.uTime.value = this.time;
+            this.starfield.material.uniforms.uEventBoost.value = this.starEventBoost;
         }
 
         if (this.ambientParticles && this.ambientParticles.material.uniforms) {
@@ -829,6 +821,11 @@ export default class CosmicNoirTheme extends BaseTheme {
             if (this.planetPulseIntensity < 0.01) this.planetPulseIntensity = 0;
         }
 
+        if (this.starEventBoost > 0) {
+            this.starEventBoost *= 0.92; // Fast decay for quick flash
+            if (this.starEventBoost < 0.01) this.starEventBoost = 0;
+        }
+
         // Update cosmic waves
         this.updateCosmicWaves(delta);
 
@@ -931,6 +928,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     handlePieceLock() {
         this.planetPulseIntensity = Math.min(this.planetPulseIntensity + 0.12, 0.45);
+        this.starEventBoost = 2.0; // Strong flash on lock
     }
 
     handleCombo(eventPayload) {

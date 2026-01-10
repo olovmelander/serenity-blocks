@@ -72,12 +72,14 @@ export class HighScoreManager {
         const theme = scoreData.theme || (window.themeManager?.activeThemeName || 'default');
         const musicTrack = scoreData.musicTrack || (window.soundManager?.currentTrack || 'none');
         const speedMultiplier = scoreData.speedMultiplier || 1.0;
+        const demoId = scoreData.demoId || null;
 
         return this.saveScore({
             ...scoreData,
             theme,
             musicTrack,
             speedMultiplier,
+            demoId,
         });
     }
 
@@ -90,6 +92,7 @@ export class HighScoreManager {
      * @param {number} scoreData.speedMultiplier - Speed multiplier
      * @param {string} scoreData.theme - Active theme
      * @param {string} scoreData.musicTrack - Music track played
+     * @param {number} [scoreData.demoId] - Optional linked demo ID
      * @returns {Promise<Object>} The saved game record
      */
     async saveScore(scoreData) {
@@ -104,6 +107,11 @@ export class HighScoreManager {
             musicTrack: scoreData.musicTrack,
             timestamp: Date.now(),
         };
+
+        // Include demoId if provided (links to saved demo for replay)
+        if (scoreData.demoId) {
+            gameRecord.demoId = scoreData.demoId;
+        }
 
         // Save to high scores
         await this._addToStore(this.STORES.HIGH_SCORES, gameRecord);

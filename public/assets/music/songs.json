@@ -1,162 +1,172 @@
 [
   {
     "name": "Aurora",
-    "file": "Aurora.mp3",
-    "path": "./assets/music/Aurora.mp3"
+    "file": "aurora.mp3",
+    "path": "./assets/music/aurora.mp3"
   },
   {
     "name": "Bioluminescence",
-    "file": "Bioluminescence.mp3",
-    "path": "./assets/music/Bioluminescence.mp3"
+    "file": "bioluminescence.mp3",
+    "path": "./assets/music/bioluminescence.mp3"
+  },
+  {
+    "name": "Blood Moon",
+    "file": "blood-moon.mp3",
+    "path": "./assets/music/blood-moon.mp3"
   },
   {
     "name": "Candlelit Monastery",
-    "file": "Candlelit Monastery.mp3",
-    "path": "./assets/music/Candlelit Monastery.mp3"
+    "file": "candlelit-monastery.mp3",
+    "path": "./assets/music/candlelit-monastery.mp3"
   },
   {
     "name": "Cherry Blossom Garden",
-    "file": "Cherry Blossom Garden.mp3",
-    "path": "./assets/music/Cherry Blossom Garden.mp3"
+    "file": "cherry-blossom-garden.mp3",
+    "path": "./assets/music/cherry-blossom-garden.mp3"
   },
   {
     "name": "Cinder Drift",
-    "file": "Cinder Drift.mp3",
-    "path": "./assets/music/Cinder Drift.mp3"
+    "file": "cinder-drift.mp3",
+    "path": "./assets/music/cinder-drift.mp3"
   },
   {
     "name": "Cosmic Chimes",
-    "file": "Cosmic Chimes.mp3",
-    "path": "./assets/music/Cosmic Chimes.mp3"
+    "file": "cosmic-chimes.mp3",
+    "path": "./assets/music/cosmic-chimes.mp3"
+  },
+  {
+    "name": "Cosmic Noir",
+    "file": "cosmic-noir.mp3",
+    "path": "./assets/music/cosmic-noir.mp3"
   },
   {
     "name": "Crystal Cave",
-    "file": "Crystal Cave.mp3",
-    "path": "./assets/music/Crystal Cave.mp3"
+    "file": "crystal-cave.mp3",
+    "path": "./assets/music/crystal-cave.mp3"
   },
   {
     "name": "Echoes of the Soul",
-    "file": "Echoes of the Soul.mp3",
-    "path": "./assets/music/Echoes of the Soul.mp3"
+    "file": "echoes-of-the-soul.mp3",
+    "path": "./assets/music/echoes-of-the-soul.mp3"
   },
   {
     "name": "Electric Dreams",
-    "file": "Electric Dreams.mp3",
-    "path": "./assets/music/Electric Dreams.mp3"
+    "file": "electric-dreams.mp3",
+    "path": "./assets/music/electric-dreams.mp3"
   },
   {
     "name": "Ethereal Echoes",
-    "file": "Ethereal Echoes.mp3",
-    "path": "./assets/music/Ethereal Echoes.mp3"
+    "file": "ethereal-echoes.mp3",
+    "path": "./assets/music/ethereal-echoes.mp3"
   },
   {
     "name": "Falling Pieces",
-    "file": "Falling Pieces.mp3",
-    "path": "./assets/music/Falling Pieces.mp3"
+    "file": "falling-pieces.mp3",
+    "path": "./assets/music/falling-pieces.mp3"
   },
   {
     "name": "Floating Islands",
-    "file": "Floating Islands.mp3",
-    "path": "./assets/music/Floating Islands.mp3"
+    "file": "floating-islands.mp3",
+    "path": "./assets/music/floating-islands.mp3"
   },
   {
     "name": "Fluid Dreams",
-    "file": "Fluid Dreams.mp3",
-    "path": "./assets/music/Fluid Dreams.mp3"
+    "file": "fluid-dreams.mp3",
+    "path": "./assets/music/fluid-dreams.mp3"
   },
   {
     "name": "Galaxy",
-    "file": "Galaxy.mp3",
-    "path": "./assets/music/Galaxy.mp3"
+    "file": "galaxy.mp3",
+    "path": "./assets/music/galaxy.mp3"
   },
   {
     "name": "Geode Crystalline",
-    "file": "Geode Crystalline.mp3",
-    "path": "./assets/music/Geode Crystalline.mp3"
+    "file": "geode-crystalline.mp3",
+    "path": "./assets/music/geode-crystalline.mp3"
   },
   {
     "name": "Himalayan Peak",
-    "file": "Himalayan Peak.mp3",
-    "path": "./assets/music/Himalayan Peak.mp3"
+    "file": "himalayan-peak.mp3",
+    "path": "./assets/music/himalayan-peak.mp3"
   },
   {
     "name": "Ice Temple",
-    "file": "Ice Temple.mp3",
-    "path": "./assets/music/Ice Temple.mp3"
+    "file": "ice-temple.mp3",
+    "path": "./assets/music/ice-temple.mp3"
   },
   {
     "name": "Lunara",
-    "file": "Lunara.mp3",
-    "path": "./assets/music/Lunara.mp3"
+    "file": "lunara.mp3",
+    "path": "./assets/music/lunara.mp3"
   },
   {
     "name": "Meditation Temple",
-    "file": "Meditation Temple.mp3",
-    "path": "./assets/music/Meditation Temple.mp3"
+    "file": "meditation-temple.mp3",
+    "path": "./assets/music/meditation-temple.mp3"
   },
   {
     "name": "Misty Lake",
-    "file": "Misty Lake.mp3",
-    "path": "./assets/music/Misty Lake.mp3"
+    "file": "misty-lake.mp3",
+    "path": "./assets/music/misty-lake.mp3"
   },
   {
     "name": "Moonlit Forest",
-    "file": "Moonlit Forest.mp3",
-    "path": "./assets/music/Moonlit Forest.mp3"
+    "file": "moonlit-forest.mp3",
+    "path": "./assets/music/moonlit-forest.mp3"
   },
   {
     "name": "Moonlit Greenhouse",
-    "file": "Moonlit Greenhouse.mp3",
-    "path": "./assets/music/Moonlit Greenhouse.mp3"
+    "file": "moonlit-greenhouse.mp3",
+    "path": "./assets/music/moonlit-greenhouse.mp3"
   },
   {
     "name": "Neon District",
-    "file": "Neon District.mp3",
-    "path": "./assets/music/Neon District.mp3"
+    "file": "neon-district.mp3",
+    "path": "./assets/music/neon-district.mp3"
   },
   {
     "name": "Neon Dusk",
-    "file": "Neon Dusk.mp3",
-    "path": "./assets/music/Neon Dusk.mp3"
+    "file": "neon-dusk.mp3",
+    "path": "./assets/music/neon-dusk.mp3"
   },
   {
     "name": "Ocean Deep",
-    "file": "Ocean Deep.mp3",
-    "path": "./assets/music/Ocean Deep.mp3"
+    "file": "ocean-deep.mp3",
+    "path": "./assets/music/ocean-deep.mp3"
   },
   {
     "name": "Rainy Window",
-    "file": "Rainy Window.mp3",
-    "path": "./assets/music/Rainy Window.mp3"
+    "file": "rainy-window.mp3",
+    "path": "./assets/music/rainy-window.mp3"
   },
   {
     "name": "Shifting Sands",
-    "file": "Shifting Sands.mp3",
-    "path": "./assets/music/Shifting Sands.mp3"
+    "file": "shifting-sands.mp3",
+    "path": "./assets/music/shifting-sands.mp3"
   },
   {
     "name": "Starlight",
-    "file": "Starlight.mp3",
-    "path": "./assets/music/Starlight.mp3"
+    "file": "starlight.mp3",
+    "path": "./assets/music/starlight.mp3"
   },
   {
     "name": "Stellar Drift",
-    "file": "Stellar Drift.mp3",
-    "path": "./assets/music/Stellar Drift.mp3"
+    "file": "stellar-drift.mp3",
+    "path": "./assets/music/stellar-drift.mp3"
   },
   {
     "name": "Stillwater",
-    "file": "Stillwater.mp3",
-    "path": "./assets/music/Stillwater.mp3"
+    "file": "stillwater.mp3",
+    "path": "./assets/music/stillwater.mp3"
   },
   {
     "name": "Waves",
-    "file": "Waves.mp3",
-    "path": "./assets/music/Waves.mp3"
+    "file": "waves.mp3",
+    "path": "./assets/music/waves.mp3"
   },
   {
     "name": "Wolfhour",
-    "file": "Wolfhour.mp3",
-    "path": "./assets/music/Wolfhour.mp3"
+    "file": "wolfhour.mp3",
+    "path": "./assets/music/wolfhour.mp3"
   }
 ]
