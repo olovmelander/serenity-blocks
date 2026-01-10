@@ -1,19 +1,26 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
  *  ☀️ SOLAR ECLIPSE ☀️
- *  A Stunning 3D Solar Eclipse Theme for Serenity Blocks
+ *  The Most Astonishing 3D Solar Eclipse Theme for Serenity Blocks
  * ═══════════════════════════════════════════════════════════════════════════════
  *
  * Features:
- * - Deep 3D Starfield with twinkling and size attenuation
+ * - Deep 3D Starfield with shader-based twinkling and warm eclipse colors
  * - 3D Sun sphere with dynamic plasma shader and surface flow
- * - 3D Moon sphere with procedural crater texture and proper lighting
+ * - 3D Moon sphere with procedural crater texture and dramatic rim lighting
  * - 3D Corona particles pulsing outward from the sun
  * - 3D Solar flare particles erupting from the sun surface
- * - Orbiting space debris and meteors for depth
+ * - Eclipse spark bursts for dramatic combo effects
+ * - Solar flare tendrils with flowing motion
+ * - Diamond ring effect during perfect eclipse alignment
+ * - Cosmic rift energy tears during high combos
+ * - Meteor shower with impact effects
+ * - Orbiting space debris for depth
  * - Ambient floating particles throughout 3D space
  * - Nebula clouds at varying depths
- * - Post-processing: Bloom + Vignette
+ * - Camera orbital movement for parallax depth
+ * - Post-processing: Bloom + Chromatic Aberration + Vignette
+ * - Lens flare effects
  *
  * All code and shaders are original.
  */
@@ -28,13 +35,35 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { SOLAR_ECLIPSE_TETROMINOS } from './solar-eclipse-tetrominos.js';
+import {
+    starVertexShader,
+    starFragmentShader,
+    eclipseSparkVertexShader,
+    eclipseSparkFragmentShader,
+    cosmicRiftVertexShader,
+    cosmicRiftFragmentShader,
+    impactFlashVertexShader,
+    impactFlashFragmentShader,
+    debrisVertexShader,
+    debrisFragmentShader,
+    shockwaveVertexShader,
+    shockwaveFragmentShader,
+    tendrilVertexShader,
+    tendrilFragmentShader,
+    diamondRingVertexShader,
+    diamondRingFragmentShader,
+    lensFlareVertexShader,
+    lensFlareFragmentShader,
+    ChromaticAberrationShader,
+    VignetteShader,
+} from './solar-eclipse-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 5000,
+        starCount: 8000,
         coronaParticles: 1200,
         flareParticles: 600,
         meteorCount: 60,
@@ -45,9 +74,14 @@ const QUALITY_PRESETS = {
         enablePostProcessing: true,
         moonDetail: 64,
         sunDetail: 64,
+        eclipseSparkPoolSize: 16, // Increased for overlapping combos
+        eclipseSparkCount: 2000,
+        maxCosmicRifts: 4,
+        maxMeteorCrashes: 4,
+        enableChromaticAberration: true,
     },
     Ultra: {
-        starCount: 4000,
+        starCount: 6000,
         coronaParticles: 900,
         flareParticles: 450,
         meteorCount: 45,
@@ -58,9 +92,14 @@ const QUALITY_PRESETS = {
         enablePostProcessing: true,
         moonDetail: 48,
         sunDetail: 48,
+        eclipseSparkPoolSize: 12, // Increased for overlapping combos
+        eclipseSparkCount: 1500,
+        maxCosmicRifts: 3,
+        maxMeteorCrashes: 3,
+        enableChromaticAberration: true,
     },
     High: {
-        starCount: 3000,
+        starCount: 4000,
         coronaParticles: 600,
         flareParticles: 300,
         meteorCount: 35,
@@ -71,9 +110,14 @@ const QUALITY_PRESETS = {
         enablePostProcessing: true,
         moonDetail: 40,
         sunDetail: 40,
+        eclipseSparkPoolSize: 10, // Increased for overlapping combos
+        eclipseSparkCount: 1200,
+        maxCosmicRifts: 3,
+        maxMeteorCrashes: 3,
+        enableChromaticAberration: true,
     },
     Medium: {
-        starCount: 2000,
+        starCount: 2500,
         coronaParticles: 400,
         flareParticles: 200,
         meteorCount: 25,
@@ -84,9 +128,14 @@ const QUALITY_PRESETS = {
         enablePostProcessing: true,
         moonDetail: 32,
         sunDetail: 32,
+        eclipseSparkPoolSize: 8,
+        eclipseSparkCount: 800,
+        maxCosmicRifts: 2,
+        maxMeteorCrashes: 2,
+        enableChromaticAberration: false,
     },
     Low: {
-        starCount: 1000,
+        starCount: 1500,
         coronaParticles: 200,
         flareParticles: 100,
         meteorCount: 15,
@@ -97,9 +146,14 @@ const QUALITY_PRESETS = {
         enablePostProcessing: false,
         moonDetail: 24,
         sunDetail: 24,
+        eclipseSparkPoolSize: 3,
+        eclipseSparkCount: 500,
+        maxCosmicRifts: 1,
+        maxMeteorCrashes: 1,
+        enableChromaticAberration: false,
     },
     Minimal: {
-        starCount: 500,
+        starCount: 800,
         coronaParticles: 100,
         flareParticles: 50,
         meteorCount: 8,
@@ -110,40 +164,12 @@ const QUALITY_PRESETS = {
         enablePostProcessing: false,
         moonDetail: 16,
         sunDetail: 16,
+        eclipseSparkPoolSize: 2,
+        eclipseSparkCount: 300,
+        maxCosmicRifts: 0,
+        maxMeteorCrashes: 0,
+        enableChromaticAberration: false,
     },
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Vignette Shader
-// ─────────────────────────────────────────────────────────────────────────────
-const VignetteShader = {
-    uniforms: {
-        tDiffuse: { value: null },
-        darkness: { value: 0.6 },
-        offset: { value: 1.2 },
-    },
-    vertexShader: `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float darkness;
-        uniform float offset;
-        varying vec2 vUv;
-        
-        void main() {
-            vec4 texel = texture2D(tDiffuse, vUv);
-            vec2 uv = (vUv - 0.5) * 2.0;
-            float dist = length(uv);
-            float vig = smoothstep(offset, offset - 0.6, dist);
-            texel.rgb = mix(texel.rgb * (1.0 - darkness), texel.rgb, vig);
-            gl_FragColor = texel;
-        }
-    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +183,8 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.composer = null;
+        this.bloomPass = null;
+        this.chromaticPass = null;
 
         // Scene elements
         this.sun = null;
@@ -170,12 +198,29 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.shootingStars = [];
         this.sunGlowLayers = [];
 
+        // NEW: Eclipse spark burst pool (for overlapping combo effects)
+        this.eclipseSparks = [];
+        this.eclipseSparkIndex = 0;
+
+        // NEW: Cosmic rifts (energy tears)
+        this.cosmicRifts = [];
+
+        // NEW: Meteor crash effects
+        this.meteorCrashes = [];
+
         // Effect states for smooth interpolation
         this.coronaPulseIntensity = 0;
         this.bloomPulseIntensity = 0;
         this.starTwinkleIntensity = 0;
         this.flareIntensity = 1.0;
         this.sunPulse = 0;
+        this.chromaticIntensity = 0; // NEW: For chromatic aberration
+
+        // Camera orbital movement phases (like Blood Moon)
+        this.cameraPhaseX = Math.random() * Math.PI * 2;
+        this.cameraPhaseY = Math.random() * Math.PI * 2;
+        this.cameraPhaseX2 = Math.random() * Math.PI * 2;
+        this.cameraPhaseY2 = Math.random() * Math.PI * 2;
 
         // Moon drift animation state - continuous loop
         this.moonDriftProgress = 0; // 0 = far right, 0.5 = eclipse (center), 1.0 = far left (loops back)
@@ -228,7 +273,11 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.createMoon();
         this.createCoronaParticles();
         this.createFlareParticles();
-        this.createMeteorField();
+        this.createEclipseSparks(); // NEW: Dramatic spark bursts
+        this.createSolarTendrils(); // NEW: Flowing tendrils
+        this.createDiamondRing();   // NEW: Diamond ring effect
+        this.createLensFlares();    // NEW: Procedural lens flares
+        // Meteor field removed
         this.createAmbientParticles();
         this.setupPostProcessing();
         this.setupEventListeners();
@@ -287,9 +336,9 @@ export default class SolarEclipseTheme extends BaseTheme {
         console.log('[SolarEclipse] Renderer initialized');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Starfield - Deep 3D stars with size attenuation
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Starfield - Shader-based 3D stars with twinkling and warm eclipse colors
+    // ─────────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
         const starCount = this.qualityPreset.starCount;
@@ -297,20 +346,26 @@ export default class SolarEclipseTheme extends BaseTheme {
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
+        const twinkleData = new Float32Array(starCount * 2); // phase, speed
+        const brightness = new Float32Array(starCount);
 
+        // Warm eclipse-themed star colors (golds, oranges, warm whites, subtle purples)
         const starColors = [
-            new THREE.Color(0xffffff),
-            new THREE.Color(0xffeedd),
-            new THREE.Color(0xddddff),
-            new THREE.Color(0xffddaa),
-            new THREE.Color(0xaaddff),
-            new THREE.Color(0xffccaa),
+            new THREE.Color(0xffffff), // Pure white
+            new THREE.Color(0xfffaee), // Warm white
+            new THREE.Color(0xffeecc), // Cream gold
+            new THREE.Color(0xffd699), // Soft gold
+            new THREE.Color(0xffcc77), // Deep gold
+            new THREE.Color(0xffbb55), // Amber
+            new THREE.Color(0xeeddff), // Subtle purple
+            new THREE.Color(0xddccff), // Light purple
         ];
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
+            const i2 = i * 2;
 
-            // Spread stars across a large 3D volume
+            // Spread stars across a large 3D sphere
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
             const radius = 2000 + Math.random() * 6000;
@@ -319,30 +374,51 @@ export default class SolarEclipseTheme extends BaseTheme {
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i3 + 2] = radius * Math.cos(phi) - 3000; // Pushed back for depth
 
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            // Color selection - weighted toward warm colors
+            const colorRand = Math.random();
+            let colorIndex;
+            if (colorRand < 0.4) {
+                colorIndex = 2 + Math.floor(Math.random() * 4); // Gold/amber
+            } else if (colorRand < 0.7) {
+                colorIndex = Math.floor(Math.random() * 2); // White (crisp basic star)
+            } else {
+                colorIndex = 6 + Math.floor(Math.random() * 2); // Purple
+            }
+            const color = starColors[colorIndex];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 1.5 + Math.random() * 4;
+            // Larger atmospheric star sizes (Blood Moon style)
+            sizes[i] = 20.0 + Math.random() * 40.0;
+            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed (0.8 - 2.5 range)
+            brightness[i] = 0.5 + Math.random() * 0.5;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
-        const material = new THREE.PointsMaterial({
-            size: 3.5,
-            vertexColors: true,
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uEventBoost: { value: 0 },
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
             transparent: true,
-            opacity: 0.9,
-            sizeAttenuation: true, // Important for 3D depth!
+            vertexColors: true,
             blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
 
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
-        console.log('[SolarEclipse] Starfield created with', starCount, 'stars');
+        console.log('[SolarEclipse] Blood-Moon style starfield created with', starCount, 'stars');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -830,14 +906,19 @@ export default class SolarEclipseTheme extends BaseTheme {
         geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
         geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
 
-        const material = new THREE.PointsMaterial({
-            size: 5,
-            vertexColors: true,
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uMoonPosition: { value: new THREE.Vector3() },
+                uMoonRadius: { value: 310.0 },
+                opacity: { value: 0.85 },
+            },
+            vertexShader: occludedParticleVertexShader,
+            fragmentShader: occludedParticleFragmentShader,
             transparent: true,
-            opacity: 0.85,
+            vertexColors: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
-            sizeAttenuation: true,
         });
 
         this.coronaParticles = new THREE.Points(geometry, material);
@@ -898,20 +979,365 @@ export default class SolarEclipseTheme extends BaseTheme {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('data', new THREE.BufferAttribute(data, 4));
 
-        const material = new THREE.PointsMaterial({
-            size: 6,
-            vertexColors: true,
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uMoonPosition: { value: new THREE.Vector3() },
+                uMoonRadius: { value: 310.0 },
+                opacity: { value: 0.9 },
+            },
+            vertexShader: occludedParticleVertexShader,
+            fragmentShader: occludedParticleFragmentShader,
             transparent: true,
-            opacity: 0.9,
+            vertexColors: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
-            sizeAttenuation: true,
         });
 
         this.flareParticles = new THREE.Points(geometry, material);
         this.scene.add(this.flareParticles);
 
         console.log('[SolarEclipse] 3D Flare particles created:', particleCount);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Eclipse Spark Bursts - Pool of overlapping particle systems for combos
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createEclipseSparks() {
+        const poolSize = this.qualityPreset.eclipseSparkPoolSize;
+        const countPerSystem = Math.floor(this.qualityPreset.eclipseSparkCount / 2);
+        const sunRadius = 350; // Start at sun surface
+
+        // Warm eclipse spark colors (gold, orange, white-hot, amber)
+        const colorOptions = [
+            new THREE.Color(0xffdd44), // Bright gold
+            new THREE.Color(0xffaa22), // Deep orange-gold
+            new THREE.Color(0xffcc66), // Soft gold
+            new THREE.Color(0xffffff), // White-hot
+            new THREE.Color(0xffee88), // Light gold
+        ];
+
+        for (let p = 0; p < poolSize; p++) {
+            const geometry = new THREE.BufferGeometry();
+
+            const thetas = new Float32Array(countPerSystem);
+            const phis = new Float32Array(countPerSystem);
+            const radii = new Float32Array(countPerSystem);
+            const randoms = new Float32Array(countPerSystem);
+            const colors = new Float32Array(countPerSystem * 3);
+            const positions = new Float32Array(countPerSystem * 3);
+
+            for (let i = 0; i < countPerSystem; i++) {
+                // Distribute particles evenly on sun surface
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                thetas[i] = theta;
+                phis[i] = phi;
+                radii[i] = sunRadius;
+                randoms[i] = Math.random();
+
+                // Color selection - weighted toward hot gold colors
+                const colorType = Math.random();
+                let c;
+                if (colorType > 0.6) c = colorOptions[0];
+                else if (colorType > 0.35) c = colorOptions[1];
+                else if (colorType > 0.15) c = colorOptions[2];
+                else if (colorType > 0.05) c = colorOptions[3];
+                else c = colorOptions[4];
+
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+
+                positions[i * 3] = 0;
+                positions[i * 3 + 1] = 0;
+                positions[i * 3 + 2] = 0;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
+            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
+            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    uPulseTimer: { value: -100.0 },
+                    uMoonPosition: { value: new THREE.Vector3() },
+                    uMoonRadius: { value: 310.0 },
+                },
+                vertexShader: eclipseSparkVertexShader,
+                fragmentShader: eclipseSparkFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const sparks = new THREE.Points(geometry, material);
+            this.scene.add(sparks);
+            this.eclipseSparks.push(sparks);
+        }
+
+        console.log('[SolarEclipse] Eclipse sparks pool created with', poolSize, 'systems,', countPerSystem, 'particles each');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Trigger Eclipse Spark Burst (called on combos)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    triggerEclipseSparkBurst() {
+        if (this.eclipseSparks.length === 0) return;
+
+        // Use the next system in the pool (allows overlapping bursts)
+        const sparks = this.eclipseSparks[this.eclipseSparkIndex];
+        if (sparks && sparks.material.uniforms) {
+            sparks.material.uniforms.uPulseTimer.value = 0.0;
+        }
+
+        this.eclipseSparkIndex = (this.eclipseSparkIndex + 1) % this.eclipseSparks.length;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Cosmic Rift Effect - Energy tear during high combos
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createCosmicRift() {
+        if (this.cosmicRifts.length >= this.qualityPreset.maxCosmicRifts) return;
+
+        const width = 800 + Math.random() * 400;
+        const height = 20 + Math.random() * 15;
+
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: this.time },
+                uOpacity: { value: 1.0 },
+            },
+            vertexShader: cosmicRiftVertexShader,
+            fragmentShader: cosmicRiftFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+
+        const rift = new THREE.Mesh(geometry, material);
+        rift.position.set(
+            (Math.random() - 0.5) * 1500,
+            (Math.random() - 0.5) * 800,
+            -200 - Math.random() * 400
+        );
+        rift.rotation.z = (Math.random() - 0.5) * 0.3;
+
+        rift.userData = {
+            createdAt: this.time,
+            lifetime: 2.5 + Math.random() * 1.5,
+        };
+
+        this.cosmicRifts.push(rift);
+        this.scene.add(rift);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Meteor Crash Effect - Dramatic impact during high combos
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createMeteorCrash() {
+        if (this.meteorCrashes.length >= this.qualityPreset.maxMeteorCrashes) return;
+
+        const impactX = (Math.random() - 0.5) * 1200;
+        const impactY = (Math.random() - 0.5) * 600 - 100;
+        const impactZ = -300 + Math.random() * 200;
+
+        const crash = {
+            impactPoint: new THREE.Vector3(impactX, impactY, impactZ),
+            createdAt: this.time,
+            shockwave: null,
+            debris: null,
+            flash: null,
+        };
+
+        // Create shockwave ring
+        const shockwaveGeo = new THREE.PlaneGeometry(600, 600);
+        const shockwaveMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uProgress: { value: 0 },
+                uOpacity: { value: 1.0 },
+            },
+            vertexShader: shockwaveVertexShader,
+            fragmentShader: shockwaveFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+        crash.shockwave = new THREE.Mesh(shockwaveGeo, shockwaveMat);
+        crash.shockwave.position.copy(crash.impactPoint);
+        this.scene.add(crash.shockwave);
+
+        // Create debris particles
+        const debrisCount = 80;
+        const debrisGeo = new THREE.BufferGeometry();
+        const debrisPositions = new Float32Array(debrisCount * 3);
+        const debrisVelocities = new Float32Array(debrisCount * 3);
+        const debrisSizes = new Float32Array(debrisCount);
+        const debrisRotations = new Float32Array(debrisCount);
+
+        for (let i = 0; i < debrisCount; i++) {
+            debrisPositions[i * 3] = impactX;
+            debrisPositions[i * 3 + 1] = impactY;
+            debrisPositions[i * 3 + 2] = impactZ;
+
+            // Explosive outward velocity
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 100 + Math.random() * 200;
+            const upward = 50 + Math.random() * 150;
+            debrisVelocities[i * 3] = Math.cos(angle) * speed;
+            debrisVelocities[i * 3 + 1] = upward;
+            debrisVelocities[i * 3 + 2] = Math.sin(angle) * speed * 0.5;
+
+            debrisSizes[i] = 4 + Math.random() * 8;
+            debrisRotations[i] = Math.random() * Math.PI * 2;
+        }
+
+        debrisGeo.setAttribute('position', new THREE.BufferAttribute(debrisPositions, 3));
+        debrisGeo.setAttribute('aVelocity', new THREE.BufferAttribute(debrisVelocities, 3));
+        debrisGeo.setAttribute('aSize', new THREE.BufferAttribute(debrisSizes, 1));
+        debrisGeo.setAttribute('aRotation', new THREE.BufferAttribute(debrisRotations, 1));
+
+        const debrisMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+            },
+            vertexShader: debrisVertexShader,
+            fragmentShader: debrisFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        crash.debris = new THREE.Points(debrisGeo, debrisMat);
+        this.scene.add(crash.debris);
+
+        this.meteorCrashes.push(crash);
+        console.log('[SolarEclipse] Meteor crash effect created');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Solar Tendrils - Flowing energy ropes
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createSolarTendrils() {
+        const tendrilCount = 12;
+        const geometry = new THREE.BufferGeometry();
+
+        const segments = 50;
+        const positions = new Float32Array(tendrilCount * segments * 3);
+        const progress = new Float32Array(tendrilCount * segments);
+        const tendrilIds = new Float32Array(tendrilCount * segments);
+
+        const sunRadius = 310;
+
+        for (let i = 0; i < tendrilCount; i++) {
+            const angle = (i / tendrilCount) * Math.PI * 2;
+            const startX = Math.cos(angle) * sunRadius;
+            const startY = Math.sin(angle) * sunRadius;
+
+            for (let j = 0; j < segments; j++) {
+                const idx = (i * segments + j);
+                const p = j / (segments - 1);
+
+                // Base position extends outward
+                positions[idx * 3] = startX * (1.0 + p * 0.8);
+                positions[idx * 3 + 1] = startY * (1.0 + p * 0.8);
+                positions[idx * 3 + 2] = -50; // Slightly behind sun
+
+                progress[idx] = p;
+                tendrilIds[idx] = i;
+            }
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
+        geometry.setAttribute('aTendrilId', new THREE.BufferAttribute(tendrilIds, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uIntensity: { value: 1.0 },
+                uBasePosition: { value: new THREE.Vector3(0, 0, 0) },
+            },
+            vertexShader: tendrilVertexShader,
+            fragmentShader: tendrilFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.solarTendrils = new THREE.Points(geometry, material);
+        this.scene.add(this.solarTendrils);
+
+        console.log('[SolarEclipse] Solar tendrils created');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Diamond Ring Effect - Visible during perfect eclipse alignment
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createDiamondRing() {
+        // Larger geometry to prevent "rectangle cutoff" (quad edges clipping the glow)
+        const geometry = new THREE.PlaneGeometry(1600, 1600);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uEclipseProgress: { value: 0 },
+                uMoonX: { value: 0 },
+            },
+            vertexShader: diamondRingVertexShader,
+            fragmentShader: diamondRingFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.diamondRing = new THREE.Mesh(geometry, material);
+        // Z=20 puts it safely behind the Moon (Z~50) but in front of Sun (Z~0)
+        this.diamondRing.position.z = 20;
+        this.scene.add(this.diamondRing);
+
+        console.log('[SolarEclipse] Diamond ring effect updated (large geometry)');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lens Flares - Procedural reaction to sun brightness
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createLensFlares() {
+        const geometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uIntensity: { value: 1.0 },
+                uSunPosition: { value: new THREE.Vector2(0.5, 0.5) },
+            },
+            vertexShader: lensFlareVertexShader,
+            fragmentShader: lensFlareFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        // Lens flares are a fullscreen overlay attached to camera
+        this.lensFlares = new THREE.Mesh(geometry, material);
+        this.lensFlares.position.z = -100; // Attached to camera space
+        this.camera.add(this.lensFlares); // Add to camera, not scene
+
+        console.log('[SolarEclipse] Lens flares created');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1070,10 +1496,19 @@ export default class SolarEclipseTheme extends BaseTheme {
         );
         this.composer.addPass(this.bloomPass);
 
+        // Chromatic aberration for ethereal effect
+        if (this.qualityPreset.enableChromaticAberration) {
+            this.chromaticPass = new ShaderPass(ChromaticAberrationShader);
+            this.chromaticPass.uniforms.uIntensity.value = 0.003;
+            this.composer.addPass(this.chromaticPass);
+        }
+
         const vignettePass = new ShaderPass(VignetteShader);
         vignettePass.uniforms.darkness.value = 0.55;
         vignettePass.uniforms.offset.value = 1.25;
         this.composer.addPass(vignettePass);
+
+        console.log('[SolarEclipse] Post-processing configured with bloom, chromatic aberration, and vignette');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1114,10 +1549,27 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.bloomPulseIntensity = Math.min(0.35 + lineCount * 0.15, 0.9);
         this.sunPulse = Math.min(0.3 + lineCount * 0.2, 0.8);
         this.flareIntensity = Math.min(1.6 + lineCount * 0.25, 2.8);
+        this.chromaticIntensity = Math.min(0.003 + lineCount * 0.002, 0.01); // NEW
+
+        // Boost tendril intensity
+        if (this.solarTendrils && this.solarTendrils.material.uniforms) {
+            const current = this.solarTendrils.material.uniforms.uIntensity.value;
+            this.solarTendrils.material.uniforms.uIntensity.value = Math.min(current + 0.3, 2.0);
+        }
 
         const starCount = Math.min(lineCount + 1, 5);
         for (let i = 0; i < starCount; i++) {
             setTimeout(() => this.createShootingStar(), i * 100);
+        }
+
+        // Trigger eclipse spark burst on line clears
+        if (lineCount >= 2) {
+            this.triggerEclipseSparkBurst();
+        }
+
+        // Create cosmic rift on tetris (4 lines)
+        if (lineCount >= 4) {
+            this.createCosmicRift();
         }
     }
 
@@ -1126,12 +1578,31 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.bloomPulseIntensity = Math.min(0.45 + comboCount * 0.1, 1.0);
         this.starTwinkleIntensity = Math.min(0.5 + comboCount * 0.15, 1.0);
         this.sunPulse = Math.min(0.4 + comboCount * 0.15, 0.9);
+        this.chromaticIntensity = Math.min(0.004 + comboCount * 0.001, 0.012); // NEW
 
+        // Boost tendril intensity
+        if (this.solarTendrils && this.solarTendrils.material.uniforms) {
+            const current = this.solarTendrils.material.uniforms.uIntensity.value;
+            this.solarTendrils.material.uniforms.uIntensity.value = Math.min(current + 0.5, 2.5);
+        }
+
+        // Trigger eclipse spark burst on combos 3+
         if (comboCount >= 3) {
+            this.triggerEclipseSparkBurst();
             const extraStars = Math.min(comboCount - 1, 6);
             for (let i = 0; i < extraStars; i++) {
                 setTimeout(() => this.createShootingStar(), i * 120);
             }
+        }
+
+        // Create cosmic rift on combos 5+
+        if (comboCount >= 5) {
+            this.createCosmicRift();
+        }
+
+        // Meteor crash on combos 6+
+        if (comboCount >= 6) {
+            this.createMeteorCrash();
         }
     }
 
@@ -1214,6 +1685,27 @@ export default class SolarEclipseTheme extends BaseTheme {
                 this.moon.rotation.y += 0.00015;
             }
 
+            // === CAMERA ORBITAL MOVEMENT - Creates parallax depth ===
+            if (this.camera) {
+                // Increased speed and amplitude for visibility
+                const cameraTime = this.time * 0.08;
+                const orbitRadiusX = 400; // Wider horizontal sway
+                const orbitRadiusY = 250; // Taller vertical sway
+                const orbitRadiusZ = 200; // Deeper breathing
+
+                // Orbital sway with multiple frequencies for organic feel
+                this.camera.position.x = Math.sin(cameraTime + this.cameraPhaseX) * orbitRadiusX +
+                    Math.cos(cameraTime * 0.7 + this.cameraPhaseX2) * orbitRadiusX * 0.4;
+                this.camera.position.y = Math.cos(cameraTime * 0.8 + this.cameraPhaseY) * orbitRadiusY +
+                    Math.sin(cameraTime * 0.5 + this.cameraPhaseY2) * orbitRadiusY * 0.3;
+                this.camera.position.z = 1400 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+
+                // Dynamic look-at for extra parallax
+                const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
+                const lookOffsetY = Math.cos(cameraTime * 0.5) * 100;
+                this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
+            }
+
             // Update sun shader
             if (this.sun?.material?.uniforms) {
                 this.sun.material.uniforms.uTime.value = this.time;
@@ -1266,7 +1758,11 @@ export default class SolarEclipseTheme extends BaseTheme {
                 }
 
                 this.coronaParticles.geometry.attributes.position.needsUpdate = true;
-                this.coronaParticles.material.opacity = 0.7 + this.coronaPulseIntensity * 0.2 + Math.sin(this.time * 3) * 0.08;
+                if (this.coronaParticles.material.uniforms) {
+                    this.coronaParticles.material.uniforms.opacity.value = 0.7 + this.coronaPulseIntensity * 0.2 + Math.sin(this.time * 3) * 0.08;
+                    if (this.moon) this.coronaParticles.material.uniforms.uMoonPosition.value.copy(this.moon.position);
+                }
+
             }
 
             // Animate flare particles - erupting from sun
@@ -1293,51 +1789,15 @@ export default class SolarEclipseTheme extends BaseTheme {
                 }
 
                 this.flareParticles.geometry.attributes.position.needsUpdate = true;
-                this.flareParticles.material.opacity = 0.6 + this.coronaPulseIntensity * 0.3;
+                if (this.flareParticles.material.uniforms) {
+                    this.flareParticles.material.uniforms.opacity.value = 0.6 + this.coronaPulseIntensity * 0.3;
+                    if (this.moon) this.flareParticles.material.uniforms.uMoonPosition.value.copy(this.moon.position);
+                }
+
             }
 
-            // Animate meteors - orbital motion around the MOON
-            if (this.moon) {
-                const moonPos = this.moon.position;
-                const moonRadius = 320; // Moon's actual radius
-                const minDistance = moonRadius + 80; // Minimum safe distance from moon center
+            // Meteors removed
 
-                this.meteors.forEach((meteor) => {
-                    meteor.angle += meteor.speed;
-
-                    // Calculate orbital position (circular, not elliptical)
-                    const orbitX = Math.cos(meteor.angle) * meteor.radius;
-                    const orbitZ = Math.sin(meteor.angle) * meteor.radius;
-                    const orbitY = meteor.yBase + Math.sin(this.time + meteor.yOffset) * 10;
-
-                    // Position relative to moon
-                    let newX = moonPos.x + orbitX;
-                    let newY = moonPos.y + orbitY;
-                    let newZ = moonPos.z + orbitZ;
-
-                    // Safety check: ensure meteor stays outside moon sphere
-                    const dx = newX - moonPos.x;
-                    const dy = newY - moonPos.y;
-                    const dz = newZ - moonPos.z;
-                    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-                    if (dist < minDistance) {
-                        // Push meteor outward if too close
-                        const scale = minDistance / dist;
-                        newX = moonPos.x + dx * scale;
-                        newY = moonPos.y + dy * scale;
-                        newZ = moonPos.z + dz * scale;
-                    }
-
-                    meteor.mesh.position.x = newX;
-                    meteor.mesh.position.y = newY;
-                    meteor.mesh.position.z = newZ;
-
-                    meteor.mesh.rotation.x += meteor.rotationSpeed.x;
-                    meteor.mesh.rotation.y += meteor.rotationSpeed.y;
-                    meteor.mesh.rotation.z += meteor.rotationSpeed.z;
-                });
-            }
 
             // Animate ambient particles - gentle 3D drift
             if (this.ambientParticles) {
@@ -1364,14 +1824,96 @@ export default class SolarEclipseTheme extends BaseTheme {
                 cloud.rotation.z += 0.00008 * (i % 2 === 0 ? 1 : -1);
             });
 
-            // Starfield twinkling
-            if (this.starfield?.material) {
+            // Starfield shader updates (twinkling)
+            if (this.starfield?.material?.uniforms) {
+                this.starfield.material.uniforms.uTime.value = this.time;
+                this.starfield.material.uniforms.uEventBoost.value = this.starTwinkleIntensity;
+
                 if (this.starTwinkleIntensity > 0) {
                     this.starTwinkleIntensity *= 0.95;
                     if (this.starTwinkleIntensity < 0.01) this.starTwinkleIntensity = 0;
                 }
-                this.starfield.material.opacity = 0.75 + this.starTwinkleIntensity * 0.25;
             }
+
+            // === UPDATE ECLIPSE SPARKS ===
+            for (const sparks of this.eclipseSparks) {
+                if (sparks && sparks.material.uniforms) {
+                    sparks.material.uniforms.time.value = this.time;
+
+                    if (this.moon) {
+                        sparks.material.uniforms.uMoonPosition.value.copy(this.moon.position);
+                    }
+
+                    // Advance pulse timer for active bursts
+                    if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
+                        sparks.material.uniforms.uPulseTimer.value += delta * 12.0;
+
+                        // Deactivate when burst completes (Extended duration)
+                        if (sparks.material.uniforms.uPulseTimer.value > 160.0) {
+                            sparks.material.uniforms.uPulseTimer.value = -100.0;
+                        }
+                    }
+                }
+            }
+
+            // === UPDATE COSMIC RIFTS ===
+            this.cosmicRifts = this.cosmicRifts.filter((rift) => {
+                const age = this.time - rift.userData.createdAt;
+                const progress = age / rift.userData.lifetime;
+
+                if (progress >= 1.0) {
+                    this.scene.remove(rift);
+                    rift.geometry.dispose();
+                    rift.material.dispose();
+                    return false;
+                }
+
+                // Update rift shader
+                if (rift.material.uniforms) {
+                    rift.material.uniforms.uTime.value = this.time;
+                    // Fade in quickly, fade out gradually
+                    const fadeIn = Math.min(age * 2, 1.0);
+                    const fadeOut = 1.0 - Math.pow(progress, 2);
+                    rift.material.uniforms.uOpacity.value = fadeIn * fadeOut;
+                }
+
+                return true;
+            });
+
+            // === UPDATE METEOR CRASHES ===
+            this.meteorCrashes = this.meteorCrashes.filter((crash) => {
+                const age = this.time - crash.createdAt;
+                const crashDuration = 2.5;
+
+                if (age > crashDuration) {
+                    // Cleanup
+                    if (crash.shockwave) {
+                        this.scene.remove(crash.shockwave);
+                        crash.shockwave.geometry.dispose();
+                        crash.shockwave.material.dispose();
+                    }
+                    if (crash.debris) {
+                        this.scene.remove(crash.debris);
+                        crash.debris.geometry.dispose();
+                        crash.debris.material.dispose();
+                    }
+                    return false;
+                }
+
+                const progress = age / crashDuration;
+
+                // Update shockwave
+                if (crash.shockwave?.material?.uniforms) {
+                    crash.shockwave.material.uniforms.uProgress.value = progress;
+                }
+
+                // Update debris
+                if (crash.debris?.material?.uniforms) {
+                    crash.debris.material.uniforms.uTime.value = age;
+                }
+
+                return true;
+            });
 
             // Decay effect intensities
             if (this.coronaPulseIntensity > 0) {
@@ -1394,9 +1936,64 @@ export default class SolarEclipseTheme extends BaseTheme {
                 if (this.flareIntensity < 1.02) this.flareIntensity = 1.0;
             }
 
+            // Decay chromatic aberration
+            if (this.chromaticIntensity > 0.003) {
+                this.chromaticIntensity *= 0.95;
+                if (this.chromaticIntensity < 0.0031) this.chromaticIntensity = 0.003;
+            }
+
             // Update bloom
             if (this.bloomPass) {
                 this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity);
+            }
+
+            // Update chromatic aberration
+            if (this.chromaticPass?.uniforms) {
+                this.chromaticPass.uniforms.uIntensity.value = this.chromaticIntensity;
+                this.chromaticPass.uniforms.uTime.value = this.time;
+            }
+
+            // Animate Solar Tendrils
+            if (this.solarTendrils?.material?.uniforms) {
+                this.solarTendrils.material.uniforms.uTime.value = this.time;
+                // Decay intensity
+                if (this.solarTendrils.material.uniforms.uIntensity.value > 0.0) {
+                    this.solarTendrils.material.uniforms.uIntensity.value *= 0.95;
+                }
+            }
+
+            // Animate Diamond Ring (based on eclipse progress)
+            if (this.diamondRing?.material?.uniforms) {
+                this.diamondRing.material.uniforms.uTime.value = this.time;
+
+                // Calculate eclipse alignment (0 to 1, where 1 is perfect alignment)
+                const alignment = 1.0 - Math.abs(this.moonDriftProgress - 0.5) * 5.0; // Sharp peak
+                const clampedAlignment = Math.max(0, Math.min(1, alignment));
+
+                this.diamondRing.material.uniforms.uEclipseProgress.value = clampedAlignment;
+                this.diamondRing.material.uniforms.uMoonX.value = this.moon.position.x;
+
+                // Make it look at camera to stay flat
+                this.diamondRing.lookAt(this.camera.position);
+            }
+
+            // Animate Lens Flares
+            if (this.lensFlares?.material?.uniforms) {
+                this.lensFlares.material.uniforms.uTime.value = this.time;
+
+                // Calculate sun screen position for dynamic flare movement
+                const sunPos = this.sun.position.clone();
+                sunPos.project(this.camera);
+
+                // Map from -1..1 to 0..1
+                const screenX = (sunPos.x * 0.5 + 0.5);
+                const screenY = (sunPos.y * 0.5 + 0.5);
+
+                this.lensFlares.material.uniforms.uSunPosition.value.set(screenX, screenY);
+
+                // Dim flares during total eclipse
+                const eclipseDim = 1.0 - Math.max(0, 1.0 - Math.abs(this.moonDriftProgress - 0.5) * 4.0);
+                this.lensFlares.material.uniforms.uIntensity.value = 1.0 * eclipseDim + this.flareIntensity * 0.2;
             }
 
             // Animate shooting stars
@@ -1467,6 +2064,15 @@ export default class SolarEclipseTheme extends BaseTheme {
             });
         }
 
+        if (this.camera) {
+            // Remove lens flares from camera
+            if (this.lensFlares) {
+                this.camera.remove(this.lensFlares);
+                this.lensFlares.geometry.dispose();
+                this.lensFlares.material.dispose();
+            }
+        }
+
         if (this.renderer) {
             this.renderer.dispose();
             if (this.renderer.domElement?.parentNode) {
@@ -1481,15 +2087,50 @@ export default class SolarEclipseTheme extends BaseTheme {
         });
         this.shootingStars = [];
 
+        // Cleanup pool systems
+        this.eclipseSparks.forEach(sys => {
+            this.scene?.remove(sys);
+            sys.geometry?.dispose();
+            sys.material?.dispose();
+        });
+        this.eclipseSparks = [];
+
+        this.cosmicRifts.forEach(rift => {
+            this.scene?.remove(rift);
+            rift.geometry?.dispose();
+            rift.material?.dispose();
+        });
+        this.cosmicRifts = [];
+
+        this.meteorCrashes.forEach(crash => {
+            if (crash.shockwave) {
+                this.scene?.remove(crash.shockwave);
+                crash.shockwave.geometry?.dispose();
+                crash.shockwave.material?.dispose();
+            }
+            if (crash.debris) {
+                this.scene?.remove(crash.debris);
+                crash.debris.geometry?.dispose();
+                crash.debris.material?.dispose();
+            }
+        });
+        this.meteorCrashes = [];
+
         this.renderer = null;
         this.scene = null;
         this.camera = null;
         this.composer = null;
+        this.bloomPass = null;
+        this.chromaticPass = null;
+
         this.sun = null;
         this.moon = null;
         this.coronaParticles = null;
         this.flareParticles = null;
         this.starfield = null;
+        this.solarTendrils = null;
+        this.diamondRing = null;
+        this.lensFlares = null;
         this.nebulaClouds = [];
         this.meteors = [];
         this.ambientParticles = null;

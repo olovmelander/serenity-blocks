@@ -50,4 +50,7 @@ export const EVENTS = {
     // Odyssey Mode Victory Lap
     ODYSSEY_GOAL_COMPLETE: 'odysseyGoalComplete',
     ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',
+    // Demo System
+    OPEN_DEMO_BROWSER: 'openDemoBrowser',
+    EXIT_TO_MAIN_MENU: 'exitToMainMenu',
 };

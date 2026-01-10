@@ -187,7 +187,22 @@ export class SinglePlayerMode extends BaseGameMode {
             }
             console.log('[SinglePlayer] Demo loaded successfully');
 
+            // Store demo for "Watch Again" functionality
+            this.currentDemo = options.demo;
+
+            // Wire demo end callback - triggers when demo naturally completes
+            this.demoPlayer.onPlaybackEnd = () => {
+                console.log('[SinglePlayer] Demo playback ended naturally');
+                this._handleGameOver();
+            };
+
             this.playbackControls.show();
+
+            // Show "Watching Replay" indicator
+            const demoIndicator = document.getElementById('demo-indicator');
+            if (demoIndicator) {
+                demoIndicator.classList.add('visible');
+            }
 
             // Start Phaser board scene
             this._startPhaserBoardScene();
@@ -227,8 +242,9 @@ export class SinglePlayerMode extends BaseGameMode {
                         spawnPiece(this.gameState);
                         updateNextQueue(this.gameState);
                     },
-                    updateStats: statsCallback, // Use the full stats callback
-                    drawCallback: drawCallback, // Pass draw callback
+                    updateStats: statsCallback, // For DemoPlayer direct calls
+                    updateStatsCallback: statsCallback, // For updateGame() in game.js
+                    drawCallback: drawCallback,
                     onStart: () => { },
                     playDropCallback: () => this.deps.soundManager.sfxPlayer.playDrop(),
                     playSoundCallback: () => { },
@@ -357,7 +373,8 @@ export class SinglePlayerMode extends BaseGameMode {
             this.playbackControls.hide();
         }
 
-        // Stop recording if active
+        // Stop recording if active and auto-save the demo (like Quadra)
+        this.lastSavedDemoId = null;
         if (this.isRecording) {
             const demo = this.demoRecorder.stopRecording({
                 score: this.gameState?.score,
@@ -367,6 +384,12 @@ export class SinglePlayerMode extends BaseGameMode {
             this.lastRecordedDemo = demo;
             this.isRecording = false;
             console.log('[SinglePlayer] Recording stopped. Demo captured:', !!demo, 'Inputs:', demo?.inputs?.length);
+
+            // Auto-save the demo to IndexedDB (like Quadra's automatic last.qrec)
+            // Await to ensure we have the demoId before saving high score
+            if (demo && demo.inputs?.length > 0) {
+                this.lastSavedDemoId = await this._autoSaveDemo(demo);
+            }
         } else {
             console.log('[SinglePlayer] Not recording, so no demo saved.');
         }
@@ -781,84 +804,70 @@ export class SinglePlayerMode extends BaseGameMode {
         console.log('[SinglePlayer] Game over!');
         console.log('[SinglePlayer] isPlayingDemo:', this.isPlayingDemo);
 
+        // Prevent re-entry if already processing
+        if (this.isProcessingGameOver) return;
+        this.isProcessingGameOver = true;
+
         // Special handling for demo playback
         if (this.isPlayingDemo) {
-            console.log('[SinglePlayer] Demo finished, showing stats briefly then returning to demo browser');
+            console.log('[SinglePlayer] Demo finished, showing Demo Complete modal');
 
             await this.onStop();
 
-            // Show game over modal with stats for the demo
-            const { showGameOverModal } = await import('../../ui/modals.js');
+            // Show Demo Complete modal with navigation options
+            const { showDemoCompleteModal } = await import('../../ui/modals.js');
 
-            await showGameOverModal(
+            showDemoCompleteModal(
                 this.deps.modalManager,
                 this.gameState,
                 this.deps.highScoreManager,
-                null, // No demo manager for playback
-                null  // No demo to save (already saved)
+                {
+                    onWatchAgain: () => {
+                        console.log('[SinglePlayer] Watch Again - replaying demo');
+                        // No need to hideAll here as showDemoCompleteModal hides itself
+                        // and we want to stay in "demo context" potentially? 
+                        // Actually better to restart clean.
+                        if (this.onRestart) this.onRestart();
+                    },
+                    onBrowseReplays: () => {
+                        console.log('[SinglePlayer] Browse Replays - showing demo browser');
+
+                        // Clean slate navigation
+                        this.deps.modalManager.hideAll();
+                        this.deps.modalManager.show('start');
+                        eventBus.emit(EVENTS.OPEN_DEMO_BROWSER);
+                    },
+                    onMainMenu: () => {
+                        console.log('[SinglePlayer] Main Menu - exiting to main menu');
+                        eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+                    }
+                }
             );
 
-            // When user dismisses the modal, return to demo browser
-            // Listen for modal close
-            const checkModalClosed = setInterval(() => {
-                const gameOverModal = document.getElementById('game-over-modal');
-                if (!gameOverModal || !gameOverModal.classList.contains('visible')) {
-                    clearInterval(checkModalClosed);
-                    console.log('[SinglePlayer] Game over modal closed, showing demo browser');
-
-                    // Hide playback controls
-                    this.playbackControls.hide();
-
-                    // Show demo browser
-                    const demoBrowserModal = document.getElementById('demo-browser-modal');
-                    if (demoBrowserModal) {
-                        demoBrowserModal.classList.add('visible');
-                    }
-
-                    // Reset demo playback state
-                    this.isPlayingDemo = false;
-                }
-            }, 100);
-
+            this.isProcessingGameOver = false;
             return;
         }
 
         // Normal game over handling (not demo playback)
         await this.onStop();
 
-        // Save high score
+        // Save high score (with linked demo ID if available)
         await this.deps.highScoreManager.addScore({
             score: this.gameState.score,
             lines: this.gameState.lines,
             level: this.gameState.level,
+            demoId: this.lastSavedDemoId,
         });
 
         // Show game over modal with stats
         const { showGameOverModal } = await import('../../ui/modals.js');
 
-        // Ensure demo manager exists
-        if (!this.demoManager) {
-            console.error('[SinglePlayer] demoManager is missing! Attempting to re-initialize...');
-            try {
-                this.demoManager = new DemoManager();
-                console.log('[SinglePlayer] Re-initialized demoManager');
-            } catch (e) {
-                console.error('[SinglePlayer] Failed to re-initialize demoManager:', e);
-            }
-        }
-
-        // Pass demo manager and last recorded demo if available
+        // Show game over modal (demos are auto-saved, no need to pass them here)
         console.log('[SinglePlayer] Showing Game Over modal.');
-        console.log('  - Demo available:', !!this.lastRecordedDemo);
-        console.log('  - Demo object:', this.lastRecordedDemo);
-        console.log('  - DemoManager available:', !!this.demoManager);
-        console.log('  - DemoManager object:', this.demoManager);
         await showGameOverModal(
             this.deps.modalManager,
             this.gameState,
-            this.deps.highScoreManager,
-            this.demoManager,
-            this.lastRecordedDemo
+            this.deps.highScoreManager
         );
 
         // Trigger game over event
@@ -943,6 +952,29 @@ export class SinglePlayerMode extends BaseGameMode {
 
     _getBoardScene() {
         return this.deps.phaserGame?.scene?.getScene('BoardScene') || null;
+    }
+
+    /**
+     * Auto-save demo to IndexedDB (like Quadra's automatic last.qrec saving)
+     * @private
+     * @param {Object} demo - Demo object to save
+     * @returns {Promise<number|null>} The saved demo ID, or null if save failed
+     */
+    async _autoSaveDemo(demo) {
+        try {
+            if (!this.demoManager) {
+                this.demoManager = new DemoManager();
+            }
+            const savedId = await this.demoManager.saveDemo(demo);
+            console.log('[SinglePlayer] Demo auto-saved with ID:', savedId);
+
+            // Store the saved ID on the demo object for reference
+            demo.id = savedId;
+            return savedId;
+        } catch (error) {
+            console.error('[SinglePlayer] Failed to auto-save demo:', error);
+            return null;
+        }
     }
 
     /**

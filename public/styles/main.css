@@ -26875,3 +26875,153 @@ body.cursor-hidden * {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* ===================================
+   Demo Complete Modal Styles
+   =================================== */
+
+#demo-complete-modal .modal-content {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.95));
+    border: 1px solid rgba(100, 200, 255, 0.3);
+    border-radius: 16px;
+    padding: 32px 40px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6),
+        0 0 60px rgba(100, 200, 255, 0.1);
+}
+
+#demo-complete-modal h1 {
+    font-size: 1.6rem;
+    color: #fbbf24;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 24px;
+    text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+}
+
+.demo-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.demo-stat {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(100, 200, 255, 0.15);
+    border-radius: 10px;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.demo-stat-label {
+    font-size: 0.7rem;
+    color: rgba(148, 163, 184, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.demo-stat-value {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #e0e7ff;
+}
+
+.demo-complete-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.demo-btn {
+    padding: 14px 24px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+}
+
+.demo-btn.primary {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+}
+
+.demo-btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(16, 185, 129, 0.6);
+}
+
+.demo-btn.secondary {
+    background: rgba(100, 116, 139, 0.4);
+    color: #e0e7ff;
+    border: 1px solid rgba(100, 116, 139, 0.4);
+}
+
+.demo-btn.secondary:hover {
+    background: rgba(100, 116, 139, 0.6);
+    transform: translateY(-2px);
+}
+
+.demo-btn.tertiary {
+    background: transparent;
+    color: rgba(148, 163, 184, 0.9);
+    border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.demo-btn.tertiary:hover {
+    background: rgba(51, 65, 85, 0.5);
+    color: #e0e7ff;
+}
+
+/* Demo Indicator - Watching Replay badge */
+.demo-indicator {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 20px;
+    z-index: 1000;
+    animation: demo-indicator-pulse 2s ease-in-out infinite;
+}
+
+.demo-indicator.visible {
+    display: flex;
+}
+
+.demo-indicator .demo-icon {
+    color: #10b981;
+    font-size: 0.9rem;
+}
+
+.demo-indicator .demo-text {
+    color: #10b981;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+@keyframes demo-indicator-pulse {
+
+    0%,
+    100% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
