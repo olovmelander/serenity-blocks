@@ -2847,9 +2847,7 @@ class SerenityBlocks {
 
         // Check if GameModeManager has a running mode
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
-            this.gameModeManager.pauseCurrentMode({
-                enableTranceState: false, // No trance state when opening Serenity Hub
-            });
+            this.gameModeManager.pauseCurrentMode();
             return;
         }
 
@@ -2966,15 +2964,16 @@ class SerenityBlocks {
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
 
-            // In Infinity Mode, pause (via 'P' key) enables manual camera controls + trance state without opening settings
-            // Escape key should call openSettingsMenu() instead for Infinity Mode
+            // In Infinity Mode, check if we're in exploration mode (minimap drag)
+            // If so, ignore P key since the game is already paused during exploration
             if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
-                this.gameModeManager.pauseCurrentMode({ enableTranceState: true });
-                console.log('[Main] Infinity Mode paused - manual camera controls and trance state enabled');
-                return;
+                if (currentMode.isInExplorationMode) {
+                    console.log('[Main] Infinity Mode in exploration mode - P key ignored');
+                    return;
+                }
             }
 
-            // For other modes, pause and show settings modal
+            // Pause and show settings modal (same behavior for all modes)
             this.gameModeManager.pauseCurrentMode();
             this.modalManager.show('settings');
             return;
@@ -2988,7 +2987,7 @@ class SerenityBlocks {
     }
 
     /**
-     * Open settings menu (used by Escape key in Infinity Mode)
+     * Open settings menu (used by Escape key)
      */
     openSettingsMenu() {
         if (this.gameState.isGameOver) return;
@@ -2996,17 +2995,27 @@ class SerenityBlocks {
         // Pause the game if not already paused
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
-            if (!currentMode.isPaused) {
-                // Disable trance state when opening settings menu (Escape key)
-                // Only pause with trance state when using 'P' key
-                const isInfinityMode = currentMode.getModeId && currentMode.getModeId() === 'infinity';
-                this.gameModeManager.pauseCurrentMode({
-                    enableTranceState: false, // No trance state when opening settings
-                });
-                // Also sync pause state for Infinity Mode
-                if (isInfinityMode && currentMode.gameState) {
-                    currentMode.gameState.isPaused = true;
+
+            // In Infinity Mode, check if we're in exploration mode
+            // If so, end exploration and open settings
+            if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
+                if (currentMode.isInExplorationMode) {
+                    // End exploration (game will stay paused)
+                    currentMode.isInExplorationMode = false;
+                    if (currentMode.minimap) {
+                        currentMode.minimap.isExploring = false;
+                        currentMode.minimap.isDragging = false;
+                        currentMode.minimap.onUnpause();
+                    }
+                    if (currentMode.boardScene) {
+                        currentMode.boardScene.disableManualCameraControl();
+                    }
+                    console.log('[Main] Ending exploration mode and opening settings');
                 }
+            }
+
+            if (!currentMode.isPaused) {
+                this.gameModeManager.pauseCurrentMode();
             }
         } else if (!this.gameState.isPaused) {
             this.gameState.isPaused = true;

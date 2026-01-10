@@ -46,6 +46,11 @@ export class InfinityMinimap {
         this.isDragging = false;
         this.isHovering = false;
 
+        // Exploration mode state (drag-to-explore)
+        this.isExploring = false;       // True when actively exploring (drag threshold met)
+        this.dragStartY = null;         // Y position where drag started
+        this.dragThreshold = 8;         // Minimum pixels before entering exploration mode
+
         // Mouse position for cursor glow effect
         this.mouseX = 50; // Center by default (percentage)
         this.mouseY = 50;
@@ -93,7 +98,7 @@ export class InfinityMinimap {
             background: linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92));
             border: 2px solid rgba(100, 255, 200, 0.35);
             border-radius: 16px;
-            padding: 12px;
+            padding: 12px 12px 16px 12px;
             box-shadow:
                 0 14px 40px rgba(10, 16, 30, 0.5),
                 inset 0 0 24px rgba(60, 255, 200, 0.2);
@@ -106,21 +111,20 @@ export class InfinityMinimap {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         `;
 
-        // Create canvas
+        // Create canvas (will be appended after title)
         this.canvas = document.createElement('canvas');
         this.canvas.width = this.options.width - 24; // Account for padding
-        this.canvas.height = this.options.height - 32;
+        this.canvas.height = this.options.height - 62; // Account for padding, title, and instruction
         this.canvas.style.cssText = `
             display: block;
             image-rendering: pixelated;
-            margin: 12px auto 0 auto;
+            margin: 0 auto;
             border-radius: 10px;
             background: rgba(10, 18, 40, 0.85);
             transition: opacity 0.3s ease;
         `;
 
         this.ctx = this.canvas.getContext('2d');
-        this.container.appendChild(this.canvas);
 
         // Add animations and hover styles
         const hoverStyle = document.createElement('style');
@@ -228,7 +232,27 @@ export class InfinityMinimap {
             text-transform: uppercase;
             transition: color 0.3s ease, opacity 0.3s ease;
         `;
+        // Append elements in order: title, canvas, instruction
         this.container.appendChild(title);
+        this.container.appendChild(this.canvas);
+
+        // Create instruction label at bottom
+        this.instructionLabel = document.createElement('div');
+        this.instructionLabel.className = 'minimap-instruction';
+        this.instructionLabel.textContent = 'Drag to explore';
+        this.instructionLabel.style.cssText = `
+            text-align: center;
+            font-family: 'Orbitron', monospace;
+            font-size: 9px;
+            font-weight: 400;
+            color: rgba(100, 255, 200, 0.5);
+            letter-spacing: 0.5px;
+            margin-top: 8px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            transition: color 0.3s ease, opacity 0.3s ease;
+        `;
+        this.container.appendChild(this.instructionLabel);
 
         // Add event listeners
         this.canvas.addEventListener('click', this.handleClick);
@@ -757,48 +781,68 @@ export class InfinityMinimap {
     }
 
     /**
-     * Handle click to jump to position
+     * Handle click to jump to position (only used during exploration)
      * @private
      */
     _onClick(event) {
-        const rect = this.canvas.getBoundingClientRect();
-        const y = event.clientY - rect.top;
-        const targetRow = this._getRowFromY(y);
+        // Click events are now handled through mousedown/move/up for exploration
+        // This is kept for potential future use but not actively used
+    }
 
-        console.log('[InfinityMinimap] Clicked, jumping to row:', targetRow);
+    /**
+ * Handle mouse down - immediately start exploration mode
+ * @private
+ */
+    _onMouseDown(event) {
+        event.preventDefault();
 
-        // Dispatch event for camera to jump
-        this.container.dispatchEvent(new CustomEvent('minimap-jump', {
-            detail: { targetRow },
+        // Start exploration mode immediately (pause the game)
+        this.isDragging = true;
+        this.isExploring = true;
+        this.dragStartY = event.clientY;
+
+        console.log('[InfinityMinimap] Exploration started - mousedown');
+
+        // Dispatch exploration-start event (InfinityMode will pause the game)
+        this.container.dispatchEvent(new CustomEvent('minimap-exploration-start', {
             bubbles: true,
         }));
+
+        // Dispatch initial jump to clicked position
+        this._dispatchJump(event);
     }
 
     /**
-     * Handle mouse down (start dragging)
-     * @private
-     */
-    _onMouseDown(event) {
-        this.isDragging = true;
-        this._onClick(event); // Also trigger jump on mouse down
-    }
-
-    /**
-     * Handle mouse move (dragging)
+     * Handle mouse move - update camera during exploration
      * @private
      */
     _onMouseMove(event) {
-        if (this.isDragging) {
-            this._onClick(event);
+        if (!this.isDragging) return;
+
+        // Already exploring - dispatch continuous camera updates
+        if (this.isExploring) {
+            this._dispatchJump(event);
         }
     }
 
     /**
-     * Handle mouse up (stop dragging)
+     * Handle mouse up - end exploration if active
      * @private
      */
-    _onMouseUp() {
+    _onMouseUp(event) {
+        if (this.isExploring) {
+            console.log('[InfinityMinimap] Exploration ended - mouse released');
+
+            // Dispatch exploration-end event (InfinityMode will resume the game)
+            this.container.dispatchEvent(new CustomEvent('minimap-exploration-end', {
+                bubbles: true,
+            }));
+        }
+
+        // Reset all drag state
         this.isDragging = false;
+        this.isExploring = false;
+        this.dragStartY = null;
     }
 
     /**
@@ -811,13 +855,42 @@ export class InfinityMinimap {
     }
 
     /**
-     * Handle mouse leave
+     * Handle mouse leave - end exploration if active
      * @private
      */
     _onMouseLeave() {
         this.isHovering = false;
-        this.isDragging = false;
         this.canvas.style.opacity = '0.8';
+
+        // If we were exploring, end exploration on mouseleave
+        if (this.isExploring && this.isDragging) {
+            console.log('[InfinityMinimap] Exploration ended - mouse left minimap');
+
+            // Dispatch exploration-end event
+            this.container.dispatchEvent(new CustomEvent('minimap-exploration-end', {
+                bubbles: true,
+            }));
+        }
+
+        // Reset all drag state
+        this.isDragging = false;
+        this.isExploring = false;
+        this.dragStartY = null;
+    }
+
+    /**
+     * Dispatch a minimap-jump event for the current mouse position
+     * @private
+     */
+    _dispatchJump(event) {
+        const rect = this.canvas.getBoundingClientRect();
+        const y = event.clientY - rect.top;
+        const targetRow = this._getRowFromY(y);
+
+        this.container.dispatchEvent(new CustomEvent('minimap-jump', {
+            detail: { targetRow },
+            bubbles: true,
+        }));
     }
 
     /**

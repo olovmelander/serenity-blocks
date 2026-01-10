@@ -172,3 +172,32 @@ export function isEffectEnabled(level, effectName) {
     const effects = getEffectsEnabled(level);
     return effects[effectName] !== false;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cosmic Exploration Quality Presets - Stars and particles only
+// ─────────────────────────────────────────────────────────────────────────────
+const COSMIC_EXPLORATION_CONFIG = {
+    Extreme: {
+        starCount: 15000, bgDust: 600, fgDust: 250, enableBloom: true, bloomStrength: 0.3,
+    },
+    Ultra: {
+        starCount: 12000, bgDust: 450, fgDust: 180, enableBloom: true, bloomStrength: 0.25,
+    },
+    High: {
+        starCount: 10000, bgDust: 300, fgDust: 120, enableBloom: true, bloomStrength: 0.2,
+    },
+    Medium: {
+        starCount: 7000, bgDust: 200, fgDust: 80, enableBloom: false, bloomStrength: 0,
+    },
+    Low: {
+        starCount: 4000, bgDust: 100, fgDust: 40, enableBloom: false, bloomStrength: 0,
+    },
+    Minimal: {
+        starCount: 2000, bgDust: 60, fgDust: 20, enableBloom: false, bloomStrength: 0,
+    },
+};
+
+export function getCosmicExplorationConfig(level) {
+    const normalized = normalizeQuality(level);
+    return COSMIC_EXPLORATION_CONFIG[normalized] || COSMIC_EXPLORATION_CONFIG.High;
+}
