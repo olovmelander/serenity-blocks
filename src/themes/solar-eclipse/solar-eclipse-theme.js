@@ -54,6 +54,8 @@ import {
     diamondRingFragmentShader,
     lensFlareVertexShader,
     lensFlareFragmentShader,
+    occludedParticleVertexShader,
+    occludedParticleFragmentShader,
     ChromaticAberrationShader,
     VignetteShader,
 } from './solar-eclipse-shaders.js';
